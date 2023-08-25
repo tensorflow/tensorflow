@@ -17,7 +17,8 @@ limitations under the License.
 
 #include <cstring>
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "ruy/profiler/instrumentation.h"  // from @ruy
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {

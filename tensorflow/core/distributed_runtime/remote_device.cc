@@ -99,48 +99,48 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
           done(s, &remote_devices);
           delete call;
         });
-    if (s.ok()) {
-      DeviceNameUtils::ParsedName worker_name_parsed;
-      if (!DeviceNameUtils::ParseFullName(worker_name, &worker_name_parsed) ||
-          !worker_name_parsed.has_job || !worker_name_parsed.has_replica ||
-          !worker_name_parsed.has_task) {
-        s = errors::InvalidArgument("Could not parse worker name: ",
-                                    worker_name);
-        LOG(WARNING) << s;
-        return;
-      }
-      remote_devices.reserve(call->resp.device_attributes_size());
-      for (const DeviceAttributes& da : call->resp.device_attributes()) {
-        DeviceNameUtils::ParsedName device_name_parsed;
-        CHECK(DeviceNameUtils::ParseFullName(da.name(), &device_name_parsed))
-            << "Device attribute name '" << da.name() << "' could not be "
-            << "parsed. Device Attribute: " << da.DebugString();
-        // Preserve the exact name, if possible.
-        // TODO(b/37868888): Simplify when legacy device name formats removed.
-        if (device_name_parsed.job == worker_name_parsed.job &&
-            device_name_parsed.replica == worker_name_parsed.replica &&
-            device_name_parsed.task == worker_name_parsed.task) {
-          auto d = new RemoteDevice(env, da);
-          remote_devices.push_back(d);
-        } else {
-          DeviceAttributes da_rewritten = da;
-          da_rewritten.set_name(DeviceNameUtils::FullName(
-              worker_name_parsed.job, worker_name_parsed.replica,
-              worker_name_parsed.task, device_name_parsed.type,
-              device_name_parsed.id));
-          auto d = new RemoteDevice(env, da_rewritten);
+    if (!s.ok()) {
+      return;
+    }
+    DeviceNameUtils::ParsedName worker_name_parsed;
+    if (!DeviceNameUtils::ParseFullName(worker_name, &worker_name_parsed) ||
+        !worker_name_parsed.has_job || !worker_name_parsed.has_replica ||
+        !worker_name_parsed.has_task) {
+      s = errors::InvalidArgument("Could not parse worker name: ", worker_name);
+      LOG(WARNING) << s;
+      return;
+    }
+    remote_devices.reserve(call->resp.device_attributes_size());
+    for (const DeviceAttributes& da : call->resp.device_attributes()) {
+      DeviceNameUtils::ParsedName device_name_parsed;
+      CHECK(DeviceNameUtils::ParseFullName(da.name(), &device_name_parsed))
+          << "Device attribute name '" << da.name() << "' could not be "
+          << "parsed. Device Attribute: " << da.DebugString();
+      // Preserve the exact name, if possible.
+      // TODO(b/37868888): Simplify when legacy device name formats removed.
+      if (device_name_parsed.job == worker_name_parsed.job &&
+          device_name_parsed.replica == worker_name_parsed.replica &&
+          device_name_parsed.task == worker_name_parsed.task) {
+        auto d = new RemoteDevice(env, da);
+        remote_devices.push_back(d);
+      } else {
+        DeviceAttributes da_rewritten = da;
+        da_rewritten.set_name(DeviceNameUtils::FullName(
+            worker_name_parsed.job, worker_name_parsed.replica,
+            worker_name_parsed.task, device_name_parsed.type,
+            device_name_parsed.id));
+        auto d = new RemoteDevice(env, da_rewritten);
 
-          // Experimental: Skipping over adding any TPU-type devices that aren't
-          // on the job called "worker" (but still adds the CPUs of other jobs).
-          if (getenv("TPU_NO_POPULATE_DEVICE_LIST_FROM_CLUSTER_SPEC") !=
-              nullptr) {
-            if (worker_name_parsed.job == "worker" ||
-                device_name_parsed.type.find("TPU") == std::string::npos) {
-              remote_devices.push_back(d);
-            }
-          } else {
+        // Experimental: Skipping over adding any TPU-type devices that aren't
+        // on the job called "worker" (but still adds the CPUs of other jobs).
+        if (getenv("TPU_NO_POPULATE_DEVICE_LIST_FROM_CLUSTER_SPEC") !=
+            nullptr) {
+          if (worker_name_parsed.job == "worker" ||
+              device_name_parsed.type.find("TPU") == std::string::npos) {
             remote_devices.push_back(d);
           }
+        } else {
+          remote_devices.push_back(d);
         }
       }
     }

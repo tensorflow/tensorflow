@@ -59,28 +59,15 @@ class ProfilerTest(test_util.TensorFlowTestCase):
 
     profiler.stop()
     file_list = gfile.ListDirectory(logdir)
-    self.assertEqual(len(file_list), 2)
+    self.assertEqual(len(file_list), 1)
     for file_name in gfile.ListDirectory(logdir):
       if gfile.IsDirectory(os.path.join(logdir, file_name)):
         self.assertEqual(file_name, 'plugins')
-      else:
-        self.assertTrue(file_name.endswith('.profile-empty'))
     profile_dir = os.path.join(logdir, 'plugins', 'profile')
     run = gfile.ListDirectory(profile_dir)[0]
     hostname = socket.gethostname()
-    overview_page = os.path.join(profile_dir, run,
-                                 hostname + '.overview_page.pb')
-    self.assertTrue(gfile.Exists(overview_page))
-    input_pipeline = os.path.join(profile_dir, run,
-                                  hostname + '.input_pipeline.pb')
-    self.assertTrue(gfile.Exists(input_pipeline))
-    tensorflow_stats = os.path.join(profile_dir, run,
-                                    hostname + '.tensorflow_stats.pb')
-    self.assertTrue(gfile.Exists(tensorflow_stats))
-    kernel_stats = os.path.join(profile_dir, run, hostname + '.kernel_stats.pb')
-    self.assertTrue(gfile.Exists(kernel_stats))
-    trace_file = os.path.join(profile_dir, run, hostname + '.trace.json.gz')
-    self.assertTrue(gfile.Exists(trace_file))
+    xplane = os.path.join(profile_dir, run, hostname + '.xplane.pb')
+    self.assertTrue(gfile.Exists(xplane))
 
   def test_profile_with_options(self):
     logdir = self.get_temp_dir()
@@ -95,7 +82,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
 
     profiler.stop()
     file_list = gfile.ListDirectory(logdir)
-    self.assertEqual(len(file_list), 2)
+    self.assertEqual(len(file_list), 1)
 
   def test_context_manager_with_options(self):
     logdir = self.get_temp_dir()
@@ -109,7 +96,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(15, product)
 
     file_list = gfile.ListDirectory(logdir)
-    self.assertEqual(len(file_list), 2)
+    self.assertEqual(len(file_list), 1)
 
 
 if __name__ == '__main__':

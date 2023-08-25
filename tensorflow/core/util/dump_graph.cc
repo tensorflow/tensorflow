@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/dump_graph.h"
 
+#include <functional>
 #include <memory>
 #include <unordered_map>
 
@@ -94,7 +95,7 @@ GraphDumperConfig& GetGraphDumperConfig() {
 // WritableFile that simply prints to stderr.
 class StderrWritableFile : public WritableFile {
  public:
-  StderrWritableFile() {}
+  StderrWritableFile() = default;
 
   Status Append(StringPiece data) override {
     fprintf(stderr, "%.*s", static_cast<int>(data.size()), data.data());
@@ -187,6 +188,8 @@ Status WriteTextProtoToUniqueFile(
   return file->Close();
 }
 
+}  // anonymous namespace
+
 string DumpToFile(const string& name, const string& dirname,
                   const string& suffix, const string& type_name,
                   std::function<Status(WritableFile*)> dumper) {
@@ -206,8 +209,6 @@ string DumpToFile(const string& name, const string& dirname,
   LOG(INFO) << "Dumped " << type_name << " to " << filepath;
   return filepath;
 }
-
-}  // anonymous namespace
 
 void SetGraphDumper(
     std::function<Status(const Graph& graph,

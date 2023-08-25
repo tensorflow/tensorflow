@@ -21,6 +21,7 @@ limitations under the License.
 #include <numeric>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/kernels/callback.pb.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
+#include "tensorflow/tsl/lib/strings/proto_serialization.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 
@@ -59,7 +62,7 @@ const char* const kTfCallbackCustomCall = "GenericTfCallbackGPU";
 static StatusOr<Tensor> TensorFromProto(const TensorProto& proto) {
   Tensor out;
   if (!out.FromProto(proto)) {
-    return se::port::InternalError("Failed deserializing a TensorProto");
+    return tsl::errors::Internal("Failed deserializing a TensorProto");
   }
   return out;
 }
@@ -73,7 +76,12 @@ static StatusOr<TfCallbackData> CallbackDataFromProto(const char* opaque,
 }
 
 static StatusOr<std::string> SerializeCallbackData(const TfCallbackData& data) {
-  return data.SerializeAsString();
+  std::string serialized_data;
+  if (!tsl::SerializeToStringDeterministic(data, &serialized_data)) {
+    return absl::InternalError(
+        "Failed in serializing TfCallbackData to string");
+  }
+  return serialized_data;
 }
 
 Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
@@ -107,7 +115,7 @@ Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
     if (absl::c_any_of(xla_shape.dynamic_dimensions(),
                        [](const bool is_dynamic) { return is_dynamic; })) {
       // TODO(cheshire): Support input dynamic dimensions.
-      return se::port::InternalError(
+      return tsl::errors::Internal(
           "Input dynamic dimensions are not supported for light outside "
           "compilation");
     }
@@ -156,8 +164,7 @@ Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
     TensorShapeProto output_tensor_shape_proto =
         ic.ShapeHandleToProto(ic.output(i));
     if (output_tensor_shape_proto.unknown_rank()) {
-      return se::port::InternalError(
-          absl::StrCat("Output ", i, " has unknown rank"));
+      return tsl::errors::Internal("Output ", i, " has unknown rank");
     }
 
     int rank = output_tensor_shape_proto.dim_size();
@@ -171,8 +178,8 @@ Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
 
       if (dim->size() < 0) {
         if (it == dimension_bounds.end()) {
-          return se::port::InternalError(absl::StrCat(
-              "Bound for unknown dimension not found for dimension ", d));
+          return tsl::errors::Internal(
+              "Bound for unknown dimension not found for dimension ", d);
         }
         dim->set_size(it->second);
         dynamic_dimensions[d] = true;
@@ -280,7 +287,8 @@ int GetOutputBufferId(int output_num, const TfCallbackData& callback_data) {
 
 int64_t BufferSize(const TfCallbackData::BufferDescription& descr) {
   TensorShape shape;
-  CHECK(TensorShape::BuildTensorShape(descr.shape(), &shape).ok());  // Crash OK
+  TF_CHECK_OK(
+      TensorShape::BuildTensorShape(descr.shape(), &shape));  // Crash OK
   return shape.num_elements() * DataTypeSize(descr.type());
 }
 
@@ -290,8 +298,12 @@ class TfCallbackDevice : public DeviceBase {
                             const TfCallbackData& callback_data)
       : DeviceBase(Env::Default()),
         stream_(stream),
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
         gpu_allocator_(GPUProcessState::singleton()->GetGPUAllocator(
-            TfDeviceId{stream_->parent()->device_ordinal()})),
+            *BaseGPUDevice::FindTfDeviceId(stream))),
+#else
+        gpu_allocator_(nullptr),
+#endif
         cpu_allocator_(
             ProcessState::singleton()->GetCPUAllocator(/*numa_node=*/0)) {
     for (int i = 0; i < callback_data.outputs_size(); ++i) {
@@ -327,9 +339,8 @@ class TfCallbackDevice : public DeviceBase {
     concrete_device->Reinitialize(
         context, gpu_stream,
         /*platform_device_id=*/
-        PlatformDeviceId(stream_->parent()->device_ordinal()), allocator,
-        // TODO(cheshire): Pass meaningful scratch
-        // buffer.
+        tsl::PlatformDeviceId(stream_->parent()->device_ordinal()), allocator,
+        // TODO(cheshire): Pass meaningful scratch buffer.
         /*scratch=*/nullptr);
     return OkStatus();
 #else
@@ -346,7 +357,12 @@ class TfCallbackDevice : public DeviceBase {
     if (attr.on_host()) {
       if (attr.gpu_compatible()) {
         GPUProcessState* ps = GPUProcessState::singleton();
-        return ps->GetGpuHostAllocator(0);
+        // TODO(jlebar): The very first call to GetGpuHostAllocator sets its
+        // memory limits.  So passing {} for the options here means that if
+        // nobody gets this allocator before us, we will not respect any limits
+        // the user might have set on host memory allocation.  Our call to
+        // GetGPUAllocator in the constructor has the same problem.
+        return ps->GetGpuHostAllocator(/*options=*/{}, 0);
       } else {
         return cpu_allocator_;
       }
@@ -512,8 +528,8 @@ void GenericTfCallback(void* stream_handle, void** buffers, const char* opaque,
                        int opaque_len, XlaCustomCallStatus* status) {
   Status s = CallTfKernel(stream_handle, buffers, opaque, opaque_len);
   if (!s.ok()) {
-    XlaCustomCallStatusSetFailure(status, s.error_message().c_str(),
-                                  s.error_message().size());
+    auto msg = s.message();
+    XlaCustomCallStatusSetFailure(status, msg.data(), msg.size());
   }
 }
 

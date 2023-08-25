@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -31,7 +31,7 @@ struct DynamicWindowDims {
   HloInstruction* output_size;
 };
 
-// This mirrors the logic in GetWindowedOutputSizeVerboseV2 but with HLOs as
+// This mirrors the logic in GetWindowedOutputSizeVerbose but with HLOs as
 // inputs and outputs.
 DynamicWindowDims GetWindowedOutputSize(HloInstruction* input_size,
                                         int64_t window_size,

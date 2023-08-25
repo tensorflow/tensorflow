@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 
 namespace xla {
@@ -180,8 +180,9 @@ MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
 
 static StatusOr<std::unique_ptr<HloComputation>> MakeCountedLoopBodyComputation(
     const Shape& loop_state_shape,
-    const std::function<StatusOr<WhileUtil::LoopStateTy>(
-        HloInstruction*, const WhileUtil::LoopStateTy&)>& loop_body_generator) {
+    absl::FunctionRef<StatusOr<WhileUtil::LoopStateTy>(
+        HloInstruction*, const WhileUtil::LoopStateTy&)>
+        loop_body_generator) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> body_computation,
                       CreateComputationWithSignature(
                           {&loop_state_shape}, loop_state_shape, "while_body"));
@@ -245,7 +246,7 @@ static Shape MakeLoopStateShapeWithLayout(
 /*static*/ StatusOr<WhileUtil::OwningLoopStateTy> WhileUtil::MakeCountedLoop(
     HloModule* module, int32_t trip_count,
     const WhileUtil::LoopStateTy& init_values,
-    const WhileUtil::LoopBodyGeneratorTy& loop_body_generator,
+    WhileUtil::LoopBodyGeneratorTy loop_body_generator,
     const OpMetadata& metadata) {
   CHECK_GE(trip_count, 0);
 
@@ -287,7 +288,7 @@ static Shape MakeLoopStateShapeWithLayout(
 /*static*/ StatusOr<WhileUtil::LoopStateTy> WhileUtil::MakeCountedLoop(
     HloComputation* computation, int32_t trip_count,
     const WhileUtil::LoopStateTy& init_values,
-    const WhileUtil::LoopBodyGeneratorTy& loop_body_generator,
+    WhileUtil::LoopBodyGeneratorTy loop_body_generator,
     const OpMetadata& metadata) {
   TF_ASSIGN_OR_RETURN(
       auto owning_loop_state,

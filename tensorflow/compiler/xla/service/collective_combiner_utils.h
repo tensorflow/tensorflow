@@ -22,15 +22,16 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -44,8 +45,8 @@ namespace xla {
 template <typename K>
 StatusOr<bool> CombineInstructionsByKey(
     HloComputation* computation,
-    const std::function<std::optional<K>(const HloInstruction*)>& key_fn,
-    const std::function<Status(absl::Span<HloInstruction* const>)>& combine_fn,
+    absl::FunctionRef<std::optional<K>(const HloInstruction*)> key_fn,
+    absl::FunctionRef<Status(absl::Span<HloInstruction* const>)> combine_fn,
     int64_t combine_threshold_bytes, int64_t combine_threshold_count) {
   // Cache keys for each instruction and build sets of instructions with the
   // same key that might be combined together.

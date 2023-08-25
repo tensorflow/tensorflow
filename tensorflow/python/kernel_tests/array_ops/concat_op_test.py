@@ -93,6 +93,17 @@ class ConcatOpTest(test.TestCase):
     self.assertAllEqual(result[:2, :], p1)
     self.assertAllEqual(result[2:, :], p2)
 
+  def testBfloat16GPU(self):
+    with test_util.use_gpu():
+      p1 = np.random.rand(2, 3).astype(dtypes.bfloat16.as_numpy_dtype)
+      p2 = np.random.rand(2, 3).astype(dtypes.bfloat16.as_numpy_dtype)
+      x1 = constant_op.constant(p1)
+      x2 = constant_op.constant(p2)
+      c = array_ops.concat([x1, x2], 0)
+      result = self.evaluate(c)
+    self.assertAllEqual(result[:2, :], p1)
+    self.assertAllEqual(result[2:, :], p2)
+
   def testRefType(self):
     with test_util.use_gpu():
       p1 = np.random.rand(4, 4).astype("f")
@@ -784,6 +795,18 @@ class ConcatOffsetTest(test.TestCase):
       self.evaluate(
           x_concat
       )  # This test is only meant to check the creation is not crashed
+
+  def testInt64Shape(self):
+    with test_util.use_gpu():
+      cdim = constant_op.constant(1, dtypes.int32)
+      s0 = constant_op.constant([2, 5000000000, 5], dtypes.int64)
+      s1 = constant_op.constant([2, 7, 5], dtypes.int64)
+      s2 = constant_op.constant([2, 20, 5], dtypes.int64)
+      off = gen_array_ops.concat_offset(cdim, [s0, s1, s2])
+      ans = self.evaluate(off)
+      self.assertAllEqual(
+          ans, [[0, 0, 0], [0, 5000000000, 0], [0, 5000000007, 0]])
+      self.assertEqual(ans[0].dtype, dtypes.int64)
 
 
 if __name__ == "__main__":

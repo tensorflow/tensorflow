@@ -16,35 +16,33 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
 
-TfAllocatorAdapter::TfAllocatorAdapter(tensorflow::Allocator *wrapped,
-                                       Stream *stream)
+TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped, Stream *stream)
     : DeviceMemoryAllocator(stream->parent()->platform()),
       wrapped_(wrapped),
       stream_(stream) {}
 
-TfAllocatorAdapter::TfAllocatorAdapter(tensorflow::Allocator *wrapped,
+TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped,
                                        Platform *platform)
     : DeviceMemoryAllocator(platform), wrapped_(wrapped), stream_(nullptr) {}
 
 TfAllocatorAdapter::~TfAllocatorAdapter() {}
 
-port::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
+tsl::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
     int device_ordinal, uint64_t size, bool retry_on_failure,
     int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
-  tensorflow::AllocationAttributes attrs;
+  tsl::AllocationAttributes attrs;
   attrs.retry_on_failure = retry_on_failure;
   void *data = nullptr;
   if (size != 0) {
-    data = wrapped_->AllocateRaw(tensorflow::Allocator::kAllocatorAlignment,
-                                 size, attrs);
+    data =
+        wrapped_->AllocateRaw(tsl::Allocator::kAllocatorAlignment, size, attrs);
     if (data == nullptr) {
       return tsl::errors::ResourceExhausted(
           "Out of memory while trying to allocate ", size, " bytes.");
@@ -53,13 +51,13 @@ port::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
   return OwningDeviceMemory(DeviceMemoryBase(data, size), device_ordinal, this);
 }
 
-port::Status TfAllocatorAdapter::Deallocate(int device_ordinal,
-                                            DeviceMemoryBase mem) {
+tsl::Status TfAllocatorAdapter::Deallocate(int device_ordinal,
+                                           DeviceMemoryBase mem) {
   wrapped_->DeallocateRaw(mem.opaque());
   return ::tsl::OkStatus();
 }
 
-port::StatusOr<Stream *> TfAllocatorAdapter::GetStream(int device_ordinal) {
+tsl::StatusOr<Stream *> TfAllocatorAdapter::GetStream(int device_ordinal) {
   CHECK_EQ(stream_->parent()->device_ordinal(), device_ordinal);
   return stream_;
 }

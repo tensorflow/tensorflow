@@ -17,21 +17,24 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_INSTRUCTION_FUSION_H_
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+// The source_location.h is not available in open source.
+#if defined(PLATFORM_GOOGLE)
+#include "absl/types/source_location.h"
+#endif  // PLATFORM_GOOGLE
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 
 namespace xla {
-
-struct NoFusionPossible;
 
 // Propagating explanation of fusion decisions: if something could not be fused,
 // explain the reason.
@@ -56,15 +59,17 @@ class FusionDecision {
     }
   }
 
-  // Can be fused.
-  FusionDecision() {}
+#if defined(PLATFORM_GOOGLE)
+  // We can fuse iff. the decision is `true`. The source location indicates
+  // where an instance was created, making debugging easier without a need to
+  // provide explicit explanation.
+  FusionDecision(  // NOLINT
+      bool decision,
+      absl::SourceLocation source_location = absl::SourceLocation::current());
+#endif  // PLATFORM_GOOGLE
 
-  // A trick to declare and test fusion decision in a single statement (as TF
-  // is still on C++14 and can't use if statement with explicit initializer).
-  //
-  // Cf. NoFusionPossible definition for sample usage.
-  // TODO(b/157309856): Use conditional initializer instead.
-  NoFusionPossible operator!();
+  // Can be fused.
+  FusionDecision() = default;
 
   // Returns whether it can be fused.
   explicit operator bool() const { return CanFuse(); }
@@ -75,7 +80,7 @@ class FusionDecision {
   // Connects two decisions with a disjunction. This is different than just
   // picking one, as we also have to propagate both explanations if only one of
   // them is false to show why fusion wasn't performed.
-  FusionDecision Or(const FusionDecision& decision) {
+  FusionDecision Or(const FusionDecision& decision) const {
     if (CanFuse() || decision.CanFuse()) {
       return {};
     }
@@ -85,7 +90,7 @@ class FusionDecision {
   // Connects two fusion decision with a conjunction. Unlike disjunction,
   // propagates only one explanation (as it is enough to show that fusion could
   // not be done).
-  FusionDecision And(const FusionDecision& decision) {
+  FusionDecision And(const FusionDecision& decision) const {
     if (CanFuse()) {
       return decision;
     }
@@ -96,13 +101,31 @@ class FusionDecision {
     return *this;
   }
 
+  // Executes the given fusibility checks in order, until one fails. Returns the
+  // result of the first failure (or a `FusionDecision` with `CanFuse() == true`
+  // if none did).
+  // Usage:
+  //   FusionDecision result = FusionDecision::All(std::tuple{FnOne, FnTwo},
+  //                                               arg1, arg2)
+  template <typename... Checks, typename... Args>
+  static FusionDecision All(const std::tuple<Checks...>& checks,
+                            const Args&... args) {
+    FusionDecision result = {};
+    std::apply(
+        [&](auto&&... fns) {
+          ((result = result ? fns(args...) : result), ...);
+        },
+        checks);
+    return result;
+  }
+
   // Appends to explanation, or turns the decision negative.
-  FusionDecision operator<<(absl::string_view explanation) {
+  FusionDecision operator<<(absl::string_view explanation) const {
     return {absl::StrCat(explanation_.value_or(""), explanation)};
   }
 
   // Appends to explanation, or turns the decision negative.
-  FusionDecision operator<<(int64_t explanation) {
+  FusionDecision operator<<(int64_t explanation) const {
     return {absl::StrCat(explanation_.value_or(""), explanation)};
   }
 
@@ -113,27 +136,6 @@ class FusionDecision {
   // Empty IFF fusion is possible (explanation provided for negative cases).
   std::optional<std::string> explanation_;
 };
-
-// Helper class: contextually convertible to "no fusion possible" unlike
-// FusionDecision. This is a trick to declare and test fusion decision in a
-// single statement (as we are still on C++14).
-//
-// Sample usage:
-//
-// if (NoFusionPossible fusible = !FusabilityRestriction(producer, consume)) {
-//   return !fusible; // Note that negation converts it back to FusionDecision.
-// }
-struct NoFusionPossible {
-  // Inverts the test value (true <=> not fusible) on wrapped FusionDecision.
-  explicit operator bool() { return !static_cast<bool>(fusion_decision); }
-
-  // Returns wrapped fusion decision.
-  FusionDecision operator!() { return fusion_decision; }
-
-  FusionDecision fusion_decision;
-};
-
-inline NoFusionPossible FusionDecision::operator!() { return {*this}; }
 
 // HLO pass which performs instruction fusion. Instructions are fused
 // "vertically", meaning producing instructions are fused into their consumers
@@ -311,6 +313,20 @@ class InstructionFusion : public HloModulePass {
   // Used to determine if an HLO is expensive. Expensive operations will not be
   // duplicated.
   std::function<bool(const HloInstruction& instruction)> is_expensive_;
+
+  // Dumps the state of computation before fusion.
+  void DumpPreFusionState(HloComputation* computation, HloInstruction* consumer,
+                          HloInstruction* producer, bool is_mof = false);
+
+  // Dumps the state of computation and the reason why the fusion was not
+  // performed.
+  void DumpNotFusingState(HloComputation* computation, HloInstruction* consumer,
+                          HloInstruction* producer, FusionDecision decision);
+
+  // Dumps the state of computation after fusion happened.
+  void DumpStateAfterFusion(HloComputation* computation,
+                            HloInstruction* fusion_instruction,
+                            const std::string& producer_name);
 
   // Returns whether we may duplicate an instruction if we want to fuse it.
   bool may_duplicate_;

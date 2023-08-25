@@ -100,7 +100,7 @@ class ConvertDataFormatVecPermute
     attrs_.dst_format = *dst_format;
     attrs_.src_format = *src_format;
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
@@ -158,7 +158,7 @@ class ConvertDataFormatVecPermute
     ITensorProxyPtr output_tensor = layer->getOutput(0);
 
     params_->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

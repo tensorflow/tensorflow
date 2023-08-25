@@ -15,11 +15,12 @@ limitations under the License.
 
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_DYNAMIC_UPDATE_SLICE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_DYNAMIC_UPDATE_SLICE_UTIL_H_
+#include <utility>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 
@@ -78,9 +79,12 @@ Status EmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
                                           llvm::IRBuilder<>* b);
 
 // Same as EmitFusedDynamicUpdateSliceInPlace, except emits a parallel loop with
-// the given launch dimensions.
+// the given launch dimensions for arbitrarily many independent dynamic slice
+// updates.
 Status EmitParallelFusedDynamicUpdateSliceInPlace(
-    const HloComputation* fusion, const IrArray& fusion_output_array,
+    const HloComputation* fusion,
+    const std::vector<std::pair<const HloInstruction*, const IrArray>>&
+        dus_and_output_array,
     FusedIrEmitter* fused_emitter,
     const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b);
 

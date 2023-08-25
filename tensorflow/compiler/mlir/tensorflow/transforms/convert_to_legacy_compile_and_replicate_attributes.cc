@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 namespace mlir {
@@ -34,8 +33,11 @@ namespace TFTPU {
 
 namespace {
 
+#define GEN_PASS_DEF_CONVERTTOLEGACYCOMPILEANDREPLICATEATTRIBUTESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ConvertToLegacyCompileAndReplicateAttributesPass
-    : public TF::ConvertToLegacyCompileAndReplicateAttributesPassBase<
+    : public impl::ConvertToLegacyCompileAndReplicateAttributesPassBase<
           ConvertToLegacyCompileAndReplicateAttributesPass> {
   void runOnOperation() override;
 };

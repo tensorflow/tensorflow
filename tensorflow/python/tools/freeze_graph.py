@@ -45,7 +45,7 @@ from tensorflow.core.protobuf import saver_pb2
 from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.client import session
-from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import importer
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader
@@ -214,14 +214,14 @@ def freeze_graph_with_def_protos(input_graph_def,
         if variable_names_denylist else None)
 
     if input_meta_graph_def:
-      output_graph_def = graph_util.convert_variables_to_constants(
+      output_graph_def = convert_to_constants.convert_variables_to_constants(
           sess,
           input_meta_graph_def.graph_def,
           output_node_names.replace(" ", "").split(","),
           variable_names_whitelist=variable_names_whitelist,
           variable_names_blacklist=variable_names_denylist)
     else:
-      output_graph_def = graph_util.convert_variables_to_constants(
+      output_graph_def = convert_to_constants.convert_variables_to_constants(
           sess,
           input_graph_def,
           output_node_names.replace(" ", "").split(","),

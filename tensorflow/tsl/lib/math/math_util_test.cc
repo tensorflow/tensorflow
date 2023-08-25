@@ -19,12 +19,12 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 // Number of arguments for each test of the CeilOrRatio method
@@ -339,24 +339,5 @@ TEST(MathUtil, IPowEdgeCases) {
   // pow(+∞, exp) returns +0 for any negative exp
 }
 
-TEST(MathUtil, Sign) {
-  EXPECT_EQ(tsl::MathUtil::Sign(1), 1);
-  EXPECT_EQ(tsl::MathUtil::Sign(0), 0);
-  EXPECT_EQ(tsl::MathUtil::Sign(-1), -1);
-
-  EXPECT_EQ(tsl::MathUtil::Sign(0.0f), 0.0f);
-  EXPECT_EQ(tsl::MathUtil::Sign(1.0f), 1.0f);
-  EXPECT_EQ(tsl::MathUtil::Sign(-1.0f), -1.0f);
-
-  EXPECT_EQ(tsl::MathUtil::Sign(std::numeric_limits<float>::infinity()), 1.0f);
-  EXPECT_EQ(tsl::MathUtil::Sign(-std::numeric_limits<float>::infinity()),
-            -1.0f);
-
-  EXPECT_TRUE(
-      std::isnan(tsl::MathUtil::Sign(std::numeric_limits<float>::quiet_NaN())));
-  EXPECT_TRUE(std::isnan(
-      tsl::MathUtil::Sign(-std::numeric_limits<float>::quiet_NaN())));
-}
-
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

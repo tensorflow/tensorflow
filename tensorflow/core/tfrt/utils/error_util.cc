@@ -25,26 +25,32 @@ tfrt::ErrorCode ConvertTfErrorCodeToTfrtErrorCode(
   auto tf_error_code = status.code();
   switch (tf_error_code) {
     default:
-      LOG(INFO) << "Unsupported TensorFlow error code: " << status.ToString();
+      LOG(INFO) << "Unsupported TensorFlow error code: " << status;
       return tfrt::ErrorCode::kUnknown;
 #define ERROR_TYPE(TFRT_ERROR, TF_ERROR) \
-  case tensorflow::error::TF_ERROR:      \
+  case absl::StatusCode::TF_ERROR:       \
     return tfrt::ErrorCode::TFRT_ERROR;
 #include "tensorflow/core/tfrt/utils/error_type.def"  // NOLINT
   }
 }
 
 tensorflow::Status CreateTfErrorStatus(const DecodedDiagnostic& error) {
-  return tensorflow::FromAbslStatus(error.status);
+  return error.status;
 }
 
 tensorflow::Status ToTfStatus(const tfrt::AsyncValue* av) {
   CHECK(av != nullptr && av->IsAvailable())  // Crash OK
       << "Expected a ready async value.";
   if (av->IsError()) {
-    return tensorflow::FromAbslStatus(av->GetError());
+    return av->GetError();
   }
   return ::tensorflow::OkStatus();
+}
+
+absl::Status AbslStatusFromTfStatus(tensorflow::Status status) {
+  if (status.ok()) return absl::OkStatus();
+  return absl::Status(static_cast<absl::StatusCode>(status.code()),
+                      status.message());
 }
 
 }  // namespace tfrt

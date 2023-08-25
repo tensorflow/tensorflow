@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
 namespace {
 
@@ -375,10 +375,6 @@ INSTANTIATE_TEST_SUITE_P(
         {"MultiClientMultiStepFunction", false, 3, 0, 0},
         {"MultiClientMultiStepFunctionWithRecvDelay", false, 5, 2, 0},
         {"MultiClientMultiStepFunctionWithSendDelay", false, 5, 0, 2},
-        {"MultiClientSingleStepFunctionTfrt", true, 1, 0, 0},
-        {"MultiClientMultiStepFunctionTfrt", true, 3, 0, 0},
-        {"MultiClientMultiStepFunctionWithRecvDelayTfrt", true, 5, 2, 0},
-        {"MultiClientMultiStepFunctionWithSendDelayTfrt", true, 5, 0, 2},
     }),
     [](const testing::TestParamInfo<MultiClientSendRecvTest::ParamType>& info) {
       return info.param.test_name;

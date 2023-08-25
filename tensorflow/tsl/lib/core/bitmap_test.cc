@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/core/bitmap.h"
+#include "tensorflow/tsl/lib/core/bitmap.h"
 
-#include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/random/simple_philox.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace core {
 namespace {
 
@@ -125,4 +125,4 @@ TEST(BitmapTest, FirstUnsetRandom) {
 
 }  // namespace
 }  // namespace core
-}  // namespace tensorflow
+}  // namespace tsl

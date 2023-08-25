@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -33,7 +33,9 @@ namespace gpu {
 namespace {
 bool IsForwardConvolutionCanonical(const HloInstruction& conv) {
   CHECK(conv.custom_call_target() == kCudnnConvForwardCallTarget ||
-        conv.custom_call_target() == kCudnnConvBiasActivationForwardCallTarget);
+        conv.custom_call_target() ==
+            kCudnnConvBiasActivationForwardCallTarget ||
+        conv.custom_call_target() == kCudnnConvForwardGraphCallTarget);
   return window_util::HasSymmetricPadding(conv.window()) &&
          !window_util::HasNegativePadding(conv.window()) &&
          !window_util::HasDilation(conv.window());
@@ -415,6 +417,7 @@ StatusOr<bool> GpuConvPaddingLegalization::RunOnComputation(
       switch (kind) {
         case CudnnConvKind::kForward:
         case CudnnConvKind::kForwardActivation:
+        case CudnnConvKind::kForwardGraph:
           return CanonicalizeForwardConvolution(instruction);
         case CudnnConvKind::kBackwardInput:
           return CanonicalizeBackwardInputConvolution(instruction);

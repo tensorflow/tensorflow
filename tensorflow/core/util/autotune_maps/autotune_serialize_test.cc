@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
@@ -34,6 +35,14 @@ using stream_executor::dnn::AlgorithmDesc;
 using stream_executor::gpu::GpuDriver;
 using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
+
+// Gets a GPU StreamExecutor instance.  Any one will do.
+se::StreamExecutor* GetStreamExec() {
+  se::Platform* platform =
+      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+  CHECK_GT(platform->VisibleDeviceCount(), 0);
+  return platform->ExecutorForDevice(0).value();
+}
 
 // Tests when there is no entry in the autotune maps.
 TEST(AutotuneSerializeTest, Empty) {
@@ -56,6 +65,7 @@ TEST(AutotuneSerializeTest, Consistency) {
   TF_CHECK_OK(GpuDriver::Init());
   ResetAutotuneMaps();
   ConvParameters conv_params_example_a = {
+      GetStreamExec(),
       /*batch=*/1,
       /*in_depths=*/1,
       /*in=*/{{1, 1}},
@@ -66,9 +76,9 @@ TEST(AutotuneSerializeTest, Consistency) {
       /*stride=*/{{1, 1}},
       /*padding=*/{{1, 1}},
       /*dtype=*/DataType::DT_INT8,
-      /*device_id=*/0,
       /*group_count=*/1};
   ConvParameters fused_params_example_a = {
+      GetStreamExec(),
       /*batch=*/1,
       /*in_depths=*/1,
       /*in=*/{{1, 1}},
@@ -79,7 +89,6 @@ TEST(AutotuneSerializeTest, Consistency) {
       /*stride=*/{{1, 1}},
       /*padding=*/{{1, 1}},
       /*dtype=*/DataType::DT_INT8,
-      /*device_id=*/0,
       /*group_count=*/1,
       ConvParameters::FusionInfo{1.0, 0., 0.,
                                  /*activation_mode=*/
@@ -87,6 +96,7 @@ TEST(AutotuneSerializeTest, Consistency) {
                                  /*is_contrib=*/false},
   };
   ConvParameters contrib_fused_params_example_a = {
+      GetStreamExec(),
       /*batch=*/1,
       /*in_depths=*/1,
       /*in=*/{{1, 1}},
@@ -97,7 +107,6 @@ TEST(AutotuneSerializeTest, Consistency) {
       /*stride=*/{{1, 1}},
       /*padding=*/{{1, 1}},
       /*dtype=*/DataType::DT_INT8,
-      /*device_id=*/0,
       /*group_count=*/1,
       ConvParameters::FusionInfo{1.0, 0., 0.,
                                  /*activation_mode=*/
@@ -136,6 +145,7 @@ TEST(AutotuneSerializeTest, VersionControl) {
   ResetAutotuneMaps();
 
   ConvParameters fused_params_example_a = {
+      GetStreamExec(),
       /*batch=*/1,
       /*in_depths=*/1,
       /*in=*/{{1, 1}},
@@ -146,7 +156,6 @@ TEST(AutotuneSerializeTest, VersionControl) {
       /*stride=*/{{1, 1}},
       /*padding=*/{{1, 1}},
       /*dtype=*/DataType::DT_INT8,
-      /*device_id=*/0,
       /*group_count=*/1,
       ConvParameters::FusionInfo{1.0, 0., 0.,
                                  /*activation_mode=*/

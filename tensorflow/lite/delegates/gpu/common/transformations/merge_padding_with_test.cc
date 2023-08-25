@@ -65,7 +65,7 @@ TEST(MergePaddingWith, Smoke) {
   ASSERT_EQ(2, graph.values().size());
   ASSERT_EQ(conv_node, graph.nodes()[0]);
   conv_attr =
-      std::any_cast<Convolution2DAttributes>(conv_node->operation.attributes);
+      absl::any_cast<Convolution2DAttributes>(conv_node->operation.attributes);
   EXPECT_EQ(HW(1, 1), conv_attr.padding.prepended);
   EXPECT_EQ(HW(2, 2), conv_attr.padding.appended);
 }
@@ -110,7 +110,7 @@ TEST(MergePaddingWith, MergeTwo) {
   ASSERT_EQ(2, graph.values().size());
   ASSERT_EQ(conv_node, graph.nodes()[0]);
   conv_attr =
-      std::any_cast<Convolution2DAttributes>(conv_node->operation.attributes);
+      absl::any_cast<Convolution2DAttributes>(conv_node->operation.attributes);
   EXPECT_EQ(HW(1, 1), conv_attr.padding.prepended);
   EXPECT_EQ(HW(2, 2), conv_attr.padding.appended);
 }

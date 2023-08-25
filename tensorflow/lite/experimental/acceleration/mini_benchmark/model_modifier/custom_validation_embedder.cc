@@ -23,6 +23,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/tools/verifier.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -72,18 +73,6 @@ void CustomValidationEmbedder::CreateTensorsFrom(
     // If buffer content is provided, embed the content. Otherwise create an
     // empty buffer.
     if (buffer_content && !(*buffer_content)[i].empty()) {
-      int expected_size = 1;
-      for (int dim : base_tensor.shape) {
-        expected_size *= dim;
-      }
-      // Only log as a warning for now, since tensor shape might be unknown.
-      if (expected_size != (*buffer_content)[i].size()) {
-        TF_LITE_REPORT_ERROR(
-            error_reporter_,
-            "Unexpected custom input buffer size for tensor %d. "
-            "Expected: %d. Actual: %d.",
-            i, expected_size, (*buffer_content)[i].size());
-      }
       buffers.push_back(
           CreateBuffer(fbb, fbb.CreateVector((*buffer_content)[i])));
     } else {
@@ -93,43 +82,45 @@ void CustomValidationEmbedder::CreateTensorsFrom(
 }
 
 MinibenchmarkStatus CustomValidationEmbedder::BuildModel(
-    flatbuffers::FlatBufferBuilder& fbb) {
-  if (main_model_obj_.subgraphs[0]->inputs.size() != custom_input_.size()) {
+    const Model& main_model, flatbuffers::FlatBufferBuilder& fbb) {
+  ModelT main_model_obj;
+  main_model.UnPackTo(&main_model_obj);
+  if (main_model_obj.subgraphs[0]->inputs.size() != custom_input_.size()) {
     TF_LITE_REPORT_ERROR(
         error_reporter_,
         "Unexpected custom_input size. Expected: %d. Actual: %d.",
-        main_model_obj_.subgraphs[0]->inputs.size(), custom_input_.size());
+        main_model_obj.subgraphs[0]->inputs.size(), custom_input_.size());
     return kMinibenchmarkValidationSubgraphBuildFailed;
   }
 
   // Copy all the data from main_model.
   std::vector<flatbuffers::Offset<Metadata>> metadata;
-  metadata.reserve(main_model_obj_.metadata.size());
-  for (auto& iter : main_model_obj_.metadata) {
+  metadata.reserve(main_model_obj.metadata.size());
+  for (auto& iter : main_model_obj.metadata) {
     metadata.push_back(CreateMetadata(fbb, iter.get()));
   }
 
   std::vector<flatbuffers::Offset<SignatureDef>> signature_defs;
-  signature_defs.reserve(main_model_obj_.signature_defs.size());
-  for (auto& iter : main_model_obj_.signature_defs) {
+  signature_defs.reserve(main_model_obj.signature_defs.size());
+  for (auto& iter : main_model_obj.signature_defs) {
     signature_defs.push_back(CreateSignatureDef(fbb, iter.get()));
   }
 
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs;
-  subgraphs.reserve(main_model_obj_.subgraphs.size());
-  for (auto& iter : main_model_obj_.subgraphs) {
+  subgraphs.reserve(main_model_obj.subgraphs.size());
+  for (auto& iter : main_model_obj.subgraphs) {
     subgraphs.push_back(CreateSubGraph(fbb, iter.get()));
   }
 
   std::vector<flatbuffers::Offset<Buffer>> buffers;
-  buffers.reserve(main_model_obj_.buffers.size());
-  for (auto& iter : main_model_obj_.buffers) {
+  buffers.reserve(main_model_obj.buffers.size());
+  for (auto& iter : main_model_obj.buffers) {
     buffers.push_back(CreateBuffer(fbb, iter.get()));
   }
 
   std::vector<flatbuffers::Offset<OperatorCode>> operator_codes;
-  operator_codes.reserve(main_model_obj_.operator_codes.size());
-  for (auto& iter : main_model_obj_.operator_codes) {
+  operator_codes.reserve(main_model_obj.operator_codes.size());
+  for (auto& iter : main_model_obj.operator_codes) {
     operator_codes.push_back(CreateOperatorCode(fbb, iter.get()));
   }
 
@@ -141,35 +132,40 @@ MinibenchmarkStatus CustomValidationEmbedder::BuildModel(
   // Input and output tensors.
   std::vector<flatbuffers::Offset<Tensor>> tensors;
   std::vector<int32_t> input;
-  CreateTensorsFrom(*main_model_.subgraphs()->Get(0),
-                    main_model_obj_.subgraphs[0]->inputs, &custom_input_, fbb,
+  CreateTensorsFrom(*main_model.subgraphs()->Get(0),
+                    main_model_obj.subgraphs[0]->inputs, &custom_input_, fbb,
                     input, buffers, tensors);
 
   std::vector<int32_t> output;
-  CreateTensorsFrom(*main_model_.subgraphs()->Get(0),
-                    main_model_obj_.subgraphs[0]->outputs, nullptr, fbb, output,
+  CreateTensorsFrom(*main_model.subgraphs()->Get(0),
+                    main_model_obj.subgraphs[0]->outputs, nullptr, fbb, output,
                     buffers, tensors);
   auto input_offset = fbb.CreateVector(input);
   auto output_offset = fbb.CreateVector(output);
-  subgraphs.push_back(CreateSubGraph(
-      fbb, fbb.CreateVector(tensors), input_offset, output_offset,
-      fbb.CreateVector({CreateOperator(
-          fbb, operator_code_index, input_offset, output_offset,
-          tflite::BuiltinOptions_NONE, 0,
-          CallOpCustomOptions(/*primary_graph_index*/ 0, batch_size_, fbb),
-          tflite::CustomOptionsFormat_FLEXBUFFERS)}),
-      fbb.CreateString(std::string(kValidationGraphName))));
+  std::vector<flatbuffers::Offset<Operator>> operators{CreateOperator(
+      fbb, operator_code_index, input_offset, output_offset,
+      tflite::BuiltinOptions_NONE, 0,
+      CallOpCustomOptions(/*primary_graph_index*/ 0, batch_size_, fbb),
+      tflite::CustomOptionsFormat_FLEXBUFFERS)};
+  subgraphs.push_back(
+      CreateSubGraph(fbb, fbb.CreateVector(tensors), input_offset,
+                     output_offset, fbb.CreateVector(operators),
+                     fbb.CreateString(std::string(kValidationGraphName))));
 
   fbb.Finish(
       CreateModel(fbb, kModelSchemaVersion, fbb.CreateVector(operator_codes),
                   fbb.CreateVector(subgraphs),
-                  fbb.CreateString(main_model_obj_.description),
+                  fbb.CreateString(main_model_obj.description),
                   fbb.CreateVector(buffers),
                   /* metadata_buffer */ 0, fbb.CreateVector(metadata),
                   fbb.CreateVector(signature_defs)),
       "TFL3");
 
-  return kMinibenchmarkSuccess;
+  if (Verify(fbb.GetBufferPointer(), fbb.GetSize(), error_reporter_)) {
+    return kMinibenchmarkSuccess;
+  } else {
+    return kMinibenchmarkValidationSubgraphBuildFailed;
+  }
 }
 
 }  // namespace acceleration

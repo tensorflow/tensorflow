@@ -34,7 +34,6 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
@@ -48,6 +47,7 @@ from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops import while_v2
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -284,8 +284,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
             return (i + 1, f(math_ops.cos(y)),
                     list_ops.tensor_list_push_back(handle, y))
 
-          _, z, results = control_flow_ops.while_loop(
-              lambda i, _, h: i < 2, _LoopBody, [0, x, results])
+          _, z, results = while_loop.while_loop(lambda i, _, h: i < 2,
+                                                _LoopBody, [0, x, results])
           return z + math_ops.reduce_sum(list_ops.tensor_list_stack(
               results, dtypes.float32))
         return _Wrapped
@@ -672,7 +672,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     def Body(x, tl):
       return x + 1, list_ops.tensor_list_push_back(tl, x)
 
-    outputs = control_flow_ops.while_loop(Cond, Body, [x, tensor_list])
+    outputs = while_loop.while_loop(Cond, Body, [x, tensor_list])
 
     train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
     train_op.append(outputs[0])
@@ -722,7 +722,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # gradient computation.
     v = constant_op.constant(5.0, name="v")
 
-    r = control_flow_ops.while_loop(
+    r = while_loop.while_loop(
         lambda _: True, lambda x: v * x, [1.0], maximum_iterations=5)
 
     output = gradients_impl.gradients(r, v)[0]
@@ -767,10 +767,9 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         return inner_x + 1, outer_x + 1, list_ops.tensor_list_push_back(tl, x)
 
       inner_x = constant_op.constant(0)
-      return control_flow_ops.while_loop(InnerCond, InnerBody,
-                                         [inner_x, x, tl])[1:]
+      return while_loop.while_loop(InnerCond, InnerBody, [inner_x, x, tl])[1:]
 
-    outputs = control_flow_ops.while_loop(Cond, Body, [x, tensor_list])
+    outputs = while_loop.while_loop(Cond, Body, [x, tensor_list])
 
     train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
     train_op.append(outputs[0])
@@ -814,7 +813,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     def MidBodyBuilder(iterations):
 
       def MidBody(i, x):
-        r = control_flow_ops.while_loop(
+        r = while_loop.while_loop(
             lambda *_: True,
             lambda i, x: (i + 1, math_ops.multiply(v, x, name="my_mul")),
             (0, x),
@@ -826,7 +825,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     def OuterBody(i, x):
       iterations = array_ops.size(p, name="iterations")
-      return (i + 1, x + control_flow_ops.while_loop(
+      return (i + 1, x + while_loop.while_loop(
           lambda *_: True,
           MidBodyBuilder(iterations), (0, x),
           maximum_iterations=iterations,
@@ -834,7 +833,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     def CreateWhileLoop():
       with ops.device("/cpu:0"):
-        r = control_flow_ops.while_loop(
+        r = while_loop.while_loop(
             lambda *_: True,
             OuterBody, (0, 1.0),
             maximum_iterations=5,
@@ -856,7 +855,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     v = constant_op.constant(5.0, name="v")
 
     def CreateWhileLoop():
-      r = control_flow_ops.while_loop(
+      r = while_loop.while_loop(
           lambda _: True,
           lambda x: math_ops.multiply(v, x, name="my_mul"), [1.0],
           maximum_iterations=5,
@@ -884,7 +883,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
   def testDoNotOutputLoopCounterAsIntermediate(self):
     assert control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
     v = constant_op.constant(5.0, name="v")
-    r = control_flow_ops.while_loop(
+    r = while_loop.while_loop(
         lambda _: True, lambda x: v * x, [1.0], maximum_iterations=5)
     # Skip over Identity.
     while_op = r.op.inputs[0].op
@@ -902,7 +901,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
           return index
 
     v = constant_op.constant(5.0, name="v")
-    r = control_flow_ops.while_loop(
+    r = while_loop.while_loop(
         lambda _: True, lambda x: v * x, [1.0], maximum_iterations=5)
     # Skip over Identity.
     while_op = r.op.inputs[0].op

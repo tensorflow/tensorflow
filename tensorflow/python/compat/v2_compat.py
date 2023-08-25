@@ -23,6 +23,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import variable_scope
@@ -60,7 +61,7 @@ def enable_v2_behavior():
   ops.enable_eager_execution()
   tensor_shape.enable_v2_tensorshape()  # Also switched by tf2
   variable_scope.enable_resource_variables()
-  ops.enable_tensor_equality()
+  tensor.enable_tensor_equality()
   # Enables TensorArrayV2 and control flow V2.
   control_flow_v2_toggles.enable_control_flow_v2()
   # Make sure internal uses of tf.data symbols map to V2 versions.
@@ -105,7 +106,7 @@ def disable_v2_behavior():
   ops.disable_eager_execution()
   tensor_shape.disable_v2_tensorshape()  # Also switched by tf2
   variable_scope.disable_resource_variables()
-  ops.disable_tensor_equality()
+  tensor.disable_tensor_equality()
   # Disables TensorArrayV2 and control flow V2.
   control_flow_v2_toggles.disable_control_flow_v2()
   # Make sure internal uses of tf.data symbols map to V1 versions.

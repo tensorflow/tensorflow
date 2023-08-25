@@ -1,0 +1,12 @@
+diff --git a/llvm/include/llvm/Support/MathExtras.h b/llvm/include/llvm/Support/MathExtras.h
+index 7e26e01f617f..b72d483df186 100644
+--- a/llvm/include/llvm/Support/MathExtras.h
++++ b/llvm/include/llvm/Support/MathExtras.h
+@@ -17,6 +17,7 @@
+ #include "llvm/Support/Compiler.h"
+ #include <cassert>
+ #include <climits>
++#include <cmath>
+ #include <cstdint>
+ #include <cstring>
+ #include <limits>

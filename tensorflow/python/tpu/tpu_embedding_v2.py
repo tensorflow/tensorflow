@@ -22,8 +22,8 @@ from absl import logging
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
@@ -33,9 +33,11 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework.tensor_shape import TensorShape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -43,6 +45,7 @@ from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_embedding_v2_utils
+from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import base
@@ -181,7 +184,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       strategy.run(tpu_step, args=(tpu_features, ))
 
   @tf.function
-  def evalution_step(dataset_iterator, num_steps):
+  def evaluation_step(dataset_iterator, num_steps):
     def tpu_step(tpu_features):
       activations = embedding.dequeue()
       model_output = model(activations)
@@ -267,7 +270,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       ValueError: If optimizer is not one of tf.tpu.experimental.embedding.(SGD,
       Adam or Adagrad) or None when created under a TPUStrategy.
     """
-    self._strategy = distribution_strategy_context.get_strategy()
+    self._strategy = distribute_lib.get_strategy()
     self._using_tpu = isinstance(self._strategy, (tpu_strategy.TPUStrategy,
                                                   tpu_strategy.TPUStrategyV2))
     self._pipeline_execution_with_tensor_core = (
@@ -277,6 +280,13 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     self._output_shapes = []
     for feature in nest.flatten(feature_config):
       self._output_shapes.append(feature.output_shape)
+
+    device_assignment = getattr(
+        self._strategy.extended, "_device_assignment", None
+    )
+    self._num_cores_per_replica = (
+        device_assignment.num_cores_per_replica if device_assignment else None
+    )
 
     # The TPU embedding ops are slightly inconsistent with how they refer to
     # tables:
@@ -325,15 +335,17 @@ class TPUEmbedding(autotrackable.AutoTrackable):
 
     if self._using_tpu:
       # Extract a list of callable learning rates also in fixed order. Each
-      # table in the confix proto will get a index into this list and we will
+      # table in the config proto will get an index into this list, and we will
       # pass this list in the same order after evaluation to the
       # send_tpu_embedding_gradients op.
-      self._dynamic_learning_rates = list({
-          table.optimizer.learning_rate for table in self._table_config if
-          callable(table.optimizer.learning_rate)})
+      self._dynamic_learning_rates = []
+      for table in self._table_config:
+        if (callable(table.optimizer.learning_rate) and
+            table.optimizer.learning_rate not in self._dynamic_learning_rates):
+          self._dynamic_learning_rates.append(table.optimizer.learning_rate)
 
       # We need to list of host devices for the load/retrieve operations.
-      self._hosts = get_list_of_hosts(self._strategy)
+      self._hosts = tpu_embedding_v2_utils.get_list_of_hosts(self._strategy)
 
     self._built = False
     self._verify_output_shapes_on_enqueue = True
@@ -557,28 +569,10 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         self._dynamic_learning_rates)}
 
     for table in self._table_config:
-      table_descriptor = config_proto.table_descriptor.add()
-      table_descriptor.name = table.name
-
-      # For small tables, we pad to the number of hosts so that at least one
-      # id will be assigned to each host.
-      table_descriptor.vocabulary_size = max(table.vocabulary_size,
-                                             self._strategy.extended.num_hosts)
-      table_descriptor.dimension = table.dim
-
-      parameters = table_descriptor.optimization_parameters
-
-      # We handle the learning rate separately here and don't allow the
-      # optimization class to handle this, as it doesn't know about dynamic
-      # rates.
-      if callable(table.optimizer.learning_rate):
-        parameters.learning_rate.dynamic.tag = (
-            learning_rate_index[table.optimizer.learning_rate])
-      else:
-        parameters.learning_rate.constant = table.optimizer.learning_rate
-
-      # Use optimizer to handle the rest of the parameters.
-      table.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
+      table._set_table_descriptor(  # pylint: disable=protected-access
+          config_proto.table_descriptor.add(),
+          self._strategy.extended.num_hosts,
+          learning_rate_index)
 
     table_to_id = {table: i for i, table in enumerate(self._table_config)}
 
@@ -600,14 +594,23 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     config_proto.mode = (
         tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration.TRAINING)
 
+    num_replica = self._strategy.num_replicas_in_sync
+    num_cores_per_replica = self._num_cores_per_replica or 1
+
     config_proto.num_hosts = self._strategy.extended.num_hosts
-    config_proto.num_tensor_cores = self._strategy.num_replicas_in_sync
+    config_proto.num_tensor_cores = num_replica * num_cores_per_replica
 
     # TODO(bfontain): Allow users to pick MOD for the host sharding.
     config_proto.sharding_strategy = (
         tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration.DIV_DEFAULT)
     config_proto.pipeline_execution_with_tensor_core = (
         self._pipeline_execution_with_tensor_core)
+
+    if self._num_cores_per_replica:
+      config_proto.spmd_sharding.enabled = True
+      config_proto.spmd_sharding.num_cores_per_replica = (
+          self._num_cores_per_replica
+      )
 
     return config_proto
 
@@ -675,13 +678,17 @@ class TPUEmbedding(autotrackable.AutoTrackable):
                          "object. Please either call enqueue first or manually "
                          "call the build method.")
 
+    num_cores_per_replica = self._num_cores_per_replica or 1
+
     nest.assert_same_structure(self._feature_config, gradients)
     updated_gradients = []
     for (path, gradient), feature, output_shape in zip(
         nest.flatten_with_joined_string_paths(gradients),
         nest.flatten(self._feature_config), self._output_shapes):
-      full_output_shape = list(output_shape) + [feature.table.dim]
-      if gradient is not None and not isinstance(gradient, ops.Tensor):
+      full_output_shape = [x * num_cores_per_replica for x in output_shape] + [
+          feature.table.dim
+      ]
+      if gradient is not None and not isinstance(gradient, tensor_lib.Tensor):
         raise ValueError(
             f"found non-tensor type: {type(gradient)} at path {path}.")
       if gradient is not None:
@@ -906,6 +913,15 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         # Add one dimension to the last axis.
         sample_indices = array_ops.pad(
             sample_indices, paddings=[[0, 0], [0, 1]])
+    else:
+      if feature.max_sequence_length > 0:
+        logging.warning(
+            (
+                "Input tensor is rank %d which is above 2, the"
+                " max_sequence_length setting will be ignored."
+            ),
+            tensor.shape.rank,
+        )
     indices.append(sample_indices)
     values.append(math_ops.cast(tensor.values, dtypes.int64))
     # If we have weights they must be a SparseTensor.
@@ -977,7 +993,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     # early.
     for inp, weight, (path, feature) in zip(
         flat_inputs, flat_weights, flat_features):
-      if isinstance(inp, ops.Tensor):
+      if isinstance(inp, tensor_lib.Tensor):
         self._add_data_for_tensor(inp, weight, indices_or_row_splits, values,
                                   weights, int_zeros, float_zeros, path)
       elif isinstance(inp, sparse_tensor.SparseTensor):
@@ -1011,7 +1027,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     while graph is not None:
       ctx = graph._get_control_flow_context()  # pylint: disable=protected-access
       while ctx is not None:
-        if isinstance(ctx, tpu.TPUReplicateContext):
+        if isinstance(ctx, tpu_replication.TPUReplicateContext):
           in_tpu_ctx = True
           break
         ctx = ctx.outer_context
@@ -1023,9 +1039,9 @@ class TPUEmbedding(autotrackable.AutoTrackable):
           "Current graph {} does not match graph which contains "
           "TPUReplicateContext {}. This is most likely due to the fact that "
           "enqueueing embedding data is called inside control flow or a "
-          "nested function inside `strategy.run`. This is not supported "
-          "because outside compilation fails to extract the enqueue ops as "
-          "head of computation.".format(ops.get_default_graph(), graph))
+          "tf.function inside `strategy.run`. This is not supported because "
+          "outside compilation fails to extract the enqueue ops as the head of "
+          "a computation.".format(ops.get_default_graph(), graph))
     return in_tpu_ctx
 
   def _raise_error_for_non_direct_inputs(self, features):
@@ -1118,7 +1134,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
            a. If feature config has max_sequence_length equals 0 or output shape
               set (the max_sequence_length setting will be ignored), the
               output shape will be the input shape excluding the last dimension.
-           b. Otherwize if the tensor is rank 2, the output shape will be input
+           b. Otherwise, if the tensor is rank 2, the output shape will be input
               shape  with last dimension set as max_sequence_length. If the
               tensor is above rank 2, the output shape will be the input shape
               excluding the last dimension and the last dimension of the output
@@ -1238,7 +1254,10 @@ class TPUEmbedding(autotrackable.AutoTrackable):
             "ensure build() was called with output shapes to initialize "
             "the TPU for embeddings.")
     else:
-      input_shapes = self._get_input_shapes(features, in_tpu_context)
+      per_replica = device is None
+      input_shapes = self._get_input_shapes(
+          features, per_replica, in_tpu_context
+      )
 
       self._maybe_build(input_shapes)
       # If is already built, we still need to check if the output shapes matches
@@ -1279,11 +1298,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         if name is not None:
           _add_key_attr(enqueue_op, name)
 
-        # Ensure that this op has outbound control flow, otherwise it won't be
-        # executed.
-        ops.get_default_graph().control_outputs.append(enqueue_op)
-
-      tpu.outside_compilation(generate_enqueue_ops)
+      tpu_replication.outside_compilation(generate_enqueue_ops)
 
     elif device is None:
       mode_override = "train" if training else "inference"
@@ -1292,27 +1307,59 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       # We rely here on the fact that the devices in the PerReplica value occur
       # in the same (standard) order as self._strategy.extended.worker_devices.
       enqueue_ops = []
+
+      def _split_fn(ts, idx):
+        if ts is None:
+          return None
+        elif isinstance(ts, tensor_lib.Tensor):
+          return array_ops.split(
+              ts,
+              num_or_size_splits=self._num_cores_per_replica,
+              axis=0)[idx]
+        elif isinstance(ts, sparse_tensor.SparseTensor):
+          return sparse_ops.sparse_split_v2(
+              sp_input=ts,
+              num_split=self._num_cores_per_replica,
+              axis=0)[idx]
+        else:
+          raise ValueError("SPMD does not support raggedTensor yet.")
+
+      def _maybe_split(ts_inputs, core_id):
+        if self._num_cores_per_replica is None:
+          return ts_inputs
+        else:
+          splitter = functools.partial(_split_fn, idx=core_id)
+          return nest.map_structure(splitter, ts_inputs)
+
       for replica_id in range(self._strategy.num_replicas_in_sync):
         replica_inputs = distribute_utils.select_replica(replica_id,
                                                          flat_inputs)
         replica_weights = distribute_utils.select_replica(replica_id,
                                                           flat_weights)
-        tpu_device = self._strategy.extended.worker_devices[replica_id]
+
+        if self._num_cores_per_replica:
+          tpu_devices = self._strategy.extended._tpu_devices[replica_id]   # pylint: disable=protected-access
+        else:
+          tpu_devices = [self._strategy.extended.worker_devices[replica_id]]
         # TPU devices string are like /job:worker/replica:0/task:0/device:TPU:0
         # the device ordinal is the last number
-        device_ordinal = (
-            tf_device.DeviceSpec.from_string(tpu_device).device_index)
 
-        with ops.device(device_util.get_host_for_device(tpu_device)):
-          enqueue_op = self._generate_enqueue_op(
-              replica_inputs, replica_weights, flat_features,
-              device_ordinal=device_ordinal, mode_override=mode_override)
+        for core_id in range(self._num_cores_per_replica or 1):
+          tpu_device = tpu_devices[core_id]
+          device_ordinal = (
+              tf_device.DeviceSpec.from_string(tpu_device).device_index)
 
-          # Apply the name tag to the op.
-          if name is not None:
-            _add_key_attr(enqueue_op, name)
-          enqueue_ops.append(enqueue_op)
-      ops.get_default_graph().control_outputs.extend(enqueue_ops)
+          with ops.device(device_util.get_host_for_device(tpu_device)):
+            enqueue_op = self._generate_enqueue_op(
+                _maybe_split(replica_inputs, core_id),
+                _maybe_split(replica_weights, core_id),
+                flat_features,
+                device_ordinal=device_ordinal, mode_override=mode_override)
+
+            # Apply the name tag to the op.
+            if name is not None:
+              _add_key_attr(enqueue_op, name)
+            enqueue_ops.append(enqueue_op)
     else:
       mode_override = "train" if training else "inference"
       device_spec = tf_device.DeviceSpec.from_string(device)
@@ -1329,10 +1376,10 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         # Apply the name tag to the op.
         if name is not None:
           _add_key_attr(enqueue_op, name)
-        ops.get_default_graph().control_outputs.append(enqueue_op)
 
-  def _get_input_shapes(self, tensors,
-                        in_tpu_context: bool) -> List[TensorShape]:
+  def _get_input_shapes(
+      self, tensors, per_replica: bool, in_tpu_context: bool
+  ) -> List[TensorShape]:
     """Get the input shapes from the input tensor."""
     input_shapes = []
     for (path, maybe_tensor), feature in zip(
@@ -1343,18 +1390,27 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       else:
         tensor = maybe_tensor
 
-      if isinstance(tensor, ops.Tensor):
+      if isinstance(tensor, tensor_lib.Tensor):
         input_shapes.append(
-            self._get_input_shape_for_tensor(tensor, feature, path))
+            self._get_input_shape_for_tensor(tensor, feature, per_replica, path)
+        )
       elif isinstance(tensor, sparse_tensor.SparseTensor):
         input_shapes.append(
-            self._get_input_shape_for_sparse_tensor(tensor, feature, path))
+            self._get_input_shape_for_sparse_tensor(
+                tensor, feature, per_replica, path
+            )
+        )
       elif isinstance(tensor, ragged_tensor.RaggedTensor):
         input_shapes.append(
-            self._get_input_shape_for_ragged_tensor(tensor, feature, path))
+            self._get_input_shape_for_ragged_tensor(
+                tensor, feature, per_replica, path
+            )
+        )
     return input_shapes
 
-  def _get_input_shape_for_tensor(self, tensor, feature, path) -> TensorShape:
+  def _get_input_shape_for_tensor(
+      self, tensor, feature, per_replica, path
+  ) -> TensorShape:
     """Get the input shape for the dense tensor."""
     shape = tensor.shape.as_list()
     if len(shape) < 1:
@@ -1366,10 +1422,15 @@ class TPUEmbedding(autotrackable.AutoTrackable):
           "Rank 2 or above dense tensor should have last dimension as 1 "
           "as the last dimension will always be reduced. "
           "Instead got dense tensor as shape {}".format(shape))
+
+    if self._num_cores_per_replica and per_replica:
+      shape[0] = shape[0] // self._num_cores_per_replica
+
     return TensorShape(shape)
 
-  def _get_input_shape_for_sparse_tensor(self, tensor, feature,
-                                         path) -> TensorShape:
+  def _get_input_shape_for_sparse_tensor(
+      self, tensor, feature, per_replica, path
+  ) -> TensorShape:
     """Get the input shape for the sparse tensor."""
     shape = tensor.shape.as_list()
     # Only 2 and above rank sparse tensor is supported.
@@ -1386,11 +1447,16 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         # we need to add one dimension to the input feature.
         shape.insert(len(shape) - 1, feature.max_sequence_length)
 
+    if self._num_cores_per_replica and per_replica and shape[0]:
+      shape[0] = shape[0] // self._num_cores_per_replica
+
     return TensorShape(shape)
 
-  def _get_input_shape_for_ragged_tensor(self, tensor, feature,
-                                         path) -> TensorShape:
+  def _get_input_shape_for_ragged_tensor(
+      self, tensor, feature, per_replica, path
+  ) -> TensorShape:
     """Get the input shape for the ragged tensor."""
+    del per_replica  # unused.
     shape = tensor.shape.as_list()
     # Only rank 2 ragged tensor is supported.
     if len(shape) != 2:
@@ -1479,6 +1545,14 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       else:
         output_shapes.append(TensorShape(per_replica_batch_size))
     return output_shapes
+
+  def _create_copy_for_async_checkpoint(
+      self, feature_config, optimizer, pipeline_execution_with_tensor_core):
+    """Create a TPUEmbedding copy for checkpoint/async_checkpoint_helper.py."""
+    return TPUEmbedding(
+        feature_config=feature_config,
+        optimizer=optimizer,
+        pipeline_execution_with_tensor_core=pipeline_execution_with_tensor_core)
 
 
 @def_function.function
@@ -1592,25 +1666,6 @@ registration.register_tf_checkpoint_saver(
     # SavedModel.
     strict_predicate_restore=False
 )
-
-
-def get_list_of_hosts(strategy: tpu_strategy.TPUStrategy) -> List[Text]:
-  """Returns a sorted list of CPU devices for the remote jobs.
-
-  Args:
-    strategy: A TPUStrategy object.
-
-  Returns:
-    A sort list of device strings.
-  """
-  list_of_hosts = []
-  # Assume this is sorted by task
-  for tpu_device in strategy.extended.worker_devices:
-    host = device_util.get_host_for_device(tpu_device)
-    if host not in list_of_hosts:
-      list_of_hosts.append(host)
-  assert len(list_of_hosts) == strategy.extended.num_hosts
-  return list_of_hosts
 
 
 def extract_variable_info(

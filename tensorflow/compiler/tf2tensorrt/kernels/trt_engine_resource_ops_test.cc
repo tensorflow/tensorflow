@@ -199,8 +199,7 @@ class TRTEngineResourceOpsTest
       }
       std::vector<PartialTensorShape> input_partial_shapes;
       TF_CHECK_OK(GetNetworkInputShapes(network.get(), &input_partial_shapes));
-      profile.InitProfiles(input_partial_shapes,
-                           ProfileStrategy::kImplicitBatchModeCompatible);
+      profile.InitProfiles(input_partial_shapes, ProfileStrategy::kOptimal);
       // Configure and build engine
       TF_CHECK_OK(profile.ConfigureBuilder(builder.get(), builder_config.get(),
                                            network.get()));

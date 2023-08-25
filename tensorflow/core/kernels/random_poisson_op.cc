@@ -71,7 +71,7 @@ namespace functor {
 template <typename T, typename U>
 struct PoissonFunctor<CPUDevice, T, U> {
   void operator()(OpKernelContext* ctx, const CPUDevice& d, const T* rate_flat,
-                  int num_rate, int num_samples,
+                  int64_t num_rate, int64_t num_samples,
                   const random::PhiloxRandom& rng, U* samples_flat) {
     // Two different algorithms are employed, depending on the size of
     // rate.

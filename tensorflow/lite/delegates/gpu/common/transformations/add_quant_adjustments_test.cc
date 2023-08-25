@@ -154,7 +154,7 @@ TEST(AddQuantAdjustments, GeneralCase) {
             graph.nodes()[2]->operation.type);
   EXPECT_EQ(quant_node->id, graph.nodes()[2]->id);
   EXPECT_EQ(ToString(OperationType::ADD), graph.nodes()[3]->operation.type);
-  auto new_quant_attr = std::any_cast<QuantizeAndDequantizeAttributes>(
+  auto new_quant_attr = absl::any_cast<QuantizeAndDequantizeAttributes>(
       graph.nodes()[1]->operation.attributes);
   EXPECT_EQ(0.0, new_quant_attr.min);
   EXPECT_EQ(2.0, new_quant_attr.max);

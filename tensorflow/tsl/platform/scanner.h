@@ -22,12 +22,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/str_util.h"
 #include "tensorflow/tsl/platform/stringpiece.h"
 
-namespace tensorflow {
-namespace strings {
-class ScannerTest;  // TODO(ddunleavy) change once tests moved to TSL
-}  // namespace strings
-}  // namespace tensorflow
-
 namespace tsl {
 namespace strings {
 
@@ -241,8 +235,8 @@ class Scanner {
   const char* capture_end_ = nullptr;
   bool error_ = false;
 
-  friend class ::tensorflow::strings::ScannerTest;  // TODO(ddunleavy) change
-                                                    // once we move tests to TSL
+  friend class ScannerTest;
+
   TF_DISALLOW_COPY_AND_ASSIGN(Scanner);
 };
 

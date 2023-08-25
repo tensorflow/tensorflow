@@ -136,11 +136,13 @@ class MatrixSetDiagOp : public OpKernel {
 
     TensorShape expected_diag_shape = input_shape;
     expected_diag_shape.RemoveLastDims(2);
-    if (num_diags > 1) expected_diag_shape.AddDim(num_diags);
+    if (num_diags > 1) {
+      OP_REQUIRES_OK(context, expected_diag_shape.AddDimWithStatus(num_diags));
+    }
     const int32_t max_diag_len =
         std::min(num_rows + std::min(upper_diag_index, 0),
                  num_cols - std::max(lower_diag_index, 0));
-    expected_diag_shape.AddDim(max_diag_len);
+    OP_REQUIRES_OK(context, expected_diag_shape.AddDimWithStatus(max_diag_len));
     OP_REQUIRES(
         context, expected_diag_shape == diag_shape,
         errors::InvalidArgument(

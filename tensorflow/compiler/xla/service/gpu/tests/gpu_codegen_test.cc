@@ -32,7 +32,6 @@ GpuCodegenTest::CreateNewVerifiedModuleWithFTZ(bool ftz) {
   HloModuleConfig config;
   auto debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_ftz(ftz);
-  debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   config.set_debug_options(debug_options);
@@ -68,8 +67,17 @@ std::string GpuCodegenTest::MakePlatformSpecificLlvm(absl::string_view input) {
         is_built_with_rocm_ ? "@llvm.amdgcn.s.barrier" : "@llvm.nvvm.barrier0"},
        {"SHUFFLE", is_built_with_rocm_ ? "i32 @llvm.amdgcn.ds.bpermute"
                                        : "float @llvm.nvvm.shfl.sync.down.f32"},
-       {"TIDX", is_built_with_rocm_ ? "llvm.amdgcn.workitem.id.x"
-                                    : "@llvm.nvvm.read.ptx.sreg.tid.x"}});
+       {"TIDX", is_built_with_rocm_ ? "@llvm.amdgcn.workitem.id.x"
+                                    : "@llvm.nvvm.read.ptx.sreg.tid.x"},
+       {"LCAL", is_built_with_rocm_ ? "%[[LOGICAL_T1:.*]] = call { i1, i64 } "
+                                      "@llvm.amdgcn.if.i64(i1 %[[LOGICAL_T0]])"
+                                    : "0"},
+       {"EXTV",
+        is_built_with_rocm_
+            ? "%[[LOGICAL_T2:.*]] = extractvalue { i1, i64 } %[[LOGICAL_T1]], 0"
+            : "0"},
+       {"BR_CAL", is_built_with_rocm_ ? "br i1 %[[LOGICAL_T2]],"
+                                      : "br i1 %[[LOGICAL_T0]]"}});
 }
 
 }  // namespace gpu

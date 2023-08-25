@@ -44,6 +44,7 @@ channel_id)` </b>
 | `operand`        | `XlaOp`              | Array to concatenate across |
 :                  :                      : replicas.                   :
 | `all_gather_dim` | `int64`              | Concatenation dimension.    |
+| `shard_count`    | `int64`              | Size of each replica group. |
 | `replica_groups` | vector of vectors of | Groups between which the    |
 :                  : `int64`              : concatenation is performed. :
 | `channel_id`     | optional `int64`     | Optional channel ID for     |
@@ -183,9 +184,9 @@ AllToAll(x, /*split_dimension=*/1, /*concat_dimension=*/0, /*split_count=*/4);
 </div>
 
 In this example, there are 4 cores participating the Alltoall. On each core, the
-operand is split into 4 parts along dimension 0, so each part has shape
+operand is split into 4 parts along dimension 1, so each part has shape
 f32[4,4]. The 4 parts are scattered to all cores. Then each core concatenates
-the received parts along dimension 1, in the order or core 0-4. So the output on
+the received parts along dimension 0, in the order or core 0-4. So the output on
 each core has shape f32[16,4].
 
 ## BatchNormGrad
@@ -228,8 +229,11 @@ size `m` and spatial sizes `w` and `h`):
 \frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h
 \left( \nabla y_{ijkl} \frac{x_{ijkl} - \mu_l}{\sigma^2_l+\epsilon} \right)
 \\\\
+d_l&=
+\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl}
+\\\\
 \nabla x_{ijkl} &= \frac{\gamma_{l}}{\sqrt{\sigma^2_{l}+\epsilon}}
-\left( \nabla y_{ijkl} - \mathrm{mean}(\nabla y) - c_l (x_{ijkl} - \mu_{l})
+\left( \nabla y_{ijkl} - d_l - c_l (x_{ijkl} - \mu_{l})
 \right)
 \\\\
 \nabla \gamma_l &= \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \left( \nabla y_{ijkl}
@@ -861,6 +865,16 @@ The output shape has these dimensions, in this order:
 *   `spatial_dims`: One value for each valid placement of the convolutional
     window.
 
+<div style="width:95%; margin:-5px; margin-bottom:-60px; margin-top:-20px;">
+<img style="width:100%" src="./images/batch_group_counts.svg">
+</div>
+
+The figure above shows how `batch_group_count` field works. Effectively, we
+slice each lhs batch into `batch_group_count` groups, and do the same for the
+output features. Then, for each of these groups we do pairwise convolutions and
+concatenate the output along the output feature dimension. The operational
+semantics of all the other dimensions (feature and spatial) remain the same.
+
 The valid placements of the convolutional window are determined by the strides
 and the size of the base area after padding.
 
@@ -1257,7 +1271,8 @@ A set of element-wise binary arithmetic operations is supported.
 
 Where `Op` is one of `Add` (addition), `Sub` (subtraction), `Mul`
 (multiplication), `Div` (division), `Rem` (remainder), `Max` (maximum), `Min`
-(minimum), `LogicalAnd` (logical AND), or `LogicalOr` (logical OR).
+(minimum), `LogicalAnd` (logical AND), or `LogicalOr` (logical OR), or
+`LogicalXor` (logical XOR).
 
 Arguments | Type    | Semantics
 --------- | ------- | ----------------------------------------
@@ -1344,7 +1359,14 @@ XlaBuilder supports these element-wise unary functions:
 
 <b>`Abs(operand)`</b> Element-wise abs `x -> |x|`.
 
+<b>`Atan2(operand)`</b> Element-wise arctangent of $X_i$, $Y_i$ - the angle
+measure in radians between the x-axis and a ray from the origin to a point (x,
+y) `x,y -> atan2(x,y)`.
+
 <b>`Ceil(operand)`</b> Element-wise ceil `x -> ⌈x⌉`.
+
+<b>`Clz(operand)`</b> Element-wise counting of the number of leading zeros `x ->
+clz(x)`.
 
 <b>`Cos(operand)`</b> Element-wise cosine `x -> cos(x)`.
 
@@ -1361,6 +1383,9 @@ of `PRED` values with the same shape as the input, where each element is `true`
 if and only if the corresponding input element is finite.
 
 <b>`Log(operand)`</b> Element-wise natural logarithm `x -> ln(x)`.
+
+<b>`Log1p(operand)`</b> Element-wise natural logarithm of a number plus one `x
+-> ln(x + 1)`
 
 <b>`LogicalNot(operand)`</b> Element-wise logical not `x -> !(x)`.
 
@@ -1387,6 +1412,8 @@ using the comparison operator of the element type of `operand`.
 <b>`Sqrt(operand)`</b> Element-wise square root operation `x -> sqrt(x)`.
 
 <b>`Cbrt(operand)`</b> Element-wise cubic root operation `x -> cbrt(x)`.
+
+<b>`Tan(operand)`</b> Element-wise tangent `x -> tan(x)`.
 
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 
@@ -1669,8 +1696,8 @@ the formal description) and "Offset Mapping" (`remapped_offset_dims` in the
 formal description) into [`X`,`0`] and [`0`,`O`<sub>`0`</sub>] respectively,
 adding up to [`X`,`O`<sub>`0`</sub>]. In other words, the output index
 [`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`O`<sub>`0`</sub>] maps to the input index
-[`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`X`] which gives us
-the semantics for `tf.gather_nd`.
+[`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`O`<sub>`0`</sub>]
+which gives us the semantics for `tf.gather_nd`.
 
 `slice_sizes` for this case is `[1,11]`.  Intuitively this means that every
 index `X` in the gather indices array picks an entire row and the result is the
@@ -1731,7 +1758,7 @@ let product:f32[] = reduce_product(padded_v_five);
 
 // Changing padding size will yield different result.
 // sum == 1 + 2 + 3 + 4 + 5 + 6
-let sum':f32[] = reduce_sum(padded_v_six);
+let sum:f32[] = reduce_sum(padded_v_six);
 ```
 
 ## GetTupleElement
@@ -1929,7 +1956,7 @@ XlaOp for the received data.
 The client API of `Recv` operation represents synchronous communication.
 However, the instruction is internally decomposed into 2 HLO instructions
 (`Recv` and `RecvDone`) to enable asynchronous data transfers. See also
-[`HloInstruction::CreateRecv` and `HloInstruction::CreateRecvDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
+[`HloInstruction::CreateRecv` and `HloInstruction::CreateRecvDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/hlo/ir/hlo_instruction.h).
 
 <b>`Recv(const Shape& shape, int64 channel_id)`</b>
 
@@ -2613,7 +2640,7 @@ In summary, the scatter operation can be defined as follows.
     `output`[`J`][`O`] = `operands`[`J`][`O`]
 -   For every index `U` in the `updates`[`J`] array and the corresponding index
     `O` in the `operand`[`J`] array, if `O` is a valid index for `output`: \
-    `(output`[`0`][`O`], ..., output`[`N-1`][`O`])
+    `(output`[`0`][`O`], ..., `output`[`N-1`][`O`])
     =`update_computation`(`output`[`0`][`O`], ...,
     ,`output`[`N-1`][`O`],`updates`[`0`][`U`], ...,`updates`[`N-1`][`U`])
 
@@ -2785,7 +2812,7 @@ that shares the same channel handle. Does not return any data.
 Similar to the `Recv` operation, the client API of `Send` operation represents
 synchronous communication, and is internally decomposed into 2 HLO instructions
 (`Send` and `SendDone`) to enable asynchronous data transfers. See also
-[`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
+[`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/hlo/ir/hlo_instruction.h).
 
 <b>`Send(HloInstruction operand, int64 channel_id)`</b>
 
@@ -2931,8 +2958,39 @@ tuple `([1, 3], [50, 42], [1.1, -3.0])`.
 
 If `is_stable` is set to true, the sort is guaranteed to be stable, that is, if
 there are elements which are considered to be equal by the comparator, the
-relative order of the equal values is preserved. By default, `is_stable` is set
-to false.
+relative order of the equal values is preserved. Two elements `e1` and `e2` are
+equal if and only if `comparator(e1, e2) = comparator(e2, e1) = false`. By
+default, `is_stable` is set to false.
+
+## Top-K
+
+See also the `jax.lax.top_k` operation.
+
+<b>`TopK(operand)`</b>
+
+Arguments    | Type             | Semantics
+------------ | ---------------- | ---------------------------------------------
+`operand`    | `XlaOp`          | N-dimensional array
+`k`          | `int64`          | Integer specifying the number of top entries.
+`comparator` | `XlaComputation` | The comparator computation to use.
+
+Returns top `k` values and their indices as a tuple, along the last dimension of
+the operand using the given `comparator` (for usual topk behavior, it should be
+strict-greater-than operation).
+
+For example, given strict `>` operator, `k=1` and the following operand of shape
+`f32[2,3]`:
+
+```
+[[0.1, 0.3, 0.1], [0.7, 0.2, -0.1]]
+```
+
+The TopK application returns the following tuple of shape `(f32[2,1],
+s32[2,1])`:
+
+```
+([[0.3], [0.7]], [[1], [0]])
+```
 
 ## Transpose
 

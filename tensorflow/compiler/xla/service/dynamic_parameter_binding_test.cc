@@ -13,34 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
+#include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
 
 #include <memory>
 #include <string>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
-class DynamicParameterBindingTest : public HloTestBase {
- protected:
-  // Serialize and then deserialize a binding.
-  void SerializeAndDeserialize(DynamicParameterBinding* binding) {
-    DynamicParameterBindingProto proto = binding->ToProto();
-    TF_ASSERT_OK_AND_ASSIGN(*binding,
-                            DynamicParameterBinding::CreateFromProto(proto));
-  }
-};
+using DynamicParameterBindingTest = HloTestBase;
 
 TEST_F(DynamicParameterBindingTest, SimpleBinding) {
   // 'b' is a dynamic shape; 'a' represents the real size of b's first
@@ -74,8 +66,6 @@ ENTRY main {
     EXPECT_EQ(param->parameter_index, ShapeIndex({}));
     TF_EXPECT_OK(binding.Verify(*module));
   };
-  test(binding);
-  SerializeAndDeserialize(&binding);
   test(binding);
 }
 
@@ -113,8 +103,6 @@ ENTRY main {
     EXPECT_EQ(param->parameter_index, ShapeIndex({0}));
     TF_EXPECT_OK(binding.Verify(*module));
   };
-  test(binding);
-  SerializeAndDeserialize(&binding);
   test(binding);
 }
 
@@ -167,11 +155,6 @@ ENTRY main {
     TF_EXPECT_OK(binding.Verify(*module));
   };
 
-  test(binding);
-
-  SerializeAndDeserialize(&binding);
-
-  // Test the binding again after deserialization.
   test(binding);
 }
 

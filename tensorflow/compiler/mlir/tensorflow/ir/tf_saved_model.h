@@ -24,6 +24,28 @@ limitations under the License.
 namespace mlir {
 namespace tf_saved_model {
 
+// The name of the attribute indicating under what name an object is exported.
+inline constexpr StringRef kTfSavedModelExportedNamesAttr =
+    "tf_saved_model.exported_names";
+
+// The name of the attribute attached to input arguments or results of a
+// function to represent the path which one would use to index into a structured
+// value to reach a given tensor.
+inline constexpr StringRef kTfSavedModelIndexPathAttr =
+    "tf_saved_model.index_path";
+
+// Name of the attribute that inidicates the type of initializer. It should be
+// on a function and the function should exist in the initializers attribute of
+// the SessionInitializerOp.
+inline constexpr StringRef kTfSavedModelInitializerTypeAttr =
+    "tf_saved_model.initializer_type";
+
+// Indicates that the initializer corresponds to the restore op.
+inline constexpr StringRef kTfSavedModelInitializerRestoreType = "restore_op";
+
+// Indicates that the initializer corresponds to the init op.
+inline constexpr StringRef kTfSavedModelInitializerInitType = "init_op";
+
 class TensorFlowSavedModelDialect : public Dialect {
  public:
   explicit TensorFlowSavedModelDialect(MLIRContext *context);
@@ -58,7 +80,7 @@ SmallVector<StringRef, 2> GetExportedNames(Operation *op);
 bool IsExported(Operation *op);
 
 // Returns true if `module` has tf_saved_model linkage semantics.
-bool HasTfSavedModelSemantics(ModuleOp module);
+bool HasTfSavedModelSemantics(ModuleOp module_op);
 
 // Returns the tf_saved_model.global_tensor op that func's arg_index'th argument
 // refers to as a bound input, or null.
@@ -78,10 +100,19 @@ Type GetBoundInputArgTypeFor(mlir::Operation *op);
 
 // Returns the session initializer of this module if it exists. Returns null
 // otherwise.
-SessionInitializerOp GetSessionInitializerOp(mlir::ModuleOp op);
+SessionInitializerOp GetSessionInitializerOp(ModuleOp module_op);
 
 // Returns the exported name for the session initializer function.
-SmallVector<StringRef, 2> GetSessionInitializerExportedName(mlir::ModuleOp op);
+SmallVector<StringRef, 2> GetSessionInitializerExportedName(ModuleOp module_op);
+
+// Returns initializer function ops. These functions' symbols are in the
+// "initializers" attribute of the session initializer op.
+SmallVector<func::FuncOp, 2> GetInitializerFunctions(ModuleOp module_op);
+
+// Returns the initializer function whose `tf_saved_model.initializer_type`
+// attribute matches `initializer_type`. Returns a null op if it doesn't exist.
+func::FuncOp GetInitializerFunction(ModuleOp module_op,
+                                    StringRef initializer_type);
 
 }  // namespace tf_saved_model
 }  // namespace mlir

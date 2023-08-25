@@ -21,8 +21,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
 
 namespace xla {
 
@@ -81,6 +82,11 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
+  HloVerifierOpts&& WithVerifyShardingDeviceNumbers(bool verify) {
+    verify_sharding_device_numbers = verify;
+    return std::move(*this);
+  }
+
   bool IsLayoutSensitive() const { return layout_sensitive; }
 
   bool AllowMixedPrecision() const { return allow_mixed_precision; }
@@ -115,6 +121,9 @@ struct HloVerifierOpts {
   // parent computation.
   bool verify_custom_call_nested_computation_thread_name = true;
 
+  // Check device numbers in sharding verification.
+  bool verify_sharding_device_numbers = true;
+
   // Whether bitcast should have the same size, including all paddings.
   bool allow_bitcast_to_have_different_size = false;
 
@@ -146,6 +155,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleIota(HloInstruction* hlo) override;
   Status HandleConvert(HloInstruction* convert) override;
   Status HandleBitcastConvert(HloInstruction* convert) override;
+  Status HandleStochasticConvert(HloInstruction* convert) override;
   Status HandleCopy(HloInstruction* copy) override;
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
@@ -172,7 +182,8 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleRngBitGenerator(HloInstruction*) override;
   Status HandleRngGetAndUpdateState(HloInstruction*) override;
   Status HandleReverse(HloInstruction* reverse) override;
-  Status HandleSort(HloInstruction* sort) override;
+  Status HandleSort(HloInstruction* hlo) override;
+  Status HandleTopK(HloInstruction* hlo) override;
   Status HandleConstant(HloInstruction* constant) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
@@ -220,6 +231,11 @@ class ShapeVerifier : public DfsHloVisitor {
   Status FinishVisit(HloInstruction*) override { return OkStatus(); }
 
  protected:
+  // Helpers that switch on layout_sensitive_.
+  bool ShapesSame(const Shape& a, const Shape& b,
+                  bool minor_to_major_only = false,
+                  bool ignore_memory_space = false, bool ignore_tiles = false);
+
   // Check the instruction's shape against the shape given by ShapeInference
   // and return an appropriate error if there is a mismatch.
   Status CheckShape(const HloInstruction* instruction,
@@ -230,6 +246,10 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckShape(const HloInstruction* instruction,
                     const StatusOr<Shape>& inferred_shape_status);
 
+  static Status CheckParameterCount(const HloInstruction* calling_instruction,
+                                    const HloComputation* computation,
+                                    int expected);
+
   // Check a unary (binary, etc) instruction's shape against the inferred shape.
   Status CheckUnaryShape(const HloInstruction* instruction);
   Status CheckBinaryShape(const HloInstruction* instruction);
@@ -237,23 +257,6 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckVariadicShape(const HloInstruction* instruction);
 
  private:
-  // Helpers that switch on layout_sensitive_.
-  bool ShapesSame(const Shape& a, const Shape& b,
-                  bool minor_to_major_only = false,
-                  bool ignore_memory_space = false) {
-    if (!opts_.layout_sensitive) {
-      return ShapeUtil::Compatible(a, b);
-    }
-    Shape::Equal equal;
-    if (ignore_memory_space) {
-      equal.IgnoreMemorySpaceInLayout();
-    }
-    if (minor_to_major_only) {
-      equal.MinorToMajorOnlyInLayout();
-    }
-    return equal(a, b);
-  }
-
   bool ShapesSameIgnoringFpPrecision(const Shape& a, const Shape& b,
                                      bool minor_to_major_only = false) {
     if (!opts_.layout_sensitive) {
@@ -290,6 +293,11 @@ class ShapeVerifier : public DfsHloVisitor {
                                   const HloComputation* computation,
                                   int64_t parameter_number);
 
+  // Checks that the shape of async op operands and results match the called
+  // computation parameters and root.
+  Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
+                                       const Shape& async_shape);
+
   // Returns true if the shapes of the two operands have the same element type,
   // and the result shape either has the same element type as the operand shapes
   // or mixed precision is allowed and the result shape and the operand shapes
@@ -310,8 +318,8 @@ class TargetVerifierMetadata {
 
   virtual std::unique_ptr<ShapeVerifier> GetVerifier() const = 0;
 
-  TargetVerifierMetadata() {}
-  virtual ~TargetVerifierMetadata() {}
+  TargetVerifierMetadata() = default;
+  virtual ~TargetVerifierMetadata() = default;
 
   TargetVerifierMetadata(const TargetVerifierMetadata&) = delete;
   TargetVerifierMetadata& operator=(const TargetVerifierMetadata&) = delete;
@@ -380,6 +388,31 @@ class HloVerifier : public HloModulePass {
 
   // The hlo pass when the verifier is invoked.
   std::string context_;
+};
+
+// Tracks debug metadata coverage on HLO Ops and reports the results as an INFO
+// log starting with a `prefix` passed to the ctor.
+// TODO(b/261216447): Remove once the work on debug metadata is finished.
+class MetadataTracker : public DfsHloVisitorWithDefault {
+ public:
+  explicit MetadataTracker(absl::string_view prefix);
+  ~MetadataTracker() override;
+  Status DefaultAction(HloInstruction* instruction) override;
+  void HandleMetadata(const OpMetadata& metadata);
+
+ private:
+  const std::string prefix_;
+  int64_t instruction_count_ = 0;
+  int64_t has_op_type_count_ = 0;
+  int64_t has_op_name_count_ = 0;
+  int64_t has_source_file_count_ = 0;
+  int64_t has_dummy_source_file_count_ = 0;
+  int64_t has_source_line_count_ = 0;
+  int64_t has_creation_pass_id_count_ = 0;
+  int64_t has_logical_creation_pass_id_count_ = 0;
+  int64_t has_size_of_generated_code_in_bytes_count_ = 0;
+  int64_t has_size_of_memory_working_set_in_bytes_count_ = 0;
+  int64_t has_profile_info_count_ = 0;
 };
 
 }  // namespace xla

@@ -15,6 +15,7 @@
 """A Python interface for creating dataset servers."""
 
 import collections
+from typing import Iterable
 
 # pylint: disable=invalid-import-order,g-bad-import-order, unused-import
 from tensorflow.core.protobuf import service_config_pb2
@@ -24,7 +25,7 @@ from tensorflow.python.data.experimental.service import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
-def _get_time_or_placeholder(value):
+def _get_time_or_placeholder(value) -> int:
   """Modifies time-based config values to account for special behaviors."""
 
   # Servers interpret time values of 0 to mean "choose a reasonable
@@ -42,10 +43,21 @@ def _get_time_or_placeholder(value):
 
 @tf_export("data.experimental.service.DispatcherConfig")
 class DispatcherConfig(
-    collections.namedtuple("DispatcherConfig", [
-        "port", "protocol", "work_dir", "fault_tolerant_mode",
-        "worker_addresses", "job_gc_check_interval_ms", "job_gc_timeout_ms"
-    ])):
+    collections.namedtuple(
+        "DispatcherConfig",
+        [
+            "port",
+            "protocol",
+            "work_dir",
+            "fault_tolerant_mode",
+            "worker_addresses",
+            "job_gc_check_interval_ms",
+            "job_gc_timeout_ms",
+            "worker_timeout_ms",
+            "worker_max_concurrent_snapshots",
+        ],
+    )
+):
   """Configuration class for tf.data service dispatchers.
 
   Fields:
@@ -77,25 +89,42 @@ class DispatcherConfig(
       longer with no consumers. This is useful if there is a large gap in
       time between when consumers read from the job. A lower value will reduce
       the time it takes to reclaim the resources from expired jobs.
+    worker_timeout_ms: How long to wait for a worker to heartbeat before
+      considering it missing. If not set, the runtime will select a reasonable
+      default.
+    worker_max_concurrent_snapshots: The maximum number of snapshots a worker
+      can concurrently process.
   """
 
-  def __new__(cls,
-              port=0,
-              protocol=None,
-              work_dir=None,
-              fault_tolerant_mode=False,
-              worker_addresses=None,
-              job_gc_check_interval_ms=None,
-              job_gc_timeout_ms=None):
+  def __new__(
+      cls,
+      port=0,
+      protocol=None,
+      work_dir=None,
+      fault_tolerant_mode=False,
+      worker_addresses=None,
+      job_gc_check_interval_ms=None,
+      job_gc_timeout_ms=None,
+      worker_timeout_ms=None,
+      worker_max_concurrent_snapshots=0,
+  ):
     if protocol is None:
       protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
     job_gc_check_interval_ms = _get_time_or_placeholder(
         job_gc_check_interval_ms)
     job_gc_timeout_ms = _get_time_or_placeholder(job_gc_timeout_ms)
-    return super(DispatcherConfig,
-                 cls).__new__(cls, port, protocol, work_dir,
-                              fault_tolerant_mode, worker_addresses,
-                              job_gc_check_interval_ms, job_gc_timeout_ms)
+    return super().__new__(
+        cls,
+        port,
+        protocol,
+        work_dir,
+        fault_tolerant_mode,
+        worker_addresses,
+        job_gc_check_interval_ms,
+        job_gc_timeout_ms,
+        worker_timeout_ms,
+        worker_max_concurrent_snapshots,
+    )
 
 
 @tf_export("data.experimental.service.DispatchServer", v1=[])
@@ -118,13 +147,16 @@ class DispatchServer:
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   When starting a dedicated tf.data dispatch process, use join() to block
-  indefinitely after starting up the server.
+  after starting up the server, until the server terminates.
 
   ```
   dispatcher = tf.data.experimental.service.DispatchServer(
       tf.data.experimental.service.DispatcherConfig(port=5050))
   dispatcher.join()
   ```
+
+  Call stop() to gracefully terminate the dispatcher. The server automatically
+  stops when all reference to it have been deleted.
 
   To start a `DispatchServer` in fault-tolerant mode, set `work_dir` and
   `fault_tolerant_mode` like below:
@@ -165,7 +197,10 @@ class DispatchServer:
           fault_tolerant_mode=config.fault_tolerant_mode,
           worker_addresses=config.worker_addresses,
           job_gc_check_interval_ms=config.job_gc_check_interval_ms,
-          job_gc_timeout_ms=config.job_gc_timeout_ms)
+          job_gc_timeout_ms=config.job_gc_timeout_ms,
+          worker_timeout_ms=config.worker_timeout_ms,
+          worker_max_concurrent_snapshots=config.worker_max_concurrent_snapshots
+      )
     self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(
         config_proto.SerializeToString())
     if start:
@@ -183,7 +218,7 @@ class DispatchServer:
     """
     self._server.start()
 
-  def join(self):
+  def join(self) -> None:
     """Blocks until the server has shut down.
 
     This is useful when starting a dedicated dispatch process.
@@ -200,8 +235,17 @@ class DispatchServer:
     """
     self._server.join()
 
+  def stop(self) -> None:
+    """Stops the server.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        stopping the server.
+    """
+    self._stop()
+
   @property
-  def target(self):
+  def target(self) -> str:
     """Returns a target that can be used to connect to the server.
 
     >>> dispatcher = tf.data.experimental.service.DispatchServer()
@@ -215,7 +259,7 @@ class DispatchServer:
     return "{0}://localhost:{1}".format(self._config.protocol,
                                         self._server.bound_port())
 
-  def _stop(self):
+  def _stop(self) -> None:
     """Stops the server.
 
     Raises:
@@ -224,20 +268,25 @@ class DispatchServer:
     """
     self._server.stop()
 
-  def __del__(self):
+  def __del__(self) -> None:
     self._stop()
 
   @property
-  def _address(self):
+  def _address(self) -> str:
     """Returns the address of the server.
 
     The returned string will be in the form address:port, e.g. "localhost:1000".
     """
     return "localhost:{0}".format(self._server.bound_port())
 
-  def _num_workers(self):
+  def _num_workers(self) -> int:
     """Returns the number of workers registered with the dispatcher."""
     return self._server.num_workers()
+
+  def _snapshot_streams(
+      self, path) -> Iterable[_pywrap_server_lib.SnapshotStreamInfoWrapper]:
+    """Returns information about all the streams for a snapshot."""
+    return self._server.snapshot_streams(path)
 
 
 @tf_export("data.experimental.service.WorkerConfig")
@@ -284,9 +333,6 @@ class WorkerConfig(
       worker_address = "localhost:%port%"
     if protocol is None:
       protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
-    if data_transfer_protocol is None:
-      data_transfer_protocol = (
-          _pywrap_utils.TF_DATA_DefaultDataTransferProtocol())
     if data_transfer_address is None:
       data_transfer_address = "localhost:%port%"
     heartbeat_interval_ms = _get_time_or_placeholder(heartbeat_interval_ms)
@@ -320,13 +366,16 @@ class WorkerServer:
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   When starting a dedicated tf.data worker process, use join() to block
-  indefinitely after starting up the server.
+  after starting up the worker, until the worker terminates.
 
   ```
   worker = tf.data.experimental.service.WorkerServer(
       port=5051, dispatcher_address="localhost:5050")
   worker.join()
   ```
+
+  Call stop() to gracefully terminate the worker. The worker automatically stops
+  when all reference to it have been deleted.
   """
 
   def __init__(self, config, start=True):
@@ -358,7 +407,7 @@ class WorkerServer:
     if start:
       self._server.start()
 
-  def start(self):
+  def start(self) -> None:
     """Starts this server.
 
     Raises:
@@ -367,7 +416,7 @@ class WorkerServer:
     """
     self._server.start()
 
-  def join(self):
+  def join(self) -> None:
     """Blocks until the server has shut down.
 
     This is useful when starting a dedicated worker process.
@@ -386,7 +435,16 @@ class WorkerServer:
     """
     self._server.join()
 
-  def _stop(self):
+  def stop(self) -> None:
+    """Stops the server.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        stopping the server.
+    """
+    self._stop()
+
+  def _stop(self) -> None:
     """Stops the server.
 
     Raises:
@@ -395,17 +453,26 @@ class WorkerServer:
     """
     self._server.stop()
 
-  def __del__(self):
+  def __del__(self) -> None:
     self._stop()
 
   @property
-  def _address(self):
+  def _address(self) -> str:
     """Returns the address of the server.
 
     The returned string will be in the form address:port, e.g. "localhost:1000".
     """
     return "localhost:{0}".format(self._server.bound_port())
 
-  def _num_tasks(self):
+  def _num_tasks(self) -> int:
     """Returns the number of tasks currently being executed on the worker."""
     return self._server.num_tasks()
+
+  def _snapshot_task_progresses(
+      self) -> Iterable[_pywrap_server_lib.SnapshotTaskProgressWrapper]:
+    """Returns the progresses of the snapshot tasks currently being executed.
+
+    Returns:
+      An `Iterable[common_pb2.SnapshotTaskProgress]`.
+    """
+    return self._server.snapshot_task_progresses()

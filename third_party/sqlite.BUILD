@@ -11,10 +11,10 @@ SQLITE_COPTS = [
     "-D_FILE_OFFSET_BITS=64",
     "-D_REENTRANT=1",
 ] + select({
-    "@org_tensorflow//tensorflow:windows": [
+    "@org_tensorflow//tensorflow/tsl:windows": [
         "-DSQLITE_MAX_TRIGGER_DEPTH=100",
     ],
-    "@org_tensorflow//tensorflow:macos": [
+    "@org_tensorflow//tensorflow/tsl:macos": [
         "-Os",
         "-DHAVE_GMTIME_R=1",
         "-DHAVE_LOCALTIME_R=1",
@@ -46,7 +46,7 @@ cc_library(
         "SQLITE_OMIT_DEPRECATED",
     ],
     linkopts = select({
-        "@org_tensorflow//tensorflow:windows": [],
+        "@org_tensorflow//tensorflow/tsl:windows": [],
         "//conditions:default": [
             "-ldl",
             "-lpthread",

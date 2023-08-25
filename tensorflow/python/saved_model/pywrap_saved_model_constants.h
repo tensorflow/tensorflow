@@ -18,7 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_SAVED_MODEL_PYWRAP_SAVED_MODEL_CONSTANTS_H_
 #define TENSORFLOW_PYTHON_SAVED_MODEL_PYWRAP_SAVED_MODEL_CONSTANTS_H_
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 
 namespace tensorflow {
 namespace saved_model {

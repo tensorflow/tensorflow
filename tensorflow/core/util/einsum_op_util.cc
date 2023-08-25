@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/util/einsum_op_util.h"
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_split.h"

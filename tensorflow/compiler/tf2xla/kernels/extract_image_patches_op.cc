@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -146,7 +149,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
 
       int64_t unused_output_size;
       OP_REQUIRES_OK(
-          ctx, GetWindowedOutputSizeVerboseV2(
+          ctx, GetWindowedOutputSizeVerbose(
                    input_shape.dim_size(dim), ksizes_[dim], rhs_dilation[i],
                    window_strides[i], padding_, &unused_output_size,
                    &padding[i].first, &padding[i].second));
@@ -178,11 +181,9 @@ class ExtractImagePatchesOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ExtractImagePatchesOp);
 };
 
-// We don't support integers for the convolution used in the implementation of
-// this op, so we limit the supported types.
-REGISTER_XLA_OP(
-    Name("ExtractImagePatches").TypeConstraint("T", GetXlaConvTypes()),
-    ExtractImagePatchesOp);
+// We don't support integers for the convolution for GPU used in the
+// implementation of this op, so we limit the supported types.
+REGISTER_XLA_CONV_OP(Name("ExtractImagePatches"), ExtractImagePatchesOp);
 
 }  // namespace
 }  // namespace tensorflow

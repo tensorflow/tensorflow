@@ -16,9 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_TRANSPOSE_KERNELS_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_TRANSPOSE_KERNELS_H_
 
+#include <array>
 #include <cstdint>
+#include <cstring>
 
 #include "third_party/eigen3/Eigen/Core"
+
+#ifdef EIGEN_VECTORIZE_SSE2
+#include <emmintrin.h>
+#include <xmmintrin.h>
+#endif
 
 namespace xla {
 
@@ -49,30 +56,144 @@ struct TransposeMicroKernel {
 // allow for runtime dispatch of, say, AVX or AVX2 kernels where they are
 // supported. On the other hand, using Eigen makes for easier cross-platform
 // portability.
-#ifdef EIGEN_VECTORIZE_AVX
-
+#if defined(EIGEN_VECTORIZE_SSE2)
 template <>
 struct TransposeMicroKernel<uint8_t, /*bs=*/4> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
                     int64_t ldb) {
-    __m128i x = _mm_set_epi32(*reinterpret_cast<const uint32_t*>(a + lda * 0),
-                              *reinterpret_cast<const uint32_t*>(a + lda * 1),
-                              *reinterpret_cast<const uint32_t*>(a + lda * 2),
-                              *reinterpret_cast<const uint32_t*>(a + lda * 3));
-    __m128i mask =
-        _mm_setr_epi8(12, 8, 4, 0, 13, 9, 5, 1, 14, 10, 6, 2, 15, 11, 7, 3);
-    x = _mm_shuffle_epi8(x, mask);
-    *reinterpret_cast<uint32_t*>(b + ldb * 0) = _mm_extract_epi32(x, 0);
-    *reinterpret_cast<uint32_t*>(b + ldb * 1) = _mm_extract_epi32(x, 1);
-    *reinterpret_cast<uint32_t*>(b + ldb * 2) = _mm_extract_epi32(x, 2);
-    *reinterpret_cast<uint32_t*>(b + ldb * 3) = _mm_extract_epi32(x, 3);
+    std::array<__m128i, 4> loads;
+    // [  0,  1,  2,  3 ]
+    // [  4,  5,  6,  7 ]
+    // [  8,  9, 10, 11 ]
+    // [ 12, 13, 14, 15 ]
+    for (int i = 0; i < 4; ++i) {
+      // Note: We would ideally use `_mm_loadu_si32` here but older compilers do
+      // not support it. However, we can replicate it using a sequence such that
+      // even older compilers will turn this into a single movd instruction.
+      // memcpy is used because `a + lda * i` is not guaranteed to be aligned to
+      // a 4-byte address.
+      int load;
+      memcpy(&load, a + lda * i, sizeof(load));
+      loads[i] = _mm_cvtsi32_si128(load);
+    }
+    // [  0,  4,  1,  5,  2,  6,  3,  7 ]
+    __m128i x_0_1 = _mm_unpacklo_epi8(loads[0], loads[1]);
+    // [  8, 12,  9, 13, 10, 14, 11, 15 ]
+    __m128i x_2_3 = _mm_unpacklo_epi8(loads[2], loads[3]);
+    // [  0,  4,  8, 12,  1,  5,  9, 13,  2,  6, 10, 14,  3,  7, 11, 15 ]
+    __m128i x = _mm_unpacklo_epi16(x_0_1, x_2_3);
+    // [  2,  6, 10, 14,  3,  7, 11, 15,  2,  6, 10, 14,  3,  7, 11, 15 ]
+    __m128i x_hi = _mm_unpackhi_epi64(x, x);
+
+    // Note: We would ideally use `_mm_store_si32` here but older compilers do
+    // not support it. However, we can replicate it using a sequence such that
+    // even older compilers will turn this into a single movd instruction.
+    // memcpy is used because `b + ldb * i` is not guaranteed to be aligned to a
+    // 4-byte address.
+
+    // [  0,  4,  8, 12 ]
+    memcpy(b + ldb * 0, &x, sizeof(uint32_t));
+    // [  1,  5,  9, 13 ]
+    __m128i r1 = _mm_shuffle_epi32(x, _MM_SHUFFLE(1, 1, 1, 1));
+    memcpy(b + ldb * 1, &r1, sizeof(uint32_t));
+    // [  2,  6, 10, 14 ]
+    memcpy(b + ldb * 2, &x_hi, sizeof(uint32_t));
+    // [  3,  7, 11, 15 ]
+    __m128i r3 = _mm_shuffle_epi32(x_hi, _MM_SHUFFLE(1, 1, 1, 1));
+    memcpy(b + ldb * 3, &r3, sizeof(uint32_t));
   }
 };
+#endif
 
-// TODO(phawkins): add an 8x8 byte transpose kernel.
+#ifdef EIGEN_VECTORIZE_SSE2
+template <>
+struct TransposeMicroKernel<uint8_t, /*bs=*/8> {
+  static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
+                    int64_t ldb) {
+    // To help understand each step, let's show the contents of our SIMD
+    // vectors.
+    // The numbers shown are in octal and represent the source position from the
+    // input in (row, column) format.
+    //
+    // [00, 01, 02, 03, 04, 05, 06, 07],
+    // [10, 11, 12, 13, 14, 15, 16, 17],
+    // [20, 21, 22, 23, 24, 25, 26, 27],
+    // [30, 31, 32, 33, 34, 35, 36, 37],
+    // [40, 41, 42, 43, 44, 45, 46, 47],
+    // [50, 51, 52, 53, 54, 55, 56, 57],
+    // [60, 61, 62, 63, 64, 65, 66, 67],
+    // [70, 71, 72, 73, 74, 75, 76, 77],
+    __m128i loads[8];
+    for (int i = 0; i < 8; ++i) {
+      loads[i] = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(a + lda * i));
+    }
+
+    // Pack adjacent loads together into one SIMD vector by interleaving the
+    // lanes.
+    //
+    // [00, 10, 01, 11, 02, 12, 03, 13, 04, 14, 05, 15, 06, 16, 07, 17],
+    // [20, 30, 21, 31, 22, 32, 23, 33, 24, 34, 25, 35, 26, 36, 27, 37],
+    // [40, 50, 41, 51, 42, 52, 43, 53, 44, 54, 45, 55, 46, 56, 47, 57],
+    // [60, 70, 61, 71, 62, 72, 63, 73, 64, 74, 65, 75, 66, 76, 67, 77],
+    // In effect, we are splitting each SIMD vector into two blocks of 8
+    // elements, then interleaving the elements.
+    __m128i unpack_8[4];
+    for (int i = 0; i < 4; ++i) {
+      // There is no need for _mm_unpackhi_epi8 as the high half of the two
+      // vectors contains zeros.
+      unpack_8[i] = _mm_unpacklo_epi8(loads[i * 2], loads[i * 2 + 1]);
+    }
+
+    // Zip two elements at a time between adjacent rows.
+    //
+    // [00, 10, 20, 30, 01, 11, 21, 31, 02, 12, 22, 32, 03, 13, 23, 33],
+    // [04, 14, 24, 34, 05, 15, 25, 35, 06, 16, 26, 36, 07, 17, 27, 37],
+    // [40, 50, 60, 70, 41, 51, 61, 71, 42, 52, 62, 72, 43, 53, 63, 73],
+    // [44, 54, 64, 74, 45, 55, 65, 75, 46, 56, 66, 76, 47, 57, 67, 77],
+    __m128i unpack_16[4];
+    for (int i = 0; i < 4; i += 2) {
+      unpack_16[i + 0] = _mm_unpacklo_epi16(unpack_8[i], unpack_8[i + 1]);
+      unpack_16[i + 1] = _mm_unpackhi_epi16(unpack_8[i], unpack_8[i + 1]);
+    }
+
+    // Finish the transpose by moving around blocks of 32-bits.
+    //
+    // [00, 10, 20, 30, 40, 50, 60, 70, 01, 11, 21, 31, 41, 51, 61, 71],
+    // [02, 12, 22, 32, 42, 52, 62, 72, 03, 13, 23, 33, 43, 53, 63, 73],
+    // [04, 14, 24, 34, 44, 54, 64, 74, 05, 15, 25, 35, 45, 55, 65, 75],
+    // [06, 16, 26, 36, 46, 56, 66, 76, 07, 17, 27, 37, 47, 57, 67, 77],
+    __m128i unpack_32[4];
+    for (int i = 0; i < 4; i += 2) {
+      unpack_32[i + 0] =
+          _mm_unpacklo_epi32(unpack_16[i / 2], unpack_16[i / 2 + 2]);
+      unpack_32[i + 1] =
+          _mm_unpackhi_epi32(unpack_16[i / 2], unpack_16[i / 2 + 2]);
+    }
+
+    // We have two rows stored in our 128-bit SIMD vector but our block size
+    // is 64-bit, unpack and do two stores.
+    //
+    // [00, 10, 20, 30, 40, 50, 60, 70],
+    // [01, 11, 21, 31, 41, 51, 61, 71],
+    // [02, 12, 22, 32, 42, 52, 62, 72],
+    // [03, 13, 23, 33, 43, 53, 63, 73],
+    // [04, 14, 24, 34, 44, 54, 64, 74],
+    // [05, 15, 25, 35, 45, 55, 65, 75],
+    // [06, 16, 26, 36, 46, 56, 66, 76],
+    // [07, 17, 27, 37, 47, 57, 67, 77],
+    for (int i = 0; i < 8; i += 2) {
+      _mm_storel_epi64(reinterpret_cast<__m128i*>(b + ldb * (i + 0)),
+                       unpack_32[i / 2]);
+      _mm_storel_epi64(reinterpret_cast<__m128i*>(b + ldb * (i + 1)),
+                       _mm_unpackhi_epi64(unpack_32[i / 2], unpack_32[i / 2]));
+    }
+  }
+};
+#endif
 
 // TODO(phawkins): Eigen doesn't have a SSE/AVX byte Packet16c type. Add one
 // and call it here rather than using AVX intrinsics.
+#ifdef EIGEN_VECTORIZE_SSE2
 template <>
 struct TransposeMicroKernel<uint8_t, /*bs=*/16> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
@@ -182,9 +303,53 @@ struct TransposeMicroKernel<uint8_t, /*bs=*/16> {
     }
   }
 };
+#endif
 
-// TODO(phawkins): add an 4x4 uint16_t transpose kernel.
+#ifdef EIGEN_VECTORIZE_SSE2
+template <>
+struct TransposeMicroKernel<uint16_t, /*bs=*/4> {
+  static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
+                    int64_t ldb) {
+    // Note, SSE vectors can hold 8 uint16_t elements but our block size is 4.
+    // We need to issue 4 loads to properly handle strides.
+    //
+    // [ 0,  1,  2,  3],
+    // [ 4,  5,  6,  7],
+    // [ 8,  9, 10, 11],
+    // [12, 13, 14, 15],
+    __m128i loads[4];
+    for (int i = 0; i < 4; ++i) {
+      loads[i] = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(a + lda * i));
+    }
 
+    // [ 0,  4,  1,  5,  2,  6,  3,  7 ]
+    auto unpack_16_0 = _mm_unpacklo_epi16(loads[0], loads[1]);
+    // [ 8, 12,  9, 13, 10, 14, 11, 15 ]
+    auto unpack_16_1 = _mm_unpacklo_epi16(loads[2], loads[3]);
+
+    // Note: there is no need for _mm_unpackhi_epi16 as we only populate the
+    // bottom 4 lanes.
+
+    // [ 0,  4,  8, 12,  1,  5,  9, 13 ]
+    auto unpack_32_0 = _mm_unpacklo_epi32(unpack_16_0, unpack_16_1);
+    // [ 2,  6, 10, 14,  3,  7, 11, 15 ]
+    auto unpack_32_1 = _mm_unpackhi_epi32(unpack_16_0, unpack_16_1);
+
+    // [ 0,  4,  8, 12 ]
+    _mm_storel_epi64(reinterpret_cast<__m128i*>(b + ldb * 0), unpack_32_0);
+    // [ 1,  5,  9, 13 ]
+    _mm_storel_epi64(reinterpret_cast<__m128i*>(b + ldb * 1),
+                     _mm_unpackhi_epi64(unpack_32_0, unpack_32_0));
+    // [ 2,  6, 10, 14 ]
+    _mm_storel_epi64(reinterpret_cast<__m128i*>(b + ldb * 2), unpack_32_1);
+    // [ 3,  7, 11, 15 ]
+    _mm_storel_epi64(reinterpret_cast<__m128i*>(b + ldb * 3),
+                     _mm_unpackhi_epi64(unpack_32_1, unpack_32_1));
+  }
+};
+#endif
+
+#ifdef EIGEN_VECTORIZE_AVX
 template <>
 struct TransposeMicroKernel<uint16_t, /*bs=*/8> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
@@ -204,7 +369,9 @@ struct TransposeMicroKernel<uint16_t, /*bs=*/8> {
     }
   }
 };
+#endif
 
+#ifdef EIGEN_VECTORIZE_SSE2
 template <>
 struct TransposeMicroKernel<uint32_t, /*bs=*/4> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
@@ -224,7 +391,9 @@ struct TransposeMicroKernel<uint32_t, /*bs=*/4> {
     }
   }
 };
+#endif
 
+#ifdef EIGEN_VECTORIZE_AVX
 template <>
 struct TransposeMicroKernel<uint32_t, /*bs=*/8> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
@@ -244,7 +413,9 @@ struct TransposeMicroKernel<uint32_t, /*bs=*/8> {
     }
   }
 };
+#endif
 
+#ifdef EIGEN_VECTORIZE_SSE2
 template <>
 struct TransposeMicroKernel<uint64_t, /*bs=*/2> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
@@ -264,7 +435,9 @@ struct TransposeMicroKernel<uint64_t, /*bs=*/2> {
     }
   }
 };
+#endif
 
+#ifdef EIGEN_VECTORIZE_AVX
 template <>
 struct TransposeMicroKernel<uint64_t, /*bs=*/4> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
@@ -284,7 +457,6 @@ struct TransposeMicroKernel<uint64_t, /*bs=*/4> {
     }
   }
 };
-
 #endif  // EIGEN_VECTORIZE_AVX
 
 }  // namespace xla

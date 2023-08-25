@@ -26,10 +26,8 @@ namespace tensorflow {
 namespace tfd {
 
 void RegisterTfdDelegateKernels(::tfrt::KernelRegistry* registry);
-void RegisterBatchFallbackKernels(tfrt::KernelRegistry* registry);
 
 TFRT_STATIC_KERNEL_REGISTRATION(RegisterTfdDelegateKernels);
-TFRT_STATIC_KERNEL_REGISTRATION(RegisterBatchFallbackKernels);
 
 static bool runtime_fallback_conversion_fn_registration = []() {
   tfrt::AddStaticTensorConversionFn(

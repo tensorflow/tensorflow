@@ -247,13 +247,9 @@ XLA_TEST_F(ParamsTest, HundredLargeR1Parameters) {
 // Timeout last observed on 2017-11-20.
 #ifdef NDEBUG
 
-// TODO(b/65525254) Fails on GPU on 2017-09-10 because we try to reserve too
-// much space in parameter memory for the kernel.
-//
 // TODO(b/65526061) Failed on CPU on 2017-09-10 due to timeout in LLVM
 // compilation.
-XLA_TEST_F(ParamsTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(ThreeThousandParameters))) {
+XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(ThreeThousandParameters)) {
   XlaBuilder builder(TestName());
 
   std::vector<std::unique_ptr<GlobalData>> param_data_owner;
@@ -264,7 +260,7 @@ XLA_TEST_F(ParamsTest,
     target += i;
     Literal literal = LiteralUtil::CreateR0<float>(i);
     param_data_owner.push_back(
-        std::move(client_->TransferToServer(literal)).ValueOrDie());
+        std::move(client_->TransferToServer(literal)).value());
     XlaOp param = Parameter(&builder, i, literal.shape(), "param");
     sum_handle = Add(sum_handle, param);
   }
@@ -278,13 +274,10 @@ XLA_TEST_F(ParamsTest,
   ComputeAndCompareR0<float>(&builder, target, param_data, ErrorSpec(0.0001f));
 }
 
-// TODO(b/65525254) Fails on GPU on 2017-09-10 because we try to reserve too
-// much space in parameter memory for the kernel.
-//
 // TODO(b/65526061) Failed on CPU on 2017-09-10 due to timeout in LLVM
 // compilation.
-XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
-                           ThreeThousandParametersAndOutputElements))) {
+XLA_TEST_F(ParamsTest,
+           DISABLED_ON_CPU(ThreeThousandParametersAndOutputElements)) {
   XlaBuilder builder(TestName());
 
   std::vector<std::unique_ptr<GlobalData>> param_data_owner;
@@ -298,7 +291,7 @@ XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
     target += i;
     Literal literal = LiteralUtil::CreateR1<int32_t>({i, i});
     param_data_owner.push_back(
-        std::move(client_->TransferToServer(literal)).ValueOrDie());
+        std::move(client_->TransferToServer(literal)).value());
     XlaOp param = Parameter(&builder, i, literal.shape(), "param");
     params.push_back(param);
     sum_handle = Add(sum_handle, param);
@@ -343,11 +336,7 @@ XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
 //   pN += (1, 1)
 // }
 // result = {p0, p1, ..., pN}
-//
-// TODO(b/70173746): Times out during compilation on GPU and CPU backends as of
-// 2017-12-12.
-XLA_TEST_F(ParamsTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(ManyParametersIntoWhileLoop))) {
+XLA_TEST_F(ParamsTest, ManyParametersIntoWhileLoop) {
   XlaBuilder builder(TestName());
 
   std::vector<std::unique_ptr<GlobalData>> param_data_owner;
@@ -360,7 +349,7 @@ XLA_TEST_F(ParamsTest,
   for (int i = 0; i < kParamCount; ++i) {
     Literal literal = LiteralUtil::CreateR1<int32_t>({i, i});
     param_data_owner.push_back(
-        std::move(client_->TransferToServer(literal)).ValueOrDie());
+        std::move(client_->TransferToServer(literal)).value());
     XlaOp param = Parameter(&builder, i, literal.shape(), "param");
     params.push_back(param);
     parameter_shapes.push_back(literal.shape());
@@ -370,7 +359,7 @@ XLA_TEST_F(ParamsTest,
   // constant because DCE may eliminate the while-body otherwise.
   Literal bool_literal = LiteralUtil::CreateR0<bool>(false);
   param_data_owner.push_back(
-      std::move(client_->TransferToServer(bool_literal)).ValueOrDie());
+      std::move(client_->TransferToServer(bool_literal)).value());
   XlaOp bool_param =
       Parameter(&builder, kParamCount, bool_literal.shape(), "bool_param");
   params.push_back(bool_param);

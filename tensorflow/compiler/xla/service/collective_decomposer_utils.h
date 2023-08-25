@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <functional>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_DECOMPOSER_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_DECOMPOSER_UTILS_H_

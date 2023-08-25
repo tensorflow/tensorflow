@@ -16,12 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_TO_ALL_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_TO_ALL_THUNK_H_
 
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include <vector>
+
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -32,35 +30,30 @@ struct NcclAllToAllConfig {
 };
 
 // Thunk that performs a NCCL-based All-to-All among CUDA GPU-based replicas.
-class NcclAllToAllThunk : public NcclCollectiveThunk {
+class NcclAllToAllStartThunk : public NcclCollectiveThunk {
  public:
-  NcclAllToAllThunk(ThunkInfo thunk_info, mlir::lmhlo::AllToAllOp op,
-                    std::vector<Buffer> buffers);
+  NcclAllToAllStartThunk(ThunkInfo thunk_info,
+                         mlir::lmhlo_gpu::AllToAllStartOp op,
+                         std::vector<Buffer> buffers);
 
   // Returns whether the given instruction can be lowered to a nccl all-to-all
   // call.
-  static bool CanImplement(mlir::lmhlo::AllToAllOp op);
+  static Status CheckImplementable(mlir::lmhlo_gpu::AllToAllStartOp op,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
 
-  static const char* GetName() { return "AllToAll"; }
-  static bool IsDegenerate(mlir::lmhlo::AllToAllOp op, int64_t replica_count,
-                           int64_t partition_count) {
-    return GetNcclAllToAllConfig(op).config.IsDegenerate(replica_count,
-                                                         partition_count);
-  }
-
-  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllToAllOp op) {
-    return GetNcclAllToAllConfig(op).config.group_mode;
-  }
+  static const char* GetHloOpName() { return "all-to-all-start"; }
+  static bool IsDegenerate(mlir::lmhlo_gpu::AllToAllStartOp op,
+                           int64_t replica_count, int64_t partition_count);
+  static CollectiveOpGroupMode GetGroupMode(
+      mlir::lmhlo_gpu::AllToAllStartOp op);
 
  protected:
-  Status RunNcclCollective(const ExecuteParams& params,
+  const NcclCollectiveConfig& config() const override { return config_.config; }
+  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
                            ncclComm_t comm) override;
 
-  const NcclCollectiveConfig& config() const override { return config_.config; }
-
  private:
-  static NcclAllToAllConfig GetNcclAllToAllConfig(mlir::lmhlo::AllToAllOp op);
-
   const NcclAllToAllConfig config_;
   const std::vector<Buffer> buffers_;
 };

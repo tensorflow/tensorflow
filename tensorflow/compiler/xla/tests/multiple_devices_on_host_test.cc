@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -57,7 +57,7 @@ void TestWithDeviceCount(const int device_count) {
   // Run `device_count` copies of the XLA program built by BuildComputation.
   TF_ASSERT_OK_AND_ASSIGN(
       se::Platform* const platform,
-      perftools::gputools::MultiPlatformManager::PlatformWithName("Host"));
+      stream_executor::MultiPlatformManager::PlatformWithName("Host"));
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform);
   TF_ASSERT_OK_AND_ASSIGN(

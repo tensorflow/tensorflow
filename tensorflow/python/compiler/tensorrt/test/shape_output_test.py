@@ -234,5 +234,49 @@ class ShapeValueMaskTest(trt_test.TfTrtIntegrationTestBase):
             run_params.precision_mode != "INT8", "no calibration dynamic shape")
 
 
+class InputProfile(trt_test.TfTrtIntegrationTestBase):
+  """The shape profiles has to fit values of shape tensors, but for regular
+
+  tensors the values do not matter. Here we test shape profile managment with
+  an INT32 input tensor that is not a shape tensor. The extra inputs with
+  dim=10 would trigger an error if we mistakenly treat it as shape tensors.
+  """
+
+  def setUp(self):
+    super().setUp()
+
+    self.DisableNonTrtOptimizers()
+
+  def GraphFn(self, x):
+    z = x * x + x + 1
+    z = array_ops.identity(z, name="output_0")
+    return z
+
+  def GetParams(self):
+    return self.BuildParamsWithMask(
+        self.GraphFn,
+        dtypes.int32,
+        [[4]],
+        [[4]],
+        extra_inputs=[[[5]], [[10]]],
+        extra_outputs=[[[5]], [[10]]],
+        input_mask=[[False]],
+        output_mask=[[False]],
+    )
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Returns the expected engines to build."""
+    return ["TRTEngineOp_000"]
+
+  def ShouldRunTest(self, run_params):
+    # Shape op is only converted in dynamic shape mode.
+    return (
+        run_params.dynamic_shape
+        and run_params.is_v2
+        and not trt_test.IsQuantizationMode(run_params.precision_mode),
+        "Test v2 dynamic_shapes without INT8",
+    )
+
+
 if __name__ == "__main__":
   test.main()

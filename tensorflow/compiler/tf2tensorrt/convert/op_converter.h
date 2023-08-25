@@ -115,7 +115,7 @@ class OpConverterBase {
   Status ValidateNodeDefDataType() {
     // If the attribute name is empty, we should skip this check.
     if (absl::string_view(Impl::NodeDefDataTypeAttributeName()).empty()) {
-      return Status::OK();
+      return OkStatus();
     }
 
     // Get the NodeDef data type.
@@ -132,7 +132,7 @@ class OpConverterBase {
       return errors::Unimplemented(convert_not_supported_dtype_msg(
           allowed_dtypes_, *dtype, params_->node_def));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   static constexpr bool HasFixNumberOfInputs() { return true; }
@@ -161,7 +161,7 @@ class OpConverterBase {
                                      node_def.name());
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status operator()() {
@@ -172,7 +172,7 @@ class OpConverterBase {
     // Perform op-level validation.
     TF_RETURN_IF_ERROR(reinterpret_cast<Impl*>(this)->Validate());
     if (params_->validation_only) {
-      return Status::OK();
+      return OkStatus();
     }
 
     // Perform conversion.
@@ -187,7 +187,7 @@ class OpConverterBase {
       const auto& error = convert_not_supported_implicit(op, nodeName, pOpType);
       return errors::Unimplemented(error);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   void AddOutput(const TRT_TensorOrWeights& out) {

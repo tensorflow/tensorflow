@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_replace.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/LLVMContext.h"
@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/TargetParser/Triple.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -106,7 +107,7 @@ GetTargetMachineFromTriple(absl::string_view target_triple) {
 
   return absl::WrapUnique(target->createTargetMachine(
       normalized_triple, /*CPU=*/"",
-      /*Features=*/"", llvm::TargetOptions(), llvm::None));
+      /*Features=*/"", llvm::TargetOptions(), std::nullopt));
 }
 
 StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
@@ -116,8 +117,8 @@ StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
                       GetTargetMachineFromTriple(target_triple));
 
   llvm::LLVMContext llvm_context;
-  std::unique_ptr<llvm::Module> module_with_serialized_proto =
-      absl::make_unique<llvm::Module>("embedded_data_module", llvm_context);
+  auto module_with_serialized_proto =
+      std::make_unique<llvm::Module>("embedded_data_module", llvm_context);
 
   EmbeddedProtocolBuffers result;
 

@@ -16,14 +16,20 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <queue>
+#include <random>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -40,9 +46,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -84,15 +93,17 @@ constexpr char kAutotuneBufferSizesOpt[] = "autotune_buffer_sizes";
 constexpr char kDisablePrefetchLegacyAutotuneOpt[] =
     "disable_prefetch_legacy_autotune";
 constexpr char kMakeSloppyOpt[] = "make_sloppy";
-constexpr char kUseChooseFastestOpt[] = "use_choose_fastest";
 constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
 constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
 constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
+constexpr char kInjectIoPrefetchEligibleOpt[] = "inject_io_prefetch_eligible";
+constexpr char kInjectIoPrefetchOpt[] = "inject_io_prefetch";
 constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
 constexpr char kMakeDeterministicOpt[] = "make_deterministic";
 constexpr char kFilterParallelizationOpt[] = "filter_parallelization";
+constexpr char kWarmStartOpt[] = "warm_start";
 
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
@@ -121,6 +132,10 @@ void DefaultOptimizationGraphRewrites(
     if (optimization_options.optional_parallel_batch_case() !=
         OptimizationOptions::kParallelBatch) {
       optimization_default->insert(kParallelBatchOpt);
+    }
+    if (optimization_options.optional_inject_prefetch_case() !=
+        OptimizationOptions::kInjectPrefetch) {
+      optimization_default->insert(kInjectPrefetchOpt);
     }
   }
   if (OpDeterminismRequired()) {
@@ -204,6 +219,14 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kInjectPrefetchOpt);
     } else {
       optimization_disabled->insert(kInjectPrefetchOpt);
+    }
+  }
+  if (optimization_options.optional_warm_start_case() ==
+      OptimizationOptions::kWarmStart) {
+    if (optimization_options.warm_start()) {
+      optimization_enabled->insert(kWarmStartOpt);
+    } else {
+      optimization_disabled->insert(kWarmStartOpt);
     }
   }
 }
@@ -522,9 +545,12 @@ absl::flat_hash_set<string> GetExperiments(
   }
   // Stochastically include live experiments unless they are opted out.
   for (const auto& [experiment_name, experiment_selector] : live_experiments) {
-    if (experiment_selector.job_selector(hash_func, experiment_name,
-                                         job_name) &&
-        experiment_selector.task_selector(task_id) &&
+    uint64_t name_hash = hash_func(strings::StrCat(job_name, experiment_name));
+    std::mt19937_64 rng{name_hash};
+    std::bernoulli_distribution d{0.5};
+    bool evens = d(rng);
+    if (experiment_selector.job_selector(name_hash) &&
+        experiment_selector.task_selector(task_id, evens) &&
         !opt_outs.contains(experiment_name)) {
       experiments.insert(experiment_name);
     }
@@ -671,9 +697,9 @@ Status ReadStatus(const string& iterator_prefix, const string& prefix,
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
       &code_int));
-  error::Code code = static_cast<error::Code>(code_int);
+  absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-  if (code != error::Code::OK) {
+  if (code != absl::StatusCode::kOk) {
     tstring error_message;
     TF_RETURN_IF_ERROR(reader->ReadScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
@@ -693,7 +719,7 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
   if (!status.ok()) {
     TF_RETURN_IF_ERROR(writer->WriteScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
-        status.error_message()));
+        std::string(status.message())));
   }
   return OkStatus();
 }
@@ -703,7 +729,7 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
                     IteratorContext* ctx, std::vector<Tensor>* output,
                     bool* end_of_sequence, std::vector<Tensor>* batch) {
   if (num_elements == 0) {
-    if (status.ok() || errors::IsOutOfRange(status)) {
+    if (status.ok() || absl::IsOutOfRange(status)) {
       *end_of_sequence = true;
       return OkStatus();
     } else {
@@ -711,7 +737,7 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
       return status;
     }
   }
-  if (!status.ok() && !errors::IsOutOfRange(status)) {
+  if (!status.ok() && !absl::IsOutOfRange(status)) {
     *end_of_sequence = false;
     return status;
   }
@@ -789,13 +815,17 @@ Status CopyBatch(CopyBatchParams params,
           std::move(batch_elements.at(index)[component_index]),
           &batch_component, index);
     };
-    if (parallel_copy && first_element.AllocatedBytes() > (1 << 15)) {
+    const auto total_bytes =
+        first_element.AllocatedBytes() * num_batch_elements;
+    // Use parallelism for creating the batch as long as the final batch is at
+    // least 1MB.
+    if (parallel_copy && total_bytes >= (1 << 20)) {
       Status status;
       mutex status_mu;
-      BlockingCounter counter(num_batch_elements);
       const auto num_threads = params.runner_threadpool_size;
       const auto slice_size = num_batch_elements / num_threads;
       int64_t offset = 0;
+      BlockingCounter counter(num_threads);
       for (size_t i = 0; i < num_threads; ++i) {
         int64_t length = slice_size;
         // When the number of threads does not divide the number of elements
@@ -804,14 +834,15 @@ Status CopyBatch(CopyBatchParams params,
         if (i < num_batch_elements % num_threads) ++length;
         (*params.runner)([offset, length, &status, &status_mu, &counter,
                           &copy_element_fn]() {
+          Status s;
           for (size_t j = offset; j < offset + length; ++j) {
-            {
-              Status s = copy_element_fn(j);
-              mutex_lock l(status_mu);
-              status.Update(s);
-            }
-            counter.DecrementCount();
+            s.Update(copy_element_fn(j));
           }
+          {
+            mutex_lock l(status_mu);
+            status.Update(s);
+          }
+          counter.DecrementCount();
         });
         offset += length;
       }
@@ -829,14 +860,16 @@ Status CopyBatch(CopyBatchParams params,
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
   const auto& autotune_options = options.autotune_options();
-  std::vector<tstring> autotune_only_optimizations = {
+  std::array<tstring, 9> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt,
       kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt,
       kEnableGradientDescentOpt,
       kFilterParallelizationOpt,
       kMapParallelizationOpt,
-      kInjectPrefetchOpt};
+      kInjectPrefetchOpt,
+      kInjectIoPrefetchEligibleOpt,
+      kInjectIoPrefetchOpt};
 
   if (autotune_options.optional_enabled_case() == AutotuneOptions::kEnabled &&
       !autotune_options.enabled()) {
@@ -893,6 +926,16 @@ int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
   return std::min(kAutotuneDefaultParallelism, ctx->runner_threadpool_size());
 }
 
+IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
+  // Strips out any split providers so that they don't apply to sub-iterators.
+  if (ctx->split_providers().empty()) {
+    return *ctx;
+  }
+  IteratorContext::Params params(ctx);
+  params.split_providers.clear();
+  return IteratorContext(std::move(params));
+}
+
 // static
 void DatasetExperimentRegistry::Register(const string& experiment,
                                          JobSelector job_selector,
@@ -910,27 +953,22 @@ DatasetExperimentRegistry::Experiments() {
   return *get_dataset_experiments();
 }
 
-namespace {
+bool AllTasks(int64_t unused_task_id, bool unused_evens) { return true; }
 
-// Select `rollout_pct` percent of jobs at random. `hash_func` takes a string
-// and returns a uint64 between 0 and 1.
-template <int64_t rollout_pct>
-bool RandomJobSamplePercentage(std::function<uint64_t(const string&)> hash_func,
-                               const std::string& experiment_name,
-                               const std::string& job_name) {
-  return hash_func(strings::StrCat(job_name, experiment_name)) % 100 <
-         rollout_pct;
+bool IndependentHostTasks(int64_t task_id, bool evens) {
+  int64_t lhs = task_id & 0x2;
+  int64_t rhs = 0x2;
+  return evens ? lhs != rhs : lhs == rhs;
 }
-bool AllTasks(int64_t task_id) { return true; }
+
+namespace {
 
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
-                            RandomJobSamplePercentage<0>, AllTasks);
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
                             RandomJobSamplePercentage<0>, AllTasks);
-REGISTER_DATASET_EXPERIMENT("inject_prefetch", RandomJobSamplePercentage<100>,
-                            AllTasks);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch",
@@ -938,7 +976,19 @@ REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch",
 REGISTER_DATASET_EXPERIMENT("serialize_input_cycle_length",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
-                            RandomJobSamplePercentage<0>, AllTasks);
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("file_locality", RandomJobSamplePercentage<0>,
+                            IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<50>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("no_compression", RandomJobSamplePercentage<50>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("inject_io_prefetch", RandomJobSamplePercentage<1>,
+                            IndependentHostTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

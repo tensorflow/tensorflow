@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -27,16 +27,16 @@ GpuEvent::GpuEvent(GpuExecutor* parent)
 
 GpuEvent::~GpuEvent() {}
 
-port::Status GpuEvent::Init() {
+tsl::Status GpuEvent::Init() {
   return GpuDriver::InitEvent(parent_->gpu_context(), &gpu_event_,
                               GpuDriver::EventFlags::kDisableTiming);
 }
 
-port::Status GpuEvent::Destroy() {
+tsl::Status GpuEvent::Destroy() {
   return GpuDriver::DestroyEvent(parent_->gpu_context(), &gpu_event_);
 }
 
-port::Status GpuEvent::Record(GpuStream* stream) {
+tsl::Status GpuEvent::Record(GpuStream* stream) {
   return GpuDriver::RecordEvent(parent_->gpu_context(), gpu_event_,
                                 stream->gpu_stream());
 }

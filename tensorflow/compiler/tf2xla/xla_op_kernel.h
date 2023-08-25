@@ -162,6 +162,10 @@ class XlaOpKernelContext {
       absl::string_view name, int64_t* out,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
 
+  StatusOr<int64_t> ConstantInputAsIntScalar(
+      absl::string_view name,
+      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
+
   // Converts a constant scalar float32 or float64 tensor into a float64.
   Status ConstantInputAsFloatScalar(
       int index, double* out,
@@ -334,6 +338,11 @@ class XlaOpKernelContext {
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::XlaComputation* GetOrCreateAdd(const DataType type);
+
+  // Gets an XLA lambda to compute LogAddExp. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::XlaComputation* GetOrCreateLogAddExp(const DataType type);
 
   // Gets an XLA lambda to compute Mul. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a

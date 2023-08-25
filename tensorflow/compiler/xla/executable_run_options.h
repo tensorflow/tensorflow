@@ -16,8 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_EXECUTABLE_RUN_OPTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_EXECUTABLE_RUN_OPTIONS_H_
 
+#include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 
 // These classes are forward declared so that ExecutableRunOptions can be linked
 // into an XLA-compiled binary without having to link all of the pointed-to
@@ -25,18 +30,27 @@ limitations under the License.
 // need to be linked).
 namespace stream_executor {
 class Stream;
+class Event;
 class Platform;
 class DeviceMemoryAllocator;
+class DeviceMemoryBase;
 }  // namespace stream_executor
 
 namespace Eigen {
 struct ThreadPoolDevice;
 }  // namespace Eigen
 
+namespace tsl {
+template <typename T>
+class AsyncValueRef;
+}  // namespace tsl
+
 namespace xla {
 
 class DeviceAssignment;
 class ExecutionProfile;
+class Shape;
+
 namespace gpu {
 class GpuExecutableRunOptions;
 }  // namespace gpu
@@ -77,6 +91,26 @@ class RunId {
 using ThenExecuteFunction =
     std::function<void(stream_executor::Stream*, std::function<void()>)>;
 
+// Callback for sending device buffer to a channel. Returned event will be
+// recorded on a `stream` once the send operation is completed and data was
+// copied from the `src` memory. `frontend_attrs` contains frontend specific
+// attributes for the send.
+using SendDeviceMemoryFunction =
+    std::function<absl::StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
+        int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
+        const stream_executor::DeviceMemoryBase& src,
+        const absl::flat_hash_map<std::string, std::string>& frontend_attrs)>;
+
+// Callback for receiving device buffer from a channel. Returned event will be
+// recorded on a `stream` once the recv operation is completed and data was
+// copied into the `dst` memory. `frontend_attrs` contains frontend specific
+// attributes for the receive.
+using RecvDeviceMemoryFunction =
+    std::function<absl::StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
+        int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
+        stream_executor::DeviceMemoryBase* dst,
+        const absl::flat_hash_map<std::string, std::string>& frontend_attrs)>;
+
 // Class containing options for running a LocalExecutable.
 class ExecutableRunOptions {
  public:
@@ -99,12 +133,20 @@ class ExecutableRunOptions {
   ExecutableRunOptions& set_stream(stream_executor::Stream* stream);
   stream_executor::Stream* stream() const;
 
-  // If set, this is the stream to perform any pre-computation transfers on.
-  // The platform of the stream must match the platform the executable was
-  // built for.  A value of nullptr indicates the option has not been set.
+  // If set, this is the stream to perform host to device transfers on (e.g. any
+  // pre-computation transfers). The platform of the stream must match the
+  // platform the executable was built for. A value of nullptr indicates the
+  // option has not been set.
   ExecutableRunOptions& set_host_to_device_stream(
       stream_executor::Stream* stream);
   stream_executor::Stream* host_to_device_stream() const;
+
+  // If set, this is the stream to perform device to host transfers on.
+  // The platform of the stream must match the platform the executable was
+  // built for. A value of nullptr indicates the option has not been set.
+  ExecutableRunOptions& set_device_to_host_stream(
+      stream_executor::Stream* stream);
+  stream_executor::Stream* device_to_host_stream() const;
 
   // Sets the thread pool device on which to run Eigen subcomputations.
   //
@@ -148,6 +190,26 @@ class ExecutableRunOptions {
     return then_execute_function_;
   }
 
+  // See documentation on SendDeviceMemoryFunction.
+  ExecutableRunOptions& set_send_device_memory_function(
+      SendDeviceMemoryFunction* f) {
+    send_device_memory_function_ = f;
+    return *this;
+  }
+  SendDeviceMemoryFunction* send_device_memory_function() const {
+    return send_device_memory_function_;
+  }
+
+  // See documentation on RecvDeviceMemoryFunction.
+  ExecutableRunOptions& set_recv_device_memory_function(
+      RecvDeviceMemoryFunction* f) {
+    recv_device_memory_function_ = f;
+    return *this;
+  }
+  RecvDeviceMemoryFunction* recv_device_memory_function() const {
+    return recv_device_memory_function_;
+  }
+
   // GPU-backend specific options. These are kept out-of-line to avoid bloating
   // the size of this dependency for CPU-only AOT builds.
   ExecutableRunOptions& set_gpu_executable_run_options(
@@ -163,8 +225,11 @@ class ExecutableRunOptions {
   ExecutionProfile* execution_profile_ = nullptr;
   int rng_seed_ = 0;
   int32_t launch_id_ = 0;
+  stream_executor::Stream* device_to_host_stream_ = nullptr;
   stream_executor::Stream* host_to_device_stream_ = nullptr;
   ThenExecuteFunction* then_execute_function_ = nullptr;
+  SendDeviceMemoryFunction* send_device_memory_function_ = nullptr;
+  RecvDeviceMemoryFunction* recv_device_memory_function_ = nullptr;
   RunId run_id_;
   const gpu::GpuExecutableRunOptions* gpu_executable_run_options_ = nullptr;
 };

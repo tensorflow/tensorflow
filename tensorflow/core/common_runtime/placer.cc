@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/placer.h"
 
-#include <memory>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/colocation_graph.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/port.h"
 
@@ -69,12 +71,21 @@ Status GetFileName(string base_name, string* fname) {
   const char* dir = nullptr;
   dir = getenv("TF_DUMP_GRAPH_PREFIX");
   if (!dir) {
-    return errors::Internal("Failed to get the directory for ", base_name,
-                            " because dump location is not specified through "
-                            "TF_DUMP_GRAPH_PREFIX environment variable");
+    return absl::InternalError(
+        absl::StrCat("Failed to get the directory for ", base_name,
+                     " because dump location is not specified through "
+                     "TF_DUMP_GRAPH_PREFIX environment variable"));
   }
+  std::string result = dir;
+  if (absl::EqualsIgnoreCase(result, "sponge") &&
+      !io::GetTestUndeclaredOutputsDir(&result)) {
+    return absl::InternalError(
+        "TF_DUMP_GRAPH_PREFIX=sponge but "
+        "TEST_UNDECLARED_OUTPUT_DIRS is not set");
+  }
+
   base_name = MakeUniqueFilename(base_name);
-  *fname = absl::StrCat(dir, "/", base_name);
+  *fname = absl::StrCat(result, "/", base_name);
   return OkStatus();
 }
 
@@ -166,12 +177,21 @@ Placer::Placer(Graph* graph, const string& function_name,
 Placer::~Placer() {}
 
 Status Placer::Run() {
+  GraphOptimizationPassOptions options;
+  // options.debug_filename_prefix, which is used to create graph dump files,
+  // will be an empty string.
+  return Run(options);
+}
+
+Status Placer::Run(const GraphOptimizationPassOptions& options) {
   if (devices_->devices().empty()) {
     return errors::FailedPrecondition("No devices are registered");
   }
 
   if (VLOG_IS_ON(3)) {
-    DumpGraphToFile("placer_input", *graph_, nullptr);
+    DumpGraphToFile(
+        strings::StrCat(options.debug_filename_prefix, "placer_input"), *graph_,
+        nullptr);
   }
   if (VLOG_IS_ON(5)) {
     for (const Node* node : graph_->op_nodes()) {
@@ -217,7 +237,7 @@ Status Placer::Run() {
     if (!status.ok()) {
       return AttachDef(
           errors::InvalidArgument("Cannot assign a device for operation ",
-                                  node->name(), ": ", status.error_message()),
+                                  node->name(), ": ", status.message()),
           *node);
     }
 
@@ -267,7 +287,7 @@ Status Placer::Run() {
     if (!status.ok()) {
       return AttachDef(
           errors::InvalidArgument("Cannot assign a device for operation ",
-                                  node->name(), ": ", status.error_message()),
+                                  node->name(), ": ", status.message()),
           *node);
     }
 
@@ -300,8 +320,12 @@ Status Placer::Run() {
   }
 
   if (VLOG_IS_ON(3)) {
-    DumpGraphToFile("placer_output", *graph_, nullptr);
-    DumpColocationGraph("colocation_graph", colocation_graph);
+    DumpGraphToFile(
+        strings::StrCat(options.debug_filename_prefix, "placer_output"),
+        *graph_, nullptr);
+    DumpColocationGraph(
+        strings::StrCat(options.debug_filename_prefix, "colocation_graph"),
+        colocation_graph);
   }
   return OkStatus();
 }

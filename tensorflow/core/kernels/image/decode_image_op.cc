@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 
 namespace tensorflow {
 namespace {
@@ -452,12 +452,13 @@ class DecodeImageV2Op : public OpKernel {
     // allocation til after dtype conversion is done. `gif`::Decode` supports
     // uint8 only.
     Tensor* output = nullptr;
-    int buffer_size = 0;
+    int64_t buffer_size = 0;
     string error_string;
     uint8* buffer = gif::Decode(
         input.data(), input.size(),
         [&](int num_frames, int width, int height, int channels) -> uint8* {
-          buffer_size = num_frames * height * width * channels;
+          buffer_size =
+              static_cast<int64_t>(num_frames) * height * width * channels;
 
           Status status;
           // By the existing API, we support decoding GIF with `decode_jpeg` or

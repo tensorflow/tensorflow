@@ -18,20 +18,20 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -320,6 +320,28 @@ TEST_F(SliceSinkerTest, DifferentOperator) {
       mul = f32[2,9] multiply(f32[2,9] s00, f32[2,9] s10)
       add = f32[6,9] add(f32[6,9] s01, f32[6,9] s11)
       ROOT tuple = (f32[2,9], f32[6,9]) tuple(mul, add)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  SliceSinker slice_sinker;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&slice_sinker, module.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(SliceSinkerTest, SameOperatorDifferentAttributes) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,9] parameter(0)
+      p1 = f32[8,9] parameter(1)
+      s00 = f32[2,9] slice(f32[8,9] p0), slice={[0:2], [0:9]}
+      s01 = f32[6,9] slice(f32[8,9] p0), slice={[2:8], [0:9]}
+      s10 = f32[2,9] slice(f32[8,9] p1), slice={[0:2], [0:9]}
+      s11 = f32[6,9] slice(f32[8,9] p1), slice={[2:8], [0:9]}
+      cmp1 = pred[2,9] compare(f32[2,9] s00, f32[2,9] s10), direction=GT
+      cmp2 = pred[6,9] compare(f32[6,9] s01, f32[6,9] s11), direction=LT
+      ROOT tuple = (pred[2,9], pred[6,9]) tuple(cmp1, cmp2)
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,

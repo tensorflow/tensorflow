@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
-#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/tsl/platform/env.h"
 
 namespace xla {

@@ -25,10 +25,12 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -633,6 +635,11 @@ template <typename T>
 Status ExtractVariantFromInput(OpKernelContext* ctx, int index,
                                const T** value) {
   const Tensor& input_t = ctx->input(index);
+  if (!TensorShapeUtils::IsScalar(input_t.shape())) {
+    return errors::InvalidArgument(
+        "Invalid input matrix: Shape must be rank 0 but is rank ",
+        input_t.dims());
+  }
   const Variant& input_variant = input_t.scalar<Variant>()();
   *value = input_variant.get<T>();
   if (*value == nullptr) {

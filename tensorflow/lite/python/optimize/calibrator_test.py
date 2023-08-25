@@ -30,10 +30,12 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       # Activation type Int8
       ('UseActivationTypeInt8', dtypes.int8),
       # Activation type Int16
-      ('UseActivationTypeInt16', dtypes.int16))
+      ('UseActivationTypeInt16', dtypes.int16),
+  )
   def test_calibration_with_quantization(self, activations_type):
     model_path = resource_loader.get_path_to_datafile(
-        'test_data/mobilenet_like_model.bin')
+        'test_data/mobilenet_like_model.bin'
+    )
     float_model = open(model_path, 'rb').read()
     quantizer = _calibrator.Calibrator(float_model)
 
@@ -42,21 +44,21 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       for _ in range(10):
         yield [np.ones(shape=(1, 5, 5, 3), dtype=np.float32)]
 
-    quantized_model = quantizer.calibrate_and_quantize(input_gen,
-                                                       dtypes.float32,
-                                                       dtypes.float32,
-                                                       False,
-                                                       activations_type)
+    quantized_model = quantizer.calibrate_and_quantize(
+        input_gen, dtypes.float32, dtypes.float32, False, activations_type
+    )
     self.assertIsNotNone(quantized_model)
 
   @parameterized.named_parameters(
       # Activation type Int8
       ('UseActivationTypeInt8', dtypes.int8),
       # Activation type Int16
-      ('UseActivationTypeInt16', dtypes.int16))
+      ('UseActivationTypeInt16', dtypes.int16),
+  )
   def test_calibration_with_quantization_allow_float(self, activations_type):
     model_path = resource_loader.get_path_to_datafile(
-        'test_data/mobilenet_like_model.bin')
+        'test_data/mobilenet_like_model.bin'
+    )
     float_model = open(model_path, 'rb').read()
     quantizer = _calibrator.Calibrator(float_model)
 
@@ -65,16 +67,15 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       for _ in range(10):
         yield [np.ones(shape=(1, 5, 5, 3), dtype=np.float32)]
 
-    quantized_model = quantizer.calibrate_and_quantize(input_gen,
-                                                       dtypes.float32,
-                                                       dtypes.float32,
-                                                       True,
-                                                       activations_type)
+    quantized_model = quantizer.calibrate_and_quantize(
+        input_gen, dtypes.float32, dtypes.float32, True, activations_type
+    )
     self.assertIsNotNone(quantized_model)
 
   def test_calibration_with_quantization_single_op(self):
     model_path = resource_loader.get_path_to_datafile(
-        'test_data/mobilenet_like_model.bin')
+        'test_data/mobilenet_like_model.bin'
+    )
     float_model = open(model_path, 'rb').read()
     quantizer = _calibrator.Calibrator(float_model)
 
@@ -84,35 +85,42 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         yield [np.ones(shape=(1, 5, 5, 3), dtype=np.float32)]
 
     quantized_model = quantizer.calibrate_and_quantize_single(
-        input_gen, dtypes.float32, dtypes.float32, True, 'conv2d_8/BiasAdd')
+        input_gen, dtypes.float32, dtypes.float32, True, 'conv2d_8/BiasAdd'
+    )
     self.assertIsNotNone(quantized_model)
 
   def test_calibration_with_string_input(self):
     model_path = resource_loader.get_path_to_datafile(
-        'test_data/string_input_flex_model.bin')
+        'test_data/string_input_flex_model.bin'
+    )
     with open(model_path, 'rb') as fp:
       model_with_string_input = fp.read()
     quantizer = _calibrator.Calibrator(model_with_string_input)
+
     # Input generator for the model.
     def input_gen():
       for i in range(10):
-        yield [np.array(u'Test' + str(i))]
+        yield [np.array('Test' + str(i))]
 
     quantized_model = quantizer.calibrate_and_quantize_single(
-        input_gen, dtypes.float32, dtypes.float32, True, 'Identity')
+        input_gen, dtypes.float32, dtypes.float32, True, 'Identity'
+    )
     self.assertIsNotNone(quantized_model)
 
   @parameterized.named_parameters(
       # Activation type Int8
       ('UseActivationTypeInt8 - EnableMlirQuantizer', dtypes.int8),
       # Activation type Int16
-      ('UseActivationTypeInt16 - DisableEnableMlirQuantizer', dtypes.int16))
+      ('UseActivationTypeInt16 - DisableEnableMlirQuantizer', dtypes.int16),
+  )
   def test_calibration_with_quantization_multiple_inputs(
-      self, activations_type):
+      self, activations_type
+  ):
     # Load multi add model from test data.
     # This model has 4 inputs of size (1, 8, 8, 3).
     model_path = resource_loader.get_path_to_datafile(
-        '../../testdata/multi_add.bin')
+        '../../testdata/multi_add.bin'
+    )
     float_model = open(model_path, 'rb').read()
     quantizer = _calibrator.Calibrator(float_model)
 
@@ -121,11 +129,9 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       for _ in range(10):
         yield [np.ones(shape=(1, 8, 8, 3), dtype=np.float32) for _ in range(4)]
 
-    quantized_model = quantizer.calibrate_and_quantize(input_gen,
-                                                       dtypes.float32,
-                                                       dtypes.float32,
-                                                       False,
-                                                       activations_type)
+    quantized_model = quantizer.calibrate_and_quantize(
+        input_gen, dtypes.float32, dtypes.float32, False, activations_type
+    )
     self.assertIsNotNone(quantized_model)
 
   def test_invalid_model_buffer(self):
@@ -136,7 +142,8 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   # TODO(fengliuai): enable mlir quantizer
   def test_empty_calibrator_gen(self):
     model_path = resource_loader.get_path_to_datafile(
-        'test_data/mobilenet_like_model.bin')
+        'test_data/mobilenet_like_model.bin'
+    )
     float_model = open(model_path, 'rb').read()
     quantizer = _calibrator.Calibrator(float_model)
 
@@ -145,12 +152,14 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         yield i
 
     with self.assertRaises(RuntimeError):
-      quantizer.calibrate_and_quantize(empty_input_gen, dtypes.float32,
-                                       dtypes.float32, False)
+      quantizer.calibrate_and_quantize(
+          empty_input_gen, dtypes.float32, dtypes.float32, False
+      )
 
   def test_invalid_shape_calibrator_gen(self):
     model_path = resource_loader.get_path_to_datafile(
-        'test_data/mobilenet_like_model.bin')
+        'test_data/mobilenet_like_model.bin'
+    )
     float_model = open(model_path, 'rb').read()
     quantizer = _calibrator.Calibrator(float_model)
 
@@ -167,11 +176,13 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           False,
           activations_type=dtypes.int8,
           bias_type=dtypes.int32,
-          resize_input=False)
+          resize_input=False,
+      )
 
   def test_invalid_type_calibrator_gen(self):
     model_path = resource_loader.get_path_to_datafile(
-        'test_data/mobilenet_like_model.bin')
+        'test_data/mobilenet_like_model.bin'
+    )
     float_model = open(model_path, 'rb').read()
     quantizer = _calibrator.Calibrator(float_model)
 
@@ -181,12 +192,14 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         yield [np.ones(shape=(1, 5, 5, 3), dtype=np.int32)]
 
     with self.assertRaises(ValueError):
-      quantizer.calibrate_and_quantize(input_gen, dtypes.float32,
-                                       dtypes.float32, False, dtypes.int8)
+      quantizer.calibrate_and_quantize(
+          input_gen, dtypes.float32, dtypes.float32, False, dtypes.int8
+      )
 
   def test_calibration(self):
     model_path = resource_loader.get_path_to_datafile(
-        'test_data/mobilenet_like_model.bin')
+        'test_data/mobilenet_like_model.bin'
+    )
     float_model = open(model_path, 'rb').read()
     quantizer = _calibrator.Calibrator(float_model)
 
@@ -200,7 +213,8 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def test_add_intermediate_tensors(self):
     model_path = resource_loader.get_path_to_datafile(
-        'test_data/mobilenet_like_model.bin')
+        'test_data/mobilenet_like_model.bin'
+    )
     model = open(model_path, 'rb').read()
     added_model = _calibrator.add_intermediate_tensors(model)
     self.assertIsNotNone(added_model)

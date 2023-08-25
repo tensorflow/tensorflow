@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 
 #include "tensorflow/core/framework/type_traits.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -99,6 +100,10 @@ TEST(TypesTest, DataTypeFromString) {
   EXPECT_EQ(DT_QUINT8_REF, dt);
   ASSERT_TRUE(DataTypeFromString("bfloat16", &dt));
   EXPECT_EQ(DT_BFLOAT16, dt);
+  ASSERT_TRUE(DataTypeFromString("float8_e5m2", &dt));
+  EXPECT_EQ(DT_FLOAT8_E5M2, dt);
+  ASSERT_TRUE(DataTypeFromString("float8_e4m3fn", &dt));
+  EXPECT_EQ(DT_FLOAT8_E4M3FN, dt);
 }
 
 template <typename T>
@@ -128,6 +133,8 @@ TEST(TypesTest, QuantizedTypes) {
   EXPECT_FALSE(DataTypeIsQuantized(DT_INT16));
   EXPECT_FALSE(DataTypeIsQuantized(DT_INT32));
   EXPECT_FALSE(DataTypeIsQuantized(DT_BFLOAT16));
+  EXPECT_FALSE(DataTypeIsQuantized(DT_FLOAT8_E5M2));
+  EXPECT_FALSE(DataTypeIsQuantized(DT_FLOAT8_E4M3FN));
 }
 
 TEST(TypesTest, ComplexTypes) {
@@ -144,6 +151,21 @@ TEST(TypesTest, IntegerTypes) {
               absl::StartsWith(name, "int") || absl::StartsWith(name, "uint"))
         << "DataTypeInteger failed for " << name;
   }
+}
+
+TEST(TypesTest, MapDtypeToTensor) {
+  FullTypeDef ft;
+  map_dtype_to_tensor(DT_FLOAT, ft);
+  EXPECT_EQ(ft.type_id(), TFT_FLOAT);
+  EXPECT_EQ(ft.args_size(), 0);
+}
+
+TEST(TypesTest, MapDtypeToChildTensor) {
+  FullTypeDef ft;
+  map_dtype_to_child_of_tensor(DT_FLOAT, ft);
+  EXPECT_EQ(ft.type_id(), TFT_TENSOR);
+  EXPECT_EQ(ft.args_size(), 1);
+  EXPECT_EQ(ft.args(0).type_id(), TFT_FLOAT);
 }
 
 }  // namespace

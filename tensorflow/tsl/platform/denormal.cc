@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/denormal.h"
 
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/platform.h"
 
 // If we're on gcc 4.8 or older, there's a known bug that prevents the use of

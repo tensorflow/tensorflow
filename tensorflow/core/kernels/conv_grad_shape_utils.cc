@@ -63,7 +63,7 @@ Status ConvBackpropExtractAndVerifyDimension(
   dim->stride = strides[spatial_dim];
   dim->dilation = dilations[spatial_dim];
   int64_t out_size = 0;
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerboseV2(
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
       dim->input_size, dim->filter_size, dim->dilation, dim->stride, padding,
       &out_size, &padding_before, &padding_after));
   if (dim->output_size != out_size) {
@@ -191,9 +191,13 @@ Status Conv2DBackpropComputeInputShape(const Tensor& input_sizes,
     const int output_height = input_sizes.vec<int32>()(0);
     const int output_width = input_sizes.vec<int32>()(1);
     const int output_depth = filter_shape.dim_size(2);
-    *input_shape = ShapeFromFormat(data_format, batch_size, output_height,
-                                   output_width, output_depth);
-    return OkStatus();
+    if (output_height < 0 || output_width < 0) {
+      return errors::InvalidArgument(
+          "Conv2DBackpropInput: elements of input_sizes must be >= 0, not ",
+          output_height, "x", output_width);
+    }
+    return ShapeFromFormatWithStatus(data_format, batch_size, output_height,
+                                     output_width, output_depth, input_shape);
   }
 
   return errors::InvalidArgument(

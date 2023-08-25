@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <atomic>
 
-#include "tensorflow/compiler/jit/xla_compilation_cache.h"
+#include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
@@ -72,7 +72,7 @@ class XlaLocalLaunchBase : public AsyncOpKernel {
 // which will be compiled and executed using XLA.  The XlaLocalLaunchOp is
 // responsible for handling interactions with the TensorFlow executor.
 // Once all inputs are present, and their shapes are known, the op can
-// use a 'XlaCompilationCache' to compile and execute code which is specific
+// use a 'DeviceCompiler' to compile and execute code which is specific
 // to the shapes of input Tensors.
 // XlaLocalLaunchOp uses xla::LocalClient::Compile() and
 // xla::LocalExecutable::Run(), and passes arguments into/out of XLA in device
@@ -136,4 +136,4 @@ class XlaMergeOp : public OpKernel {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_JIT_KERNELS_XLA_LAUNCH_OP_H_
+#endif  // TENSORFLOW_COMPILER_JIT_KERNELS_XLA_OPS_H_

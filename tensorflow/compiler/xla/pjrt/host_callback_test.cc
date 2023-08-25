@@ -16,12 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/host_callback.h"
 
 #include <cstring>
+#include <memory>
 #include <utility>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -48,6 +49,26 @@ class TestPjRtHostMemoryForDeviceManager
   }
 };
 
+class TestStream : public CopyToDeviceStream {
+ public:
+  TestStream(int64_t total_bytes, int64_t granule_bytes, PjRtChunk& chunk,
+             absl::Notification& done)
+      : CopyToDeviceStream(total_bytes, granule_bytes),
+        chunk_(chunk),
+        done_(done) {}
+
+  PjRtFuture<Status> AddChunk(PjRtChunk chunk) override {
+    CHECK(!done_.HasBeenNotified());
+    chunk_ = std::move(chunk);
+    done_.Notify();
+    return PjRtFuture<Status>(OkStatus());
+  }
+
+ private:
+  PjRtChunk& chunk_;
+  absl::Notification& done_;
+};
+
 TEST(HostCallbackTest, Basic) {
   HostCallback host_callback;
 
@@ -70,7 +91,8 @@ TEST(HostCallbackTest, Basic) {
 
   auto context = CreateHostCallbackStateAndAppendSendRecvCallbacks(
       std::move(host_callback), &test_host_memory_for_device_manager,
-      send_callbacks, recv_callbacks);
+      send_callbacks, recv_callbacks,
+      /*use_major_to_minor_data_layout_for_callbacks=*/false);
 
   PjRtTransferMetadata metadata;
   metadata.device_shape = shape;
@@ -82,15 +104,67 @@ TEST(HostCallbackTest, Basic) {
 
   TF_ASSERT_OK(context->OnSend(/*arg_num=*/0, metadata, std::move(chunk)));
 
-  CopyToDeviceStream stream(/*total_bytes=*/byte_size, /*granule_bytes=*/8);
-  context->Receive(/*res_num=*/0, metadata, stream);
-
-  auto received_chunk = stream.ConsumeNextChunk().value();
-  ASSERT_FALSE(stream.ConsumeNextChunk());
+  PjRtChunk received_chunk;
+  absl::Notification done;
+  auto stream = std::make_unique<TestStream>(byte_size, /*granule_bytes=*/8,
+                                             received_chunk, done);
+  context->Receive(/*res_num=*/0, metadata, std::move(stream));
+  done.WaitForNotification();
 
   BorrowingLiteral borrowing_literal(
       reinterpret_cast<const char*>(received_chunk.data()), shape);
 
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal, borrowing_literal));
+}
+
+TEST(HostCallbackTest, NonBlockingRecv) {
+  HostCallback host_callback;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  size_t byte_size = ShapeUtil::ByteSizeOf(shape);
+
+  host_callback.operands = {HostCallbackArgInfo{/*channel_id=*/1, shape}};
+  host_callback.results = {HostCallbackArgInfo{/*channel_id=*/2, shape}};
+  host_callback.callback = [byte_size](void** outputs, void** inputs) {
+    std::memcpy(outputs[0], inputs[0], byte_size);
+    return OkStatus();
+  };
+
+  HostCallbackStates states;
+
+  auto& send_callbacks = states.send_callbacks.emplace_back();
+  auto& recv_callbacks = states.recv_callbacks.emplace_back();
+
+  TestPjRtHostMemoryForDeviceManager test_host_memory_for_device_manager;
+
+  auto context = CreateHostCallbackStateAndAppendSendRecvCallbacks(
+      std::move(host_callback), &test_host_memory_for_device_manager,
+      send_callbacks, recv_callbacks,
+      /*use_major_to_minor_data_layout_for_callbacks=*/false);
+
+  PjRtTransferMetadata metadata;
+  metadata.device_shape = shape;
+
+  auto literal = LiteralUtil::CreateR2({{1.0f, 2.0f}, {3.0f, 4.0f}});
+  auto chunk = PjRtChunk::AllocateDefault(/*size=*/byte_size);
+  ASSERT_EQ(chunk.size(), literal.size_bytes());
+  std::memcpy(chunk.data(), literal.untyped_data(), literal.size_bytes());
+
+  // Invokes Recv first and then send. This is to mimic a `recv` first
+  // scheduling in an HLO.
+  absl::Notification done;
+  PjRtChunk received_chunk;
+  auto stream = std::make_unique<TestStream>(byte_size, /*granule_bytes=*/8,
+                                             received_chunk, done);
+  context->Receive(/*res_num=*/0, metadata, std::move(stream));
+
+  TF_ASSERT_OK(context->OnSend(/*arg_num=*/0, metadata, std::move(chunk)));
+
+  // Blocks until the data is received.
+  done.WaitForNotification();
+
+  BorrowingLiteral borrowing_literal(
+      reinterpret_cast<const char*>(received_chunk.data()), shape);
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, borrowing_literal));
 }
 

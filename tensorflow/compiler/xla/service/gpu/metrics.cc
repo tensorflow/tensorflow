@@ -15,19 +15,23 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 
-#include "tensorflow/core/lib/monitoring/sampler.h"
+#include "tensorflow/tsl/lib/monitoring/counter.h"
+#include "tensorflow/tsl/lib/monitoring/sampler.h"
 
 namespace xla {
 namespace {
 
-auto* compile_time_usecs_histogram = tensorflow::monitoring::Sampler<1>::New(
+auto* compile_time_usecs_histogram = tsl::monitoring::Sampler<1>::New(
     {"/xla/service/gpu/compile_time_usecs_histogram",
      "The wall-clock time spent on compiling the graphs in microseconds.",
      "phase"},
     // These exponential buckets cover the following range:
     // Minimum: 1 ms
     // Maximum: 1 ms * 2 ^ 24 == ~4.66 hours
-    {tensorflow::monitoring::Buckets::Exponential(1000, 2, 25)});
+    {tsl::monitoring::Buckets::Exponential(1000, 2, 25)});
+
+auto* compiled_programs_count = tsl::monitoring::Counter<0>::New(
+    "/xla/service/gpu/compiled_programs_count", "Number of compiled programs.");
 
 }  // namespace
 
@@ -64,6 +68,14 @@ void RecordLlvmToPtxDuration(const uint64_t time_usecs) {
 void RecordPtxToCubinDuration(const uint64_t time_usecs) {
   static auto* cell = compile_time_usecs_histogram->GetCell("ptx_to_cubin");
   cell->Add(time_usecs);
+}
+
+void IncrementCompiledProgramsCount() {
+  compiled_programs_count->GetCell()->IncrementBy(1);
+}
+
+int64_t GetCompiledProgramsCount() {
+  return compiled_programs_count->GetCell()->value();
 }
 
 }  // namespace xla

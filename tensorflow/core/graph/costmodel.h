@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPH_COSTMODEL_H_
 #define TENSORFLOW_CORE_GRAPH_COSTMODEL_H_
 
+#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -228,7 +229,6 @@ class CostModel {
   std::vector<gtl::InlinedVector<int64_t, 2>> output_port_alloc_ids_;
 
   std::set<int64_t> persistent_alloc_ids_;
-  std::map<string, std::set<int64_t>> persistent_alloc_ids_by_devices_;
 
   TensorShapeProto unknown_shape_;
 

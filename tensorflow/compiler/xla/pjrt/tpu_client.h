@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -40,31 +41,25 @@ class PjRtTpuDevice : public PjRtStreamExecutorDevice {
         coords_(coords) {
     std::vector<int64_t> v_coords(coords_.begin(), coords_.end());
     int64_t core_index = core_on_chip();
-    attributes_ = {
+    description().SetAttributes({
         {"coords", xla::PjRtDeviceAttribute(v_coords)},
         {"core_on_chip", xla::PjRtDeviceAttribute(core_index)},
-    };
-    debug_string_ = absl::StrFormat("TPU_%i(process=%i,(%i,%i,%i,%i))",
-                                    core_.Id(), process_index, coords_[0],
-                                    coords_[1], coords_[2], core_.index());
-    to_string_ = absl::StrFormat(
+    });
+    description().SetDebugString(absl::StrFormat(
+        "TPU_%i(process=%i,(%i,%i,%i,%i))", core_.Id(), process_index,
+        coords_[0], coords_[1], coords_[2], core_.index()));
+    description().SetToString(absl::StrFormat(
         "TpuDevice(id=%i, process_index=%i, coords=(%s), core_on_chip=%i)",
-        id(), process_index, absl::StrJoin(coords_, ","), core_on_chip());
+        id(), process_index, absl::StrJoin(coords_, ","), core_on_chip()));
   }
 
   const std::array<int, 3>& coords() const { return coords_; }
   int core_on_chip() const { return core_.index(); }
-  const tensorflow::tpu::TpuCoreLocationExternal core() const { return core_; }
-
-  absl::string_view ToString() const override { return to_string_; }
-
-  absl::string_view DebugString() const override { return debug_string_; }
+  tensorflow::tpu::TpuCoreLocationExternal core() const { return core_; }
 
  private:
   const tensorflow::tpu::TpuCoreLocationExternal core_;
   const std::array<int, 3> coords_;
-  std::string debug_string_;
-  std::string to_string_;
 };
 
 class PjRtTpuClient : public PjRtStreamExecutorClient {
@@ -89,8 +84,12 @@ class PjRtTpuClient : public PjRtStreamExecutorClient {
   StatusOr<std::string> SerializeExecutable(
       const PjRtLoadedExecutable& executable) const override;
 
+  // For PjRtTpuClient, `options` is mandatory.
+  // This function returns an InvalidArgument error if `std::nullopt` is passed.
+  // TODO(b/237720161): make it actually optional
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) override;
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
 
  private:
   const std::string platform_version_;

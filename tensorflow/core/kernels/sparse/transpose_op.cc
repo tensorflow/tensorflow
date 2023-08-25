@@ -280,6 +280,28 @@ struct CSRSparseMatrixTransposeComponent<GPUDevice, T> {
   }
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#define DEFINE_TRANSPOSE(Device, T)                                \
+  template Status CSRSparseMatrixTranspose<Device, T>::operator()( \
+      OpKernelContext* ctx, bool conjugate,                        \
+      const CSRSparseMatrix& input_matrix, CSRSparseMatrix* output_matrix);
+
+DEFINE_TRANSPOSE(CPUDevice, float);
+DEFINE_TRANSPOSE(CPUDevice, double);
+DEFINE_TRANSPOSE(CPUDevice, complex64);
+DEFINE_TRANSPOSE(CPUDevice, complex128);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+DEFINE_TRANSPOSE(GPUDevice, float);
+DEFINE_TRANSPOSE(GPUDevice, double);
+DEFINE_TRANSPOSE(GPUDevice, complex64);
+DEFINE_TRANSPOSE(GPUDevice, complex128);
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#undef DEFINE_TRANSPOSE
+
 }  // namespace functor
 
 }  // namespace tensorflow

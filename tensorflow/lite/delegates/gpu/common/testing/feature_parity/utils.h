@@ -31,8 +31,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {

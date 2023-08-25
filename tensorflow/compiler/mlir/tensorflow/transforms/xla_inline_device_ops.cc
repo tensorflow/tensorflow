@@ -20,14 +20,17 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 
 namespace mlir {
 
 namespace {
+
+#define GEN_PASS_DEF_XLAINLINEDEVICEOPSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 // XlaInlineDeviceOps Pass will inline cluster op based in the parent region.
 struct XlaInlineDeviceOpsPass
-    : public TFDevice::XlaInlineDeviceOpsPassBase<XlaInlineDeviceOpsPass> {
+    : public impl::XlaInlineDeviceOpsPassBase<XlaInlineDeviceOpsPass> {
   void runOnOperation() override;
 };
 

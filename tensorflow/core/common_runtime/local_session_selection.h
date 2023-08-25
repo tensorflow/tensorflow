@@ -30,4 +30,4 @@ LocalSessionImpl GetDefaultLocalSessionImpl();
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_LOCAL_SESSION_SELECTION_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_LOCAL_SESSION_SELECTION_H_

@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace gpu {
 
-using ::tensorflow::profiler::ScopedAnnotation;
+using ::tsl::profiler::ScopedAnnotation;
 
 SequentialThunk::SequentialThunk(ThunkInfo thunk_info, ThunkSequence thunks)
     : Thunk(Kind::kSequential, thunk_info), thunks_(std::move(thunks)) {}

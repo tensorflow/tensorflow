@@ -43,8 +43,8 @@ StatusOr<int64_t> GetAxisDimension(mlir::Operation* op) {
         absl::StrCat("Expected Cumsum op but got : ", OpName(op)).c_str());
   }
   TF_ASSIGN_OR_RETURN(int64_t axis_dim,
-                      ExtractConstIntFromValue(cumsum.axis()));
-  int64_t tensor_rank = ValueRank(cumsum.x());
+                      ExtractConstIntFromValue(cumsum.getAxis()));
+  int64_t tensor_rank = ValueRank(cumsum.getX());
   // Axis can be in range [-tensor_rank, tensor_rank), so we add tensor_rank
   // to wrap it around.
   if (axis_dim >= -tensor_rank && axis_dim < 0) {
@@ -68,8 +68,9 @@ StatusOr<mlir::Operation*> CumsumSPMDExpander::ExpandOp(mlir::Operation* op) {
   // Our intermediate computation layout is the output layout with
   // the axis dimension replicated. So set both the operand and output layout
   // to this intermediate layout.
-  Layout intermediate_layout = output_layout->GetLayoutWithReducedDims(
-      {axis_dim.value()}, /*keep_dims=*/true);
+  TF_ASSIGN_OR_RETURN(Layout intermediate_layout,
+                      output_layout->GetLayoutWithReducedDims(
+                          {axis_dim.value()}, /*keep_dims=*/true));
 
   // Relayout operand to intermediate layout.
   mlir::OpBuilder builder(op);
@@ -106,9 +107,11 @@ StatusOr<llvm::DenseMap<int, Layout>> CumsumSPMDExpander::ComputeLayoutForward(
     return llvm::DenseMap<int, Layout>();
 
   auto input_layout = input_layouts.lookup(0);
-  return llvm::DenseMap<int, Layout>(
-      {{0, input_layout.GetLayoutWithReducedDims({axis_dim},
-                                                 /*keep_dims=*/true)}});
+  TF_ASSIGN_OR_RETURN(
+      Layout input_layout_reduced_dims,
+      input_layout.GetLayoutWithReducedDims({axis_dim},
+                                            /*keep_dims=*/true));
+  return llvm::DenseMap<int, Layout>({{0, input_layout_reduced_dims}});
 }
 
 StatusOr<llvm::DenseMap<int, Layout>> CumsumSPMDExpander::ComputeLayoutBackward(
@@ -119,9 +122,11 @@ StatusOr<llvm::DenseMap<int, Layout>> CumsumSPMDExpander::ComputeLayoutBackward(
   if (output_layouts.find(0) == output_layouts.end())
     return llvm::DenseMap<int, Layout>();
   auto output_layout = output_layouts.lookup(0);
-  return llvm::DenseMap<int, Layout>(
-      {{0, output_layout.GetLayoutWithReducedDims({axis_dim},
-                                                  /*keep_dims=*/true)}});
+  TF_ASSIGN_OR_RETURN(
+      Layout output_layout_reduced_dims,
+      output_layout.GetLayoutWithReducedDims({axis_dim},
+                                             /*keep_dims=*/true));
+  return llvm::DenseMap<int, Layout>({{0, output_layout_reduced_dims}});
 }
 
 }  // namespace dtensor

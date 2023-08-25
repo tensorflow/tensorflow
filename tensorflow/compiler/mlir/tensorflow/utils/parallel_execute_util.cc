@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
 namespace mlir {
-namespace TFTPU {
+namespace TF {
 
 tf_device::ParallelExecuteOp BuildParallelExecuteOp(
     tf_device::ClusterFuncOp cluster_func, OpBuilder* builder) {
@@ -39,7 +39,7 @@ tf_device::ParallelExecuteOp BuildParallelExecuteOp(
 
 LogicalResult RemoveSingletonParallelExecuteOp(
     tf_device::ParallelExecuteOp parallel_execute, OpBuilder* builder) {
-  if (parallel_execute.regions().size() == 1) {
+  if (parallel_execute.getRegions().size() == 1) {
     builder->setInsertionPoint(parallel_execute);
     auto& block = parallel_execute.GetRegionBlockWithIndex(0);
     llvm::SmallVector<Operation*, 2> ops_move;
@@ -58,5 +58,5 @@ LogicalResult RemoveSingletonParallelExecuteOp(
   return success();
 }
 
-}  // namespace TFTPU
+}  // namespace TF
 }  // namespace mlir

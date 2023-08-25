@@ -94,7 +94,7 @@ int GetDepthwiseConvWeightsSize(const DepthwiseConvolution2DAttributes& attr,
 bool IsElementwiseOneInput(const OperationType& op_type) {
   return op_type == OperationType::ABS || op_type == OperationType::COPY ||
          op_type == OperationType::COS || op_type == OperationType::ELU ||
-         op_type == OperationType::EXP ||
+         op_type == OperationType::EXP || op_type == OperationType::GELU ||
          op_type == OperationType::HARD_SWISH ||
          op_type == OperationType::LOG || op_type == OperationType::NEG ||
          op_type == OperationType::RSQRT || op_type == OperationType::SIGMOID ||
@@ -349,7 +349,7 @@ bool ThinPointwiseFuser::IsNodeSupported(const GpuInfo& gpu_info,
       return false;
     }
     DepthwiseConvolution2DAttributes* dw_attr =
-        std::any_cast<DepthwiseConvolution2DAttributes>(
+        absl::any_cast<DepthwiseConvolution2DAttributes>(
             &node->operation.attributes);
     const auto dw_shape = dw_attr->weights.shape;
     bool good_dw = dw_shape.o == 1;
@@ -386,7 +386,7 @@ bool ThinPointwiseFuser::IsNodeSupported(const GpuInfo& gpu_info,
       return false;
     }
     Convolution2DAttributes* conv_attr =
-        std::any_cast<Convolution2DAttributes>(&node->operation.attributes);
+        absl::any_cast<Convolution2DAttributes>(&node->operation.attributes);
     if (conv_attr->groups != 1) {
       return false;
     }
@@ -461,12 +461,12 @@ bool ThinPointwiseFuser::ReserveNode(const GpuInfo& gpu_info, Node* node) {
   if (IsConvNode(node)) {
     convs_count_++;
     Convolution2DAttributes* conv_attr =
-        std::any_cast<Convolution2DAttributes>(&node->operation.attributes);
+        absl::any_cast<Convolution2DAttributes>(&node->operation.attributes);
     buffer_size_ += GetConvWeightsSize(*conv_attr, op_def_.precision);
   }
   if (IsDwConvNode(node)) {
     DepthwiseConvolution2DAttributes* dw_attr =
-        std::any_cast<DepthwiseConvolution2DAttributes>(
+        absl::any_cast<DepthwiseConvolution2DAttributes>(
             &node->operation.attributes);
     buffer_size_ += GetDepthwiseConvWeightsSize(*dw_attr, op_def_.precision);
   }
@@ -478,12 +478,12 @@ uint64_t ThinPointwiseFuser::GetNodeFlops(Node* node) const {
   auto output_shape = graph_->FindOutputs(node->id)[0]->tensor.shape;
   if (op_type == OperationType::DEPTHWISE_CONVOLUTION) {
     DepthwiseConvolution2DAttributes* attr =
-        std::any_cast<DepthwiseConvolution2DAttributes>(
+        absl::any_cast<DepthwiseConvolution2DAttributes>(
             &node->operation.attributes);
     return GetDepthwiseConvolutionFlops(output_shape, attr->weights.shape);
   } else if (op_type == OperationType::CONVOLUTION_2D) {
     Convolution2DAttributes* attr =
-        std::any_cast<Convolution2DAttributes>(&node->operation.attributes);
+        absl::any_cast<Convolution2DAttributes>(&node->operation.attributes);
     return GetConvolutionFlops(output_shape, attr->weights.shape);
   }
   return 0;
@@ -494,11 +494,11 @@ void ThinPointwiseFuser::AddNode(const GpuInfo& gpu_info, int node_index) {
   auto op_type = OperationTypeFromString(node->operation.type);
   if (op_type == OperationType::RELU) {
     ReLUAttributes* attr =
-        std::any_cast<ReLUAttributes>(&node->operation.attributes);
+        absl::any_cast<ReLUAttributes>(&node->operation.attributes);
     AddReluNode(*attr);
   } else if (op_type == OperationType::PRELU) {
     PReLUAttributes* attr =
-        std::any_cast<PReLUAttributes>(&node->operation.attributes);
+        absl::any_cast<PReLUAttributes>(&node->operation.attributes);
     AddPreluNode(*attr);
   } else if (op_type == OperationType::ADD) {
     Node* prev_node = nodes_[node_index - 1];
@@ -513,12 +513,12 @@ void ThinPointwiseFuser::AddNode(const GpuInfo& gpu_info, int node_index) {
     AddElementwiseOneInputNode(gpu_info, op_type);
   } else if (op_type == OperationType::DEPTHWISE_CONVOLUTION) {
     DepthwiseConvolution2DAttributes* attr =
-        std::any_cast<DepthwiseConvolution2DAttributes>(
+        absl::any_cast<DepthwiseConvolution2DAttributes>(
             &node->operation.attributes);
     AddDepthwiseConvNode(gpu_info, *attr);
   } else if (op_type == OperationType::CONVOLUTION_2D) {
     Convolution2DAttributes* attr =
-        std::any_cast<Convolution2DAttributes>(&node->operation.attributes);
+        absl::any_cast<Convolution2DAttributes>(&node->operation.attributes);
     if (IsConv1x1(*attr) && node_index != 0) {
       AddConv1x1Node(gpu_info, *attr, node_index == nodes_.size() - 1);
     } else {

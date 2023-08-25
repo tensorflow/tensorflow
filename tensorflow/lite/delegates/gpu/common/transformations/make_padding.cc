@@ -38,7 +38,7 @@ bool IsConstZeros(const Node& node) {
     return false;
   }
   auto& attr =
-      std::any_cast<const ConstTensorAttributes&>(node.operation.attributes);
+      absl::any_cast<const ConstTensorAttributes&>(node.operation.attributes);
   for (auto f : attr.tensor.data) {
     if (f != 0) {
       return false;
@@ -63,7 +63,7 @@ class MakePaddingFromZerosConcat : public NodeTransformation {
       auto dep = graph->FindProducer(input->id);
       if (dep != nullptr && IsConstZeros(*dep)) {
         auto& concat_attr =
-            std::any_cast<const ConcatAttributes&>(node->operation.attributes);
+            absl::any_cast<const ConcatAttributes&>(node->operation.attributes);
         PadAttributes pad_attr;
         pad_attr.type = PaddingContentType::ZEROS;
         pad_attr.appended = BHWC(0, 0, 0, 0);

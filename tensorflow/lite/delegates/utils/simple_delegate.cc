@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -109,7 +109,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context,
 
   return context->ReplaceNodeSubsetsWithDelegateKernels(
       context, delegate_kernel_registration,
-      BuildTfLiteIntArray(supported_nodes).get(), base_delegate);
+      BuildTfLiteArray(supported_nodes).get(), base_delegate);
 }
 }  // namespace
 

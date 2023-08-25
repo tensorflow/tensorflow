@@ -108,7 +108,7 @@ struct BucketizeFunctor<GPUDevice, T> {
           config.thread_per_block, 0, d.stream(), input.size(), input.data(),
           boundaries_vector.size(), boundaries_array.data(), output.data()));
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 }  // namespace functor

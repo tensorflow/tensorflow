@@ -54,7 +54,8 @@ class TypeIDNameRegistry {
   template <typename T>
   void Register(std::string_view type_name) {
     auto inserted = type_id_name_map_.try_emplace(TypeID::get<T>(), type_name);
-    assert(inserted.second && "duplicate typeid name registration");
+    assert((inserted.second || inserted.first->second == type_name) &&
+           "conflicting typeid name registration");
     (void)inserted;
   }
 

@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -pass-pipeline='func.func(canonicalize)' | FileCheck %s
+// RUN: mlir-hlo-opt %s -pass-pipeline='builtin.module(func.func(canonicalize))' | FileCheck %s
 
 // CHECK-LABEL: func @add_lhs_zero
 func.func @add_lhs_zero(%lhs: tensor<65537xi8>) -> tensor<65537xi8> {

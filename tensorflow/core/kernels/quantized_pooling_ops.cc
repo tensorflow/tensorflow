@@ -90,14 +90,19 @@ class QuantizedAvgPoolingOp : public OpKernel {
                 errors::InvalidArgument("tensor_in must be 4-dimensional"));
 
     Tensor* output = nullptr;
+    TensorShape params_forward_output_shape;
+    OP_REQUIRES_OK(context,
+                   params.forward_output_shape(&params_forward_output_shape));
     OP_REQUIRES_OK(context, context->allocate_output(
-                                0, params.forward_output_shape(), &output));
+                                0, params_forward_output_shape, &output));
     const int32_t highest = static_cast<int32>(Eigen::NumTraits<T>::highest());
     const int32_t lowest = static_cast<int32>(Eigen::NumTraits<T>::lowest());
 
     // TODO(vrv): Switch this to the Eigen::Tensor version of
     // SpatialAvgPooling once that version is running quickly.
-    Tensor int32_output(DT_INT32, params.forward_output_shape());
+    OP_REQUIRES_OK(context,
+                   params.forward_output_shape(&params_forward_output_shape));
+    Tensor int32_output(DT_INT32, params_forward_output_shape);
     // Cast input to int32 tensor and call SpatialAvgPool.
     Tensor int32_input(DT_INT32, tensor_in.shape());
     int32_input.flat<int32>() = tensor_in.flat<T>().template cast<int32>();

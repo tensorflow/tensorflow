@@ -215,7 +215,7 @@ Status AllocateGenerationTempTensors(
       DataType::DT_INT8, TensorShape({num_images, num_boxes_to_generate}),
       dev_boxes_keep_flags));
   TF_RETURN_IF_ERROR(ResetTensor<int8>(dev_boxes_keep_flags, d));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Allocate workspace for NMS operation
@@ -257,7 +257,7 @@ Status AllocatePreNMSTempTensors(
       DataType::DT_INT32, TensorShape({num_images}), dev_prenms_nboxes));
   TF_RETURN_IF_ERROR(ResetTensor<int32>(dev_prenms_nboxes, d));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Initialize index and offset arrays.
@@ -303,7 +303,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
                                      scalar_tensor.shape().DebugString());
     }
     *value = scalar_tensor.scalar<T>()();
-    return Status::OK();
+    return OkStatus();
   }
 
   void Compute(tensorflow::OpKernelContext* context) override {
@@ -312,6 +312,22 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     const auto bbox_deltas = context->input(1);
     const auto image_info = context->input(2);
     const auto anchors = context->input(3);
+
+    OP_REQUIRES(context, scores.dims() == 4,
+                errors::InvalidArgument("`scores` must be rank 4 but is rank ",
+                                        scores.dims()));
+    OP_REQUIRES(
+        context, bbox_deltas.dims() == 4,
+        errors::InvalidArgument("`bbox_deltas` must be rank 4 but is rank ",
+                                bbox_deltas.dims()));
+    OP_REQUIRES(
+        context, image_info.dims() == 2,
+        errors::InvalidArgument("`image_info` must be rank 2 but is rank ",
+                                image_info.dims()));
+    OP_REQUIRES(context, anchors.dims() == 3,
+                errors::InvalidArgument("`anchors` must be rank 3 but is rank ",
+                                        anchors.dims()));
+
     const auto num_images = scores.dim_size(0);
     const auto num_anchors = scores.dim_size(3);
     const auto height = scores.dim_size(1);

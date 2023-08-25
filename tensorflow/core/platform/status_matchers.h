@@ -25,12 +25,6 @@ limitations under the License.
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)
 
-using tsl::PrintTo;
-
-namespace error {
-using tsl::error::PrintTo;
-}  // namespace error
-
 namespace testing {
 namespace internal_status {
 using tsl::testing::internal_status::GetStatus;

@@ -41,17 +41,21 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
@@ -323,7 +327,7 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForUnwrittenResource) {
   TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
                                      args, &result));
   xla::Shape transposed =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {0, 1});
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::S32, {2, 3}, {0, 1});
   // Check that the return shapes are correctly tranposed.
   EXPECT_EQ(result.xla_output_shape,
             xla::ShapeUtil::MakeTupleShape({transposed}));
@@ -422,7 +426,7 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForRetVal) {
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
                                      std::move(graph), args, &result));
   xla::Shape transposed =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {0, 1});
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::S32, {2, 3}, {0, 1});
   // Check that the return shapes are correctly tranposed.
   EXPECT_EQ(result.xla_output_shape,
             xla::ShapeUtil::MakeTupleShape({transposed, transposed}));
@@ -465,7 +469,7 @@ TEST_F(XlaCompilerTest, TransposeVariables) {
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "transpose",
                                      std::move(graph), args, &result));
   xla::Shape transposed =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {1, 0});
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::S32, {2, 3}, {1, 0});
   // Check that the return shapes are correctly tranposed.
   EXPECT_EQ(result.xla_output_shape,
             xla::ShapeUtil::MakeTupleShape({transposed, transposed}));
@@ -568,14 +572,13 @@ TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
       compiler.CompileGraph(XlaCompiler::CompileOptions(), "reshape",
                             std::move(graph), args, &result);
   EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(absl::StrContains(status.message(), "depends on a parameter"))
+      << status.message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "{{node C}}"))
+      << status.message();
   EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "depends on a parameter"))
-      << status.error_message();
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node C}}"))
-      << status.error_message();
-  EXPECT_TRUE(absl::StrContains(status.error_message(),
-                                "must be a compile-time constant"))
-      << status.error_message();
+      absl::StrContains(status.message(), "must be a compile-time constant"))
+      << status.message();
 }
 
 // Tests handling of compile-time constant outputs.
@@ -939,8 +942,8 @@ TEST_F(XlaCompilerTest, UndefinedFunctionFails) {
       compiler.CompileFunction(XlaCompiler::CompileOptions(), name_attr,
                                /*args=*/{}, &result);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "is not defined."))
-      << status.error_message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "is not defined."))
+      << status.message();
 }
 
 FunctionDef FillFn() {
@@ -1018,11 +1021,11 @@ TEST_F(XlaCompilerTest, LocalFunctionWithWrongArgumentsFail) {
 
   ASSERT_FALSE(status.ok());
   // Flib lookup failure.
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "is not defined."))
-      << status.error_message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "is not defined."))
+      << status.message();
   // Local flib lookup failure.
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "Attr T is not found"))
-      << status.error_message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "Attr T is not found"))
+      << status.message();
 }
 
 FunctionDef SliceFn() {
@@ -1187,7 +1190,7 @@ TEST_F(XlaCompilerTest, ResultLayoutSingle) {
                                      args, &result));
   EXPECT_TRUE(xla::ShapeUtil::Equal(
       result.xla_output_shape,
-      xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {0, 1})));
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::S32, {2, 3}, {0, 1})));
   EXPECT_EQ(result.computation->GetProgramShape().value().result(),
             result.xla_output_shape);
 }
@@ -1228,7 +1231,7 @@ TEST_F(XlaCompilerTest, ResultLayoutMultiple) {
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "id",
                                      std::move(graph), args, &result));
   xla::Shape result_shape =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {0, 1});
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::S32, {2, 3}, {0, 1});
 
   EXPECT_TRUE(xla::ShapeUtil::Equal(
       result.xla_output_shape,
@@ -1517,10 +1520,10 @@ TEST_F(XlaCompilerTest, FunctionWithInvalidOp) {
   status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "fill",
                                  std::move(graph), args, &result);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "InvalidOp"))
-      << status.error_message();
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node fill_fn}}"))
-      << status.error_message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "InvalidOp"))
+      << status.message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "{{node fill_fn}}"))
+      << status.message();
 }
 
 // Tests a graph which has a node with invalid data type.
@@ -1542,11 +1545,11 @@ TEST_F(XlaCompilerTest, NodeWithInvalidDataType) {
   status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "invalid_type",
                                  std::move(graph), args, &result);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(absl::StrContains(status.error_message(),
+  EXPECT_TRUE(absl::StrContains(status.message(),
                                 "is not in the list of allowed values"))
-      << status.error_message();
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node Shape}}"))
-      << status.error_message();
+      << status.message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "{{node Shape}}"))
+      << status.message();
 }
 
 TEST_F(XlaCompilerTest, SingleOpWithoutInputs) {
@@ -1920,7 +1923,7 @@ TEST_F(XlaCompilerTest, AliasResourceUpdates) {
   EXPECT_EQ(alias.entries(0).parameter_number(), 0);
 }
 
-// Tests that passing in an exact duplicate input to SetDeviceToHostMeatadata
+// Tests that passing in an exact duplicate input to SetDeviceToHostMetadata
 // is not an error.
 TEST_F(XlaCompilerTest, SetDeviceToHostMetadataExactDuplicate) {
   XlaCompiler compiler(DefaultOptions());
@@ -1949,7 +1952,7 @@ TEST_F(XlaCompilerTest, SetDeviceToHostMetadataMismatchedDuplicate) {
   EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
 }
 
-// Tests that passing in an exact duplicate input to SetHostToDeviceMeatadata
+// Tests that passing in an exact duplicate input to SetHostToDeviceMetadata
 // is not an error.
 TEST_F(XlaCompilerTest, SetHostToDeviceMetadataExactDuplicate) {
   XlaCompiler compiler(DefaultOptions());
@@ -1976,6 +1979,68 @@ TEST_F(XlaCompilerTest, SetHostToDeviceMetadataMismatchedDuplicate) {
   TF_ASSERT_OK(compiler.SetHostToDeviceMetadata(key, types, shapes));
   Status status = compiler.SetHostToDeviceMetadata(key, types2, shapes2);
   EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+}
+
+TEST_F(OpsTestBase, BuildSingleOpCompileArgument) {
+  TF_EXPECT_OK(NodeDefBuilder("identity_op", "Identity")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DT_FLOAT)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1, 2}), {0, 1});
+  TF_EXPECT_OK(RunOpKernel());
+
+  XlaCompiler::SingleOpCompileArgument arg(*context_);
+
+  EXPECT_THAT(arg.output_dtypes, ::testing::ElementsAreArray({DT_FLOAT}));
+  EXPECT_EQ(arg.node_def.SerializeAsString(),
+            context_->op_kernel().def().SerializeAsString());
+  EXPECT_EQ(arg.config_proto.ByteSizeLong(), 0);
+}
+
+TEST_F(OpsTestBase, CompileSingleOp) {
+  TF_EXPECT_OK(NodeDefBuilder("identity_op", "Identity")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DT_FLOAT)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1, 2}), {6.9, 4.2});
+  TF_EXPECT_OK(RunOpKernel());
+
+  XlaCompiler::SingleOpCompileArgument single_op_arg(*context_);
+
+  xla::Client* client = xla::ClientLibrary::LocalClientOrDie();
+  XlaOpRegistry::RegisterCompilationKernels();
+  FunctionDefLibrary flib;
+  std::unique_ptr<FunctionLibraryDefinition> flib_def(
+      new FunctionLibraryDefinition(OpRegistry::Global(), flib));
+
+  XlaCompiler::Options options;
+  options.device_type = DeviceType(DEVICE_CPU_XLA_JIT);
+  options.client = client;
+  options.flib_def = flib_def.get();
+
+  XlaCompiler compiler(options);
+
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kConstant;
+  args[0].type = DT_FLOAT;
+  args[0].shape = TensorShape({1, 2});
+  args[0].constant_value = GetInput(0);
+  args[0].initialized = true;
+
+  XlaCompiler::CompilationResult result;
+  TF_EXPECT_OK(compiler.CompileSingleOp(XlaCompiler::CompileOptions(),
+                                        single_op_arg, args, &result));
+
+  // Tests that the generated computation works.
+  std::unique_ptr<xla::GlobalData> actual =
+      client->Execute(*result.computation, {}).value();
+  xla::Literal actual_literal = client->Transfer(*actual).value();
+
+  xla::Literal expected0 = xla::LiteralUtil::CreateR2<float>({{6.9, 4.2}});
+  xla::Literal expected_literal = xla::LiteralUtil::MakeTuple({&expected0});
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
 }
 
 }  // namespace

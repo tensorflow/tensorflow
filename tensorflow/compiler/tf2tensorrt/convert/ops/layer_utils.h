@@ -351,7 +351,7 @@ class TRTNetworkBuilder {
     } else {
       *pTensor = input.tensor();
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Creates a nvinfer1::Weights object containing a single scalar.
@@ -657,8 +657,8 @@ class TRTNetworkBuilder {
   nvinfer1::INetworkDefinition* Network() { return network_; }
 
  private:
-  nvinfer1::INetworkDefinition* const network_;
-  TrtWeightStore* const weight_store_;
+  nvinfer1::INetworkDefinition* network_;
+  TrtWeightStore* weight_store_;
 };
 
 class ShuffleBuilder {

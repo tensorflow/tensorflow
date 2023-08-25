@@ -20,6 +20,9 @@ limitations under the License.
 
 #if !defined(PLATFORM_WINDOWS)
 #include <sys/uio.h>
+namespace tsl {
+using ::iovec;  // NOLINT(misc-unused-using-decls)
+}  // namespace tsl
 #else
 namespace tsl {
 struct iovec {
@@ -34,6 +37,9 @@ namespace port {
 
 // Snappy compression/decompression support
 bool Snappy_Compress(const char* input, size_t length, string* output);
+
+bool Snappy_CompressFromIOVec(const struct iovec* iov,
+                              size_t uncompressed_length, string* output);
 
 bool Snappy_GetUncompressedLength(const char* input, size_t length,
                                   size_t* result);

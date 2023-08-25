@@ -15,15 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/move_copy_to_users.h"
 
-#include <algorithm>
-#include <memory>
-#include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -43,6 +48,54 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
           copied->shape().layout();
       HloInstruction* later_copy = MakeCopyHlo(earlier_pad, hlo->shape());
       TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+    }
+    return OkStatus();
+  }
+
+  // Turn copy->slice into slice->copy, as slice is layout-preserving.
+  Status HandleSlice(HloInstruction* hlo) override {
+    HloInstruction* operand = hlo->mutable_operand(0);
+    if (operand->opcode() == HloOpcode::kCopy) {
+      HloInstruction* copied = operand->mutable_operand(0);
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * earlier_slice,
+          MakeSliceHlo(copied, hlo->slice_starts(), hlo->slice_limits(),
+                       hlo->slice_strides(), &hlo->metadata()));
+      *earlier_slice->mutable_shape()->mutable_layout() =
+          copied->shape().layout();
+      HloInstruction* later_copy = MakeCopyHlo(earlier_slice, hlo->shape());
+      TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+    }
+    return OkStatus();
+  }
+
+  // Turn copy->reduce_window into reduce_window->copy, as reduce_window is
+  // layout-preserving.
+  Status HandleReduceWindow(HloInstruction* hlo) override {
+    HloInstruction* operand = hlo->mutable_operand(0);
+    if (operand->opcode() == HloOpcode::kCopy) {
+      HloInstruction* copied = operand->mutable_operand(0);
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * earlier_reduce_window,
+          MakeReduceWindowHlo(copied, hlo->mutable_operand(1), hlo->window(),
+                              hlo->called_computations()[0], &hlo->metadata()));
+      *earlier_reduce_window->mutable_shape()->mutable_layout() =
+          copied->shape().layout();
+      HloInstruction* later_copy =
+          MakeCopyHlo(earlier_reduce_window, hlo->shape());
+      TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+    }
+    return OkStatus();
+  }
+
+  Status HandleReduce(HloInstruction* hlo) override {
+    HloInstruction* operand = hlo->mutable_operand(0);
+    // Reductions can handle transposes, e.g. via column reduction.
+    if (operand->opcode() == HloOpcode::kCopy && !hlo->shape().IsTuple()) {
+      HloInstruction* new_reduce = hlo->AddInstruction(
+          hlo->CloneWithNewOperands(hlo->shape(), {operand->mutable_operand(0),
+                                                   hlo->mutable_operand(1)}));
+      TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, new_reduce));
     }
     return OkStatus();
   }
@@ -120,6 +173,37 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
         TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
       }
     }
+    return OkStatus();
+  }
+
+  // Move copy across kConcat if it occurs on all operands.
+  Status HandleConcatenate(HloInstruction* hlo) override {
+    const HloInstruction* first = hlo->operand(0);
+    if (first->opcode() != HloOpcode::kCopy) {
+      return OkStatus();
+    }
+    const HloInstruction* inner_op = first->operand(0);
+    const Layout& inner_op_layout = inner_op->shape().layout();
+
+    std::vector<HloInstruction*> new_operands;
+    new_operands.reserve(hlo->operand_count());
+    for (HloInstruction* op : hlo->mutable_operands()) {
+      if (op->opcode() != HloOpcode::kCopy ||
+          op->operand(0)->shape().layout() != inner_op_layout) {
+        VLOG(3) << "Mismatch between " << op->ToString()
+                << " and expected op layout " << inner_op_layout.ToString();
+        return OkStatus();
+      }
+      new_operands.push_back(op->mutable_operand(0));
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * new_concat,
+        MakeConcatHlo(new_operands, hlo->concatenate_dimension()));
+    *new_concat->mutable_shape()->mutable_layout() = inner_op_layout;
+
+    HloInstruction* new_copy = MakeCopyHlo(new_concat, hlo->shape());
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, new_copy));
     return OkStatus();
   }
 };

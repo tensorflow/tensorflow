@@ -248,7 +248,7 @@ func.func @batchNormTraining_dynamic_shape(
   // CHECK-DAG: %[[REDUCE_SIZE:.+]] = shape.div %[[X_SIZE]], %[[SCALE_SIZE]] : index, index -> index
   // CHECK-DAG: %[[INDEX_CAST:.+]] = arith.index_cast %[[REDUCE_SIZE]] : index to i64
   // CHECK-DAG: %[[REDUCE_SIZE_TENSOR:.+]] = tensor.from_elements %[[INDEX_CAST]] : tensor<1xi64>
-  // CHECK-DAG: %[[REDUCE_SIZE_TENSOR_FP:.+]] = mhlo.convert(%[[REDUCE_SIZE_TENSOR]]) : (tensor<1xi64>) -> tensor<1xf32>
+  // CHECK-DAG: %[[REDUCE_SIZE_TENSOR_FP:.+]] = mhlo.convert %[[REDUCE_SIZE_TENSOR]] : (tensor<1xi64>) -> tensor<1xf32>
   // CHECK-DAG: %[[REDUCE_SIZE_RESHAPE:.+]] = mhlo.reshape %[[REDUCE_SIZE_TENSOR_FP]] : (tensor<1xf32>) -> tensor<f32>
   // CHECK-DAG: %[[REDUCE_SIZE_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[REDUCE_SIZE_RESHAPE]], %[[SCALE_SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<1xindex>) -> tensor<?xf32>
   // CHECK-DAG: %[[X_SUM:.+]] = mhlo.reduce(%[[X]] init: %[[ZERO]]) applies mhlo.add across dimensions = [0, 1, 3] : (tensor<?x?x?x?xf32>, tensor<f32>) -> tensor<?xf32>

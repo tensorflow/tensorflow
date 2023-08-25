@@ -161,7 +161,7 @@ class InferenceContext {
   absl::Status UpdateParams(const GpuInfo& gpu_info);
   void GetUsages(const std::function<bool(ValueId)>& functor,
                  std::map<ValueId, int2>* usages);
-  TensorMemoryType GetTensorMemoryType(ValueId id);
+  TensorMemoryType GetTensorMemoryType(const GpuInfo& gpu_info, ValueId id);
   absl::Status Tune(TuningType tuning_type, MetalDevice* device);
 
   absl::flat_hash_map<ValueId, TensorDescriptor> tensors_descs_;
@@ -185,7 +185,8 @@ class InferenceContext {
   std::map<ValueId, MetalSpatialTensor> strong_shape_tensors_;
   std::map<ValueId, ValueId> graph_ids_to_strong_shape_tensors_;
 
-  id<MTLIndirectCommandBuffer> icb_ = nullptr;
+  id<MTLIndirectCommandBuffer> icb_ API_AVAILABLE(ios(13.0), macos(11.00),
+                                                  tvos(13.0)) = nullptr;
   id<MTLDevice> device_ = nullptr;
 };
 

@@ -1,10 +1,10 @@
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteC'
-  s.version          = '2.9.1'
+  s.version          = '2.11.0'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :http => "https://dl.google.com/tflite-release/ios/prod/tensorflow/lite/release/ios/release/17/20220523-193421/TensorFlowLiteC/2.9.1/6f82a8ae452ae95b/TensorFlowLiteC-2.9.1.tar.gz" }
+  s.source           = { :http => "https://dl.google.com/tflite-release/ios/prod/tensorflow/lite/release/ios/release/20/20221205-133425/TensorFlowLiteC/2.11.0/5f36dfd15a35e951/TensorFlowLiteC-2.11.0.tar.gz" }
   s.summary          = 'TensorFlow Lite'
   s.description      = <<-DESC
 

@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/compiler.h"
 
+#include <functional>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -53,16 +55,17 @@ Compiler::CompileAheadOfTime(
   return CompileAheadOfTime(std::move(module_group), options);
 }
 
-/* static */ std::map<se::Platform::Id, Compiler::CompilerFactory>*
+/* static */ absl::flat_hash_map<se::Platform::Id, Compiler::CompilerFactory>*
 Compiler::GetPlatformCompilerFactories() {
-  static auto* r = new std::map<se::Platform::Id, CompilerFactory>;
+  static auto* r = new absl::flat_hash_map<se::Platform::Id, CompilerFactory>;
   return r;
 }
 
 /* static */
-std::map<se::Platform::Id, std::unique_ptr<Compiler>>*
+absl::flat_hash_map<se::Platform::Id, std::unique_ptr<Compiler>>*
 Compiler::GetPlatformCompilers() {
-  static auto* r = new std::map<se::Platform::Id, std::unique_ptr<Compiler>>;
+  static auto* r =
+      new absl::flat_hash_map<se::Platform::Id, std::unique_ptr<Compiler>>;
   return r;
 }
 
@@ -104,6 +107,14 @@ Compiler::GetPlatformCompilers() {
   // And then we invoke the factory, placing the result into the mapping.
   compilers->insert(std::make_pair(platform->id(), it->second()));
   return compilers->at(platform->id()).get();
+}
+
+// Default implementation
+// TODO(b/256849421) Replace with non-null instantiation of MetricsHookInterface
+// with empty implementations.
+std::unique_ptr<MetricsHookInterface> Compiler::CreateMetricsHook(
+    absl::string_view filename_prefix) const {
+  return nullptr;
 }
 
 AotCompilationOptions::AotCompilationOptions()

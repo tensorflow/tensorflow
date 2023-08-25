@@ -17,6 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 
 #include <functional>
+#include <ios>
+#include <memory>
+#include <optional>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -25,12 +29,13 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/utility/utility.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
@@ -77,6 +82,7 @@ namespace xla {
 //     - WithOneUser: Instruction is used by exactly one other instruction, but
 //       is possibly used more than once as an operand (e.g. multiply(x,x)).
 //     - WithComparisonDirection: instr has the given direction
+//     - WithConvDnums(string or proto): checks convolution_dimension_numbers().
 //     - WithPredicate: Instruction matches an arbitrary function you pass.
 //       Function must have signature `bool(const HloInstruction*)`.
 //
@@ -151,13 +157,18 @@ struct MatchOption {
   // If true, actually capture matched item into the user pointer.
   bool capture;
 
+  // If true, require all operands prescribed in pattern to have one user.
+  bool single_user_only;
+
   // An explanation for why we failed to match is streamed here, if not-null.
   std::ostream* explain_os;
 };
 
 template <typename Value, typename Pattern>
 bool Match(Value* value, const Pattern& pattern,
-           MatchOption option = {/*.capture=*/true, /*.explain_os=*/nullptr}) {
+           MatchOption option = {/*.capture=*/true,
+                                 /*.single_user_only=*/false,
+                                 /*.explain_os=*/nullptr}) {
   if (option.capture) {
     auto new_option = option;
     new_option.capture = false;
@@ -166,6 +177,34 @@ bool Match(Value* value, const Pattern& pattern,
     }
   }
   return pattern.Match(value, option);
+}
+
+// Recursively requires all operands of the top-level operation prescribed in
+// pattern (but not the top-level operation itself) to have one user. The
+// behavior is identical to calling Match(value, pattern) with WithOneUser()
+// applied to all prescribed operands at all levels in pattern.
+//
+// Example:
+// p0 = parameter(0)
+// add = add(p0, p0)
+// mul = multiply(p0, p0)
+//
+// MatchSingleUserOnly(p0, m::Op()) -> true
+// (Top-level operation in the pattern is not required to have one user).
+//
+// MatchSingleUserOnly(add, m::Add()) -> true
+// (Only operands prescribed in the pattern are required to have one user).
+//
+// MatchSingleUserOnly(add, m::Add(m::Op(), m::Op()) -> false
+// (Operands prescribed in the pattern have two users).
+//
+// The previous line is equivalent to:
+// Match(add, m::Add(m::Op().WithOneUser(), m::Op().WithOneUser()) -> false.
+template <typename Value, typename Pattern>
+bool MatchSingleUserOnly(Value* value, const Pattern& pattern) {
+  MatchOption option = {/*.capture=*/true, /*.single_user_only=*/true,
+                        /*.explain_os=*/nullptr};
+  return Match(value, pattern, option);
 }
 
 // If `enable_logging` is false, this is identical to Match(instr, pattern).
@@ -194,7 +233,9 @@ bool MatchAndLogIfFailed(HloInstruction* instr, absl::string_view desc,
     return matched;
   }
   std::stringstream os;
-  CHECK(!Match(instr, pattern, {/*capture=*/false, /*explain_os=*/&os}));
+  CHECK(!Match(
+      instr, pattern,
+      {/*capture=*/false, /*.single_user_only=*/false, /*explain_os=*/&os}));
   LOG(ERROR) << "Failed to match " << desc << ":\n" << os.str();
   return false;
 }
@@ -626,15 +667,6 @@ class AnyOfPattern {
 
 }  // namespace detail
 
-// Returns a pattern that represents the logical disjunction of the input
-// patterns. The returned pattern matches from left to right, and stops on the
-// first match.
-template <typename Item, typename... Patterns>
-auto AnyOf(const Patterns&... patterns) {
-  return detail::AnyOfPattern<typename std::remove_const<Item>::type,
-                              Patterns...>(patterns...);
-}
-
 // Creates a layout pattern that will capture the matched layout in the
 // argument.
 inline constexpr auto Layout(const ::xla::Layout** matched_layout = nullptr) {
@@ -772,7 +804,7 @@ class ShapePatternDimsImpl {
 // A ShapePattern implementation that matches only if the shape is scalar.
 class ShapePatternIsScalarImpl {
  public:
-  explicit constexpr ShapePatternIsScalarImpl() {}
+  explicit constexpr ShapePatternIsScalarImpl() = default;
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
     if (!ShapeUtil::IsScalar(*shape)) {
@@ -790,7 +822,7 @@ class ShapePatternIsScalarImpl {
 // A ShapePattern implementation that matches only if the shape is an array
 class ShapePatternIsArrayImpl {
  public:
-  explicit constexpr ShapePatternIsArrayImpl() {}
+  explicit constexpr ShapePatternIsArrayImpl() = default;
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
     if (!shape->IsArray()) {
@@ -808,7 +840,7 @@ class ShapePatternIsArrayImpl {
 // A ShapePattern implementation that matches only if the shape is an array
 class ShapePatternIsDenseArrayImpl {
  public:
-  explicit constexpr ShapePatternIsDenseArrayImpl() {}
+  explicit constexpr ShapePatternIsDenseArrayImpl() = default;
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
     if (!LayoutUtil::IsDenseArray(*shape)) {
@@ -826,7 +858,7 @@ class ShapePatternIsDenseArrayImpl {
 // A ShapePattern implementation that matches only if the shape is a tuple.
 class ShapePatternIsTupleImpl {
  public:
-  explicit constexpr ShapePatternIsTupleImpl() {}
+  explicit constexpr ShapePatternIsTupleImpl() = default;
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
     if (!shape->IsTuple()) {
@@ -845,7 +877,7 @@ class ShapePatternIsTupleImpl {
 // scalar.
 class ShapePatternEffectiveScalarImpl {
  public:
-  explicit constexpr ShapePatternEffectiveScalarImpl() {}
+  explicit constexpr ShapePatternEffectiveScalarImpl() = default;
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
     if (!ShapeUtil::IsEffectiveScalar(*shape)) {
@@ -1241,13 +1273,12 @@ class HloInstructionPatternOpcodeImpl {
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     if (invert_ && inst->opcode() == opcode_) {
-      EXPLAIN << "HloInstruction has opcode " << HloOpcodeString(opcode_)
+      EXPLAIN << "HloInstruction has opcode " << opcode_
               << ", expected anything else";
       return false;
     }
     if (!invert_ && inst->opcode() != opcode_) {
-      EXPLAIN << "HloInstruction doesn't have opcode "
-              << HloOpcodeString(opcode_);
+      EXPLAIN << "HloInstruction doesn't have opcode " << opcode_;
       return false;
     }
     return true;
@@ -1255,9 +1286,9 @@ class HloInstructionPatternOpcodeImpl {
 
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     if (!invert_) {
-      *os << "with opcode " << HloOpcodeString(opcode_);
+      *os << "with opcode " << opcode_;
     } else {
-      *os << "with any opcode other than " << HloOpcodeString(opcode_);
+      *os << "with any opcode other than " << opcode_;
     }
   }
 
@@ -1399,6 +1430,13 @@ class HloInstructionPatternOperandImpl {
       EXPLAIN << "\nin operand " << operand_index_;
       return false;
     }
+    if (option.single_user_only &&
+        inst->operand(operand_index_)->user_count() != 1) {
+      EXPLAIN << "Operand " << operand_index_ << " of HloInstruction has "
+              << inst->operand(operand_index_)->user_count()
+              << " users. Expected 1.";
+      return false;
+    }
     return true;
   }
 
@@ -1496,6 +1534,16 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
       return false;
     }
 
+    if (option.single_user_only) {
+      for (int i = 0; i < 2; ++i) {
+        if (inst->operand(i)->user_count() != 1) {
+          EXPLAIN << "Operand " << i << " of HloInstruction has "
+                  << inst->operand(i)->user_count() << " users. Expected 1.";
+          return false;
+        }
+      }
+    }
+
     // If we're not generating explanations, this is pretty simple.
     if (!option.explain_os) {
       auto try_match = [&](int64_t idx1, int64_t idx2) {
@@ -1577,7 +1625,7 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
     for (int i = 0; !wrote_explanation && i < 2; ++i) {
       if (!matches[i][0] && !matches[i][1]) {
         EXPLAIN << "HloInstruction's operands (ignoring order) did not match "
-                << (i == 0 ? "first" : "second") << " matcher.  Specifically,";
+                << (i == 0 ? "first" : "second") << " matcher. Specifically,";
         describe_matcher(i);
         wrote_explanation = true;
       }
@@ -1591,7 +1639,7 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
         CHECK(!matches[1][(i + 1) % 2]);
         CHECK(!wrote_explanation);
         EXPLAIN << "HloInstruction's " << (i == 1 ? "LHS" : "RHS")
-                << " operand did not match either of the two matchers.  "
+                << " operand did not match either of the two matchers. "
                    "Specifically,";
         describe_matcher(0);
         EXPLAIN << "\nand";
@@ -1807,6 +1855,54 @@ class HloInstructionPatternComparisonDirectionImpl {
   ComparisonDirection direction_;
 };
 
+class HloInstructionPatternConvDnumsImpl {
+ public:
+  explicit HloInstructionPatternConvDnumsImpl(absl::string_view dnums)
+      : HloInstructionPatternConvDnumsImpl(
+            ParseConvolutionDimensionNumbers(dnums).value()) {}
+
+  explicit HloInstructionPatternConvDnumsImpl(ConvolutionDimensionNumbers dnums)
+      : dnums_(std::move(dnums)) {}
+
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "which has convolution dimension numbers "
+        << ConvolutionDimensionNumbersToString(dnums_);
+  }
+
+ private:
+  template <typename HloInstructionType>
+  bool MatchImpl(HloInstructionType* inst, MatchOption option) const {
+    if (inst->opcode() != HloOpcode::kConvolution &&
+        inst->opcode() != HloOpcode::kCustomCall) {
+      EXPLAIN << "HloInstruction is not convolution or custom-call and so "
+                 "can't have convolution_dimension_numbers";
+      return false;
+    }
+
+    const ConvolutionDimensionNumbers& actual_dnums =
+        inst->convolution_dimension_numbers();
+    if (!tsl::protobuf::util::MessageDifferencer::Equals(dnums_,
+                                                         actual_dnums)) {
+      EXPLAIN << "convolution_dimension_numbers "
+              << ConvolutionDimensionNumbersToString(actual_dnums)
+              << " don't match expected "
+              << ConvolutionDimensionNumbersToString(dnums_);
+      return false;
+    }
+    return true;
+  }
+
+  ConvolutionDimensionNumbers dnums_;
+};
+
 class HloInstructionPredicateImpl {
  public:
   explicit HloInstructionPredicateImpl(HloPredicate fn) : fn_(std::move(fn)) {}
@@ -1924,14 +2020,17 @@ class HloInstructionPattern {
   }
 
   // Returns true and captures the instruction iff it matches the pattern.
-  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+  bool Match(::xla::HloInstruction* inst, MatchOption option,
+             bool explain_instruction = true) const {
     if (impl_.Match(inst, option)) {
       if (option.capture && matched_inst_) {
         *matched_inst_ = inst;
       }
       return true;
     }
-    EXPLAIN << "\nin " << InstToString(inst);
+    if (explain_instruction) {
+      EXPLAIN << "\nin " << InstToString(inst);
+    }
     return false;
   }
 
@@ -1943,11 +2042,6 @@ class HloInstructionPattern {
   // Modifies the pattern to match only if the instruction has the given opcode.
   auto WithOpcode(HloOpcode opcode) const {
     return AppendImpl(HloInstructionPatternOpcodeImpl(opcode, false));
-  }
-
-  // Modifies the pattern to match only the custom call with a given target.
-  auto WithCustomCallTarget(absl::string_view custom_call_target) const {
-    return AppendImpl(HloInstructionCustomCallTargetImpl({custom_call_target}));
   }
 
   // Modifies the pattern to match a custom call with one of the given targets.
@@ -2110,6 +2204,13 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternComparisonDirectionImpl(direction));
   }
 
+  auto WithConvDnums(absl::string_view dnums) const {
+    return AppendImpl(HloInstructionPatternConvDnumsImpl(dnums));
+  }
+  auto WithConvDnums(ConvolutionDimensionNumbers dnums) const {
+    return AppendImpl(HloInstructionPatternConvDnumsImpl(dnums));
+  }
+
   auto WithPredicate(HloPredicate fn) const {
     return AppendImpl(HloInstructionPredicateImpl(std::move(fn)));
   }
@@ -2123,7 +2224,32 @@ class HloInstructionPattern {
   HloInstructionType** matched_inst_;
 };
 
+template <typename Item, typename... Patterns>
+struct AnyOfImpl {
+  auto operator()(const Patterns&... patterns) const {
+    return AnyOfPattern<typename std::remove_const<Item>::type, Patterns...>(
+        patterns...);
+  }
+};
+
+template <typename... Patterns>
+struct AnyOfImpl<HloInstruction, Patterns...> {
+  auto operator()(const Patterns&... patterns) const {
+    auto any_of = AnyOfPattern<HloInstruction, Patterns...>(patterns...);
+    return HloInstructionPattern<HloInstruction, decltype(any_of)>(
+        std::move(any_of), /*matched_inst=*/nullptr);
+  }
+};
+
 }  // namespace detail
+
+// Returns a pattern that represents the logical disjunction of the input
+// patterns. The returned pattern matches from left to right, and stops on the
+// first match.
+template <typename Item, typename... Patterns>
+auto AnyOf(const Patterns&... patterns) {
+  return detail::AnyOfImpl<Item, Patterns...>()(patterns...);
+}
 
 // Creates an instruction pattern that will capture the matched instruction in
 // the argument.
@@ -2183,7 +2309,15 @@ XLA_UNOP_PATTERN(Ceil)
 XLA_UNOP_PATTERN(Convert)
 XLA_UNOP_PATTERN(Copy)
 XLA_UNOP_PATTERN(Cos)
+XLA_UNOP_PATTERN(AllGather)
 XLA_UNOP_PATTERN(AllReduce)
+XLA_UNOP_PATTERN(AllReduceStart)
+XLA_UNOP_PATTERN(AllReduceDone)
+XLA_UNOP_PATTERN(AllToAll)
+XLA_UNOP_PATTERN(CollectivePermute)
+XLA_UNOP_PATTERN(CollectivePermuteStart)
+XLA_UNOP_PATTERN(CollectivePermuteDone)
+XLA_UNOP_PATTERN(Domain)
 XLA_UNOP_PATTERN(Exp)
 XLA_UNOP_PATTERN(Fft)
 XLA_UNOP_PATTERN(Floor)
@@ -2198,6 +2332,7 @@ XLA_UNOP_PATTERN(Real)
 XLA_UNOP_PATTERN(Recv)
 XLA_UNOP_PATTERN(RecvDone)
 XLA_UNOP_PATTERN(ReducePrecision)
+XLA_UNOP_PATTERN(ReduceScatter)
 XLA_UNOP_PATTERN(Reshape)
 XLA_UNOP_PATTERN(Reverse)
 XLA_UNOP_PATTERN(Rsqrt)
@@ -2206,6 +2341,7 @@ XLA_UNOP_PATTERN(Sign)
 XLA_UNOP_PATTERN(Sin)
 XLA_UNOP_PATTERN(Slice)
 XLA_UNOP_PATTERN(Sqrt)
+XLA_UNOP_PATTERN(Tan)
 XLA_UNOP_PATTERN(Tanh)
 XLA_UNOP_PATTERN(Transpose)
 #undef XLA_UNOP_PATTERN
@@ -2268,6 +2404,7 @@ XLA_COMMUTATIVE_BINOP_PATTERN(Or)
 XLA_BINOP_PATTERN(ShiftLeft)
 XLA_BINOP_PATTERN(ShiftRightArithmetic)
 XLA_BINOP_PATTERN(ShiftRightLogical)
+XLA_COMMUTATIVE_BINOP_PATTERN(Xor)
 #undef XLA_COMMUTATIVE_BINOP_PATTERN
 #undef XLA_BINOP_PATTERN
 
@@ -2372,10 +2509,12 @@ auto CustomCall(Arg0&& arg0, Args&&... args) {
                               /*operand_num=*/0, std::forward<Arg0>(arg0),
                               std::forward<Args>(args)...);
 }
+
 template <typename... Args>
-auto CustomCall(absl::string_view custom_call_target, Args&&... args) {
+auto CustomCall(absl::Span<const absl::string_view> custom_call_targets,
+                Args&&... args) {
   return CustomCall(std::forward<Args>(args)...)
-      .WithCustomCallTarget(custom_call_target);
+      .WithCustomCallTarget(custom_call_targets);
 }
 
 template <typename HloInstructionType, typename Arg0, typename... Args,
@@ -2387,11 +2526,13 @@ auto CustomCall(HloInstructionType** matched_inst, Arg0&& arg0,
       CustomCall(matched_inst).WithNumOperands(sizeof...(Args) + 1),
       /*operand_num=*/0, std::forward<Arg0>(arg0), std::forward<Args>(args)...);
 }
+
 template <typename HloInstructionType, typename... Args>
 auto CustomCall(HloInstructionType** matched_inst,
-                absl::string_view custom_call_target, Args&&... args) {
+                absl::Span<const absl::string_view> custom_call_targets,
+                Args&&... args) {
   return CustomCall(matched_inst, std::forward<Args>(args)...)
-      .WithCustomCallTarget(custom_call_target);
+      .WithCustomCallTarget(custom_call_targets);
 }
 
 // Helpers for comparison instructions.
@@ -2519,6 +2660,81 @@ template <typename HloInstructionType, typename ScalarTy>
 inline auto ConstantEffectiveScalar(HloInstructionType** matched_inst,
                                     ScalarTy val) {
   return Op(matched_inst).IsConstantEffectiveScalar(val);
+}
+
+namespace detail {
+
+// A helper for the type erasure.
+class InstructionPatternInterface {
+ public:
+  virtual ~InstructionPatternInterface() = default;
+
+  virtual bool Match(::xla::HloInstruction* instr,
+                     MatchOption option) const = 0;
+
+  virtual void DescribeTo(std::ostream* os, int64_t indent) const = 0;
+};
+
+// A helper for the type erasure.
+template <typename Pattern>
+class TypedInstructionPattern : public InstructionPatternInterface {
+ public:
+  explicit TypedInstructionPattern(Pattern pattern)
+      : pattern_(std::move(pattern)) {}
+
+  bool Match(::xla::HloInstruction* instr, MatchOption option) const override {
+    return pattern_.Match(instr, option);
+  }
+  void DescribeTo(std::ostream* os, int64_t indent) const override {
+    pattern_.DescribeTo(os, indent);
+  }
+
+ private:
+  Pattern pattern_;
+};
+
+// An Impl class for HloInstructionPattern that stores the inner pattern in a
+// type-erased shared_ptr.
+class HloInstructionPatternSharedImpl {
+ public:
+  template <typename Pattern>
+  explicit HloInstructionPatternSharedImpl(Pattern pattern)
+      // The return type annotation of the lambda is needed for correctness.
+      : pattern_(std::make_shared<TypedInstructionPattern<Pattern>>(
+            std::move(pattern))) {}
+
+  bool Match(::xla::HloInstruction* instr, MatchOption option) const {
+    return pattern_->Match(instr, option);
+  }
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    pattern_->DescribeTo(os, indent);
+  }
+
+ private:
+  // We use std::shared_ptr to avoid copying the underlying pattern when reusing
+  // it, thus avoiding exponential memory use.
+  std::shared_ptr<InstructionPatternInterface> pattern_;
+};
+
+}  // namespace detail
+
+// Wraps the HloInstructionPattern in a type-erased shared_ptr.
+//
+// This can be used around repeated subpatterns to avoid exponential code growth
+// and compilation time, while keeping memory usage minimal at runtime. This is
+// similar to defining a subroutine in imperative programming languages.
+//
+// If used excessively, this may slightly increase the runtime of the patterns.
+//
+// Example usage:
+// auto shared = m::SharedSubpattern(sub_pattern);
+// return m::AnyOf<HloInstruction>(m::Convert(shared), shared);
+template <typename HloInstructionType, typename OriginalImpl>
+inline auto SharedSubpattern(
+    detail::HloInstructionPattern<HloInstructionType, OriginalImpl> pattern) {
+  auto impl = detail::HloInstructionPatternSharedImpl(std::move(pattern));
+  return detail::HloInstructionPattern<HloInstructionType, decltype(impl)>(
+      std::move(impl), /*matched_inst=*/nullptr);
 }
 
 }  // namespace match

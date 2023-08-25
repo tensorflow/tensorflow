@@ -18,8 +18,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/coreml/builders/activation_layer_builder.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_factory.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"

@@ -16,32 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_C_KERNELS_H_
 #define TENSORFLOW_C_KERNELS_H_
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
-
-// Macro to control visibility of exported symbols in the shared library (.so,
-// .dylib, .dll).
-// This duplicates the TF_EXPORT macro definition in
-// tensorflow/core/platform/macros.h in order to keep this .h file independent
-// of any other includes.
-#ifdef SWIG
-#define TF_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TF_COMPILE_LIBRARY
-#define TF_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TF_CAPI_EXPORT __declspec(dllimport)
-#endif  // TF_COMPILE_LIBRARY
-#else
-#define TF_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,6 +49,11 @@ typedef struct TF_Tensor TF_Tensor;
 typedef struct TF_KernelBuilder TF_KernelBuilder;
 typedef struct TF_OpKernelConstruction TF_OpKernelConstruction;
 typedef struct TF_OpKernelContext TF_OpKernelContext;
+typedef struct TF_AsyncOpKernelDoneCallback TF_AsyncOpKernelDoneCallback;
+
+// Run callback function for async kernel.
+TF_CAPI_EXPORT extern void TF_RunAsyncOpKernelDoneCallback(
+    TF_AsyncOpKernelDoneCallback*);
 
 // TF_InitKernel to do op/kernel registration.
 // Plugin should implement TF_InitKernel to register kernels. This function
@@ -103,6 +92,18 @@ TF_CAPI_EXPORT extern TF_KernelBuilder* TF_NewKernelBuilder(
     const char* op_name, const char* device_name,
     void* (*create_func)(TF_OpKernelConstruction*),
     void (*compute_func)(void*, TF_OpKernelContext*),
+    void (*delete_func)(void*));
+
+// Allocates a new kernel builder and returns a pointer to it.
+//
+// It is similar as TF_NewKernelBuilder, except compute_async_func.
+// It creates an AsyncOpKernel, and performs async computation through
+// compute_async_func.
+TF_CAPI_EXPORT extern TF_KernelBuilder* TF_NewAsyncKernelBuilder(
+    const char* op_name, const char* device_name,
+    void* (*create_func)(TF_OpKernelConstruction*),
+    void (*compute_async_func)(void*, TF_OpKernelContext*,
+                               TF_AsyncOpKernelDoneCallback* done),
     void (*delete_func)(void*));
 
 // Specifies that this kernel's attribute only supports the given type.
@@ -190,6 +191,11 @@ TF_CAPI_EXPORT extern void TF_InputRange(TF_OpKernelContext* ctx,
                                          const char* name,
                                          TF_InputRange_Args* args);
 
+// Returns the data type of the index-th input. If index < 0 or index >=
+// TF_NumInputs(ctx), the program aborts.
+TF_CAPI_EXPORT extern TF_DataType TF_InputDatatype(TF_OpKernelContext* ctx,
+                                                   int index);
+
 // Sets the ith output of ctx to tensor. If TF_GetCode(status) is anything but
 // TF_OK, ctx is left unmodified.
 //
@@ -214,6 +220,11 @@ TF_CAPI_EXPORT extern void TF_GetSerializedFunctionDefLibrary(
 // Retrieves a serialized ConfigProto. Status will be set.
 TF_CAPI_EXPORT extern void TF_GetSerializedConfigProto(
     TF_OpKernelContext* ctx, TF_Buffer* serialized_config_proto,
+    TF_Status* status);
+
+// Retrieves a serialized ResourceHandleProto. Status will be set.
+TF_CAPI_EXPORT extern void TF_GetSerializedResourceHandleProto(
+    TF_OpKernelContext* ctx, int i, TF_Buffer* serialized_resource_handle_proto,
     TF_Status* status);
 
 // Notifies the given OpKernelConstruction that kernel construction has failed.
@@ -252,6 +263,16 @@ TF_CAPI_EXPORT extern uint64_t TF_GetFrameId(TF_OpKernelContext* ctx);
 
 // Returns the Iter ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_GetIterId(TF_OpKernelContext* ctx);
+
+// Returns the Step ID of the given context.
+TF_CAPI_EXPORT extern int64_t TF_GetStepId(TF_OpKernelContext* ctx);
+
+// Returns the Device ID of the device that the context possesses. Returns the
+// PlatformDeviceId if a mapping between between TfDeviceId and PlatformDeviceId
+// is set; otherwise returns the id in the device name. Please refer to
+// tensorflow/tsl/framework/device_id.h for more details.
+// For mobile or slim build, returns the id in the device name.
+TF_CAPI_EXPORT extern int TF_GetDeviceId(TF_OpKernelContext* ctx);
 
 // Returns the graph def version of the given context.
 TF_CAPI_EXPORT extern int TF_GetGraphDefVersion(TF_OpKernelContext* ctx);
@@ -421,7 +442,7 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrBoolList(
 // TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
 // total_size).
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrStringList(
-    TF_OpKernelConstruction* ctx, const char* attr_name, char** vals,
+    TF_OpKernelConstruction* ctx, const char* attr_name, char** values,
     size_t* lengths, int max_values, void* storage, size_t storage_size,
     TF_Status* status);
 
@@ -482,6 +503,20 @@ TF_CAPI_EXPORT TF_Tensor* TF_ForwardInputOrAllocateOutput(
 TF_CAPI_EXPORT extern TF_Tensor* TF_AllocateTemp(
     TF_OpKernelContext* context, TF_DataType dtype, const int64_t* dims,
     int num_dims, TF_AllocatorAttributes* alloc_attrs, TF_Status* status);
+
+// Used by OpKernel implementations to track actively running deferred ops.
+//
+// A deferred op is one whose Compute method returns (or whose ComputeAsync
+// method invokes the callback) when work is scheduled onto a device. At that
+// point, we don't know when the work will actually complete (or if it has
+// already completed) on the device. These functions allow the executor to
+// track the status of deferred ops and act accordingly.
+//
+// Deferred OpKernel implementations must use these methods to get two
+// functions. It then must call these two functions in pairs, before and after
+// device execution, respectively.
+TF_CAPI_EXPORT extern void TF_IncNumDeferredOps(TF_OpKernelContext* context);
+TF_CAPI_EXPORT extern void TF_DecNumDeferredOps(TF_OpKernelContext* context);
 
 #ifdef __cplusplus
 } /* end extern "C" */

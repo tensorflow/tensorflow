@@ -32,8 +32,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/util/command_line_flags.h"
 
 namespace xla {
 
@@ -167,7 +167,7 @@ static void SetArgvFromEnv(absl::string_view envvar, EnvArgv* a) {
         LOG(QFATAL)
             << "Could not open file \"" << env
             << "\" to read flags for environment variable \"" << envvar
-            << "\".  (We assumed \"" << env
+            << "\". (We assumed \"" << env
             << "\" was a file name because it did not start with a \"--\".)";
       }
     }
@@ -186,8 +186,8 @@ static absl::flat_hash_map<std::string, EnvArgv>& EnvArgvs() {
 // Used to protect accesses to env_argvs.
 static absl::Mutex env_argv_mu(absl::kConstInit);
 
-bool ParseFlagsFromEnvAndDieIfUnknown(
-    absl::string_view envvar, const std::vector<tensorflow::Flag>& flag_list) {
+bool ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
+                                      const std::vector<tsl::Flag>& flag_list) {
   absl::MutexLock lock(&env_argv_mu);
   auto* env_argv = &EnvArgvs()[envvar];
   SetArgvFromEnv(envvar, env_argv);  // a no-op if already initialized
@@ -200,32 +200,16 @@ bool ParseFlagsFromEnvAndDieIfUnknown(
   }
 
   bool result =
-      tensorflow::Flags::Parse(&env_argv->argc, &env_argv->argv[0], flag_list);
+      tsl::Flags::Parse(&env_argv->argc, &env_argv->argv[0], flag_list);
 
   // There's always at least one unparsed argc, namely the fake argv[0].
   if (result && env_argv->argc != 1) {
     // Skip the first argv, which is the fake argv[0].
     auto unknown_flags = absl::MakeSpan(env_argv->argv);
     unknown_flags.remove_prefix(1);
-
-    // Some flags are set on XLA_FLAGS, others on TF_XLA_FLAGS.  If we find an
-    // unrecognized flag, suggest the alternative.
-    std::string alternate_envvar;
-    if (envvar == "TF_XLA_FLAGS") {
-      alternate_envvar = "XLA_FLAGS";
-    } else if (envvar == "XLA_FLAGS") {
-      alternate_envvar = "TF_XLA_FLAGS";
-    }
-    std::string did_you_mean;
-    if (!alternate_envvar.empty()) {
-      did_you_mean = absl::StrFormat(
-          "\nPerhaps you meant to specify these on the %s envvar?",
-          alternate_envvar);
-    }
-
     LOG(QFATAL) << "Unknown flag" << (unknown_flags.size() > 1 ? "s" : "")
-                << " in " << envvar << ": " << absl::StrJoin(unknown_flags, " ")
-                << did_you_mean;
+                << " in " << envvar << ": "
+                << absl::StrJoin(unknown_flags, " ");
     return false;
   }
   return result;

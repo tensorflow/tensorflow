@@ -35,13 +35,17 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
                             const std::vector<std::vector<int>>& input_shapes,
                             const TensorType& weights_type = TensorType_FLOAT32,
                             bool is_layer_norm = false,
-                            bool asymmetric_quantize_inputs = false)
+                            bool asymmetric_quantize_inputs = false,
+                            bool diagonal_recurrent_weights = false)
       : n_batch_(n_batch),
         n_input_(n_input),
         n_cell_(n_cell),
         n_output_(n_output),
-        sequence_length_(sequence_length) {
+        sequence_length_(sequence_length),
+        diagonal_recurrent_weights_(diagonal_recurrent_weights) {
     input_ = AddInput(TensorType_FLOAT32);
+    const TensorType recurrent_weight_type =
+        diagonal_recurrent_weights_ ? TensorType_FLOAT32 : weights_type;
 
     if (use_cifg) {
       input_to_input_weights_ = AddNullInput();
@@ -56,12 +60,12 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
     if (use_cifg) {
       recurrent_to_input_weights_ = AddNullInput();
     } else {
-      recurrent_to_input_weights_ = AddInput(weights_type);
+      recurrent_to_input_weights_ = AddInput(recurrent_weight_type);
     }
 
-    recurrent_to_forget_weights_ = AddInput(weights_type);
-    recurrent_to_cell_weights_ = AddInput(weights_type);
-    recurrent_to_output_weights_ = AddInput(weights_type);
+    recurrent_to_forget_weights_ = AddInput(recurrent_weight_type);
+    recurrent_to_cell_weights_ = AddInput(recurrent_weight_type);
+    recurrent_to_output_weights_ = AddInput(recurrent_weight_type);
 
     if (use_peephole) {
       if (use_cifg) {
@@ -122,12 +126,13 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
 
     output_ = AddOutput(TensorType_FLOAT32);
 
-    SetBuiltinOp(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
-                 BuiltinOptions_UnidirectionalSequenceLSTMOptions,
-                 CreateUnidirectionalSequenceLSTMOptions(
-                     builder_, ActivationFunctionType_TANH, cell_clip,
-                     proj_clip, time_major, asymmetric_quantize_inputs)
-                     .Union());
+    SetBuiltinOp(
+        BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
+        BuiltinOptions_UnidirectionalSequenceLSTMOptions,
+        CreateUnidirectionalSequenceLSTMOptions(
+            builder_, ActivationFunctionType_TANH, cell_clip, proj_clip,
+            time_major, asymmetric_quantize_inputs, diagonal_recurrent_weights)
+            .Union());
     BuildInterpreter(input_shapes);
   }
 
@@ -267,6 +272,7 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
   int n_cell_;
   int n_output_;
   int sequence_length_;
+  bool diagonal_recurrent_weights_;
 
  private:
   int AddLayerNormCoeffsTensor(
@@ -277,6 +283,101 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
       return AddNullInput();
     }
   }
+};
+
+// The hybrid model has quantized weights.
+class HybridUnidirectionalLSTMOpModel : public UnidirectionalLSTMOpModel {
+ public:
+  HybridUnidirectionalLSTMOpModel(
+      int n_batch, int n_input, int n_cell, int n_output, int sequence_length,
+      bool time_major, bool use_cifg, bool use_peephole,
+      bool use_projection_weights, bool use_projection_bias, float cell_clip,
+      float proj_clip, const std::vector<std::vector<int>>& input_shapes,
+      TensorType tensor_type, bool asymmetric_quantize_inputs,
+      bool diagonal_recurrent_weights = false)
+      : UnidirectionalLSTMOpModel(
+            n_batch, n_input, n_cell, n_output, sequence_length, time_major,
+            use_cifg, use_peephole, use_projection_weights, use_projection_bias,
+            cell_clip, proj_clip, input_shapes, tensor_type,
+            /*is_layer_norm=*/false, asymmetric_quantize_inputs,
+            diagonal_recurrent_weights) {
+    tensor_type_ = tensor_type;
+  }
+
+  void SetWeights(int weights_idx, const std::vector<float>& f) {
+    if (tensor_type_ == TensorType_UINT8) {
+      SymmetricQuantizeAndPopulate(weights_idx, f);
+    } else {
+      SignedSymmetricQuantizeAndPopulate(weights_idx, f);
+    }
+  }
+
+  void SetInputToInputWeights(const std::vector<float>& f) {
+    SetWeights(input_to_input_weights_, f);
+  }
+
+  void SetInputToForgetWeights(const std::vector<float>& f) {
+    SetWeights(input_to_forget_weights_, f);
+  }
+
+  void SetInputToCellWeights(const std::vector<float>& f) {
+    SetWeights(input_to_cell_weights_, f);
+  }
+
+  void SetInputToOutputWeights(const std::vector<float>& f) {
+    SetWeights(input_to_output_weights_, f);
+  }
+
+  void SetRecurrentToInputWeights(const std::vector<float>& f) {
+    if (diagonal_recurrent_weights_) {
+      PopulateTensor(recurrent_to_input_weights_, f);
+    } else {
+      SetWeights(recurrent_to_input_weights_, f);
+    }
+  }
+
+  void SetRecurrentToForgetWeights(const std::vector<float>& f) {
+    if (diagonal_recurrent_weights_) {
+      PopulateTensor(recurrent_to_forget_weights_, f);
+    } else {
+      SetWeights(recurrent_to_forget_weights_, f);
+    }
+  }
+
+  void SetRecurrentToCellWeights(const std::vector<float>& f) {
+    if (diagonal_recurrent_weights_) {
+      PopulateTensor(recurrent_to_cell_weights_, f);
+    } else {
+      SetWeights(recurrent_to_cell_weights_, f);
+    }
+  }
+
+  void SetRecurrentToOutputWeights(const std::vector<float>& f) {
+    if (diagonal_recurrent_weights_) {
+      PopulateTensor(recurrent_to_output_weights_, f);
+    } else {
+      SetWeights(recurrent_to_output_weights_, f);
+    }
+  }
+
+  void SetCellToInputWeights(const std::vector<float>& f) {
+    SetWeights(cell_to_input_weights_, f);
+  }
+
+  void SetCellToForgetWeights(const std::vector<float>& f) {
+    SetWeights(cell_to_forget_weights_, f);
+  }
+
+  void SetCellToOutputWeights(const std::vector<float>& f) {
+    SetWeights(cell_to_output_weights_, f);
+  }
+
+  void SetProjectionWeights(const std::vector<float>& f) {
+    SetWeights(projection_weights_, f);
+  }
+
+ protected:
+  TensorType tensor_type_;
 };
 
 }  // namespace tflite

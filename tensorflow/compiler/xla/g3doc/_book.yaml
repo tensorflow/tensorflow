@@ -23,6 +23,8 @@ upper_tabs:
         path: /xla/broadcasting
       - title: Develop a new backend for XLA
         path: /xla/developing_new_backend
+      - title: Code Reviews Guide
+        path: /xla/code_reviews_guide
       - title: Operation semantics
         path: /xla/operation_semantics
       - title: Shapes and layout

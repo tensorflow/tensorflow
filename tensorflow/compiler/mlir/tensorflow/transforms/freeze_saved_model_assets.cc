@@ -26,17 +26,19 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 #include "tensorflow/core/platform/path.h"
 
 namespace mlir {
 namespace tf_saved_model {
 namespace {
 
+#define GEN_PASS_DEF_FREEZEASSETSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
+
 // This pass will replace a func's saved model asset bound inputs which are
 // bound to tf.InitializeTableFromTextFileV2Op ops with tf.Const ops inside the
 // func's body.
-struct FreezeAssetsPass : public FreezeAssetsPassBase<FreezeAssetsPass> {
+struct FreezeAssetsPass : public impl::FreezeAssetsPassBase<FreezeAssetsPass> {
   FreezeAssetsPass() = default;
 
   FreezeAssetsPass(const FreezeAssetsPass& pass) {}
@@ -46,7 +48,6 @@ struct FreezeAssetsPass : public FreezeAssetsPassBase<FreezeAssetsPass> {
   void runOnOperation() override;
 
  private:
-  // TODO(team): should be a pass option.
   std::string saved_model_dir;
 };
 
@@ -86,7 +87,7 @@ void FreezeAssetsPass::runOnOperation() {
       // Replace the arg with a tf.Const op in the function body.
       builder.setInsertionPointToStart(&func.getBody().front());
 
-      std::string asset_filename = asset.filename().str();
+      std::string asset_filename = asset.getFilename().str();
       std::string filename =
           tensorflow::io::JoinPath(saved_model_dir, asset_filename);
       ShapedType shaped_type =
@@ -99,9 +100,9 @@ void FreezeAssetsPass::runOnOperation() {
         // asset filepath.
         builder.setInsertionPoint(init_op);
         builder.create<TF::InitializeTableFromTextFileV2Op>(
-            init_op.getLoc(), init_op.table_handle(), const_op.getResult(),
-            init_op.key_index(), init_op.value_index(), init_op.vocab_size(),
-            init_op.delimiter());
+            init_op.getLoc(), init_op.getTableHandle(), const_op.getResult(),
+            init_op.getKeyIndex(), init_op.getValueIndex(),
+            init_op.getVocabSize(), init_op.getDelimiter());
         init_op.erase();
       }
     }

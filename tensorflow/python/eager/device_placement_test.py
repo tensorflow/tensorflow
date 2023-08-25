@@ -110,6 +110,28 @@ class SoftDevicePlacementTest(test.TestCase, parameterized.TestCase):
     self.assertIn('CPU:0', a.device)
     self.assertIn('CPU:0', a.backing_device)
 
+  @parameterized.named_parameters(
+      ('float', [1.0, 2.0], None, 'GPU:0'),
+      ## TODO(b/179035075) enable when int32 numeric tensors are not confused
+      ## with shape tensors
+      # ('int32', [1, 2], dtypes.int32, 'GPU:0'),
+      ('int64', [1, 2], dtypes.int64, 'GPU:0'))
+  @test_util.run_gpu_only
+  def testSoftPlacedNumericTensors(self, value, dtype, expect):
+    with ops.device('GPU:0'):
+      a = math_ops.add(constant_op.constant(value, dtype=dtype),
+                       constant_op.constant(value, dtype=dtype))
+    self.assertIn(expect, a.backing_device)
+
+  @test_util.run_gpu_only
+  def testSoftPlacedShapeTensor(self):
+    with ops.device('GPU:0'):
+      t = constant_op.constant([[1, 2], [3, 4]])
+      a = math_ops.add(array_ops.shape(t),
+                       constant_op.constant([10, 20], dtype=dtypes.int32))
+    # Shape computations remain on CPU
+    self.assertIn('CPU:0', a.backing_device)
+
   def testPlacedToDeviceInFunction(self):
 
     @def_function.function

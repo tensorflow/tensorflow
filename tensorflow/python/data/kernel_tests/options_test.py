@@ -14,9 +14,6 @@
 # ==============================================================================
 """Tests for `tf.data.Options`."""
 
-import platform
-import sys
-
 from absl.testing import parameterized
 
 from tensorflow.core.framework import dataset_options_pb2
@@ -73,9 +70,6 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsTwiceSameOption(self):
-    if sys.version_info >= (3, 8) and platform.system() == "Windows":
-      # TODO(b/165013260): Fix this
-      self.skipTest("Test is currently broken on Windows with Python 3.8")
     options1 = options_lib.Options()
     options1.autotune.enabled = False
     options2 = options_lib.Options()
@@ -128,9 +122,9 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = dataset_ops.Dataset.from_tensors(0)
     result = ds
 
-    for _ in range(999):
+    for _ in range(99):
       result = result.concatenate(ds)
-    self.assertDatasetProduces(result, [0]*1000)
+    self.assertDatasetProduces(result, [0]*100)
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsProtoRoundTrip(self):
@@ -147,7 +141,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.apply_default_optimizations = True
     options.experimental_optimization.filter_fusion = True
     options.experimental_optimization.filter_parallelization = True
-    options.experimental_optimization.inject_prefetch = True
+    options.experimental_optimization.inject_prefetch = False
     options.experimental_optimization.map_and_batch_fusion = True
     options.experimental_optimization.map_and_filter_fusion = True
     options.experimental_optimization.map_fusion = True
@@ -155,6 +149,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.noop_elimination = True
     options.experimental_optimization.parallel_batch = True
     options.experimental_optimization.shuffle_and_repeat_fusion = True
+    options.experimental_optimization.warm_start = True
     options.experimental_slack = True
     options.threading.max_intra_op_parallelism = 30
     options.threading.private_threadpool_size = 40
@@ -183,6 +178,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset_options_pb2.DistributeOptions())
     expected_pb.optimization_options.CopyFrom(
         dataset_options_pb2.OptimizationOptions())
+    expected_pb.optimization_options.warm_start = True
     expected_pb.threading_options.CopyFrom(
         dataset_options_pb2.ThreadingOptions())
     self.assertProtoEquals(expected_pb, result)

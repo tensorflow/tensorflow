@@ -83,7 +83,8 @@ class GmockMatcher {
   template <typename T>
   bool MatchAndExplainImpl(T* t,
                            ::testing::MatchResultListener* listener) const {
-    MatchOption options{/*.capture=*/true, /*.explain_os=*/listener->stream()};
+    MatchOption options{/*.capture=*/true, /*.single_user_only=*/false,
+                        /*.explain_os=*/listener->stream()};
     return Match(t, pattern_, options);
   }
 

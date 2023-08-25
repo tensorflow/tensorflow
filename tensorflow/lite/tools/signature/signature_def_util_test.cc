@@ -20,9 +20,9 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/c_api.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/core/c/c_api.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 

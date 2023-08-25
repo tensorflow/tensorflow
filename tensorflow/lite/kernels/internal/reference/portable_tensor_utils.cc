@@ -663,7 +663,7 @@ void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
       const int16_t b = input_2[index];
       int32_t value = static_cast<int32_t>(a) * static_cast<int32_t>(b);
       value = MultiplyByQuantizedMultiplier(value, multiplier, shift);
-      value -= output_zp;
+      value += output_zp;
       value = std::min(std::max(static_cast<int32_t>(-128), value),
                        static_cast<int32_t>(127));
 

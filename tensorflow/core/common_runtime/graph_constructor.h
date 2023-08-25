@@ -31,7 +31,7 @@ class ShapeRefiner;
 // nodes) when provided to ConvertGraphDefToGraph. To enhance an existing Graph,
 // see ImportGraphDef.
 struct GraphConstructorOptions {
-  GraphConstructorOptions() {}
+  GraphConstructorOptions() = default;
 
   // If true, allows internal ops in the GraphDef.
   bool allow_internal_ops = false;
@@ -61,8 +61,9 @@ extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
 // Same as ConvertGraphDefToGraph, but takes just nodes.  Used by function
 // instantiation.
 // TODO(irving): This will turn into std::vector<NodeInfoPtr> soon.
-extern Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
-                                     gtl::ArraySlice<NodeDef> nodes, Graph* g);
+extern Status ConvertNodeDefsToGraph(
+    const GraphConstructorOptions& opts, gtl::ArraySlice<NodeDef> nodes,
+    Graph* g, const GraphDebugInfo* debug_info = nullptr);
 
 // Options for calling ImportGraphDef().
 struct ImportGraphDefOptions {
@@ -70,7 +71,8 @@ struct ImportGraphDefOptions {
       : uniquify_names(false),
         uniquify_prefix(false),
         skip_mapped_nodes(false),
-        validate_shape(true) {}
+        validate_shape(true),
+        propagate_device_spec(false) {}
 
   // Name prefix to use for nodes imported from the GraphDef.  For example, if
   // prefix="animals" and GraphDef contains a node "bunny" then the node will be
@@ -153,6 +155,10 @@ struct ImportGraphDefOptions {
 
   // Try to set default execution device for this grapth.
   string default_device;
+
+  // If true, propagates a node's assigned device. By default the runtime
+  // will recompute the assigned device every time.
+  bool propagate_device_spec;
 };
 
 // Optional results that may be returned by ImportGraphDef.

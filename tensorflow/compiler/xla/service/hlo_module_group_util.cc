@@ -25,14 +25,14 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -208,7 +208,7 @@ std::vector<HloInstruction*> HloModuleGroupUtil::RootInstructions(
 
 std::string HloModuleGroupUtil::CycleToString(
     HloInstruction* init_instruction) {
-  std::vector<std::string> names;
+  std::vector<absl::string_view> names;
   absl::flat_hash_set<HloInstruction*> seen;
 
   std::function<bool(HloInstruction*)> helper =
@@ -235,9 +235,10 @@ std::string HloModuleGroupUtil::CycleToString(
   return absl::StrJoin(names, " --> ");
 }
 
-Status HloModuleGroupUtil::VisitTopologicalOrder(
-    VisitStates* visit_state, const VisitFunction& visit_function,
-    HloInstruction* root) {
+Status HloModuleGroupUtil::VisitTopologicalOrder(VisitStates* visit_state,
+                                                 VisitFunction visit_function,
+                                                 HloInstruction* root,
+                                                 bool send_recv_as_one_group) {
   // Stack of HLO instructions visited in DFS order.
   std::stack<HloInstruction*> stack;
   stack.push(root);
@@ -257,6 +258,20 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
       }
     } else if (hlo->IsCrossModuleAllReduce()) {
       instruction_group = metadata_.GetAllReduceGroup(*hlo->channel_id());
+    } else if (send_recv_as_one_group && metadata_.IsChannelInstruction(hlo)) {
+      auto channel = metadata_.GetChannel(*hlo->channel_id());
+      if (channel.recv) {
+        instruction_group.push_back(channel.recv);
+      }
+      if (channel.send) {
+        instruction_group.push_back(channel.send);
+      }
+      if (channel.recv_done) {
+        instruction_group.push_back(channel.recv_done);
+      }
+      if (channel.send_done) {
+        instruction_group.push_back(channel.send_done);
+      }
     } else {
       instruction_group.push_back(hlo);
     }
@@ -293,15 +308,23 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
     // control predecessors and remote predecessors).
     for (HloInstruction* instruction : instruction_group) {
       for (HloInstruction* predecessor : GlobalPredecessors(instruction)) {
-        // Visiting a node that is already being visited implies that there is
-        // a cycle. Generate an error with the list of instructions in the
-        // cycle.
+        if (std::find(instruction_group.begin(), instruction_group.end(),
+                      predecessor) != instruction_group.end()) {
+          // Ignore the predecessor if it is in the instruction_group.
+          continue;
+        }
         if ((*visit_state)[predecessor] == VisitState::kVisiting) {
+          // Visiting a node that is already being visited implies that there is
+          // a cycle. Generate an error with the list of instructions in the
+          // cycle.
           return FailedPrecondition(
               "Cross-computation cycle detected via communicating nodes.\n%s",
               CycleToString(predecessor));
+        } else if ((*visit_state)[predecessor] == VisitState::kNotVisited) {
+          // We can ignore the visited predecessor and only consider the
+          // unvisited one.
+          stack.push(predecessor);
         }
-        stack.push(predecessor);
       }
     }
   }

@@ -38,10 +38,8 @@ struct RangeFunctor<CPUDevice, T> {
   void operator()(OpKernelContext* context, int64_t size, T start, T delta,
                   typename TTypes<T>::Flat output) const {
     (void)context;
-    T val = start;
     for (int64_t i = 0; i < size; ++i) {
-      output(i) = T(val);
-      val += delta;
+      output(i) = start + static_cast<T>(i) * delta;
     }
   }
 };

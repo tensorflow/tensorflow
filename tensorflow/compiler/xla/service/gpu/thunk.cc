@@ -15,72 +15,69 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string>
+
+#include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
+
 namespace xla {
 namespace gpu {
 
 Thunk::ExecuteParams::ExecuteParams(
     const ServiceExecutableRunOptions& run_options,
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    se::Stream* async_comms_stream)
+    absl::Span<se::Stream* const> async_streams)
     : buffer_allocations(&buffer_allocations),
       stream(stream),
-      async_comms_stream(async_comms_stream),
-      nccl_params(run_options, stream) {}
+      async_comms_streams(async_streams.begin(), async_streams.end()),
+      nccl_params(run_options, stream->parent()) {}
 
 /*static*/ absl::string_view Thunk::KindToString(Thunk::Kind kind) {
+#define CASE(x)  \
+  case Thunk::x: \
+    return #x
   switch (kind) {
-    case Thunk::kCholesky:
-      return "kCholesky";
-    case Thunk::kCollectivePermute:
-      return "kCollectivePermute";
-    case Thunk::kConditional:
-      return "kConditional";
-    case Thunk::kConvolution:
-      return "kConvolution";
-    case Thunk::kCopy:
-      return "kCopy";
-    case Thunk::kCublasLtMatmul:
-      return "kCublasLtMatmul";
-    case Thunk::kCustomCall:
-      return "kCustomCall";
-    case Thunk::kNcclAllGather:
-      return "kNcclAllGather";
-    case Thunk::kNcclAllReduce:
-      return "kNcclAllReduce";
-    case Thunk::kNcclAllReduceStart:
-      return "kNcclAllReduceStart";
-    case Thunk::kNcclAllReduceDone:
-      return "kNcclAllReduceDone";
-    case Thunk::kNcclReduceScatter:
-      return "kNcclReduceScatter";
-    case Thunk::kNcclAllToAll:
-      return "kNcclAllToAll";
-    case Thunk::kFft:
-      return "kFft";
-    case Thunk::kFor:
-      return "kFor";
-    case Thunk::kGemm:
-      return "kGemm";
-    case Thunk::kInfeed:
-      return "kInfeed";
-    case Thunk::kKernel:
-      return "kKernel";
-    case Thunk::kMemset32BitValue:
-      return "kMemset32BitValue";
-    case Thunk::kMemzero:
-      return "kMemzero";
-    case Thunk::kOutfeed:
-      return "kOutfeed";
-    case Thunk::kReplicaId:
-      return "kReplicaId";
-    case Thunk::kPartitionId:
-      return "kPartitionId";
-    case Thunk::kSequential:
-      return "kSequential";
-    case Thunk::kTriangularSolve:
-      return "kTriangularSolve";
-    case Thunk::kWhile:
-      return "kWhile";
+    CASE(kCholesky);
+    CASE(kConditional);
+    CASE(kConvolution);
+    CASE(kConvolutionReorder);
+    CASE(kCopy);
+    CASE(kCublasLtMatmul);
+    CASE(kCustomCall);
+    CASE(kNcclAllGather);
+    CASE(kNcclAllGatherStart);
+    CASE(kNcclAllGatherDone);
+    CASE(kNcclAllReduce);
+    CASE(kNcclAllReduceStart);
+    CASE(kNcclAllReduceDone);
+    CASE(kNcclCollectivePermute);
+    CASE(kNcclCollectivePermuteStart);
+    CASE(kNcclCollectivePermuteDone);
+    CASE(kNcclReduceScatter);
+    CASE(kNcclReduceScatterStart);
+    CASE(kNcclReduceScatterDone);
+    CASE(kNcclAllToAll);
+    CASE(kNcclAllToAllStart);
+    CASE(kNcclAllToAllDone);
+    CASE(kNcclSend);
+    CASE(kNcclRecv);
+    CASE(kFft);
+    CASE(kFor);
+    CASE(kGemm);
+    CASE(kInfeed);
+    CASE(kKernel);
+    CASE(kMemset32BitValue);
+    CASE(kMemzero);
+    CASE(kOutfeed);
+    CASE(kReplicaId);
+    CASE(kPartitionId);
+    CASE(kSequential);
+    CASE(kTriangularSolve);
+    CASE(kWhile);
+    CASE(kFusedMHA);
   }
 }
 
@@ -116,6 +113,19 @@ std::string ThunkSequence::ToString(
     absl::StrAppend(&result, "\n");
   }
   return result;
+}
+
+bool IsReductionCollective(Thunk::Kind kind) {
+  return kind == Thunk::kNcclAllReduce || kind == Thunk::kNcclAllReduceStart ||
+         kind == Thunk::kNcclReduceScatter ||
+         kind == Thunk::kNcclReduceScatterStart;
+}
+
+Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(mlir::Operation* op) {
+  ThunkInfo thunk_info(op);
+  thunk_info.profile_annotation = absl::StrFormat(
+      "Thunk:#hlo_op=%s#", mlir::mhlo::GetDebugNameFromLocation(op->getLoc()));
+  return thunk_info;
 }
 
 }  // namespace gpu

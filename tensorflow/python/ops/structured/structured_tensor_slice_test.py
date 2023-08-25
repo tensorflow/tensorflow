@@ -83,11 +83,27 @@ EXAMPLE_STRUCT = {
     # f2: matrix field
     "f2": [[1, 2], [3, 4]],
     # f3: scalar structure field
-    "f3": {"f3_1": 1},
+    "f3": {
+        "f3_1": 1
+    },
     # f4: vector structure field
-    "f4": [{"f4_1": 1, "f4_2": b"a"}, {"f4_1": 2, "f4_2": b"b"}],
+    "f4": [{
+        "f4_1": 1,
+        "f4_2": b"a"
+    }, {
+        "f4_1": 2,
+        "f4_2": b"b"
+    }],
     # f5: matrix structure field
-    "f5": [[{"f5_1": 1}, {"f5_1": 2}], [{"f5_1": 3}, {"f5_1": 4}]],
+    "f5": [[{
+        "f5_1": 1
+    }, {
+        "f5_1": 2
+    }], [{
+        "f5_1": 3
+    }, {
+        "f5_1": 4
+    }]],
 }
 
 EXAMPLE_STRUCT_2 = {
@@ -96,26 +112,50 @@ EXAMPLE_STRUCT_2 = {
     # f2: matrix field
     "f2": [[6, 7], [8, 9]],
     # f3: scalar structure field
-    "f3": {"f3_1": 9},
+    "f3": {
+        "f3_1": 9
+    },
     # f4: vector structure field
-    "f4": [{"f4_1": 5, "f4_2": b"A"}, {"f4_1": 6, "f4_2": b"B"}],
+    "f4": [{
+        "f4_1": 5,
+        "f4_2": b"A"
+    }, {
+        "f4_1": 6,
+        "f4_2": b"B"
+    }],
     # f5: matrix structure field
-    "f5": [[{"f5_1": 6}, {"f5_1": 7}], [{"f5_1": 8}, {"f5_1": 9}]],
+    "f5": [[{
+        "f5_1": 6
+    }, {
+        "f5_1": 7
+    }], [{
+        "f5_1": 8
+    }, {
+        "f5_1": 9
+    }]],
 }
 
 EXAMPLE_STRUCT_VECTOR = [EXAMPLE_STRUCT] * 5 + [EXAMPLE_STRUCT_2]
 
-EXAMPLE_STRUCT_SPEC1 = structured_tensor.StructuredTensorSpec([], {
-    "f1": tensor_spec.TensorSpec([], dtypes.int32),
-    "f2": tensor_spec.TensorSpec([2, 2], dtypes.int32),
-    "f3": structured_tensor.StructuredTensorSpec(
-        [], {"f3_1": tensor_spec.TensorSpec([], dtypes.int32)}),
-    "f4": structured_tensor.StructuredTensorSpec(
-        [2], {"f4_1": tensor_spec.TensorSpec([2], dtypes.int32),
-              "f4_2": tensor_spec.TensorSpec([2], dtypes.string)}),
-    "f5": structured_tensor.StructuredTensorSpec(
-        [2, 2], {"f5_1": tensor_spec.TensorSpec([2, 2], dtypes.int32)}),
-})
+EXAMPLE_STRUCT_SPEC1 = structured_tensor.StructuredTensorSpec(
+    [], {
+        "f1":
+            tensor_spec.TensorSpec([], dtypes.int32),
+        "f2":
+            tensor_spec.TensorSpec([2, 2], dtypes.int32),
+        "f3":
+            structured_tensor.StructuredTensorSpec(
+                [], {"f3_1": tensor_spec.TensorSpec([], dtypes.int32)}),
+        "f4":
+            structured_tensor.StructuredTensorSpec(
+                [2], {
+                    "f4_1": tensor_spec.TensorSpec([2], dtypes.int32),
+                    "f4_2": tensor_spec.TensorSpec([2], dtypes.string)
+                }),
+        "f5":
+            structured_tensor.StructuredTensorSpec(
+                [2, 2], {"f5_1": tensor_spec.TensorSpec([2, 2], dtypes.int32)}),
+    })
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -227,7 +267,9 @@ class StructuredTensorSliceTest(test_util.TensorFlowTestCase,
       (SLICE_BUILDER[4:, "f5", :, :, "f5_1"],
        [[[1, 2], [3, 4]], [[6, 7], [8, 9]]]),
   ])  # pyformat: disable
-  def testGetitemFromVectorStruct(self, slice_spec, expected,
+  def testGetitemFromVectorStruct(self,
+                                  slice_spec,
+                                  expected,
                                   test_requires_typespec=False):
     # By default, lists are converted to RaggedTensors.
     if not test_requires_typespec:

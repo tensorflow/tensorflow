@@ -123,8 +123,8 @@ class IrArray {
     }
 
     Shape AsShapeWithType(PrimitiveType element_type) const {
-      return ShapeUtil::MakeShapeWithLayout(element_type, dims_,
-                                            layout_.minor_to_major());
+      return ShapeUtil::MakeShapeWithDenseLayout(element_type, dims_,
+                                                 layout_.minor_to_major());
     }
 
     // Given that "this" is the target index of a reshape from `input_shape`

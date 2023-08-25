@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/load_library.h"
+#include "tensorflow/tsl/platform/load_library.h"
 
 #include <dlfcn.h>
 
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
-namespace tensorflow {
+namespace tsl {
 
 namespace internal {
 
@@ -71,4 +72,4 @@ string FormatLibraryFileName(const string& name, const string& version) {
 
 }  // namespace internal
 
-}  // namespace tensorflow
+}  // namespace tsl

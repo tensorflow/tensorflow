@@ -1,13 +1,10 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "tsl_pybind_extension")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
@@ -37,11 +34,9 @@ cc_library(
         "//tensorflow/compiler/xla/python/tpu_driver:recording_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/core/framework:allocator",
-        "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/tsl/platform:casts",
+        "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/platform:env",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -50,7 +45,7 @@ cc_library(
     ],
 )
 
-pybind_extension(
+tsl_pybind_extension(
     name = "tpu_client_extension",
     srcs = [
         "tpu_client_extension.cc",
@@ -65,11 +60,12 @@ pybind_extension(
         ":tpu_client",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/python:python_ref_manager",
+        "//tensorflow/compiler/xla/python:status_casters",
         "//tensorflow/compiler/xla/python:types",
         "//tensorflow/compiler/xla/python:util",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
-        "//tensorflow/python:bfloat16_lib",
+        "//tensorflow/tsl/python/lib/core:ml_dtypes_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@llvm-project//mlir:IR",
@@ -77,7 +73,7 @@ pybind_extension(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "py_tpu_client",
     srcs = [
         "tpu_client.py",
@@ -88,7 +84,6 @@ py_library(
         ":tpu_client_extension",
         "//tensorflow/compiler/xla/python:xla_client",
         "//tensorflow/compiler/xla/python:xla_extension",
-        "//third_party/py/numpy",
     ],
 )
 

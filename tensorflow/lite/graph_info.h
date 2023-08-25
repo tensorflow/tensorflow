@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 
@@ -52,6 +52,10 @@ class GraphInfo {
   // Returns a node given its index in the execution plan, which is expected to
   // be between 0 and num_execution_nodes().
   virtual const TfLiteNode& node(size_t index) const = 0;
+
+  // Returns a node registration given its index which is expected to be between
+  // 0 and num_nodes().
+  virtual const TfLiteRegistration& registration(size_t index) const = 0;
 
   // Returns an implementation-specific node index which may be different from
   // execution-plan index.
@@ -93,24 +97,31 @@ using ControlEdge = std::pair<int32_t, int32_t>;
 using ControlEdges = std::vector<ControlEdge>;
 
 // Partitions a list of node indices `nodes_to_partition` into node subsets.
-// Each node subset is in dependency order (i.e. all members of the node subsets
-// can be executed in the order they occur). Maintains the relative ordering of
-// nodes that have their `might_have_side_effects` attribute set. `node_subsets`
-// is assumed to be empty.
-TfLiteStatus PartitionGraphIntoIndependentNodeSubsets(
-    const GraphInfo* info, const TfLiteIntArray* nodes_to_partition,
-    std::vector<NodeSubset>* node_subsets);
-
-// Partitions a list of node indices `nodes_to_partition` into node subsets.
-// Each node subset is in dependency order (i.e. all members of the node subset
-// can be executed in the order they occur). `control_edges` specified a control
-// dependency DAG on the nodes contained in `info`. The resulting partitioning
-// will respect these control dependencies. This way, restrictions (in addition
-// to the nodes' data dependencies) can be imposed on the ultimate execution
-// order of the graph.
+// Each node subset is in dependency order internally (i.e. all members of the
+// node subsets can be executed in the order they occur) and externally (i.e.,
+// node subsets are executable in the order they occur.) The function assumes
+// that the nodes of the graph represented in *info are in dependency order.
 //
-// (Example: with `control_edges.empty()` and `nodes_to_partition == {2, 3}`,
-// the graph
+// Depending on the value of `greedily`, the function behaves
+//
+// - greedily: while a node_set is generated whose members are (aren't) members
+// of
+//   `*nodes_to_partition`, it will add nodes to this subset, as long as they
+//   are (aren't) members of *nodes_to_partition and they are schedulable (i.e.,
+//   all nodes they depend have already be added to `*node_subsets`.)
+//
+// - non-greedily: this preserves the original execution order, i.e. the node
+//   subsets generated will be of the form [ [0..i_1), [i1..i2), ... ].
+//
+// `control_edges` specifies a control dependency DAG on the nodes contained in
+// `info`. The resulting partitioning will respect these control
+// dependencies. This way, restrictions (in addition to the nodes' data
+// dependencies) can be imposed on the ultimate execution order of the graph
+// (naturally, this is relevant only if ordering greedily.)
+//
+// (Example: with `greedily`, `control_edges.empty()`, and `nodes_to_partition
+// == {2, 3}`, the graph
+//
 //                    /------------\
 //                    |            v
 // 0 --> 1 --> 2* --> 3*     4 --> 5
@@ -131,10 +142,17 @@ TfLiteStatus PartitionGraphIntoIndependentNodeSubsets(
 //
 // and the partitioning will be {{0, 1}, {2, 3}, {4, 5}}.)
 //
-// `node_subsets` is assumed to be empty.
+// If control_edges == nullptr, the algorithm preserves the relative ordering of
+// nodes that have their `might_have_side_effects` attribute set, i.e., it
+// behaves as if `*control_dependencies` of the form `{ {n_1, n_2}, {n_2, n_3},
+// ... }` had been handed in, where the n_i are the (sorted) indices of nodes
+// with `might_have_side_effects` attribute set.
+//
+// The function assumes that `*node_subsets` is initially empty.
 TfLiteStatus PartitionGraphIntoIndependentNodeSubsets(
     const GraphInfo* info, const TfLiteIntArray* nodes_to_partition,
-    const ControlEdges& control_edges, std::vector<NodeSubset>* node_subsets);
+    std::vector<NodeSubset>* node_subsets, bool greedily,
+    const ControlEdges* control_edges = nullptr);
 
 }  // namespace tflite
 

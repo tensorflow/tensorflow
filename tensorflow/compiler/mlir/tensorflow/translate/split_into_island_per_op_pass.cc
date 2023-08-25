@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/mlir/tensorflow/translate/split_into_island_per_op_pass.h"
+
 #include <cstdint>
 #include <memory>
 
@@ -25,7 +27,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 // This pass is used in preparation for Graph export.
 // The GraphDef exporter expects each op to be in its own island.
@@ -39,14 +40,13 @@ namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_SPLITINTOISLANDPEROPPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class SplitIntoIslandPerOpPass
-    : public SplitIntoIslandPerOpPassBase<SplitIntoIslandPerOpPass> {
+    : public impl::SplitIntoIslandPerOpPassBase<SplitIntoIslandPerOpPass> {
  public:
   void runOnOperation() override;
-
- private:
-  void SplitIsland(tf_executor::IslandOp island_op,
-                   tf_executor::GraphOp graph_op);
 };
 
 void SplitIntoIslandPerOpPass::runOnOperation() {
@@ -84,22 +84,24 @@ void SplitIntoIslandPerOpPass::runOnOperation() {
   // We don't need to honor *any* control deps that are already placed on
   // islands. Drop them now in this pass - a following pass will use side
   // effect analysis to completely explain and apply correct control deps.
-  island_op.control().dropAllUses();
+  island_op.getControl().dropAllUses();
 
   // Break up all islands by simply creating a new island wrapping each
   // individual sub op. Do not create any control dependencies between the
   // newly created islands.
-  SplitIsland(island_op, graph_op);
+  SplitIsland(island_op, tf_executor::ControlType::get(&getContext()));
 
   // None of the originally given control deps are necessary.
   tf_executor::FetchOp fetch_op = graph_op.GetFetch();
   int num_control_fetches =
       fetch_op.getNumOperands() - graph_op.getNumResults();
   if (num_control_fetches > 0) {
-    fetch_op.fetchesMutable().erase(graph_op.getNumResults(),
-                                    num_control_fetches);
+    fetch_op.getFetchesMutable().erase(graph_op.getNumResults(),
+                                       num_control_fetches);
   }
 }
+
+}  // namespace
 
 // Populates an empty IslandOp and with a NoOp or Identity/IdentityN depending
 // on if there are any data results.
@@ -112,7 +114,7 @@ void PopulateEmptyIsland(tf_executor::IslandOp island) {
     Value operand = yield.getOperand(0);
     auto identity = builder.create<TF::IdentityOp>(island.getLoc(),
                                                    operand.getType(), operand);
-    yield.setOperand(0, identity.output());
+    yield.setOperand(0, identity.getOutput());
   } else {
     auto identity_n = builder.create<TF::IdentityNOp>(
         island.getLoc(), yield.getOperandTypes(), yield.getOperands());
@@ -129,19 +131,19 @@ tf_executor::IslandOp CreateIsland(TypeRange result_types,
   OpBuilder builder(original_island);
   auto island = builder.create<tf_executor::IslandOp>(
       loc, result_types, control_type, mlir::ValueRange{});
-  island.body().push_back(new Block);
-  Block* block = &island.body().back();
+  island.getBody().push_back(new Block);
+  Block* block = &island.getBody().back();
   OpBuilder island_builder(original_island);
   island_builder.setInsertionPointToEnd(block);
-  sub_op.replaceAllUsesWith(island.outputs());
+  sub_op.replaceAllUsesWith(island.getOutputs());
   sub_op.moveBefore(block, block->begin());
   island_builder.create<tf_executor::YieldOp>(loc, sub_op.getResults());
   return island;
 }
 
 // Converts a single island into multiple islands (one for each op).
-void SplitIntoIslandPerOpPass::SplitIsland(tf_executor::IslandOp island_op,
-                                           tf_executor::GraphOp graph_op) {
+void SplitIsland(mlir::tf_executor::IslandOp island_op,
+                 mlir::tf_executor::ControlType control_type) {
   auto island_body = island_op.GetBody().without_terminator();
   // Populate islands that are empty (only yield).
   if (island_body.empty()) {
@@ -151,8 +153,6 @@ void SplitIntoIslandPerOpPass::SplitIsland(tf_executor::IslandOp island_op,
 
   // Skip islands that are already only a single op.
   if (island_op.WrapsSingleOp()) return;
-
-  auto control_type = tf_executor::ControlType::get(&getContext());
 
   // For each operation in the island, construct a new island to wrap the op,
   // yield all the results, and replace all the usages with the results of the
@@ -167,16 +167,27 @@ void SplitIntoIslandPerOpPass::SplitIsland(tf_executor::IslandOp island_op,
   // depending on the original island's output since we're about to erase the
   // original island op.
   for (auto item :
-       llvm::zip(island_op.outputs(), island_op.GetYield().fetches()))
+       llvm::zip(island_op.getOutputs(), island_op.GetYield().getFetches()))
     std::get<0>(item).replaceAllUsesWith(std::get<1>(item));
+
+  auto graph_op = island_op->getParentOfType<mlir::tf_executor::GraphOp>();
+
+  // Dropping all uses of an island op's control dep using
+  // `island_op.getControl().dropAllUses();` of a control dep that's only used
+  // in a graph's fetch, immediately leads to a segfault. Turns out we need to
+  // drop its uses manually so that we don't leave dangling controls.
+  for (const auto& fetch : llvm::enumerate(graph_op.GetFetch().getFetches())) {
+    if (fetch.value() == island_op.getControl()) {
+      graph_op.GetFetch().getFetchesMutable().erase(fetch.index(), 1);
+      break;
+    }
+  }
   island_op.erase();
 }
-
-}  // namespace
-}  // namespace TF
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitIntoIslandPerOpPass() {
   return std::make_unique<TF::SplitIntoIslandPerOpPass>();
 }
 
+}  // namespace TF
 }  // namespace mlir

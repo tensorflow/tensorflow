@@ -16,13 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_CORD_H_
 #define TENSORFLOW_TSL_PLATFORM_CORD_H_
 
-#include "tensorflow/tsl/platform/platform.h"
+// It seems CORD doesn't work well with CUDA <= 10.2
+#if !defined(__CUDACC__) || ((defined(__CUDACC__) && CUDA_VERSION > 10020))
+#include "absl/strings/cord.h"  // IWYU pragma: export
+#define TF_CORD_SUPPORT 1
 
-// Include appropriate platform-dependent implementations
-#if defined(PLATFORM_GOOGLE)
-#include "tensorflow/tsl/platform/google/cord.h"  // IWYU pragma: export
-#else
-#include "tensorflow/tsl/platform/default/cord.h"  // IWYU pragma: export
-#endif
+#endif  // __CUDACC__
 
 #endif  // TENSORFLOW_TSL_PLATFORM_CORD_H_

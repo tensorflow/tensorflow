@@ -15,8 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_BRIDGE_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_BRIDGE_H_
 
-// Must be included first.
-#include "tensorflow/python/lib/core/numpy.h"
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
 
 #include <functional>
 

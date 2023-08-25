@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/io/buffered_inputstream.h"
-#include "tensorflow/core/lib/io/random_inputstream.h"
+#include "tensorflow/tsl/lib/io/buffered_inputstream.h"
+#include "tensorflow/tsl/lib/io/random_inputstream.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
@@ -56,8 +56,8 @@ TextLiteralReader::TextLiteralReader(tsl::RandomAccessFile* file)
     : file_(file) {}
 
 StatusOr<Literal> TextLiteralReader::ReadAllLines() {
-  tensorflow::io::RandomAccessInputStream stream(file_.get());
-  tensorflow::io::BufferedInputStream buf(&stream, 65536);
+  tsl::io::RandomAccessInputStream stream(file_.get());
+  tsl::io::BufferedInputStream buf(&stream, 65536);
   std::string shape_string;
   Status s = buf.ReadLine(&shape_string);
   if (!s.ok()) {

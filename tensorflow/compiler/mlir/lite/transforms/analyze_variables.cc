@@ -23,7 +23,7 @@ namespace mlir {
 namespace TFL {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_ANALYZEVARIABLESPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Attribute name to be added on the module to identify whether
@@ -53,7 +53,7 @@ bool IsSupportedTFDataForwardingOp(Operation* op) {
 }
 
 class AnalyzeVariablesPass
-    : public AnalyzeVariablesPassBase<AnalyzeVariablesPass> {
+    : public impl::AnalyzeVariablesPassBase<AnalyzeVariablesPass> {
  public:
   explicit AnalyzeVariablesPass() {}
   void runOnOperation() override;

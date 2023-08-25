@@ -15,9 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_EXCEPTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_EXCEPTIONS_H_
 
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
@@ -26,12 +29,19 @@ namespace xla {
 // Python code instead of RuntimeError.
 class XlaRuntimeError : public std::runtime_error {
  public:
-  explicit XlaRuntimeError(const Status status)
-      : std::runtime_error(status.ToString()) {
-    CHECK(!status.ok());
+  explicit XlaRuntimeError(Status status)
+      : std::runtime_error(
+            status.ToString(absl::StatusToStringMode::kWithNoExtraData)),
+        status_(std::move(status)) {
+    CHECK(!status_->ok());
   }
 
   explicit XlaRuntimeError(const std::string what) : std::runtime_error(what) {}
+
+  std::optional<Status> status() const { return status_; }
+
+ private:
+  std::optional<Status> status_;
 };
 
 }  // namespace xla

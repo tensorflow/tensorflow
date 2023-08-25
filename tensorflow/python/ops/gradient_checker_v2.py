@@ -24,6 +24,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
@@ -74,7 +75,7 @@ def _to_numpy(a):
   """
   if isinstance(a, ops.EagerTensor):
     return a.numpy()
-  if isinstance(a, ops.Tensor):
+  if isinstance(a, tensor.Tensor):
     sess = ops.get_default_session()
     return sess.run(a)
   if isinstance(a, indexed_slices.IndexedSlicesValue):

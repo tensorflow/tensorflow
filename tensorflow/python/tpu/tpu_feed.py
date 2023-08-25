@@ -20,7 +20,7 @@ import itertools
 
 import numpy as np
 
-from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
+from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -815,7 +815,7 @@ class _PartitionedInfeedQueue(InfeedQueue):
     return tag_sharding_attribute_for_dequeued_tensors(
         values, self._input_partition_dims)
 
-  def generate_enqueue_ops(self, sharded_inputs):
+  def generate_enqueue_ops(self, sharded_inputs):  # pytype: disable=signature-mismatch  # overriding-parameter-count-checks
     """Generates the host-side Ops to enqueue the partitioned inputs.
 
     sharded_inputs is a list, one for each replica, of lists of

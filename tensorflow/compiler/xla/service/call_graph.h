@@ -18,13 +18,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CALL_GRAPH_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CALL_GRAPH_H_
 
+#include <memory>
 #include <ostream>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "absl/functional/function_ref.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 
 namespace xla {
 
@@ -90,7 +92,7 @@ class CallSite {
 // A node in the call graph representing an HLO computation.
 class CallGraphNode {
  public:
-  CallGraphNode(HloComputation* computation);
+  explicit CallGraphNode(HloComputation* computation);
 
   // Returns the computation represented by this call graph node.
   HloComputation* computation() const { return computation_; }
@@ -124,7 +126,7 @@ class CallGraphNode {
   // (usually the entry computation node) to this node.
   int depth() const { return depth_; }
 
-  std::string ToString() const;
+  absl::string_view ToString() const;
 
   CallGraphNode(const CallGraphNode&) = delete;
   CallGraphNode& operator=(const CallGraphNode&) = delete;
@@ -148,7 +150,9 @@ class CallGraphNode {
   // If instruction calls any computations adds a call site for this instruction
   // to the call graph node. If the instruction calls no computations then no
   // call site is added.
-  void AddCallSiteForInstruction(HloInstruction* instruction);
+  void AddCallSiteForInstruction(
+      HloInstruction* instruction,
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Computation represented by this call graph node.
   HloComputation* computation_;
@@ -184,10 +188,14 @@ class CallGraphNode {
 // computation in the module.
 class CallGraph {
  public:
-  using VisitorFunction = std::function<Status(const CallGraphNode&)>;
+  using VisitorFunction = absl::FunctionRef<Status(const CallGraphNode&)>;
 
-  // Builds and returns a call graph for the given HLO module.
-  static std::unique_ptr<CallGraph> Build(const HloModule* module);
+  // Builds and returns a call graph for the given HLO module. If a non-empty
+  // execution_threads is provided, only computations that are in
+  // execution_threads will be part of the returned call graph.
+  static std::unique_ptr<CallGraph> Build(
+      const HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Returns the node associated with the given computation.
   const CallGraphNode& GetNode(const HloComputation* computation) const;
@@ -200,7 +208,7 @@ class CallGraph {
   // in post order (callees before callers). If visit_unreachable_nodes is true
   // then all nodes in the call graph are visited. Otherwise only those nodes
   // reachable from the entry computation are visited.
-  Status VisitNodes(const VisitorFunction& visitor_func,
+  Status VisitNodes(VisitorFunction visitor_func,
                     bool visit_unreachable_nodes = true) const;
 
   // Returns true if 'a' dominates 'b' in the call graph. Computation 'a'
@@ -243,6 +251,78 @@ class CallGraph {
   std::pair<HloInstruction*, HloInstruction*> NearestAncestorsInSameComputation(
       HloInstruction* a, HloInstruction* b) const;
 
+  // Given a set of instructions within a computation, returns nearest common
+  // ancestors as Hlo instructions (There could be multiple nearest common
+  // ancestors in a DAG). If the given instructions are not in the same
+  // computation, this function would report FAILURE.
+  //
+  // Unlike the `NearestAncestorsInSameComputation` defined above, it:
+  //
+  // (1) Only compute the nearest common ancestors within a computation, instead
+  // of across computations (that's the function
+  // `ComputationsNearestCommonAncestors` that defined below).
+  //
+  // (2) Takes in **a set of** Hlo instructions, instead of two Hlo
+  // instructions, and find their nearest common ancestors.
+  //
+  // Example:
+  //
+  // Computation A:
+  //   %p0   = Param(0)
+  //   %p1   = Param(1)
+  //   %p2   = Param(2)
+  //   %add0 = Add(%p0, %p1)
+  //   %mul0 = Mul(%p1, %p2)
+  //   %sub0 = Sub(%add0, %mul0)
+  //
+  // If called with {%p0, %p1}, this function would return {%add0}.
+  //
+  // Please check the detailed example in
+  // `CallGraphTest.NearestCommonAncestorInstructions`.
+  absl::flat_hash_set<const HloInstruction*> NearestCommonAncestorInstructions(
+      std::vector<const HloInstruction*> instructions);
+
+  // Given a set of computations within a module, returns nearest common
+  // ancestors as Hlo computations (There could be multiple nearest common
+  // ancestors in a DAG).
+  //
+  // Entry_computation:
+  //   %x = Call(A, {Constant(42.0)})
+  //   %y = Call(B, {%x})
+  //
+  // Computation_A:
+  //   %a = Negate(Param())
+  //
+  // Computation_B:
+  //   %b = Exp(Param());
+  //
+  // If called with {Computation_A, Computation_B}, this function would return
+  // {Entry_computation}.
+  //
+  // Please check the detailed example in
+  // `CallGraphTest.NearestCommonAncestorComputations`.
+  absl::flat_hash_set<const HloComputation*> NearestCommonAncestorComputations(
+      std::vector<const HloComputation*> computations);
+
+  // A template helper function that computes the nearest common ancestors among
+  // instructions/computations. `T` can be either `HloInstruction` or
+  // `HloComputation`. Computing nearest common ancestors are basically the same
+  // for HloInstruction and HloComputation. The only difference is that they
+  // require different ways to access the ancestors of one node. Specifically,
+  // the ancestors are users_instruction for instructions, and are
+  // caller_computations for computations.
+  //
+  // The overall idea is to conduct BFS from the `starting_nodes`, and keep
+  // track of the visited ancestors of each node. For each BFS step, we check if
+  // there is a common node in all the visited ancestors, and if yes, that
+  // common node is the nearest ancestor we are looking for. Note that, since we
+  // are traversing DAG, there could be multiple nearest common ancestors. And
+  // there must be at least one common ancestor (i.e., entry computations among
+  // computations or root instruction among instructions).
+  template <typename T>
+  absl::flat_hash_set<const T*> NearestCommonAncestorsHelper(
+      std::vector<const T*>& starting_nodes);
+
   // Returns whether the call graph is flattened. A call graph is flattened if
   // every computation called in a sequential context (eg, kWhile or kCall) has
   // zero or one callsite, and no computation is called from both a parallel and
@@ -252,12 +332,15 @@ class CallGraph {
 
   // Returns a vector of instructions calling the passed computation.
   // (Often a vector of size 1.)
-  std::vector<HloInstruction*> GetComputationCallers(HloComputation* c) const;
+  std::vector<HloInstruction*> GetComputationCallers(
+      const HloComputation* c) const;
 
   std::string ToString() const;
 
  private:
-  CallGraph(const HloModule* module);
+  explicit CallGraph(
+      const HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Not copyable.
   CallGraph(const CallGraph&) = delete;
@@ -274,7 +357,7 @@ class CallGraph {
   // nodes to 'visited' as each node is visited. Skips nodes already in
   // 'visited'.
   Status VisitNodesInternal(
-      const VisitorFunction& visitor_func, const CallGraphNode& node,
+      VisitorFunction visitor_func, const CallGraphNode& node,
       absl::flat_hash_set<const CallGraphNode*>* visited) const;
 
   // Recursive helper for computing whether 'a' dominates 'b' in the call
@@ -293,6 +376,9 @@ class CallGraph {
   // Map from HLO computation to the index of the corresponding call graph node
   // in nodes_.
   absl::flat_hash_map<const HloComputation*, int64_t> node_indices_;
+
+  // The execution threads that the call graph is built for.
+  absl::flat_hash_set<absl::string_view> execution_threads_;
 };
 
 }  // namespace xla

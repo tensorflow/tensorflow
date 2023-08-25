@@ -358,8 +358,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testConvertToTensorAllowsOverflow(self):
     _ = ops.convert_to_tensor(123456789, dtype=dtypes.uint8)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
   @test_util.run_in_graph_and_eager_modes
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testConvertToTensorNumpyZeroDim(self):
     for np_type, dtype in [(np.int32, dtypes.int32), (np.half, dtypes.half),
                            (np.float32, dtypes.float32)]:
@@ -369,8 +369,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
       self.assertEqual(x.dtype, dtype)
       self.assertAllEqual(x, [65, 16])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
   @test_util.run_in_graph_and_eager_modes
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testConvertToTensorNumpyScalar(self):
     x = ops.convert_to_tensor([
         np.array(321, dtype=np.int64).item(),
@@ -513,6 +513,16 @@ class TFETensorTest(test_util.TensorFlowTestCase):
         errors.InvalidArgumentError,
         "Cannot convert tensor with 33 dimensions to NumPy array. NumPy arrays "
         "can have at most 32 dimensions"):
+      t.numpy()
+
+  def testNumpyDimsTooBig(self):
+    # Creating a Numpy array fails in some cases if the product of non-zero
+    # dimensions is very big, even if the shape also has a zero in it.
+    t = array_ops.ones((0, 2**31, 2**31))
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"Failed to create numpy array from tensor of shape "
+        r"\[0, 2147483648, 2147483648\]. Numpy error.*array is too big"):
       t.numpy()
 
 

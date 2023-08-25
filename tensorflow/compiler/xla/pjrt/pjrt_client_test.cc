@@ -15,15 +15,26 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client_test.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/synchronization/blocking_counter.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -123,6 +134,35 @@ TEST_P(PjRtClientTest, Execute) {
                                      *literal));
 }
 
+TEST_P(PjRtClientTest, ExecuteWithImmutableUntilTransferCompletes) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  auto executable =
+      MakeIncrementProgram(client.get(), /*alias=*/false, /*device=*/0);
+
+  std::vector<int32_t> data(4, 0);
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+          nullptr, client->addressable_devices()[0]));
+
+  ExecuteOptions options;
+  options.execution_mode = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto results,
+                          executable->Execute({{buffer.get()}}, options));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 1);
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteralSync());
+
+  std::vector<int32_t> expected(4, 1);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
+}
+
 TEST_P(PjRtClientTest, ExecuteWithTupleZeroCopy) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
   auto executable = MakeIncrementProgram(client.get(), /*alias=*/false,
@@ -195,6 +235,11 @@ TEST_P(PjRtClientTest, ExecuteWithDonation) {
 
 TEST_P(PjRtClientTest, ExecuteWithDonationAbort) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  if (client->platform_id() == CpuId()) {
+    // The CPU platform currently copies donated buffers if there is an
+    // external reference.
+    return;
+  }
   auto executable =
       MakeIncrementProgram(client.get(), /*alias=*/true, /*device=*/0);
 
@@ -214,7 +259,7 @@ TEST_P(PjRtClientTest, ExecuteWithDonationAbort) {
 
   auto resultsor = executable->Execute({{buffer.get()}}, options);
   ASSERT_FALSE(resultsor.ok());
-  EXPECT_THAT(resultsor.status().error_message(),
+  EXPECT_THAT(resultsor.status().message(),
               ::testing::HasSubstr(
                   "Donation requested for buffer with external reference"));
 }
@@ -438,6 +483,83 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
     std::vector<int32_t> expected(4, 0);
     EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                        *literal));
+  }
+}
+
+StatusOr<std::unique_ptr<PjRtBuffer>> MakeFloatBuffer(
+    PjRtClient* client, const std::vector<float>& data,
+    absl::Span<const int64_t> dimensions) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  return client->BufferFromHostBuffer(
+      data.data(), shape.element_type(), shape.dimensions(),
+      /*byte_strides=*/std::nullopt,
+      PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+      client->addressable_devices()[0]);
+}
+
+TEST(PjRtClientTest, DuplicateDonationError) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  constexpr char kProgram[] =
+      R"(HloModule DuplicateDonationError, input_output_alias={ {0}: (1, {}, must-alias), {1}: (2, {}, must-alias) }
+ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
+    %input0 = f32[2, 2] parameter(0)
+    %input1 = f32[2, 2] parameter(1) // donated
+    %input2 = f32[2, 2] parameter(2) // donated
+    %input3 = f32[2, 2] parameter(3)
+    %tmp1 = f32[2, 2] add(%input0, %input1)
+    %tmp2 = f32[2, 2] add(%input2, %input3)
+    ROOT %result = (f32[2, 2], f32[2, 2]) tuple(%tmp1, %tmp2)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                          client->Compile(xla_computation, {}));
+
+  std::vector<float> data(4, 0);
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer0,
+                          MakeFloatBuffer(client.get(), data, {2, 2}));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer1,
+                          MakeFloatBuffer(client.get(), data, {2, 2}));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer2,
+                          MakeFloatBuffer(client.get(), data, {2, 2}));
+
+  {
+    auto result = pjrt_executable->Execute(/*argument_handles=*/{{
+                                               buffer0.get(),
+                                               buffer1.get(),
+                                               buffer1.get(),
+                                               buffer0.get(),
+                                           }},
+                                           /*options=*/{});
+    ASSERT_FALSE(result.ok());
+    EXPECT_THAT(result.status().message(),
+                ::testing::HasSubstr("f(donate(a), donate(a))"));
+  }
+  {
+    auto result = pjrt_executable->Execute(/*argument_handles=*/{{
+                                               buffer1.get(),
+                                               buffer1.get(),
+                                               buffer2.get(),
+                                               buffer0.get(),
+                                           }},
+                                           /*options=*/{});
+    ASSERT_FALSE(result.ok());
+    EXPECT_THAT(result.status().message(),
+                ::testing::HasSubstr("f(a, donate(a))"));
+  }
+  {
+    auto result = pjrt_executable->Execute(/*argument_handles=*/{{
+                                               buffer0.get(),
+                                               buffer1.get(),
+                                               buffer2.get(),
+                                               buffer2.get(),
+                                           }},
+                                           /*options=*/{});
+    ASSERT_FALSE(result.ok());
+    EXPECT_THAT(result.status().message(),
+                ::testing::HasSubstr("f(donate(a), a)"));
   }
 }
 

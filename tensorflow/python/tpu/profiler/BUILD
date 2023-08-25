@@ -1,23 +1,25 @@
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
+
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
     ],
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "profiler",
     srcs = ["__init__.py"],
     srcs_version = "PY3",
     deps = [
-        ":profiler_analysis_pb2_grpc",
         "//tensorflow/core/profiler:profiler_analysis_proto_py",
-        "//tensorflow/core/profiler/protobuf:trace_events_proto_py",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:all_util",
+        "//tensorflow/tsl/profiler/protobuf:trace_events_proto_py",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "profiler_analysis_pb2_grpc",
     srcs = ["profiler_analysis_pb2_grpc.py"],
     srcs_version = "PY3",
@@ -25,7 +27,7 @@ py_library(
     deps = ["//tensorflow/core/profiler:profiler_analysis_proto_py"],
 )
 
-py_library(
+py_strict_library(
     name = "capture_tpu_profile_lib",
     srcs = [
         "capture_tpu_profile.py",
@@ -33,11 +35,11 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:client",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:versions",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:versions",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",
         "@absl_py//absl:app",
@@ -45,7 +47,7 @@ py_library(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "capture_tpu_profile_bin",
     srcs = ["capture_tpu_profile.py"],
     main = "capture_tpu_profile.py",

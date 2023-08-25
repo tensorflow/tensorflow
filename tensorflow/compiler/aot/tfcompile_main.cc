@@ -60,7 +60,9 @@ const char kUsageHeader[] =
 
 int main(int argc, char** argv) {
   tensorflow::tfcompile::MainFlags flags;
+#ifndef __s390x__
   flags.target_triple = "x86_64-pc-linux";
+#endif
   flags.out_function_object = "out_model.o";
   flags.out_metadata_object = "out_helper.o";
   flags.out_header = "out.h";
@@ -86,8 +88,8 @@ int main(int argc, char** argv) {
   QCHECK(argc == 1) << "\nERROR: This command does not take any arguments "
                        "other than flags. See --help.\n\n";
   tensorflow::Status status = tensorflow::tfcompile::Main(flags);
-  if (status.code() == tensorflow::error::INVALID_ARGUMENT) {
-    std::cerr << "INVALID ARGUMENTS: " << status.error_message() << "\n\n";
+  if (status.code() == absl::StatusCode::kInvalidArgument) {
+    std::cerr << "INVALID ARGUMENTS: " << status.message() << "\n\n";
     return 1;
   } else {
     TF_QCHECK_OK(status);

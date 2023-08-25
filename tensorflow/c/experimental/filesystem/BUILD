@@ -6,6 +6,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -38,10 +39,10 @@ cc_library(
         ":filesystem_interface",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_status_internal",
-        "//tensorflow/core:ptr_util",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:errors",
     ],
 )
 

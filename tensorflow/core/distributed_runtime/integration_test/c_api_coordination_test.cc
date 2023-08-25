@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
 #include "absl/time/time.h"
@@ -22,28 +23,29 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 namespace {
 
 constexpr char kCoordinationServiceType[] = "standalone";
 
-void ConfigCoordinationService(
-    tensorflow::ServerDef* server_def,
-    bool agent_destruction_without_shutdown = false) {
+void ConfigCoordinationService(tensorflow::ServerDef* server_def,
+                               bool agent_destruction_without_shutdown = false,
+                               bool enable_health_check = false) {
+  // Set the number of threads here since in some environment the default number
+  // of threads may be small which could cause RPC to hang.
+  server_def->mutable_default_session_config()
+      ->set_inter_op_parallelism_threads(10);
   auto coord_config = server_def->mutable_default_session_config()
                           ->mutable_experimental()
                           ->mutable_coordination_config();
@@ -55,6 +57,7 @@ void ConfigCoordinationService(
       absl::ToInt64Milliseconds(absl::Seconds(5)));
   coord_config->set_shutdown_barrier_timeout_in_ms(
       absl::ToInt64Milliseconds(absl::Seconds(5)));
+  coord_config->set_enable_health_check(enable_health_check);
 }
 
 string SetConfigKeyValueFn() {
@@ -138,12 +141,11 @@ TEST(CAPI, MultiClientCoordinationService) {
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
     // Normal execution: all cluster members are online.
-    std::this_thread::sleep_for(std::chrono::seconds(5));
     TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
     TFE_ExecutorWaitForAllPendingNodes(executor, status);
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-    // Sleep for 10 seconds and run colletive ops on cluster except worker/1.
+    // Sleep for 10 seconds and run collective ops on cluster except worker/1.
     // Since worker/1 thread directly exits here, its heartbeat will expire,
     // leading to UnavailableError on leader and then propagate to all other
     // members in cluster.
@@ -310,7 +312,8 @@ TEST(CAPI, MultiClientCoordinationSetGetConfigs) {
     EXPECT_EQ(TF_ALREADY_EXISTS, TF_GetCode(status)) << TF_Message(status);
     // Getting next_key returns the value set by another worker
     TF_Buffer* value_buf = TF_NewBuffer();
-    TFE_GetConfigKeyValue(ctx, next_key.c_str(), value_buf, status);
+    TFE_GetConfigKeyValue(ctx, next_key.c_str(), /*timeout_in_ms=*/5000,
+                          value_buf, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     std::string value_str{static_cast<const char*>(value_buf->data),
                           value_buf->length};

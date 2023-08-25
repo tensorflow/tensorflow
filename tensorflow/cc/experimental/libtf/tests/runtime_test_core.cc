@@ -21,7 +21,7 @@ namespace runtime {
 
 INSTANTIATE_TEST_SUITE_P(TF2CAPI, RuntimeTest,
                          ::testing::Values(core::Runtime));
-
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(RuntimeTest);
 }  // namespace runtime
 }  // namespace libtf
 }  // namespace tf

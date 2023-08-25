@@ -17,50 +17,44 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_TOOLS_RUN_HLO_MODULE_H_
 
 #include <functional>
+#include <memory>
 #include <random>
 #include <string>
 
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
+class BufferAssignmentProto;
+
 // Command-line options to this tool.  See main() in run_hlo_module_main.cc for
 // descriptions of these fields.
 struct RunHloModuleOptions {
-  RunHloModuleOptions()
-      : platform(""),
-        reference_platform("default"),
-        print_literals(false),
-        flatten_control_flow(false),
-        run_test_hlo_passes(true),
-        run_reference_hlo_passes(true),
-        // Using small float range by default, as otherwise all reductions
-        // miscompare vs. the interpreter with inf/nan.
-        use_large_float_range(false),
-        abs_error_bound(1e-3),
-        rel_error_bound(1e-3),
-        input_format("hlo"),
-        input_module(""),
-        iterations(1),
-        output_literals_file(""),
-        input_literals_file("") {}
   std::string platform;
-  std::string reference_platform;
-  bool print_literals;
-  bool flatten_control_flow;
-  bool run_test_hlo_passes;
-  bool run_reference_hlo_passes;
-  bool use_large_float_range;
-  float abs_error_bound;
-  float rel_error_bound;
+  std::string reference_platform{"default"};
+  bool print_literals{false};
+  bool flatten_control_flow{false};
+  bool run_test_hlo_passes{true};
+  bool run_reference_hlo_passes{true};
+  // Using small float range by default, as otherwise all reductions
+  // miscompare vs. the interpreter with inf/nan.
+  bool use_large_float_range{false};
+  bool treat_gte_as_data_formatting{false};
+  float abs_error_bound{1e-3};
+  float rel_error_bound{1e-3};
   std::string input_format;
   std::string input_module;
-  int iterations;
+  bool use_buffer_assignment_from_proto{false};
+  // The format and the usage of the option is platform-dependent.
+  std::string input_compilation_environments;
+  int iterations{1};
   std::string output_literals_file;
   std::string input_literals_file;
+  bool random_init_input_literals{true};
+  bool force_fake_data{false};
 };
 
 // Runs test_module on the platform with the name
@@ -70,15 +64,19 @@ struct RunHloModuleOptions {
 // HloModule before it is run on the reference platform. This may be necessary
 // to match the numerics of the test platform.
 Status RunAndCompare(
-    std::unique_ptr<HloModule> test_module, HloRunnerInterface* test_runner,
-    HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
-    const RunHloModuleOptions& options,
+    std::unique_ptr<HloModule> test_module,
+    const BufferAssignmentProto* buffer_assignment_proto,
+    HloRunnerInterface* test_runner, HloRunnerInterface* reference_runner,
+    std::minstd_rand0* engine, const RunHloModuleOptions& options,
     xla::RunHloModuleIterationLiterals* iteration_literals_proto = nullptr,
     std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
         reference_module_modifier_hook = {},
     std::function<void(HloModuleConfig*)> config_modifier_hook = {});
 
-// Same as above but reads a HloModule from 'hlo_filename'.
+// Same as above but reads an HloModule from 'hlo_filename'. It also takes as
+// an argument, a function 'compilation_env_modifier_hook' that potentially sets
+// various fields in compilation environments, for an HLO module being loaded
+// from the file.
 Status RunAndCompare(
     const std::string& hlo_filename, HloRunnerInterface* test_runner,
     HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
@@ -86,7 +84,9 @@ Status RunAndCompare(
     xla::RunHloModuleIterationLiterals* iteration_literals_proto = nullptr,
     std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
         reference_module_modifier_hook = {},
-    std::function<void(HloModuleConfig*)> config_modifier_hook = {});
+    std::function<void(HloModuleConfig*)> config_modifier_hook = {},
+    std::function<Status(const RunHloModuleOptions& options, HloModule& module)>
+        compilation_env_modifier_hook = {});
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_TOOLS_RUN_HLO_MODULE_H_

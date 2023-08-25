@@ -16,9 +16,9 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/profile_utils/cpu_utils.h"
 
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/profile_utils/clock_cycle_profiler.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace tsl {
 namespace profile_utils {

@@ -1,7 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/xla/runtime:__pkg__"],
     licenses = ["notice"],
 )
@@ -13,7 +14,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:async_value",
     ],
 )
 

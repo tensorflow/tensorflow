@@ -27,8 +27,7 @@ def Fallback_Dialect : Dialect {
   }];
 
   let cppNamespace = "::tfrt::fallback";
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
+  let usePropertiesForAttributes = 0;
 }
 
 // This corresponds to tensorflow::Tensor.

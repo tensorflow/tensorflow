@@ -39,20 +39,20 @@ class DenylistTest : public testing::Test {
 
     tsl::setenv(
         "XLA_FLAGS",
-        absl::StrCat(existing_xla_flags, "--xla_gpu_algorithm_denylist_path=",
-                     tsl::GetDataDependencyFilepath(tsl::io::JoinPath(
-                         "tensorflow", "compiler", "xla", "service", "gpu",
-                         "data", "hlo_algorithm_denylist.pbtxt")))
+        absl::StrCat(
+            existing_xla_flags, "--xla_gpu_algorithm_denylist_path=",
+            tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
+                              "data", "hlo_algorithm_denylist.pbtxt"))
             .data(),
         /*overwrite=*/true);
   }
 };
 
 TEST_F(DenylistTest, DefaultTest) {
-  tensorflow::ComputeCapability cc;
+  ComputeCapability cc;
   cc.set_major(7);
   cc.set_minor(0);
-  tensorflow::CudnnVersion cudnn_version;
+  CudnnVersion cudnn_version;
   cudnn_version.set_major(7);
   cudnn_version.set_minor(6);
   cudnn_version.set_patch(2);
@@ -67,10 +67,10 @@ TEST_F(DenylistTest, DefaultTest) {
 }
 
 TEST_F(DenylistTest, NegativeTest) {
-  tensorflow::ComputeCapability cc;
+  ComputeCapability cc;
   cc.set_major(7);
   cc.set_minor(0);
-  tensorflow::CudnnVersion cudnn_version;
+  CudnnVersion cudnn_version;
   cudnn_version.set_major(7);
   cudnn_version.set_minor(6);
   cudnn_version.set_minor(2);

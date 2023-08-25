@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_SUPPORT_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_SUPPORT_UTILS_H_
 
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include <vector>
+
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
-#include "tensorflow/compiler/xla/stream_executor/dnn.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
@@ -34,6 +34,39 @@ namespace gpu {
 StatusOr<bool> CudnnSupportsOptimizedIntegerConvolution(
     const se::CudaComputeCapability& compute_capability,
     HloCustomCallInstruction& conv, int vector_size);
+
+// Represents configuration for the reshape-transpose-reshape operations that
+// are equivalent to `cudnnReorderFilterAndBias`. This is used by int8x32
+// vectorized convolutions.
+//
+// For filter reordering the equivalent HLO is:
+//   %reshape = s8[$S] reshape(%input)
+//   %transpose = s8[I/32,H,W,O/8,2,8,4,4] transpose(%reshape), dimensions={$D}
+//   %result = s8[O,I/32,H,W,32] reshape(%transpose)
+//
+// For bias reordering the HLO is similar, but the op shapes are s8[O/32,4,2,4]
+// for %transpose, and s8[O/32,2,4,4] for %result.
+//
+// The helper functions below calculate the shape $S (transpose_shape) and
+// dimensions $D (permutation) from the convolution dimensions numbers config.
+// The result_shape is fixed and is present for the convenience.
+struct CudnnReorderTransposeConfig {
+  Shape transpose_shape;
+  Shape result_shape;
+  std::vector<int64_t> permutation;
+};
+
+// Create a transposition for an int8x32 convolution filter that effectively
+// does the same thing as cudnnReorderFilterAndBias, but could also be constant
+// folded or fused.
+StatusOr<CudnnReorderTransposeConfig> CudnnInferTransposeForFilterReordering(
+    const Shape& shape, const ConvolutionDimensionNumbers& dimension_numbers);
+
+// Create a transposition for an int8x32 convolution bias that effectively
+// does the same thing as cudnnReorderFilterAndBias, but could also be constant
+// folded or fused.
+StatusOr<CudnnReorderTransposeConfig> CudnnInferTransposeForBiasReordering(
+    const Shape& shape);
 
 }  // namespace gpu
 }  // namespace xla

@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -142,6 +143,10 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
   const Tensor* example_state_data_t;
   OP_REQUIRES_OK(context,
                  context->input("example_state_data", &example_state_data_t));
+  OP_REQUIRES(
+      context, TensorShapeUtils::IsMatrix(example_state_data_t->shape()),
+      errors::InvalidArgument("example_state_data must be rank 2 but is rank ",
+                              example_state_data_t->dims()));
   TensorShape expected_example_state_shape({examples.num_examples(), 4});
   OP_REQUIRES(context,
               example_state_data_t->shape() == expected_example_state_shape,

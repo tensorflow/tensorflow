@@ -17,22 +17,24 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SHAPE_TREE_H_
 
 #include <algorithm>
-#include <functional>
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/tsl/lib/gtl/iterator_range.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -178,11 +180,11 @@ class ShapeTree {
     return const_leaf_iterator(*this, nodes_.end());
   }
   // range-based iterator for leaf_begin()/leaf_end().
-  tensorflow::gtl::iterator_range<leaf_iterator> leaves() {
-    return tensorflow::gtl::make_range(leaf_begin(), leaf_end());
+  tsl::gtl::iterator_range<leaf_iterator> leaves() {
+    return tsl::gtl::make_range(leaf_begin(), leaf_end());
   }
-  tensorflow::gtl::iterator_range<const_leaf_iterator> leaves() const {
-    return tensorflow::gtl::make_range(leaf_begin(), leaf_end());
+  tsl::gtl::iterator_range<const_leaf_iterator> leaves() const {
+    return tsl::gtl::make_range(leaf_begin(), leaf_end());
   }
 
   reverse_leaf_iterator leaf_rbegin() {

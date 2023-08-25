@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
 #include "llvm/ADT/StringRef.h"
@@ -87,8 +88,8 @@ void RewriteQuantizedIOPass::runOnOperation() {
         auto new_type = returned_type.clone(returned_type.getElementType()
                                                 .cast<quant::QuantizedType>()
                                                 .getStorageType());
-        auto new_op = builder.create<TFR::CastOp>(returned_op->getLoc(),
-                                                  new_type, returned_op.arg());
+        auto new_op = builder.create<TFR::CastOp>(
+            returned_op->getLoc(), new_type, returned_op.getArg());
         returned_value.set(new_op.getResult());
         if (returned_op.use_empty()) {
           returned_op.erase();

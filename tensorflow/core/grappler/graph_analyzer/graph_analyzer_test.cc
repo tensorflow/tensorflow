@@ -92,8 +92,8 @@ TEST_F(GraphAnalyzerTest, BuildMapError) {
   (*graph_3n_self_control_.add_node()) = MakeNodeConst("node1");
   gran_ = std::make_unique<GraphAnalyzer>(graph_3n_self_control_, 1);
   Status st = BuildMap();
-  ASSERT_THAT(
-      st, Eq(Status(error::INVALID_ARGUMENT, "Duplicate node name 'node1'.")));
+  ASSERT_THAT(st, Eq(Status(absl::StatusCode::kInvalidArgument,
+                            "Duplicate node name 'node1'.")));
 }
 
 TEST_F(GraphAnalyzerTest, FindSubgraphs0) {

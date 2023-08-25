@@ -23,11 +23,11 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
@@ -136,28 +136,20 @@ StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
       [&, b, type](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         llvm::Value* ret = llvm::UndefValue::get(type);
         for (size_t i = 0; i < tuple.operand_count(); ++i) {
-          TF_ASSIGN_OR_RETURN(llvm::Value * value,
-                              indexed_generators_.at(tuple.operand(i))(index));
+          IrArray::Index used_index = index;
+          if (i > 0 &&
+              !ShapeUtil::EqualIgnoringElementType(tuple.operand(i)->shape(),
+                                                   tuple.operand(0)->shape())) {
+            used_index = used_index.SourceIndexOfBitcast(
+                tuple.operand(0)->shape(), tuple.operand(i)->shape(), b);
+          }
+          TF_ASSIGN_OR_RETURN(
+              llvm::Value * value,
+              indexed_generators_.at(tuple.operand(i))(used_index));
           ret = b->CreateInsertValue(ret, value, i);
         }
         return ret;
       });
-}
-
-bool FusedIrEmitter::IsFusedIrEmitterInefficient(
-    const HloInstruction& consumer, const HloInstruction& producer) {
-  if (consumer.opcode() != HloOpcode::kFusion) {
-    return false;
-  }
-  FusionNodeIndexingEvaluation eval_consumer(&consumer);
-  if (producer.opcode() != HloOpcode::kFusion) {
-    return eval_consumer.CodeDuplicationTooHigh(&producer);
-  }
-  // If 'producer' is a fusion node as well, also evaluate it. Pass the
-  // evaluated duplication of the fusion node if it is merged into consumer.
-  FusionNodeIndexingEvaluation eval_producer(
-      &producer, eval_consumer.EvaluateEmittedInstructions(&producer));
-  return eval_producer.MaxCodeDuplicationTooHigh();
 }
 
 StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::CreateGenerator(

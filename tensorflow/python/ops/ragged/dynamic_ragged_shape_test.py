@@ -27,11 +27,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -441,7 +442,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
 
   def testWithNumRowPartitionsDynamic(self):
     @def_function.function(
-        input_signature=[tensor_spec.TensorSpec([3], dtypes.int64)])
+        input_signature=[tensor.TensorSpec([3], dtypes.int64)])
     def fun(x):
       shape = DynamicRaggedShape([
           RowPartition.from_row_lengths([1, 3], dtype=dtypes.int64),
@@ -1674,6 +1675,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
                                                       [[[15, 25], [36]]]])),
   ])
   def testRaggedAddWithBroadcasting(self, x, y, expected, doc):
+    del doc
     expected_rrank = getattr(expected, 'num_row_partitions', 0)
     x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)
     y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y, dtype=dtypes.int32)
@@ -1915,9 +1917,9 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
     if context.executing_eagerly():
       return
     @def_function.function(
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.int64)])
+        input_signature=[tensor.TensorSpec(None, dtypes.int64)])
     def fun(x):
-      shape_a = DynamicRaggedShape([], array_ops.stack([5, x, 3]))
+      shape_a = DynamicRaggedShape([], array_ops_stack.stack([5, x, 3]))
       shape_b = DynamicRaggedShape.from_lengths([1, 3], dtype=dtypes.int64)
       result = dynamic_ragged_shape.broadcast_dynamic_shape(shape_a, shape_b)
       self.assertAllEqual([5, None, 3], result.static_lengths())
@@ -1927,9 +1929,9 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
     if context.executing_eagerly():
       return
     @def_function.function(
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.int64)])
+        input_signature=[tensor.TensorSpec(None, dtypes.int64)])
     def fun(x):
-      shape_a = DynamicRaggedShape([], array_ops.stack([5, x, 3]))
+      shape_a = DynamicRaggedShape([], array_ops_stack.stack([5, x, 3]))
       shape_b = DynamicRaggedShape.from_lengths([2, 3], dtype=dtypes.int64)
       result = dynamic_ragged_shape.broadcast_dynamic_shape(shape_a, shape_b)
       self.assertAllEqual([5, 2, 3], result.static_lengths())
@@ -2202,6 +2204,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
                                                       [[[15, 25], [36]]]])),
   ])
   def testRaggedDispatchImplWithBroadcasting(self, x, y, expected, doc):
+    del doc
     expected_rrank = getattr(expected, 'num_row_partitions', 0)
     x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)
     y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y, dtype=dtypes.int32)
@@ -2219,7 +2222,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
 
   def testGetItemIsInstanceTensor(self):
     a = dynamic_ragged_shape.DynamicRaggedShape._from_inner_shape([1, 2, 3])
-    self.assertIsInstance(a[0], ops.Tensor)
+    self.assertIsInstance(a[0], tensor.Tensor)
 
   @parameterized.parameters([
       dict(
@@ -2246,7 +2249,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
   def testStaticLengthsUnknown(self):
 
     @def_function.function(
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+        input_signature=[tensor.TensorSpec(None, dtypes.int32)])
     def foo(row_lengths):
       a = DynamicRaggedShape([RowPartition.from_row_lengths(row_lengths)], [6])
       actual = a.static_lengths()
@@ -2258,7 +2261,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
     # Note that the rank of the shape is unknown, so we can only provide a
     # prefix of the lengths.
     @def_function.function(
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+        input_signature=[tensor.TensorSpec(None, dtypes.int32)])
     def foo(inner_shape):
       a = DynamicRaggedShape([RowPartition.from_row_lengths([3, 3])],
                              inner_shape)
@@ -2294,7 +2297,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
   def testReprRankUnknown(self):
 
     @def_function.function(
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+        input_signature=[tensor.TensorSpec(None, dtypes.int32)])
     def foo(inner_shape):
       a = DynamicRaggedShape([RowPartition.from_row_lengths([3, 3])],
                              inner_shape)
@@ -2307,7 +2310,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
 
   def testToTensorShapeRankUnknown(self):
     @def_function.function(
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+        input_signature=[tensor.TensorSpec(None, dtypes.int32)])
     def foo(inner_shape):
       a = DynamicRaggedShape([RowPartition.from_row_lengths([3, 3])],
                              inner_shape)
@@ -2742,7 +2745,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
 
   def testGetItemRankNoneTruncate(self):
     @def_function.function(
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+        input_signature=[tensor.TensorSpec(None, dtypes.int32)])
     def foo(x):
       rts = DynamicRaggedShape.from_tensor(x)
       actual = rts[:1]
@@ -2881,8 +2884,6 @@ class DynamicRaggedShapeErrorTest(parameterized.TestCase):
     # but it exists.
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                 r'Cannot broadcast'):
-      # with self.assertRaisesRegex(errors.InvalidArgumentError,
-      #                             r"Cannot broadcast"):
       sess = session.Session()
       with sess.as_default():
         origin = _to_ragged_tensor_from_lengths(origin_values, origin_lengths)
@@ -2929,7 +2930,7 @@ class DynamicRaggedShapeErrorTest(parameterized.TestCase):
   def testRankNone(self):
 
     @def_function.function(
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+        input_signature=[tensor.TensorSpec(None, dtypes.int32)])
     def foo(x):
       rts = DynamicRaggedShape._from_inner_shape(x)
       self.assertIsNone(rts.rank)
@@ -2940,7 +2941,7 @@ class DynamicRaggedShapeErrorTest(parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'rank is undefined'):
 
       @def_function.function(
-          input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+          input_signature=[tensor.TensorSpec(None, dtypes.int32)])
       def foo(x):
         rts = DynamicRaggedShape._from_inner_shape(x)
         rts._num_slices_in_dimension(-1)
@@ -2951,7 +2952,7 @@ class DynamicRaggedShapeErrorTest(parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'Rank must be known to'):
 
       @def_function.function(
-          input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+          input_signature=[tensor.TensorSpec(None, dtypes.int32)])
       def foo(x):
         rts = DynamicRaggedShape._from_inner_shape(x)
         rts[-1]  # pylint: disable=pointless-statement
@@ -2962,7 +2963,7 @@ class DynamicRaggedShapeErrorTest(parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'Rank must be known to'):
 
       @def_function.function(
-          input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+          input_signature=[tensor.TensorSpec(None, dtypes.int32)])
       def foo(x):
         rts = DynamicRaggedShape._from_inner_shape(x)
         rts._with_inner_rank(1)
@@ -2973,7 +2974,7 @@ class DynamicRaggedShapeErrorTest(parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'Rank must be known to'):
 
       @def_function.function(
-          input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+          input_signature=[tensor.TensorSpec(None, dtypes.int32)])
       def foo(x):
         rts = DynamicRaggedShape._from_inner_shape(x)
         rts._with_num_row_partitions(1)
@@ -2985,7 +2986,7 @@ class DynamicRaggedShapeErrorTest(parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, ''):
 
       @def_function.function(
-          input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+          input_signature=[tensor.TensorSpec(None, dtypes.int32)])
       def foo(x):
         rts = DynamicRaggedShape._from_inner_shape(x)
         rts._as_row_partitions()
@@ -2997,7 +2998,7 @@ class DynamicRaggedShapeErrorTest(parameterized.TestCase):
                                 'Unable to broadcast: unknown rank'):
 
       @def_function.function(
-          input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+          input_signature=[tensor.TensorSpec(None, dtypes.int32)])
       def foo(x):
         a = DynamicRaggedShape._from_inner_shape(x)
         b = DynamicRaggedShape._from_inner_shape([1, 1, 1])
@@ -3025,7 +3026,7 @@ class DynamicRaggedShapeErrorTest(parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'Shape must have a'):
 
       @def_function.function(
-          input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+          input_signature=[tensor.TensorSpec(None, dtypes.int32)])
       def foo(x):
         rts = DynamicRaggedShape._from_inner_shape(x)
         dynamic_ragged_shape._get_identity_broadcaster(rts)
@@ -3042,7 +3043,7 @@ class DynamicRaggedShapeErrorTest(parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'Rank of source and target must'):
 
       @def_function.function(
-          input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+          input_signature=[tensor.TensorSpec(None, dtypes.int32)])
       def foo(x):
         rts_a = DynamicRaggedShape._from_inner_shape(x)
         rts_b = DynamicRaggedShape._from_inner_shape(x)
@@ -3103,8 +3104,8 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
     self.assertEqual(a, b)
 
   def assertTensorSpecEqual(self,
-                            a: tensor_spec.TensorSpec,
-                            b: tensor_spec.TensorSpec) -> None:
+                            a: tensor.TensorSpec,
+                            b: tensor.TensorSpec) -> None:
     self.assertTensorShapeEqual(a.shape, b.shape)
     self.assertEqual(a.dtype, b.dtype)
 
@@ -3514,7 +3515,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
   @parameterized.parameters([
       # Standard scalar
       dict(
-          other_spec=tensor_spec.TensorSpec([], dtypes.float32),
+          other_spec=tensor.TensorSpec([], dtypes.float32),
           expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
               row_partitions=[],
               static_inner_shape=tensor_shape.TensorShape([]),
@@ -3564,7 +3565,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
                   dtype=dtypes.int64)
           ],
           static_inner_shape=tensor_shape.TensorShape([None]),
-          inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+          inner_shape=tensor.TensorSpec([1], dtypes.int64)),
       dict(
           row_partitions=[
               RowPartitionSpec(
@@ -3574,7 +3575,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
                   dtype=dtypes.int64)
           ],
           static_inner_shape=tensor_shape.TensorShape([None, 3]),
-          inner_shape=tensor_spec.TensorSpec([2], dtypes.int64)),
+          inner_shape=tensor.TensorSpec([2], dtypes.int64)),
       dict(
           row_partitions=[
               RowPartitionSpec(
@@ -3584,14 +3585,14 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
                   dtype=dtypes.int64)
           ],
           static_inner_shape=tensor_shape.TensorShape([None]),
-          inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+          inner_shape=tensor.TensorSpec([1], dtypes.int64)),
       dict(
           row_partitions=[
               RowPartitionSpec(
                   nrows=6, nvals=60, uniform_row_length=10, dtype=dtypes.int64)
           ],
           static_inner_shape=tensor_shape.TensorShape([60]),
-          inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+          inner_shape=tensor.TensorSpec([1], dtypes.int64)),
       dict(
           row_partitions=[
               RowPartitionSpec(
@@ -3603,14 +3604,14 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
                   dtype=dtypes.int64)
           ],
           static_inner_shape=tensor_shape.TensorShape([120]),
-          inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+          inner_shape=tensor.TensorSpec([1], dtypes.int64)),
       dict(
           row_partitions=[
               RowPartitionSpec(
                   nrows=6, nvals=60, uniform_row_length=10, dtype=dtypes.int64)
           ],
           static_inner_shape=tensor_shape.TensorShape(None),
-          inner_shape=tensor_spec.TensorSpec([None], dtypes.int64))
+          inner_shape=tensor.TensorSpec([None], dtypes.int64))
   ])
   def test_constructor_idempotent(self, row_partitions, static_inner_shape,
                                   inner_shape):
@@ -3641,7 +3642,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
                   nrows=3, nvals=12, uniform_row_length=4, dtype=dtypes.int64)
           ],
           expected_static_inner_shape=tensor_shape.TensorShape([12]),
-          expected_inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+          expected_inner_shape=tensor.TensorSpec([1], dtypes.int64)),
       dict(
           original=dynamic_ragged_shape.DynamicRaggedShape.Spec(
               row_partitions=[
@@ -3658,7 +3659,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
                   nrows=10, nvals=30, uniform_row_length=3, dtype=dtypes.int64)
           ],
           expected_static_inner_shape=tensor_shape.TensorShape([30]),
-          expected_inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+          expected_inner_shape=tensor.TensorSpec([1], dtypes.int64)),
       dict(
           original=dynamic_ragged_shape.DynamicRaggedShape.Spec(
               row_partitions=[
@@ -3675,7 +3676,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
                   nrows=6, nvals=60, uniform_row_length=10, dtype=dtypes.int64)
           ],
           expected_static_inner_shape=tensor_shape.TensorShape([60]),
-          expected_inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+          expected_inner_shape=tensor.TensorSpec([1], dtypes.int64)),
       dict(
           original=dynamic_ragged_shape.DynamicRaggedShape.Spec(
               row_partitions=[
@@ -3705,7 +3706,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
                   dtype=dtypes.int64)
           ],
           expected_static_inner_shape=tensor_shape.TensorShape([120]),
-          expected_inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+          expected_inner_shape=tensor.TensorSpec([1], dtypes.int64)),
   ])
   def test_constructor_improvements(self, original, expected_row_partitions,
                                     expected_static_inner_shape,

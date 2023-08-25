@@ -56,7 +56,7 @@ class GlobalPoolingToReduceOp : public NodeTransformation {
     auto inputs = graph->FindInputs(node->id);
     auto outputs = graph->FindOutputs(node->id);
     const auto& pool_attr =
-        std::any_cast<const Pooling2DAttributes&>(node->operation.attributes);
+        absl::any_cast<const Pooling2DAttributes&>(node->operation.attributes);
     if (!IsGlobalAveragePooling(pool_attr, inputs[0]->tensor.shape,
                                 outputs[0]->tensor.shape)) {
       return {TransformStatus::SKIPPED, ""};

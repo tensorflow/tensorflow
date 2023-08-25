@@ -46,12 +46,12 @@ class ExampleOpConverter : public OpConverterBase<ExampleOpConverter> {
         InputArgSpec::Create("weight", TrtInputArg::kWeight)};
   }
 
-  Status Validate() { return Status::OK(); }
+  Status Validate() { return OkStatus(); }
 
   Status Convert() {
     AddOutput(TRT_TensorOrWeights(nvinfer1::DataType::kFLOAT,
                                   nvinfer1::Dims{1, {1, 1, 1}}, 1));
-    return Status::OK();
+    return OkStatus();
   }
 };
 

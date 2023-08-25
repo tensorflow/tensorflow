@@ -19,22 +19,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/file_system.h"
 #include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/platform.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/str_util.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 
 namespace tsl {
-// TODO(aminim): remove after tensorflow/core/platform/path.h migration.
-namespace io {
-using namespace tensorflow::io;  // NOLINT
-}  // namespace io
 namespace internal {
 
 namespace {
@@ -129,7 +125,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
                         std::vector<string>* results) {
   // Check that `fs`, `env` and `results` are non-null.
   if (fs == nullptr || env == nullptr || results == nullptr) {
-    return Status(tsl::error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "Filesystem calls GetMatchingPaths with nullptr arguments");
   }
 
@@ -210,7 +206,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
       // Get all children of `parent`. If this fails, return early.
       std::vector<std::string> children;
       Status s = fs->GetChildren(parent, &children);
-      if (s.code() == tsl::error::PERMISSION_DENIED) {
+      if (s.code() == absl::StatusCode::kPermissionDenied) {
         return;
       }
 
@@ -230,7 +226,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
         const std::string path = io::JoinPath(parent, children[j]);
         if (!fs->Match(path, match_pattern)) {
           children_status[j] =
-              Status(tsl::error::CANCELLED, "Operation not needed");
+              Status(absl::StatusCode::kCancelled, "Operation not needed");
         } else {
           children_status[j] = fs->IsDirectory(path);
         }
@@ -247,7 +243,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
       // remaining children get added to the result.
       // Otherwise, only the directories get added to the next queue.
       for (size_t j = 0; j < children.size(); j++) {
-        if (children_status[j].code() == tsl::error::CANCELLED) {
+        if (children_status[j].code() == absl::StatusCode::kCancelled) {
           continue;
         }
 

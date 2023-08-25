@@ -1,8 +1,11 @@
 # Description:
 #   Contains Keras protobufs
+
+# Placeholder: load py_proto_library
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/python/keras:__subpackages__",
     ],

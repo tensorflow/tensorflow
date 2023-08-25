@@ -39,8 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"  // IWYU pragma: keep
-#include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/tsl/lib/math/math_util.h"
+#include "tensorflow/tsl/platform/errors.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -84,21 +84,24 @@ using DimLevelTypeVector = absl::InlinedVector<DimLevelType, InlineRank()>;
 //   XLA_SCOPED_LOGGING_TIMER_LEVEL("fooing bar", 2);  // nop if !VLOG_IS_ON(2)
 //
 #define XLA_SCOPED_LOGGING_TIMER(label) \
-  XLA_SCOPED_LOGGING_TIMER_HELPER(label, 1, __COUNTER__)
+  XLA_SCOPED_LOGGING_TIMER_HELPER(label, 1, __COUNTER__, /*condition=*/true)
 #define XLA_SCOPED_LOGGING_TIMER_LEVEL(label, level) \
-  XLA_SCOPED_LOGGING_TIMER_HELPER(label, level, __COUNTER__)
+  XLA_SCOPED_LOGGING_TIMER_HELPER(label, level, __COUNTER__, /*condition=*/true)
+// The timer trace is only printed if the condition is true.
+#define XLA_SCOPED_LOGGING_TIMER_IF(label, condition) \
+  XLA_SCOPED_LOGGING_TIMER_HELPER(label, 1, __COUNTER__, (condition))
 
 // Helper for implementing macros above.  Do not use directly.
 //
 // Forces the evaluation of "counter", which we expect is equal to __COUNTER__.
-#define XLA_SCOPED_LOGGING_TIMER_HELPER(label, level, counter) \
-  XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)
+#define XLA_SCOPED_LOGGING_TIMER_HELPER(label, level, counter, condition) \
+  XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, (condition))
 
 // Helper for macros above.  Don't use directly.
-#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)      \
-  static ::xla::TimerStats XLA_TimerStats##counter;                  \
-  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter( \
-      label, /*enabled=*/VLOG_IS_ON(level), __FILE__, __LINE__,      \
+#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, condition)     \
+  static ::xla::TimerStats XLA_TimerStats##counter;                            \
+  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter(           \
+      label, /*enabled=*/VLOG_IS_ON(level) && (condition), __FILE__, __LINE__, \
       &XLA_TimerStats##counter);
 
 struct TimerStats {
@@ -136,17 +139,6 @@ class ScopedLoggingTimer {
   uint64_t start_micros_;
   bool enabled_;
 };
-
-// Given a vector<T>, returns a Span<char> that points at its
-// internals.
-//
-// Warning: if the vector is updated its storage pointer may change, so use this
-// with caution (ideally in limited scopes with temporary lifetimes).
-template <typename T>
-absl::Span<uint8_t> MutableByteSlice(std::vector<T>* v) {
-  return absl::Span<uint8_t>(reinterpret_cast<uint8_t*>(v->data()),
-                             v->size() * sizeof(T));
-}
 
 // Turns an immutable slice of type T into an immutable slice of bytes with the
 // same byte size.
@@ -190,11 +182,12 @@ constexpr std::underlying_type_t<T> to_underlying(T value) noexcept {
 // source and destination. The source starting index is src_base, while the
 // destination one is dest_base.
 template <typename D, typename S>
-void StridedCopy(absl::Span<D> dest, int64_t dest_base, int64_t dest_stride,
-                 absl::Span<const S> src, int64_t src_base, int64_t src_stride,
+void StridedCopy(D* dest, int64_t dest_stride, const S* src, int64_t src_stride,
                  int64_t count) {
-  for (; count > 0; --count, dest_base += dest_stride, src_base += src_stride) {
-    dest[dest_base] = static_cast<D>(src[src_base]);
+  const S* src_end = src + count * src_stride;
+  DCHECK_LT(src, src_end);
+  for (; src < src_end; dest += dest_stride, src += src_stride) {
+    *dest = static_cast<D>(*src);
   }
 }
 
@@ -265,22 +258,25 @@ Status Internal(const absl::FormatSpec<Args...>& format, const Args&... args) {
 
 template <typename... Args>
 Status InvalidArgumentStrCat(Args&&... concat) {
-  return InvalidArgument("%s", absl::StrCat(std::forward<Args>(concat)...));
+  return WithLogBacktrace(
+      tsl::errors::InvalidArgument(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status UnimplementedStrCat(Args&&... concat) {
-  return Unimplemented("%s", absl::StrCat(std::forward<Args>(concat)...));
+  return WithLogBacktrace(
+      tsl::errors::Unimplemented(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status InternalErrorStrCat(Args&&... concat) {
-  return InternalError("%s", absl::StrCat(std::forward<Args>(concat)...));
+  return WithLogBacktrace(tsl::errors::Internal(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status ResourceExhaustedStrCat(Args&&... concat) {
-  return ResourceExhausted("%s", absl::StrCat(std::forward<Args>(concat)...));
+  return WithLogBacktrace(
+      tsl::errors::ResourceExhausted(std::forward<Args>(concat)...));
 }
 
 // Splits the lines of the original, replaces leading whitespace with the prefix
@@ -337,6 +333,21 @@ std::string VectorString(const std::initializer_list<T>& c) {
   return VectorString<std::initializer_list<T>>(c);
 }
 
+// Returns a string which can losslessly round trip to a float8 E5M2.
+std::string RoundTripFpToString(tsl::float8_e5m2 value);
+
+// Returns a string which can losslessly round trip to a float8 E4M3.
+std::string RoundTripFpToString(tsl::float8_e4m3fn value);
+
+// Returns a string which can losslessly round trip to a float8 E4M3B11.
+std::string RoundTripFpToString(tsl::float8_e4m3b11 value);
+
+// Returns a string which can losslessly round trip to a float8 E5M2FNUZ.
+std::string RoundTripFpToString(tsl::float8_e5m2fnuz value);
+
+// Returns a string which can losslessly round trip to a float8 E4M3FNUZ.
+std::string RoundTripFpToString(tsl::float8_e4m3fnuz value);
+
 // Returns a string which can losslessly round trip to a bfloat.
 std::string RoundTripFpToString(tsl::bfloat16 value);
 
@@ -365,14 +376,14 @@ bool HasInteriorPadding(const PaddingConfig& config);
 // namespace, as it is very commonly used.
 template <typename T>
 T FloorOfRatio(T dividend, T divisor) {
-  return tensorflow::MathUtil::FloorOfRatio<T>(dividend, divisor);
+  return tsl::MathUtil::FloorOfRatio<T>(dividend, divisor);
 }
 
 // Imports the templated CeilOfRatio math function from the TensorFlow
 // namespace, as it is very commonly used.
 template <typename T>
 T CeilOfRatio(T dividend, T divisor) {
-  return tensorflow::MathUtil::CeilOfRatio<T>(dividend, divisor);
+  return tsl::MathUtil::CeilOfRatio<T>(dividend, divisor);
 }
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio
@@ -486,6 +497,8 @@ constexpr T IPow(T base, int exponent) {
   return result;
 }
 
+// UnsignedIntegerTypeForSize<N> gets an unsigned integer with the given size in
+// bytes.
 template <size_t>
 struct UnsignedIntegerTypeForSize;
 
@@ -509,26 +522,51 @@ struct UnsignedIntegerTypeForSize<8> {
   using type = uint64_t;
 };
 
-template <size_t N>
-struct SignedIntegerTypeForSize {
-  using type = std::make_signed_t<typename UnsignedIntegerTypeForSize<N>::type>;
-};
+template <size_t kBytes>
+using UnsignedIntegerTypeForSizeType =
+    typename UnsignedIntegerTypeForSize<kBytes>::type;
+
+template <size_t kBytes>
+using SignedIntegerTypeForSizeType =
+    std::make_signed_t<UnsignedIntegerTypeForSizeType<kBytes>>;
+
+template <typename T>
+auto SignAndMagnitude(T x) {
+  using BitType = UnsignedIntegerTypeForSizeType<sizeof(T)>;
+  BitType x_abs_bits = Eigen::numext::bit_cast<BitType>(Eigen::numext::abs(x));
+  const BitType x_bits = Eigen::numext::bit_cast<BitType>(x);
+  const BitType x_sign = x_bits ^ x_abs_bits;
+  if constexpr (std::is_same_v<T, tsl::float8_e4m3b11> ||
+                std::is_same_v<T, tsl::float8_e4m3fnuz> ||
+                std::is_same_v<T, tsl::float8_e5m2fnuz>) {
+    //  f8e4m3b11, f8e4m3fnuz, and f8e5m2fnuz don't support -0, adjust negative
+    //  numbers to fill in the gap.
+    if (x_sign) {
+      x_abs_bits -= 1;
+    }
+  }
+  return std::make_pair(x_sign, x_abs_bits);
+}
+
+template <typename T>
+auto SignAndMagnitudeToTwosComplement(T sign, T magnitude) {
+  static_assert(!std::numeric_limits<T>::is_signed);
+  using SignedType = std::make_signed_t<T>;
+  return static_cast<SignedType>(magnitude) ^
+         (static_cast<SignedType>(sign) < 0 ? SignedType{-1} : SignedType{0});
+}
 
 // Returns the signed magnitude of T.
 template <typename T>
-typename SignedIntegerTypeForSize<sizeof(T)>::type ToSignMagnitude(T input) {
-  auto as_bits =
-      absl::bit_cast<typename SignedIntegerTypeForSize<sizeof(T)>::type>(input);
-  auto sign_mask =
-      absl::bit_cast<typename UnsignedIntegerTypeForSize<sizeof(T)>::type>(
-          tensorflow::MathUtil::Sign(as_bits));
-  return as_bits ^ (sign_mask >> 1);
+auto ToSignMagnitude(T input) {
+  auto [sign, magnitude] = SignAndMagnitude(input);
+  return SignAndMagnitudeToTwosComplement(sign, magnitude);
 }
 
 template <typename T>
 constexpr int NanPayloadBits() {
-  // Floating point types with NaNs have payloads.
-  if (!std::numeric_limits<T>::has_quiet_NaN) {
+  // Floating point types with signaling NaNs have payloads.
+  if constexpr (!std::numeric_limits<T>::has_signaling_NaN) {
     return 0;
   }
   return std::numeric_limits<T>::digits - 1;
@@ -536,7 +574,8 @@ constexpr int NanPayloadBits() {
 
 template <typename T>
 constexpr uint64_t QuietNanWithoutPayload() {
-  if (const int bits = NanPayloadBits<T>()) {
+  constexpr int bits = NanPayloadBits<T>();
+  if constexpr (bits > 0) {
     return uint64_t{1} << (bits - 1);
   }
   return 0;
@@ -544,7 +583,8 @@ constexpr uint64_t QuietNanWithoutPayload() {
 
 template <typename T>
 constexpr uint64_t NanPayloadBitMask() {
-  if (const int bits = NanPayloadBits<T>()) {
+  constexpr int bits = NanPayloadBits<T>();
+  if constexpr (bits > 0) {
     return LsbMask<uint64_t>(bits);
   }
   return 0;
@@ -552,10 +592,15 @@ constexpr uint64_t NanPayloadBitMask() {
 
 template <typename T>
 T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
-  using RepT = typename UnsignedIntegerTypeForSize<sizeof(T)>::type;
-  const T val = std::numeric_limits<T>::quiet_NaN();
+  static_assert(NanPayloadBits<T>() > 0);
+  using RepT = UnsignedIntegerTypeForSizeType<sizeof(T)>;
+  // Clear the sign bit.
+  T val = Eigen::numext::abs(std::numeric_limits<T>::quiet_NaN());
+  // Conditionally set the sign bit.
+  if (sign) {
+    val = -val;
+  }
   auto rep = absl::bit_cast<RepT>(val);
-  rep &= LsbMask<RepT>(std::numeric_limits<RepT>::digits - 1);
   rep |= uint64_t{sign} << (std::numeric_limits<RepT>::digits - 1);
   constexpr int kPayloadBits = NanPayloadBits<T>();
   if (kPayloadBits > 0) {
@@ -608,6 +653,9 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
 
 // Removes illegal characters from filenames.
 std::string SanitizeFileName(std::string file_name);
+
+// Check that a sequence of distinct numbers can form a continuous interval.
+bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t>);
 
 template <typename C, typename Value>
 int64_t FindIndex(const C& c, Value&& value) {
@@ -666,10 +714,16 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
 std::pair<float, float> SplitF64ToF32(double x);
 
 class HloInstruction;
+class HloModule;
 
 // A predicate over HLO instruction.
 using HloPredicate = std::function<bool(const HloInstruction*)>;
+using HloModulePredicate = std::function<bool(const HloModule*)>;
 
+inline bool HloPredicateTrue(const HloInstruction*) { return true; }
+inline bool HloPredicateFalse(const HloInstruction*) { return false; }
+
+using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
 
 }  // namespace xla

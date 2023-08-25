@@ -29,6 +29,7 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.tpu import tpu_feed
 
@@ -167,7 +168,7 @@ class XLACompileContextTest(test.TestCase, parameterized.TestCase):
       self.assertNotIn(op1.op, op3.op.control_inputs)
       return op3
 
-    control_flow_ops.while_loop(
+    while_loop.while_loop(
         cond=lambda i: math_ops.less(i, 10), body=while_body, loop_vars=[i])
 
   @test_util.build_as_function_and_v1_graph

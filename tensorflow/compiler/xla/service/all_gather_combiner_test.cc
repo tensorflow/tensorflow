@@ -17,20 +17,13 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -291,6 +284,15 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_EQ(AllGatherCount(*module), 2);
   EXPECT_TRUE(changed);
+
+  // Verify that the sharding is combined correctly.
+  const HloInstruction* param0 =
+      module->entry_computation()->parameter_instruction(0);
+  ASSERT_EQ(param0->user_count(), 1);
+  const HloInstruction* combined_ag = param0->users().front();
+  ASSERT_EQ(combined_ag->opcode(), HloOpcode::kAllGather);
+  EXPECT_THAT(combined_ag, testing::opcode_matchers::Sharding(
+                               "{{maximal device=0}, {maximal device=0}}"));
 }
 
 TEST_F(AllGatherCombinerTest, DoNotCombineCrossShardAndCrossReplicaInSPMD) {

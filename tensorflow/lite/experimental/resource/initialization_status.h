@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 
 namespace tflite {

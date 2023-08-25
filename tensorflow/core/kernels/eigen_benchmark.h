@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/eigen_backward_cuboid_convolutions.h"
 #include "tensorflow/core/kernels/eigen_backward_spatial_convolutions.h"
 #include "tensorflow/core/kernels/eigen_cuboid_convolution.h"
-#include "tensorflow/core/kernels/eigen_spatial_convolutions.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/framework/convolution/eigen_spatial_convolutions.h"
 
 using ::tensorflow::TTypes;
 

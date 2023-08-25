@@ -28,12 +28,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -66,9 +66,8 @@ class CpuGpuFusionTest : public HloTestBase {
     // Create a variable for comparisons since they require the direction.
     bool is_compare = std::is_same<T, bool>::value;
     Array2D<float> operand_data[Arity];
-    for (int i = 0; i < Arity; ++i) {
-      new (&operand_data[i]) Array2D<float>(test_width, test_height);
-    }
+    std::fill(std::begin(operand_data), std::end(operand_data),
+              Array2D<float>(test_width, test_height));
     Array2D<T> answer_data(test_width, test_height);
     for (int i = 0; i < test_width; ++i) {
       for (int j = 0; j < test_height; ++j) {
@@ -275,8 +274,8 @@ XLA_TEST_F(CpuGpuFusionTest, RandomizedParallelPartition) {
   std::uniform_int_distribution<int> distribution(128, 1024);
   const int64_t rand_dim0_size = distribution(generator);
   const int64_t dim1_size = 1024;
-  Shape shape =
-      ShapeUtil::MakeShapeWithLayout(F32, {rand_dim0_size, dim1_size}, {1, 0});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(
+      F32, {rand_dim0_size, dim1_size}, {1, 0});
   // Build simple fusion computation: y = x^2 (elementwise).
   auto builder = HloComputation::Builder(TestName());
   auto hlo_module = CreateNewVerifiedModule();
@@ -724,6 +723,57 @@ XLA_TEST_F(CpuGpuFusionTest, SharedConstant) {
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>({8}),
                              ExecuteAndTransfer(std::move(hlo_module), {})));
+}
+
+// Test that fusion can handle elementwise ops with more than one user. This
+// test case needs deduplication to avoid exponential compile time.
+XLA_TEST_F(CpuGpuFusionTest, Fibonacci) {
+  const char* const kModuleStr = R"(
+  HloModule fibonacci
+
+  ENTRY main (f0: f32[5], f1: f32[5]) -> f32[5] {
+    %fib0 = f32[5] parameter(0)
+    %fib1 = f32[5] parameter(1)
+    %fib2 = f32[5] add(f32[5] %fib0, f32[5] %fib1)
+    %fib3 = f32[5] add(f32[5] %fib2, f32[5] %fib1)
+    %fib4 = f32[5] add(f32[5] %fib3, f32[5] %fib2)
+    %fib5 = f32[5] add(f32[5] %fib4, f32[5] %fib3)
+    %fib6 = f32[5] add(f32[5] %fib5, f32[5] %fib4)
+    %fib7 = f32[5] add(f32[5] %fib6, f32[5] %fib5)
+    %fib8 = f32[5] add(f32[5] %fib7, f32[5] %fib6)
+    %fib9 = f32[5] add(f32[5] %fib8, f32[5] %fib7)
+    %fib10 = f32[5] add(f32[5] %fib9, f32[5] %fib8)
+    %fib11 = f32[5] add(f32[5] %fib10, f32[5] %fib9)
+    %fib12 = f32[5] add(f32[5] %fib11, f32[5] %fib10)
+    %fib13 = f32[5] add(f32[5] %fib12, f32[5] %fib11)
+    %fib14 = f32[5] add(f32[5] %fib13, f32[5] %fib12)
+    %fib15 = f32[5] add(f32[5] %fib14, f32[5] %fib13)
+    %fib16 = f32[5] add(f32[5] %fib15, f32[5] %fib14)
+    %fib17 = f32[5] add(f32[5] %fib16, f32[5] %fib15)
+    %fib18 = f32[5] add(f32[5] %fib17, f32[5] %fib16)
+    %fib19 = f32[5] add(f32[5] %fib18, f32[5] %fib17)
+    %fib20 = f32[5] add(f32[5] %fib19, f32[5] %fib18)
+    %fib21 = f32[5] add(f32[5] %fib20, f32[5] %fib19)
+    %fib22 = f32[5] add(f32[5] %fib21, f32[5] %fib20)
+    %fib23 = f32[5] add(f32[5] %fib22, f32[5] %fib21)
+    %fib24 = f32[5] add(f32[5] %fib23, f32[5] %fib22)
+    %fib25 = f32[5] add(f32[5] %fib24, f32[5] %fib23)
+    %fib26 = f32[5] add(f32[5] %fib25, f32[5] %fib24)
+    %fib27 = f32[5] add(f32[5] %fib26, f32[5] %fib25)
+    %fib28 = f32[5] add(f32[5] %fib27, f32[5] %fib26)
+    %fib29 = f32[5] add(f32[5] %fib28, f32[5] %fib27)
+    %fib30 = f32[5] add(f32[5] %fib29, f32[5] %fib28)
+    %fib31 = f32[5] add(f32[5] %fib30, f32[5] %fib29)
+    %fib32 = f32[5] add(f32[5] %fib31, f32[5] %fib30)
+    %fib33 = f32[5] add(f32[5] %fib32, f32[5] %fib31)
+    %fib34 = f32[5] add(f32[5] %fib33, f32[5] %fib32)
+    ROOT %fib35 = f32[5] add(f32[5] %fib34, f32[5] %fib33)
+  })";
+  auto module = ParseAndReturnVerifiedModule(kModuleStr).value();
+  auto literal0 = LiteralUtil::CreateR1<float>({1, 2, 3, 4, 5});
+  auto literal1 = LiteralUtil::CreateR1<float>({1, 2, 3, 4, 5});
+  EXPECT_TRUE(
+      RunAndCompare(std::move(module), {&literal0, &literal1}, std::nullopt));
 }
 
 XLA_TEST_F(CpuGpuFusionTest, Add2D) {

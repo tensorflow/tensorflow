@@ -29,7 +29,6 @@ limitations under the License.
 #include <time.h>
 #include <unistd.h>
 
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/default/posix_file_system.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
 
@@ -85,7 +85,8 @@ class PosixRandomAccessFile : public RandomAccessFile {
         n -= r;
         offset += r;
       } else if (r == 0) {
-        s = Status(error::OUT_OF_RANGE, "Read less bytes than requested");
+        s = Status(absl::StatusCode::kOutOfRange,
+                   "Read less bytes than requested");
       } else if (errno == EINTR || errno == EAGAIN) {
         // Retry
       } else {

@@ -219,6 +219,7 @@ REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64_t);
 REGISTER_KERNEL(GPU, bool);
 // Currently we do not support filling strings on GPU
+#endif
 
 // A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -231,7 +232,6 @@ REGISTER_KERNEL_BUILDER(Name("Fill")
                             .HostMemory("value")
                             .HostMemory("output"),
                         FillOp<CPUDevice, int32, int32>);
-#endif
 
 #undef REGISTER_KERNEL
 
@@ -336,14 +336,15 @@ REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
 #endif
 REGISTER_KERNEL(bfloat16, GPU);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#undef REGISTER_KERNEL
+
 REGISTER_KERNEL_BUILDER(Name("OnesLike")
                             .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("y"),
                         OnesLikeOp<CPUDevice, int32>);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#undef REGISTER_KERNEL
 
 PlaceholderOp::PlaceholderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));

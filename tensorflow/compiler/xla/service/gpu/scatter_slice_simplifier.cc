@@ -20,11 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
@@ -79,6 +79,11 @@ class ScatterSliceMatcher {
       if (slice->slice_limits(i) != result_dimensions_[i]) {
         if (result_dimensions_[i] != operand_dimensions_[i]) {
           return false;  // Another slice has incompatible dimensions.
+        }
+        auto& update_window_dims =
+            scatter_->scatter_dimension_numbers().update_window_dims();
+        if (absl::c_binary_search(update_window_dims, i)) {
+          return false;  // Update dimensions cannot be truncated.
         }
         result_dimensions_[i] = slice->slice_limits(i);
         VLOG(10) << "Dimension " << i << " truncated to size "

@@ -16,6 +16,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -53,7 +54,7 @@ void TensorCuBlasGemm<T>::operator()(OpKernelContext* ctx, bool transa,
       ctx, ctx->op_device_context()->stream()->ThenBlasGemm(
                trans[transa], trans[transb], m, n, k, static_cast<T>(alpha),
                a_ptr, lda, b_ptr, ldb, static_cast<T>(beta), &c_ptr, ldc,
-               se::blas::kDefaultComputePrecision));
+               GetNumericOptions()));
 #else
   ctx->SetStatus(errors::InvalidArgument("CuBlasGemm needs CUDA."));
 #endif

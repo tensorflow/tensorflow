@@ -23,27 +23,26 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+#if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
+    defined(PLATFORM_GOOGLE)
 #include <fnmatch.h>
 #else
 #include "tensorflow/tsl/platform/regexp.h"
-#endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+#endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
+        // defined(PLATFORM_GOOGLE)
 
-#include "tensorflow/core/platform/scanner.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/platform.h"
+#include "tensorflow/tsl/platform/scanner.h"
 #include "tensorflow/tsl/platform/str_util.h"
 #include "tensorflow/tsl/platform/strcat.h"
 
 namespace tsl {
-// TODO(aminim): remove after tensorflow/core/platform/scanner.h migration.
-namespace strings {
-using tensorflow::strings::Scanner;  // NOLINT
-}  // namespace strings
 
 bool FileSystem::Match(const string& filename, const string& pattern) {
-#if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+#if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
+    defined(PLATFORM_GOOGLE)
   // We avoid relying on RE2 on mobile platforms, because it incurs a
   // significant binary size increase.
   // For POSIX platforms, there is no need to depend on RE2 if `fnmatch` can be
@@ -56,7 +55,8 @@ bool FileSystem::Match(const string& filename, const string& pattern) {
   regexp = str_util::StringReplace(regexp, "(", "\\(", true);
   regexp = str_util::StringReplace(regexp, ")", "\\)", true);
   return RE2::FullMatch(filename, regexp);
-#endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+#endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
+        // defined(PLATFORM_GOOGLE)
 }
 
 string FileSystem::TranslateName(const string& name) const {
@@ -83,7 +83,7 @@ Status FileSystem::IsDirectory(const string& name, TransactionToken* token) {
   if (stat.is_directory) {
     return OkStatus();
   }
-  return Status(tsl::error::FAILED_PRECONDITION, "Not a directory");
+  return Status(absl::StatusCode::kFailedPrecondition, "Not a directory");
 }
 
 Status FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
@@ -198,7 +198,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname,
       Status directory_status = IsDirectory(current_entry);
       if (directory_status.ok()) {
         break;  // We need to start creating directories from here.
-      } else if (directory_status.code() == tsl::error::UNIMPLEMENTED) {
+      } else if (directory_status.code() == absl::StatusCode::kUnimplemented) {
         return directory_status;
       } else {
         return errors::FailedPrecondition(remaining_dir, " is not a directory");
@@ -222,7 +222,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname,
   for (const StringPiece sub_dir : sub_dirs) {
     built_path = this->JoinPath(built_path, sub_dir);
     Status status = CreateDir(this->CreateURI(scheme, host, built_path));
-    if (!status.ok() && status.code() != tsl::error::ALREADY_EXISTS) {
+    if (!status.ok() && status.code() != absl::StatusCode::kAlreadyExists) {
       return status;
     }
   }

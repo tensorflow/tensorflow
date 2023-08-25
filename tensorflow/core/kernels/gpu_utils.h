@@ -36,10 +36,14 @@ namespace stream_executor {
 class RedzoneAllocator;
 }  // namespace stream_executor
 
+namespace xla {
+class AutotuneResult;
+}  // namespace xla
+
 namespace tensorflow {
 
 class NodeDef;
-class AutotuneResult;
+using xla::AutotuneResult;
 
 template <typename T>
 se::DeviceMemory<T> AsDeviceMemory(const T* gpu_memory) {

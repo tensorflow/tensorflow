@@ -157,6 +157,14 @@ After running `pod install`, you need to provide an additional linker flag to
 force load the select TF ops framework into your project. In your Xcode project,
 go to `Build Settings` -> `Other Linker Flags`, and add:
 
+For versions >= 2.9.0:
+
+```text
+-force_load $(SRCROOT)/Pods/TensorFlowLiteSelectTfOps/Frameworks/TensorFlowLiteSelectTfOps.xcframework/ios-arm64/TensorFlowLiteSelectTfOps.framework/TensorFlowLiteSelectTfOps
+```
+
+For versions < 2.9.0:
+
 ```text
 -force_load $(SRCROOT)/Pods/TensorFlowLiteSelectTfOps/Frameworks/TensorFlowLiteSelectTfOps.framework/TensorFlowLiteSelectTfOps
 ```
@@ -218,10 +226,10 @@ This command generates the following shared library in
 `bazel-bin/tensorflow/lite/delegates/flex`.
 
 Platform | Library name
--------- | ----------------------------
-Linux    | libtensorflowlite_flex.so
-macOS    | libtensorflowlite_flex.dylib
-Windows  | tensorflowlite_flex.dll
+-------- | ------------------------------
+Linux    | `libtensorflowlite_flex.so`
+macOS    | `libtensorflowlite_flex.dylib`
+Windows  | `tensorflowlite_flex.dll`
 
 Note that the necessary `TfLiteDelegate` will be installed automatically when
 creating the interpreter at runtime as long as the shared library is linked. It

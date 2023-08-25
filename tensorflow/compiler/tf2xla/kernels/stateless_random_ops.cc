@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <tuple>
 
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
@@ -67,6 +68,10 @@ xla::BitGeneratorTy GetBitGeneratorForDevice(
 xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype) {
   if (dtype == DT_BFLOAT16) {
     xla::XlaBuilder* builder = input.builder();
+    // TODO(b/256243456): Instead of doing
+    // `ConvertElementType(BitcastConvertType(u32, F32), BF16)` we should do
+    // `BitcastConvertType(ConvertElementType(u32, U16), BF16)`, to avoid the
+    // unclear `ConvertElementType(f32, BF16)` behavior.
     xla::XlaOp output = xla::BitcastConvertType(input, xla::U32) &
                         xla::ConstantR0<uint32>(builder, 0xFFFF0000);
     return xla::ConvertElementType(xla::BitcastConvertType(output, xla::F32),
@@ -87,6 +92,7 @@ xla::XlaOp StatelessRngUniform(absl::string_view device_type_string,
   xla::XlaOp initial_state = xla::ConstantR0WithType(builder, xla::U64, 0);
   xla::PrimitiveType type = shape.element_type();
   switch (type) {
+    case xla::F16:
     case xla::F32:
     case xla::F64:
       return xla::UniformFloatingPointDistribution(
@@ -94,7 +100,7 @@ xla::XlaOp StatelessRngUniform(absl::string_view device_type_string,
                  GetBitGeneratorForDevice(device_type_string), minval, maxval,
                  shape)
           .value;
-    case xla::S32:  // fall through
+    case xla::S32:
     case xla::S64:
       return UniformIntDistribution(
                  key, initial_state,
@@ -104,7 +110,7 @@ xla::XlaOp StatelessRngUniform(absl::string_view device_type_string,
       break;
     default:
       return builder->ReportError(xla::Unimplemented(
-          "Types other than F32, S32 and S64 are not implemented by "
+          "Types other than F16, F32, S32 and S64 are not implemented by "
           "StatelessRngUniform; got %s",
           xla::primitive_util::LowercasePrimitiveTypeName(type)));
   }
@@ -154,12 +160,13 @@ class StatelessRandomUniformOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
 
     TensorShape seed_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_shape.DebugString())));
     xla::XlaOp seed = ctx->Input(1);
 
-    DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
+    auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
     xla::PrimitiveType rng_primitive_type = xla_shape.element_type();
@@ -182,7 +189,8 @@ class StatelessRandomUniformOp : public XlaOpKernel {
 // TODO(phawkins): generalize to non-float, non-int32 seed types.
 REGISTER_XLA_OP(Name("StatelessRandomUniform")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16})
+                    .TypeConstraint("dtype",
+                                    {DT_DOUBLE, DT_FLOAT, DT_HALF, DT_BFLOAT16})
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessRandomUniformOp);
 
@@ -199,17 +207,20 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
 
     TensorShape seed_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_shape.DebugString())));
     TensorShape minval_shape = ctx->InputShape(2);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(minval_shape),
-                errors::InvalidArgument("minval must be scalar, got shape ",
-                                        minval_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(minval_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "minval must be scalar, got shape ", minval_shape.DebugString())));
     TensorShape maxval_shape = ctx->InputShape(3);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(maxval_shape),
-                errors::InvalidArgument("minval must be scalar, got shape ",
-                                        maxval_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(maxval_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "minval must be scalar, got shape ", maxval_shape.DebugString())));
 
     xla::XlaOp seed = ctx->Input(1);
     xla::XlaOp minval = ctx->Input(2);
@@ -250,9 +261,10 @@ class StatelessRandomUniformFullIntOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
 
     TensorShape seed_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_shape.DebugString())));
 
     xla::XlaOp seed = ctx->Input(1);
 
@@ -291,13 +303,13 @@ class StatelessRandomNormalOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
 
     TensorShape seed_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, seed_shape == TensorShape({2}),
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, seed_shape == TensorShape({2}),
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_shape.DebugString())));
     xla::XlaOp seed = ctx->Input(1);
+    auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
     xla::Shape xla_shape;
-
-    DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
 
     xla::XlaBuilder* builder = seed.builder();
@@ -325,7 +337,8 @@ class StatelessRandomNormalOp : public XlaOpKernel {
 // TODO(phawkins): generalize to non-float, non-int32 seed types.
 REGISTER_XLA_OP(Name("StatelessRandomNormal")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16})
+                    .TypeConstraint("dtype",
+                                    {DT_DOUBLE, DT_FLOAT, DT_HALF, DT_BFLOAT16})
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessRandomNormalOp);
 
@@ -342,13 +355,14 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
 
     TensorShape seed_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, seed_shape == TensorShape({2}),
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, seed_shape == TensorShape({2}),
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_shape.DebugString())));
     xla::XlaOp seed = ctx->Input(1);
     xla::XlaBuilder* builder = ctx->builder();
 
-    DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
+    auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
     xla::XlaOp uniform = StatelessRngUniform(
@@ -369,7 +383,8 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("StatelessTruncatedNormal")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16})
+                    .TypeConstraint("dtype",
+                                    {DT_DOUBLE, DT_FLOAT, DT_HALF, DT_BFLOAT16})
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessTruncatedNormalOp);
 
@@ -386,14 +401,14 @@ class StatelessParameterizedTruncatedNormalOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
 
     TensorShape seed_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, seed_shape == TensorShape({2}),
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, seed_shape == TensorShape({2}),
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_shape.DebugString())));
     xla::XlaOp seed = ctx->Input(1);
     xla::XlaBuilder* builder = ctx->builder();
 
-    DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
-
+    auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
 
@@ -432,7 +447,8 @@ class StatelessParameterizedTruncatedNormalOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("StatelessParameterizedTruncatedNormal")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16})
+                    .TypeConstraint("dtype",
+                                    {DT_DOUBLE, DT_FLOAT, DT_HALF, DT_BFLOAT16})
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessParameterizedTruncatedNormalOp);
 

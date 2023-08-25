@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -518,16 +519,18 @@ def ragged_reduce_aggregate(reduce_op,
   Raises:
     ValueError: If `axis` contains a `Tensor` whose value is not constant.
   """
-  if not ragged_tensor.is_ragged(rt_input):
-    if separator is None:
-      return reduce_op(rt_input, axis, keepdims=keepdims, name=name)
-    else:
-      # When separator is not None, We infer that dtype is string and
-      # reduce_join will be called.
-      return reduce_op(
-          rt_input, axis, keepdims=keepdims, name=name, separator=separator)
+  # When separator is not None, We infer that dtype is string and
+  # reduce_join will be called.
+  if separator is None:
+    maybe_separator = {}
+  else:
+    maybe_separator = {'separator': separator}
 
-  if isinstance(axis, ops.Tensor):
+  if not ragged_tensor.is_ragged(rt_input):
+    return reduce_op(
+        rt_input, axis, keepdims=keepdims, name=name, **maybe_separator)
+
+  if isinstance(axis, tensor.Tensor):
     axis = tensor_util.constant_value(axis)
     if axis is None:
       raise ValueError('axis must be known at graph construction time.')
@@ -536,7 +539,8 @@ def ragged_reduce_aggregate(reduce_op,
 
   # When reducing all axes, just ignore splits & reduce the inner values.
   if axis is None:
-    result = reduce_op(rt_input.flat_values, None, keepdims=keepdims, name=name)
+    result = reduce_op(rt_input.flat_values, None, keepdims=keepdims,
+                       name=name, **maybe_separator)
     if keepdims:
       # Expand the result to the input number of dimensions.
       for _ in rt_input.shape[1:]:
@@ -1171,7 +1175,7 @@ def tensor_not_equals(self: ragged_tensor.RaggedOrDense,
 
 def _use_legacy_mode_for_tensor_equality(self):
   g = getattr(self, 'graph', None)
-  return not (ops.Tensor._USE_EQUALITY and  # pylint: disable=protected-access
+  return not (tensor.Tensor._USE_EQUALITY and  # pylint: disable=protected-access
               ops.executing_eagerly_outside_functions() and
               (g is None or g.building_function))
 

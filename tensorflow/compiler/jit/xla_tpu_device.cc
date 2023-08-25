@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
+#include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
@@ -38,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_node_device_util.h"
 #include "tensorflow/core/tpu/virtual_device.h"
@@ -62,7 +63,7 @@ StatusOr<xla::Shape> TpuShapeRepresentation(
   ApiConverter::StackHelper<XLA_Shape> se_shape(xla_shape);
   ApiConverter::StackHelper<XLA_Shape> tpu_shape;
   StatusHelper status;
-  tpu::ExecutorApiFn()->XlaShapeToTpuShapeRepresentationFn(
+  stream_executor::tpu::ExecutorApiFn()->XlaShapeToTpuShapeRepresentationFn(
       &se_shape.value, type, use_fast_memory, &tpu_shape.value,
       status.c_status);
   if (!status.status().ok()) {
@@ -93,7 +94,7 @@ Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
   StatusHelper status;
   ApiConverter::StackHelper<XLA_Shape> se_shape(on_device_shape);
   ApiConverter::StackHelper<XLA_Shape> tpu_shape;
-  tpu::ExecutorApiFn()->XlaShapeToTpuPaddedShapeFn(
+  stream_executor::tpu::ExecutorApiFn()->XlaShapeToTpuPaddedShapeFn(
       &se_shape.value, &tpu_shape.value, status.c_status);
   if (!status.ok()) {
     return status.status();

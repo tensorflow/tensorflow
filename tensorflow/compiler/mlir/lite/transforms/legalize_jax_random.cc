@@ -50,16 +50,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LEGALIZEJAXRANDOMPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 struct LegalizeJaxRandomPass
-    : public LegalizeJaxRandomPassBase<LegalizeJaxRandomPass> {
+    : public impl::LegalizeJaxRandomPassBase<LegalizeJaxRandomPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeJaxRandomPass)
 

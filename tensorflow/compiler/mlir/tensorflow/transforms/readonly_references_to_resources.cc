@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -39,6 +38,9 @@ namespace {
 constexpr StringRef kClassAttr = "_class";
 constexpr StringRef kSharedNameAttr = "shared_name";
 constexpr StringRef kLocationPrefix = "loc:@";
+
+#define GEN_PASS_DEF_CONVERTREADONLYREFERENCEVARIABLESTORESOURCEVARIABLESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
 // A pass that converts readonly reference variables to the corresponding
 // resource variables.
@@ -56,7 +58,7 @@ constexpr StringRef kLocationPrefix = "loc:@";
 // heuristic method that assumes that all the users of them is Identity op,
 // fed directly.
 class ConvertReadonlyReferenceVariablesToResourceVariablesPass
-    : public ConvertReadonlyReferenceVariablesToResourceVariablesPassBase<
+    : public impl::ConvertReadonlyReferenceVariablesToResourceVariablesPassBase<
           ConvertReadonlyReferenceVariablesToResourceVariablesPass> {
   void runOnOperation() override;
 };
@@ -166,7 +168,8 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
         ArrayRef<Value>{},
         ArrayRef<NamedAttribute>{
             builder.getNamedAttr("device", device_attr),
-            builder.getNamedAttr("container", variable_v2_op.containerAttr()),
+            builder.getNamedAttr("container",
+                                 variable_v2_op.getContainerAttr()),
             builder.getNamedAttr("shared_name",
                                  builder.getStringAttr(variable_name))});
     for (Operation *user :

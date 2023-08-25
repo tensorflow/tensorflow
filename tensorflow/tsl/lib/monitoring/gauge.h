@@ -74,7 +74,7 @@ class Gauge {
     return &default_gauge_cell_;
   }
 
-  Status GetStatus() { return Status::OK(); }
+  Status GetStatus() { return OkStatus(); }
 
  private:
   Gauge() {}
@@ -96,8 +96,8 @@ class Gauge {
 #include <memory>
 #include <string>
 
-#include "tensorflow/core/lib/monitoring/collection_registry.h"
-#include "tensorflow/core/lib/monitoring/metric_def.h"
+#include "tensorflow/tsl/lib/monitoring/collection_registry.h"
+#include "tensorflow/tsl/lib/monitoring/metric_def.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -106,10 +106,6 @@ class Gauge {
 
 namespace tsl {
 namespace monitoring {
-using tensorflow::monitoring::CollectionRegistry;
-using tensorflow::monitoring::MetricCollectorGetter;
-using tensorflow::monitoring::MetricDef;
-using tensorflow::monitoring::MetricKind;
 // GaugeCell stores each value of a gauge.
 //
 // A cell can be passed off to a module which may repeatedly update it without
@@ -240,7 +236,7 @@ class Gauge {
     if (registration_handle_) {
       status_ = OkStatus();
     } else {
-      status_ = Status(tensorflow::error::Code::ALREADY_EXISTS,
+      status_ = Status(absl::StatusCode::kAlreadyExists,
                        "Another metric with the same name already exists.");
     }
   }
@@ -249,14 +245,14 @@ class Gauge {
 
   Status status_;
 
+  using LabelArray = std::array<string, NumLabels>;
+  std::map<LabelArray, GaugeCell<ValueType> > cells_ TF_GUARDED_BY(mu_);
+
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.
   const MetricDef<MetricKind::kGauge, ValueType, NumLabels> metric_def_;
 
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
-
-  using LabelArray = std::array<string, NumLabels>;
-  std::map<LabelArray, GaugeCell<ValueType> > cells_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Gauge);
 };

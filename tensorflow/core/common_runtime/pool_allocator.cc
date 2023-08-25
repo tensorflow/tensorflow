@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 
 #include <errno.h>
+
 #ifndef _MSC_VER
 #include <strings.h>
 #include <sys/mman.h>  // for munmap
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
@@ -259,6 +261,8 @@ void PoolAllocator::EvictOne() {
 
 void* BasicCPUAllocator::Alloc(size_t alignment, size_t num_bytes,
                                size_t* bytes_received) {
+  tsl::profiler::TraceMe traceme("BasicCPUAllocator::Alloc");
+
   void* ptr = nullptr;
   *bytes_received = num_bytes;
   if (num_bytes > 0) {
@@ -274,6 +278,8 @@ void* BasicCPUAllocator::Alloc(size_t alignment, size_t num_bytes,
 }
 
 void BasicCPUAllocator::Free(void* ptr, size_t num_bytes) {
+  tsl::profiler::TraceMe traceme("BasicCPUAllocator::Free");
+
   if (num_bytes > 0) {
     VisitFree(ptr, numa_node_, num_bytes);
     if (numa_node_ == port::kNUMANoAffinity) {

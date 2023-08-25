@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/kernels/eigen_pooling.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/framework/fixedpoint/FixedPoint.h"
 
 namespace tensorflow {
 namespace functor {

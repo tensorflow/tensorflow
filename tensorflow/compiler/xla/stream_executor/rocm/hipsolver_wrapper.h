@@ -23,21 +23,25 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 
 #if TF_ROCM_VERSION >= 40500
+#if TF_ROCM_VERSION >= 50600
+#include "rocm/include/hipsolver/hipsolver.h"
+#else
 
 #include "rocm/include/hipsolver.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
+#endif
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/env.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace wrap {
 
 #ifdef PLATFORM_GOOGLE
 
-#define HIPSOLVER_API_WRAPPER(api_name)                        \
-  template <typename... Args>                                  \
-  auto api_name(Args... args)->decltype(::api_name(args...)) { \
-    return ::api_name(args...);                                \
+#define HIPSOLVER_API_WRAPPER(api_name)                          \
+  template <typename... Args>                                    \
+  auto api_name(Args... args) -> decltype(::api_name(args...)) { \
+    return ::api_name(args...);                                  \
   }
 
 #else
@@ -47,17 +51,17 @@ namespace wrap {
 
 #define HIPSOLVER_API_WRAPPER(api_name)                                       \
   template <typename... Args>                                                 \
-  auto api_name(Args... args)->decltype(::api_name(args...)) {                \
+  auto api_name(Args... args) -> decltype(::api_name(args...)) {              \
     using FuncPtrT = std::add_pointer<decltype(::api_name)>::type;            \
     static FuncPtrT loaded = []() -> FuncPtrT {                               \
       static const char* kName = TO_STR(api_name);                            \
       void* f;                                                                \
-      auto s = stream_executor::port::Env::Default()->GetSymbolFromLibrary(   \
+      auto s = tsl::Env::Default() -> GetSymbolFromLibrary(                   \
           stream_executor::internal::CachedDsoLoader::GetHipsolverDsoHandle() \
-              .value(),                                                  \
+              .value(),                                                       \
           kName, &f);                                                         \
       CHECK(s.ok()) << "could not find " << kName                             \
-                    << " in hipsolver lib; dlerror: " << s.error_message();   \
+                    << " in hipsolver lib; dlerror: " << s.message();         \
       return reinterpret_cast<FuncPtrT>(f);                                   \
     }();                                                                      \
     return loaded(args...);                                                   \
@@ -86,6 +90,14 @@ namespace wrap {
   __macro(hipsolverSgetrs_bufferSize)        \
   __macro(hipsolverZgetrs)                   \
   __macro(hipsolverZgetrs_bufferSize)        \
+  __macro(hipsolverSgesvd)                   \
+  __macro(hipsolverSgesvd_bufferSize)        \
+  __macro(hipsolverDgesvd)                   \
+  __macro(hipsolverDgesvd_bufferSize)        \
+  __macro(hipsolverCgesvd)                   \
+  __macro(hipsolverCgesvd_bufferSize)        \
+  __macro(hipsolverZgesvd)                   \
+  __macro(hipsolverZgesvd_bufferSize)        \
   __macro(hipsolverCpotrf)                   \
   __macro(hipsolverCpotrf_bufferSize)        \
   __macro(hipsolverDpotrf)                   \
@@ -132,7 +144,7 @@ FOREACH_HIPSOLVER_API(HIPSOLVER_API_WRAPPER)
 #undef HIPSOLVER_API_WRAPPER
 
 }  // namespace wrap
-}  // namespace tensorflow
+}  // namespace stream_executor
 
 #endif  // TF_ROCM_VERSION
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_HIPSOLVER_WRAPPER_H_

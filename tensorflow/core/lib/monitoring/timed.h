@@ -17,32 +17,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_MONITORING_TIMED_H_
 
 #include "tensorflow/core/platform/env_time.h"
-
+#include "tensorflow/tsl/lib/monitoring/timed.h"
+// NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {
 namespace monitoring {
-
-// Takes a Sampler, PercentileSample or Gauge cell, and post timing values
-// (default in milliseconds) according to its scope lifetime.
-template <typename T>
-class Timed {
- public:
-  explicit Timed(T* cell, double scale = 1e-6)
-      : cell_(cell), scale_(scale), start_(EnvTime::NowNanos()) {}
-
-  ~Timed() { cell_->Add(scale_ * (EnvTime::NowNanos() - start_)); }
-
- private:
-  T* cell_ = nullptr;
-  double scale_ = 1e-6;
-  uint64 start_ = 0;
-};
-
-template <typename T>
-Timed<T> MakeTimed(T* cell, double scale = 1e-6) {
-  return Timed<T>(cell, scale);
-}
-
+using tsl::monitoring::MakeTimed;
+using tsl::monitoring::Timed;
 }  // namespace monitoring
 }  // namespace tensorflow
-
+// NOLINTEND(misc-unused-using-decls)
 #endif  // TENSORFLOW_CORE_LIB_MONITORING_TIMED_H_

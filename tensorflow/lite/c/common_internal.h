@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_C_COMMON_INTERNAL_H_
 #define TENSORFLOW_LITE_C_COMMON_INTERNAL_H_
 
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 
 // Internal structures and subroutines used by the C API. These are likely to
 // change and should not be depended on directly by any C API clients.
@@ -29,7 +29,8 @@ limitations under the License.
 // uses stable API types (such as `TfLiteOpaqueContext`). The purpose of each
 // field is the exactly the same as with `TfLiteRegistration`.
 typedef struct TfLiteRegistrationExternal {
-  // Custom op name.
+  // Custom op name.  This should be non-null iff the op is a custom op,
+  // i.e. iff builtin_code is kTfLiteBuiltinCustom.
   const char* custom_name;
 
   // The version of the op. The version should be higher than 0.
@@ -39,15 +40,47 @@ typedef struct TfLiteRegistrationExternal {
   void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
                 size_t length);
 
+  // Deallocates the op.
   // The pointer `buffer` is the data previously returned by an init invocation.
   void (*free)(TfLiteOpaqueContext* context, void* buffer);
 
   // Called when the inputs that this node depends on have been resized.
   TfLiteStatus (*prepare)(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
 
-  // Called when the node is executed. (should read node->inputs and output to
-  // node->outputs).
+  // Called when the node is executed. (Should read node inputs and write to
+  // node outputs).
   TfLiteStatus (*invoke)(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
+
+  // Retrieves the async kernel. The functor is nullptr if the node / backend
+  // does not support asynchronous execution.
+  struct TfLiteAsyncKernel* (*async_kernel)(TfLiteOpaqueContext* context,
+                                            TfLiteOpaqueNode* node);
+
+  // Builtin op code.
+  // The values stored in this field should be enum constants from the
+  // TfLiteBuiltinOperator enum.
+  // For custom ops, this should be the value kTfLiteBuiltinCustom.
+  int32_t builtin_code;
+
+  // The default value of this field is supposed to be '-1'.
+  // The default value indicates to the TF Lite runtime that this registration
+  // should be used through its callbacks, i.e. 'init', 'free' etc.
+  //
+  // This would be the case when a delegate implementation supplies an opaque
+  // delegate kernel to the runtime to claim the execution for a subset of
+  // nodes. This would also be the case when an application defines a custom OP.
+  //
+  // However, users might also iterate over the execution plan to visit the
+  // nodes and registrations associated with an opaque context.  In this
+  // scenario, due to ABI stability reasons, we provide them with a registration
+  // external object, that internally delegates execution to a corresponding
+  // regular TfLiteRegistration.  In such a case the 'node_index' field should
+  // store the index of that corresponding node (and registration).
+  int node_index;
+
+  // Indicates if an operator's output can safely overwrite its input.
+  // See the comments in `TfLiteInPlaceOp`.
+  uint64_t inplace_operator;
 } TfLiteRegistrationExternal;
 
 // Returns true iff it's safe to dereference
@@ -70,7 +103,7 @@ inline bool TfLiteDelegateHasValidOpaqueDelegateBuilder(
   //
   // TODO(b/245730811): Consider signalling to clients if the delegate is not
   // initialized cleanly.
-  return delegate->Prepare == nullptr &&
+  return delegate != nullptr && delegate->Prepare == nullptr &&
          delegate->opaque_delegate_builder != nullptr;
 }
 

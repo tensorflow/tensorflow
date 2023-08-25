@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "llvm/IR/Constants.h"
@@ -331,36 +332,44 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
     llvm::IRBuilder<>* builder) const {
   CHECK(LayoutUtil::HasLayout(shape) && LayoutUtil::HasLayout(operand_shape));
 
+  const ShapeUtil::BitcastDecomposition decomposition =
+      ShapeUtil::DecomposeBitcast(operand_shape, shape);
+
   // In case the bitcast is just a reshape, we can use SourceIndexOfReshape()
   // instead. This will reuse linear() if possible, so we don't have to build a
   // new 'linear_index'.
-  if (ShapeUtil::ReshapeIsBitcast(operand_shape, shape)) {
+  if (std::holds_alternative<ShapeUtil::BitcastDecompositionReshape>(
+          decomposition)) {
     return SourceIndexOfReshape(shape, operand_shape, builder);
   }
 
-  // If we have a linear index, we can definitely use it because we know the
-  // operation is a bitcast. This will recompute the multi-dimensional index for
-  // the operand based on the linear index.
-  if (linear() != nullptr) {
-    return Index(linear(), operand_shape, builder);
+  if (std::holds_alternative<ShapeUtil::BitcastDecompositionTranspose>(
+          decomposition)) {
+    const auto& decomposition_transpose =
+        std::get<ShapeUtil::BitcastDecompositionTranspose>(decomposition);
+    return SourceIndexOfTranspose(shape, operand_shape,
+                                  decomposition_transpose.transpose_dims);
   }
 
-  // First linearize the index coming from the output of the bitcast. We want
-  // the physical index of the element in the buffer. This is like Linearize,
-  // but takes the layout into account.
-  int64_t scale = 1;
-  llvm::Value* linear_index = GetConstantWithIndexType(0);
-  for (auto dimension : LayoutUtil::MinorToMajor(shape)) {
-    linear_index = builder->CreateAdd(
-        linear_index,
-        builder->CreateMul(multidim_[dimension],
-                           GetConstantWithIndexType(scale), "",
-                           /*HasNUW=*/true, /*HasNSW=*/true),
-        "", /*HasNUW=*/true, /*HasNSW=*/true);
-    scale *= shape.dimensions(dimension);
-  }
+  CHECK(std::holds_alternative<ShapeUtil::BitcastDecompositionTrt>(
+      decomposition));
+  const auto& decomposition_trt =
+      std::get<ShapeUtil::BitcastDecompositionTrt>(decomposition);
 
-  return Index(linear_index, operand_shape, builder);
+  Index index = *this;
+  if (!decomposition_trt.IsTranspose2Identity()) {
+    index = index.SourceIndexOfTranspose(shape, decomposition_trt.reshape_shape,
+                                         decomposition_trt.transpose2_dims);
+  }
+  index =
+      index.SourceIndexOfReshape(decomposition_trt.reshape_shape,
+                                 decomposition_trt.transpose1_shape, builder);
+  if (!decomposition_trt.IsTranspose1Identity()) {
+    index = index.SourceIndexOfTranspose(decomposition_trt.transpose1_shape,
+                                         operand_shape,
+                                         decomposition_trt.transpose1_dims);
+  }
+  return index;
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
@@ -551,6 +560,8 @@ void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
 
 IrArray IrArray::CastToShape(const Shape& new_shape,
                              llvm::IRBuilder<>* b) const {
+  if (shape_ == new_shape) return *this;
+
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
   IrArray new_irarray(

@@ -16,8 +16,7 @@ limitations under the License.
 // Exposes the family of FFT routines as pre-canned high performance calls for
 // use in conjunction with the StreamExecutor abstraction.
 //
-// Note that this interface is optionally supported by platforms; see
-// StreamExecutor::SupportsFft() for details.
+// Note that this interface is optionally supported by platforms..
 //
 // This abstraction makes it simple to entrain FFT operations on GPU data into
 // a Stream -- users typically will not use this API directly, but will use the
@@ -35,7 +34,7 @@ limitations under the License.
 //  stream
 //    .Init()
 //    .ThenFft(plan.get(), x, &y);
-//  SE_CHECK_OK(stream.BlockHostUntilDone());
+//  TF_CHECK_OK(stream.BlockHostUntilDone());
 //
 // By using stream operations in this manner the user can easily intermix custom
 // kernel launches (via StreamExecutor::ThenLaunch()) with these pre-canned FFT

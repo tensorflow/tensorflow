@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
@@ -39,7 +40,7 @@ bool IsNotInsideTfEntryFunction(Operation* op) {
 
 template <typename OpTy>
 bool HasInitializedOpKernelContextOperand(OpTy op) {
-  return op.ctx() != nullptr;
+  return op.getCtx() != nullptr;
 }
 
 // The pass rewrites the function marked with `tf_entry` attribute.

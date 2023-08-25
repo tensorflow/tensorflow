@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_CONTEXT_H_
 #define TENSORFLOW_TSL_PLATFORM_DEFAULT_CONTEXT_H_
 
-namespace tensorflow {
+namespace tsl {
 
 class Context {
  public:
@@ -32,6 +32,6 @@ class WithContext {
   ~WithContext() {}
 };
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_CONTEXT_H_

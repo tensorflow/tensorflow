@@ -53,6 +53,9 @@ struct StridedSliceShapeSpec {
 // <processing_shape> are valid; <is_identity>, <is_simple_slice> and other
 // output parameters will not be accurate.
 //
+// If the rank of <input_shape> is unknown (i.e., "input_shape.unknown_rank()"
+// is true)), the method returns an invalid status.
+//
 // If <begin_tensor> or <end_tensor> are nullptr, <begin> and <end> will not be
 // valid. In this case, <slice_dim0> and <is_identity> will be true only if a
 // determination can be made based on the information given. A best effort is
@@ -64,7 +67,7 @@ struct StridedSliceShapeSpec {
 Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
-    int32_t begin_mask_spec, int32_t end_mask_spec, const int32_t ellipsis_mask,
+    int32_t begin_mask_spec, int32_t end_mask_spec, int32_t ellipsis_mask,
     int32_t new_axis_mask, int32_t shrink_axis_mask,
     PartialTensorShape* processing_shape, PartialTensorShape* final_shape,
     bool* is_identity, bool* is_simple_slice, bool* slice_dim0,
@@ -76,7 +79,7 @@ Status ValidateStridedSliceOp(
 Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
-    int32_t begin_mask_spec, int32_t end_mask_spec, const int32_t ellipsis_mask,
+    int32_t begin_mask_spec, int32_t end_mask_spec, int32_t ellipsis_mask,
     int32_t new_axis_mask, int32_t shrink_axis_mask,
     TensorShape* processing_shape, TensorShape* final_shape, bool* is_identity,
     bool* is_simple_slice, bool* slice_dim0,

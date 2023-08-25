@@ -24,7 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
@@ -1676,7 +1676,7 @@ class PerChannelQuantizedConvolutionOpModel
   }
 };
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST_P(ConvolutionOpTest, AsymmetricPerchannelQuantization) {
   EXPECT_DEATH(PerChannelQuantizedConvolutionOpModel m(
                    GetRegistration(),
@@ -1749,6 +1749,53 @@ TEST_P(ConvolutionOpTest, SimplePerChannelTest) {
   PerChannelQuantizedConvolutionOpModel m(
       GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
       {TensorType_INT8,
+       // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+       {2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_INT8, {}, -63.5, 64, 0.5, -1},
+      /*stride_width=*/1, /*stride_height=*/1);
+  m.SetInput({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3, 2,    // batch = 0, y = 0, x = 0
+      1, -1,   // batch = 0, y = 0, x = 1
+      -2, -3,  // batch = 0, y = 0, x = 2
+      4, 3,    // batch = 0, y = 1, x = 0
+      2, -2,   // batch = 0, y = 1, x = 1
+      -3, -4,  // batch = 0, y = 1, x = 2
+  });
+  m.SetFilter(
+      // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+      {
+          1, 2,  // out channel = 0, y = 0, x = 0
+          3, 4,  // out channel = 0, y = 0, x = 1
+          3, 4,  // out channel = 0, y = 1, x = 0
+          5, 6,  // out channel = 0, y = 1, x = 1
+          7, 8,  // out channel = 1, y = 0, x = 0
+          5, 6,  // out channel = 1, y = 0, x = 1
+          3, 4,  // out channel = 1, y = 1, x = 0
+          1, 2,  // out channel = 1, y = 1, x = 1
+      });
+  m.SetBias({3, -2});
+
+  // Invoke and verify output.
+  // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear({31, 64, -57, -46})));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({61, 127, -115, -93}));
+}
+
+TEST_P(ConvolutionOpTest, Simple4bitPerChannelTest) {
+  PerChannelQuantizedConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
+      {TensorType_INT4,
        // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
        {2, 2, 2, 2},
        0,

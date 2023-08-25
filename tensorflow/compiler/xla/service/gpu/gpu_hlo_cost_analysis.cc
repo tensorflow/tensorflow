@@ -15,14 +15,176 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_op_profile.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_op_profiles.h"
 
 namespace xla {
 namespace gpu {
 
+// Use the "reserved" keys for these properties so lookups are fast.
+static constexpr absl::string_view kIRSizeKey = HloCostAnalysis::kReserved0Key;
+static constexpr absl::string_view kBasicBlockSplitCountKey =
+    HloCostAnalysis::kReserved1Key;
+
+Status GpuHloCostAnalysis::Preprocess(const HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(HloCostAnalysis::Preprocess(hlo));
+
+  current_properties_[kIRSizeKey] = 1;
+  current_properties_[kBasicBlockSplitCountKey] =
+      ElementalIrEmitter::OpInvalidatesCache(hlo);
+
+  return OkStatus();
+}
+
+int64_t GpuHloCostAnalysis::FusionParameterReadBytes(
+    const HloInstruction* hlo) const {
+  CHECK(hlo->IsFused() && (hlo->opcode() == HloOpcode::kParameter ||
+                           hlo->opcode() == HloOpcode::kGetTupleElement));
+  float utilization = hlo_properties_.at(hlo)[kUtilizationKey];
+  if (!options_.count_multiple_input_accesses) {
+    utilization = fmin(utilization, 1.0);
+  }
+  return GetShapeSize(hlo->shape()) * utilization;
+}
+
+Status GpuHloCostAnalysis::FusionCalculateUtilizations(
+    const HloInstruction* fusion) {
+  const HloInstruction* root = fusion->fused_expression_root();
+  // Traverse through the computation from the root till parameters propagating
+  // the utilization of operands; store utilization of each node in
+  // hlo_properties_. All consumers of an instruction are processed before the
+  // instruction itself.
+  std::vector<HloInstruction*> instructions =
+      fusion->fused_instructions_computation()->MakeInstructionPostOrder();
+  absl::c_reverse(instructions);
+
+  // Whenever we account a non-element-wise operation we forget about
+  // element-wise roots encountered so far and provisionally set its operands
+  // as new element-wise roots.
+  absl::flat_hash_map<const HloInstruction*, int64_t> root_ir_sizes;
+
+  for (const HloInstruction* instr : instructions) {
+    hlo_properties_[instr][kUtilizationKey] = 0;
+    hlo_properties_[instr][kIRSizeKey] = 0;
+    elementwise_use_roots_[instr].clear();
+    root_utilizations_[instr] = 0;
+  }
+
+  // For the purpose of operand utilization analysis, no matter how the fusion
+  // outputs are used, we assume that fusion is always executed completely
+  // producing 100% of its outputs.
+  root_utilizations_[root] = 1.0;
+  root_ir_sizes[root] = 1;
+  elementwise_use_roots_[root].insert(root);
+
+  current_properties_[kFlopsKey] = 0;
+  current_properties_[kBasicBlockSplitCountKey] = 0;
+  current_properties_[kIRSizeKey] = 0;
+
+  for (const HloInstruction* instr : instructions) {
+    VLOG(8) << instr->name() << ":";
+    VLOG(9) << "Elementwise use roots:";
+    Properties& instr_props = hlo_properties_[instr];
+    for (const HloInstruction* r : elementwise_use_roots_[instr]) {
+      VLOG(9) << "\t" << r->name() << ": " << root_utilizations_[r];
+      instr_props[kUtilizationKey] += root_utilizations_[r];
+      instr_props[kIRSizeKey] += root_ir_sizes[r];
+    }
+
+    float cur_instr_utilization = instr_props[kUtilizationKey];
+    VLOG(8) << "Total utilization: " << cur_instr_utilization;
+    float cur_instr_times_emitted = instr_props[kIRSizeKey];
+    VLOG(8) << "Times emitted: " << cur_instr_times_emitted;
+
+    current_properties_[kFlopsKey] +=
+        cur_instr_utilization * instr_props[kFlopsKey];
+    current_properties_[kIRSizeKey] += cur_instr_times_emitted;
+    current_properties_[kBasicBlockSplitCountKey] +=
+        cur_instr_times_emitted * ElementalIrEmitter::OpInvalidatesCache(instr);
+
+    for (int operand_idx = 0; operand_idx < instr->operand_count();
+         ++operand_idx) {
+      const HloInstruction* operand = instr->operand(operand_idx);
+      if ((instr->IsElementwise()) || instr->opcode() == HloOpcode::kTuple ||
+          instr->opcode() == HloOpcode::kGetTupleElement) {
+        for (const HloInstruction* r : elementwise_use_roots_[instr]) {
+          elementwise_use_roots_[operand].insert(r);
+        }
+      } else {
+        elementwise_use_roots_[operand].insert(operand);
+        float cur_operand_utilization =
+            cur_instr_utilization * operand_utilization(*instr, operand_idx);
+        // The utilization is always a best-effort estimate, but in some cases
+        // cannot be precise due to dynamic nature of operations - dynamic
+        // slice is one such example. We do an average estimate in these
+        // cases and this can sometimes produce fractional utilizations which
+        // should be at least rounded up to a whole number of produced elements
+        // to be more realistic.
+        int64_t operand_elements =
+            ShapeUtil::ElementsInRecursive(operand->shape());
+        cur_operand_utilization =
+            ceil(cur_operand_utilization * operand_elements) / operand_elements;
+        root_utilizations_[operand] += cur_operand_utilization;
+        root_ir_sizes[operand] += cur_instr_times_emitted;
+      }
+    }
+  }
+
+  return OkStatus();
+}
+
+float GpuHloCostAnalysis::CommonElementwiseUtilization(
+    const HloInstruction* a, const HloInstruction* b) const {
+  float ret = 0;
+  for (auto r : elementwise_use_roots_.at(a)) {
+    if (elementwise_use_roots_.at(b).count(r)) {
+      ret += root_utilizations_.at(r);
+    }
+  }
+  return ret;
+}
+
+bool GpuHloCostAnalysis::ProducerConsumerMergedTooLarge(
+    const HloInstruction& producer, const HloInstruction& consumer) {
+  int64_t producer_replication = 1;
+  // Fusing 'producer' into 'consumer' fusion currently results in replicating
+  // its IR the number of times the consumer replicates the access
+  // to the parameter corresponding to the producer.
+  if (consumer.opcode() == HloOpcode::kFusion) {
+    producer_replication =
+        IrSize(*consumer.fused_parameter(consumer.operand_index(&producer)));
+  }
+  VLOG(5) << producer.name() << " would be emitted by " << consumer.name()
+          << " x" << producer_replication;
+  int64_t n_splits = producer_replication * IrBasicBlockSplitCount(producer) +
+                     IrBasicBlockSplitCount(consumer);
+  VLOG(5) << "Basic block split counts: " << IrBasicBlockSplitCount(producer)
+          << ", " << IrBasicBlockSplitCount(consumer) << " -> " << n_splits;
+  if (n_splits > kMaxBasicBlockSplitsPerFusion) {
+    return true;
+  }
+  int64_t merged_ir_size =
+      (IrSize(producer) * producer_replication + IrSize(consumer)) *
+      (1 << n_splits);
+  VLOG(5) << "IR sizes: " << IrSize(producer) << ", " << IrSize(consumer)
+          << " -> " << merged_ir_size;
+  return merged_ir_size > kMaxIRSize;
+}
+
 Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
-  if (custom_call->custom_call_target() == gpu::kGemmCallTarget) {
+  if (IsCublasGemm(*custom_call)) {
     // The naming conventions and meanings of gemm parameters are documented
     // here:
     // https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-gemm
@@ -46,8 +208,14 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     // gemm is an integer type, because in that case no floating point
     // operations are involved at all! But we still calculate FLOPS because the
     // number is sometimes required for ad-hoc calculations.
+
+    // cublasLt supports auxiliary outputs, so output may be tuple.
+    const Shape& output_shape = custom_call->shape().IsTuple()
+                                    ? custom_call->shape().tuple_shapes(0)
+                                    : custom_call->shape();
+
     current_properties_[kFlopsKey] =
-        GetDotFlops(custom_call->operand(0)->shape(), custom_call->shape(),
+        GetDotFlops(custom_call->operand(0)->shape(), output_shape,
                     gemm_config.dot_dimension_numbers());
     return OkStatus();
   }
@@ -72,8 +240,15 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     // possible", and if we were to include temp memory in here, we'd
     // essentially be *rewarding* convs that use additional temp memory!
     if (custom_call->shape().IsTuple()) {
-      SetOutputBytesAccessed(
-          options_.shape_size(custom_call->shape().tuple_shapes(0)));
+      float output_size =
+          options_.shape_size(custom_call->shape().tuple_shapes(0));
+      // 'Bytes accessed' are estimated in HloCostAnalysis::Preprocess() as
+      // input + output. As the output size is being adjusted here it has
+      // to propagate to the total bytes accessed.
+      current_properties_[kBytesAccessedKey] -=
+          current_properties_.output_bytes_accessed();
+      current_properties_[kBytesAccessedKey] += output_size;
+      current_properties_.set_output_bytes_accessed(output_size);
     }
     return OkStatus();
   }
@@ -101,9 +276,83 @@ int64_t GpuHloCostAnalysis::GetConvolutionFlops(
                                               result_shape);
 }
 
+using profiles_nested_map = absl::flat_hash_map<
+    std::string,  // Device name.
+    absl::flat_hash_map<PrimitiveType,
+                        absl::flat_hash_map<HloOpcode, int64_t>>>;
+
+const profiles_nested_map* LoadOpProfiles() {
+  static profiles_nested_map* profiles = [] {
+    profiles_nested_map* ret = new profiles_nested_map;
+    DeviceHloInstructionProfiles all_device_profiles;
+    CHECK(tsl::protobuf::TextFormat::ParseFromString(
+        std::string(kDeviceHloOpProfiles), &all_device_profiles));
+    for (const auto& device_profile : all_device_profiles.entries()) {
+      for (const auto& entry : device_profile.second.entries()) {
+        (*ret)[device_profile.first][entry.instruction().shape().element_type()]
+              [StringToHloOpcode(entry.instruction().opcode()).value()] =
+                  entry.clock_cycles();
+      }
+    }
+    return ret;
+  }();
+  return profiles;
+}
+
+// Elementwise instructions typically take at least a few clock cycles.
+constexpr int64_t kDefaultFlopsPerElement = 3;
+
+constexpr absl::string_view kDefaultDeviceName = "NVIDIA RTX A6000";
+
+int64_t FlopsPerElement(const absl::string_view device_name,
+                        const PrimitiveType type, const HloOpcode opcode) {
+  const profiles_nested_map* all_profiles = LoadOpProfiles();
+  auto device_profiles = FindOrDefault(*all_profiles, std::string(device_name),
+                                       all_profiles->at(kDefaultDeviceName));
+  auto dtype_profiles = MaybeFind(device_profiles, type);
+  if (!dtype_profiles.ok()) {
+    return kDefaultFlopsPerElement;
+  }
+  return FindOrDefault(dtype_profiles->get(), opcode, kDefaultFlopsPerElement);
+}
+
+Status GpuHloCostAnalysis::HandleElementwiseOp(const HloInstruction* hlo) {
+  int64_t flop_per_element =
+      FlopsPerElement(device_info_ ? device_info_->name : kDefaultDeviceName,
+                      hlo->shape().element_type(), hlo->opcode());
+  current_properties_[kFlopsKey] =
+      flop_per_element * ShapeUtil::ElementsInRecursive(hlo->shape());
+  return OkStatus();
+}
+
+Status GpuHloCostAnalysis::HandleElementwiseUnary(const HloInstruction* hlo) {
+  return HandleElementwiseOp(hlo);
+}
+
+Status GpuHloCostAnalysis::HandleElementwiseBinary(const HloInstruction* hlo) {
+  return HandleElementwiseOp(hlo);
+}
+
 std::unique_ptr<HloCostAnalysis>
 GpuHloCostAnalysis::CreateNestedCostAnalysis() {
-  return std::make_unique<GpuHloCostAnalysis>(options_);
+  return std::make_unique<GpuHloCostAnalysis>(options_, device_info_);
+}
+
+bool GpuHloCostAnalysis::KeyToCopyFromSubcomputation(
+    absl::string_view key) const {
+  return !absl::StartsWith(key, kBytesAccessedKey) &&
+         !absl::StartsWith(key, kUtilizationKey) &&
+         !absl::StartsWith(key, kIRSizeKey) &&
+         !absl::StartsWith(key, kBasicBlockSplitCountKey);
+}
+
+float GpuHloCostAnalysis::IrBasicBlockSplitCount(
+    const HloInstruction& hlo) const {
+  return GetPropertyForHlo(hlo, kBasicBlockSplitCountKey, hlo_properties_);
+}
+
+float GpuHloCostAnalysis::IrSize(const HloInstruction& hlo) const {
+  return GetPropertyForHlo(hlo, kIRSizeKey, hlo_properties_);
 }
 
 }  // namespace gpu

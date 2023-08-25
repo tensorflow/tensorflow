@@ -30,21 +30,20 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/stacktrace.h"
 
@@ -60,46 +59,83 @@ struct XlaBuilderFriend {
   static XlaOp BuildAddDependency(XlaBuilder* builder, XlaOp operand,
                                   XlaOp token, const Shape& shape);
 
-  static XlaOp BuildAsyncStart(XlaBuilder* builder,
-                               absl::Span<const XlaOp> operands,
-                               std::string execution_thread, int64_t group_id,
-                               const XlaComputation& called_computation,
-                               const Shape& shape);
-  static XlaOp BuildAsyncStart(XlaBuilder* builder,
-                               absl::Span<const XlaOp> operands,
-                               std::string execution_thread,
-                               const XlaComputation& called_computation,
-                               const Shape& shape);
-  static XlaOp BuildAsyncUpdate(XlaBuilder* builder, const XlaOp operands,
+  static std::pair<XlaOp, int64_t> BuildAsyncStart(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      std::string execution_thread, int64_t group_id,
+      const XlaComputation& called_computation, const Shape& shape);
+  static std::pair<XlaOp, int64_t> BuildAsyncStart(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      std::string execution_thread, const XlaComputation& called_computation,
+      const Shape& shape);
+  static XlaOp BuildAsyncUpdate(XlaBuilder* builder, XlaOp operands,
                                 std::string execution_thread, int64_t group_id,
-                                const XlaComputation& called_computation,
-                                const Shape& shape);
-  static XlaOp BuildAsyncUpdate(XlaBuilder* builder, const XlaOp operands,
+                                int64_t called_computation, const Shape& shape);
+  static XlaOp BuildAsyncUpdate(XlaBuilder* builder, XlaOp operands,
                                 std::string execution_thread,
-                                const XlaComputation& called_computation,
-                                const Shape& shape);
-  static XlaOp BuildAsyncDone(XlaBuilder* builder, const XlaOp operands,
+                                int64_t called_computation, const Shape& shape);
+  static XlaOp BuildAsyncDone(XlaBuilder* builder, XlaOp operands,
                               std::string execution_thread, int64_t group_id,
-                              const XlaComputation& called_computation,
-                              const Shape& shape);
-  static XlaOp BuildAsyncDone(XlaBuilder* builder, const XlaOp operands,
+                              int64_t called_computation, const Shape& shape);
+  static XlaOp BuildAsyncDone(XlaBuilder* builder, XlaOp operands,
                               std::string execution_thread,
-                              const XlaComputation& called_computation,
-                              const Shape& shape);
+                              int64_t called_computation, const Shape& shape);
 
-  static XlaOp BuildFusion(XlaBuilder* builder,
-                           absl::Span<const XlaOp> operands,
-                           absl::string_view fusion_kind,
-                           const XlaComputation& fused_computation);
+  static XlaOp BuildAllGatherStart(
+      XlaBuilder* builder, XlaOp operand, int64_t all_gather_dimension,
+      int64_t shard_count, absl::Span<const ReplicaGroup> replica_groups = {},
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const std::optional<Layout>& layout = std::nullopt,
+      std::optional<bool> use_global_device_ids = std::nullopt);
+  static XlaOp BuildAllGatherDone(XlaBuilder* builder, XlaOp operands,
+                                  const Shape& shape);
+
+  static XlaOp BuildAllReduceStart(
+      XlaBuilder* builder, XlaOp operand, const XlaComputation& computation,
+      absl::Span<const ReplicaGroup> replica_groups = {},
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const std::optional<Shape>& layout = std::nullopt,
+      std::optional<bool> use_global_device_ids = std::nullopt);
+  static XlaOp BuildAllReduceDone(XlaBuilder* builder, XlaOp operands,
+                                  const Shape& shape);
+
+  static XlaOp BuildCollectivePermuteStart(
+      XlaBuilder* builder, XlaOp operand,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
+  static XlaOp BuildCollectivePermuteDone(XlaBuilder* builder, XlaOp operands,
+                                          const Shape& shape);
+
+  static XlaOp BuildCopyStart(
+      XlaBuilder* builder, XlaOp operand,
+      std::optional<int> cross_program_prefetch_index = std::nullopt);
+  static XlaOp BuildCopyDone(XlaBuilder* builder, XlaOp operand,
+                             const Shape& shape);
+
+  static XlaOp BuildFusion(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      absl::string_view fusion_kind, const XlaComputation& fused_computation,
+      absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+          output_operand_aliasing = {});
 
   static XlaOp BuildBitcast(XlaBuilder* builder, XlaOp operand,
                             const Shape& shape);
 
   static XlaOp BuildPartitionId(XlaBuilder* builder, const Shape& shape);
 
-  static XlaOp BuildDomain(XlaBuilder* builder, XlaOp operand,
-                           const OpSharding entry, const OpSharding exit,
-                           const Shape& shape);
+  static XlaOp BuildSend(XlaBuilder* builder, XlaOp operand, XlaOp token,
+                         const ChannelHandle& handle, bool is_host_transfer);
+  static XlaOp BuildSendDone(XlaBuilder* builder, XlaOp operand,
+                             const ChannelHandle& handle,
+                             bool is_host_transfer);
+
+  static XlaOp BuildRecv(XlaBuilder* builder, XlaOp token, const Shape& shape,
+                         const ChannelHandle& handle, bool is_host_transfer);
+  static XlaOp BuildRecvDone(XlaBuilder* builder, XlaOp token,
+                             const Shape& shape, const ChannelHandle& handle,
+                             bool is_host_transfer);
+
+  static XlaOp BuildDomain(XlaBuilder* builder, XlaOp operand, OpSharding entry,
+                           OpSharding exit, const Shape& shape);
 
   static XlaOp BuildRngGetAndUpdateState(XlaBuilder* builder, int64_t delta,
                                          const Shape& shape);
@@ -161,7 +197,6 @@ class XlaOp {
 
   friend class XlaBuilder;
   friend class ValueInference;
-  friend class MlirHloBuilder;
   friend struct internal::XlaBuilderFriend;
 
   // < 0 means "invalid handle".
@@ -247,7 +282,8 @@ class XlaBuilder {
   // As a result they are set on the computation builder and all the
   // instructions generated via the computation builder will have the same
   // frontend attributes attached to them.
-  void SetFrontendAttributes(const FrontendAttributes& frontend_attributes) {
+  virtual void SetFrontendAttributes(
+      const FrontendAttributes& frontend_attributes) {
     frontend_attributes_ = frontend_attributes;
   }
 
@@ -342,7 +378,7 @@ class XlaBuilder {
   //
   // This will copy the needed ops/computations to the subgraph.
   StatusOr<XlaComputation> BuildConstantSubGraph(
-      XlaOp root_op, bool dynamic_dimension_is_uint_max = false);
+      XlaOp root_op, bool dynamic_dimension_is_minus_one = false);
 
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
@@ -386,7 +422,7 @@ class XlaBuilder {
 
   // A helper function that runs a function that returns a StatusOr<XlaOp> and
   // returns an XlaOp.
-  XlaOp ReportErrorOrReturn(const std::function<StatusOr<XlaOp>()>& op_creator);
+  XlaOp ReportErrorOrReturn(absl::FunctionRef<StatusOr<XlaOp>()> op_creator);
 
   // Returns true if 'operand' is a compile-time constant. A compile-time
   // constant does not depend on any parameters, or on stateful operators such
@@ -396,26 +432,8 @@ class XlaBuilder {
   // evaluating the computation.
   StatusOr<bool> IsConstant(XlaOp operand) const;
 
-  // Sets up binding which indicates that the `target_dim_num` in the subshape
-  // `target_param_index` of parameter `target_param_num` is a dynamic dimension
-  // and its real dynamic size is represented by `dynamic_param_index` in
-  // parameter `dynamic_param_num`.
-  //
-  // Note that this should be called before the dynamic parameters are used to
-  // create other operations, otherwise created operations won't have the
-  // dynamic dimensions information.
-  //
-  // TODO(b/119520625): Remove this API once we have more dynamic shape infra
-  // ready.
-  ABSL_DEPRECATED("Use SetDimensionSize to set a dynamic dimension.")
-  Status SetDynamicBinding(int64_t dynamic_size_param_num,
-                           ShapeIndex dynamic_size_param_index,
-                           int64_t target_param_num,
-                           ShapeIndex target_param_index,
-                           int64_t target_dim_num);
-
   // Adds a new input/output alias. Since the input/output shape information are
-  // not available until the computation is built, and eventual error in the
+  // not available until the computation is built, any eventual error in the
   // arguments of this API will be detected only at computation Build() time.
   //
   // Note: Except when 'must-alias' is true, alias is assumed to be 'may-alias'
@@ -436,11 +454,18 @@ class XlaBuilder {
     ShapeIndex output_index;
     // Specifies the parameter containing the buffer to be aliased.
     int64_t param_number;
-    // Specifies the index of the aliased buffer in the parameter
+    // Specifies the index of the aliased buffer in the parameter.
     ShapeIndex param_index;
     // Specifies if the alias is a must alias or may alias.
     HloInputOutputAliasConfig::AliasKind kind;
   };
+
+  // Adds a new buffer donor. The donated buffer may be paired with any valid
+  // output. On the contrary, the buffer aliasing bonds the input output pair.
+  // The input can only donate the buffer to the paired output.
+  void AddBufferDonor(int64_t param_number, const ShapeIndex& param_index) {
+    buffer_donors_.insert({param_number, param_index});
+  }
 
   // Looks up the HloInstruction and sets the frontend attribute "attribute" to
   // "value".
@@ -482,9 +507,8 @@ class XlaBuilder {
 
   XlaOp Broadcast(XlaOp operand, absl::Span<const int64_t> broadcast_sizes);
 
-  XlaOp BroadcastInDim(XlaOp operand,
-                       const absl::Span<const int64_t> out_dim_size,
-                       const absl::Span<const int64_t> broadcast_dimensions);
+  XlaOp BroadcastInDim(XlaOp operand, absl::Span<const int64_t> out_dim_size,
+                       absl::Span<const int64_t> broadcast_dimensions);
 
   XlaOp Pad(XlaOp operand, XlaOp padding_value,
             const PaddingConfig& padding_config);
@@ -771,19 +795,18 @@ class XlaBuilder {
   XlaOp CrossReplicaSum(XlaOp operand,
                         absl::Span<const ReplicaGroup> replica_groups = {});
 
-  XlaOp AllGather(
-      XlaOp operand, int64_t all_gather_dimension, int64_t shard_count,
-      absl::Span<const ReplicaGroup> replica_groups = {},
-      const std::optional<ChannelHandle>& channel_id = std::nullopt,
-      const std::optional<Layout>& layout = std::nullopt,
-      const std::optional<bool> use_global_device_ids = std::nullopt);
+  XlaOp AllGather(XlaOp operand, int64_t all_gather_dimension,
+                  int64_t shard_count,
+                  absl::Span<const ReplicaGroup> replica_groups = {},
+                  const std::optional<ChannelHandle>& channel_id = std::nullopt,
+                  const std::optional<Layout>& layout = std::nullopt,
+                  std::optional<bool> use_global_device_ids = std::nullopt);
 
-  XlaOp AllReduce(
-      XlaOp operand, const XlaComputation& computation,
-      absl::Span<const ReplicaGroup> replica_groups = {},
-      const std::optional<ChannelHandle>& channel_id = std::nullopt,
-      const std::optional<Shape>& shape_with_layout = std::nullopt,
-      const std::optional<bool> use_global_device_ids = std::nullopt);
+  XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
+                  absl::Span<const ReplicaGroup> replica_groups = {},
+                  const std::optional<ChannelHandle>& channel_id = std::nullopt,
+                  const std::optional<Shape>& shape_with_layout = std::nullopt,
+                  std::optional<bool> use_global_device_ids = std::nullopt);
 
   XlaOp ReduceScatter(
       XlaOp operand, const XlaComputation& computation,
@@ -791,25 +814,30 @@ class XlaBuilder {
       absl::Span<const ReplicaGroup> replica_groups = {},
       const std::optional<ChannelHandle>& channel_id = std::nullopt,
       const std::optional<Layout>& layout = std::nullopt,
-      const std::optional<bool> use_global_device_ids = std::nullopt);
+      std::optional<bool> use_global_device_ids = std::nullopt);
 
   XlaOp AllToAll(XlaOp operand, int64_t split_dimension,
                  int64_t concat_dimension, int64_t split_count,
                  absl::Span<const ReplicaGroup> replica_groups,
-                 const std::optional<Layout>& layout = std::nullopt);
+                 const std::optional<Layout>& layout = std::nullopt,
+                 const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
-  XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
-                      absl::Span<const ReplicaGroup> replica_groups,
-                      const std::optional<Layout>& layout);
+  XlaOp AllToAllTuple(
+      absl::Span<const XlaOp> operands,
+      absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<Layout>& layout,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
-  XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
-                      int64_t concat_dimension, int64_t split_count,
-                      absl::Span<const ReplicaGroup> replica_groups,
-                      const std::optional<Layout>& layout);
+  XlaOp AllToAllTuple(
+      XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+      int64_t split_count, absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<Layout>& layout,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   XlaOp CollectivePermute(
       XlaOp operand,
-      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs);
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   XlaOp ReplicaId();
 
@@ -842,6 +870,9 @@ class XlaBuilder {
   XlaOp BitcastConvertType(XlaOp operand, PrimitiveType new_element_type);
   virtual StatusOr<XlaOp> BitcastConvertTypeInternal(const Shape& shape,
                                                      XlaOp operand);
+
+  XlaOp StochasticConvertType(XlaOp operand, XlaOp random,
+                              PrimitiveType new_element_type);
 
   XlaOp Transpose(XlaOp operand, absl::Span<const int64_t> permutation);
   virtual StatusOr<XlaOp> TransposeInternal(
@@ -890,12 +921,11 @@ class XlaBuilder {
                     absl::Span<const XlaComputation* const> branch_computations,
                     absl::Span<const XlaOp> branch_operands);
 
-  XlaOp ReducePrecision(XlaOp operand, const int exponent_bits,
-                        const int mantissa_bits);
+  XlaOp ReducePrecision(XlaOp operand, int exponent_bits, int mantissa_bits);
   virtual StatusOr<XlaOp> ReducePrecisionInternal(const Shape& shape,
                                                   XlaOp operand,
-                                                  const int exponent_bits,
-                                                  const int mantissa_bits);
+                                                  int exponent_bits,
+                                                  int mantissa_bits);
 
   XlaOp Gather(XlaOp input, XlaOp start_indices,
                const GatherDimensionNumbers& dimension_numbers,
@@ -1036,7 +1066,7 @@ class XlaBuilder {
   // operation such as `RngNormal` or `Infeed`. The visitor walks the
   // computation starting at a given operation and sets is_constant to false iff
   // a parameter or stateful operation is encountered.
-  void IsConstantVisitor(const int64_t op_handle, int depth,
+  void IsConstantVisitor(int64_t op_handle, int depth,
                          absl::flat_hash_set<int64_t>* visited,
                          bool* is_constant) const;
 
@@ -1049,9 +1079,11 @@ class XlaBuilder {
 
   // Populates the module with the input/output alias information stored within
   // the input_output_aliases vector.
-  static Status PopulateInputOutputAlias(
+  static Status PopulateInputOutputAliasAndBufferDonor(
       HloModuleProto* module, const ProgramShape& program_shape,
-      const std::vector<InputOutputAlias>& input_output_aliases);
+      const std::vector<InputOutputAlias>& input_output_aliases,
+      const absl::flat_hash_set<HloBufferDonorConfig::BufferDonor>&
+          buffer_donors);
 
   std::string name_;  // Name to use for the built computation.
 
@@ -1070,7 +1102,7 @@ class XlaBuilder {
   // Use a deque so pointers into this are stable, for example the return
   // value of LookUpInstructionByHandle().
   std::deque<HloInstructionProto> instructions_;
-  // An cache for the HloInstructionProto shapes, to avoid recreating Shape
+  // A cache for the HloInstructionProto shapes, to avoid recreating Shape
   // objects from protos and to support the GetShapePtr() API.
   std::vector<std::unique_ptr<Shape>> instruction_shapes_;
 
@@ -1079,6 +1111,9 @@ class XlaBuilder {
 
   // Holds the input/output alias information populated by the SetUpAlias() API.
   std::vector<InputOutputAlias> input_output_aliases_;
+
+  // Holds the buffer donor information populated by the AddBufferDonor() API.
+  absl::flat_hash_set<HloBufferDonorConfig::BufferDonor> buffer_donors_;
 
   // A map from XlaOp::Handle to the index in the instructions_ vector where the
   // instruction is held.
@@ -1129,9 +1164,9 @@ class XlaBuilder {
   friend XlaOp Broadcast(XlaOp operand,
                          absl::Span<const int64_t> broadcast_sizes);
 
-  friend XlaOp BroadcastInDim(
-      XlaOp operand, const absl::Span<const int64_t> out_dim_size,
-      const absl::Span<const int64_t> broadcast_dimensions);
+  friend XlaOp BroadcastInDim(XlaOp operand,
+                              absl::Span<const int64_t> out_dim_size,
+                              absl::Span<const int64_t> broadcast_dimensions);
 
   friend XlaOp Copy(XlaOp operand);
 
@@ -1392,33 +1427,43 @@ class XlaBuilder {
                          absl::Span<const ReplicaGroup> replica_groups,
                          const std::optional<ChannelHandle>& channel_id,
                          const std::optional<Layout>& layout,
-                         const std::optional<bool> use_global_device_ids);
+                         std::optional<bool> use_global_device_ids);
   friend XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                          absl::Span<const ReplicaGroup> replica_groups,
                          const std::optional<ChannelHandle>& channel_id,
                          const std::optional<Shape>& shape_with_layout,
-                         const std::optional<bool> use_global_device_ids);
+                         std::optional<bool> use_global_device_ids);
+  friend XlaOp AllReduceTuple(absl::Span<const XlaOp> operand,
+                              const XlaComputation& computation,
+                              absl::Span<const ReplicaGroup> replica_groups,
+                              const std::optional<ChannelHandle>& channel_id,
+                              const std::optional<Shape>& shape_with_layout,
+                              std::optional<bool> use_global_device_ids);
   friend XlaOp ReduceScatter(XlaOp operand, const XlaComputation& computation,
                              int64_t scatter_dimension, int64_t shard_count,
                              absl::Span<const ReplicaGroup> replica_groups,
                              const std::optional<ChannelHandle>& channel_id,
                              const std::optional<Layout>& layout,
-                             const std::optional<bool> use_global_device_ids);
+                             std::optional<bool> use_global_device_ids);
 
   friend XlaOp AllToAll(XlaOp operand, int64_t split_dimension,
                         int64_t concat_dimension, int64_t split_count,
                         absl::Span<const ReplicaGroup> replica_groups,
-                        const std::optional<Layout>& layout);
+                        const std::optional<Layout>& layout,
+                        const std::optional<ChannelHandle>& channel_id);
   friend XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
                              absl::Span<const ReplicaGroup> replica_groups,
-                             const std::optional<Layout>& layout);
+                             const std::optional<Layout>& layout,
+                             const std::optional<ChannelHandle>& channel_id);
   friend XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
                              int64_t concat_dimension, int64_t split_count,
                              absl::Span<const ReplicaGroup> replica_groups,
-                             const std::optional<Layout>& layout);
+                             const std::optional<Layout>& layout,
+                             const std::optional<ChannelHandle>& channel_id);
   friend XlaOp CollectivePermute(
       XlaOp operand,
-      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs);
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id);
   friend XlaOp ReplicaId(XlaBuilder* builder);
   friend XlaOp SelectAndScatter(XlaOp operand, const XlaComputation& select,
                                 absl::Span<const int64_t> window_dimensions,
@@ -1447,6 +1492,7 @@ class XlaBuilder {
   friend XlaOp Clz(XlaOp operand);
   friend XlaOp Cos(XlaOp operand);
   friend XlaOp Sin(XlaOp operand);
+  friend XlaOp Tan(XlaOp operand);
   friend XlaOp Tanh(XlaOp operand);
   friend XlaOp Real(XlaOp operand);
   friend XlaOp Imag(XlaOp operand);
@@ -1463,6 +1509,8 @@ class XlaBuilder {
                                   PrimitiveType new_element_type);
   friend XlaOp BitcastConvertType(XlaOp operand,
                                   PrimitiveType new_element_type);
+  friend XlaOp StochasticConvertType(XlaOp operand, XlaOp random,
+                                     PrimitiveType new_element_type);
   friend XlaOp Neg(XlaOp operand);
   friend XlaOp Transpose(XlaOp operand, absl::Span<const int64_t> permutation);
   friend XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
@@ -1492,8 +1540,8 @@ class XlaBuilder {
       XlaOp branch_index,
       absl::Span<const XlaComputation* const> branch_computations,
       absl::Span<const XlaOp> branch_operands);
-  friend XlaOp ReducePrecision(XlaOp operand, const int exponent_bits,
-                               const int mantissa_bits);
+  friend XlaOp ReducePrecision(XlaOp operand, int exponent_bits,
+                               int mantissa_bits);
   friend XlaOp Gather(XlaOp input, XlaOp start_indices,
                       const GatherDimensionNumbers& dimension_numbers,
                       absl::Span<const int64_t> slice_sizes,
@@ -1545,14 +1593,33 @@ class XlaBuilder {
   Status CheckOpBuilder(XlaOp op) const;
 
  private:
+  XlaOp AllGatherImpl(XlaOp operand, int64_t all_gather_dimension,
+                      int64_t shard_count,
+                      absl::Span<const ReplicaGroup> replica_groups,
+                      const std::optional<ChannelHandle>& channel_id,
+                      const std::optional<Layout>& layout,
+                      std::optional<bool> use_global_device_ids, bool async);
+
+  XlaOp AllReduceImpl(XlaOp operand, const XlaComputation& computation,
+                      absl::Span<const ReplicaGroup> replica_groups,
+                      const std::optional<ChannelHandle>& channel_id,
+                      const std::optional<Shape>& layout,
+                      std::optional<bool> use_global_device_ids, bool async);
+
+  XlaOp CollectivePermuteImpl(
+      XlaOp operand,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id, bool async);
+
   XlaOp ConditionalImpl(
       XlaOp branch_index,
       absl::Span<const XlaComputation* const> branch_computations,
       absl::Span<const XlaOp> branch_operands);
 
-  XlaOp AllToAllArray(XlaOp operand, int64_t split_dimension,
-                      int64_t concat_dimension, int64_t split_count,
-                      absl::Span<const ReplicaGroup> replica_groups);
+  XlaOp AllToAllArray(
+      XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+      int64_t split_count, absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   // Creates an op with the given opcode and the output shape.
   virtual StatusOr<XlaOp> AddOpWithShape(HloOpcode opcode, const Shape& shape,
@@ -1583,7 +1650,7 @@ class XlaBuilder {
   //
   // TODO(hinsu): Return const pointer within StatusOr and use
   // absl::implicit_cast at callsites. This requires implicit_cast support in
-  // stream_executor::port::StatusOr similar to absl::StatusOr.
+  // xla::StatusOr similar to absl::StatusOr.
   template <typename InstructionType>
   StatusOr<InstructionType> LookUpInstructionInternal(XlaOp op) const {
     TF_RETURN_IF_ERROR(CheckOpBuilder(op));
@@ -1708,7 +1775,7 @@ template <typename NativeT>
 XlaOp ConstantR0(XlaBuilder* builder, NativeT value);
 template <typename NativeT>
 XlaOp ConstantR1(XlaBuilder* builder, absl::Span<const NativeT> values);
-XlaOp ConstantR1(XlaBuilder* builder, const tensorflow::core::Bitmap& values);
+XlaOp ConstantR1(XlaBuilder* builder, const tsl::core::Bitmap& values);
 template <typename NativeT>
 XlaOp ConstantR2(XlaBuilder* builder,
                  std::initializer_list<std::initializer_list<NativeT>> values);
@@ -1773,9 +1840,8 @@ XlaOp Broadcast(XlaOp operand, absl::Span<const int64_t> broadcast_sizes);
 //   will generate output
 //   {{1 , 1},
 //    {2 , 2}}
-XlaOp BroadcastInDim(XlaOp operand,
-                     const absl::Span<const int64_t> out_dim_size,
-                     const absl::Span<const int64_t> broadcast_dimensions);
+XlaOp BroadcastInDim(XlaOp operand, absl::Span<const int64_t> out_dim_size,
+                     absl::Span<const int64_t> broadcast_dimensions);
 
 // Copies the input operand to the output. This operation is for internal
 // purpose and is only used by the compiler for optimization purposes or to
@@ -2174,7 +2240,7 @@ XlaOp CustomCallWithComputation(
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing = {},
     const Literal* literal = nullptr,
-    CustomCallSchedule = CustomCallSchedule::SCHEDULE_NONE,
+    CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE,
     CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
 // Overload which constructs a custom call with fixed layouts. The operands will
@@ -2295,7 +2361,6 @@ XlaOp ShiftRightArithmetic(XlaOp lhs, XlaOp rhs,
                            absl::Span<const int64_t> broadcast_dimensions = {});
 XlaOp ShiftRightLogical(XlaOp lhs, XlaOp rhs,
                         absl::Span<const int64_t> broadcast_dimensions = {});
-
 // Reduces an array among the provided dimensions, given "computation" as a
 // reduction operator.
 XlaOp Reduce(XlaOp operand, XlaOp init_value, const XlaComputation& computation,
@@ -2354,7 +2419,7 @@ XlaOp AllGather(XlaOp operand, int64_t all_gather_dimension,
                 absl::Span<const ReplicaGroup> replica_groups = {},
                 const std::optional<ChannelHandle>& channel_id = std::nullopt,
                 const std::optional<Layout>& layout = std::nullopt,
-                const std::optional<bool> use_global_device_ids = std::nullopt);
+                std::optional<bool> use_global_device_ids = std::nullopt);
 
 // Enqueues an operation that do an AllReduce of the operand cross cores. Here
 // AllReduce means doing a reduction on the input operand cross cores and then
@@ -2379,14 +2444,21 @@ XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                 absl::Span<const ReplicaGroup> replica_groups = {},
                 const std::optional<ChannelHandle>& channel_id = std::nullopt,
                 const std::optional<Shape>& shape_with_layout = std::nullopt,
-                const std::optional<bool> use_global_device_ids = std::nullopt);
+                std::optional<bool> use_global_device_ids = std::nullopt);
+
+XlaOp AllReduceTuple(
+    absl::Span<const XlaOp> operand, const XlaComputation& computation,
+    absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    const std::optional<Shape>& shape_with_layout = std::nullopt,
+    std::optional<bool> use_global_device_ids = std::nullopt);
 
 XlaOp ReduceScatter(
     XlaOp operand, const XlaComputation& computation, int64_t scatter_dimension,
     int64_t shard_count, absl::Span<const ReplicaGroup> replica_groups = {},
     const std::optional<ChannelHandle>& channel_id = std::nullopt,
     const std::optional<Layout>& layout = std::nullopt,
-    const std::optional<bool> use_global_device_ids = std::nullopt);
+    std::optional<bool> use_global_device_ids = std::nullopt);
 
 // Enqueues an operation that do an Alltoall of the operand cross cores.
 // An optional `layout` can be specified to force the layout of the instruction.
@@ -2395,16 +2467,20 @@ XlaOp ReduceScatter(
 XlaOp AllToAll(XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
                int64_t split_count,
                absl::Span<const ReplicaGroup> replica_groups = {},
-               const std::optional<Layout>& layout = std::nullopt);
+               const std::optional<Layout>& layout = std::nullopt,
+               const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
-XlaOp AllToAllTuple(absl::Span<const XlaOp> operand,
-                    absl::Span<const ReplicaGroup> replica_groups = {},
-                    const std::optional<Layout>& layout = std::nullopt);
+XlaOp AllToAllTuple(
+    absl::Span<const XlaOp> operand,
+    absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<Layout>& layout = std::nullopt,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
-XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
-                    int64_t concat_dimension, int64_t split_count,
-                    absl::Span<const ReplicaGroup> replica_groups = {},
-                    const std::optional<Layout>& layout = std::nullopt);
+XlaOp AllToAllTuple(
+    XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+    int64_t split_count, absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<Layout>& layout = std::nullopt,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
 // Enqueues an collective operation that sends and receives data cross replicas.
 //
@@ -2416,7 +2492,8 @@ XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
 // consists of 0(s) with the same shape as the input.
 XlaOp CollectivePermute(
     XlaOp operand,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs);
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
 // Enqueues an operation that returns the replica ID.
 XlaOp ReplicaId(XlaBuilder* builder);
@@ -2485,6 +2562,9 @@ XlaOp Cos(XlaOp operand);
 // Enqueues a sine instruction onto the computation.
 XlaOp Sin(XlaOp operand);
 
+// Enqueues a tan instruction onto the computation.
+XlaOp Tan(XlaOp operand);
+
 // Enqueues a tanh instruction onto the computation.
 XlaOp Tanh(XlaOp operand);
 
@@ -2532,6 +2612,12 @@ XlaOp ConvertElementType(XlaOp operand, PrimitiveType new_element_type);
 // bit-widths of the source and destination element types must be
 // identical.
 XlaOp BitcastConvertType(XlaOp operand, PrimitiveType new_element_type);
+
+// Enqueues a stochastic convert instruction onto the computation that changes
+// the element type of the operand array with stochastic rounding to
+// primitive_type.
+XlaOp StochasticConvertType(XlaOp operand, XlaOp random,
+                            PrimitiveType new_element_type);
 
 // Enqueues a negate instruction onto the computation.
 XlaOp Neg(XlaOp operand);
@@ -2614,8 +2700,7 @@ XlaOp Conditional(XlaOp branch_index,
                   absl::Span<const XlaOp> branch_operands);
 
 // Enqueues a ReducePrecision node onto the computation.
-XlaOp ReducePrecision(XlaOp operand, const int exponent_bits,
-                      const int mantissa_bits);
+XlaOp ReducePrecision(XlaOp operand, int exponent_bits, int mantissa_bits);
 
 // Enqueues a Gather node onto the computation.
 XlaOp Gather(XlaOp input, XlaOp start_indices,
@@ -2756,8 +2841,7 @@ XlaOp ConstantR1(XlaBuilder* builder, int64_t length, NativeT value) {
   return ConstantLiteral(builder, literal);
 }
 
-inline XlaOp ConstantR1(XlaBuilder* builder,
-                        const tensorflow::core::Bitmap& values) {
+inline XlaOp ConstantR1(XlaBuilder* builder, const tsl::core::Bitmap& values) {
   return ConstantLiteral(builder, LiteralUtil::CreateR1(values));
 }
 

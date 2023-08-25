@@ -16,37 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_CUDA_TEST_H_
 #define TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_CUDA_TEST_H_
 
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cuda_test.h"
+
 namespace tensorflow {
 namespace profiler {
 namespace test {
-// Calls a function on the device to print a string as many times as indicated
-// by iters.
-void PrintfKernel(int iters = 1);
 
-// Calls an empty kernel (named "empty") on the device as many times as
-// indicated by iters.
-void EmptyKernel(int iters = 1);
-
-// Waits for device activity to complete.
-void Synchronize();
-
-// Copies a few bytes of memory from host to device.
-void MemCopyH2D();
-
-// Copies a few bytes of memory from device to host, asynchronously.
-void MemCopyH2D_Async();
-
-// Copies a few bytes of memory from device to host.
-void MemCopyD2H();
-
-// Returns true if it s possible to copy bytes from device 0 to device 1.
-bool MemCopyP2PAvailable();
-
-// Copies a few bytes of memory from device 0 to device 1.
-void MemCopyP2PImplicit();
-
-// Copies a few bytes of memory from device 0 to device 1.
-void MemCopyP2PExplicit();
+using xla::profiler::test::EmptyKernel;          // NOLINT
+using xla::profiler::test::MemCopyD2H;           // NOLINT
+using xla::profiler::test::MemCopyH2D;           // NOLINT
+using xla::profiler::test::MemCopyH2D_Async;     // NOLINT
+using xla::profiler::test::MemCopyP2PAvailable;  // NOLINT
+using xla::profiler::test::MemCopyP2PExplicit;   // NOLINT
+using xla::profiler::test::MemCopyP2PImplicit;   // NOLINT
+using xla::profiler::test::PrintfKernel;         // NOLINT
+using xla::profiler::test::Synchronize;          // NOLINT
 
 }  // namespace test
 }  // namespace profiler

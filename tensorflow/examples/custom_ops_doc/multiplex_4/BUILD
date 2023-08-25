@@ -1,8 +1,8 @@
 # Build multiplex_4 custom ops examples, which is similar to np.where
 
-load("//tensorflow:tensorflow.bzl", "py_strict_binary", "py_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 licenses(["notice"])
 
@@ -36,13 +36,11 @@ py_strict_library(
 tf_py_test(
     name = "multiplex_4_test",
     size = "medium",  # This test blocks because it writes and reads a file,
-    timeout = "short",  # but it still runs quickly.
     srcs = ["multiplex_4_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
         "no_mac",  # TODO(b/216321151): Re-enable this test.
-        "no_pip",
     ],
     deps = [
         ":model_using_multiplex",

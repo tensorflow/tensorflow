@@ -24,9 +24,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/shim/status_macros.h"
+#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace shim {
@@ -103,6 +104,11 @@ TensorViewOr TfLiteInvokeContext::GetOutput(const int idx,
         absl::StrCat("output tensor is null during invocation. idx: ", idx));
   if (tflite_tensor->data.raw == nullptr ||
       tflite_tensor->allocation_type == kTfLiteDynamic) {
+    // Clear out string tensor so previous values are not copied.
+    if (tflite_tensor->type == kTfLiteString) {
+      tflite::DynamicBuffer buf;
+      buf.WriteToTensor(tflite_tensor, /*new_shape=*/nullptr);
+    }
     TfLiteIntArray* output_shape_array =
         ShapeToTfLiteShape(output_shape.value());
     context_->ResizeTensor(context_, tflite_tensor, output_shape_array);

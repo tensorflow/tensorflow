@@ -15,27 +15,27 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 
+#include <memory>
 #include <string>
+#include <vector>
 
-#include "llvm/ADT/Optional.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
@@ -57,8 +57,8 @@ void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
       quant_specs.default_ranges.second.has_value()) {
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateDefaultQuantParamsPass(
-            quant_specs.default_ranges.first.getValueOr(0.0),
-            quant_specs.default_ranges.second.getValueOr(0.0),
+            quant_specs.default_ranges.first.value_or(0.0),
+            quant_specs.default_ranges.second.value_or(0.0),
             quant_specs.IsSignedInferenceType()));
   }
   pass_manager.addNestedPass<mlir::func::FuncOp>(
@@ -67,6 +67,19 @@ void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
       quant_specs.inference_type != quant_specs.inference_input_type;
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+  // TODO(b/265081639): When added PrepareQuantizeVariablesPass before adding
+  // PrepareQuantizePass, an error occurs in certain model. It could fix it by
+  // roll-back to run PrepareQuantizeVariablesPass, QuantizePass,
+  // PostQuantizePass as suggested in cl/479634700. Need to figure out the
+  // fundamental reason of the error, and (if needed) fix it without this
+  // rollback.
+  if (quant_specs.enable_mlir_variable_quantization) {
+    pass_manager.addPass(mlir::TFL::CreatePrepareQuantizeVariablesPass());
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::CreateQuantizePass(quant_specs));
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+  }
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateOptimizeOpOrderPass());
   // Add optimization pass after quantization for additional fusing
@@ -87,6 +100,19 @@ void AddDynamicRangeQuantizationPasses(
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops,
                                         quant_specs.custom_map));
+  // TODO(b/265081639): When added PrepareQuantizeVariablesPass before adding
+  // PrepareQuantizePass, an error occurs in certain model. It could fix it by
+  // roll-back to run PrepareQuantizeVariablesPass, QuantizePass,
+  // PostQuantizePass as suggested in cl/479634700. Need to figure out the
+  // fundamental reason of the error, and (if needed) fix it without this
+  // rollback.
+  if (quant_specs.enable_mlir_variable_quantization) {
+    pass_manager.addPass(mlir::TFL::CreatePrepareQuantizeVariablesPass());
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::CreateQuantizePass(quant_specs));
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+  }
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateOptimizeOpOrderPass());
   // Add optimization pass after quantization for additional fusing
@@ -97,6 +123,26 @@ void AddDynamicRangeQuantizationPasses(
 
 void AddConvertHloToTfPass(std::string entry_function_name,
                            mlir::OpPassManager* pass_manager) {
+  pass_manager->addPass(mlir::odml::CreateRenameEntrypointToMainPass());
+  pass_manager->addPass(
+      mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
+
+  // The following two passes find specific uniform quantization patterns in
+  // StableHLO and converts them to TFLite ops that accept or produce uniform
+  // quantized types. They only target a specific set of models that contain
+  // "decomposed" quantized ops produced from the framework level. This is why
+  // they are placed right after the `LegalizeTFXlaCallModuleToStablehloPass`
+  // because the quantization patterns should be identified before any
+  // optimizations kick in.
+  //
+  // There are future plans to make the framework to directly produce StableHLO
+  // uniform quantized ops and deprecate `ComposeUniformQuantizedTypePass`. If
+  // no quantization patterns are found, it is a no-op.
+  pass_manager->addPass(mlir::odml::CreateComposeUniformQuantizedTypePass());
+  pass_manager->addNestedPass<mlir::func::FuncOp>(
+      mlir::odml::CreateUniformQuantizedStablehloToTflPass());
+
+  pass_manager->addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   // Legalize jax random to tflite custom op.
   // The CreateLegalizeJaxRandom Pass has to stay at because we need to replace
   // the random function body before being inlined.
@@ -121,13 +167,24 @@ void AddConvertHloToTfPass(std::string entry_function_name,
   pass_manager->addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createFlattenTuplePass());
 
+  mlir::odml::AddMhloOptimizationPasses(*pass_manager);
   // TF dialect passes
+  pass_manager->addPass(mlir::odml::CreateLegalizeHloToTfPass());
+
+  // folds tf.BroadcastTo ops with subsequent ops if they have built in
+  // broadcasting support. This needs to be run immediately after HLO->TF
+  // legalization; otherwise other passes like `ConvertTFBroadcastTo` will
+  // constant fold the newly generated TF broadcast ops and materialize the
+  // weights.
   pass_manager->addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateLegalizeHloToTfPass());
+      mlir::TF::CreateBroadcastFoldPass());
 
   // Canonicalization after TF legalization.
   pass_manager->addNestedPass<mlir::func::FuncOp>(
       mlir::createCanonicalizerPass());
+
+  // Legalize all remaining mhlo ops to stableHLO
+  pass_manager->addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 }
 
 // This is the early part of the conversion in isolation. This enables a caller
@@ -207,6 +264,10 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
 
   pass_manager->addPass(mlir::createInlinerPass());
   pass_manager->addPass(mlir::createSymbolDCEPass());
+
+  if (pass_config.legalize_custom_tensor_list_ops) {
+    pass_manager->addPass(mlir::TFL::CreateLegalizeTensorListPass());
+  }
 
   if (pass_config.lower_tensor_list_ops &&
       toco_flags.tf_quantization_mode().empty()) {
@@ -323,7 +384,9 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeHashTablesPass());
     pass_manager->addNestedPass<mlir::func::FuncOp>(
-        mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
+        mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true,
+                                      toco_flags.disable_fuse_mul_and_fc()));
+
     // This pass operates on TensorFlow ops but is triggered after legalization
     // so that it can target constants introduced once TensorFlow Identity ops
     // are removed during legalization.

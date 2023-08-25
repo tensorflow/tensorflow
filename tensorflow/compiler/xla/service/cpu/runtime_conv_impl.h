@@ -16,10 +16,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_CONV_IMPL_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/eigen_spatial_convolutions.h"
+#include "tensorflow/tsl/framework/convolution/eigen_spatial_convolutions.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 // 'tensorflow' namespace is used so that types don't require qualification.

@@ -24,11 +24,9 @@ from tensorflow.python.keras.mixed_precision import loss_scale as keras_loss_sca
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.experimental import mixed_precision_global_state
-from tensorflow.python.util.tf_export import keras_export
 
 
 # pylint: disable=g-classes-have-attributes
-@keras_export('keras.mixed_precision.Policy', v1=[])
 class Policy(object):
   """A dtype policy for a Keras layer.
 
@@ -309,7 +307,6 @@ class Policy(object):
     return cls(**config)
 
 
-@keras_export('keras.mixed_precision.experimental.Policy', v1=[])
 class PolicyV1(Policy):
   """A deprecated dtype policy for a Keras layer.
 
@@ -409,8 +406,6 @@ class PolicyV1(Policy):
 _global_policy = None
 
 
-@keras_export('keras.mixed_precision.global_policy',
-              'keras.mixed_precision.experimental.global_policy', v1=[])
 def global_policy():
   """Returns the global dtype policy.
 
@@ -459,8 +454,6 @@ def _check_if_mixed_precision_graph_rewrite_is_enabled(policy):
         'customizable.'.format(policy=policy))
 
 
-@keras_export('keras.mixed_precision.set_global_policy',
-              'keras.mixed_precision.experimental.set_global_policy', v1=[])
 def set_global_policy(policy):
   """Sets the global dtype policy.
 

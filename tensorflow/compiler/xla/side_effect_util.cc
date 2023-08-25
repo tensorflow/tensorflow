@@ -20,12 +20,6 @@ namespace xla {
 const char kXlaHostTransferRendezvousNameAttr[] =
     "_xla_host_transfer_rendezvous";
 
-const char kXlaHostTransferOriginalTypeAttr[] =
-    "_xla_host_transfer_original_type";
-
-const char kXlaHostTransferIsLowerBitsAttr[] =
-    "_xla_host_transfer_is_lower_bits";
-
 const char kXlaHostTransferHandlerNameAttr[] =
     "_xla_host_transfer_handler_name";
 
@@ -37,6 +31,8 @@ const char kXlaComputeTypeSparse[] = "sparse";
 
 const char kXlaComputeTypeDense[] = "dense";
 
+const char kXlaComputeTypeHost[] = "host";
+
 const char kXlaMaxIdsPerPartitionAttr[] = "_xla_max_ids_per_partition";
 
 const char kXlaMaxUniqueIdsPerPartitionAttr[] =
@@ -47,5 +43,20 @@ const char kXlaShardingStrategyAttr[] = "_xla_sharding_strategy";
 const char kXlaShardingStrategyMod[] = "mod";
 
 const char kXlaShardingStrategyDiv[] = "div";
+
+const char kXlaPadValueAttr[] = "_xla_pad_value";
+
+const char kXlaQuantizationHighValueAttr[] = "_xla_quantization_high_value";
+
+const char kXlaQuantizationLowValueAttr[] = "_xla_quantization_low_value";
+
+const char kXlaQuantizationNumBucketsValueAttr[] =
+    "_xla_quantization_num_buckets_value";
+
+const char kXlaTableId[] = "_xla_table_id";
+
+const char kXlaBufferPlacementAttr[] = "_xla_buffer_placement";
+
+const char kXlaBufferPlacementParam[] = "arg";
 
 }  // namespace xla

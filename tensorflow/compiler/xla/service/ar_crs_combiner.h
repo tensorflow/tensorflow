@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -100,21 +100,16 @@ class ArCrsCombiner : public HloModulePass {
         : ar(all_reduce), crs(cross_replica_sum), distance(dist) {}
 
     std::string ToString() {
-      std::vector<std::string> pieces;
-      pieces.push_back("(");
+      std::string result;
+      absl::StrAppend(&result, "(");
       HloInstruction* instruction = ar;
       while (instruction != crs) {
-        pieces.push_back(instruction->name());
-        pieces.push_back(",");
+        absl::StrAppend(&result, instruction->name(), ",");
         instruction = instruction->users()[0];
       }
-      pieces.push_back(instruction->name());
-      pieces.push_back(")[id:");
-      pieces.push_back(std::to_string(*(ar->channel_id())));
-      pieces.push_back(",dist:");
-      pieces.push_back(std::to_string(distance));
-      pieces.push_back("]");
-      return absl::StrJoin(pieces, "");
+      absl::StrAppend(&result, instruction->name(),
+                      ")[id:", *(ar->channel_id()), ",dist:", distance, "]");
+      return result;
     }
   };
 

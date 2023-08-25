@@ -16,20 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CONVOLUTION_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CONVOLUTION_THUNK_H_
 
+#include <memory>
 #include <optional>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -45,7 +46,7 @@ class ConvolutionThunk : public Thunk {
   // operand_slices should be in the same order as cudnn_call->operands().
   ConvolutionThunk(ThunkInfo thunk_info, GpuConvConfig config,
                    std::vector<BufferAllocation::Slice> operand_slices,
-                   BufferAllocation::Slice result_slice,
+                   std::vector<BufferAllocation::Slice> result_slices,
                    BufferAllocation::Slice scratch_slice);
 
   ConvolutionThunk(const ConvolutionThunk&) = delete;
@@ -55,17 +56,37 @@ class ConvolutionThunk : public Thunk {
 
  private:
   std::vector<BufferAllocation::Slice> operand_buffers_;
-  BufferAllocation::Slice result_buffer_;
+  std::vector<BufferAllocation::Slice> result_buffers_;
   BufferAllocation::Slice scratch_buffer_;
-  MaybeFusedConvRunner& GetOrCreateRunner(
-      const stream_executor::Stream* stream);
+  GenericConvRunner& GetOrCreateRunner(const stream_executor::Stream* stream);
 
   // Convolution config
   const GpuConvConfig config_;
   absl::Mutex mu_;
   absl::flat_hash_map<const stream_executor::Stream*,
-                      std::unique_ptr<MaybeFusedConvRunner>>
+                      std::unique_ptr<GenericConvRunner>>
       runner_cache_ ABSL_GUARDED_BY(mu_);
+};
+
+// Launches the kernel that reorders input data for int8x32 convolutions.
+class ConvolutionReorderThunk : public Thunk {
+ public:
+  ConvolutionReorderThunk(ThunkInfo thunk_info, absl::Span<int64_t> filter_nchw,
+                          std::vector<BufferAllocation::Slice> operand_slices,
+                          std::vector<BufferAllocation::Slice> result_slices);
+
+  ConvolutionReorderThunk(const ConvolutionReorderThunk&) = delete;
+  ConvolutionReorderThunk& operator=(const ConvolutionReorderThunk&) = delete;
+
+  Status ExecuteOnStream(const ExecuteParams& params) override;
+
+ private:
+  static se::dnn::FilterDescriptor CreateFilterDescriptor(
+      absl::Span<int64_t> filter_nchw);
+
+  const se::dnn::FilterDescriptor filter_descriptor_;
+  std::vector<BufferAllocation::Slice> operand_buffers_;
+  std::vector<BufferAllocation::Slice> result_buffers_;
 };
 
 }  // namespace gpu

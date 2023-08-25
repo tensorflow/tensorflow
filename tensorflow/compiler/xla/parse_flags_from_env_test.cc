@@ -24,11 +24,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/subprocess.h"
 #include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/util/command_line_flags.h"
 
 namespace xla {
 
@@ -46,12 +46,12 @@ static void TestParseFlagsFromEnv(const char* msg) {
   std::string embedded_quotes;
   std::string single_quoted;
   std::string double_quoted;
-  std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("simple", &simple, ""),
-      tensorflow::Flag("with_value", &with_value, ""),
-      tensorflow::Flag("embedded_quotes", &embedded_quotes, ""),
-      tensorflow::Flag("single_quoted", &single_quoted, ""),
-      tensorflow::Flag("double_quoted", &double_quoted, ""),
+  std::vector<tsl::Flag> flag_list = {
+      tsl::Flag("simple", &simple, ""),
+      tsl::Flag("with_value", &with_value, ""),
+      tsl::Flag("embedded_quotes", &embedded_quotes, ""),
+      tsl::Flag("single_quoted", &single_quoted, ""),
+      tsl::Flag("double_quoted", &double_quoted, ""),
   };
   bool parsed_ok = ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", flag_list);
   CHECK_EQ(*pargc, 1) << msg;
@@ -163,18 +163,18 @@ int main(int argc, char* argv[]) {
   xla::binary_name = argv[0];
   bool recursing = false;
   int32_t int_flag = 1;
-  const std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("recursing", &recursing,
-                       "Whether the binary is being invoked recursively."),
-      tensorflow::Flag("int_flag", &int_flag, "An integer flag to test with"),
+  const std::vector<tsl::Flag> flag_list = {
+      tsl::Flag("recursing", &recursing,
+                "Whether the binary is being invoked recursively."),
+      tsl::Flag("int_flag", &int_flag, "An integer flag to test with"),
   };
-  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  std::string usage = tsl::Flags::Usage(argv[0], flag_list);
   bool parse_ok =
       xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", flag_list);
   if (!parse_ok) {
     LOG(QFATAL) << "can't parse from environment\n" << usage;
   }
-  parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   if (!parse_ok) {
     LOG(QFATAL) << usage;
   }

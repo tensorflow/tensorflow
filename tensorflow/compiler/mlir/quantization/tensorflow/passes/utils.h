@@ -30,22 +30,20 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
-// TODO(b/238829558): Populate quantization config based on the
-// QuantizationOptions proto. We might want to clean QuantizationMethod as well
-// as this can be inferred from the proto.
-using OpSet = tensorflow::quantization::OpSet;
+constexpr char kQuantizeFuncName[] = "quantize_i8";
+constexpr char kDequantizeFuncName[] = "dequantize_i8";
+constexpr char kAttrMapAttribute[] = "attr_map";
 
-enum class QuantizationMethod {
-  kQuantizationAwareTraining,
-  kPostTrainingQuantization,
-  kDynamicRangeQuantization
-};
+// TODO(b/238829558): Populate quantization config based on the
+// QuantizationOptions proto.
+// TODO(b/263449239): Put the OpSet aliases separately within each file
+using OpSet = tensorflow::quantization::OpSet;
 
 // Returns true if the value has static shape.
 bool HasStaticShape(Value value);
 
 // Returns true if the value has static shape at given dims.
-bool HasStaticShapeAtDims(Value value, llvm::ArrayRef<int> dims);
+bool HasStaticShapeAtDims(Value value, ArrayRef<int> dims);
 
 // Returns true if the op has any quantized tensors as input or output.
 bool HasQuantizedTensors(Operation *op);
@@ -57,8 +55,8 @@ Type CloneTypeWithNewElementType(Type old_type, Type element_type);
 // Creates an array with integer/float type.
 template <typename T>
 Value CreateConstValue(OpBuilder &builder, Location loc,
-                       const llvm::SmallVector<int64_t> &shape,
-                       const llvm::SmallVector<T> &values) {
+                       const SmallVector<int64_t> &shape,
+                       const SmallVector<T> &values) {
   static_assert(std::is_integral_v<T> || std::is_same_v<T, float>);
   if (std::is_integral_v<T>) {
     auto shape_type =
@@ -76,7 +74,7 @@ Value CreateConstValue(OpBuilder &builder, Location loc,
 // Creates a 1D array with integer/float type.
 template <typename T>
 Value Create1DConstValue(OpBuilder &builder, Location loc,
-                         const llvm::SmallVector<T> &values) {
+                         const SmallVector<T> &values) {
   return CreateConstValue<T>(builder, loc,
                              {static_cast<int64_t>(values.size())}, values);
 }
@@ -130,11 +128,9 @@ bool AreSplatValuesEqual(Value x, Value y) {
   return splat_x == splat_y;
 }
 
-// TODO(b/241488936): Remove this function after adding a new constant folding
-// pass to TensorFlow.
-// Applies constant folding to the operation if possible and return the folded
-// results.
-llvm::SmallVector<Value> ConstantFoldOpIfPossible(Operation *op);
+// Clones an operation with new operands while keeping attributes.
+SmallVector<Value> CloneOpWithReplacedOperands(
+    OpBuilder &builder, Operation *op, const SmallVector<Value> &new_operands);
 
 }  // namespace quant
 }  // namespace mlir

@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_PJRT_FUTURE_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_PJRT_FUTURE_H_
 
+#include <algorithm>
 #include <functional>
+#include <type_traits>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
-#include "absl/types/span.h"
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
@@ -149,7 +149,7 @@ class PjRtFuture {
   // Typically used to eagerly return error values when async work will not
   // be enqueued, e.g., due to invalid arguments.
   explicit PjRtFuture(T t)
-      : promise_ref_(tfrt::MakeAvailableAsyncValueRef<T>(t)),
+      : promise_ref_(tfrt::MakeAvailableAsyncValueRef<T>(std::move(t))),
         on_block_start_([]() { return PjRtFutureHelpers::ProfilingKeys(); }),
         on_block_end_([](PjRtFutureHelpers::ProfilingKeys) {}) {}
 
@@ -212,7 +212,7 @@ class PjRtFuture {
     CHECK(IsValid());
     if (!promise_ref_.IsAvailable()) {
       const auto keys = on_block_start_();
-      tfrt::Await({promise_ref_.GetAsyncValue()});
+      BlockUntilReady(promise_ref_.GetAsyncValue());
       on_block_end_(keys);
     }
     DCHECK(promise_ref_.IsConcrete());
@@ -231,7 +231,16 @@ class PjRtFuture {
     promise_ref_.AndThen([promise = promise_ref_.AsPtr(),
                           callback = std::move(callback)]() mutable {
       DCHECK(promise.IsConcrete());
-      std::move(callback)(*promise);
+      if constexpr (std::is_copy_constructible_v<T>) {
+        std::move(callback)(*promise);
+        return;
+      }
+      // For non-copyable types, we have no ways to check the number of waiters
+      // but we have to move the data into the consumer callback. Registering
+      // two callbacks will lead to double-move of the data. It is users'
+      // responsibility to make sure only one waiter is registered.
+      // TODO(yunlongl): Implement `PjRtUniqueFuture`.
+      std::move(callback)(std::move(*promise));
     });
   }
 

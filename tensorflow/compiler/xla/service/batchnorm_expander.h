@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -35,7 +35,7 @@ class BatchNormExpander : public HloModulePass {
       : rewrite_training_op_(rewrite_training_op),
         rewrite_inference_op_(rewrite_inference_op),
         rewrite_grad_op_(rewrite_grad_op) {}
-  ~BatchNormExpander() = default;
+  ~BatchNormExpander() override = default;
   absl::string_view name() const override { return "batchnorm_expander"; }
 
   // Run operation expander on the given computation. Returns whether the

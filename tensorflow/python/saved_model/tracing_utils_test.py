@@ -18,6 +18,7 @@ from tensorflow.python.eager import def_function
 
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 
 from tensorflow.python.saved_model import tracing_utils
@@ -34,8 +35,9 @@ class MyTrackable(base.Trackable):
     return {"a": self.a, "b": self.b}
 
   def _restore_from_tensors(self, restored_tensors):
-    self.a.assign(restored_tensors["a"])
-    self.b.assign(restored_tensors["b"])
+    return control_flow_ops.group(
+        self.a.assign(restored_tensors["a"]),
+        self.b.assign(restored_tensors["b"]))
 
 
 class TracingUtilsTest(test.TestCase):
@@ -52,7 +54,8 @@ class TracingUtilsTest(test.TestCase):
     t._serialize_to_tensors = (def_function.function(t._serialize_to_tensors)
                                .get_concrete_function())
     restored_tensor_spec = t._serialize_to_tensors.structured_outputs
-    t._restore_from_tensors = (def_function.function(t._restore_from_tensors)
+    # The wrapped tf.function doesn't matter.
+    t._restore_from_tensors = (def_function.function(lambda x: x)
                                .get_concrete_function(restored_tensor_spec))
 
     save_fn, restore_fn = tracing_utils.trace_save_and_restore(t)

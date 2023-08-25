@@ -31,17 +31,18 @@ limitations under the License.
 #include <pthread_np.h>
 #endif
 
+#include <map>
 #include <thread>
 #include <vector>
 
-#include "tensorflow/core/platform/load_library.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/default/posix_file_system.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/load_library.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/ram_file_system.h"
 #include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
 
@@ -59,7 +60,7 @@ std::map<std::thread::id, string>& GetThreadNameRegistry()
 class PThread : public Thread {
  public:
   PThread(const ThreadOptions& thread_options, const std::string& name,
-          std::function<void()> fn) {
+          absl::AnyInvocable<void()> fn) {
     ThreadParams* params = new ThreadParams;
     params->name = name;
     params->fn = std::move(fn);
@@ -80,7 +81,7 @@ class PThread : public Thread {
  private:
   struct ThreadParams {
     std::string name;
-    std::function<void()> fn;
+    absl::AnyInvocable<void()> fn;
   };
   static void* ThreadFn(void* params_arg) {
     std::unique_ptr<ThreadParams> params(
@@ -132,8 +133,8 @@ class PosixEnv : public Env {
   }
 
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
-                      std::function<void()> fn) override {
-    return new PThread(thread_options, name, fn);
+                      absl::AnyInvocable<void()> fn) override {
+    return new PThread(thread_options, name, std::move(fn));
   }
 
   int32 GetCurrentThreadId() override {
@@ -169,19 +170,20 @@ class PosixEnv : public Env {
 #endif
   }
 
-  void SchedClosure(std::function<void()> closure) override {
+  void SchedClosure(absl::AnyInvocable<void()> closure) override {
     // TODO(b/27290852): Spawning a new thread here is wasteful, but
     // needed to deal with the fact that many `closure` functions are
     // blocking in the current codebase.
-    std::thread closure_thread(closure);
+    std::thread closure_thread(std::move(closure));
     closure_thread.detach();
   }
 
-  void SchedClosureAfter(int64 micros, std::function<void()> closure) override {
+  void SchedClosureAfter(int64 micros,
+                         absl::AnyInvocable<void()> closure) override {
     // TODO(b/27290852): Consuming a thread here is wasteful, but this
     // code is (currently) only used in the case where a step fails
     // (AbortStep). This could be replaced by a timer thread
-    SchedClosure([this, micros, closure]() {
+    SchedClosure([this, micros, closure = std::move(closure)]() mutable {
       SleepForMicroseconds(micros);
       closure();
     });
@@ -189,18 +191,17 @@ class PosixEnv : public Env {
 
   Status LoadDynamicLibrary(const char* library_filename,
                             void** handle) override {
-    return tensorflow::internal::LoadDynamicLibrary(library_filename, handle);
+    return internal::LoadDynamicLibrary(library_filename, handle);
   }
 
   Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
                               void** symbol) override {
-    return tensorflow::internal::GetSymbolFromLibrary(handle, symbol_name,
-                                                      symbol);
+    return internal::GetSymbolFromLibrary(handle, symbol_name, symbol);
   }
 
   string FormatLibraryFileName(const string& name,
                                const string& version) override {
-    return tensorflow::internal::FormatLibraryFileName(name, version);
+    return internal::FormatLibraryFileName(name, version);
   }
 
   string GetRunfilesDir() override {

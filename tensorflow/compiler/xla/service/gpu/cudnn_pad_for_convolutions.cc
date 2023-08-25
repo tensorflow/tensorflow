@@ -18,11 +18,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/bind_front.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_support_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -211,6 +211,7 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
     switch (kind) {
       case CudnnConvKind::kForward:
       case CudnnConvKind::kForwardActivation:
+      case CudnnConvKind::kForwardGraph:
         return std::make_tuple(&new_lhs_shape, &new_rhs_shape,
                                &new_result_shape);
       case CudnnConvKind::kBackwardInput:

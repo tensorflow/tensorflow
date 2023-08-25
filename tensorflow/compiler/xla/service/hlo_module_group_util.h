@@ -21,14 +21,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/hlo_module_group_metadata.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -67,7 +68,7 @@ class HloModuleGroupUtil {
 
   // Function called on each instruction group during the DFS traversal. See the
   // comment for VisitTopologicalOrder()).
-  using VisitFunction = std::function<Status(
+  using VisitFunction = absl::FunctionRef<Status(
       HloInstruction* hlo,
       const std::vector<HloInstruction*>& instruction_group)>;
 
@@ -87,10 +88,13 @@ class HloModuleGroupUtil {
   // * visit_state: map from each instruction to its visit state.
   // * visit_function: function called when each instruction group.
   // * root: the root instruction of the traversal.
+  // * send_recv_as_one_group: if true, treat (Recv, Send, RecvDone, SendDone)
+  // as one group.
   using VisitStates = absl::flat_hash_map<HloInstruction*, VisitState>;
   Status VisitTopologicalOrder(VisitStates* visit_state,
-                               const VisitFunction& visit_function,
-                               HloInstruction* root);
+                               VisitFunction visit_function,
+                               HloInstruction* root,
+                               bool send_recv_as_one_group = false);
 
   // Verifies that the computations are well-formed (e.g., no cycles).
   Status VerifyComputations(absl::Span<HloComputation* const> computations);

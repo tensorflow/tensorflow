@@ -15,10 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_EAGER_PYWRAP_TENSOR_H_
 #define TENSORFLOW_PYTHON_EAGER_PYWRAP_TENSOR_H_
 
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
+
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/python/lib/core/numpy.h"
 
 bool EagerTensor_CheckExact(const PyObject* o);
 int64_t PyEagerTensor_ID(const PyObject* tensor);

@@ -12,7 +12,7 @@ limitations under the License.
 
 // This file checks that the MHLO CAPI can actually be compiled by a C compiler.
 // At the moment, this check is only implemented in the Bazel build.
-#include "mlir-hlo-c/Attributes.h"
-#include "mlir-hlo-c/Dialects.h"
-#include "mlir-hlo-c/Passes.h"
-#include "mlir-hlo-c/Types.h"
+#include "bindings/c/Attributes.h"
+#include "bindings/c/Dialects.h"
+#include "bindings/c/Passes.h"
+#include "bindings/c/Types.h"

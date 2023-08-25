@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "if_google")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -9,12 +10,12 @@ cc_library(
     testonly = True,
     hdrs = ["mla_test_utils.h"],
     visibility = [
-        "//tensorflow/core/tfrt/saved_model/tests:__pkg__",
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
-        "@com_google_absl//absl/strings",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
     ] + if_google([
         "//third_party/mira/mlarchive:mla",
         "//third_party/mira/mlarchive/google:google_env",
@@ -27,12 +28,12 @@ cc_library(
     name = "mla_utils",
     hdrs = ["mla_utils.h"],
     visibility = [
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
-        "@com_google_absl//absl/strings",
-        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/strings",
     ] + if_google([
         "//third_party/mira/mlarchive:mla",
         "//third_party/mira/mlarchive:status_macro",

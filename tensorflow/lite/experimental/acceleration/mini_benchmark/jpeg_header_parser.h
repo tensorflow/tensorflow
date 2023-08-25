@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_status.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/jpeg_common.h"
 #include "tensorflow/lite/string_type.h"

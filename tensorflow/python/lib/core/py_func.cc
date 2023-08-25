@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/python/lib/core/py_func.h"
-
-#include <Python.h>
-
 // clang-format: off
 // Must be included first.
-#include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/python/lib/core/py_func.h"
+
+#include "tensorflow/tsl/python/lib/core/numpy.h"
 // clang-format: on
+
+#include <Python.h>
 
 #include <array>
 
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/py_util.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
 
 namespace tensorflow {
 namespace {
@@ -83,8 +83,8 @@ bool IsCPUDevice(const Device* d) {
   return d == nullptr || d->tensorflow_accelerator_device_info() == nullptr;
 }
 
-// Givens the 'call', prepares the token and inputs as a python tuple
-// that is appropriate for calling the trampoline.
+// Given the 'call', prepares the token and inputs as a python tuple that is
+// appropriate for calling the trampoline.
 Status MakeArgTuple(const PyCall* call, TFE_Context* ctx, PyObject** tuple) {
   int64_t n = call->ins.size();
   PyObject* lst = PyList_New(n);
@@ -119,7 +119,11 @@ Status MakeArgTuple(const PyCall* call, TFE_Context* ctx, PyObject** tuple) {
     PyList_SetItem(lst, i, arg);
   }
   *tuple = Py_BuildValue("(ssN)", call->token.c_str(), device_name, lst);
-  CHECK(*tuple);
+  if (*tuple == nullptr) {
+    return errors::Internal(
+        "Failed to create python tuple. Please make sure `token` is a "
+        "well-formed UTF-8 string.");
+  }
   return OkStatus();
 }
 

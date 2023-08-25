@@ -389,6 +389,10 @@ bool IsMirrorPadGrad(const NodeDef& node) {
   return node.op() == "MirrorPadGrad";
 }
 
+bool IsMklFusedMish(const NodeDef& node) {
+  return node.op() == "_MklFusedMish";
+}
+
 bool IsMod(const NodeDef& node) { return node.op() == "Mod"; }
 
 bool IsMul(const NodeDef& node) { return node.op() == "Mul"; }
@@ -704,7 +708,7 @@ bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry) {
   Status status = op_registry->LookUpOpDef(op_name, &op_def);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to lookup OpDef for " << op_name
-                 << ". Error: " << status.error_message();
+                 << ". Error: " << status.message();
     return false;
   }
   return op_def->is_stateful();

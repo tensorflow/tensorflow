@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/python/profiler/internal/traceme_wrapper.h"
+#include "tensorflow/compiler/xla/python/profiler/internal/traceme_wrapper.h"
 
-#include "pybind11/attr.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/attr.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 
 namespace py = ::pybind11;
 
-using ::tensorflow::profiler::TraceMeWrapper;
+using ::xla::profiler::TraceMeWrapper;
 
 PYBIND11_MODULE(_pywrap_traceme, m) {
   py::class_<TraceMeWrapper>(m, "TraceMe", py::module_local())

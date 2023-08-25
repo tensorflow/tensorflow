@@ -78,7 +78,7 @@ class TPUEmbeddingCorrectnessTest(
     def embedding_only(data):
       def tpu_fn():
         return mid_level.dequeue()
-      mid_level.enqueue(data)
+      mid_level.enqueue(data, training=False)
       return strategy.run(tpu_fn)
 
     # Only check core 0.

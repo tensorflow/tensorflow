@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -56,6 +56,11 @@ StatusOr<HloSharding> ParseSharding(absl::string_view str);
 // "frontend_attributes={...}" attribute string, e.g.,
 // "{attr_a=a,attr_b=b}".
 StatusOr<FrontendAttributes> ParseFrontendAttributes(absl::string_view str);
+
+// Parses statistics viz from str. str is supposed to contain the body of the
+// statistics visualization, i.e. just the rhs of the "statistics={...}"
+// attribute string, e.g., "{visualizing_index=1,nan_percent=50}".
+StatusOr<StatisticsViz> ParseStatisticsViz(absl::string_view str);
 
 // Parses parameter replication from str. str is supposed to contain the body of
 // the parameter replication, i.e. just the rhs of the

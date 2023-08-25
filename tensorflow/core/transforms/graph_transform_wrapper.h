@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
 namespace mlir {
 namespace tfg {

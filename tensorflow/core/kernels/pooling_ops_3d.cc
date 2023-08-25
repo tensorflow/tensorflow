@@ -76,20 +76,22 @@ Pool3dParameters::Pool3dParameters(OpKernelContext* context,
       errors::Unimplemented(
           "Pooling3d only supports pooling across plane/width/height."));
 
-  OP_REQUIRES_OK(context, GetWindowedOutputSize(tensor_in_planes, window_planes,
-                                                plane_stride, padding,
-                                                &out_plane, &pad_planes));
-  OP_REQUIRES_OK(context,
-                 GetWindowedOutputSize(tensor_in_rows, window_rows, row_stride,
-                                       padding, &out_height, &pad_rows));
-  OP_REQUIRES_OK(context,
-                 GetWindowedOutputSize(tensor_in_cols, window_cols, col_stride,
-                                       padding, &out_width, &pad_cols));
+  OP_REQUIRES_OK(
+      context, GetWindowedOutputSize(tensor_in_planes, window_planes,
+                                     /*dilation_rate=*/1, plane_stride, padding,
+                                     &out_plane, &pad_planes));
+  OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                              tensor_in_rows, window_rows, /*dilation_rate=*/1,
+                              row_stride, padding, &out_height, &pad_rows));
+  OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                              tensor_in_cols, window_cols, /*dilation_rate=*/1,
+                              col_stride, padding, &out_width, &pad_cols));
 }
 
-TensorShape Pool3dParameters::forward_output_shape() {
-  return ShapeFromFormat(data_format, tensor_in_batch,
-                         {{out_plane, out_height, out_width}}, depth);
+Status Pool3dParameters::forward_output_shape(TensorShape* shape) {
+  return ShapeFromFormatWithStatus(data_format, tensor_in_batch,
+                                   {{out_plane, out_height, out_width}}, depth,
+                                   shape);
 }
 
 template <typename T>
@@ -183,12 +185,16 @@ class Pooling3DOp : public UnaryOp<T> {
                                    GetTensorDim(stride_, data_format_, '1'),
                                    GetTensorDim(stride_, data_format_, '0')}};
     std::array<int64_t, 3> padding, out;
+    std::array<int64_t, 3> dilations{1, 1, 1};
 
-    OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
-                                            padding_, &out, &padding));
+    OP_REQUIRES_OK(context,
+                   Get3dOutputSizeV2(input_size, window, dilations, stride,
+                                     padding_, &out, &padding));
 
-    TensorShape out_shape = ShapeFromFormat(data_format_, in_batch,
-                                            {{out[2], out[1], out[0]}}, depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                data_format_, in_batch,
+                                {{out[2], out[1], out[0]}}, depth, &out_shape));
     Tensor* output;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
     if (out_shape.num_elements() == 0) return;
@@ -284,7 +290,7 @@ struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
           mat0.setZero();
           select_slice =
               ((tensor_in_slice - tensor_out_slice.broadcast(bcast)).abs() <
-               tensor_in_slice.constant(1e-5))
+               tensor_in_slice.constant(T(1e-5)))
                   .select(out_backprop_slice.broadcast(bcast), mat0);
 
           output->tensor<T, 5>()
@@ -359,14 +365,18 @@ class MaxPooling3dGradOp : public OpKernel {
                                    GetTensorDim(stride_, data_format_, '1'),
                                    GetTensorDim(stride_, data_format_, '0')}};
     std::array<int64_t, 3> out, padding;
+    std::array<int64_t, 3> dilations{1, 1, 1};
 
-    OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
-                                            padding_, &out, &padding));
+    OP_REQUIRES_OK(context,
+                   Get3dOutputSizeV2(input_size, window, dilations, stride,
+                                     padding_, &out, &padding));
 
     const int64_t depth = GetTensorDim(tensor_in, data_format_, 'C');
     const int64_t in_batch = GetTensorDim(tensor_in, data_format_, 'N');
-    TensorShape out_shape = ShapeFromFormat(data_format_, in_batch,
-                                            {{out[2], out[1], out[0]}}, depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                data_format_, in_batch,
+                                {{out[2], out[1], out[0]}}, depth, &out_shape));
     OP_REQUIRES(
         context, tensor_out.shape() == out_shape,
         errors::InvalidArgument("Expected orig_output shape to be ", out_shape,
@@ -461,7 +471,7 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
               out_backprop.tensor<T, 5>().slice(src_indices, src_sizes);
           // Divide by the size of the actual patch (psize * rsize * csize).
           float divide_size = rsize * csize * psize * 1.0f;
-          slices *= slices.constant(1.0f / divide_size);
+          slices *= slices.constant(T(1.0f / divide_size));
 
           output->tensor<T, 5>()
               .slice(dst_indices, dst_sizes)
@@ -492,6 +502,11 @@ class AvgPooling3dGradOp : public OpKernel {
     OP_REQUIRES(context, ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 5 dimensions"));
+    for (std::size_t i = 0; i < ksize_.size(); ++i) {
+      OP_REQUIRES(
+          context, ksize_[i] > 0,
+          errors::InvalidArgument("ksize must be positive, got: ", ksize_[i]));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window stride field must "
@@ -541,9 +556,11 @@ class AvgPooling3dGradOp : public OpKernel {
                                    GetTensorDim(stride_, data_format_, '1'),
                                    GetTensorDim(stride_, data_format_, '0')}};
     std::array<int64_t, 3> padding, out;
+    std::array<int64_t, 3> dilations{1, 1, 1};
 
-    OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
-                                            padding_, &out, &padding));
+    OP_REQUIRES_OK(context,
+                   Get3dOutputSizeV2(input_size, window, dilations, stride,
+                                     padding_, &out, &padding));
 
     LaunchAvgPooling3dGradOp<Device, T>::launch(
         context, output_shape, out_backprop, window, stride, out, padding,
@@ -717,9 +734,12 @@ class MaxPooling3dGradGradOp : public OpKernel {
     Pool3dParameters params{context,  ksize_,       stride_,
                             padding_, data_format_, tensor_in.shape()};
     if (!context->status().ok()) return;  // params is invalid
-    OP_REQUIRES(context, tensor_out.shape() == params.forward_output_shape(),
+    TensorShape params_forward_output_shape;
+    OP_REQUIRES_OK(context,
+                   params.forward_output_shape(&params_forward_output_shape));
+    OP_REQUIRES(context, tensor_out.shape() == params_forward_output_shape,
                 errors::InvalidArgument("Expected orig_output shape to be ",
-                                        params.forward_output_shape(),
+                                        params_forward_output_shape,
                                         ", but got ", tensor_out.shape()));
     OP_REQUIRES(
         context, out_grad_backprop.shape() == tensor_in.shape(),
@@ -788,6 +808,7 @@ class MaxPooling3dGradGradOp : public OpKernel {
 
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T)
 TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -876,6 +897,7 @@ struct LaunchMaxPooling3dGradGradOp<GPUDevice, T> {
 
 #define REGISTER_GPU_KERNELS(T) REGISTER_KERNELS(GPU, T)
 TF_CALL_float(REGISTER_GPU_KERNELS) TF_CALL_half(REGISTER_GPU_KERNELS)
+    TF_CALL_bfloat16(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

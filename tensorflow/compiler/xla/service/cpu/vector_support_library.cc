@@ -37,21 +37,14 @@ VectorSupportLibrary::VectorSupportLibrary(PrimitiveType primitive_type,
   vector_pointer_type_ = llvm::PointerType::getUnqual(vector_type_);
 }
 
-static std::string TypeToString(llvm::Type* type) {
-  std::string o;
-  llvm::raw_string_ostream ostream(o);
-  type->print(ostream);
-  return ostream.str();
-}
-
 void VectorSupportLibrary::AssertCorrectTypes(
     std::initializer_list<llvm::Value*> values) {
   for (llvm::Value* v : values) {
     llvm::Type* type = v->getType();
     if (type != scalar_type() && type != vector_type()) {
-      LOG(FATAL) << "Expected either " << TypeToString(scalar_type()) << " or "
-                 << TypeToString(vector_type()) << " but got "
-                 << TypeToString(type);
+      LOG(FATAL) << "Expected either " << llvm_ir::DumpToString(scalar_type())
+                 << " or " << llvm_ir::DumpToString(vector_type())
+                 << " but got " << llvm_ir::DumpToString(type);
     }
   }
 }

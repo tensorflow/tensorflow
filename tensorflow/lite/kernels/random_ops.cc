@@ -17,11 +17,11 @@ limitations under the License.
 #include <cstdint>
 #include <random>
 
-#include "tensorflow/core/lib/random/philox_random.h"
-#include "tensorflow/core/lib/random/random_distributions_utils.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/tsl/lib/random/philox_random.h"
+#include "tensorflow/tsl/lib/random/random_distributions_utils.h"
 
 namespace tflite {
 namespace ops {
@@ -30,7 +30,7 @@ namespace random {
 
 namespace {
 
-using Generator = ::tensorflow::random::PhiloxRandom;
+using Generator = ::tsl::random::PhiloxRandom;
 
 enum RandomType { kRandomUniform, kRandomStandardNormal, kMultinomial };
 
@@ -68,7 +68,7 @@ void GenerateRandomUniformNumbers(
     typename Generator::ResultType samples = rng();
     const int rng_net_size = std::min(rng_size, buffer_size - current_size);
     for (int i = 0; i < rng_net_size; i++) {
-      buffer[current_size + i] = tensorflow::random::Uint32ToFloat(samples[i]);
+      buffer[current_size + i] = tsl::random::Uint32ToFloat(samples[i]);
     }
     current_size += rng_net_size;
   }
@@ -85,9 +85,9 @@ void GenerateRandomStandardNormalNumbers(
     typename Generator::ResultType samples = rng();
     const int rng_net_size = std::min(rng_size, buffer_size - current_size);
     for (int i = 0; i < rng_net_size; i += 2) {
-      tensorflow::random::BoxMullerFloat(samples[i], samples[i + 1],
-                                         &buffer[current_size + i],
-                                         &buffer[current_size + i + 1]);
+      tsl::random::BoxMullerFloat(samples[i], samples[i + 1],
+                                  &buffer[current_size + i],
+                                  &buffer[current_size + i + 1]);
     }
     current_size += rng_net_size;
   }
@@ -153,7 +153,7 @@ void GenerateMultinomialNumbers(Generator& rng, int batch_size,
       x1 = rng_results[used_rng_results_index + 1];
       used_rng_results_index += 2;
       const double to_find =
-          (tensorflow::random::Uint64ToDouble(x0, x1) * cumulative_total);
+          (tsl::random::Uint64ToDouble(x0, x1) * cumulative_total);
       auto found_iter = std::upper_bound(cdf.begin(), cdf.end(), to_find);
       output_row[j] = std::distance(cdf.begin(), found_iter);
     }
@@ -185,7 +185,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   InitializeOpData(node);
 
   TfLiteTensor* output = GetOutput(context, node, 0);
-  if (!IsConstantTensor(shape)) {
+  if (!IsConstantOrPersistentTensor(shape)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }
@@ -214,7 +214,8 @@ TfLiteStatus PrepareMultinomial(TfLiteContext* context, TfLiteNode* node) {
   InitializeOpData(node);
 
   TfLiteTensor* output = GetOutput(context, node, 0);
-  if (!IsConstantTensor(logits) || !IsConstantTensor(num_samples)) {
+  if (!IsConstantOrPersistentTensor(logits) ||
+      !IsConstantOrPersistentTensor(num_samples)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }

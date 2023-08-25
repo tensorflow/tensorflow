@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <optional>
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
 
@@ -30,12 +30,12 @@ namespace xla {
 // max_brute_force_iters may be returned if we can pattern-match the loop
 // condition.
 std::optional<int64_t> ComputeWhileLoopTripCount(
-    HloInstruction *while_op, int64_t max_brute_force_iters = 128);
+    const HloInstruction *while_op, int64_t max_brute_force_iters = 128);
 
 // Returns an upper bound on the trip count of the loop if it's statically
 // known, nullopt otherwise.
 std::optional<int64_t> ComputeWhileLoopTripCountUpperBound(
-    HloInstruction *while_op);
+    const HloInstruction *while_op);
 
 // The below function identifies a subset of all possible auxiliary
 // induction variables (AIV). Specifically, candidates are gtes, e.g.,

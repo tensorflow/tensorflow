@@ -15,20 +15,46 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
 
+#include <memory>
+#include <utility>
+
 #include "absl/strings/str_replace.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/despecializer.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
+#include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-using HloControlFlowFlatteningTest = HloTestBase;
+class HloControlFlowFlatteningTest : public HloTestBase {
+ public:
+  StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
+      std::unique_ptr<VerifiedHloModule> hlo_module, int64_t num_devices = 2) {
+    spmd::SpmdPartitionerOptions options;
+    auto collective_ops_creator =
+        spmd::GetDefaultCollectiveOpsCreator(num_devices, /*num_replicas=*/1);
+    collective_ops_creator.create_cross_partition_all_gather = nullptr;
+
+    HloModuleConfig config = GetModuleConfigForTest();
+    config.set_use_spmd_partitioning(true);
+    config.set_num_partitions(num_devices);
+    HloPassPipeline pass("spmd-partitioning");
+    pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
+                              /*allow_mixed_precision=*/false);
+    pass.AddPass<spmd::SpmdPartitioner>(num_devices, /*num_replicas=*/1,
+                                        options, collective_ops_creator);
+    pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
+                              /*allow_mixed_precision=*/false);
+    TF_RETURN_IF_ERROR(pass.Run(hlo_module.get()).status());
+    return StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
+  }
+};
 
 constexpr int kDefaultMaxLoopCount = 1000;
 
@@ -249,7 +275,7 @@ TEST_F(HloControlFlowFlatteningTest, Infeed) {
   HloModule Infeed
   ENTRY Infeed {
     after-all = token[] after-all()
-    ROOT infeed = ((bf16[3]{0}, s32[12,5]{0,1}), token[]) infeed(after-all)
+    ROOT infeed.23 = ((bf16[3]{0}, s32[12,5]{0,1}), token[]) infeed(after-all)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -261,8 +287,11 @@ TEST_F(HloControlFlowFlatteningTest, Infeed) {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
+  auto custom_call =
+      module->entry_computation()->GetInstructionWithName("infeed.23");
+  EXPECT_THAT(custom_call, op::CustomCall());
   auto tuple = module->entry_computation()->root_instruction();
-  EXPECT_THAT(tuple, op::Tuple(op::CustomCall(), op::AfterAll()));
+  EXPECT_THAT(tuple, op::Tuple(custom_call, op::AfterAll()));
 }
 
 TEST_F(HloControlFlowFlatteningTest, InfeedPreserveLayout) {
@@ -288,13 +317,35 @@ TEST_F(HloControlFlowFlatteningTest, InfeedPreserveLayout) {
   EXPECT_EQ(tuple->shape(), root_shape);
 }
 
+TEST_F(HloControlFlowFlatteningTest, OutfeedCustomCallIsPartitionable) {
+  absl::string_view hlo_string = R"(
+  HloModule Outfeed
+  ENTRY Outfeed {
+    param = (bf16[3]{0}, s32[12,5]{0,1}) parameter(0)
+    after-all = token[] after-all()
+    ROOT outfeed.23 = token[] outfeed(param, after-all)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
+      /*while_execution_count=*/3, /*max_outer_loop_count=*/3,
+      /*max_loop_count=*/3, /*remove_infeed_outfeed=*/true});
+  EXPECT_TRUE(flattening.Run(module.get()).value());
+  auto custom_call = module->entry_computation()->root_instruction();
+  EXPECT_EQ(custom_call->name(), "outfeed.23");
+  EXPECT_TRUE(custom_call->has_sharding());
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          PartitionComputation(std::move(module)));
+}
+
 TEST_F(HloControlFlowFlatteningTest, Outfeed) {
   absl::string_view hlo_string = R"(
   HloModule Outfeed
   ENTRY Outfeed {
     param = (bf16[3]{0}, s32[12,5]{0,1}) parameter(0)
     after-all = token[] after-all()
-    ROOT outfeed = token[] outfeed(param, after-all)
+    ROOT outfeed.23 = token[] outfeed(param, after-all)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -307,6 +358,7 @@ TEST_F(HloControlFlowFlatteningTest, Outfeed) {
                    .Run(module.get())
                    .status());
   auto custom_call = module->entry_computation()->root_instruction();
+  EXPECT_EQ(custom_call->name(), "outfeed.23");
   EXPECT_THAT(custom_call, op::CustomCall(op::Parameter(0), op::AfterAll()));
 }
 
@@ -507,11 +559,12 @@ TEST_F(HloControlFlowFlatteningTest, Recv) {
 
   ENTRY %Recv () -> (f32[], token[]) {
     %token0 = token[] after-all()
-    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, sharding={maximal device=1}
-    ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={maximal device=1}
-    %constant = f32[] constant(2.1), sharding={maximal device=0}
-    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
-    %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}  }
+    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15
+    ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
+    %constant = f32[] constant(2.1)
+    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, control-predecessors={%recv}
+    %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
+  }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -538,11 +591,12 @@ TEST_F(HloControlFlowFlatteningTest, RecvHostTransfer) {
 
   ENTRY %Recv () -> (f32[], token[]) {
     %token0 = token[] after-all()
-    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, is_host_transfer=true, sharding={maximal device=1}
-    ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, is_host_transfer=true, sharding={maximal device=1}
-    %constant = f32[] constant(2.1), sharding={maximal device=0}
-    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
-    %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}  }
+    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, is_host_transfer=true
+    ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, is_host_transfer=true
+    %constant = f32[] constant(2.1)
+    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, control-predecessors={%recv}
+    %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
+  }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -572,11 +626,11 @@ TEST_F(HloControlFlowFlatteningTest, Send) {
 
   ENTRY %Send () -> token[] {
     %token0 = token[] after-all()
-    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, sharding={maximal device=1}
-    %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={maximal device=1}
-    %constant = f32[] constant(2.1), sharding={maximal device=0}
-    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
-    ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}
+    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15
+    %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
+    %constant = f32[] constant(2.1)
+    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, control-predecessors={%recv}
+    ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -604,11 +658,11 @@ TEST_F(HloControlFlowFlatteningTest, SendHostTransfer) {
 
   ENTRY %Send () -> token[] {
     %token0 = token[] after-all()
-    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, sharding={maximal device=1}
-    %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={maximal device=1}
-    %constant = f32[] constant(2.1), sharding={maximal device=0}
-    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, is_host_transfer=true, sharding={maximal device=0}, control-predecessors={%recv}
-    ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, is_host_transfer=true, sharding={maximal device=0}
+    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15
+    %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
+    %constant = f32[] constant(2.1)
+    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, is_host_transfer=true, control-predecessors={%recv}
+    ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, is_host_transfer=true
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,

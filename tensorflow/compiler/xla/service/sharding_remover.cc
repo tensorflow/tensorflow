@@ -22,10 +22,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -52,8 +52,8 @@ StatusOr<bool> ShardingRemover::Run(
       }
       CHECK(instruction->operand_count() == 1)
           << "Sharding instruction must have exactly one operand";
-      TF_RETURN_IF_ERROR(
-          instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
+      TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(
+          instruction->mutable_operand(0), name()));
       changed = true;
     }
   }

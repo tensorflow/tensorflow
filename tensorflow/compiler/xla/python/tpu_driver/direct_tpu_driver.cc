@@ -15,6 +15,12 @@
 
 #include <dlfcn.h>
 
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/client/libtpu.h"
@@ -34,10 +40,10 @@ namespace {
 #endif
 
 xla::Status CreateXlaStatus(::TpuStatus* status) {
-  if (status->code == tensorflow::error::OK) {
+  if (status->code == tsl::error::OK) {
     return ::tsl::OkStatus();
   } else {
-    return xla::Status(tensorflow::error::Code(status->code),
+    return xla::Status(absl::StatusCode(status->code),
                        absl::StrFormat("%s", status->msg));
   }
 }
@@ -377,7 +383,8 @@ class DirectTpuDriver : public TpuDriver {
 
   std::unique_ptr<CompiledProgramHandle> CompileProgram(
       const xla::HloProto& source, int32_t num_replicas,
-      absl::Span<Event* const> wait_for) override {
+      absl::Span<Event* const> wait_for,
+      const xla::DebugOptions& debug_options) override {
     auto tpu_events = MakeEventArray(wait_for);
 
     struct HloProto hlo;
@@ -388,12 +395,21 @@ class DirectTpuDriver : public TpuDriver {
       return nullptr;
     }
 
+    struct DebugOptions debug;
+    debug.size = debug_options.ByteSizeLong();
+    debug.buffer = malloc(debug.size);
+    if (!debug_options.SerializeToArray(debug.buffer, debug.size)) {
+      LOG(ERROR) << "Unable to serialize DebugOptions to array.";
+      return nullptr;
+    }
+
     auto handle = std::make_unique<DirectCompiledProgramHandle>(
         &driver_fn_,
-        driver_fn_.TpuDriver_CompileProgram(driver_, hlo, num_replicas,
+        driver_fn_.TpuDriver_CompileProgram(driver_, hlo, num_replicas, debug,
                                             wait_for.size(), tpu_events));
 
     free(hlo.buffer);
+    free(debug.buffer);
     delete[] tpu_events;
     return handle;
   }

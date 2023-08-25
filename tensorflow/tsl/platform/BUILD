@@ -4,34 +4,42 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-# buildifier: disable=same-origin-load
-load("@bazel_skylib//lib:selects.bzl", "selects")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-    "tf_copts",
-    "tf_cuda_library",
+    "//tensorflow/tsl:tsl.bzl",
+    "if_not_fuchsia",
+    "set_external_visibility",
+    "tsl_copts",
 )
 load(
-    "//tensorflow/core/platform:build_config.bzl",
+    "//tensorflow/tsl/platform:build_config.bzl",
     "tf_cuda_libdevice_path_deps",
+    "tf_error_logging_deps",
     "tf_fingerprint_deps",
     "tf_google_mobile_srcs_no_runtime",
     "tf_logging_deps",
+    "tf_platform_alias",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
-    "tf_protobuf_deps",
     "tf_resource_deps",
+    "tf_stream_executor_deps",
     "tf_testing_deps",
     "tf_windows_aware_platform_deps",
+    "tsl_cc_test",
+    "tsl_protobuf_deps",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
+load(
+    "@bazel_skylib//:bzl_library.bzl",
+    "bzl_library",
+)
+load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -41,12 +49,13 @@ package(
 exports_files(
     [
         "mutex.h",
+        "load_library.h",
         "stringpiece_test.cc",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core/platform:__subpackages__",
         "//tensorflow/tsl:__subpackages__",
-    ],
+    ]),
 )
 
 cc_library(
@@ -54,15 +63,16 @@ cc_library(
     srcs = ["base64.cc"],
     hdrs = ["base64.h"],
     deps = [
+        ":errors",
         ":status",
         ":stringpiece",
-        "//tensorflow/core/platform:errors",
     ],
 )
 
 cc_library(
     name = "blocking_counter",
     hdrs = ["blocking_counter.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":logging",
         ":mutex",
@@ -87,6 +97,26 @@ cc_library(
 )
 
 cc_library(
+    name = "criticality",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["criticality.h"],
+    deps = tf_platform_deps("criticality"),
+)
+
+tsl_cc_test(
+    name = "criticality_test",
+    size = "small",
+    srcs = [
+        "criticality_test.cc",
+    ],
+    deps = [
+        ":criticality",
+        ":test",
+        ":test_main",
+    ],
+)
+
+cc_library(
     name = "denormal",
     srcs = ["denormal.cc"],
     hdrs = ["denormal.h"],
@@ -94,18 +124,17 @@ cc_library(
         ":macros",
         ":platform",
         ":platform_port",
-        "//tensorflow/core/platform:platform_port",
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "denormal_test",
     size = "small",
     srcs = ["denormal_test.cc"],
     deps = [
         ":denormal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        ":test",
+        ":test_main",
     ],
 )
 
@@ -117,7 +146,7 @@ cc_library(
         "file_system_helper.h",
         "threadpool.h",
     ],
-    deps = tf_windows_aware_platform_deps("env"),
+    deps = tf_windows_aware_platform_deps("env") + if_static([":env_impl"]),
 )
 
 cc_library(
@@ -139,13 +168,13 @@ cc_library(
     deps = [
         ":logging",
         ":macros",
-        ":platform",
         ":status",
         ":str_util",
         ":strcat",
-        ":types",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
     ],
 )
 
@@ -195,10 +224,10 @@ cc_library(
     deps = [
         ":logging",
         ":mutex",
+        ":scanner",
         ":strcat",
         ":stringpiece",
         ":types",
-        "//tensorflow/core/platform:scanner",
         "@com_google_absl//absl/algorithm:container",
     ],
     alwayslink = True,
@@ -214,7 +243,7 @@ cc_library(
     deps = [
         ":platform",
         ":types",
-    ] + tf_protobuf_deps(),
+    ] + tsl_protobuf_deps(),
 )
 
 cc_library(
@@ -248,20 +277,35 @@ cc_library(
         ":logging",
         ":macros",
         ":mutex",
+        ":platform",
         ":stack_frame",
         ":stacktrace",
         ":str_util",
         ":strcat",
         ":stringprintf",
         ":types",
-        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
+    ] + tf_platform_deps("status"),
+)
+
+cc_library(
+    name = "status_to_from_proto",
+    srcs = [
+        "status_to_from_proto.cc",
     ],
+    hdrs = ["status_to_from_proto.h"],
+    deps = [
+        ":status",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/protobuf:status_proto_cc",
+    ] + tf_platform_deps("status"),
 )
 
 cc_library(
@@ -270,31 +314,28 @@ cc_library(
     srcs = ["status_matchers.cc"],
     hdrs = ["status_matchers.h"],
     deps = [
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core/platform:statusor",
-        "//tensorflow/tsl/platform:status",
+        ":status",
+        ":statusor",
+        ":test",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
 cc_library(
     name = "statusor",
-    srcs = [
-        "statusor.cc",
-        "statusor_internals.h",
-    ],
     hdrs = ["statusor.h"],
     deps = [
         ":errors",
         ":logging",
         ":macros",
+        ":platform",
         ":status",
-        "//tensorflow/core/lib/core:errors",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + tf_platform_deps("statusor"),
 )
 
 cc_library(
@@ -306,13 +347,17 @@ cc_library(
 cc_library(
     name = "test",
     testonly = True,
+    srcs = ["test.cc"],
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["test.h"],
-    deps = tf_testing_deps("test") + [
+    deps = [
+        ":logging",
         ":macros",
+        ":net",
+        ":path",
         ":platform",
+        ":types",
         "@com_google_googletest//:gtest",
-        "//tensorflow/core:tflite_portable_logging",
     ],
 )
 
@@ -335,10 +380,10 @@ filegroup(
         "test_benchmark.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -348,10 +393,10 @@ filegroup(
         "test.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )
 
 cc_library(
@@ -370,6 +415,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":cord",
+        ":platform",
         ":stringpiece",
     ],
 )
@@ -386,11 +432,14 @@ filegroup(
 filegroup(
     name = "lib_hdrs",
     srcs = [
+        "abi.h",
         "bfloat16.h",
         "casts.h",
         "coding.h",
+        "context.h",
         "cpu_info.h",
         "crash_analysis.h",
+        "criticality.h",
         "dynamic_annotations.h",
         "env.h",
         "errors.h",
@@ -402,6 +451,8 @@ filegroup(
         "logger.h",
         "mem.h",
         "net.h",
+        "notification.h",
+        "null_file_system.h",
         "numa.h",
         "path.h",
         "prefetch.h",
@@ -435,6 +486,7 @@ filegroup(
         "macros.h",
         "threadpool.h",
         "threadpool_interface.h",
+        "threadpool_options.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -459,6 +511,8 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
+        "abi.cc",
+        "abi.h",
         "base64.cc",
         "base64.h",
         "bfloat16.h",
@@ -467,8 +521,10 @@ filegroup(
         "casts.h",
         "coding.cc",
         "coding.h",
+        "context.h",
         "cpu_info.cc",
         "cpu_info.h",
+        "criticality.h",
         "demangle.h",
         "denormal.cc",
         "denormal.h",
@@ -487,6 +543,7 @@ filegroup(
         "host_info.h",
         "init_main.h",
         "intrusive_ptr.h",
+        "load_library.h",
         "macros.h",
         "mem.h",
         "numa.h",
@@ -502,6 +559,7 @@ filegroup(
         "protobuf_util.cc",
         "ram_file_system.h",
         "raw_coding.h",
+        "refcount.h",
         "regexp.h",
         "resource.h",
         "scanner.cc",
@@ -512,9 +570,7 @@ filegroup(
         "stacktrace.h",
         "status.cc",
         "status.h",
-        "statusor.cc",
         "statusor.h",
-        "statusor_internals.h",
         "str_util.cc",
         "str_util.h",
         "strcat.cc",
@@ -523,16 +579,16 @@ filegroup(
         "stringprintf.cc",
         "stringprintf.h",
         "thread_annotations.h",
+        "threadpool.cc",
         "threadpool.h",
         "threadpool_interface.h",
         "tracing.h",
-    ] + selects.with_or({
-        "//tensorflow:fuchsia": tf_google_mobile_srcs_no_runtime(),
+    ] + select({
+        "//tensorflow/tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
-            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
-            "threadpool.cc",
             "tracing.cc",
+            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
         ],
     }),
     compatible_with = get_compatible_with_portable(),
@@ -541,22 +597,28 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "error_logging.h",
         "fingerprint.h",
+        "notification.h",
+        "png.h",
         "random.cc",
         "random.h",
-        "subprocess.h",
         "test_benchmark.h",
+        "threadpool_options.h",
+        "unbounded_work_queue.h",
         "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.cc",
         "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.cc",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
         "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
-    ],
+    ] + if_not_fuchsia([
+        "subprocess.h",
+    ]),
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -565,10 +627,10 @@ filegroup(
         "gif.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core/lib/gif:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -580,30 +642,34 @@ filegroup(
         exclude = [
             "dynamic_annotations.h",
             "gif.h",
+            "png.h",
             "jpeg.h",
         ],
     ) + [
         "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/tsl/platform/profile_utils:clock_cycle_profiler.h",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
         "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
-        "//tensorflow/tsl/platform/profile_utils:clock_cycle_profiler.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
 
 exports_files(
     [
+        "context.h",
         "host_info.h",
         "human_readable_json.h",
         "bfloat16.h",
         "cpu_info.h",
         "cpu_info.cc",
         "crash_analysis.h",
+        "criticality.h",
         "cuda_libdevice_path.h",
         "demangle.h",
         "env.cc",
         "env.h",
         "env_time.h",
+        "error_logging.h",
         "file_system.cc",
         "file_system.h",
         "file_system_helper.cc",
@@ -629,7 +695,10 @@ exports_files(
         "tracing.h",
         "tracing.cc",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = set_external_visibility([
+        ":__subpackages__",
+        "//tensorflow:__subpackages__",
+    ]),
 )
 
 filegroup(
@@ -642,9 +711,9 @@ filegroup(
         "stringpiece.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
-    ],
+    ]),
 )
 
 cc_library(
@@ -662,15 +731,19 @@ filegroup(
         "host_info.h",
         "intrusive_ptr.h",
         "platform.h",
+        "refcount.h",
         "setround.h",
         "snappy.h",
+        "status.h",
+        "statusor.h",
         "tracing.h",
+        "unbounded_work_queue.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -679,10 +752,10 @@ filegroup(
         "jpeg.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
-    ],
+    ]),
 )
 
 cc_library(
@@ -701,10 +774,10 @@ filegroup(
         "platform.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -718,11 +791,11 @@ filegroup(
         "stringpiece.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -735,11 +808,11 @@ filegroup(
         "platform.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/gif:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )
 
 cc_library(
@@ -837,6 +910,22 @@ cc_library(
     alwayslink = 1,
 )
 
+tsl_cc_test(
+    name = "stacktrace_handler_test",
+    size = "small",
+    srcs = [
+        "stacktrace_handler_test.cc",
+    ],
+    tags = ["no_windows"],
+    deps = [
+        ":logging",
+        ":stacktrace",
+        ":stacktrace_handler",
+        ":test",
+        ":test_main",
+    ],
+)
+
 cc_library(
     name = "str_util",
     srcs = ["str_util.cc"],
@@ -905,9 +994,8 @@ cc_library(
     hdrs = ["cord.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":platform",
         "@com_google_absl//absl/strings:cord",
-    ] + tf_platform_deps("cord"),
+    ],
 )
 
 cc_library(
@@ -915,10 +1003,9 @@ cc_library(
     hdrs = ["threadpool_interface.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":mutex",
+        ":types",
         "//third_party/eigen3",
-        # TODO(jakeharmon): Remove deps on core once mutex and types are migrated
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -927,8 +1014,9 @@ cc_library(
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":platform",
         ":bfloat16",
+        ":float8",
+        ":platform",
         ":tstring",
     ] + tf_platform_deps("types"),
 )
@@ -936,9 +1024,9 @@ cc_library(
 cc_library(
     name = "build_test",
     testonly = 1,
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
     deps = [
         ":byte_order",
         ":fingerprint",
@@ -966,13 +1054,37 @@ cc_library(
 )
 
 cc_library(
+    name = "float8",
+    hdrs = ["float8.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@ml_dtypes//:float8",
+    ],
+)
+
+cc_library(
+    name = "cuda",
+    deps = [
+        "@local_config_cuda//cuda:cudart_static",
+    ],
+)
+
+cc_library(
+    name = "dso_loader",
+    hdrs = ["dso_loader.h"],
+    deps = [
+        ":platform",
+    ] + tf_stream_executor_deps("dso_loader"),
+)
+
+cc_library(
     name = "logger",
     srcs = ["logger.cc"],
     hdrs = ["logger.h"],
     deps = [
+        "env",
         ":logging",
         ":protobuf",
-        "//tensorflow/tsl/platform:env",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/synchronization",
     ],
@@ -987,6 +1099,19 @@ cc_library(
         "//visibility:public",
     ],
     deps = tf_logging_deps(),
+)
+
+cc_library(
+    name = "error_logging",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["error_logging.h"],
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ] + tf_error_logging_deps(),
 )
 
 cc_library(
@@ -1036,7 +1161,7 @@ filegroup(
         "str_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 cc_library(
@@ -1066,6 +1191,21 @@ cc_library(
     ] + tf_windows_aware_platform_deps("stacktrace"),
 )
 
+tsl_cc_test(
+    name = "stacktrace_test",
+    size = "small",
+    srcs = [
+        "stacktrace_test.cc",
+    ],
+    tags = ["no_windows"],
+    deps = [
+        ":logging",
+        ":stacktrace",
+        ":test",
+        ":test_main",
+    ],
+)
+
 cc_library(
     name = "cuda_libdevice_path",
     compatible_with = get_compatible_with_portable(),
@@ -1091,36 +1231,15 @@ cc_library(
     ] + tf_fingerprint_deps(),
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "fingerprint_test",
     size = "small",
     srcs = ["fingerprint_test.cc"],
     deps = [
         ":fingerprint",
+        ":test",
+        ":test_main",
         ":types",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-cc_library(
-    name = "cuda",
-    hdrs = ["cuda.h"],
-    deps = [
-        ":platform",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
-    ],
-)
-
-tf_cuda_library(
-    name = "stream_executor",
-    srcs = ["stream_executor.h"],
-    hdrs = [
-        "cuda.h",
-    ],
-    features = ["-parse_headers"],
-    deps = [
-        "//tensorflow/tsl/platform/default/build_config:stream_executor",
     ],
 )
 
@@ -1128,7 +1247,7 @@ cc_library(
     name = "tensor_float_32_utils",
     srcs = ["tensor_float_32_utils.cc"],
     hdrs = ["tensor_float_32_utils.h"],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     alwayslink = 1,
 )
 
@@ -1155,18 +1274,18 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "ctstring_test",
     size = "small",
     srcs = ["ctstring_test.cc"],
     deps = [
+        ":test",
+        ":test_main",
         ":tstring",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "hash_test",
     size = "small",
     srcs = ["hash_test.cc"],
@@ -1175,19 +1294,536 @@ tf_cc_test(
         ":logging",
         ":test",
         ":test_benchmark",
-        "//tensorflow/core:test_main",
+        ":test_main",
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
+    name = "path_test",
+    size = "small",
+    srcs = ["path_test.cc"],
+    deps = [
+        ":path",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "random_test",
+    srcs = ["random_test.cc"],
+    deps = [
+        ":random",
+        ":test",
+        ":test_main",
+        ":types",
+    ],
+)
+
+tsl_cc_test(
     name = "tstring_test",
     size = "small",
     srcs = ["tstring_test.cc"],
     deps = [
         ":cord",
+        ":platform",
         ":stringpiece",
+        ":test",
+        ":test_main",
         ":tstring",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "test_main",
+    testonly = 1,
+    srcs = ["test_main.cc"],
+    copts = tsl_copts(),
+    linkopts = select({
+        "//tensorflow/tsl:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
+    deps = [
+        ":platform",
+        ":stacktrace_handler",
+        ":test",
+        ":test_benchmark",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+tsl_cc_test(
+    name = "status_test",
+    size = "small",
+    srcs = ["status_test.cc"],
+    deps = [
+        ":errors",
+        ":stack_frame",
+        ":status",
+        ":status_matchers",
+        ":status_to_from_proto",
+        ":test",
+        ":test_main",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/protobuf:status_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tsl_cc_test(
+    name = "statusor_test",
+    size = "small",
+    srcs = ["statusor_test.cc"],
+    deps = [
+        ":errors",
+        ":macros",
+        ":statusor",
+        ":test",
+        ":test_benchmark",
+        ":test_main",
+        "@com_google_absl//absl/base:config",
+    ],
+)
+
+tsl_cc_test(
+    name = "status_matchers_test",
+    size = "small",
+    srcs = ["status_matchers_test.cc"],
+    deps = [
+        ":errors",
+        ":status",
+        ":status_matchers",
+        ":statusor",
+        ":test",
+        ":test_main",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+    ],
+)
+
+cc_library(
+    name = "notification",
+    hdrs = ["notification.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+    ] + tf_platform_deps("notification"),
+)
+
+cc_library(
+    name = "png",
+    hdrs = ["png.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+        "@png",
+    ],
+)
+
+cc_library(
+    name = "threadpool_options",
+    hdrs = ["threadpool_options.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":threadpool_interface",
+    ],
+)
+
+cc_library(
+    name = "unbounded_work_queue",
+    hdrs = ["unbounded_work_queue.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+    ] + tf_platform_deps("unbounded_work_queue"),
+)
+
+tsl_cc_test(
+    name = "unbounded_work_queue_test",
+    srcs = ["unbounded_work_queue_test.cc"],
+    deps = [
+        ":blocking_counter",
+        ":env",
+        ":env_impl",
+        ":random",
+        ":test",
+        ":test_main",
+        ":unbounded_work_queue",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "context",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["context.h"],
+    deps = tf_platform_deps("context"),
+)
+
+cc_library(
+    name = "load_library",
+    textual_hdrs = ["load_library.h"],
+    deps = [
+        ":status",
+    ] + tf_windows_aware_platform_deps("load_library"),
+)
+
+cc_library(
+    name = "abi",
+    srcs = ["abi.cc"],
+    hdrs = ["abi.h"],
+    deps = [
+        ":types",
+    ],
+)
+
+cc_library(
+    name = "refcount",
+    hdrs = ["refcount.h"],
+    deps = [
+        ":logging",
+        ":mutex",
+        ":thread_annotations",
+    ],
+)
+
+cc_library(
+    name = "null_file_system",
+    hdrs = ["null_file_system.h"],
+    deps = [
+        ":env",
+    ],
+)
+
+tsl_cc_test(
+    name = "subprocess_test",
+    size = "small",
+    srcs = ["subprocess_test.cc"],
+    data = [
+        "//tensorflow/tsl/platform/testdata:test_echo",
+        "//tensorflow/tsl/platform/testdata:test_echo_argv_1",
+        "//tensorflow/tsl/platform/testdata:test_noop",
+        "//tensorflow/tsl/platform/testdata:test_stderr",
+    ],
+    deps = [
+        ":path",
+        ":strcat",
+        ":subprocess",
+        ":test",
+        ":test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+    ],
+)
+
+tsl_cc_test(
+    name = "errors_test",
+    size = "small",
+    srcs = ["errors_test.cc"],
+    deps = [
+        ":errors",
+        ":test",
+        ":test_main",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+tsl_cc_test(
+    name = "intrusive_ptr_test",
+    size = "small",
+    srcs = [
+        "intrusive_ptr_test.cc",
+    ],
+    deps = [
+        ":intrusive_ptr",
+        ":refcount",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "numa_test",
+    size = "small",
+    srcs = ["numa_test.cc"],
+    tags = [
+        # This test will not pass unless it has access to all NUMA nodes
+        # on the executing machine.
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":logging",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "setround_test",
+    size = "small",
+    srcs = ["setround_test.cc"],
+    tags = ["noclang"],
+    deps = [
+        ":setround",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "refcount_test",
+    size = "small",
+    srcs = [
+        "refcount_test.cc",
+    ],
+    deps = [
+        ":env",
+        ":env_impl",
+        ":refcount",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "integral_types_test",
+    size = "small",
+    srcs = [
+        "integral_types_test.cc",
+    ],
+    deps = [
+        ":test",
+        ":test_main",
+        ":types",
+    ],
+)
+
+tsl_cc_test(
+    name = "logging_test",
+    size = "small",
+    srcs = [
+        "logging_test.cc",
+    ],
+    deps = [
+        ":logging",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "mutex_test",
+    size = "small",
+    srcs = [
+        "mutex_test.cc",
+    ],
+    deps = [
+        ":env",
+        ":env_impl",
+        ":env_time",
+        ":logging",
+        ":mutex",
+        ":net",
+        ":platform_port",
+        ":scanner",
+        ":str_util",
+        ":strcat",
+        ":stringpiece",
+        ":stringprintf",
+        ":test",
+        ":test_main",
+        ":types",
+    ],
+)
+
+tsl_cc_test(
+    name = "net_test",
+    size = "small",
+    srcs = [
+        "net_test.cc",
+    ],
+    deps = [
+        ":logging",
+        ":net",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "port_test",
+    size = "small",
+    srcs = [
+        "port_test.cc",
+    ],
+    tags = [
+        "notap",  #TODO(b/245510532) : disabled due to flakiness.
+    ],
+    deps = [
+        ":env",
+        ":env_impl",
+        ":env_time",
+        ":mutex",
+        ":platform_port",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "scanner_test",
+    size = "small",
+    srcs = [
+        "scanner_test.cc",
+    ],
+    deps = [
+        ":scanner",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "str_util_test",
+    size = "small",
+    srcs = [
+        "str_util_test.cc",
+    ],
+    deps = [
+        ":str_util",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "strcat_test",
+    size = "small",
+    srcs = [
+        "strcat_test.cc",
+    ],
+    deps = [
+        ":strcat",
+        ":stringprintf",
+        ":test",
+        ":test_main",
+        ":types",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tsl_cc_test(
+    name = "stringpiece_test",
+    size = "small",
+    srcs = [
+        "stringpiece_test.cc",
+    ],
+    deps = [
+        ":stringpiece",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "stringprintf_test",
+    size = "small",
+    srcs = [
+        "stringprintf_test.cc",
+    ],
+    deps = [
+        ":stringprintf",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "numbers_test",
+    size = "small",
+    srcs = [
+        "numbers_test.cc",
+    ],
+    deps = [
+        ":numbers",
+        ":test",
+        ":test_main",
+    ],
+)
+
+bzl_library(
+    name = "rules_cc_bzl",
+    srcs = ["rules_cc.bzl"],
+    deps = tf_platform_alias("rules_cc_bzl"),
+)
+
+cc_library(
+    name = "retrying_utils",
+    srcs = [
+        "retrying_utils.cc",
+    ],
+    hdrs = [
+        "retrying_utils.h",
+    ],
+    copts = tsl_copts(),
+    deps = [
+        ":env",
+        ":errors",
+        ":random",
+        ":status",
+    ],
+)
+
+cc_library(
+    name = "retrying_file_system",
+    hdrs = [
+        "retrying_file_system.h",
+    ],
+    copts = tsl_copts(),
+    deps = [
+        ":env",
+        ":errors",
+        ":random",
+        ":retrying_utils",
+        ":status",
+    ],
+)
+
+tsl_cc_test(
+    name = "retrying_file_system_test",
+    size = "small",
+    srcs = ["retrying_file_system_test.cc"],
+    deps = [
+        ":env_impl",
+        ":retrying_file_system",
+        ":str_util",
+        ":test",
+        ":test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+    ],
+)
+
+tsl_cc_test(
+    name = "retrying_utils_test",
+    size = "small",
+    srcs = ["retrying_utils_test.cc"],
+    deps = [
+        ":env",
+        ":env_impl",
+        ":errors",
+        ":retrying_utils",
+        ":str_util",
+        ":test",
+        ":test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+    ],
+)
+
+cc_library(
+    name = "static_threadlocal",
+    hdrs = [
+        "static_threadlocal.h",
     ],
 )

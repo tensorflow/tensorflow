@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/rpc/grpc_stub.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+
+#include <functional>
+
+#include "tensorflow/tsl/distributed_runtime/rpc/grpc_util.h"
 
 namespace xla {
 
@@ -24,7 +27,7 @@ Status MakeRPC(
     const std::function<::grpc::Status(::grpc::ClientContext*)>& rpc_method) {
   ::grpc::ClientContext context;
   ::grpc::Status s = rpc_method(&context);
-  return tensorflow::FromGrpcStatus(s);
+  return tsl::FromGrpcStatus(s);
 }
 
 Status GRPCStub::TransferToClient(const TransferToClientRequest* request,

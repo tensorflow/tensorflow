@@ -1,0 +1,6 @@
+HloModule f
+
+ENTRY f {
+  arg = f32[2,2]{1,0} parameter(0)
+  ROOT add_result = f32[2,2]{1,0} add(arg, arg)
+}

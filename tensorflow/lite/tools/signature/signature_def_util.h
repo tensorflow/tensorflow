@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -40,7 +40,7 @@ constexpr char kSignatureDefsMetadataName[] = "signature_defs_metadata";
 // Returns error if `model_data_with_signature_defs` is null or
 //   `signature_def_map` is empty.
 //
-// On success, returns tensorflow::Status::OK() or error otherwise.
+// On success, returns tensorflow::OkStatus() or error otherwise.
 // On error, `model_data_with_signature_defs` is unchanged.
 tensorflow::Status SetSignatureDefMap(
     const Model* model,

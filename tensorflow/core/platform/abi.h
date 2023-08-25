@@ -16,13 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_ABI_H_
 #define TENSORFLOW_CORE_PLATFORM_ABI_H_
 
-#include <string>
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/abi.h"
 
 namespace tensorflow {
 namespace port {
 
-std::string MaybeAbiDemangle(const char* name);
+using ::tsl::port::MaybeAbiDemangle;  // NOLINT(misc-unused-using-decls)
 
 }  // namespace port
 }  // namespace tensorflow

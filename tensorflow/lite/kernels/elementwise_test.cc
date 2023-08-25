@@ -37,6 +37,17 @@ class ElementWiseOpBaseModel : public SingleOpModel {
   int output_;
 };
 
+class ElementWiseOpIntModel : public ElementWiseOpBaseModel {
+ public:
+  ElementWiseOpIntModel(BuiltinOperator op,
+                        std::initializer_list<int> input_shape) {
+    input_ = AddInput(TensorType_INT32);
+    output_ = AddOutput(TensorType_INT32);
+    SetBuiltinOp(op, BuiltinOptions_NONE, 0);
+    BuildInterpreter({input_shape});
+  }
+};
+
 class ElementWiseOpFloatModel : public ElementWiseOpBaseModel {
  public:
   ElementWiseOpFloatModel(BuiltinOperator op,
@@ -115,6 +126,24 @@ class ElementWiseOpBoolModel : public ElementWiseOpBaseModel {
   }
 };
 
+// A LUT of 256 values is used in the int8 case. For the int16 case a 513 LUT is
+// used but as the last value is only used for interpolation we only have 512
+// quantized steps.
+template <typename T>
+inline float GetLUTTolerance(float input_min, float input_max, float output_min,
+                             float output_max) {
+  static_assert(
+      std::is_same<T, int8_t>::value || std::is_same<T, int16_t>::value,
+      "T must be an int8_t or int16_t.");
+
+  const float range_sum = (input_max - input_min) + (output_max - output_min);
+  if (std::is_same<T, int8_t>::value) {
+    return range_sum / 256.0f;
+  } else {
+    return range_sum / 512.0f;
+  }
+}
+
 template <typename T>
 float GetQuantizationStep(float min, float max) {
   const float kQuantizedStep = (max - min) / (std::numeric_limits<T>::max() -
@@ -149,6 +178,52 @@ TEST(ElementWise, Log) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, LogInt8) {
+  const float input_min = 0.0f;
+  const float input_max = 13.2f;
+  const float output_min = -2.3026f;
+  const float output_max = 2.5802f;
+
+  const float kQuantizedTolerance =
+      GetLUTTolerance<int8_t>(input_min, input_max, output_min, output_max);
+
+  ElementWiseOpQuantizedModel m(
+      BuiltinOperator_LOG,
+      {TensorType_INT8, {1, 2, 2, 2}, input_min, input_max},
+      {TensorType_INT8, {}, output_min, output_max});
+  m.QuantizeAndPopulate<int8_t>(
+      m.input(), {0.1f, 0.5f, 1.0f, 1.15f, 2.3f, 5.01f, 11.0f, 13.2f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.ExtractDequantVector<int8_t>(m.output()),
+      ElementsAreArray(ArrayFloatNear({-2.3026f, -0.6931f, 0.0f, 0.1398f,
+                                       0.8329f, 1.6114, 2.3979f, 2.5802f},
+                                      kQuantizedTolerance)));
+}
+
+TEST(ElementWise, LogInt16) {
+  const float input_min = -13.2f;
+  const float input_max = 13.2f;
+  const float output_min = -2.5802f;
+  const float output_max = 2.5802f;
+
+  const float kQuantizedTolerance =
+      GetLUTTolerance<int16_t>(input_min, input_max, output_min, output_max);
+
+  ElementWiseOpQuantizedModel m(
+      BuiltinOperator_LOG,
+      {TensorType_INT16, {1, 2, 2, 2}, input_min, input_max},
+      {TensorType_INT16, {}, output_min, output_max});
+  m.QuantizeAndPopulate<int16_t>(
+      m.input(), {0.1f, 0.5f, 1.0f, 1.15f, 2.3f, 5.01f, 11.0f, 13.2f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.ExtractDequantVector<int16_t>(m.output()),
+      ElementsAreArray(ArrayFloatNear({-2.3026f, -0.6931f, 0.0f, 0.1398f,
+                                       0.8329f, 1.6114, 2.3979f, 2.5802f},
+                                      kQuantizedTolerance)));
+}
+
 TEST(ElementWise, Abs) {
   ElementWiseOpFloatModel m(BuiltinOperator_ABS, {1, 2, 4, 1});
   m.PopulateTensor<float>(m.input(), {
@@ -160,6 +235,19 @@ TEST(ElementWise, Abs) {
                                                       0.f, 6.2f, 2.f, 4.f,  //
                                                       3.f, 2.f, 10.f, 1.f,  //
                                                   }));
+}
+
+TEST(ElementWise, AbsInt32) {
+  ElementWiseOpIntModel m(BuiltinOperator_ABS, {1, 2, 4, 1});
+  m.PopulateTensor<int32_t>(m.input(), {
+                                           0, -6, 2, 4,   //
+                                           3, -2, 10, 1,  //
+                                       });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()), ElementsAreArray({
+                                                        0, 6, 2, 4,   //
+                                                        3, 2, 10, 1,  //
+                                                    }));
 }
 
 TEST(ElementWise, AbsInt8) {

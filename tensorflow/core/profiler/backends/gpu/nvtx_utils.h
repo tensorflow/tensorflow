@@ -19,38 +19,13 @@ limitations under the License.
 #include <stack>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/nvtx_utils.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 namespace profiler {
 
-/***
- * We have no intention to use NVTX in tensorflow right now, we use this class
- * to track NVTX instrumentation inside NVIDIA libraries (such as TensorRT).
- * This bears a lot of resemblance to ScopedAnnotation for now.  In the future,
- * we will use TraceMe to keep track trace context within a thread.
- */
-class NVTXRangeTracker {
- public:
-  static void EnterRange(const std::string& range) {
-    auto& range_stack = GetRangeStack();
-    range_stack.push(range);
-  }
-  static void ExitRange() {
-    auto& range_stack = GetRangeStack();
-    if (!range_stack.empty()) range_stack.pop();
-  }
-  static const absl::string_view CurrentRange() {
-    auto& range_stack = GetRangeStack();
-    if (!range_stack.empty()) return range_stack.top();
-    return "";
-  }
-
- private:
-  static std::stack<std::string>& GetRangeStack();
-
-  TF_DISALLOW_COPY_AND_ASSIGN(NVTXRangeTracker);
-};
+using xla::profiler::NVTXRangeTracker;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

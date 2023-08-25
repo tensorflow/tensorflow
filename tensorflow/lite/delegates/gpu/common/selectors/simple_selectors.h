@@ -51,7 +51,7 @@ void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
                int dst_channels, std::unique_ptr<GPUOperation>* ptr);
 
 absl::Status SelectGather(const GatherAttributes& attr,
-                          const OperationDef& op_def,
+                          const OperationDef& op_def, const GpuInfo& gpu_info,
                           std::unique_ptr<GPUOperation>* ptr);
 
 absl::Status SelectResize(const Resize2DAttributes& attr,

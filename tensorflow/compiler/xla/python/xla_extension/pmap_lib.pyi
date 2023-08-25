@@ -17,6 +17,8 @@ import inspect
 import numpy as np
 from typing import Any, Callable, List, Optional, Sequence, Iterable, Tuple
 
+from . import pytree
+
 _AvalDimSharding = Any
 _MeshDimAssignment = Any
 
@@ -64,38 +66,7 @@ class ShardingSpec:
   def __eq__(self, __other: ShardingSpec) -> bool: ...
   def __hash__(self) -> int: ...
 
-class ShardedDeviceArrayBase:
-  ...
-
-class ShardedDeviceArray(ShardedDeviceArrayBase):
-  def __init__(self,
-               aval: Any,
-               sharding_spec: ShardingSpec,
-               device_buffers: List[Any],
-               indices: Any,
-               weak_type: bool) -> None: ...
-  aval: Any
-  indices: Any
-  sharding_spec: ShardingSpec
-  @property
-  def device_buffers(self) -> Optional[List[Any]]: ...
-  _npy_value: Optional[np.ndarray]
-  _one_replica_buffer_indices: Optional[Any]
-
-  @property
-  def shape(self) -> Tuple[int]: ...
-  @property
-  def dtype(self) -> np.dtype: ...
-  @property
-  def size(self) -> int: ...
-  @property
-  def ndim(self) -> int: ...
-
-  def delete(self) -> None: ...
-
-  @staticmethod
-  def make(aval: Any, sharding_spec: ShardingSpec, device_buffers: List[Any],
-           indices: Any, weak_type: bool) -> ShardedDeviceArray: ...
+  _HAS_DYNAMIC_ATTRIBUTES = True
 
 class PmapFunction:
   def __call__(self, *args, **kwargs) -> Any: ...
@@ -103,10 +74,11 @@ class PmapFunction:
   def __setstate__(self, Any): ...
   __signature__: inspect.Signature
   def _cache_size(self) -> int: ...
+  def _cache_clear(self) -> None: ...
   def _debug_cache_keys(self) -> str: ...
-  def _debug_compute_cache_key(self, *args, **kwargs) -> str: ...
 
-def pmap(__fun: Callable[..., Any],
-         __cache_miss: Callable[..., Any],
-         __static_argnums: Sequence[int],
-         __shard_arg_fallback: Callable[..., Any]) -> PmapFunction: ...
+def pmap(fun: Callable[..., Any],
+         cache_miss: Callable[..., Any],
+         static_argnums: Sequence[int],
+         shard_arg_fallback: Callable[..., Any],
+         pytree_registry: pytree.PyTreeRegistry) -> PmapFunction: ...

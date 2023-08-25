@@ -21,9 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile_data.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -50,7 +50,7 @@ HloProfileIndexMap::HloProfileIndexMap(
 std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
     const HloProfileIndexMap& hlo_profile_index_map,
     const HloCostAnalysis& cost_analysis,
-    const std::string& entry_computation_name) {
+    absl::string_view entry_computation_name) {
   using HloComputationInfo = HloProfilePrinterData::HloComputationInfo;
   using HloInstructionInfo = HloProfilePrinterData::HloInstructionInfo;
 
@@ -87,7 +87,7 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
     HloComputationInfo* computation_info =
         profile_printer_data->add_computation_infos();
 
-    computation_info->set_name(computation->name());
+    *computation_info->mutable_name() = std::string(computation->name());
     computation_info->set_profile_index(pair.second);
     computation_info->mutable_instruction_infos()->Reserve(
         computation->instruction_count());
@@ -117,7 +117,8 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
         {pair.first, pair.second});
   }
 
-  profile_printer_data->set_entry_computation(entry_computation_name);
+  *profile_printer_data->mutable_entry_computation() =
+      std::string(entry_computation_name);
 
   return profile_printer_data;
 }
@@ -153,6 +154,8 @@ uint64_t HloExecutionProfile::GetCyclesTakenBy(size_t index) const {
 
 HloExecutionProfileData HloExecutionProfile::ToProto() const {
   HloExecutionProfileData hlo_execution_profile_data;
+  hlo_execution_profile_data.mutable_profile_counters()->Reserve(
+      profile_counters_.size());
   for (const auto& counter : profile_counters_) {
     hlo_execution_profile_data.add_profile_counters(counter);
   }

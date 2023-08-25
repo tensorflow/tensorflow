@@ -21,13 +21,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -323,6 +323,19 @@ bool HloOrdering::UsesBeforeValueDefinition(
       if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
                                              call->to_apply())) {
         VLOG(4) << "  use is call " << use.instruction->name()
+                << " and def is in called computation";
+        return true;
+      }
+    }
+    // The use at an async call occurs before values that are defined in the
+    // called computation of the async wrapped instruction.
+    if (use.instruction->IsAsynchronous() &&
+        use.instruction->async_wrapped_opcode() == HloOpcode::kCall) {
+      const HloInstruction* async = use.instruction;
+      if (call_graph_->InstructionIsNestedIn(
+              value.defining_instruction(),
+              async->async_wrapped_instruction()->to_apply())) {
+        VLOG(4) << "  use is async " << use.instruction->name()
                 << " and def is in called computation";
         return true;
       }

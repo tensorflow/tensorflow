@@ -13,25 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 
 #include <memory>
 #include <set>
+#include <string>
+#include <string_view>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -162,6 +166,40 @@ TEST_F(HloComputationTest, PostOrderDisconnectedInstructions) {
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->MakeInstructionPostOrder(),
               UnorderedElementsAre(constant1, constant2, constant3, constant4));
+}
+
+TEST_F(HloComputationTest, PostOrderWithReshapeFirst) {
+  const std::string& hlo_string = R"(
+  HloModule test
+
+  ENTRY %entry {
+    parameter.0 = f32[3] parameter(0)
+    broadcast.0 = f32[1, 3] broadcast(f32[3] parameter.0), dimensions={1}
+    reshape.0 = f32[3, 1] reshape(f32[3] parameter.0)
+    ROOT tuple.0 = (f32[1, 3], f32[3, 1]) tuple(f32[1, 3] broadcast.0, f32[3, 1] reshape.0)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry_computation =
+      FindComputation(hlo_module.get(), "entry");
+
+  HloInstruction* parameter_0 =
+      FindInstruction(hlo_module.get(), "parameter.0");
+  HloInstruction* broadcast_0 =
+      FindInstruction(hlo_module.get(), "broadcast.0");
+  HloInstruction* reshape_0 = FindInstruction(hlo_module.get(), "reshape.0");
+  HloInstruction* tuple_0 = FindInstruction(hlo_module.get(), "tuple.0");
+
+  // Normal `MakeInstructionPostOrder()` have `broadcast_0` before `reshape_0`.
+  EXPECT_THAT(entry_computation->MakeInstructionPostOrder(),
+              ElementsAre(parameter_0, broadcast_0, reshape_0, tuple_0));
+
+  // `MakeInstructionPostOrderWithReshapeFirst()` have `reshape_0` before
+  // `broadcast_0`.
+  EXPECT_THAT(entry_computation->MakeInstructionPostOrderWithReshapeFirst(),
+              ElementsAre(parameter_0, reshape_0, broadcast_0, tuple_0));
 }
 
 TEST_F(HloComputationTest, PostOrderWithMultipleRoots) {
@@ -417,7 +455,7 @@ TEST_F(HloComputationTest, CycleDetection) {
       [](HloInstruction* instruction) { return OkStatus(); });
   auto visit_status = computation->Accept(&visitor);
   ASSERT_FALSE(visit_status.ok());
-  ASSERT_THAT(visit_status.error_message(),
+  ASSERT_THAT(visit_status.message(),
               ::testing::ContainsRegex("cycle is detecte"));
 }
 
@@ -505,6 +543,46 @@ TEST_F(HloComputationTest, CloneWithReplacements) {
   std::vector<const HloInstruction*> extra_parameters{param3.get()};
   auto clone =
       computation->CloneWithReplacements(&replacements, extra_parameters);
+  ASSERT_EQ(clone->num_parameters(), 4);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(0)->shape(), r0f32_));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(1)->shape(), r0f32_));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(2)->shape(), r0s32));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(3)->shape(), r0u32));
+}
+
+TEST_F(HloComputationTest, CloneInContext) {
+  HloComputation::Builder builder(TestName());
+  Shape r0s64 = ShapeUtil::MakeShape(S64, {});
+  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  Shape r0u32 = ShapeUtil::MakeShape(U32, {});
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "p.0.lhs"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32_, "p.0.rhs"));
+  HloInstruction* param2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, r0s64, "p.1"));
+  HloInstruction* lt = builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param0,
+                                    param1, ComparisonDirection::kLt));
+  std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
+  const HloComputation& computation =
+      *module->AddEntryComputation(builder.Build(/*root_instruction=*/lt));
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      replacements;
+  replacements.emplace(param2,
+                       HloInstruction::CreateParameter(2, r0s32, "p.1"));
+  std::unique_ptr<HloInstruction> param3 =
+      HloInstruction::CreateParameter(3, r0u32, "p.2");
+  std::vector<const HloInstruction*> extra_parameters = {param3.get()};
+  HloCloneContext clone_context(module.get());
+
+  std::unique_ptr<HloComputation> clone = computation.CloneInContext(
+      clone_context, &replacements, extra_parameters);
+
   ASSERT_EQ(clone->num_parameters(), 4);
   EXPECT_TRUE(
       ShapeUtil::Equal(clone->parameter_instruction(0)->shape(), r0f32_));
@@ -634,8 +712,9 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   EXPECT_EQ(computation->ToString(options), expected_computation2);
 }
 
-std::unique_ptr<HloComputation> MakeAddNComputation(int n) {
-  auto builder = HloComputation::Builder("add_n");
+std::unique_ptr<HloComputation> MakeAddNComputation(
+    int n, std::string name = "add_n") {
+  auto builder = HloComputation::Builder(name);
   auto result = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "x_value"));
   auto one = builder.AddInstruction(
@@ -685,6 +764,69 @@ ENTRY entry {
   EXPECT_THAT(module->entry_computation()->MakeInstructionPostOrder(),
               ElementsAre(op::Parameter(), op::AllReduce(), op::AllReduce(),
                           op::Add(), op::Tuple()));
+}
+
+TEST_F(HloComputationTest, ComparisonWithCustomComparator) {
+  std::string_view mod_txt = R"(
+  HloModule Module
+  region_X {
+    Arg_0.5 = s32[] parameter(0)
+    Arg_1.6 = s32[] parameter(1)
+    ROOT add.7 = s32[] add(Arg_0.5, Arg_1.6)
+  }
+  region_Y {
+    Arg_0.5 = s32[] parameter(0)
+    Ar_1.6 = s32[] parameter(1)
+    ROOT add.7 = s32[] add(Arg_0.5, Ar_1.6)
+  }
+  region_A {
+    Arg_0.5 = s32[] parameter(0)
+    Arg_1.6 = s32[] parameter(1)
+    ROOT add.7 = s32[] multiply(Arg_0.5, Arg_1.6)
+  }
+  region_B {
+    Arg_0.5 = s32[] parameter(0)
+    Ar_1.6 = s32[] parameter(1)
+    ROOT add.7 = s32[] add(Arg_0.5, Ar_1.6)
+  }
+  main.15 {
+    Arg_0.1 = s32[10]{0} parameter(0)
+    constant.3 = s32[] constant(0)
+    rd1 = s32[] reduce(Arg_0.1, constant.3), dimensions={0}, to_apply=region_X
+    Arg_1.2 = s32[15]{0} parameter(1)
+    rd2 = s32[] reduce(Arg_1.2, constant.3), dimensions={0}, to_apply=region_Y
+    ROOT multiply.14 = s32[] multiply(rd1, rd2)
+  }
+  ENTRY main.16 {
+    Arg_0.1 = s32[10]{0} parameter(0)
+    constant.3 = s32[] constant(0)
+    rd1 = s32[] reduce(Arg_0.1, constant.3), dimensions={0}, to_apply=region_A
+    Arg_1.2 = s32[15]{0} parameter(1)
+    rd2 = s32[] reduce(Arg_1.2, constant.3), dimensions={0}, to_apply=region_B
+    ROOT multiply.14 = s32[] multiply(rd1, rd2)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(mod_txt));
+
+  absl::flat_hash_map<std::string_view, std::string_view> replace_map;
+  replace_map["region_X"] = "region_A";
+  replace_map["region_Y"] = "region_B";
+  auto compare_func = [&replace_map](const HloComputation* a,
+                                     const HloComputation* b) {
+    return (a->name() == b->name() || replace_map[a->name()] == b->name());
+  };
+  HloComputation *comp_a = nullptr, *comp_b = nullptr;
+  for (auto comp : module->computations()) {
+    if (comp->name() == "main.15") {
+      comp_a = comp;
+    }
+    if (comp->name() == "main.16") {
+      comp_b = comp;
+    }
+  }
+  EXPECT_FALSE(comp_a->Equal(*comp_b, false));
+  // Different regions but we are accepting based on the compare_func
+  EXPECT_TRUE(comp_a->Equal(*comp_b, false, compare_func));
 }
 
 }  // namespace

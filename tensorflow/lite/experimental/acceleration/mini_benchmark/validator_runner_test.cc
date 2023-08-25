@@ -25,8 +25,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_nnapi_sl_fake_impl.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
@@ -105,7 +105,7 @@ class ValidatorRunnerTest : public ::testing::Test {
     auto status = RequestAndroidInfo(&android_info);
     ASSERT_TRUE(status.ok());
 
-    ValidatorRunner::Options options;
+    ValidatorRunnerOptions options;
     options.data_directory_path = ::testing::TempDir();
     options.storage_path = ::testing::TempDir() + "/storage_path.fb";
     (void)unlink(options.storage_path.c_str());
@@ -202,7 +202,7 @@ TEST_F(ValidatorRunnerTest, ShouldUseNnApiSl) {
       LoadNnApiSupportLibrary();
   ASSERT_THAT(nnapi_sl.get(), ::testing::NotNull());
 
-  ValidatorRunner::Options options;
+  ValidatorRunnerOptions options;
   options.model_path = model_path_;
   options.storage_path = ::testing::TempDir() + "/storage_path.fb";
   (void)unlink(options.storage_path.c_str());
@@ -227,7 +227,15 @@ TEST_F(ValidatorRunnerTest, ShouldUseNnApiSl) {
   while (event_count < settings.size()) {
     events = validator.GetAndFlushEventsToLog();
     event_count += events.size();
+    // Duplicating the sleep(1) from CheckConfigurations() method above in this
+    // file. The validation is done in a separate process, this is likely needed
+    // to properly wait for the async process to finish.
+#ifndef _WIN32
+    sleep(1);
+#endif  // !_WIN32
   }
+  ASSERT_EQ(validator.TriggerMissingValidation(settings), 0);
+
   EXPECT_TRUE(WasNnApiSlInvoked());
 }
 
@@ -243,7 +251,7 @@ TEST_F(ValidatorRunnerTest, ShouldFailIfItCannotFindNnApiSlPath) {
   // Building an NNAPI SL structure with invalid handle.
   NnApiSLDriverImplFL5 wrong_handle_nnapi_sl{};
 
-  ValidatorRunner::Options options;
+  ValidatorRunnerOptions options;
   options.model_path = model_path_;
   options.storage_path = ::testing::TempDir() + "/storage_path.fb";
   (void)unlink(options.storage_path.c_str());

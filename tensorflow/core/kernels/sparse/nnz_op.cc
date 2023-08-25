@@ -49,7 +49,8 @@ class CSRNNZOp : public OpKernel {
     Tensor* nnz_t;
     TensorShape nnz_shape;
     if (csr_sparse_matrix->dims() == 3) {
-      nnz_shape.AddDim(csr_sparse_matrix->batch_size());
+      OP_REQUIRES_OK(
+          c, nnz_shape.AddDimWithStatus(csr_sparse_matrix->batch_size()));
     }
     OP_REQUIRES_OK(c, c->allocate_output(0, nnz_shape, &nnz_t));
     auto nnz = nnz_t->flat<int32>();

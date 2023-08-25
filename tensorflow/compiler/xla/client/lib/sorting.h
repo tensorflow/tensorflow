@@ -24,11 +24,14 @@ namespace xla {
 
 // Returns a tuple composed of the top `k` values and corresponding indices in
 // `input`.  Output values are in descending order, from largest to smallest.
-XlaOp TopK(XlaOp input, int64_t k);
+XlaOp TopK(XlaOp input, int64_t k,
+           PrimitiveType index_type = PrimitiveType::S32);
+
 // Split sort in TopK into smaller sorts.
 // Returns a tuple composed of the top `k` values and corresponding indices in
 // `input`.  Output values are in descending order, from largest to smallest.
-XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions = 1);
+XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions = 1,
+                         PrimitiveType index_type = PrimitiveType::S32);
 
 }  // namespace xla
 

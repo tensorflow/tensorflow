@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -157,7 +157,7 @@ class BufferValue {
   static LogicalBufferProto::Location ToLocationProto(
       const HloInstruction& instruction, const ShapeIndex& index);
 
-  const Color kInvalidColor = -1;
+  static constexpr Color kInvalidColor = -1;
 
  protected:
   BufferValue(HloInstruction* instruction, const ShapeIndex& index, Id id);

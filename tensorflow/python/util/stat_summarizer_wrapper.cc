@@ -16,11 +16,13 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/util/stat_summarizer.h"
+#include "tensorflow/tsl/util/stat_summarizer_options.h"
+#include "tensorflow/tsl/util/stats_calculator.h"
 
 namespace py = pybind11;
 
@@ -34,8 +36,7 @@ PYBIND11_MODULE(_pywrap_stat_summarizer, m) {
         return new tensorflow::StatSummarizer(proto);
       }))
       .def(py::init([]() {
-        return new tensorflow::StatSummarizer(
-            tensorflow::StatSummarizerOptions());
+        return new tensorflow::StatSummarizer(tsl::StatSummarizerOptions());
       }))
       .def("ProcessStepStats", &tensorflow::StatSummarizer::ProcessStepStats)
       .def("GetOutputString", &tensorflow::StatSummarizer::GetOutputString)

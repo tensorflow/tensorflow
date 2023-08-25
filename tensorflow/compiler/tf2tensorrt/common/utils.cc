@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 
+#include <tuple>
+
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
@@ -80,7 +82,7 @@ Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
   //                               profile_index * bindings_per_profile
   const int bindings_per_profile = cuda_engine->getNbBindings() / n_profiles;
   *binding_index = *binding_index + profile_index * bindings_per_profile;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetTrtBindingIndex(int network_input_index, int profile_index,
@@ -213,6 +215,11 @@ std::ostream& operator<<(std::ostream& os, const nvinfer1::DataType& v) {
     case nvinfer1::DataType::kHALF:
       os << "kHalf";
       break;
+#if IS_TRT_VERSION_GE(8, 6, 0, 0)
+    case nvinfer1::DataType::kFP8:
+      os << "kFP8";
+      break;
+#endif
     case nvinfer1::DataType::kINT8:
       os << "kINT8";
       break;
@@ -222,6 +229,11 @@ std::ostream& operator<<(std::ostream& os, const nvinfer1::DataType& v) {
     case nvinfer1::DataType::kBOOL:
       os << "kBOOL";
       break;
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case nvinfer1::DataType::kUINT8:
+      os << "kUINT8";
+      break;
+#endif
   }
   return os;
 }

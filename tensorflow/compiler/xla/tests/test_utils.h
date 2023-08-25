@@ -22,10 +22,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -89,16 +89,16 @@ StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random = true,
 // TODO(b/79942829): Make interesting argument generation fast enough that using
 // pseudo_random does not save any noticeable amount of time so that the
 // parameter can be removed.
-StatusOr<std::vector<Literal>> MakeFakeArguments(const HloModule* module,
-                                                 bool pseudo_random = true,
-                                                 bool use_large_range = false);
+StatusOr<std::vector<Literal>> MakeFakeArguments(
+    const HloModule* module, bool pseudo_random = true,
+    bool use_large_range = false, bool treat_gte_as_data_formatting = false);
 
 // Overload which accepts a random number generator. This enables generation of
 // different random values with sequential calls to MakeFakeArguments by reusing
 // the same generator.
-StatusOr<std::vector<Literal>> MakeFakeArguments(const HloModule* module,
-                                                 std::minstd_rand0* engine,
-                                                 bool use_large_range = false);
+StatusOr<std::vector<Literal>> MakeFakeArguments(
+    const HloModule* module, std::minstd_rand0* engine,
+    bool use_large_range = false, bool treat_gte_as_data_formatting = false);
 
 // Check that a given module satisfies various constraints before trying to
 // execute it.
@@ -111,6 +111,10 @@ Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
 std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
                                                       HloInstruction* lhs,
                                                       HloInstruction* rhs);
+
+// Checks whether MLIR lowering is enabled through XLA_FLAGS.
+bool IsMlirLoweringEnabled();
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_TESTS_TEST_UTILS_H_

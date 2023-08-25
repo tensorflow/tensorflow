@@ -17,31 +17,12 @@ limitations under the License.
 
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/lib/profiler_interface.h"
 
 namespace tensorflow {
 namespace profiler {
 
-// Interface for tensorflow profiler plugins.
-//
-// ProfileSession calls each of these methods at most once per instance, and
-// implementations can rely on that guarantee for simplicity.
-//
-// Thread-safety: Implementations are only required to be go/thread-compatible.
-// ProfileSession is go/thread-safe and synchronizes access to ProfilerInterface
-// instances.
-class ProfilerInterface {
- public:
-  virtual ~ProfilerInterface() = default;
-
-  // Starts profiling.
-  virtual Status Start() = 0;
-
-  // Stops profiling.
-  virtual Status Stop() = 0;
-
-  // Saves collected profile data into XSpace.
-  virtual Status CollectData(XSpace* space) = 0;
-};
+using tsl::profiler::ProfilerInterface;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

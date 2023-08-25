@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/convert_mover.h"
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 namespace {
@@ -81,10 +81,8 @@ StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
     }
     // At least one of the operands must be a kConvert op, and all of the
     // kConverts must have the same src data type.
-    auto convert_op_it =
-        absl::c_find_if(instr->operands(), [](const HloInstruction* operand) {
-          return operand->opcode() == HloOpcode::kConvert;
-        });
+    auto convert_op_it = absl::c_find_if(instr->operands(),
+                                         HloPredicateIsOp<HloOpcode::kConvert>);
     if (convert_op_it == instr->operands().end()) {
       continue;
     }

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/mangling.h"
 
+#include <cstring>
+#include <string>
+
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/tensor.pb.h"

@@ -33,7 +33,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/delegates/serialization.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
@@ -53,9 +53,9 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/quant_lstm_sup.h"
 #include "tensorflow/lite/delegates/utils.h"
@@ -1456,6 +1456,23 @@ class NNAPIOpBuilder {
     return kTfLiteOk;
   }
 
+  TfLiteStatus TransformCosIntoSupportedOps(int lite_node_index,
+                                            TfLiteNode* node,
+                                            TfLiteRegistration* reg) {
+    const TfLiteTensor& theta = context_->tensors[node->inputs->data[0]];
+
+    // NNAPI only supports float sin
+    auto tensor_size = theta.bytes / sizeof(float);
+
+    // Convert cos to sin: $cos(x) = sin(\frac{\pi}{2} - x)$
+    auto data = theta.data.f;
+    for (int i = 0; i < tensor_size; i++) {
+      data[i] = M_PI_2 - data[i];
+    }
+
+    return kTfLiteOk;
+  }
+
   // Finish emitting the op (of type `type`) into the NN API.
   TfLiteStatus FinalizeAddOperation(ANeuralNetworksOperationType type,
                                     int lite_node_index) {
@@ -1945,16 +1962,18 @@ class NNAPIOpBuilder {
         if (allocation_memory_mapping_->count(mmap_alloc) == 0) {
           ANeuralNetworksMemory* ann_memory_handle = nullptr;
           nnapi_->ANeuralNetworksMemory_createFromFd(
-              mmap_alloc->bytes(), PROT_READ, mmap_alloc->fd(), 0,
-              &ann_memory_handle);
+              mmap_alloc->mmapped_buffer_size(), PROT_READ, mmap_alloc->fd(),
+              mmap_alloc->mmapped_buffer_offset_in_file(), &ann_memory_handle);
           allocation_memory_mapping_->insert(
               std::make_pair(mmap_alloc, ann_memory_handle));
         }
         ANeuralNetworksMemory* ann_memory_handle =
             allocation_memory_mapping_->at(mmap_alloc);
-        // Compute the offset to the base pointer of the MMAPAllocation.
-        auto offset = reinterpret_cast<const uint8_t*>(tensor->data.raw) -
-                      reinterpret_cast<const uint8_t*>(mmap_alloc->base());
+        // Compute the offset to the mmapped buffer address of the
+        // MMAPAllocation.
+        auto offset =
+            reinterpret_cast<const uint8_t*>(tensor->data.raw) -
+            reinterpret_cast<const uint8_t*>(mmap_alloc->mmapped_buffer());
         RETURN_TFLITE_ERROR_IF_NN_ERROR_FOR_TENSOR(
             context_,
             nnapi_->ANeuralNetworksModel_setOperandValueFromMemory(
@@ -2313,6 +2332,13 @@ bool NNAPIDelegateKernel::Validate(
       } else {
         ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       }
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinArgMax:
     case kTfLiteBuiltinArgMin: {
@@ -2372,6 +2398,13 @@ bool NNAPIDelegateKernel::Validate(
       } else {
         ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       }
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinAveragePool2d: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
@@ -2804,6 +2837,13 @@ bool NNAPIDelegateKernel::Validate(
       Expect(context->tensors[node->inputs->data[0]].type == kTfLiteFloat32,
              NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only support float div.", &val_ctx);
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinPad:
     case kTfLiteBuiltinPadv2: {
@@ -2917,6 +2957,7 @@ bool NNAPIDelegateKernel::Validate(
              NNAPIValidationFailureType::kUnsupportedInputType,
              "Size type should be Int32", &val_ctx);
     } break;
+    case kTfLiteBuiltinCos:
     case kTfLiteBuiltinSin: {
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
@@ -3075,6 +3116,9 @@ bool NNAPIDelegateKernel::Validate(
              NNAPIValidationFailureType::kUnsupportedOutputType,
              "NNAPI does not support generating a scalar as output for MEAN.",
              &val_ctx);
+      Expect(context->tensors[node->inputs->data[0]].dims->size <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "NNAPI does not support mean of a tensor with rank > 4", &val_ctx);
     } break;
     case kTfLiteBuiltinEmbeddingLookup: {
       ExpectOpVersion(version, 1, &val_ctx);
@@ -3529,6 +3573,10 @@ bool NNAPIDelegateKernel::Validate(
       ExpectMinAndroidSdkVersion(android_sdk_version,
                                  kNNAPIRuntimeFeatureLevel7, &val_ctx);
       ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
+      Expect(reinterpret_cast<TfLiteMirrorPaddingParams*>(node->builtin_data)
+                     ->mode != kTfLiteMirrorPaddingUnknown,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "Unknown padding mode", &val_ctx);
 
       const TfLiteIntArrayView input_shape(
           context->tensors[node->inputs->data[0]].dims);
@@ -3936,6 +3984,9 @@ TfLiteStatus NNAPIDelegateKernel::Map(
     } break;
     case kTfLiteBuiltinSlice: {
       *nn_op_type = ANEURALNETWORKS_SLICE;
+    } break;
+    case kTfLiteBuiltinCos: {
+      *nn_op_type = ANEURALNETWORKS_SIN;
     } break;
     case kTfLiteBuiltinSin: {
       *nn_op_type = ANEURALNETWORKS_SIN;
@@ -4445,9 +4496,17 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       *nn_op_type = ANEURALNETWORKS_PACK;
     } break;
     case kTfLiteBuiltinMirrorPad: {
+      constexpr int kNnapiModeReflect = 0;
+      constexpr int kNnapiModeSymmetric = 1;
       auto builtin = reinterpret_cast<TfLiteMirrorPaddingParams*>(
           mapping_args.node->builtin_data);
-      mapping_args.builder->AddScalarInt32Operand(builtin->mode);
+      int32_t nn_mirror_mode = -1;
+      if (builtin->mode == kTfLiteMirrorPaddingReflect) {
+        nn_mirror_mode = kNnapiModeReflect;
+      } else if (builtin->mode == kTfLiteMirrorPaddingSymmetric) {
+        nn_mirror_mode = kNnapiModeSymmetric;
+      }
+      mapping_args.builder->AddScalarInt32Operand(nn_mirror_mode);
       *nn_op_type = ANEURALNETWORKS_MIRROR_PAD;
     } break;
     case kTfLiteBuiltinReverseV2: {
@@ -4485,25 +4544,28 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
       return kTfLiteError;
     }
 
-    if (nnapi_->SL_ANeuralNetworksDiagnostic_registerCallbacks != nullptr) {
-      nnapi_->SL_ANeuralNetworksDiagnostic_registerCallbacks(
-          [](const void* nnapi,
-             const ANeuralNetworksDiagnosticCompilationInfo* info) {
-            return LogCompilationInfoOnce(static_cast<const NnApi*>(nnapi),
+    if (!delegate_options.disable_debugging_diagnostics_callbacks) {
+      if (nnapi_->SL_ANeuralNetworksDiagnostic_registerCallbacks != nullptr) {
+        nnapi_->SL_ANeuralNetworksDiagnostic_registerCallbacks(
+            [](const void* nnapi,
+               const ANeuralNetworksDiagnosticCompilationInfo* info) {
+              return LogCompilationInfoOnce(static_cast<const NnApi*>(nnapi),
+                                            info);
+            },
+            [](const void* nnapi,
+               const ANeuralNetworksDiagnosticExecutionInfo* info) {
+              return LogExecutionInfoOnce(static_cast<const NnApi*>(nnapi),
                                           info);
-          },
-          [](const void* nnapi,
-             const ANeuralNetworksDiagnosticExecutionInfo* info) {
-            return LogExecutionInfoOnce(static_cast<const NnApi*>(nnapi), info);
-          },
-          const_cast<NnApi*>(nnapi_));
-      TFLITE_LOG_PROD(TFLITE_LOG_INFO,
-                      "Registered diagnostics callbacks in NNAPI SL driver"
-                      "SL_ANeuralNetworksDiagnostic_registerCallbacks.");
-    } else {
-      TFLITE_LOG_PROD(TFLITE_LOG_WARNING,
-                      "NNAPI SL driver did not implement "
-                      "SL_ANeuralNetworksDiagnostic_registerCallbacks!");
+            },
+            const_cast<NnApi*>(nnapi_));
+        TFLITE_LOG_PROD(TFLITE_LOG_INFO,
+                        "Registered diagnostics callbacks in NNAPI SL driver"
+                        "SL_ANeuralNetworksDiagnostic_registerCallbacks.");
+      } else {
+        TFLITE_LOG_PROD(TFLITE_LOG_WARNING,
+                        "NNAPI SL driver did not implement "
+                        "SL_ANeuralNetworksDiagnostic_registerCallbacks!");
+      }
     }
   }
 
@@ -5555,6 +5617,12 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
           node_index, node, reg));
       continue;
     }
+    // Delegate COS by lowering it into SIN.
+    if (reg->builtin_code == kTfLiteBuiltinCos) {
+      TF_LITE_ENSURE_STATUS(
+          builder.TransformCosIntoSupportedOps(node_index, node, reg));
+      continue;
+    }
     // Fully quantized full LSTM.
     if (target_feature_level_ >= kMinSdkVersionForNNAPI13 &&
         reg->builtin_code == kTfLiteBuiltinLstm && isLstmFullKernel(node) &&
@@ -5804,6 +5872,14 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
         const TfLiteTensor constant_value = context->tensors[constant_value_id];
 
         switch (constant_value.type) {
+          case kTfLiteFloat16:
+            if (constant_value.allocation_type == kTfLiteMmapRo) {
+              builder.AddScalarFloat32Operand(constant_value.data.f16->data);
+            } else {
+              builder.AddSingleValueTensorAsScalarOperand(
+                  constant_value_id, ANEURALNETWORKS_TENSOR_FLOAT16);
+            }
+            break;
           case kTfLiteFloat32:
             if (constant_value.allocation_type == kTfLiteMmapRo) {
               builder.AddScalarFloat32Operand(*constant_value.data.f);
@@ -6412,6 +6488,8 @@ void StatefulNnApiDelegate::StatefulNnApiDelegateConstructorImpl(
   delegate_data_.vendor_plugin = options.vendor_plugin;
   delegate_data_.max_execution_cache_size = options.max_execution_cache_size;
   delegate_data_.tensor_max_size_hints = options.tensor_max_size_hints;
+  delegate_data_.disable_debugging_diagnostics_callbacks =
+      options.disable_debugging_diagnostics_callbacks;
 
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                        "Created TensorFlow Lite delegate for NNAPI.");
@@ -6484,6 +6562,8 @@ const StatefulNnApiDelegate::Options StatefulNnApiDelegate::GetOptions(
   options.vendor_plugin = delegate_data->vendor_plugin;
   options.max_execution_cache_size = delegate_data->max_execution_cache_size;
   options.tensor_max_size_hints = delegate_data->tensor_max_size_hints;
+  options.disable_debugging_diagnostics_callbacks =
+      delegate_data->disable_debugging_diagnostics_callbacks;
   return options;
 }
 
@@ -6563,7 +6643,7 @@ TfLiteStatus StatefulNnApiDelegate::GetNodesSupportedByAccelerator(
   auto* delegate_data = static_cast<Data*>(delegate->data_);
   // The first entry in the array is the element count
 
-  auto supported_nodes_int_array = BuildTfLiteIntArray(supported_nodes);
+  auto supported_nodes_int_array = BuildTfLiteArray(supported_nodes);
   TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
       context, supported_nodes_int_array.get(), params_array, num_partitions));
   // For each partition check if which nodes are actually supported by the
@@ -6596,8 +6676,7 @@ TfLiteStatus StatefulNnApiDelegate::GetNodesSupportedByAccelerator(
   if (device_supported_nodes->size() != supported_nodes.size()) {
     // We changed the set of nodes to delegate this will create a different
     // partitioning layout.
-    auto device_sup_nodes_int_array =
-        BuildTfLiteIntArray(*device_supported_nodes);
+    auto device_sup_nodes_int_array = BuildTfLiteArray(*device_supported_nodes);
     TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
         context, device_sup_nodes_int_array.get(), params_array,
         num_partitions));
@@ -6742,8 +6821,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   TfLiteIntArray* execution_plan;
   TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &execution_plan));
   // Copy the execution plan and wrap it with unique_ptr.
-  std::unique_ptr<TfLiteIntArray, decltype(&TfLiteIntArrayFree)> plan(
-      TfLiteIntArrayCopy(execution_plan), TfLiteIntArrayFree);
+  IntArrayUniquePtr plan(TfLiteIntArrayCopy(execution_plan));
 
   // Check for every node if it is supported
   const bool is_accelerator_specified = ShouldUseTargetDevices(
@@ -6885,7 +6963,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
         &num_partitions, &params_array, nnapi_errno));
   } else {
     nodes_to_delegate = supported_nodes;
-    auto supported_nodes_int_array = BuildTfLiteIntArray(supported_nodes);
+    auto supported_nodes_int_array = BuildTfLiteArray(supported_nodes);
     TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
         context, supported_nodes_int_array.get(), &params_array,
         &num_partitions));
@@ -6927,7 +7005,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
                                    params_array, params_array + num_partitions),
                                &nodes_to_delegate));
 
-  auto nodes_to_delegate_int_array = BuildTfLiteIntArray(nodes_to_delegate);
+  auto nodes_to_delegate_int_array = BuildTfLiteArray(nodes_to_delegate);
 
   if (cache_ptr) {
     // Cache list of nodes to be delegated for later.

@@ -21,13 +21,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/broadcast.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -73,7 +73,7 @@ StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
                                                 from_shape.dimensions().end());
       broadcasted_input_shape.push_back(input_bit_width / output_bit_width);
       reshaped_input_shape.push_back(1);
-      int64_t output_bit_width_mask = (1l << output_bit_width) - 1;
+      int64_t output_bit_width_mask = (int64_t{1} << output_bit_width) - 1;
 
       TF_ASSIGN_OR_RETURN(input,
                           BroadcastTo(Reshape(input, reshaped_input_shape),

@@ -37,6 +37,11 @@ from tensorflow.python.training import training_util
 from tensorflow.python.training.summary_io import SummaryWriterCache
 
 
+# Captures the timestamp of the first Saver object instantiation or end of a
+# save operation. Can be accessed by multiple Saver instances.
+_END_TIME_OF_LAST_WRITE = None
+_END_TIME_OF_LAST_WRITE_LOCK = threading.Lock()
+
 # API label for cell names used in TF1 async checkpoint metrics.
 _ASYNC_CHECKPOINT_V1 = "async_checkpoint_v1"
 
@@ -97,6 +102,12 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
 
     self._last_checkpoint_step = None
 
+    # Initialize the first timestamp for _END_TIME_OF_LAST_WRITE.
+    global _END_TIME_OF_LAST_WRITE
+    with _END_TIME_OF_LAST_WRITE_LOCK:
+      if _END_TIME_OF_LAST_WRITE is None:
+        _END_TIME_OF_LAST_WRITE = time.time()
+
   def _set_steps_per_run(self, steps_per_run):
     self._steps_per_run = steps_per_run
 
@@ -127,6 +138,8 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
     graph = ops.get_default_graph()
     meta_graph_def = meta_graph.create_meta_graph_def(
         graph_def=graph.as_graph_def(add_shapes=True), saver_def=saver_def)
+    if self._summary_writer is None:
+      raise ValueError("Summary writer is not initialised")
     self._summary_writer.add_graph(graph)
     self._summary_writer.add_meta_graph(meta_graph_def)
     # The checkpoint saved here is the state at step "global_step".
@@ -173,6 +186,8 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
         l.before_save(session, step)
 
       self._get_saver().save(session, self._save_path, global_step=step)
+      if self._summary_writer is None:
+        raise ValueError("Summary writer is not initialised")
       self._summary_writer.add_session_log(
           event_pb2.SessionLog(
               status=event_pb2.SessionLog.CHECKPOINT,
@@ -181,21 +196,37 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
       for l in self._listeners:
         l.after_save(session, step)
 
+      # Measure the async checkpoint write duration, i.e., non-blocking time.
       end_time = time.time()
       metrics.AddAsyncCheckpointWriteDuration(
           api_label=_ASYNC_CHECKPOINT_V1,
           microseconds=_get_duration_microseconds(start_time, end_time))
+
+      # Measure the elapsed time since the last checkpoint.
+      # Due to the nature of async checkpoint, here it actually captures the
+      # duration between the start_time of the previous checkpoint and the start
+      # time of this checkpoint. As a result, the duration of the final async
+      # checkpoint is excluded, which is fine since it does not take much time.
+      global _END_TIME_OF_LAST_WRITE
+      with _END_TIME_OF_LAST_WRITE_LOCK:
+        metrics.AddTrainingTimeSaved(
+            api_label=_ASYNC_CHECKPOINT_V1,
+            microseconds=_get_duration_microseconds(_END_TIME_OF_LAST_WRITE,
+                                                    start_time))
+      _END_TIME_OF_LAST_WRITE = start_time
+
       logging.info("Checkpoint actual writing time: (%.3f sec)",
                    end_time - start_time)
       logging.info("Checkpoint finished for %d into %s.", step, self._save_path)
 
-    # Keep track of time when training is blocked by save
+    # Measure the checkpoint write duration that is blocking the main thread.
     blocking_start_time = time.time()
     def end_of_blocking_time():
+      blocking_end_time = time.time()
       metrics.AddCheckpointWriteDuration(
           api_label=_ASYNC_CHECKPOINT_V1,
           microseconds=_get_duration_microseconds(blocking_start_time,
-                                                  time.time()))
+                                                  blocking_end_time))
 
     if not asynchronous:
       self._last_checkpoint_step = step

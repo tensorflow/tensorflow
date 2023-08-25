@@ -24,6 +24,31 @@
       ]
     },
     {
+      "variable": "tflite.device_model",
+      "items": [
+        {
+          "value": "shiraz_ag_2011",
+          "children": [
+            {
+              "variable": "tflite.android_sdk_version",
+              "items": [
+                {
+                  "value": "28",
+                  "derived_properties": [
+                    {
+                      "variable": "tflite.gpu.status",
+                      "value": "UNSUPPORTED"
+                    }
+                  ]
+                }
+              ],
+              "comparison": "MAXIMUM"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "variable": "tflite.opengl_es_version",
       "items": [
         {

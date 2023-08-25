@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -362,7 +362,6 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
 }  // namespace xla
 
 static std::pair<int, char**> AddXlaHloProfileFlag(int argc, char** argv) {
-  // Intentional "leak".
   char** new_argv = new char*[argc + 2];
   for (int i = 0; i < argc; i++) {
     new_argv[i] = argv[i];
@@ -383,12 +382,18 @@ static std::pair<int, char**> AddXlaHloProfileFlag(int argc, char** argv) {
 }
 
 GTEST_API_ int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
+  std::vector<tsl::Flag> flag_list;
   xla::AppendDebugOptionsFlags(&flag_list);
   std::tie(argc, argv) = AddXlaHloProfileFlag(argc, argv);
+  std::unique_ptr<char*[]> argv_ptr(argv);
+  char* to_be_freed[] = {argv[argc - 1], argv[argc - 2]};
 
-  auto usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  if (!tensorflow::Flags::Parse(&argc, argv, flag_list)) {
+  auto usage = tsl::Flags::Usage(argv[0], flag_list);
+  const bool parseResult = tsl::Flags::Parse(&argc, argv, flag_list);
+  for (auto p : to_be_freed) {
+    free(p);
+  }
+  if (!parseResult) {
     LOG(ERROR) << "\n" << usage;
     return 2;
   }

@@ -40,23 +40,6 @@ bool IsWordSymbol(char symbol) {
   return absl::ascii_isalnum(symbol) || symbol == '_';
 }
 
-void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
-                     std::string* str) {
-  size_t position = str->find(old_word);
-  while (position != std::string::npos) {
-    char prev = position == 0 ? '.' : (*str)[position - 1];
-    char next = position + old_word.size() < str->size()
-                    ? (*str)[position + old_word.size()]
-                    : '.';
-    if (IsWordSymbol(prev) || IsWordSymbol(next)) {
-      position = str->find(old_word, position + 1);
-      continue;
-    }
-    str->replace(position, old_word.size(), new_word);
-    position = str->find(old_word, position + new_word.size());
-  }
-}
-
 bool HasWord(const std::string& word, const std::string& text) {
   size_t pos = text.find(word);
   while (pos != std::string::npos) {
@@ -328,115 +311,9 @@ void Arguments::SetStateValueForAllObjects(const std::string& key,
 
 absl::Status Arguments::Compile(const GpuInfo& gpu_info, std::string* code) {
   RETURN_IF_ERROR(AddObjectsScalarArgs(gpu_info));
-  RETURN_IF_ERROR(ResolveConstExprPass(gpu_info, code));
-  RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, code));
   GetActiveArguments(*code);
   RETURN_IF_ERROR(ResolveKernelGlobalSpaceBuffers(gpu_info, code));
   return absl::OkStatus();
-}
-
-absl::Status Arguments::ResolveConstExprPass(const GpuInfo& gpu_info,
-                                             std::string* code) const {
-  std::string result;
-  size_t position = 0;
-  size_t next_position = code->find(kArgsPrefix);
-  while (next_position != std::string::npos) {
-    size_t arg_pos = next_position;
-    next_position += strlen(kArgsPrefix);
-    std::string object_name = GetNextWord(*code, next_position);
-    if (next_position + object_name.size() > code->size() - 2) {
-      next_position = code->find(kArgsPrefix, next_position);
-      continue;
-    }
-    char next0 = (*code)[next_position + object_name.size()];
-    char next1 = (*code)[next_position + object_name.size() + 1];
-    if (next0 == ':' && next1 == ':') {
-      next_position += object_name.size() + 2;
-      std::string const_expr_name = GetNextWord(*code, next_position);
-      next_position += const_expr_name.size();
-      std::string patch;
-      RETURN_IF_ERROR(
-          ResolveConstExpr(gpu_info, object_name, const_expr_name, &patch));
-      code->replace(arg_pos, next_position - arg_pos, patch);
-      position = arg_pos + patch.size();
-    } else {
-      position = arg_pos + strlen(kArgsPrefix);
-    }
-    next_position = code->find(kArgsPrefix, position);
-  }
-  return absl::OkStatus();
-}
-
-absl::Status Arguments::ResolveConstExpr(const GpuInfo& gpu_info,
-                                         const std::string& object_name,
-                                         const std::string& const_expr,
-                                         std::string* result) const {
-  tflite::gpu::GPUObjectDescriptor* desc_ptr;
-  RETURN_IF_ERROR(GetDescriptor(object_name, &desc_ptr));
-  RETURN_IF_ERROR(desc_ptr->PerformConstExpr(gpu_info, const_expr, result));
-  return absl::OkStatus();
-}
-
-absl::Status Arguments::ResolveSelectorsPass(
-    const GpuInfo& gpu_info,
-    std::string* code) const {
-  std::string result;
-  size_t position = 0;
-  size_t next_position = code->find(kArgsPrefix);
-  while (next_position != std::string::npos) {
-    size_t arg_pos = next_position;
-    next_position += strlen(kArgsPrefix);
-    std::string object_name = GetNextWord(*code, next_position);
-    char next = (*code)[next_position + object_name.size()];
-    if (next == '.') {
-      next_position += object_name.size() + 1;
-      std::string selector_name = GetNextWord(*code, next_position);
-      next_position += selector_name.size();
-      next = (*code)[next_position];
-      std::vector<std::string> template_args;
-      if (next == '<') {
-        size_t close_bracket_pos;
-        RETURN_IF_ERROR(ParseArgsInsideBrackets(
-            *code, next_position, &close_bracket_pos, &template_args));
-        next_position = close_bracket_pos;
-        next = (*code)[next_position];
-      }
-      if (next != '(') {
-        return absl::NotFoundError(absl::StrCat(
-            "Expected ( after ", object_name, ".", selector_name, " call"));
-      }
-      std::vector<std::string> function_args;
-      size_t close_bracket_pos;
-      RETURN_IF_ERROR(ParseArgsInsideBrackets(
-          *code, next_position, &close_bracket_pos, &function_args));
-      for (auto& arg : function_args) {
-        RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, &arg));
-      }
-      std::string patch;
-      GPUObjectDescriptor* desc_ptr;
-      RETURN_IF_ERROR(GetDescriptor(object_name, &desc_ptr));
-      auto names = desc_ptr->GetGPUResources(gpu_info).GetNames();
-      RETURN_IF_ERROR(desc_ptr->PerformSelector(
-          gpu_info, selector_name, function_args, template_args, &patch));
-      ResolveObjectNames(object_name, names, &patch);
-
-      code->replace(arg_pos, close_bracket_pos - arg_pos, patch);
-      position = arg_pos + patch.size();
-    } else {
-      position = arg_pos + strlen(kArgsPrefix);
-    }
-    next_position = code->find(kArgsPrefix, position);
-  }
-  return absl::OkStatus();
-}
-
-void Arguments::ResolveObjectNames(const std::string& object_name,
-                                   const std::vector<std::string>& member_names,
-                                   std::string* code) const {
-  for (const auto& member_name : member_names) {
-    const std::string new_name = kArgsPrefix + object_name + "_" + member_name;
-    ReplaceAllWords(member_name, new_name, code);
-  }
 }
 
 absl::Status Arguments::AddObjectsScalarArgs(const GpuInfo& gpu_info) {

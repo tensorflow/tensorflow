@@ -16,11 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_ERROR_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_ERROR_UTIL_H_
 
-#include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/utils/error_util.h"
 #include "tensorflow/core/platform/status.h"
 
 // Error utilities for MLIR when interacting with code using Status returns.
@@ -29,12 +26,16 @@ namespace mlir {
 // TensorFlow's Status is used for error reporting back to callers.
 using ::tensorflow::Status;
 
-// Diagnostic handler that collects all the diagnostics reported and can produce
-// a Status to return to callers. This is for the case where MLIR functions are
-// called from a function that will return a Status: MLIR code still uses the
-// default error reporting, and the final return function can return the Status
-// constructed from the diagnostics collected.
-class StatusScopedDiagnosticHandler : public SourceMgrDiagnosticHandler {
+// TF customized diagnostic handler that collects all the diagnostics reported
+// and can produce a Status to return to callers. This is for the case where
+// MLIR functions are called from a function that will return a Status: MLIR
+// code still uses the default error reporting, and the final return function
+// can return the Status constructed from the diagnostics collected.
+// todo: [b/253331656]. Note ConsumeStatus() and Combine() are wrappers
+// of what is inherited from the BaseScopedDiagnosticHandler  to
+// support cases where tensorflow::Status is still being used (base class uses
+// absl::Status)
+class StatusScopedDiagnosticHandler : public BaseScopedDiagnosticHandler {
  public:
   // Constructs a diagnostic handler in a context. If propagate is true, then
   // diagnostics reported are also propagated back to the original diagnostic
@@ -44,15 +45,11 @@ class StatusScopedDiagnosticHandler : public SourceMgrDiagnosticHandler {
                                          bool propagate = false,
                                          bool filter_stack = false);
 
-  // On destruction error consumption is verified.
-  ~StatusScopedDiagnosticHandler();
-
-  // Returns whether any errors were reported.
-  bool ok() const;
-
-  // Returns Status corresponding to the diagnostics reported. This consumes the
-  // diagnostics reported and returns a Status of type Unknown. It is required
-  // to consume the error status, if there is one, before destroying the object.
+  ~StatusScopedDiagnosticHandler() = default;
+  // Returns Status corresponding to the diagnostics reported. This consumes
+  // the diagnostics reported and returns a Status of type Unknown. It is
+  // required to consume the error status, if there is one, before destroying
+  // the object.
   Status ConsumeStatus();
 
   // Returns the combination of the passed in status and consumed diagnostics.
@@ -60,19 +57,6 @@ class StatusScopedDiagnosticHandler : public SourceMgrDiagnosticHandler {
   // to the error message of 'status' (if 'status' is already an error state),
   // or returns an Unknown status (if diagnostics reported), otherwise OK.
   Status Combine(Status status);
-
- private:
-  LogicalResult handler(Diagnostic* diag);
-
-  // String stream to assemble the final error message.
-  std::string diag_str_;
-  llvm::raw_string_ostream diag_stream_;
-
-  // A SourceMgr to use for the base handler class.
-  llvm::SourceMgr source_mgr_;
-
-  // Whether to propagate diagnostics to the old diagnostic handler.
-  bool propagate_;
 };
 }  // namespace mlir
 

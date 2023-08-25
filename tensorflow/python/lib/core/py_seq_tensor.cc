@@ -12,11 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
 
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -29,10 +34,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
-#include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/py_util.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
-
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 namespace tensorflow {
 namespace {
 
@@ -693,7 +696,7 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
     PyErr_SetString(PyExc_ValueError,
                     tensorflow::strings::StrCat(
                         "Failed to convert a NumPy array to a Tensor (",
-                        status.error_message(), ").")
+                        status.message(), ").")
                         .c_str());
     return nullptr;
   }
@@ -777,7 +780,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   ConverterState state;
   Status status = InferShapeAndType(obj, &state);
   if (!status.ok()) {
-    PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
+    PyErr_SetString(PyExc_ValueError, tsl::NullTerminatedMessage(status));
     return nullptr;
   }
   DataType requested_dtype = DT_INVALID;
@@ -906,7 +909,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   }
 
   if (!status.ok()) {
-    PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
+    PyErr_SetString(PyExc_ValueError, tsl::NullTerminatedMessage(status));
     return nullptr;
   }
 

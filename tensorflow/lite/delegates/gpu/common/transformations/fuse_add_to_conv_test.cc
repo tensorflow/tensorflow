@@ -223,7 +223,7 @@ TEST(MergeAddWithConvolutionTest, Smoke) {
             graph.nodes()[0]->operation.type);
 
   Convolution2DAttributes* conv_attr_new =
-      std::any_cast<Convolution2DAttributes>(
+      absl::any_cast<Convolution2DAttributes>(
           &graph.nodes()[0]->operation.attributes);
 
   EXPECT_THAT(conv_attr_new->bias.data,

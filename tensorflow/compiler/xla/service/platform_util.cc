@@ -71,13 +71,18 @@ StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
         if (!supported) {
           LOG(INFO) << "platform " << platform->Name() << " present but no "
                     << "XLA compiler available: "
-                    << compiler_status.status().error_message();
+                    << compiler_status.status().message();
         }
         return supported;
       });
 }
 
 }  // namespace
+
+/*static */ StatusOr<std::string> PlatformUtil::CanonicalPlatformName(
+    const std::string& platform_name) {
+  return xla::CanonicalPlatformName(platform_name);
+}
 
 /* static */ StatusOr<std::vector<se::Platform*>>
 PlatformUtil::GetSupportedPlatforms() {
@@ -120,7 +125,7 @@ PlatformUtil::GetSupportedPlatforms() {
     const std::string& platform_name) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::MultiPlatformManager::PlatformWithName(
-                          CanonicalPlatformName(platform_name)));
+                          xla::CanonicalPlatformName(platform_name)));
   TF_RETURN_IF_ERROR(Compiler::GetForPlatform(platform).status());
   return platform;
 }
@@ -192,7 +197,7 @@ PlatformUtil::GetStreamExecutors(
       } else {
         LOG(WARNING) << "unable to create StreamExecutor for "
                      << platform->Name() << ":" << device_ordinal << ": "
-                     << executor_status.status().error_message();
+                     << executor_status.status().message();
       }
       VLOG(1) << "Finished device init " << device_ordinal;
     };

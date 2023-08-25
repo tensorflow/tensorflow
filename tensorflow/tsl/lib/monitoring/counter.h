@@ -61,7 +61,7 @@ class Counter {
     return &default_counter_cell_;
   }
 
-  Status GetStatus() { return Status::OK(); }
+  Status GetStatus() { return OkStatus(); }
 
  private:
   Counter() {}
@@ -82,8 +82,8 @@ class Counter {
 #include <memory>
 #include <tuple>
 
-#include "tensorflow/core/lib/monitoring/collection_registry.h"
-#include "tensorflow/core/lib/monitoring/metric_def.h"
+#include "tensorflow/tsl/lib/monitoring/collection_registry.h"
+#include "tensorflow/tsl/lib/monitoring/metric_def.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/mutex.h"
@@ -92,10 +92,7 @@ class Counter {
 
 namespace tsl {
 namespace monitoring {
-using tensorflow::monitoring::CollectionRegistry;
-using tensorflow::monitoring::MetricCollectorGetter;
-using tensorflow::monitoring::MetricDef;
-using tensorflow::monitoring::MetricKind;
+
 // CounterCell stores each value of an Counter.
 //
 // A cell can be passed off to a module which may repeatedly update it without
@@ -174,7 +171,7 @@ class Counter {
     if (registration_handle_) {
       status_ = OkStatus();
     } else {
-      status_ = Status(tensorflow::error::Code::ALREADY_EXISTS,
+      status_ = Status(absl::StatusCode::kAlreadyExists,
                        "Another metric with the same name already exists.");
     }
   }
@@ -183,14 +180,14 @@ class Counter {
 
   Status status_;
 
+  using LabelArray = std::array<string, NumLabels>;
+  std::map<LabelArray, CounterCell> cells_ TF_GUARDED_BY(mu_);
+
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.
   const MetricDef<MetricKind::kCumulative, int64_t, NumLabels> metric_def_;
 
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
-
-  using LabelArray = std::array<string, NumLabels>;
-  std::map<LabelArray, CounterCell> cells_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Counter);
 };

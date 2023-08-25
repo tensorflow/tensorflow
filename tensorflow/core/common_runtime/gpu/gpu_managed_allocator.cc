@@ -15,6 +15,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime.h"
 #define EIGEN_USE_GPU
 #endif
 
@@ -24,6 +25,7 @@ limitations under the License.
 #endif
 
 #include "tensorflow/core/common_runtime/gpu/gpu_managed_allocator.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace tensorflow {
 

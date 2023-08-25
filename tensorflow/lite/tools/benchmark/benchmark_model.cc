@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
+#ifdef __linux__
 #include <unistd.h>
+#endif  // __linux__
 
 #include <iostream>
 #include <memory>
@@ -92,8 +94,9 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
          "following is only APPROXIMATE to the actual memory footprint of the "
          "model at runtime. Take the information at your discretion.";
   TFLITE_LOG(INFO) << "Memory footprint delta from the start of the tool (MB): "
-                   << "init=" << init_mem_usage.max_rss_kb / 1024.0
-                   << " overall=" << overall_mem_usage.max_rss_kb / 1024.0;
+                   << "init=" << init_mem_usage.mem_footprint_kb / 1024.0
+                   << " overall="
+                   << overall_mem_usage.mem_footprint_kb / 1024.0;
 
   auto peak_mem_mb = results.peak_mem_mb();
   if (peak_mem_mb > 0) {
@@ -291,6 +294,8 @@ TfLiteStatus BenchmarkModel::Run() {
 
   if (model_size_mb > 0) {
     TFLITE_LOG(INFO) << "The input model file size (MB): " << model_size_mb;
+  } else {
+    TFLITE_LOG(WARN) << "Failed to get the input model file size.";
   }
   TFLITE_LOG(INFO) << "Initialized session in " << startup_latency_us / 1e3
                    << "ms.";
