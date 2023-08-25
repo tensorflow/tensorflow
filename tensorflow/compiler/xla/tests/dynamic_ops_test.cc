@@ -735,13 +735,12 @@ XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousUnalignedBF16) {
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/1, /*size=*/1);
 }
 
-// TODO(b/34134076) Disabled on GPU 2016-01-06 due to out-of-memory error.
-XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_GPU(R3ContiguousLarger)) {
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousLarger) {
   std::vector<int32_t> operand_shape({32, 128, 1024});
   RunR3Contiguous<float>(operand_shape, /*index=*/7, /*size=*/1);
 }
 
-XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_GPU(R3ContiguousLargerBF16)) {
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousLargerBF16) {
   std::vector<int32_t> operand_shape({32, 128, 1024});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/7, /*size=*/1);
 }
