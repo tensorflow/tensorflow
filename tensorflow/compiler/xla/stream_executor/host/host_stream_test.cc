@@ -60,7 +60,7 @@ TEST(HostStream, ReportsHostCallbackError) {
 
   auto status = stream.BlockHostUntilDone();
   ASSERT_EQ(status.code(), tsl::error::INTERNAL);
-  ASSERT_EQ(status.error_message(), "error!");
+  ASSERT_EQ(status.message(), "error!");
 }
 
 TEST(HostStream, ReportsFirstHostCallbackError) {
@@ -76,5 +76,5 @@ TEST(HostStream, ReportsFirstHostCallbackError) {
       []() { return tsl::errors::Internal("error 2"); });
 
   // "error 2" is just lost.
-  ASSERT_EQ(stream.BlockHostUntilDone().error_message(), "error 1");
+  ASSERT_EQ(stream.BlockHostUntilDone().message(), "error 1");
 }

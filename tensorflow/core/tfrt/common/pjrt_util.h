@@ -25,28 +25,16 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Sets PJRT client for device_type in TFGlobalResourceManager. If a PJRT client
+// for this device_type already exists, the existing PJRT client will not be
+// destroyed, and will be kept alive in an "unused client" vector. PJRT API
+// semantics require the PJRT client to outlive PJRT buffers.
 Status SetPjRtClientInTFGlobalResourceManager(
     const DeviceType& device_type, std::unique_ptr<xla::PjRtClient> client);
 
-// Attempt to delete PJRT client from TFGlobalResourceManager. Returns OK if the
-// deletion succeeded, or if the PJRT resource was not found. Else return the
-// deletion error.
-Status DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(
-    const DeviceType& device_type);
-
-// Gets PJRT client from TFGlobalResourceManager. If it is not found, creates a
-// PJRT client and adds it to TFGlobalResourceManager. Different `DeviceType`
-// can choose to create the PJRT client explicitly (e.g. in ops) and add it to
-// TFGlobalResourceManager, or create a PJRT client on the first use implicitly
-// in this method.
-// The inputs are the device_type of the caller, and an optional
-// set of device IDs `allowed_devices` for which the stream executor will be
-// created. `allowed_devices` is only used for GPU.
-// TODO(b/260802979): consider passing `XlaPlatformInfo` for the options to
-// create a client, or creating a class similar to `LocalClientOptions`.
-StatusOr<xla::PjRtClient*> GetOrCreatePjRtClient(
-    const DeviceType& device_type,
-    std::optional<std::set<int>> allowed_devices = std::nullopt);
+// Gets (the most recent) PJRT client for device_type from
+// TFGlobalResourceManager.
+StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
 
 }  // namespace tensorflow
 

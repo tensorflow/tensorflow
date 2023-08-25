@@ -39,7 +39,7 @@ bool OverrideGlobalThreadPoolFromEnvironment() {
     auto status = ReadBoolFromEnvVar("TF_OVERRIDE_GLOBAL_THREADPOOL",
                                      /*default_val=*/false, &flag);
     if (!status.ok()) {
-      LOG(ERROR) << "OverrideGlobalThreadPool: " << status.error_message();
+      LOG(ERROR) << "OverrideGlobalThreadPool: " << status.message();
       return false;
     }
     return flag;
@@ -51,9 +51,6 @@ bool OverrideGlobalThreadPoolFromEnvironment() {
 
 /* static */
 bool LocalDevice::use_global_threadpool_ = true;
-mutex LocalDevice::global_tp_mu_;
-gtl::InlinedVector<LocalDevice::EigenThreadPoolInfo*, 4>
-    LocalDevice::global_tp_info_;
 
 struct LocalDevice::EigenThreadPoolInfo {
   // Wrapper so we can provide the CPUAllocator to Eigen for use
@@ -120,31 +117,38 @@ LocalDevice::LocalDevice(const SessionOptions& options,
   LocalDevice::EigenThreadPoolInfo* tp_info;
 
   if (OverrideGlobalThreadPoolFromEnvironment()) {
-    set_use_global_threadpool(false);
+    use_global_threadpool_ = false;
   }
 
   if (use_global_threadpool_) {
-    mutex_lock l(global_tp_mu_);
+    // All ThreadPoolDevices in the process associated with the same
+    // NUMA node will share a single fixed sized threadpool for numerical
+    // computations.
+    static mutex& global_tp_mu = *new mutex;
+    static auto& global_tp_info TF_GUARDED_BY(global_tp_mu) =
+        *new gtl::InlinedVector<LocalDevice::EigenThreadPoolInfo*, 4>;
+
+    mutex_lock l(global_tp_mu);
     if (options.config.experimental().use_numa_affinity()) {
       int numa_node = attributes.locality().numa_node();
       int num_numa_nodes = port::NUMANumNodes();
       DCHECK_LT(numa_node, num_numa_nodes);
       Allocator* numa_allocator =
           ProcessState::singleton()->GetCPUAllocator(numa_node);
-      while (numa_node >= global_tp_info_.size()) {
-        global_tp_info_.push_back(nullptr);
+      while (numa_node >= global_tp_info.size()) {
+        global_tp_info.push_back(nullptr);
       }
-      if (!global_tp_info_[numa_node]) {
-        global_tp_info_[numa_node] = new LocalDevice::EigenThreadPoolInfo(
+      if (!global_tp_info[numa_node]) {
+        global_tp_info[numa_node] = new LocalDevice::EigenThreadPoolInfo(
             options, numa_node, numa_allocator);
       }
-      tp_info = global_tp_info_[numa_node];
+      tp_info = global_tp_info[numa_node];
     } else {
-      if (global_tp_info_.empty()) {
-        global_tp_info_.push_back(new LocalDevice::EigenThreadPoolInfo(
+      if (global_tp_info.empty()) {
+        global_tp_info.push_back(new LocalDevice::EigenThreadPoolInfo(
             options, port::kNUMANoAffinity, nullptr));
       }
-      tp_info = global_tp_info_[0];
+      tp_info = global_tp_info[0];
     }
   } else {
     // Each LocalDevice owns a separate ThreadPoolDevice for numerical
@@ -154,6 +158,11 @@ LocalDevice::LocalDevice(const SessionOptions& options,
         options, port::kNUMANoAffinity, nullptr));
     tp_info = owned_tp_info_.get();
   }
+
+  VLOG(1) << "LocalDevice using CPU work thread pool: "
+          << tp_info->eigen_worker_threads_.workers
+          << ", num_threads=" << tp_info->eigen_worker_threads_.num_threads;
+
   set_tensorflow_cpu_worker_threads(&tp_info->eigen_worker_threads_);
   set_eigen_cpu_device(tp_info->eigen_device_.get());
 }

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <initializer_list>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -53,18 +54,41 @@ class TileOpBaseModel : public SingleOpModel {
   int output_;
 };
 
-template <typename T>
+template <typename InputType, typename MultipliersType = int32_t>
 class TileOpConstModel : public TileOpBaseModel {
  public:
   TileOpConstModel(std::initializer_list<int> input_shape,
+                   std::initializer_list<InputType> input_data,
                    TensorType input_type, TensorType multiply_type,
-                   std::initializer_list<T> multipliers_data) {
-    input_ = AddInput(input_type);
+                   std::initializer_list<MultipliersType> multipliers_data) {
+    SetupInput(input_shape, input_data, input_type,
+               std::is_same<std::string, InputType>());
     multipliers_ = AddConstInput(multiply_type, multipliers_data,
                                  {static_cast<int>(multipliers_data.size())});
     output_ = AddOutput(input_type);
     SetBuiltinOp(BuiltinOperator_TILE, BuiltinOptions_TileOptions, 0);
     BuildInterpreter({input_shape, {static_cast<int>(input_shape.size())}});
+    PopulateInput(input_data, std::is_same<std::string, InputType>());
+  }
+
+ private:
+  template <typename T>
+  void SetupInput(std::initializer_list<int> input_shape,
+                  std::initializer_list<T> input_data, TensorType input_type,
+                  std::false_type) {
+    input_ = AddConstInput(input_type, input_data, input_shape);
+  }
+  template <typename T>
+  void SetupInput(std::initializer_list<int> input_shape,
+                  std::initializer_list<T> input_data, TensorType input_type,
+                  std::true_type) {
+    input_ = AddInput(input_type);
+  }
+  template <typename T>
+  void PopulateInput(std::initializer_list<T> input_data, std::false_type) {}
+  template <typename T>
+  void PopulateInput(std::initializer_list<T> input_data, std::true_type) {
+    SetInput(input_data);
   }
 };
 
@@ -95,9 +119,13 @@ void Check(std::initializer_list<int> input_shape,
            TestType test_type) {
   switch (test_type) {
     case TestType::kConst: {
-      TileOpConstModel<MultipliersType> m(input_shape, input_type,
-                                          multiply_type, multipliers_data);
-      m.SetInput(input_data);
+      if (SingleOpModel::GetForceUseNnapi() &&
+          !std::is_same<InputType, std::string>::value) {
+        // NNAPI does not support graphs with all constant inputs.
+        return;
+      }
+      TileOpConstModel<InputType, MultipliersType> m(
+          input_shape, input_data, input_type, multiply_type, multipliers_data);
       ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
       EXPECT_THAT(m.GetOutputShape(), ElementsAreArray(exp_output_shape));

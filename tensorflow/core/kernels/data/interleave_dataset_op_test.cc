@@ -569,13 +569,13 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(InterleaveDatasetOpTest,
 TEST_F(InterleaveDatasetOpTest, InvalidCycleLength) {
   auto dataset_params = InterleaveDatasetParamsWithInvalidCycleLength();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(InterleaveDatasetOpTest, InvalidLength) {
   auto dataset_params = InterleaveDatasetParamsWithInvalidBlockLength();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

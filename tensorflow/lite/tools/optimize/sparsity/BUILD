@@ -1,3 +1,4 @@
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
@@ -24,7 +25,7 @@ pybind_extension(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "format_converter_wrapper_pybind11_test",
     srcs = ["format_converter_wrapper_pybind11_test.py"],
     python_version = "PY3",

@@ -17,26 +17,32 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_UTIL_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
-#include <iostream>
-#include <memory>
 #include <optional>
-#include <ostream>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace spmd {
@@ -199,6 +205,12 @@ inline void ReplaceOperand(HloInstruction* inst,
 // Return whether this instruction is a custom call marker introduced by us.
 inline bool IsCustomCallMarker(const HloInstruction* inst) {
   return inst->IsCustomCall({kPipelineMarker, kIdentityMarker});
+}
+
+// Return whether this instruction is a TopK custom call.
+inline bool IsTopKCustomCall(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kCustomCall &&
+         inst->custom_call_target() == "TopK";
 }
 
 // Pass through the custom call marker and get the source instruction
@@ -428,8 +440,28 @@ bool IsValidTileAssignment(const HloSharding& spec);
 // -1 means the tensor is replicated on the whole the mesh.
 int64_t NumTileDimensions(const HloSharding& spec);
 
+// When fixing mixed mesh resharding (see below), compute the correct
+// intermediate shape in order to insert copies.
+Shape ComputeIntermediateShape(const HloSharding& src_sharding,
+                               const HloSharding& dst_sharding,
+                               const Shape& shape,
+                               const Array<int64_t>& device_mesh);
+
 // Forcibly set the sharding of the operand of inst.
 // Also fix the resharding between 1d and 2d logical mesh.
+void FixMixedMeshShapeReshardingGetTupleElement(
+    HloInstruction* inst, const HloSharding& dst_sharding,
+    const Array<int64_t>& device_mesh,
+    absl::flat_hash_map<std::string, std::vector<HloSharding>>*
+        preserve_shardings);
+
+void FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
+    HloInstruction* inst,
+    const std::vector<std::optional<HloSharding>>& dst_sharding,
+    const Array<int64_t>& device_mesh,
+    absl::flat_hash_map<std::string, std::vector<HloSharding>>*
+        preserve_shardings);
+
 void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
                                  const HloSharding& dst_sharding,
                                  const Array<int64_t>& device_mesh,
@@ -473,7 +505,7 @@ inline std::vector<const HloInstruction*> GetGradientComputationInstructions(
 // Gets the mapping vector from dim_from to dim_to.
 // Example: GetDimensionMapping([2], 3) = [0, 1, -1]
 std::vector<int64_t> GetDimensionMapping(
-    const absl::Span<const int64_t> reduced_dimensions, const int64_t op_count);
+    absl::Span<const int64_t> reduced_dimensions, int64_t op_count);
 
 // Checks whether denominator is divisible by numerator.
 bool IsDivisible(int64_t denominator, int64_t numerator);
@@ -503,9 +535,15 @@ bool TileAssignmentMatchesMesh(const HloSharding& spec,
 // is replicated on that dimension.
 // For example, returned value [1,2] means the 0th tensor dim maps to the 1st
 // mesh dim, and 1st tensor dim maps to the 2nd mesh dim.
-std::vector<int64_t> GetTensorDimToMeshDim(const int64_t tensor_shape_rank,
-                                           const HloSharding& spec,
-                                           const Array<int64_t>& device_mesh);
+std::vector<int64_t> GetTensorDimToMeshDim(
+    int64_t tensor_shape_rank, const HloSharding& spec,
+    const Array<int64_t>& device_mesh,
+    bool consider_reverse_device_meshes = false);
+
+absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
+    int64_t tensor_shape_rank, const HloSharding& spec,
+    const Array<int64_t>& device_mesh,
+    bool consider_reverse_device_meshes = false);
 
 HloSharding Tile(const Shape& tensor_shape,
                  absl::Span<const int64_t> tensor_dims,
@@ -522,7 +560,8 @@ AliasSet BuildAliasSet(const HloModule* module,
 template <typename T>
 Array<T> Transpose(const Array<T> array, std::vector<int64_t> axes) {
   // Computes transposed array's size.
-  std::vector<int64_t> transposed_array_dimensions(array.dimensions());
+  std::vector<int64_t> transposed_array_dimensions(array.dimensions().begin(),
+                                                   array.dimensions().end());
   for (size_t i = 0; i < axes.size(); i++) {
     transposed_array_dimensions[i] = array.dimensions()[axes[i]];
   }
@@ -538,11 +577,13 @@ Array<T> Transpose(const Array<T> array, std::vector<int64_t> axes) {
 }
 
 // Used to determine whether a sharding or mesh shape is 1D, 2D, or 3D.
-size_t VectorGreaterThanOneElementCount(const std::vector<int64_t>& vector,
+size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,
                                         bool omit_last_dim = false);
 
+// This functions returns the indices of all vector elements larger than 1, in
+// order.
 std::vector<int64_t> VectorGreaterThanOneElementIndices(
-    const std::vector<int64_t>& vector, bool omit_last_dim = false);
+    absl::Span<const int64_t> span, bool omit_last_dim = false);
 
 int64_t GetInstructionSize(const Shape& shape);
 
@@ -566,9 +607,19 @@ double ReshardingCostMixedMeshShape(
 // If a sharding is [8, 4] for the complete mesh shape, we convert it to [8, 1]
 // given [1, 8, 1] as the partial mesh shape.
 // total_num_devices should equal to the product of mesh_shape elements.
-bool AdjustShardingsWithPartialMeshShape(
+StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
-    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices);
+    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices,
+    bool crash_on_error);
+
+inline bool AdjustShardingsWithPartialMeshShape(
+    const std::vector<HloInstruction*>& instructions,
+    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices) {
+  auto result = AdjustShardingsWithPartialMeshShape(instructions, mesh_shape,
+                                                    total_num_devices, true);
+  CHECK_OK(result);
+  return *result;
+}
 
 // Decompose mesh shapes into partial mesh shapes so that we can solve the auto
 // sharding problem iteratively. Returns partial mesh shapes with larger
@@ -581,6 +632,19 @@ bool OutputInputSameShapes(const HloInstruction* ins);
 
 bool IsEntryComputationInputOrOutput(const HloModule* module,
                                      const HloInstruction* ins);
+
+// Given a number of devices (`num_devices`), create a list different mesh
+// shapes of a given rank (`num_mesh_dims`) to try, if the option to try
+// multiple mesh shapes is enabled.
+std::vector<std::vector<int64_t>> CreateDifferentMeshShapesToTry(
+    int64_t num_devices, int num_mesh_dims, bool symmetrical_mesh_dims);
+
+// Statically estimate the execution counts of HLO ops. This matters for while
+// loops, and we use a constant iteration count for all while loops for this
+// approximation.
+absl::flat_hash_map<const HloInstruction*, int64_t>
+ComputeInstructionExecutionCounts(const HloModule* module,
+                                  int64_t loop_iteration_count_estimate);
 }  // namespace spmd
 }  // namespace xla
 

@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_NEXT_PLUGGABLE_DEVICE_C_API_H_
 #define TENSORFLOW_C_EXPERIMENTAL_NEXT_PLUGGABLE_DEVICE_C_API_H_
 
+#include <cstdint>
+
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/c/tf_buffer.h"
@@ -26,25 +29,6 @@ limitations under the License.
 // C API for device. The API is under active development and eventually
 // should allow registering a plugin device with TensorFlow.
 
-// Macro to control visibility of exported symbols in the shared library (.so,
-// .dylib, .dll).
-// This duplicates the TF_EXPORT macro definition in
-// tensorflow/core/platform/macros.h in order to keep this .h file independent
-// of any other includes.
-#ifdef SWIG
-#define TF_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TF_COMPILE_LIBRARY
-#define TF_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TF_CAPI_EXPORT __declspec(dllimport)
-#endif  // TF_COMPILE_LIBRARY
-#else
-#define TF_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -53,14 +37,14 @@ extern "C" {
 // through TF_OpKernelContext, and is opaque to plugin.
 typedef struct TF_Device TF_Device;
 
+typedef struct TF_VariableInfo TF_VariableInfo;
+
 // Returns a `TF_Device` pointer, which actually points to a C++ `Device`.
 // Currently we only allow `NextPluggableDevice` to be casted as `TF_Device`,
 // but in theory every this is a C API for every kind of device.
 TF_CAPI_EXPORT extern TF_Device* TF_GetDevice(TF_OpKernelContext* ctx);
 
-TF_CAPI_EXPORT extern size_t TF_GetDeviceOrdinal(TF_Device* device);
-
-// ---------------------------  Resource ---------------------------------------
+// --------------------------  Resource  ---------------------------------------
 // Create a `tensorflow::PluginResource` to the ResourceMgr provided by the
 // `ctx`. The `tensorflow::PluginResource` wraps a resource by plugin (as a
 // opaque pointer, since TensorFlow cannot parse it). `delete_func` is needed
@@ -83,7 +67,23 @@ TF_CAPI_EXPORT extern void TF_LookupOrCreatePluginResource(
     void* (*create_func)(void*), void* create_func_args,
     void (*delete_func)(void*), TF_Status* status);
 
-// ----------------------   Coordination service -------------------------------
+// -------------------------  VariableInfo  ------------------------------------
+TF_CAPI_EXPORT extern TF_VariableInfo* TF_CreateVariableInfoFromContext(
+    TF_OpKernelContext* ctx, int index, TF_Status* status);
+
+TF_CAPI_EXPORT extern void TF_LockVariableInfos(TF_VariableInfo** vars,
+                                                int num_vars,
+                                                TF_Status* status);
+
+TF_CAPI_EXPORT extern void TF_AllocateTempForVariableInfo(
+    TF_OpKernelContext* ctx, TF_VariableInfo* var_info, TF_Status* status);
+
+TF_CAPI_EXPORT extern TF_Tensor* TF_GetTensorFromVariableInfo(
+    TF_VariableInfo* var_info, TF_Status* status);
+
+TF_CAPI_EXPORT extern void TF_DeleteVariableInfo(TF_VariableInfo* var_info);
+
+// ---------------------  Coordination service  --------------------------------
 // Returns a not owning pointer to the coordination service agent, which is
 // opaque to plugin. Plugin OpKernels need to use the accompanying C APIs to
 // access coordination service functionalities.
@@ -95,22 +95,30 @@ TF_CAPI_EXPORT extern bool TF_CoordinationServiceIsInitialized(
     TF_CoordinationServiceAgent* agent);
 
 TF_CAPI_EXPORT extern void TF_CoordinationServiceInsertKeyValue(
-    const char* key, const char* value, TF_CoordinationServiceAgent* agent,
-    TF_Status* status);
+    const char* key, int64_t key_size, const char* value, int64_t value_size,
+    TF_CoordinationServiceAgent* agent, TF_Status* status);
 
 // Obtains key-value from coorination service agent. The returned `TF_Buffer`
 // is a newly allocated buffer to hold the string key-value, and caller is
 // responsible for managing the lifetime. If error, `status` will be set and a
 // nullptr will be returned.
 TF_CAPI_EXPORT extern TF_Buffer* TF_CoordinationServiceGetKeyValue(
-    const char* key, TF_CoordinationServiceAgent* agent, TF_Status* status);
+    const char* key, int64_t key_size, TF_CoordinationServiceAgent* agent,
+    TF_Status* status);
 
 TF_CAPI_EXPORT extern void TF_CoordinationServiceDeleteKeyValue(
-    const char* key, TF_CoordinationServiceAgent* agent, TF_Status* status);
+    const char* key, int64_t key_size, TF_CoordinationServiceAgent* agent,
+    TF_Status* status);
 
-// ---------------------------  PJRT -------------------------------------------
+// ----------------------------  PJRT  -----------------------------------------
+// Passes the pointer to a vector of PJRT_NamedValue and number of optiosn to
+// set options for creating a PJRT client. Passes nullptr for create_options and
+// 0 for num_options if no options need to be set. You can use
+// ConvertToPjRtNamedValueList in
+// tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h to generate the options.
 TF_CAPI_EXPORT extern void TF_CreateAndSetPjRtCApiClient(
-    const char* device_type, TF_Status* status);
+    const char* device_type, TF_Status* status, PJRT_NamedValue* create_options,
+    int num_options);
 
 // Gets the `PJRT_Client*` stored in TF global ResourceManager.
 TF_CAPI_EXPORT extern PJRT_Client* TF_GetPjRtCClient(const char* device_type,

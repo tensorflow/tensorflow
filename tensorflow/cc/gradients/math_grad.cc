@@ -1034,8 +1034,9 @@ REGISTER_GRADIENT_OP("SegmentSum", SegmentSumGrad);
 // based on input matrix transposition combinations.
 Status MatMulGradHelper(const Scope& scope, const bool is_batch,
                         const Output& x0, const bool adj_x0, const Output& x1,
-                        const bool adj_x1, const Output& y0, const bool adj_y0,
-                        const Output& y1, const bool adj_y1,
+                        const bool adj_x1, const DataType x_data_type,
+                        const Output& y0, const bool adj_y0, const Output& y1,
+                        const bool adj_y1, const DataType y_data_type,
                         std::vector<Output>* grad_outputs) {
   if (is_batch == false) {
     auto dx =
@@ -1045,11 +1046,11 @@ Status MatMulGradHelper(const Scope& scope, const bool is_batch,
         MatMul(scope, y0, y1, MatMul::TransposeA(adj_y0).TransposeB(adj_y1));
     grad_outputs->push_back(dy);
   } else {
-    auto dx =
-        BatchMatMul(scope, x0, x1, BatchMatMul::AdjX(adj_x0).AdjY(adj_x1));
+    auto dx = BatchMatMulV3(scope, x0, x1, x_data_type,
+                            BatchMatMulV3::AdjX(adj_x0).AdjY(adj_x1));
     grad_outputs->push_back(dx);
-    auto dy =
-        BatchMatMul(scope, y0, y1, BatchMatMul::AdjX(adj_y0).AdjY(adj_y1));
+    auto dy = BatchMatMulV3(scope, y0, y1, y_data_type,
+                            BatchMatMulV3::AdjX(adj_y0).AdjY(adj_y1));
     grad_outputs->push_back(dy);
   }
   return scope.status();
@@ -1078,17 +1079,21 @@ Status MatMulGradCommon(const Scope& scope, const Operation& op,
   TF_RETURN_IF_ERROR(GetNodeAttr(product.node()->attrs(), attr_adj_y, &tb));
 
   if (!ta && !tb) {
-    return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, b, true, a,
-                            true, grad_inputs[0], false, grad_outputs);
+    return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, b, true,
+                            a.type(), a, true, grad_inputs[0], false, b.type(),
+                            grad_outputs);
   } else if (!ta && tb) {
     return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, b, false,
-                            grad_inputs[0], true, a, false, grad_outputs);
+                            a.type(), grad_inputs[0], true, a, false, b.type(),
+                            grad_outputs);
   } else if (ta && !tb) {
-    return MatMulGradHelper(scope, is_batch, b, false, grad_inputs[0], true, a,
-                            false, grad_inputs[0], false, grad_outputs);
+    return MatMulGradHelper(scope, is_batch, b, false, grad_inputs[0], true,
+                            a.type(), a, false, grad_inputs[0], false, b.type(),
+                            grad_outputs);
   }
   return MatMulGradHelper(scope, is_batch, b, true, grad_inputs[0], true,
-                          grad_inputs[0], true, a, true, grad_outputs);
+                          a.type(), grad_inputs[0], true, a, true, b.type(),
+                          grad_outputs);
 }
 
 Status MatMulGrad(const Scope& scope, const Operation& op,
@@ -1106,6 +1111,30 @@ Status BatchMatMulGrad(const Scope& scope, const Operation& op,
                           grad_outputs);
 }
 REGISTER_GRADIENT_OP("BatchMatMul", BatchMatMulGrad);
+
+Status BatchMatMulV2Grad(const Scope& scope, const Operation& op,
+                         const std::vector<Output>& grad_inputs,
+                         std::vector<Output>* grad_outputs) {
+  TF_RETURN_IF_ERROR(MatMulGradCommon(scope, op, true, grad_inputs, "adj_x",
+                                      "adj_y", grad_outputs));
+
+  // Reduce along the broadcasted batch dimensions.
+  Output sx = Shape(scope, op.input(0));
+  Output sy = Shape(scope, op.input(1));
+
+  Output x_batch_shape = Slice(scope, sx, {0}, Sub(scope, Shape(scope, sx), 2));
+  Output y_batch_shape = Slice(scope, sy, {0}, Sub(scope, Shape(scope, sy), 2));
+
+  auto reduce =
+      internal::BroadcastGradientArgs(scope, x_batch_shape, y_batch_shape);
+  (*grad_outputs)[0] =
+      Reshape(scope, ReduceSum(scope, (*grad_outputs)[0], reduce.r0), sx);
+  (*grad_outputs)[1] =
+      Reshape(scope, ReduceSum(scope, (*grad_outputs)[1], reduce.r1), sy);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("BatchMatMulV2", BatchMatMulV2Grad);
+REGISTER_GRADIENT_OP("BatchMatMulV3", BatchMatMulV2Grad);
 
 Status CumsumGrad(const Scope& scope, const Operation& op,
                   const std::vector<Output>& grad_inputs,

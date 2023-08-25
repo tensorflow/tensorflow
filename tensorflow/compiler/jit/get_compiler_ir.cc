@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/get_compiler_ir.h"
 
+#include <cstdint>
 #include <deque>
 #include <iterator>
 #include <memory>
@@ -22,11 +23,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/compilability_check_util.h"
 #include "tensorflow/compiler/jit/device_compiler.h"
+#include "tensorflow/compiler/jit/variable_info.h"
+#include "tensorflow/compiler/jit/variable_info_util.h"
+#include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
@@ -41,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -135,65 +143,93 @@ static StatusOr<std::string> BuildHLOString(
 }
 
 static StatusOr<std::vector<XlaCompiler::Argument>>
-BuildXlaCompilerArgumentFromFuncBody(const FunctionBody* fbody) {
+BuildXlaCompilerArgumentFromTensorSpec(
+    const FunctionBody* fbody, absl::Span<int const> must_be_constant_idxs,
+    absl::Span<const Tensor* const> inputs,
+    absl::Span<VariableInfo const> variable_args, Device* device,
+    absl::Span<const ArgShapeAndDType> flat_arg_shape_and_dtype) {
   TF_RET_CHECK(fbody != nullptr);
   auto& input_args = fbody->fdef.signature().input_arg();
   int input_arg_size = input_args.size();
-
-  // Shape info is not in input_arg. parse it from arg_attrs.
-  auto& arg_attrs = fbody->fdef.arg_attr();
-  if (arg_attrs.size() != input_arg_size) {
-    return errors::InvalidArgument(
-        "The function to be lowered uses some tf.Variable defined outside_"
-        "_the_function body.  This is not supported with using_tensor_spec."
-        "Please modify the function with pure functional style.");
-  }
-  std::vector<TensorShape> shapes;
-  shapes.reserve(input_arg_size);
-  for (const auto& attr : arg_attrs) {
-    const unsigned int& idx = attr.first;
-    bool has_function_input_shape = false;
-    for (const auto& attr_value : attr.second.attr()) {
-      if (attr_value.first == "_output_shapes") {
-        if (attr_value.second.list().shape().size() != 1) {
-          return errors::InvalidArgument(
-              "Invalid \"_output_shapes\" attribute value for attr_value: ",
-              attr_value.second.DebugString());
-        }
-        TensorShape s;
-        TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape(
-            attr_value.second.list().shape()[0], &s));
-        if (idx >= input_arg_size) {
-          return errors::InvalidArgument(
-              "attribute value shape index exceeds the number of function "
-              "input args");
-        }
-        shapes.push_back(s);
-        has_function_input_shape = true;
-      }
-    }
-    TF_RET_CHECK(has_function_input_shape);
-  }
-
-  // Build Xla Compiler Arguments
   std::vector<XlaCompiler::Argument> args;
-  args.resize(input_arg_size);
-  for (int64_t input_num = 0; input_num < input_arg_size; ++input_num) {
-    XlaCompiler::Argument& arg = args[input_num];
+  args.reserve(input_arg_size);
+
+  for (auto& arg_info : flat_arg_shape_and_dtype) {
+    XlaCompiler::Argument arg;
     arg.kind = XlaCompiler::Argument::kParameter;
-    arg.type = input_args[input_num].type();
-    arg.shape = shapes[input_num];
-    arg.name = input_args[input_num].name();
+    arg.type = arg_info.dtype;
+    arg.shape = arg_info.shape;
+    args.push_back(arg);
   }
+
+  // Build Xla Compiler Arguments from concrete_fn.captured_inputs
+  absl::flat_hash_map<int, const VariableInfo*> variable_info_lookup;
+  TF_RETURN_IF_ERROR(
+      CreateVariableInfoLookup(variable_args, variable_info_lookup));
+
+  for (const VariableInfo& info : variable_args) {
+    TF_RET_CHECK(!info.var() || info.lock_held() || info.shared_lock_held())
+        << "Need to hold the lock on resource variables "
+           "before calling BuildXlaCompilerArguments";
+    variable_info_lookup.emplace(info.index(), &info);
+  }
+
+  int offset = flat_arg_shape_and_dtype.size();
+  // Here it takes in the concrete_fn.captured_inputs and builds the appropriate
+  // XLA compiler arguments.
+  for (int64_t input_num = offset; input_num < input_arg_size; ++input_num) {
+    const Tensor* input = inputs[input_num];
+
+    XlaCompiler::Argument arg;
+    if (variable_info_lookup.count(input_num)) {
+      // Handles tf.resource variables.
+      TF_RET_CHECK(input->dtype() == DT_RESOURCE);
+      const VariableInfo& variable = *variable_info_lookup[input_num];
+      arg.kind = XlaCompiler::Argument::kResource;
+      arg.resource_kind = XlaResource::kVariable;
+      arg.definition_stack_trace = variable.definition_stack_trace();
+      TF_RET_CHECK(variable.var() && variable.var()->is_initialized);
+      const Tensor* value = variable.var()->tensor();
+      arg.type = value->dtype();
+      arg.shape = value->shape();
+      arg.initialized = true;
+    } else {
+      // Instead of embedding constant into HLO,
+      // we handle tf.constant as parameter to reduce size.
+      arg.kind = XlaCompiler::Argument::kParameter;
+      arg.type = input->dtype();
+      arg.shape = input->shape();
+    }
+    args.push_back(arg);
+  }
+
+  for (int64_t i = 0; i < input_arg_size; ++i) {
+    args[i].name = input_args[i].name();
+  }
+
   return args;
 }
 
+/**
+ * Clarifies the different meanings of 'input_arg_shape_and_dtype' and
+ * 'input_handles' in different cases.
+ *
+ * For TENSOR_SPEC case:
+ *   - `input_arg_shape_and_dtype`: Contains the shape and dtype of
+ * concrete_fn input args.
+ *   - `input_handles`: Contains the concrete_fn.captured_input tensors.
+ *
+ * For CONCRETE_INPUT case:
+ *   - `input_arg_shape_and_dtype`: it is empty.
+ *   - `input_handles`: Contains all concrete_fn inputs tensors, including
+ * captured inputs.
+ */
 StatusOr<std::string> GetCompilerIr(
     IrExportStage stage, ProcessFunctionLibraryRuntime* pflr,
     absl::string_view func_name, Device* dev, EagerContext* context,
-    absl::Span<const TensorHandle* const> inputs_handles) {
-  // input_handles vector is empty for using_tensor_spec case
-  bool using_tensor_spec = inputs_handles.empty() ? true : false;
+    absl::Span<const ArgShapeAndDType> input_arg_shape_and_dtype,
+    absl::Span<const TensorHandle* const> input_handles,
+    CompilerArgSource compiler_arg_source) {
   using XlaDeviceCompiler =
       DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
 
@@ -222,34 +258,35 @@ StatusOr<std::string> GetCompilerIr(
   TF_RETURN_IF_ERROR(GetBodyAndConstantsAndResources(
       flr, function, &fbody, &constant_arg_indices, &resource_arg_indices));
 
-  std::vector<const Tensor*> inputs;
-  std::deque<Tensor> inputs_storage;
-  inputs.reserve(inputs_handles.size());
-  std::vector<VariableInfo> variable_infos;
-  if (!using_tensor_spec) {
-    MemoryTypeVector input_memory_types =
-        GetInputMemoryTypes(fbody, constant_arg_indices, resource_arg_indices);
-    MemoryTypeVector output_memory_types = GetOutputMemoryTypes(fbody);
-    for (int i = 0; i < inputs_handles.size(); i++) {
-      const TensorHandle* th = inputs_handles[i];
-      const Tensor* t;
-      // Handle owns the tensor.
-      TF_RETURN_IF_ERROR(th->Tensor(&t));
-      if (absl::c_binary_search(constant_arg_indices, i)) {
-        // Need to make sure it's on the host.
-        inputs_storage.emplace_back(t->dtype(), t->shape());
-        TF_RETURN_IF_ERROR(
-            th->CopyToDevice(*context, /*d=*/nullptr, &inputs_storage.back()));
-        inputs.push_back(&inputs_storage.back());
-      } else {
-        inputs.push_back(t);
-      }
-    }
+  // `input_args` includes both concrete_fn input args and captured_input here.
+  auto& input_args = fbody->fdef.signature().input_arg();
+  // Here input_arg_size = len(flat_args) + len(captured_input)
+  int input_arg_size = input_args.size();
 
-    TF_RETURN_IF_ERROR(GetVariableInfosFromInputs(
-        rmgr, dev, inputs, resource_arg_indices, &variable_infos));
-    TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(variable_infos)));
+  std::vector<const Tensor*> inputs(input_arg_size);
+  std::deque<Tensor> inputs_storage;
+  std::vector<VariableInfo> variable_infos;
+  int offset = input_arg_shape_and_dtype.size();
+
+  for (int i = 0; i < input_handles.size(); i++) {
+    const TensorHandle* th = input_handles[i];
+    const Tensor* t;
+    // Handle owns the tensor.
+    TF_RETURN_IF_ERROR(th->Tensor(&t));
+    if (absl::c_binary_search(constant_arg_indices, i)) {
+      // Need to make sure it's on the host.
+      inputs_storage.emplace_back(t->dtype(), t->shape());
+      TF_RETURN_IF_ERROR(
+          th->CopyToDevice(*context, /*d=*/nullptr, &inputs_storage.back()));
+      inputs[i + offset] = &inputs_storage.back();
+    } else {
+      inputs[i + offset] = t;
+    }
   }
+
+  TF_RETURN_IF_ERROR(GetVariableInfosFromInputs(
+      rmgr, dev, inputs, resource_arg_indices, &variable_infos));
+  TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(variable_infos)));
 
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(dev);
 
@@ -270,7 +307,7 @@ StatusOr<std::string> GetCompilerIr(
 
   XlaCompiler::Options options;
   if (platform_info.device_type() == DEVICE_TPU && stream == nullptr) {
-    options = GenerateTfrtTpuCompilerOptions(*xla_device_compiler, *flr);
+    options = GenerateCompilerOptionsForTfrtTpu(*xla_device_compiler, *flr);
   } else {
     options = GenerateCompilerOptions(*xla_device_compiler, *flr, dev, stream,
                                       platform_info,
@@ -284,9 +321,12 @@ StatusOr<std::string> GetCompilerIr(
   XlaCompiler compiler(options);
 
   StatusOr<std::vector<XlaCompiler::Argument>> args;
-  if (using_tensor_spec) {
-    args = BuildXlaCompilerArgumentFromFuncBody(fbody);
-  } else {
+
+  if (compiler_arg_source == CompilerArgSource::TENSOR_SPEC) {
+    args = BuildXlaCompilerArgumentFromTensorSpec(fbody, constant_arg_indices,
+                                                  inputs, variable_infos, dev,
+                                                  input_arg_shape_and_dtype);
+  } else if (compiler_arg_source == CompilerArgSource::CONCRETE_INPUT) {
     args = XlaComputationLaunchContext::BuildXlaCompilerArguments(
         constant_arg_indices, inputs, variable_infos, dev);
   }

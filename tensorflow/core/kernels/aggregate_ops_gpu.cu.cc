@@ -18,10 +18,9 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/aggregate_ops.h"
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/aggregate_ops.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -157,7 +156,6 @@ struct Add9Functor<GPUDevice, T> {
 TF_CALL_int64(REGISTER_FUNCTORS);
 TF_CALL_uint32(REGISTER_FUNCTORS);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_FUNCTORS);
-TF_CALL_bfloat16(REGISTER_FUNCTORS);
 TF_CALL_COMPLEX_TYPES(REGISTER_FUNCTORS);
 
 #undef REGISTER_FUNCTORS

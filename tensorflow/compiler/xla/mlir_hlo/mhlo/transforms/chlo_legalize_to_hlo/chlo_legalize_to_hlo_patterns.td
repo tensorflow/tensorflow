@@ -352,3 +352,6 @@ def : Pat<(CHLO_IsNegInfOp NonComplexElementType:$input),
 
 def : Pat<(CHLO_ConstantOp $v),
           (MHLO_ConstantOp $v)>;
+
+def : Pat<(CHLO_TanOp $v),
+          (MHLO_TanOp $v)>;

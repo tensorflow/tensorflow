@@ -34,7 +34,6 @@ namespace xla {
 namespace ifrt {
 
 using PlatformId = ::xla::PjRtPlatformId;
-using ChannelHandle = ::xla::ChannelHandle;
 
 // TODO(hyeontaek): Generalize DeviceAssignment or hide it from the top-level
 // API.
@@ -44,6 +43,36 @@ using DeviceAssignment = ::xla::DeviceAssignment;
 // devices and memory attached to it.
 class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
  public:
+  // Describes the semantics the caller to `MakeArrayFromHostBuffer` expects
+  // from the runtime, in a total order from most restrictive to least
+  // restrictive.
+  //
+  // kImmutableOnlyDuringCall:
+  // The runtime may not hold references to `data` after the call to
+  // `MakeArrayFromHostBuffer` completes. The caller promises that `data` is
+  // immutable and will not be freed only for the duration of the
+  // `MakeArrayFromHostBuffer` call. `on_done_with_host_buffer` will be called
+  // before `MakeArrayFromHostBuffer` returns.
+
+  // kImmutableUntilTransferCompletes:
+  // The runtime may hold onto `data` after the call to
+  // `MakeArrayFromHostBuffer` returns while the runtime completes transfers to
+  // devices. The caller promises not to mutate or free `data` until the
+  // transfer completes, at which point the runtime will call
+  // `on_done_with_host_buffer`. It is also correct to wait (directly or
+  // indirectly) for the `Array`'s ready event. The runtime does not promise a
+  // certain ordering between an `on_done_with_host_buffer` call and the
+  // `Array`'s ready event.
+
+  // kZeroCopy:
+  // The `Array` may alias `data` internally and the runtime may use the `data`
+  // contents as long as the buffer is alive. The caller promises to keep `data`
+  // alive and not to mutate its contents as long as the buffer is alive; to
+  // notify the caller that the buffer may be freed, the runtime will call
+  // `on_done_with_host_buffer` when the `Array` is freed. The implementation is
+  // free to make a copy and downgrade the semantics to
+  // `kImmutableUntilTransferCompletes`. Many non-CPU runtimes will make a copy
+  // by default.
   using HostBufferSemantics = ::xla::PjRtClient::HostBufferSemantics;
 
   // Creates a new array from a host buffer.
@@ -100,13 +129,16 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const = 0;
   virtual StatusOr<Device*> LookupDevice(int device_id) const = 0;
-
-  virtual StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() = 0;
-  virtual StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() = 0;
+  virtual StatusOr<Device*> LookupAddressableDevice(
+      int local_hardware_id) const = 0;
 
   // TODO(hyeontaek): Potentially remove this method to encourage supporting
   // only ahead-of-time compilation.
   virtual Compiler* GetDefaultCompiler() = 0;
+
+  // Returns a topology description for that covers the provided devices.
+  virtual StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
+  GetTopologyForDevices(absl::Span<Device* const> devices) const = 0;
 
   static char ID;  // NOLINT
 };

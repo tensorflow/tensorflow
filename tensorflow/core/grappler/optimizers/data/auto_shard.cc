@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -89,7 +90,7 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 31> kPassThroughOps = {
+constexpr std::array<const char*, 32> kPassThroughOps = {
     "_Retval",
     "AssertNextDataset",
     "BatchDataset",
@@ -120,6 +121,7 @@ constexpr std::array<const char*, 31> kPassThroughOps = {
     "ShuffleDataset",
     "SkipDataset",
     "TakeDataset",
+    "UnbatchDataset",
     "WindowDataset",
 };
 
@@ -782,11 +784,13 @@ Status ApplyAutoShard(const NodeDef& sink_node, int64_t num_workers,
     case AutoShardPolicy::AUTO:
     default:
       Status s = ShardByFile(sink_node, num_workers, index, &flib, graph);
-      if (errors::IsNotFound(s)) {
-        LOG(WARNING) << "AUTO sharding policy will apply DATA sharding policy "
-                        "as it failed to apply FILE sharding policy because of "
-                        "the following reason: "
-                     << s.error_message();
+      if (absl::IsNotFound(s)) {
+        if (VLOG_IS_ON(2)) {
+          VLOG(2) << "AUTO sharding policy will apply DATA sharding policy "
+                     "as it failed to apply FILE sharding policy because of "
+                     "the following reason: "
+                  << s.message();
+        }
         *policy_applied = AutoShardPolicy::DATA;
         return ShardByData(sink_node, num_workers, index, num_replicas, graph);
       }

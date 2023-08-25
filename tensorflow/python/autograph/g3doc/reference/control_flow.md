@@ -475,7 +475,7 @@ has executed). AutoGraph keeps track of this by using a special value.
 This special value is converted to `None` (the default return value) upon
 exiting the function.
 
-Caution: TensorFlow control flow doe not support undefined values, and an
+Caution: TensorFlow control flow does not support undefined values, and an
 undefined return value is no exception. Therefore, AutoGraph will raise an
 error for TensorFlow control flow in which the return value is not known for
 all code paths.

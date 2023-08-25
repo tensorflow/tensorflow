@@ -142,13 +142,12 @@ struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM> {
 
     // Index batch_strides[IXDIM];
     Eigen::array<int64, IXDIM> batch_strides;
-    for (int dim = IXDIM - 1; dim >= 0; --dim) {
-      if (dim == IXDIM - 1) {
-        batch_strides[dim] = 1;
-      } else {
-        batch_strides[dim] =
-            batch_strides[dim + 1] * output_shape_prefix[dim + 1];
-      }
+    if (IXDIM > 0) {
+      batch_strides[IXDIM - 1] = 1;
+    }
+    for (int dim = IXDIM - 2; dim >= 0; --dim) {
+      batch_strides[dim] =
+          batch_strides[dim + 1] * output_shape_prefix[dim + 1];
     }
 
     GpuLaunchConfig config = GetGpuLaunchConfig(Toutput.size(), d);
@@ -200,8 +199,6 @@ TF_CALL_int64(DECLARE_GPU_SPECS);
 TF_CALL_int64(DECLARE_GPU_SPECS_MINMAX);
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS_MINMAX);
-TF_CALL_bfloat16(DECLARE_GPU_SPECS);
-TF_CALL_bfloat16(DECLARE_GPU_SPECS_MINMAX);
 TF_CALL_COMPLEX_TYPES(DECLARE_GPU_SPECS);
 
 #undef DECLARE_GPU_SPECS

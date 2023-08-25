@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/histogram_op.h"
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -161,7 +162,6 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
                           HistogramFixedWidthOp<GPUDevice, type, int32>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNELS);
-TF_CALL_bfloat16(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

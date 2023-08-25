@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_UNARY_OPS_TEST_H_
 #define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_UNARY_OPS_TEST_H_
 
+#include <string>
+
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_jit_cache.h"
 #include "tensorflow/core/framework/fake_input.h"

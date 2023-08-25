@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/core/ir/utils/shape_inference_utils.h"
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -49,7 +49,6 @@ limitations under the License.
 
 #define DEBUG_TYPE "tfg-shape-inference-utils"
 
-using tensorflow::shape_inference::DimensionHandle;
 using tensorflow::shape_inference::InferenceContext;
 using tensorflow::shape_inference::ShapeHandle;
 
@@ -94,7 +93,7 @@ std::optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
             ConvertMlirShapeToTF(ranked_type.getShape()), &shape);
     if (status.ok()) return shape;
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Extracts a PartialTensorShape from the MLIR attr.
@@ -106,7 +105,7 @@ std::optional<tensorflow::PartialTensorShape> GetShapeFromMlirAttr(Value v) {
       int arg_idx = arg.getArgNumber();
       auto attrs =
           func_op.getArgAttrOfType<ArrayAttr>(arg_idx, "tf._output_shapes");
-      if (!attrs || attrs.size() != 1) return llvm::None;
+      if (!attrs || attrs.size() != 1) return std::nullopt;
 
       // "tf._output_shapes" in certain models may not store the shape as
       // ShapeAttr, ignore them because we don't know how to interpret it.
@@ -115,7 +114,7 @@ std::optional<tensorflow::PartialTensorShape> GetShapeFromMlirAttr(Value v) {
         return tensorflow::PartialTensorShape(shape_attr.getShape());
     }
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Gets the subtype's shape and data type for `type`. Templated to support both
@@ -168,7 +167,7 @@ LogicalResult ReportErrorFromShapeFunction(std::optional<Location> location,
 // Extracts shape from a shape handle and inference context.
 std::optional<SmallVector<int64_t, 8>> GetShapeFromHandle(
     InferenceContext& context, const ShapeHandle& sh) {
-  if (!context.RankKnown(sh)) return llvm::None;
+  if (!context.RankKnown(sh)) return std::nullopt;
   SmallVector<int64_t, 8> shape;
   for (int dim : llvm::seq<int>(0, context.Rank(sh)))
     shape.push_back(context.Value(context.Dim(sh, dim)));
@@ -231,7 +230,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
                            /*ignore_unregistered_attrs=*/true, &attributes);
     if (!status.ok()) {
       VLOG(3) << op_name.data()
-              << " failed to get AttrValue: " << status.error_message();
+              << " failed to get AttrValue: " << status.message();
       return failure();
     }
   } else {
@@ -241,8 +240,8 @@ LogicalResult InferReturnTypeComponentsForTFOp(
         op, &node_def, dialect,
         [&](Value value) { return GetValueName(value, dialect); });
     if (!status.ok()) {
-      VLOG(3) << op_name.data() << " failed to be converted to NodeDef: "
-              << status.error_message();
+      VLOG(3) << op_name.data()
+              << " failed to be converted to NodeDef: " << status.message();
       return failure();
     }
     attributes = node_def.attr();
@@ -277,13 +276,13 @@ LogicalResult InferReturnTypeComponentsForTFOp(
                      /*input_tensors_as_shapes=*/{}, handle_shapes_and_types);
   if (!c.construction_status().ok()) {
     VLOG(3) << "InferenceContext construction failed on " << op_name.data()
-            << ": " << c.construction_status().error_message();
+            << ": " << c.construction_status().message();
     return failure();
   }
   auto status = c.Run(op_reg_data->shape_inference_fn);
   if (!status.ok()) {
     return ReportErrorFromShapeFunction(location, op_name,
-                                        status.error_message());
+                                        std::string(status.message()));
   }
 
   std::vector<const tensorflow::Tensor*> input_tensors(num_operands);
@@ -321,8 +320,8 @@ LogicalResult InferReturnTypeComponentsForTFOp(
             has_new_inputs = true;
           } else {
             VLOG(4) << "Error converting input " << input << " of op '"
-                    << op_name.data()
-                    << "' to Tensor: " << status.error_message() << "\n";
+                    << op_name.data() << "' to Tensor: " << status.message()
+                    << "\n";
           }
         }
       }
@@ -350,7 +349,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
     auto status = c.Run(op_reg_data->shape_inference_fn);
     if (!status.ok()) {
       return ReportErrorFromShapeFunction(location, op_name,
-                                          status.error_message());
+                                          std::string(status.message()));
     }
   }
 

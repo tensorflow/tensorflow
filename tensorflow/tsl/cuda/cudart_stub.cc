@@ -25,8 +25,8 @@ void *GetDsoHandle() {
   static auto handle = []() -> void * {
     auto handle_or = tsl::internal::DsoLoader::GetCudaRuntimeDsoHandle();
     if (!handle_or.ok()) {
-      LOG(INFO) << "Ignore above cudart dlerror if you do not have a GPU set "
-                   "up on your machine.";
+      LOG(INFO) << "Could not find cuda drivers on your machine, "
+                   "GPU will not be used.";
       return nullptr;
     }
     return handle_or.value();

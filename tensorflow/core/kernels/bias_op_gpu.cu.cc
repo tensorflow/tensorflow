@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "tensorflow/core/kernels/bias_op_gpu.h"
+
 #include <algorithm>
 
 #include "tensorflow/core/framework/register_types.h"
@@ -24,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/bias_op.h"
-#include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"
 #include "tensorflow/core/platform/types.h"
@@ -296,7 +297,6 @@ void BiasGradGPU<T>::DoColReduction(OpKernelContext* context, T* output,
   template struct BiasGradGPU<T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
-TF_CALL_bfloat16(DEFINE_GPU_SPECS);
 
 // No BiasGrad kernel for int32.
 template struct BiasGPU<int32>;

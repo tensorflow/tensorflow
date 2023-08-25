@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace mlir {
 namespace TFL {

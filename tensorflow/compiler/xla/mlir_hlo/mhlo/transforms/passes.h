@@ -71,6 +71,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeScatterPass();
 // Rewrites gather into transposes, reshapes and a simpler gather.
 std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeGatherPass();
 
+// Rewrites dot operands that contain unit dimension.
+std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeDotPass();
+
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
@@ -154,9 +157,19 @@ std::unique_ptr<OperationPass<func::FuncOp>> createOptimizeMhloPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerComplexPass();
 std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeCreateTokenToAfterAllPass();
+std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeCrossReplicaSumToAllReducePass();
+std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeDotGeneralToDotPass();
+std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeDotToDotGeneralPass();
+std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeEinsumToDotGeneralPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeGatherToTorchIndexSelectPass();
+std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeTorchIndexSelectToGatherPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createFlattenTuplePass();
 
 // Creates a pass for expanding mhlo.tuple ops.
@@ -178,6 +191,9 @@ std::unique_ptr<OperationPass<ModuleOp>> createHloLegalizeToStablehloPass();
 
 // Legalizes from the StableHLO dialect to the MHLO dialect.
 std::unique_ptr<OperationPass<ModuleOp>> createStablehloLegalizeToHloPass();
+
+// Legalizes from the Shape dialect to the MHLO dialect.
+std::unique_ptr<OperationPass<func::FuncOp>> createShapeLegalizeToHloPass();
 
 // Test passes.
 std::unique_ptr<Pass> createTestInferShapedTypeMethodsPass();

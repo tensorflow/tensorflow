@@ -1524,6 +1524,17 @@ TEST(Tensor, Slice_Basic) {
       EXPECT_EQ(1.0, y.unaligned_flat<float>()(i));
     }
   }
+  {
+    // Test unaligned access via a Slice for 8-bit data type.
+    Tensor x(DT_INT8, TensorShape({30}));
+    x.flat<int8>().setConstant(0);
+
+    // Take an unaligned slice.
+    Tensor y = x.Slice(1, 13);
+#if EIGEN_MAX_ALIGN_BYTES > 1
+    EXPECT_FALSE(y.IsAligned());
+#endif
+  }
 }
 
 TEST(Tensor, SubSlice_Basic) {

@@ -31,11 +31,10 @@ export TF_NEED_CUDA=1
 export TF_CUDA_COMPUTE_CAPABILITIES=3.7
 
 yes "" | $PYTHON_BIN_PATH configure.py
-echo "build --distinct_host_configuration=false" >> .tf_configure.bazelrc
 
 bazel clean
 # Run bazel test command. Double test timeouts to avoid flakes.
-bazel test --config=cuda --test_tag_filters=-no_gpu,-benchmark-test,-no_oss -k \
+bazel test --config=cuda --test_tag_filters=-no_gpu,-benchmark-test,-no_oss,-oss_excluded -k \
     --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
     --test_size_filters=small,medium \
     --build_tests_only --test_output=errors --local_test_jobs=8 \

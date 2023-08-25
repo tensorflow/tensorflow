@@ -44,13 +44,13 @@ REGISTER_OP("Test>Op2")
   // EqualsProto is not available in OSS. b/135192747
   EXPECT_EQ(actual.offsets(0).name(), "Test>Op1");
   EXPECT_EQ(actual.offsets(0).filepath(), fname);
-  EXPECT_EQ(actual.offsets(0).start(), 1);
-  EXPECT_EQ(actual.offsets(0).end(), 1);
+  EXPECT_EQ(actual.offsets(0).start(), 13);
+  EXPECT_EQ(actual.offsets(0).end(), 23);
 
   EXPECT_EQ(actual.offsets(1).name(), "Test>Op2");
   EXPECT_EQ(actual.offsets(1).filepath(), fname);
-  EXPECT_EQ(actual.offsets(1).start(), 26);
-  EXPECT_EQ(actual.offsets(1).end(), 26);
+  EXPECT_EQ(actual.offsets(1).start(), 38);
+  EXPECT_EQ(actual.offsets(1).end(), 48);
 }
 
 }  // namespace

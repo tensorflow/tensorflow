@@ -616,12 +616,12 @@ def DecomposeCollectiveReduceV2 :
     (TF_CollectiveReduceV2Op:$src_op
        $input, $group_size, $group_key, $instance_key, $ordering_token,
        $merge_op, $final_op, $communication_hint, $timeout_seconds,
-       $max_subdivs_per_device
+       $is_stateless, $max_subdivs_per_device
     ),
     [(TF_CollectiveReduceV2Op
        $input, $group_size, $group_key, $instance_key, (EmptyList),
        $merge_op, $final_op, $communication_hint, $timeout_seconds,
-       $max_subdivs_per_device
+       $is_stateless, $max_subdivs_per_device
     )],
     [(HasSingleElement $ordering_token)]
    >;

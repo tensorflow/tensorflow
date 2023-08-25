@@ -39,6 +39,8 @@ limitations under the License.
 
 namespace xla {
 
+class BufferAssignmentProto;
+
 // A base class for running an HloModule. This executes the given HloModule on a
 // certain backend directly without using the client interface. HloModule can be
 // explicitly built, or loaded from a serialization file (e.g., hlo proto
@@ -56,7 +58,8 @@ class HloRunner : public HloRunnerInterface {
   ~HloRunner() override;
 
   // Transfers data between the host and device.
-  StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(const Literal& literal);
+  StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(const Literal& literal,
+                                                       int64_t param_no);
   StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
       absl::Span<const Literal* const> literals);
   StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
@@ -76,6 +79,14 @@ class HloRunner : public HloRunnerInterface {
                             bool run_hlo_passes,
                             ExecutionProfile* profile) override;
 
+  using HloRunnerInterface::ExecuteWithBufferAssignment;
+
+  StatusOr<Literal> ExecuteWithBufferAssignment(
+      std::unique_ptr<HloModule> module,
+      const BufferAssignmentProto* buffer_assignment_proto,
+      absl::Span<const Literal* const> arguments, bool run_hlo_passes,
+      ExecutionProfile* profile) override;
+
   using HloRunnerInterface::ExecuteWithExecutable;
 
   StatusOr<Literal> ExecuteWithExecutable(
@@ -84,6 +95,12 @@ class HloRunner : public HloRunnerInterface {
 
   // As Execute(), but accepts and returns device buffers instead of host
   // buffers.
+  //
+  // ExecuteWithMovedDeviceBuffers is more memory-safe, but it consumes the
+  // arguments. Please consider using that.
+  //
+  // This may overwrite the values of the arguments if the the module has
+  // aliasing.
   StatusOr<ExecutionOutput> ExecuteWithDeviceBuffers(
       std::unique_ptr<HloModule> module,
       absl::Span<ScopedShapedBuffer const> arguments,
@@ -93,10 +110,35 @@ class HloRunner : public HloRunnerInterface {
       Executable* executable, absl::Span<ScopedShapedBuffer const> arguments,
       ExecutionProfile* profile = nullptr);
 
+  // As Execute(), but accepts and returns device buffers instead of host
+  // buffers.
+  //
+  // This is a memory-safer version of ExecuteWithDeviceBuffers, but it consumes
+  // the arguments.
+  StatusOr<ExecutionOutput> ExecuteWithMovedDeviceBuffers(
+      std::unique_ptr<HloModule> module,
+      std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes = true,
+      ExecutionProfile* profile = nullptr);
+
+  StatusOr<ExecutionOutput> ExecuteWithMovedDeviceBuffersAndBufferAssignment(
+      std::unique_ptr<HloModule> module,
+      const BufferAssignmentProto* buffer_assignment_proto,
+      std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes = true,
+      ExecutionProfile* profile = nullptr);
+
+  StatusOr<ExecutionOutput> ExecuteWithMovedDeviceBuffers(
+      Executable* executable, std::vector<ScopedShapedBuffer> arguments,
+      ExecutionProfile* profile = nullptr);
+
   // Creates an executable object given an HLO module. If run_hlo_passes is
   // true, the HLO passes will be run as part of compilation.
   StatusOr<std::unique_ptr<Executable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
+
+  StatusOr<std::unique_ptr<Executable>> CreateExecutableWithBufferAssignment(
+      std::unique_ptr<HloModule> module,
+      const BufferAssignmentProto* /*buffer_assignment_proto*/,
+      bool run_hlo_passes) override;
 
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
@@ -130,7 +172,7 @@ class HloRunner : public HloRunnerInterface {
       std::function<int64_t(int64_t)> argument_count_provider,
       std::function<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
-      DeviceAssignment* device_assignment = nullptr);
+      DeviceAssignment* device_assignment) override;
 
   // If backend is not created in the constructor, creates and returns the
   // default backend. If creation fails, crashes the program.
@@ -147,6 +189,10 @@ class HloRunner : public HloRunnerInterface {
   }
 
  private:
+  StatusOr<ExecutionOutput> ExecuteWithExecutionInputs(
+      Executable* executable, std::vector<ExecutionInput> arguments,
+      ExecutionProfile* profile);
+
   // Creates a ServiceExecutableRunOptions object to configure a run on device,
   // using the provided stream object. If device_assignment is not nullptr, it
   // will be used to configure the replication parameters. Replicated executions
@@ -169,6 +215,8 @@ class HloRunner : public HloRunnerInterface {
   std::unique_ptr<Backend> backend_;
 
   DeviceShapeRepresentationFn device_shape_representation_fn_;
+
+  const ComputationLayout* entry_computation_layout_ = nullptr;
 };
 
 }  // namespace xla

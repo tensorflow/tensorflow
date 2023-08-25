@@ -31,6 +31,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
@@ -38,8 +39,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import default_gradient
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_functional_ops
+from tensorflow.python.ops import gen_optional_ops
 from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import math_ops
@@ -254,7 +255,8 @@ def _build_cond(pred,
 
   # Create the If op.
   with ops.control_dependencies(
-      list(true_graph.control_captures) + list(false_graph.control_captures)):
+      list(true_graph.function_captures.control) + list(
+          false_graph.function_captures.control)):
     true_stateful_ops = [
         op for op in true_graph.get_operations() if op._is_stateful
     ]
@@ -332,7 +334,7 @@ def get_func_graphs(op):
       func_graph = util.get_func_graph(op, input_shapes, name_attr_list.name)
     for external_t, internal_t in zip(inputs, func_graph.inputs):
       handle_data_util.copy_handle_data(external_t, internal_t)
-    func_graph.reset_captures(zip(inputs, func_graph.inputs))
+    func_graph.function_captures.reset_captures(inputs, func_graph.inputs)
     # Link the op so that the gradient code can use it.
     func_graph._forward_cond = op
     return func_graph
@@ -583,7 +585,8 @@ def _make_inputs_match(branch_graphs, branch_inputs):
     branch_graph.inputs = input_list
 
     # Rewrite the FuncGraphs' state to reflect the new inputs.
-    branch_graph.reset_captures(zip(new_inputs, branch_graph.inputs))
+    branch_graph.function_captures.reset_captures(
+        new_inputs, branch_graph.inputs)
 
   return new_inputs
 
@@ -648,7 +651,7 @@ def _make_output_composite_tensors_match(op_type, branch_graphs):
     for branch_idx, branch_out in enumerate(branch_outs):
       if isinstance(branch_out, indexed_slices.IndexedSlices):
         continue
-      elif isinstance(branch_out, ops.Tensor):
+      elif isinstance(branch_out, tensor_lib.Tensor):
         with branch_graphs[branch_idx].as_default():
           branch_outputs[branch_idx][output_idx] = math_ops._as_indexed_slices(
               branch_out)
@@ -763,7 +766,7 @@ def _pack_sequence_as(structured_outputs, op_outputs):
 
 def _wrap_intermediates(func_graph, intermediates):
   with func_graph.as_default():
-    return [gen_dataset_ops.optional_from_value([t]) for t in intermediates]
+    return [gen_optional_ops.optional_from_value([t]) for t in intermediates]
 
 
 def _create_dummy_input(func_graph, template_tensor):
@@ -792,7 +795,7 @@ def _create_none_optionals(func_graph, n):
     A list of tensors in func_graph.
   """
   with func_graph.as_default():
-    return [gen_dataset_ops.optional_none() for _ in range(n)]
+    return [gen_optional_ops.optional_none() for _ in range(n)]
 
 
 # TODO(b/265317139): remove this function and move this dynamic dimension
@@ -1038,15 +1041,16 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
         else:
           # 'tensor' hasn't been wrapped, do it now.
           with self._forward_graph.as_default():
-            optional = gen_dataset_ops.optional_from_value([tensor])
+            optional = gen_optional_ops.optional_from_value([tensor])
           self.op_needs_rewrite = True
         self._wrapped_intermediates[tensor_id] = optional
 
       optional = self._wrapped_intermediates[tensor_id]
       captured_optional = super(_CondGradFuncGraph,
                                 self)._capture_helper(optional, name)
-      captured_tensor = gen_dataset_ops.optional_get_value(
-          captured_optional, [tensor.dtype], [tensor.shape])[0]
+      captured_tensor = gen_optional_ops.optional_get_value(
+          captured_optional, [tensor.dtype], [tensor.shape]
+      )[0]
 
     self._indirect_captures[tensor_id] = captured_tensor
     return captured_tensor
@@ -1234,7 +1238,7 @@ def _build_case(branch_index,
 
   # Create the Case op.
   with ops.control_dependencies(
-      sum((list(bg.control_captures) for bg in branch_graphs), [])):
+      sum((list(bg.function_captures.control) for bg in branch_graphs), [])):
 
     def _make_op(inputs):
       case_op, tensors = util.get_op_and_outputs(op_fn(

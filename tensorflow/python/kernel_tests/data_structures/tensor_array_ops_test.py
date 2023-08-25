@@ -30,7 +30,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -41,6 +42,7 @@ from tensorflow.python.ops import tensor_array_grad
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
@@ -166,7 +168,7 @@ class TensorArrayTest(test.TestCase):
         return w2.concat()
 
       def _write(index, output):
-        elements = control_flow_ops.cond(
+        elements = cond.cond(
             math_ops.less(index, 3), _concat_1, _concat_2)
         return (index + 1, output.write(index, elements))
 
@@ -176,8 +178,8 @@ class TensorArrayTest(test.TestCase):
                         dtype=dtypes.int32,
                         size=num_iterations,
                         infer_shape=False))
-      _, final_state = control_flow_ops.while_loop(
-          lambda i, _: i < num_iterations, _write, init_state)
+      _, final_state = while_loop.while_loop(lambda i, _: i < num_iterations,
+                                             _write, init_state)
 
       c0 = final_state.concat()
 
@@ -981,14 +983,14 @@ class TensorArrayTest(test.TestCase):
 
         def body(time, ta_t, state):
           sliced = array_ops.slice(
-              v0, begin=array_ops.stack([time, 0]), size=[1, -1])
+              v0, begin=array_ops_stack.stack([time, 0]), size=[1, -1])
           sliced = array_ops.squeeze(sliced)
           out = sliced + var + state
           state += sliced
           ta_t = ta_t.write(time, out)
           return (time + 1, ta_t, state)
 
-        (unused_0, h_final, unused_2) = control_flow_ops.while_loop(
+        (unused_0, h_final, unused_2) = while_loop.while_loop(
             cond=lambda time, unused_1, unused_2: time < 3,
             body=body,
             loop_vars=(time_0, ta, state0),
@@ -1081,20 +1083,20 @@ class TensorArrayTest(test.TestCase):
         c = lambda i, acc: i < 5
 
         def b(i, acc):
-          x1 = control_flow_ops.cond(
+          x1 = cond.cond(
               math_ops.equal(i, 0), lambda: x,
               lambda: math_ops.multiply(acc.read(i - 1), 2.0))
           return i + 1, acc.write(i, x1)
 
-        i1, acc1 = control_flow_ops.while_loop(c, b, [i, acc])
+        i1, acc1 = while_loop.while_loop(c, b, [i, acc])
 
         z = constant_op.constant(0.0)
 
         def fn(i, acc):
           return i + 1, acc.write(i, z)
 
-        _, acc2 = control_flow_ops.while_loop(lambda i, acc: i < num_steps, fn,
-                                              [i1, acc1])
+        _, acc2 = while_loop.while_loop(lambda i, acc: i < num_steps, fn,
+                                        [i1, acc1])
 
         r = acc2.stack()
         return r
@@ -1109,7 +1111,7 @@ class TensorArrayTest(test.TestCase):
   def testShapeAfterWhileLoop(self):
     size = 10
     ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=size)
-    _, ta = control_flow_ops.while_loop(
+    _, ta = while_loop.while_loop(
         lambda i, _: i < size,
         lambda i, ta: (i + 1, ta.write(i, [[0.]])), [0, ta],
         parallel_iterations=1)
@@ -1649,7 +1651,7 @@ class TensorArrayTest(test.TestCase):
       with ops.device("/job:worker/task:1/cpu:0"):
         return i + 1, ta_i.write(i, constant_op.constant(0.0))
 
-    _, ta_out = control_flow_ops.while_loop(
+    _, ta_out = while_loop.while_loop(
         lambda i, ta: i < 2, _body, loop_vars=[0, ta])
 
     session = session_lib.Session(self._workers[0].target)
@@ -1681,7 +1683,7 @@ class TensorArrayTest(test.TestCase):
       with ops.device("/job:worker/task:1/cpu:0"):
         return i + 1, ta_i.write(i, constant_op.constant(0.0))
 
-    _, ta_out = control_flow_ops.while_loop(
+    _, ta_out = while_loop.while_loop(
         lambda i, ta: i < 2, _body, loop_vars=[0, ta])
 
     session = session_lib.Session(self._workers[0].target)
@@ -1846,13 +1848,29 @@ class TensorArrayTest(test.TestCase):
     ta = ta.write(0, [0])
     self.assertEqual([42, 1], ta.stack().shape.as_list())
 
+  def testTensorArrayConcatFailsWhenMissingStepContainer(self):
+    @def_function.function
+    def func():
+      y = data_flow_ops.TensorArrayConcatV2(
+          handle=["a", "b"],
+          flow_in=0.1,
+          dtype=dtypes.int32,
+          element_shape_except0=1,
+      )
+      return y
+
+    with self.assertRaisesRegex(
+        errors.NotFoundError, "Container .* does not exist"
+    ):
+      self.evaluate(func())
+
 
 class TensorArrayBenchmark(test.Benchmark):
 
   def _tensorArrayWriteInWhile(self):
     size = 10000
     ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=size)
-    (_, ta) = control_flow_ops.while_loop(
+    (_, ta) = while_loop.while_loop(
         lambda i, _: i < size,
         lambda i, ta: (i + 1, ta.write(i, 0.)), [0, ta],
         parallel_iterations=1)

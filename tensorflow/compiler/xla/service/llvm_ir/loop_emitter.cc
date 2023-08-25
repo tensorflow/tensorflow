@@ -92,8 +92,16 @@ BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
              target_arrays_vec.size());
 
     for (int64_t i = 0; i < target_arrays_vec.size(); ++i) {
+      IrArray::Index used_index = array_index;
+      if (i > 0 && !ShapeUtil::EqualIgnoringElementType(
+                       target_arrays_vec[i].GetShape(),
+                       target_arrays_vec[0].GetShape())) {
+        used_index =
+            used_index.SourceIndexOfBitcast(target_arrays_vec[0].GetShape(),
+                                            target_arrays_vec[i].GetShape(), b);
+      }
       target_arrays_vec[i].EmitWriteArrayElement(
-          array_index, b->CreateExtractValue(target_element, i), b);
+          used_index, b->CreateExtractValue(target_element, i), b);
     }
     return OkStatus();
   };

@@ -416,33 +416,34 @@ TEST(QuantizeOpTest, Int8Uint8SmallerScaleNeonPath) {
                         147, 145, 143, 141, 139, 137, 135, 133, 131, 129}));
 }
 
-//  Input scale 1.000000, output scale 2.000000, input zeropoint -1, output
-//  zeropoint 127
+//  Input scale 0.500000, output scale 1.000000, input zeropoint -1, output
+//  zeropoint 127.
 TEST(QuantizeOpTest, Int8Uint8LargerScale) {
-  QuantizeOpModel m({TensorType_INT8, {1, 1, 2, 5}, -127, 128},
-                    {TensorType_UINT8, {1, 1, 2, 5}, -254, 256});
+  QuantizeOpModel m({TensorType_INT8, {1, 1, 2, 5}, -63.5, 63},
+                    {TensorType_UINT8, {1, 1, 2, 5}, -127, 128});
 
-  // Input will quantized to {0,1,2,3,4,5,6,7,8,9}.
+  // Input will quantized to {2,4,6,8,10,12,14,16,18,20}.
   m.SetInputAndQuantize<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput<uint8_t>(),
-      ElementsAreArray({128, 128, 129, 129, 130, 130, 131, 131, 132, 132}));
+      ElementsAreArray({128, 129, 130, 131, 132, 133, 134, 135, 136, 137}));
 }
 
 // Same as previous test, except more data to hit the neon path.
 TEST(QuantizeOpTest, Int8Uint8LargerScaleNeonPath) {
-  QuantizeOpModel m({TensorType_INT8, {1, 1, 4, 5}, -127, 128},
-                    {TensorType_UINT8, {1, 1, 4, 5}, -254, 256});
+  QuantizeOpModel m({TensorType_INT8, {1, 1, 4, 5}, -63.5, 63},
+                    {TensorType_UINT8, {1, 1, 4, 5}, -127, 128});
 
-  // Input will quantized to {0,1,2,3,4,5,6,7,8,9,9,8,7,6,5,4,3,2,1,0}.
+  // Input will quantized to
+  // {2,4,6,8,10,12,14,16,18,20,20,18,16,14,12,10,8,6,4,2}.
   m.SetInputAndQuantize<int8_t>(
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput<uint8_t>(),
-      ElementsAreArray({128, 128, 129, 129, 130, 130, 131, 131, 132, 132,
-                        132, 132, 131, 131, 130, 130, 129, 129, 128, 128}));
+      ElementsAreArray({128, 129, 130, 131, 132, 133, 134, 135, 136, 137,
+                        137, 136, 135, 134, 133, 132, 131, 130, 129, 128}));
 }
 
 // input scale 0.500000, output scale 0.500000, input zeropoint 127, output

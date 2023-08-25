@@ -58,7 +58,9 @@ ENTRY main {
   ROOT r = f32[4,2]{1,0} reshape(p)
 }
 )";
-  CheckReshapeDecomposer(hlo, std::nullopt);
+  CheckReshapeDecomposer(hlo, R"(
+// CHECK: [[INSTR_0:%[^ ]+]] = f32[4,2]{1,0} bitcast([[INSTR_1:%[^ ]+]])
+  )");
 }
 
 TEST_F(ReshapeDecomposerTest, AlignableOutput) {
@@ -74,7 +76,7 @@ ENTRY main {
 )";
 
   CheckReshapeDecomposer(hlo, R"(
-// CHECK: [[INSTR_0:%[^ ]+]] = f32[4,2,3]{2,1,0} reshape([[INSTR_1:%[^ ]+]])
+// CHECK: [[INSTR_0:%[^ ]+]] = f32[4,2,3]{2,1,0} bitcast([[INSTR_1:%[^ ]+]])
 // CHECK-NEXT: ROOT [[INSTR_2:%[^ ]+]] = f32[4,2,3]{0,1,2} copy([[INSTR_0]])
 )");
 }
@@ -92,7 +94,7 @@ ENTRY main {
 )";
   CheckReshapeDecomposer(hlo, R"(
 // CHECK: [[INSTR_0:%[^ ]+]] = f32[4,2,3]{2,1,0} copy([[INSTR_1:%[^ ]+]])
-// CHECK-NEXT: ROOT [[INSTR_2:%[^ ]+]] = f32[8,3]{1,0} reshape([[INSTR_0]])
+// CHECK-NEXT: ROOT [[INSTR_2:%[^ ]+]] = f32[8,3]{1,0} bitcast([[INSTR_0]])
 )");
 }
 
@@ -109,7 +111,7 @@ ENTRY main {
 )";
   CheckReshapeDecomposer(hlo, R"(
 // CHECK: [[INSTR_0:%[^ ]+]] = f32[4,2,3,8]{3,2,1,0} copy([[INSTR_1:%[^ ]+]])
-// CHECK-NEXT: [[INSTR_2:%[^ ]+]] = f32[8,3,2,4]{3,2,1,0} reshape([[INSTR_0]])
+// CHECK-NEXT: [[INSTR_2:%[^ ]+]] = f32[8,3,2,4]{3,2,1,0} bitcast([[INSTR_0]])
 // CHECK-NEXT: ROOT [[INSTR_3:%[^ ]+]] = f32[8,3,2,4]{0,2,1,3} copy([[INSTR_2]])
 )");
 }

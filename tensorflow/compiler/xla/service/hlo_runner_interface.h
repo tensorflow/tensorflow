@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -34,6 +35,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
+
+class BufferAssignmentProto;
 
 // A base class for running an HloModule. This executes the given HloModule on a
 // certain backend directly without using the client interface. HloModule can be
@@ -113,6 +116,19 @@ class HloRunnerInterface {
   virtual StatusOr<std::unique_ptr<Executable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) = 0;
 
+  // Same as above, except it takes buffer assignment as input.
+  // Note: The default implementation of the API here does not utilize the given
+  // buffer assignment. A derived runner interface is expected to override the
+  // following method to achieve this functionality.
+  virtual StatusOr<std::unique_ptr<Executable>>
+  CreateExecutableWithBufferAssignment(
+      std::unique_ptr<HloModule> module,
+      const BufferAssignmentProto* /*buffer_assignment_proto*/,
+      bool run_hlo_passes) {
+    LOG(WARNING) << "Ignoring the buffer assignment proto provided.";
+    return CreateExecutable(std::move(module), run_hlo_passes);
+  }
+
   // Executes the given module with given literals as input and returns the
   // result as a Literal.
   //
@@ -134,7 +150,35 @@ class HloRunnerInterface {
                                     bool run_hlo_passes,
                                     ExecutionProfile* profile) = 0;
 
-  // Same as above, but with Executable as input.
+  // Same as above 3 methods, but with buffer assignment specified.
+  StatusOr<Literal> ExecuteWithBufferAssignment(
+      std::unique_ptr<HloModule> module,
+      const BufferAssignmentProto* buffer_assignment_proto,
+      absl::Span<const Literal* const> arguments, bool run_hlo_passes = true) {
+    return ExecuteWithBufferAssignment(std::move(module),
+                                       buffer_assignment_proto, arguments,
+                                       run_hlo_passes, nullptr);
+  }
+
+  StatusOr<Literal> ExecuteWithBufferAssignment(
+      std::unique_ptr<HloModule> module,
+      const BufferAssignmentProto* buffer_assignment_proto,
+      absl::Span<const Literal> arguments, bool run_hlo_passes = true,
+      ExecutionProfile* profile = nullptr);
+
+  // Note: The default implementation of the API here does not utilize the given
+  // buffer assignment. A derived runner interface is expected to override the
+  // following method to achieve this functionality.
+  virtual StatusOr<Literal> ExecuteWithBufferAssignment(
+      std::unique_ptr<HloModule> module,
+      const BufferAssignmentProto* /*buffer_assignment_proto*/,
+      absl::Span<const Literal* const> arguments, bool run_hlo_passes,
+      ExecutionProfile* profile) {
+    LOG(WARNING) << "Ignoring the buffer assignment proto provided.";
+    return Execute(std::move(module), arguments, run_hlo_passes, profile);
+  }
+
+  // Same as 3 Execute methods above, but with Executable as input.
   StatusOr<Literal> ExecuteWithExecutable(Executable* executable,
                                           absl::Span<const Literal> arguments,
                                           ExecutionProfile* profile = nullptr);

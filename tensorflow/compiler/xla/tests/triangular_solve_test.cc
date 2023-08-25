@@ -448,6 +448,18 @@ class TriangularSolveParametricTest
 XLA_TEST_P(TriangularSolveParametricTest, Random) {
   TriangularSolveTestSpec spec = GetParam();
 
+  if (client_->backend()
+          .default_stream_executor()
+          ->GetDeviceDescription()
+          .cuda_compute_capability()
+          .major == 6) {
+    if (spec.dims.size() == 3 && spec.dims[0] > 1 && spec.dims[1] == 150 &&
+        (spec.dims[2] == 150 || spec.dims[2] == 5) &&
+        (!spec.left_side || spec.dims[2] == 150)) {
+      GTEST_SKIP() << "triggers a bug in cuda 12. b/287345077";
+    }
+  }
+
   XlaBuilder builder(TestName());
 
   CHECK_GE(spec.dims.size(), 2);

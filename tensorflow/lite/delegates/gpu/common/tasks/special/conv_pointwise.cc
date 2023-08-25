@@ -30,7 +30,7 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace {
-std::string GenerateCode() {
+std::string GenerateCode(const ConvPointwiseAttributes& attr) {
   std::string c = R"(
 MAIN_FUNCTION($0) {
   int X = GLOBAL_ID_0;
@@ -64,9 +64,13 @@ MAIN_FUNCTION($0) {
     res.z += dot(src, w2);
     res.w += dot(src, w3);
   }
-  FLT4 result = TO_FLT4(res) / INIT_FLT(args.src_tensor.Channels());
-  args.dst_tensor.Write(result, X, Y, S);
-})";
+  FLT4 result = TO_FLT4(res);
+)";
+  if (attr.mean) {
+    c += "  result = result / INIT_FLT(args.src_tensor.Channels());\n";
+  }
+  c += "  args.dst_tensor.Write(result, X, Y, S);\n";
+  c += "}\n";
   return c;
 }
 
@@ -117,6 +121,19 @@ absl::Status IsMeanNode(const GraphFloat32& graph, Node* node,
   return absl::OkStatus();
 }
 
+absl::Status IsReduceSumNode(const GraphFloat32& graph, Node* node,
+                             NodeContext* node_context) {
+  RETURN_IF_ERROR(
+      IsNode(graph, OperationType::REDUCE_SUM, 1, 1, node, node_context));
+  auto reduce_attr =
+      std::any_cast<ReduceAttributes>(node_context->node->operation.attributes);
+  if (reduce_attr.dims != std::set<Axis>{Axis::CHANNELS}) {
+    return absl::InternalError(
+        "Expected reduce_sum node with channels reduction.");
+  }
+  return absl::OkStatus();
+}
+
 absl::Status IsMulNode(const GraphFloat32& graph, Node* node,
                        NodeContext* node_context) {
   RETURN_IF_ERROR(IsNode(graph, OperationType::MUL, 2, 1, node, node_context));
@@ -154,11 +171,15 @@ absl::Status IsConcatNode(const GraphFloat32& graph, Node* node,
 absl::Status GetOffset(const GraphFloat32& graph, NodeId concat_input_node,
                        NodeId second_commom_input_id, int* offset_x,
                        int* offset_y, std::set<NodeId>* consumed_nodes) {
-  NodeContext mean_node, mul_node, slice_node;
-  RETURN_IF_ERROR(
-      IsMeanNode(graph, graph.FindProducer(concat_input_node), &mean_node));
-  RETURN_IF_ERROR(
-      IsMulNode(graph, graph.FindProducer(mean_node.inputs[0]->id), &mul_node));
+  NodeContext reduce_node, mul_node, slice_node;
+  absl::Status status =
+      IsMeanNode(graph, graph.FindProducer(concat_input_node), &reduce_node);
+  if (!status.ok()) {
+    RETURN_IF_ERROR(IsReduceSumNode(
+        graph, graph.FindProducer(concat_input_node), &reduce_node));
+  }
+  RETURN_IF_ERROR(IsMulNode(
+      graph, graph.FindProducer(reduce_node.inputs[0]->id), &mul_node));
   const ValueId slice_output_id =
       mul_node.inputs[0]->id == second_commom_input_id ? mul_node.inputs[1]->id
                                                        : mul_node.inputs[0]->id;
@@ -168,7 +189,7 @@ absl::Status GetOffset(const GraphFloat32& graph, NodeId concat_input_node,
       absl::any_cast<SliceAttributes>(slice_node.node->operation.attributes);
   *offset_x = slice_attr.starts.w;
   *offset_y = slice_attr.starts.h;
-  consumed_nodes->insert(mean_node.node->id);
+  consumed_nodes->insert(reduce_node.node->id);
   consumed_nodes->insert(mul_node.node->id);
   consumed_nodes->insert(slice_node.node->id);
   return absl::OkStatus();
@@ -194,7 +215,7 @@ GPUOperation CreateConvPointwise(const OperationDef& definition,
   op.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   op.AddSrcTensor("weights_tensor", definition.src_tensors[1]);
   op.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
-  op.code_ = GenerateCode();
+  op.code_ = GenerateCode(attr);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
 
   TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
@@ -226,15 +247,21 @@ absl::Status TryFusedPointwiseConv(
   if (mul_consumers.size() != 1) {
     return absl::NotFoundError("FusedPointwiseConv not suitable.");
   }
-  NodeContext mean_node;
-  RETURN_IF_ERROR(IsMeanNode(graph, mul_consumers[0], &mean_node));
-  auto mean_consumers = graph.FindConsumers(mean_node.outputs[0]->id);
-  if (mean_consumers.size() != 1) {
+  NodeContext reduce_node;
+  bool mean = true;
+  absl::Status status = IsMeanNode(graph, mul_consumers[0], &reduce_node);
+  if (!status.ok()) {
+    RETURN_IF_ERROR(IsReduceSumNode(graph, mul_consumers[0], &reduce_node));
+    mean = false;
+  }
+  auto reduce_consumers = graph.FindConsumers(reduce_node.outputs[0]->id);
+  if (reduce_consumers.size() != 1) {
     return absl::NotFoundError("FusedPointwiseConv not suitable.");
   }
   NodeContext concat_node;
-  RETURN_IF_ERROR(IsConcatNode(graph, mean_consumers[0], &concat_node));
+  RETURN_IF_ERROR(IsConcatNode(graph, reduce_consumers[0], &concat_node));
   ConvPointwiseAttributes op_attr;
+  op_attr.mean = mean;
   std::set<NodeId> temp_consumed_nodes;
   for (const auto& concat_input : concat_node.inputs) {
     int offset_x, offset_y;

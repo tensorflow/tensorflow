@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -38,7 +38,7 @@ inline Status WithContext(const Status& ds, absl::string_view file,
   if (ds.ok()) {
     return ds;
   }
-  return Status(ds.code(), absl::StrCat(ds.error_message(), "\n", file, ":",
+  return Status(ds.code(), absl::StrCat(ds.message(), "\n", file, ":",
                                         line_number, " :: ", context));
 }
 
@@ -50,7 +50,7 @@ inline StatusOr<T> WithContext(StatusOr<T>&& ds, absl::string_view file,
     return ds;
   }
   return Status(ds.status().code(),
-                absl::StrCat(ds.status().error_message(), "\n", file, ":",
+                absl::StrCat(ds.status().message(), "\n", file, ":",
                              line_number, " :: ", context));
 }
 

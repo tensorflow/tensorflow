@@ -16,7 +16,12 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <initializer_list>
 #include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/kernels/mlir_generated/base_ops_test.h"
 #include "tensorflow/core/kernels/mlir_generated/base_unary_ops_test.h"

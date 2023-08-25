@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"

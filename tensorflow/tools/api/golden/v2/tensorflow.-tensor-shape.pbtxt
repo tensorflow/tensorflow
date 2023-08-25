@@ -90,7 +90,7 @@ tf_class {
   }
   member_method {
     name: "placeholder_value"
-    argspec: "args=[\'self\', \'placeholder_context\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'placeholder_context\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "with_rank"

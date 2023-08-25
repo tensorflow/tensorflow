@@ -48,6 +48,12 @@ def HloCanonicalizeReductionPass : Pass<"hlo-canonicalize-reduction", "func::Fun
   let constructor = "createHloCanonicalizeReductionPass()";
 }
 
+def HloCanonicalizeDotPass : Pass<"hlo-canonicalize-dot", "func::FuncOp"> {
+  let summary = "Rewrites dot operands that contain unit dimension.";
+  let constructor = "createHloCanonicalizeDotPass()";
+  let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
+}
+
 def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
   let summary = "Legalize from HLO dialect to LHLO dialect.";
   let constructor = "createLegalizeToLhloPass()";
@@ -77,6 +83,29 @@ def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "func::FuncOp">
   let dependentDialects = ["scf::SCFDialect", "tensor::TensorDialect"];
 }
 
+def LegalizeCreateTokenToAfterAllPass : Pass<"mhlo-legalize-create-token-to-after-all", "func::FuncOp"> {
+  let summary = "Legalize create_token ops to after_all ops.";
+  let constructor = "createLegalizeCreateTokenToAfterAllPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
+}
+
+def LegalizeCrossReplicaSumToAllReducePass : Pass<"mhlo-legalize-cross-replica-sum-to-all-reduce", "func::FuncOp"> {
+  let summary = "Legalizes cross-replica-sum ops to all_reduce ops.";
+  let constructor = "createLegalizeCrossReplicaSumToAllReducePass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
+}
+
+def LegalizeDotGeneralToDotPass : Pass<"mhlo-legalize-dot-general-to-dot", "func::FuncOp"> {
+  let summary = "Legalizes dot_general ops to dot ops.";
+  let constructor = "createLegalizeDotGeneralToDotPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
+}
+
+def LegalizeDotToDotGeneralPass : Pass<"mhlo-legalize-dot-to-dot-general", "func::FuncOp"> {
+  let summary = "Legalizes dot ops to dot_general ops.";
+  let constructor = "createLegalizeDotToDotGeneralPass()";
+}
+
 def LegalizeEinsumToDotGeneralPass : Pass<"mhlo-legalize-einsum-to-dot-general", "func::FuncOp"> {
   let summary = "Legalizes einsum ops to dot_general ops.";
   let constructor = "createLegalizeEinsumToDotGeneralPass()";
@@ -85,6 +114,11 @@ def LegalizeEinsumToDotGeneralPass : Pass<"mhlo-legalize-einsum-to-dot-general",
 def LegalizeGatherToTorchIndexSelectPass : Pass<"mhlo-legalize-gather-to-torch-index-select", "func::FuncOp"> {
   let summary = "Legalizes gathers to a torch index select.";
   let constructor = "createLegalizeGatherToTorchIndexSelectPass()";
+}
+
+def LegalizeTorchIndexSelectToGatherPass : Pass<"mhlo-legalize-torch-index-select-to-gather", "func::FuncOp"> {
+  let summary = "Legalizes torch index select to a gather.";
+  let constructor = "createLegalizeTorchIndexSelectToGatherPass()";
 }
 
 
@@ -260,6 +294,7 @@ def GroupReductionDimensionsPass
            /*default=*/"true", "When simplifying reductions, prefer to use "
            "column reductions over row reductions.">,
   ];
+  let dependentDialects = ["tensor::TensorDialect"];
 }
 
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "func::FuncOp"> {
@@ -329,6 +364,12 @@ def HloLegalizeToStablehloPass : Pass<"hlo-legalize-to-stablehlo", "ModuleOp"> {
   let summary = "Legalize HLO to StableHLO.";
   let constructor = "createHloLegalizeToStablehloPass()";
   let dependentDialects = ["stablehlo::StablehloDialect"];
+  let options = [
+    Option<"allow_experimental_features_", "allow-experimental-features",
+           "bool", /*default=*/"false",
+           "Allow legalization of experimental MHLO features via StableHLO "
+           "custom_call">
+  ];
 }
 
 def StablehloLegalizeToHloPass : Pass<"stablehlo-legalize-to-hlo", "ModuleOp"> {
@@ -349,4 +390,17 @@ def PrepareForExportPass : Pass<"xla-prepare-for-export", "mlir::func::FuncOp"> 
     Note: The result of this pass need not be a module in canonical form and
     canonicalization may undo transformations.
   }];
+}
+
+def ShapeLegalizeToHloPass : Pass<"shape-legalize-to-hlo", "func::FuncOp"> {
+  let summary = "Legalize shape-related ops to HLO.";
+  let constructor = "createShapeLegalizeToHloPass()";
+  let description = [{
+    An experimental pass that legalizes shape-related ops to MHLO ops.
+
+    Bringing shape and data computations together via an optional pass will
+    make it possible for the MHLO ecosystem to potentially leverage the
+    compilation pipelines that use HLO operations to model dynamism.
+  }];
+  let dependentDialects = ["mhlo::MhloDialect"];
 }

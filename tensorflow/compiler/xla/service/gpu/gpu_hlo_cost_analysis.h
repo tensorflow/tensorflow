@@ -17,8 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_HLO_COST_ANALYSIS_H_
 
 #include <memory>
-#include <string>
 
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 
 namespace xla {
@@ -32,8 +33,9 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   static constexpr int64_t kMaxIRSize = 10000;
 
  public:
-  explicit GpuHloCostAnalysis(const Options& options)
-      : HloCostAnalysis(options) {}
+  explicit GpuHloCostAnalysis(const Options& options,
+                              const GpuDeviceInfo* device_info = nullptr)
+      : HloCostAnalysis(options), device_info_(device_info) {}
 
   Status Preprocess(const HloInstruction* hlo) override;
 
@@ -62,6 +64,8 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   // is used elementwise from the fusion's root.
   float CommonElementwiseUtilization(const HloInstruction* a,
                                      const HloInstruction* b) const;
+
+  const GpuDeviceInfo* device_info_;
 
  protected:
   std::unique_ptr<HloCostAnalysis> CreateNestedCostAnalysis() override;

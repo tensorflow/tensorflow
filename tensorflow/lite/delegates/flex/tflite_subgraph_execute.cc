@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/flex/buffer_map_util.h"
 #include "tensorflow/lite/delegates/flex/subgraph_resource.h"
@@ -102,7 +102,9 @@ class TfLiteSubgraphExecute : public OpKernel {
       OP_REQUIRES(ctx, subgraph_selected.AllocateTensors() == kTfLiteOk,
                   errors::Internal("Failed to call allocate tensors"));
       tfl_tensors_need_allocation_ = false;
-      output_tensors_can_be_shared_ = !subgraph_selected.HasDynamicTensors();
+      // TODO(b/274934361): re-enable once allocation issue is solved.
+      // output_tensors_can_be_shared_ =!subgraph_selected.HasDynamicTensors();
+      output_tensors_can_be_shared_ = false;
     }
 
     if (output_tensors_can_be_shared_) {

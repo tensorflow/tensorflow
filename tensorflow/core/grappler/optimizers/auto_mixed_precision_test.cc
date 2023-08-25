@@ -1221,7 +1221,7 @@ TEST_F(AutoMixedPrecisionTest, SoftmaxOp) {
 
 TEST_F(AutoMixedPrecisionTest, SoftplusOp) {
   TestSimpleUnaryInferOp(
-      -5, 5, 1.0e-3, 1.0e-3,
+      -5, 5, 2.0e-3, 2.0e-3,
       [](const tensorflow::Scope& scope, Output input) -> Output {
         return ops::Softplus(scope, input);
       });

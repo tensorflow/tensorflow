@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -32,10 +33,6 @@ ABSL_CONST_INIT const char kPossibleAutoJitAlternative[] =
     "auto_jit with OptimizerOptions.global_jit_level = ON_2 or the environment "
     "variable TF_XLA_FLAGS=\"tf_xla_auto_jit=2\" which will attempt to use xla "
     "to compile as much of the graph as the compiler is able to.";
-
-static Status MakeStatus(tsl::error::Code code, const std::string& message) {
-  return Status(code, message);
-}
 
 // Log the error at the given severity, optionally with a stack trace.
 // If log_severity is NUM_SEVERITIES, nothing is logged.
@@ -73,14 +70,14 @@ static void LogError(const Status& status, const char* filename, int line,
 // NUM_SEVERITIES).  If should_log_stack_trace is true, the stack
 // trace is included in the log message (ignored if should_log is
 // false).
-static Status MakeError(const char* filename, int line, tsl::error::Code code,
+static Status MakeError(const char* filename, int line, absl::StatusCode code,
                         const std::string& message, bool should_log,
                         int log_severity, bool should_log_stack_trace) {
-  if (ABSL_PREDICT_FALSE(code == tsl::error::OK)) {
+  if (ABSL_PREDICT_FALSE(code == absl::StatusCode::kOk)) {
     LOG(ERROR) << "Cannot create error with status OK";
-    code = tsl::error::UNKNOWN;
+    code = absl::StatusCode::kUnknown;
   }
-  const Status status = MakeStatus(code, message);
+  const Status status = Status(code, message);
   if (ABSL_PREDICT_TRUE(should_log)) {
     LogError(status, filename, line, log_severity, should_log_stack_trace);
   }
@@ -102,7 +99,7 @@ MakeErrorStream::Impl::Impl(const char* file, int line, tsl::error::Code code,
                             bool is_logged_by_default)
     : file_(file),
       line_(line),
-      code_(code),
+      code_(static_cast<absl::StatusCode>(code)),
       is_done_(false),
       should_log_(is_logged_by_default),
       log_severity_(tsl::ERROR),
@@ -116,9 +113,10 @@ MakeErrorStream::Impl::Impl(const Status& status,
     : file_(file),
       line_(line),
       // Make sure we show some error, even if the call is incorrect.
-      code_(!status.ok() ? status.code() : tsl::error::UNKNOWN),
+      code_(!status.ok() ? static_cast<absl::StatusCode>(status.code())
+                         : absl::StatusCode::kUnknown),
       prior_message_handling_(prior_message_handling),
-      prior_message_(status.error_message()),
+      prior_message_(status.message()),
       is_done_(false),
       // Error code type is not visible here, so we can't call
       // IsLoggedByDefault.

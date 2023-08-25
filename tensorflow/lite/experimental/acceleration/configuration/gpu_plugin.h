@@ -15,62 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_GPU_PLUGIN_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_GPU_PLUGIN_H_
 
-// This file provides the GpuPlugin class, which implements the
-// TFLite Delegate Plugin for the GPU Delegate.
+// This header file is no longer experimental.
+// Please use the non-experimental file instead.
 
-#if defined(__ANDROID__) || defined(CL_DELEGATE_NO_GL)
-#define TFLITE_SUPPORTS_GPU_DELEGATE 1
-#endif
+#include "tensorflow/lite/acceleration/configuration/gpu_plugin.h"  // IWYU pragma: export
 
-#include <string>
-
-#if TFLITE_SUPPORTS_GPU_DELEGATE
-#include "tensorflow/lite/delegates/gpu/delegate.h"
-#elif defined(__APPLE__)
-#include "TargetConditionals.h"
-#if (TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR) || \
-    (TARGET_OS_OSX && TARGET_CPU_ARM64)
-// Only enable metal delegate when using a real iPhone device or Apple Silicon.
-#define REAL_IPHONE_DEVICE
-#include "tensorflow/lite/delegates/gpu/metal_delegate.h"
-#endif
-#endif
-
-#include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
-
-namespace tflite {
-namespace delegates {
-
-// Note that if running on GPU is not supported for some reason (e.g., desktop
-// machine with no OpenGL/CL), this library will still compile but calling
-// Create() will return a nullptr.
-class GpuPlugin : public DelegatePluginInterface {
- public:
-  explicit GpuPlugin(const TFLiteSettings& tflite_settings);
-  static std::unique_ptr<DelegatePluginInterface> New(
-      const TFLiteSettings& acceleration);
-
-  TfLiteDelegatePtr Create() override;
-  int GetDelegateErrno(TfLiteDelegate* from_delegate) override;
-
-#if TFLITE_SUPPORTS_GPU_DELEGATE
-  const TfLiteGpuDelegateOptionsV2& Options() { return options_; }
-#elif defined(REAL_IPHONE_DEVICE)
-  const TFLGpuDelegateOptions& Options() { return options_; }
-#endif
-
- private:
-#if TFLITE_SUPPORTS_GPU_DELEGATE
-  TfLiteGpuDelegateOptionsV2 options_;
-#elif defined(REAL_IPHONE_DEVICE)
-  TFLGpuDelegateOptions options_;
-#endif
-  std::string cache_dir_;
-  std::string model_token_;
-};
-
-}  // namespace delegates
-}  // namespace tflite
+// IWYU pragma: private, include "third_party/tensorflow/lite/acceleration/configuration/gpu_plugin.h"
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_GPU_PLUGIN_H_

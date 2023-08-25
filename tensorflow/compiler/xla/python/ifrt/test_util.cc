@@ -19,8 +19,11 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
+#include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -31,20 +34,20 @@ namespace {
 
 class ClientFactory {
  public:
-  void Register(std::function<StatusOr<std::unique_ptr<Client>>()> factory) {
+  void Register(std::function<StatusOr<std::shared_ptr<Client>>()> factory) {
     absl::MutexLock lock(&mu_);
     CHECK(!factory_) << "Client factory has been already registered.";
     factory_ = std::move(factory);
   }
 
-  std::function<StatusOr<std::unique_ptr<Client>>()> Get() const {
+  std::function<StatusOr<std::shared_ptr<Client>>()> Get() const {
     absl::MutexLock lock(&mu_);
     return factory_;
   }
 
  private:
   mutable absl::Mutex mu_;
-  std::function<StatusOr<std::unique_ptr<Client>>()> factory_
+  std::function<StatusOr<std::shared_ptr<Client>>()> factory_
       ABSL_GUARDED_BY(mu_);
 };
 
@@ -56,14 +59,41 @@ ClientFactory& GetGlobalClientFactory() {
 }  // namespace
 
 void RegisterClientFactory(
-    std::function<StatusOr<std::unique_ptr<Client>>()> factory) {
+    std::function<StatusOr<std::shared_ptr<Client>>()> factory) {
   GetGlobalClientFactory().Register(std::move(factory));
 }
 
-StatusOr<std::unique_ptr<Client>> GetClient() {
+StatusOr<std::shared_ptr<Client>> GetClient() {
   auto factory = GetGlobalClientFactory().Get();
   CHECK(factory) << "Client factory has not been registered.";
   return factory();
+}
+
+void SetTestFilterIfNotUserSpecified(absl::string_view custom_filter) {
+  static constexpr absl::string_view kDefaultTestFilter = "*";
+#ifdef GTEST_FLAG_SET
+  if (GTEST_FLAG_GET(filter) == kDefaultTestFilter) {
+    GTEST_FLAG_SET(filter, custom_filter);
+  }
+#else
+  if (testing::GTEST_FLAG(filter) == kDefaultTestFilter) {
+    testing::GTEST_FLAG(filter) = custom_filter;
+  }
+#endif
+}
+
+absl::StatusOr<DeviceList> GetDevices(Client* client,
+                                      absl::Span<const int> device_indices) {
+  DeviceList::Devices devices;
+  devices.reserve(device_indices.size());
+  for (int device_index : device_indices) {
+    if (device_index < 0 || device_index >= client->devices().size()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Out of range device index: ", device_index));
+    }
+    devices.push_back(client->devices()[device_index]);
+  }
+  return DeviceList(std::move(devices));
 }
 
 }  // namespace test_util

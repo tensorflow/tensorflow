@@ -18,10 +18,12 @@ from collections import abc
 import contextlib
 import threading
 
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import tpu_values as tpu_values_lib
 from tensorflow.python.distribute import values as values_lib
+from tensorflow.python.distribute.reduce_util import ReduceOp
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -29,7 +31,31 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
+
+
+@tf_export(v1=["distribute.get_loss_reduction"])
+def get_loss_reduction():
+  """`tf.distribute.ReduceOp` corresponding to the last loss reduction.
+
+  This is used to decide whether loss should be scaled in optimizer (used only
+  for estimator + v1 optimizer use case).
+
+  Returns:
+    `tf.distribute.ReduceOp` corresponding to the last loss reduction for
+    estimator and v1 optimizer use case. `tf.distribute.ReduceOp.SUM` otherwise.
+  """
+  if not distribute_lib.get_strategy()._scale_loss_for_estimator:  # pylint: disable=protected-access
+    # If we are not in Estimator context then return 'SUM'. We do not need to
+    # scale loss in the optimizer.
+    return ReduceOp.SUM
+  last_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
+  if (last_reduction == losses_impl.Reduction.SUM or
+      last_reduction == "sum"):  # Check for tf.keras.losses.Reduction.SUM
+    return ReduceOp.SUM
+  return ReduceOp.MEAN
 
 
 def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
@@ -298,6 +324,12 @@ def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
   """Create distributed variables with given synchronization and aggregation."""
   # Figure out what collections this variable should be added to.
   # We'll add the MirroredVariable to those collections instead.
+
+  if kwargs.pop("experimental_batch_initialization", None):
+    variable_class_key = "LazyVariableClass"
+  else:
+    variable_class_key = "VariableClass"
+
   var_collections = kwargs.pop("collections", None)
   if var_collections is None:
     var_collections = [ops.GraphKeys.GLOBAL_VARIABLES]
@@ -316,7 +348,7 @@ def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
   # TODO(josh11b,apassos): It would be better if variable initialization
   # was never recorded on the tape instead of having to do this manually
   # here.
-  with tape.stop_recording():
+  with record.stop_recording():
     value_list = real_mirrored_creator(**kwargs)
     # MirroredVariable is recreated during saved_model loading, and its
     # component variables (value_list) will have None initializer. We
@@ -331,7 +363,7 @@ def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
     if use_var_policy:
       var_policy_cls = policy_mapping.get(synchronization)
       var_policy = var_policy_cls(aggregation=aggregation)
-      var_cls = class_mapping.get("VariableClass")
+      var_cls = class_mapping.get(variable_class_key)
       result = var_cls(strategy, value_list, aggregation, var_policy=var_policy)
     else:
       var_cls = class_mapping.get(synchronization)
@@ -367,17 +399,11 @@ def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
 # Return True if the Value is Mirrored or the Variable is replicated and kept in
 # sync.
 def is_mirrored(val):
-  if isinstance(val, values_lib.DistributedVariable):
-    if val._policy:  # pylint: disable=protected-access
-      return val._policy._is_mirrored()  # pylint: disable=protected-access
-  return isinstance(val, values_lib.Mirrored)
+  return (getattr(val, "_is_mirrored", lambda: False))()
 
 
 def is_sync_on_read(val):
-  if isinstance(val, values_lib.DistributedVariable):
-    if val._policy:  # pylint: disable=protected-access
-      return not val._policy._is_mirrored()  # pylint: disable=protected-access
-  return not isinstance(val, values_lib.Mirrored)
+  return not is_mirrored(val)
 
 
 class CachingScopeLocal(threading.local):
@@ -467,6 +493,7 @@ TPU_VARIABLE_POLICY_MAPPING = {
 
 TPU_VARIABLE_CLASS_MAPPING = {
     "VariableClass": tpu_values_lib.TPUDistributedVariable,
+    "LazyVariableClass": tpu_values_lib.TPULazyDistributedVariable,
     vs.VariableSynchronization.ON_WRITE: tpu_values_lib.TPUMirroredVariable,
     vs.VariableSynchronization.ON_READ: tpu_values_lib.TPUSyncOnReadVariable,
 }

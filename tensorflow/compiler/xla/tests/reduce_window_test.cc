@@ -115,7 +115,7 @@ XLA_TEST_P(ReduceWindowTest, MismatchedRanksGivesErrorStatus) {
                /*window_strides=*/{1}, Padding::kValid);
   ASSERT_EQ(builder_.first_error().code(), tsl::error::INVALID_ARGUMENT)
       << builder_.first_error();
-  ASSERT_THAT(builder_.first_error().error_message(),
+  ASSERT_THAT(builder_.first_error().message(),
               ::testing::HasSubstr("Want input dimensions size"));
 }
 

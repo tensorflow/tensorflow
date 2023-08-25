@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -367,6 +368,24 @@ REGISTER_OP("BiasAddV1")
     .Input("bias: T")
     .Output("output: T")
     .SetShapeFn(shape_inference::BiasAddShape);
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Conv")
+    .Input("input: T")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: {half, bfloat16, float, double, int32}")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
+    .Attr(
+        "data_format: { 'CHANNELS_FIRST', 'CHANNELS_LAST' } = 'CHANNELS_LAST' ")
+    .Attr("dilations: list(int) = []")
+    .Attr("batch_dims: int = 1")
+    .Attr("groups: int = 1")
+    .SetShapeFn(shape_inference::ConvShape);
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("Conv2D")
@@ -631,7 +650,7 @@ REGISTER_OP("FusedPadConv2D")
     .Input("paddings: int32")
     .Input("filter: T")
     .Output("output: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr(GetMirrorPadModeAttrString())
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
@@ -1007,6 +1026,14 @@ REGISTER_OP("MaxPoolWithArgmax")
     .Output("argmax: Targmax")
     .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
+      std::vector<int32> ksize;
+      TF_RETURN_IF_ERROR(c->GetAttr("ksize", &ksize));
+      for (int i = 0; i < ksize.size(); ++i) {
+        if (ksize[i] <= 0) {
+          return errors::InvalidArgument(
+              "ksize must be a postive int32 value, got:", ksize[i]);
+        }
+      }
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
       c->set_output(1, c->output(0));
       return OkStatus();
@@ -1120,11 +1147,11 @@ REGISTER_OP("Dilation2D")
       int64_t output_rows, output_cols;
       int64_t padding_before, padding_after;
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
-          in_rows, filter_rows_eff, stride_rows, padding, &output_rows,
-          &padding_before, &padding_after));
+          in_rows, filter_rows_eff, /*dilation_rate=*/1, stride_rows, padding,
+          &output_rows, &padding_before, &padding_after));
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
-          in_cols, filter_cols_eff, stride_cols, padding, &output_cols,
-          &padding_before, &padding_after));
+          in_cols, filter_cols_eff, /*dilation_rate=*/1, stride_cols, padding,
+          &output_cols, &padding_before, &padding_after));
 
       ShapeHandle output_shape = c->MakeShape(
           {batch_size_dim, output_rows, output_cols, output_depth_dim});
@@ -1430,9 +1457,16 @@ Status ApproxTopKShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("aggregate_to_topk", &aggregate_to_topk));
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input_shape));
+  int64_t r_dim_copy = reduction_dimension;
+  int64_t rank = c->Rank(input_shape);
   if (reduction_dimension < 0) {
     // Reverse index
     reduction_dimension += c->Rank(input_shape);
+  }
+  if (reduction_dimension >= c->Rank(input_shape) || reduction_dimension < 0) {
+    return errors::InvalidArgument("Invalid reduction dimension: ", r_dim_copy,
+                                   ". Must be within the range of [", -rank,
+                                   ", ", rank - 1, "]");
   }
   int64_t reduction_dim_value =
       c->Value(c->Dim(input_shape, reduction_dimension));
@@ -1440,6 +1474,10 @@ Status ApproxTopKShape(shape_inference::InferenceContext* c) {
   if (reduction_dim_value < k) {
     return errors::InvalidArgument("input must have last dimension >= k = ", k,
                                    " but was ", reduction_dim_value);
+  }
+  if (recall_target > 1.0 || recall_target <= 0.) {
+    return errors::InvalidArgument("Invalid recall target: ", recall_target,
+                                   ". Valid value range in : [0, 1.0].");
   }
 
   int64_t output_dim_value = [&] {
@@ -1501,11 +1539,13 @@ REGISTER_OP("TopK")
 // This is the same as `TopK`, but takes `k` as in input rather than an attr.
 REGISTER_OP("TopKV2")
     .Input("input: T")
-    .Input("k: int32")
+    .Input("k: Tk")
     .Output("values: T")
-    .Output("indices: int32")
+    .Output("indices: index_type")
     .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
+    .Attr("Tk: {int16, int32, int64} = DT_INT32")
+    .Attr("index_type: {int16, int32, int64} = DT_INT32")
     .SetShapeFn(TopKShapeFn);
 
 REGISTER_OP("ApproxTopK")

@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -115,6 +117,23 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_deduplicate_hlo(
   return *this;
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_device_assignment(
+    const DeviceAssignment& device_assignment) {
+  device_assignment_ = device_assignment;
+  return *this;
+}
+
+std::string ExecutableBuildOptions::ToString() const {
+  std::string result_layout = "nullopt";
+  if (result_layout_set_) {
+    result_layout = ShapeUtil::HumanStringWithLayout(result_layout_);
+  }
+  return absl::StrFormat(
+      "ExecutableBuildOptions{device_ordinal=%d, result_layout=%s, "
+      "num_replicas=%d}",
+      device_ordinal_, result_layout, num_replicas_);
+}
+
 StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
   ExecutableBuildOptionsProto output;
   output.set_device_ordinal(device_ordinal());
@@ -143,9 +162,14 @@ StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
   }
   output.set_alias_passthrough_params(alias_passthrough_params());
   output.set_run_backend_only(run_backend_only());
-  output.set_allow_spmd_sharding_propagation_to_output(
-      allow_spmd_sharding_propagation_to_output());
-
+  if (!allow_spmd_sharding_propagation_to_output().empty()) {
+    output.mutable_allow_spmd_sharding_propagation_to_output()->Clear();
+    for (bool v : allow_spmd_sharding_propagation_to_output()) {
+      output.mutable_allow_spmd_sharding_propagation_to_output()->Add(v);
+    }
+  }
+  *output.mutable_fdo_profile() = fdo_profile();
+  output.set_device_memory_size(device_memory_size());
   return output;
 }
 
@@ -182,24 +206,9 @@ StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   output.set_run_backend_only(input.run_backend_only());
   output.set_allow_spmd_sharding_propagation_to_output(
       input.allow_spmd_sharding_propagation_to_output());
+  *output.mutable_fdo_profile() = input.fdo_profile();
+  output.set_device_memory_size(input.device_memory_size());
   return output;
-}
-
-ExecutableBuildOptions& ExecutableBuildOptions::set_device_assignment(
-    const DeviceAssignment& device_assignment) {
-  device_assignment_ = device_assignment;
-  return *this;
-}
-
-std::string ExecutableBuildOptions::ToString() const {
-  std::string result_layout = "nullopt";
-  if (result_layout_set_) {
-    result_layout = ShapeUtil::HumanStringWithLayout(result_layout_);
-  }
-  return absl::StrFormat(
-      "ExecutableBuildOptions{device_ordinal=%d, result_layout=%s, "
-      "num_replicas=%d}",
-      device_ordinal_, result_layout, num_replicas_);
 }
 
 ExecutionOptions CreateExecutionOptions(
@@ -231,14 +240,23 @@ ExecutionOptions CreateExecutionOptions(
     execution_options.mutable_auto_spmd_partitioning_mesh_ids()->Add(t);
   }
   execution_options.set_deduplicate_hlo(build_options.deduplicate_hlo());
-  execution_options.set_allow_spmd_sharding_propagation_to_output(
-      build_options.allow_spmd_sharding_propagation_to_output());
+  if (!build_options.allow_spmd_sharding_propagation_to_output().empty()) {
+    execution_options.mutable_allow_spmd_sharding_propagation_to_output()
+        ->Clear();
+    for (bool v : build_options.allow_spmd_sharding_propagation_to_output()) {
+      execution_options.mutable_allow_spmd_sharding_propagation_to_output()
+          ->Add(v);
+    }
+  }
   if (build_options.has_device_assignment()) {
     TF_CHECK_OK(build_options.device_assignment().Serialize(
         execution_options.mutable_device_assignment()));
   }
   execution_options.set_alias_passthrough_params(
       build_options.alias_passthrough_params());
+  execution_options.set_fdo_profile(build_options.fdo_profile().data(),
+                                    build_options.fdo_profile().size());
+  execution_options.set_device_memory_size(build_options.device_memory_size());
   return execution_options;
 }
 

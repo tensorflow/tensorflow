@@ -669,6 +669,10 @@ class Tensor {
   // buffer is one.
   bool RefCountIsOne() const;
 
+  // Experimental. Returns the refcount on buf_ if it points to a regular
+  // TensorBuffer. If buf_ points to a SubBuffer, returns -1.
+  int RefCount() const;
+
   // Returns the type of the underlying memory.
   AllocatorMemoryType GetMemoryType() const { return buf_->GetMemoryType(); }
 
@@ -697,6 +701,7 @@ class Tensor {
   friend class TensorInterface;       // For access to set_shape.
   friend class CastOpBase;            // For access to set_dtype.
   friend class ScopedAllocator;       // For access to buf_.
+  friend class PjRtTensorBufferUtil;  // For access to buf_.
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
       int64_t index);  // For access to base<T>().

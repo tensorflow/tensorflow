@@ -34,6 +34,7 @@ mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
   Status status = mlir::ConvertMlirHloToHlo(
       module, &hloProto, emit_use_tuple_arg, emit_return_tuple);
   if (!status.ok()) {
+    module.emitOpError() << status.message();
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();
   }
@@ -121,6 +122,7 @@ mlir::LogicalResult MlirHloToHloTextTranslateFunction(
           : mlir::ConvertMlirHloToHlo(module, &hloProto, emit_use_tuple_arg,
                                       emit_return_tuple, options);
   if (!status.ok()) {
+    module.emitOpError() << status.message();
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();
   }

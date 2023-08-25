@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef MLIR_HLO_GML_ST_TRANSFORMS_TEST_PASSES_H
 #define MLIR_HLO_GML_ST_TRANSFORMS_TEST_PASSES_H
 
+#include <memory>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
@@ -25,8 +27,6 @@ namespace gml_st {
 
 #define GEN_PASS_DECL
 #include "gml_st/transforms/test_passes.h.inc"
-
-std::unique_ptr<OperationPass<ModuleOp>> createTestGmlStBufferizationPass();
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStGreedyFusionPass();
 

@@ -63,8 +63,6 @@ message Node {
 // Measurements of an operation (or aggregated set of operations).
 // Metrics are always "total" rather than "self".
 message Metrics {
-  // Core-time taken by this operation, as a fraction of all operations.
-  double time = 1;
   // Floating point computations performed by this operation, as a fraction of
   // peak core FLOPS * program time. This representation has useful properties:
   //  - it is proportional to the number of floating point operations performed
@@ -73,19 +71,17 @@ message Metrics {
   //  - it does not reveal the peak core FLOPS of the hardware
   double flops = 2;
 
-  reserved 3;
-  reserved 4;
-
   // The memory bandwidth used to load operands, as a fraction of
   // thereotical memory bandwidth on the specific hardware.
   // Index into array using MemBwType enum.
   repeated double bandwidth_utils = 5;
 
+  // The raw stats below are aggregated across all occurrences.
   double raw_time = 11;   // Elapsed core-time in picoseconds.
   double raw_flops = 12;  // Total floating-point operations performed.
   // Total bytes accessed for each memory type.
   // Index into array using MemBwType enum.
   repeated double raw_bytes_accessed_array = 15;
 
-  reserved 13, 14;
+  reserved 1, 3, 4, 13, 14;
 }

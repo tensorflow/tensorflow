@@ -74,6 +74,27 @@ class SqueezeOpTest : public ::testing::Test {};
 using DataTypes = ::testing::Types<float, int8_t, int16_t, int32_t>;
 TYPED_TEST_SUITE(SqueezeOpTest, DataTypes);
 
+TYPED_TEST(SqueezeOpTest, SqueezeAllInplace) {
+  std::initializer_list<TypeParam> data = {1,  2,  3,  4,  5,  6,  7,  8,
+                                           9,  10, 11, 12, 13, 14, 15, 16,
+                                           17, 18, 19, 20, 21, 22, 23, 24};
+  SqueezeOpModel<TypeParam> m({GetTensorType<TypeParam>(), {1, 24, 1}},
+                              {GetTensorType<TypeParam>(), {24}}, {});
+  m.SetInput(data);
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({24}));
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                        13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
 TYPED_TEST(SqueezeOpTest, SqueezeAll) {
   std::initializer_list<TypeParam> data = {1,  2,  3,  4,  5,  6,  7,  8,
                                            9,  10, 11, 12, 13, 14, 15, 16,

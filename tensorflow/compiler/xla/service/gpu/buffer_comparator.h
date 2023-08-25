@@ -40,8 +40,8 @@ class BufferComparator {
   //     abs(a - b) / (max(abs(a), abs(b)) + 1) < tolerance
   //
   // See the implementation for the tolerance value.
-  StatusOr<bool> CompareEqual(se::Stream* stream, se::DeviceMemoryBase lhs,
-                              se::DeviceMemoryBase rhs) const;
+  StatusOr<bool> CompareEqual(se::Stream* stream, se::DeviceMemoryBase current,
+                              se::DeviceMemoryBase expected) const;
 
  private:
   Shape shape_;

@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 
+#include <algorithm>
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/gtl/map_util.h"

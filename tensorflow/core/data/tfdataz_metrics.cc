@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -73,7 +74,7 @@ int ApproximateLatencyEstimator::PrevSlot(int steps)
   return (next_slot_ - steps + kSlots) % kSlots;
 }
 
-double ApproximateLatencyEstimator::GetAverageLatency(Duration duration)
+absl::Duration ApproximateLatencyEstimator::GetAverageLatency(Duration duration)
     TF_LOCKS_EXCLUDED(mu_) {
   UpdateRingBuffer();
 
@@ -84,12 +85,15 @@ double ApproximateLatencyEstimator::GetAverageLatency(Duration duration)
   double interval_count =
       static_cast<double>(latency_count_counter_ -
                           latency_count_[PrevSlot(static_cast<int>(duration))]);
-  return interval_latency / interval_count;
+  if (interval_count == 0) {
+    return absl::ZeroDuration();
+  }
+  return absl::Duration(absl::Microseconds(interval_latency)) / interval_count;
 }
 
-TfDatazMetricsCollector::TfDatazMetricsCollector(const std::string& device_type,
-                                                 const Env& env)
-    : device_type_(device_type), latency_estimator_(env) {}
+TfDatazMetricsCollector::TfDatazMetricsCollector(const Env& env,
+                                                 IteratorBase* iterator)
+    : iterator_(iterator), latency_estimator_(env) {}
 
 void TfDatazMetricsCollector::RecordGetNextLatency(
     int64_t get_next_latency_usec) {
@@ -98,19 +102,55 @@ void TfDatazMetricsCollector::RecordGetNextLatency(
   }
 }
 
-double TfDatazMetricsCollector::GetAverageLatencyForLastOneMinute() {
+absl::Duration TfDatazMetricsCollector::GetAverageLatencyForLastOneMinute() {
   return latency_estimator_.GetAverageLatency(
       ApproximateLatencyEstimator::Duration::kMinute);
 }
 
-double TfDatazMetricsCollector::GetAverageLatencyForLastFiveMinutes() {
+absl::Duration TfDatazMetricsCollector::GetAverageLatencyForLastFiveMinutes() {
   return latency_estimator_.GetAverageLatency(
       ApproximateLatencyEstimator::Duration::kFiveMinutes);
 }
 
-double TfDatazMetricsCollector::GetAverageLatencyForLastSixtyMinutes() {
+absl::Duration TfDatazMetricsCollector::GetAverageLatencyForLastSixtyMinutes() {
   return latency_estimator_.GetAverageLatency(
       ApproximateLatencyEstimator::Duration::kSixtyMinutes);
+}
+
+int64_t TfDatazMetricsCollector::GetIteratorTotalMemoryUsage() {
+  return iterator_->TotalBufferedBytes();
+}
+
+namespace {
+static mutex* get_tfdataz_metrics_registry_lock() {
+  static mutex tfdataz_metrics_registry_lock(LINKER_INITIALIZED);
+  return &tfdataz_metrics_registry_lock;
+}
+
+using TfDatazMetricsCollectors =
+    absl::flat_hash_set<std::shared_ptr<TfDatazMetricsCollector>>;
+TfDatazMetricsCollectors& tfdataz_metric_collectors() {
+  static auto& collectors = *new TfDatazMetricsCollectors();
+  return collectors;
+}
+}  // namespace
+
+void TfDatazMetricsRegistry::Register(
+    std::shared_ptr<TfDatazMetricsCollector> collector) {
+  mutex_lock l(*get_tfdataz_metrics_registry_lock());
+  tfdataz_metric_collectors().insert(collector);
+}
+
+void TfDatazMetricsRegistry::Deregister(
+    std::shared_ptr<TfDatazMetricsCollector> collector) {
+  mutex_lock l(*get_tfdataz_metrics_registry_lock());
+  tfdataz_metric_collectors().erase(collector);
+}
+
+absl::flat_hash_set<std::shared_ptr<TfDatazMetricsCollector>>
+TfDatazMetricsRegistry::GetIteratorMetricCollectors() {
+  mutex_lock l(*get_tfdataz_metrics_registry_lock());
+  return tfdataz_metric_collectors();
 }
 
 }  // namespace data

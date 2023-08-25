@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
-#include "tensorflow/tsl/util/ptr_util.h"
 
 namespace xla {
 namespace {

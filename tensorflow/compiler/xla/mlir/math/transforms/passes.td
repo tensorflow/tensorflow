@@ -51,26 +51,4 @@ def MathApproximationPass
   ];
 }
 
-def MathLegalizationPass : Pass<"xla-math-legalization", "mlir::ModuleOp"> {
-  let summary = "Legalize operations from the `math` dialect.";
-
-  let description = [{
-    This pass lowers ops from the Math dialect to LLVM.
-  }];
-
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "mlir::func::FuncDialect",
-    "mlir::vector::VectorDialect",
-    "LLVM::LLVMDialect",
-  ];
-
-  let constructor = "::xla::CreateMathLegalizationPass()";
-
-  let options = [
-   Option<"enable_approximations_", "enable-approximations", "bool", "true",
-          "Enable math approximations.">
-  ];
-}
-
 #endif  // XLA_MATH_PASSES

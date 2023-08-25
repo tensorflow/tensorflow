@@ -16,12 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_TENSOR_H_
 #define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_TENSOR_H_
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap_array.h"
 
 namespace tensorflow {
+
+// Check if a data type is byte swappable.
+bool IsByteSwappable(DataType dtype);
 
 // Byte-swap a tensor's backing buffer in place.
 //
@@ -33,7 +37,16 @@ namespace tensorflow {
 Status ByteSwapTensor(Tensor *t);
 
 // Swap tensor_content field of Const Op Tensors in the named functions
-Status ByteSwapTensorContent(MetaGraphDef *meta_graph_def);
+// in NodeDef
+Status ByteSwapTensorContentInNode(NodeDef& node);
+
+// Swap tensor_content field of Const Op Tensors in the named functions
+// in MetaGraphDef
+Status ByteSwapTensorContentInMetaGraphDef(MetaGraphDef* meta_graph_def);
+
+// Swap tensor_content field of Const Op Tensors in the named functions
+// in GraphDef
+Status ByteSwapTensorContentInGraphDef(GraphDef* graph_def);
 
 }  // namespace tensorflow
 

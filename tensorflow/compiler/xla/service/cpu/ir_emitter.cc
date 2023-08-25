@@ -162,7 +162,7 @@ void IrEmitter::EmitThreadLocalFunctionEpilogue(HloComputation* computation) {
 }
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
-    HloComputation* computation, const std::string& function_name_prefix,
+    HloComputation* computation, absl::string_view function_name_prefix,
     bool is_top_level_computation,
     absl::Span<HloInstruction* const> instruction_order,
     bool allow_reassociation) {
@@ -888,11 +888,11 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
 
   VLOG(2) << "HandleDot: ";
   VLOG(2) << "  lhs operand: "
-          << llvm_ir::DumpToString(*lhs_array.GetBasePointer());
+          << llvm_ir::DumpToString(lhs_array.GetBasePointer());
   VLOG(2) << "  rhs operand: "
-          << llvm_ir::DumpToString(*rhs_array.GetBasePointer());
+          << llvm_ir::DumpToString(rhs_array.GetBasePointer());
   VLOG(2) << "  target: "
-          << llvm_ir::DumpToString(*target_array.GetBasePointer());
+          << llvm_ir::DumpToString(target_array.GetBasePointer());
 
   // Dot operation is complicated so we delegate to a helper class.
   return EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
@@ -2669,7 +2669,7 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   int64_t byte_offset_into_target_region = 0;
 
   int64_t inner_dims_product =
-      std::accumulate(inner_dims.begin(), inner_dims.end(), 1l,
+      std::accumulate(inner_dims.begin(), inner_dims.end(), int64_t{1},
                       [&](int64_t product, int64_t inner_dim) {
                         return product * output_shape.dimensions(inner_dim);
                       });
@@ -2973,9 +2973,9 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   VLOG(2) << "FinishVisit root: " << root->ToString();
   if (root->opcode() == HloOpcode::kOutfeed) {
     VLOG(2) << "  outfeed with value: "
-            << llvm_ir::DumpToString(*GetEmittedValueFor(root->operand(0)));
+            << llvm_ir::DumpToString(GetEmittedValueFor(root->operand(0)));
   } else {
-    VLOG(2) << "  value: " << llvm_ir::DumpToString(*GetEmittedValueFor(root));
+    VLOG(2) << "  value: " << llvm_ir::DumpToString(GetEmittedValueFor(root));
   }
 
   auto record_complete_computation = [&](llvm::Value* prof_counter) {
@@ -3149,7 +3149,8 @@ Status IrEmitter::Preprocess(HloInstruction* hlo) {
   VLOG(3) << "Visiting: " << hlo->ToString();
   // When profiling is enabled, trace the same HLOs that the profiler does.
   if (instruction_to_profile_idx_.count(hlo) ||
-      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo))) {
+      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo) &&
+       hlo->parent()->IsEntryComputation())) {
     tracing_state_.EmitTracingStart(&b_, hlo,
                                     GetExecutableRunOptionsArgument());
     profiling_state_.RecordCycleStart(&b_, hlo);
@@ -3163,7 +3164,8 @@ Status IrEmitter::Postprocess(HloInstruction* hlo) {
   }
   // When profiling is enabled, trace the same HLOs that the profiler does.
   if (instruction_to_profile_idx_.count(hlo) ||
-      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo))) {
+      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo) &&
+       hlo->parent()->IsEntryComputation())) {
     tracing_state_.EmitTracingEnd(&b_, hlo, GetExecutableRunOptionsArgument());
   }
   return OkStatus();

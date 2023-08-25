@@ -22,11 +22,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin.h"
-#include "tensorflow/compiler/xla/stream_executor/rng.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -36,7 +35,7 @@ class StreamExecutorInterface;
 
 // The PluginRegistry is a singleton that maintains the set of registered
 // "support library" plugins. Currently, there are four kinds of plugins:
-// BLAS, DNN, FFT, and RNG. Each interface is defined in the corresponding
+// BLAS, DNN, and FFT. Each interface is defined in the corresponding
 // gpu_{kind}.h header.
 //
 // At runtime, a StreamExecutor object will query the singleton registry to
@@ -52,7 +51,6 @@ class PluginRegistry {
   typedef blas::BlasSupport* (*BlasFactory)(internal::StreamExecutorInterface*);
   typedef dnn::DnnSupport* (*DnnFactory)(internal::StreamExecutorInterface*);
   typedef fft::FftSupport* (*FftFactory)(internal::StreamExecutorInterface*);
-  typedef rng::RngSupport* (*RngFactory)(internal::StreamExecutorInterface*);
 
   // Gets (and creates, if necessary) the singleton PluginRegistry instance.
   static PluginRegistry* Instance();
@@ -70,11 +68,6 @@ class PluginRegistry {
   tsl::Status RegisterFactoryForAllPlatforms(PluginId plugin_id,
                                              const std::string& name,
                                              FactoryT factory);
-
-  // TODO(b/22689637): Setter for temporary mapping until all users are using
-  // MultiPlatformManager / PlatformId.
-  void MapPlatformKindToId(PlatformKind platform_kind,
-                           Platform::Id platform_id);
 
   // Potentially sets the plugin identified by plugin_id to be the default
   // for the specified platform and plugin kind. If this routine is called
@@ -94,27 +87,19 @@ class PluginRegistry {
   tsl::StatusOr<FactoryT> GetFactory(Platform::Id platform_id,
                                      PluginId plugin_id);
 
-  // TODO(b/22689637): Deprecated/temporary. Will be deleted once all users are
-  // on MultiPlatformManager / PlatformId.
-  template <typename FactoryT>
-  ABSL_DEPRECATED("Use MultiPlatformManager / PlatformId instead.")
-  tsl::StatusOr<FactoryT> GetFactory(PlatformKind platform_kind,
-                                     PluginId plugin_id);
-
  private:
   // Containers for the sets of registered factories, by plugin kind.
   struct PluginFactories {
     std::map<PluginId, BlasFactory> blas;
     std::map<PluginId, DnnFactory> dnn;
     std::map<PluginId, FftFactory> fft;
-    std::map<PluginId, RngFactory> rng;
   };
 
   // Simple structure to hold the currently configured default plugins (for a
   // particular Platform).
   struct DefaultFactories {
     DefaultFactories();
-    PluginId blas, dnn, fft, rng;
+    PluginId blas, dnn, fft;
   };
 
   PluginRegistry();
@@ -141,10 +126,6 @@ class PluginRegistry {
   // The singleton itself.
   static PluginRegistry* instance_;
 
-  // TODO(b/22689637): Temporary mapping until all users are using
-  // MultiPlatformManager / PlatformId.
-  std::map<PlatformKind, Platform::Id> platform_id_by_kind_;
-
   // The set of registered factories, keyed by platform ID.
   std::map<Platform::Id, PluginFactories> factories_;
 
@@ -168,15 +149,11 @@ class PluginRegistry {
       PluginRegistry::FACTORY_TYPE factory);                                 \
   template <>                                                                \
   tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
-      Platform::Id platform_id, PluginId plugin_id);                         \
-  template <>                                                                \
-  tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
-      PlatformKind platform_kind, PluginId plugin_id)
+      Platform::Id platform_id, PluginId plugin_id)
 
 DECLARE_PLUGIN_SPECIALIZATIONS(BlasFactory);
 DECLARE_PLUGIN_SPECIALIZATIONS(DnnFactory);
 DECLARE_PLUGIN_SPECIALIZATIONS(FftFactory);
-DECLARE_PLUGIN_SPECIALIZATIONS(RngFactory);
 #undef DECL_PLUGIN_SPECIALIZATIONS
 
 }  // namespace stream_executor

@@ -37,7 +37,7 @@ std::unique_ptr<HloInstruction> CloneAllReduce(
   HloComputation* to_apply = new_inst->to_apply();
   HloComputation* to_apply_promoted = [&]() {
     PrimitiveType type = shape.element_type();
-    std::string name = to_apply->name() + "_promoted";
+    std::string name = absl::StrCat(to_apply->name(), "_promoted");
     HloComputation::Builder promoted(name);
     auto x = promoted.AddInstruction(HloInstruction::CreateParameter(
         /*parameter_number=*/0, ShapeUtil::MakeShape(type, {}), "x"));

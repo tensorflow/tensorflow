@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/tsl/distributed_runtime/call_options.h"
 
+#include <utility>
+
 #include "tensorflow/tsl/platform/mutex.h"
 
 namespace tsl {
 
-CallOptions::CallOptions() {}
+CallOptions::CallOptions() = default;
 
 void CallOptions::StartCancel() {
   mutex_lock l(mu_);

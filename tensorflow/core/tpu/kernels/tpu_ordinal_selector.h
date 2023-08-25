@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_ORDINAL_SELECTOR_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_ORDINAL_SELECTOR_H_
 
+#include <optional>
+
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_ordinal_selector_interface.h"
@@ -37,7 +39,7 @@ class TPUOrdinalSelector : TPUOrdinalSelectorInterface {
     stream_executor::tpu::OpsApiFn()->TfTpuOrdinalSelector_DestroyFn(
         ordinal_selector_);
   }
-  int64_t GetOrdinal(absl::optional<uint64> key, int64_t* req_id) override {
+  int64_t GetOrdinal(std::optional<uint64> key, int64_t* req_id) override {
     int64_t ordinal;
     stream_executor::tpu::OpsApiFn()->TfTpuOrdinalSelector_GetOrdinalFn(
         ordinal_selector_, key, req_id, &ordinal);

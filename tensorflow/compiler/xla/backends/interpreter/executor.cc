@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/backends/interpreter/executor.h"
 
 #include <cstring>
+#include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace stream_executor {
@@ -97,14 +99,14 @@ tsl::Status XlaInterpreterExecutor::SynchronousMemcpy(
 }
 
 bool XlaInterpreterExecutor::HostCallback(
-    Stream *stream, std::function<tsl::Status()> callback) {
-  AsExecutorStream(stream)->EnqueueTaskWithStatus(callback);
+    Stream *stream, absl::AnyInvocable<tsl::Status() &&> callback) {
+  AsExecutorStream(stream)->EnqueueTaskWithStatus(std::move(callback));
   return true;
 }
 
 bool XlaInterpreterExecutor::CreateStreamDependency(Stream *dependent,
                                                     Stream *other) {
-  AsExecutorStream(dependent)->EnqueueTask(
+  AsExecutorStream(dependent)->EnqueueTaskWithStatus(
       [other]() { return other->BlockHostUntilDone(); });
   tsl::Status status = AsExecutorStream(dependent)->BlockUntilDone();
   if (status.ok()) {
@@ -115,16 +117,6 @@ bool XlaInterpreterExecutor::CreateStreamDependency(Stream *dependent,
   // to throw away error information here.
   LOG(WARNING) << "CreateStreamDependency: error on stream: " << status;
   return false;
-}
-
-bool XlaInterpreterExecutor::StartTimer(Stream *stream, Timer *timer) {
-  dynamic_cast<host::HostTimer *>(timer->implementation())->Start(stream);
-  return true;
-}
-
-bool XlaInterpreterExecutor::StopTimer(Stream *stream, Timer *timer) {
-  dynamic_cast<host::HostTimer *>(timer->implementation())->Stop(stream);
-  return true;
 }
 
 tsl::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {

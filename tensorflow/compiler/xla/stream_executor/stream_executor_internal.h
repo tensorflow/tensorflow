@@ -22,14 +22,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
 
 #include <cstdint>
-#include <functional>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/stream_executor/allocator_stats.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
@@ -41,25 +40,24 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/kernel_cache_config.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel_spec.h"
 #include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/module_spec.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
 class Stream;
-class Timer;
 
 // An opaque handle to a loaded module.
 //
 // An instance of this is returned from StreamExecutor::GetModule.
 class ModuleHandle {
  public:
-  /*implicit*/ ModuleHandle(void* id = nullptr) : id_(id) {}
+  explicit ModuleHandle(void* id = nullptr) : id_(id) {}
 
   // A ModuleHandle with id() == nullptr is an invalid module handle, akin to a
   // null pointer.
@@ -77,8 +75,8 @@ namespace internal {
 // the PIMPL style.
 class EventInterface {
  public:
-  EventInterface() {}
-  virtual ~EventInterface() {}
+  EventInterface() = default;
+  virtual ~EventInterface() = default;
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(EventInterface);
@@ -91,10 +89,10 @@ class EventInterface {
 class KernelInterface {
  public:
   // Default constructor for the abstract interface.
-  KernelInterface() {}
+  KernelInterface() = default;
 
   // Default destructor for the abstract interface.
-  virtual ~KernelInterface() {}
+  virtual ~KernelInterface() = default;
 
   // Returns the number of formal parameters that this kernel accepts.
   virtual unsigned Arity() const = 0;
@@ -116,10 +114,24 @@ class KernelInterface {
 class StreamInterface {
  public:
   // Default constructor for the abstract interface.
-  StreamInterface() {}
+  StreamInterface() = default;
 
   // Default destructor for the abstract interface.
-  virtual ~StreamInterface() {}
+  virtual ~StreamInterface() = default;
+
+  // Sets priority for a stream.
+  virtual void SetPriority(StreamPriority priority) {
+    LOG(ERROR) << "SetPriority unimplemented for this stream.";
+  }
+
+  virtual void SetPriority(int priority) {
+    LOG(ERROR) << "SetPriority unimplemented for this stream.";
+  }
+
+  // Gets priority for a stream.
+  virtual std::variant<StreamPriority, int> priority() const {
+    return StreamPriority::Default;
+  }
 
   // Returns the GPU stream associated with this platform's stream
   // implementation, or nullptr otherwise.
@@ -133,38 +145,16 @@ class StreamInterface {
   SE_DISALLOW_COPY_AND_ASSIGN(StreamInterface);
 };
 
-// Pointer-to-implementation object type (i.e. the Timer class delegates to
-// this interface) with virtual destruction. This class exists for the
-// platform-dependent code to hang any timer data/resource info/functionality
-// off of.
-class TimerInterface {
- public:
-  // Default constructor for the abstract interface.
-  TimerInterface() {}
-
-  // Default destructor for the abstract interface.
-  virtual ~TimerInterface() {}
-
-  // Returns the number of microseconds elapsed in a completed timer.
-  virtual uint64_t Microseconds() const = 0;
-
-  // Returns the number of nanoseconds elapsed in a completed timer.
-  virtual uint64_t Nanoseconds() const = 0;
-
- private:
-  SE_DISALLOW_COPY_AND_ASSIGN(TimerInterface);
-};
-
 // Interface for the different StreamExecutor platforms (i.e. CUDA, OpenCL).
 //
 // Various platforms will provide an implementation that satisfy this interface.
 class StreamExecutorInterface {
  public:
   // Default constructor for the abstract interface.
-  StreamExecutorInterface() {}
+  StreamExecutorInterface() = default;
 
   // Default destructor for the abstract interface.
-  virtual ~StreamExecutorInterface() {}
+  virtual ~StreamExecutorInterface() = default;
 
   // Returns the (transitively) wrapped executor if this executor is
   // wrapping another executor; otherwise, returns this.
@@ -252,24 +242,25 @@ class StreamExecutorInterface {
   virtual bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                                     const DeviceMemoryBase& gpu_src,
                                     uint64_t size) = 0;
-  virtual bool HostCallback(Stream* stream, std::function<void()> callback);
   virtual bool HostCallback(Stream* stream,
-                            std::function<tsl::Status()> callback) = 0;
+                            absl::AnyInvocable<tsl::Status() &&> callback) = 0;
   virtual tsl::Status AllocateEvent(Event* event) = 0;
   virtual tsl::Status DeallocateEvent(Event* event) = 0;
   virtual tsl::Status RecordEvent(Stream* stream, Event* event) = 0;
   virtual tsl::Status WaitForEvent(Stream* stream, Event* event) = 0;
+  virtual tsl::Status WaitForEventOnExternalStream(std::intptr_t stream,
+                                                   Event* event) {
+    return tsl::Status(
+        absl::StatusCode::kUnimplemented,
+        "WaitForEventOnExternalStream not supported on this executor.");
+  }
   virtual Event::Status PollForEventStatus(Event* event) = 0;
   virtual bool AllocateStream(Stream* stream) = 0;
   virtual void DeallocateStream(Stream* stream) = 0;
   virtual bool CreateStreamDependency(Stream* dependent, Stream* other) = 0;
-  virtual bool AllocateTimer(Timer* timer) = 0;
-  virtual void DeallocateTimer(Timer* timer) = 0;
-  virtual bool StartTimer(Stream* stream, Timer* timer) = 0;
-  virtual bool StopTimer(Stream* stream, Timer* timer) = 0;
   virtual tsl::Status BlockHostUntilDone(Stream* stream) = 0;
   virtual tsl::Status GetStatus(Stream* stream) {
-    return tsl::Status(port::error::UNIMPLEMENTED,
+    return tsl::Status(absl::StatusCode::kUnimplemented,
                        "GetStatus is not supported on this executor.");
   }
   virtual int PlatformDeviceCount() = 0;
@@ -318,51 +309,21 @@ class StreamExecutorInterface {
     return false;
   }
 
-  // Returns whether this StreamExecutor has BLAS support for its underlying
-  // platform.
-  virtual bool SupportsBlas() const { return false; }
-
   // Creates a new BlasSupport object, ownership is transferred to the caller.
-  // If SupportsBlas() is false, this will always return null.
   //
-  // If SupportsBlas() is true, this may return null, for example, if the BLAS
-  // initialization fails.
+  // This may return null if the BLAS initialization fails or this object does
+  // not support BLAS.
   virtual blas::BlasSupport* CreateBlas() { return nullptr; }
-
-  // Returns whether this StreamExecutor has FFT support for its underlying
-  // platform.
-  virtual bool SupportsFft() const { return false; }
 
   // Creates a new fft::FftSupport object, ownership is transferred to the
   // caller.
-  // If SupportsFft() is false, this will always return null.
-  //
-  // If SupportsFft() is true, this may return null, for example, if the FFT
-  // initialization fails.
+  // This may return null if the FFT initialization fails or this object does
+  // not support FFT.
   virtual fft::FftSupport* CreateFft() { return nullptr; }
 
-  // Returns whether this StreamExecutor has Random Number Generation support
-  // for
-  // its underlying platform.
-  virtual bool SupportsRng() const { return false; }
-
-  // Returns whether this StreamExecutor has neural net support for its
-  // underlying
-  // platform.
-  virtual bool SupportsDnn() const { return false; }
-
-  // Creates a new RngSupport object, ownership is transferred to the caller.
-  // If SupportsRng() is false, this will always return null.
-  //
-  // If SupportsRng() is true, this may return null, for example, if the RNG
-  // initialization fails.
-  virtual rng::RngSupport* CreateRng() { return nullptr; }
-
   // Creates a new DnnSupport object, ownership is transferred to the caller.
-  // If SupportsDnn() is false, this will always return null.
-  //
-  // If SupportsDnn() is true, this may return null, for example, if the DNN
-  // initialization fails.
+  // This may return null if the DNN initialization fails or this object does
+  // not support Dnns.
   virtual dnn::DnnSupport* CreateDnn() { return nullptr; }
 
   // Each call creates a new instance of the platform-specific implementation of
@@ -370,7 +331,6 @@ class StreamExecutorInterface {
   virtual std::unique_ptr<EventInterface> CreateEventImplementation() = 0;
   virtual std::unique_ptr<KernelInterface> CreateKernelImplementation() = 0;
   virtual std::unique_ptr<StreamInterface> GetStreamImplementation() = 0;
-  virtual std::unique_ptr<TimerInterface> GetTimerImplementation() = 0;
 
   // Returns the CUDA or ROCm context associated with this StreamExecutor
   // platform implementation.

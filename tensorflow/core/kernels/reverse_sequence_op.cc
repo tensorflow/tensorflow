@@ -25,6 +25,7 @@ limitations under the License.
 
 #include <memory>
 #include <vector>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -206,7 +207,6 @@ namespace functor {
   DECLARE_GPU_SPEC_LEN(T, 5);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
-TF_CALL_bfloat16(DECLARE_GPU_SPECS);
 TF_CALL_bool(DECLARE_GPU_SPECS);
 
 }  // namespace functor
@@ -224,7 +224,6 @@ TF_CALL_bool(DECLARE_GPU_SPECS);
   REGISTER_REVERSE_SEQUENCE_GPU(type, int64_t);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_REVERSE_SEQUENCE_GPU_LEN);
-TF_CALL_bfloat16(REGISTER_REVERSE_SEQUENCE_GPU_LEN);
 TF_CALL_bool(REGISTER_REVERSE_SEQUENCE_GPU_LEN);
 
 #undef REGISTER_REVERSE_SEQUENCE_GPU

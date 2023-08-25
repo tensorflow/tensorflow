@@ -7,6 +7,7 @@ add_mlir_library(MhloAnalysis
   LINK_LIBS PUBLIC
   MLIRAnalysis
   MLIRIR
+  LmhloDialect
 )
 
 add_mlir_library(MhloTestAnalysis
@@ -14,6 +15,9 @@ add_mlir_library(MhloTestAnalysis
 
   LINK_COMPONENTS
   Core
+
+  DEPENDS
+  LMHLOTransformsPassIncGen
 
   LINK_LIBS PUBLIC
   MLIRHLOAnalysis

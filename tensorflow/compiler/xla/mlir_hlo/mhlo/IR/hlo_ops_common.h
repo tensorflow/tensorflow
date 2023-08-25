@@ -19,6 +19,7 @@ limitations under the License.
 // This file defines functionality shared between chlo/mhlo/lhlo dialects.
 
 #include <algorithm>
+#include <optional>
 
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"
@@ -38,11 +39,11 @@ LogicalResult verifyReduceScatter(Operation* op, TypeRange operandTypes,
 
 // Custom formatting for convolution window attributes.
 void printWindowAttributes(OpAsmPrinter& p, Operation* op,
-                           llvm::Optional<DenseIntElementsAttr> windowStrides,
-                           llvm::Optional<DenseIntElementsAttr> padding,
-                           llvm::Optional<DenseIntElementsAttr> lhsDilation,
-                           llvm::Optional<DenseIntElementsAttr> rhsDilation,
-                           llvm::Optional<DenseElementsAttr> windowReversal);
+                           std::optional<DenseIntElementsAttr> windowStrides,
+                           std::optional<DenseIntElementsAttr> padding,
+                           std::optional<DenseIntElementsAttr> lhsDilation,
+                           std::optional<DenseIntElementsAttr> rhsDilation,
+                           std::optional<DenseElementsAttr> windowReversal);
 
 ParseResult parseWindowAttributes(OpAsmParser& parser,
                                   DenseIntElementsAttr& windowStrides,

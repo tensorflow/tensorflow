@@ -84,7 +84,6 @@ set(TEST_FRAMEWORK_SRC
   ${TFLITE_SOURCE_DIR}/delegates/nnapi/acceleration_test_list.cc
   ${TFLITE_SOURCE_DIR}/delegates/nnapi/acceleration_test_util.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
-  ${TFLITE_SOURCE_DIR}/profiling/telemetry/telemetry.cc
   ${TFLITE_SOURCE_DIR}/schema/schema_conversion_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/command_line_flags.cc
   ${DELEGATE_PROVIDERS}
@@ -113,7 +112,7 @@ set(TEST_FRAMEWORK_OPTIONS "")
 if(TFLITE_ENABLE_XNNPACK)
   list(APPEND TEST_FRAMEWORK_SRC
     ${TFLITE_SOURCE_DIR}/tools/delegates/xnnpack_delegate_provider.cc
-    ${TFLITE_SOURCE_DIR}/core/experimental/acceleration/configuration/c/xnnpack_plugin.cc)
+    ${TFLITE_SOURCE_DIR}/core/acceleration/configuration/c/xnnpack_plugin.cc)
 else()
   list(APPEND TEST_FRAMEWORK_OPTIONS "-DTFLITE_WITHOUT_XNNPACK")
 endif()

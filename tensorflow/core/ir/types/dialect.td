@@ -47,7 +47,7 @@ def TFTypeDialect : Dialect {
      void printType(::mlir::Type type, ::mlir::DialectAsmPrinter &printer) const;
   }];
   let useDefaultAttributePrinterParser = 1;
-  let useFoldAPI = kEmitFoldAdaptorFolder;
+  let usePropertiesForAttributes = 0;
 }
 
 //===----------------------------------------------------------------------===//

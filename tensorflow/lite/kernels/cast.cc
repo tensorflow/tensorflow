@@ -70,6 +70,42 @@ void copyCast(const std::complex<float>* in, std::complex<float>* out,
                  [](std::complex<float> a) { return a; });
 }
 
+template <typename ToT>
+void copyCast(const Eigen::half* in, ToT* out, int num_elements) {
+  std::transform(in, in + num_elements, out, [](Eigen::half a) {
+    return static_cast<ToT>(Eigen::half_impl::half_to_float(a));
+  });
+}
+
+template <>
+void copyCast(const Eigen::half* in, std::complex<float>* out,
+              int num_elements) {
+  std::transform(in, in + num_elements, out, [](Eigen::half a) {
+    return std::complex<float>(Eigen::half_impl::half_to_float(a));
+  });
+}
+
+template <typename FromT>
+void copyCastToFloat16(const FromT* in, Eigen::half* out, int num_elements) {
+  std::transform(in, in + num_elements, out, [](FromT a) {
+    return Eigen::half_impl::float_to_half_rtne(static_cast<float>(a));
+  });
+}
+
+template <>
+void copyCastToFloat16(const std::complex<float>* in, Eigen::half* out,
+                       int num_elements) {
+  std::transform(in, in + num_elements, out, [](std::complex<float> a) {
+    return Eigen::half_impl::float_to_half_rtne(std::real(a));
+  });
+}
+
+template <>
+void copyCastToFloat16(const Eigen::half* in, Eigen::half* out,
+                       int num_elements) {
+  std::transform(in, in + num_elements, out, [](Eigen::half a) { return a; });
+}
+
 template <typename FromT>
 TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
                           TfLiteTensor* out, int num_elements) {
@@ -95,8 +131,15 @@ TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
     case kTfLiteInt8:
       copyCast(in, out->data.int8, num_elements);
       break;
+    case kTfLiteFloat16:
+      copyCastToFloat16(in, reinterpret_cast<Eigen::half*>(out->data.f16),
+                        num_elements);
+      break;
     case kTfLiteFloat32:
       copyCast(in, GetTensorData<float>(out), num_elements);
+      break;
+    case kTfLiteFloat64:
+      copyCast(in, out->data.f64, num_elements);
       break;
     case kTfLiteBool:
       copyCast(in, out->data.b, num_elements);
@@ -135,9 +178,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return copyToTensor(context, input->data.uint8, output, num_elements);
     case kTfLiteInt8:
       return copyToTensor(context, input->data.int8, output, num_elements);
+    case kTfLiteFloat16:
+      return copyToTensor(context,
+                          reinterpret_cast<Eigen::half*>(input->data.f16),
+                          output, num_elements);
     case kTfLiteFloat32:
       return copyToTensor(context, GetTensorData<float>(input), output,
                           num_elements);
+    case kTfLiteFloat64:
+      return copyToTensor(context, input->data.f64, output, num_elements);
     case kTfLiteBool:
       return copyToTensor(context, input->data.b, output, num_elements);
     case kTfLiteComplex64:

@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_XLA_DEBUG_INFO_MANAGER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_XLA_DEBUG_INFO_MANAGER_H_
 
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -40,9 +42,9 @@ class XlaDebugInfoManager {
   }
 
   // Registers an active module to XlaDebugInfoManager.
-  // The module_id is expected to be unique per process.
+  // The module_id of the module is expected to be unique per process.
   void RegisterModule(
-      ModuleIdentifier module_id, std::shared_ptr<const HloModule> hlo_module,
+      std::shared_ptr<const HloModule> hlo_module,
       std::shared_ptr<const BufferAssignmentProto> buffer_assignment);
 
   // Unregisters an active module.
@@ -57,6 +59,9 @@ class XlaDebugInfoManager {
   // modules that were alive since StartTracing().
   void StopTracing(
       std::vector<std::unique_ptr<HloProto>>* module_debug_info = nullptr);
+
+  // Returns whether 'module_id' is tracked by XlaDebugInfoManager.
+  bool TracksModule(ModuleIdentifier module_id) const;
 
   friend class XlaDebugInfoManagerTestPeer;
 

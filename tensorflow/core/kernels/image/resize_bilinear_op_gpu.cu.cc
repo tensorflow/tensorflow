@@ -511,13 +511,11 @@ struct ResizeBilinearGrad<GPUDevice, T> {
 #define DEFINE_GPU_SPEC(T) template struct ResizeBilinear<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
-TF_CALL_bfloat16(DEFINE_GPU_SPEC);
 
 #define DEFINE_GRAD_GPU_SPEC(T) \
   template struct ResizeBilinearGrad<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GRAD_GPU_SPEC);
-TF_CALL_bfloat16(DEFINE_GRAD_GPU_SPEC);
 
 #undef DEFINE_GPU_SPEC
 #undef DEFINE_GRAD_GPU_SPEC

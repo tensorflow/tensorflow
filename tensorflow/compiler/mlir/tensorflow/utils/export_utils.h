@@ -27,7 +27,6 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -58,7 +57,7 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
 // "name" and "device" attributes are ignored by default. Use attrs_to_ignore to
 // specify any other attributes that should be ignored.
 Status ConvertAttributes(
-    const llvm::ArrayRef<mlir::NamedAttribute> attrs,
+    llvm::ArrayRef<mlir::NamedAttribute> attrs,
     const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
     bool remove_ref_type, AttrValueMap* values);
 

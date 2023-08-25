@@ -6,8 +6,8 @@
 
 // CHECK-LABEL: llvm.func @main(
 // CHECK-SAME:    %[[ARG0:arg[0-9]+]]: !llvm.ptr,
-// CHECK-SAME:    %[[ARG1:arg[0-9]+]]: !llvm.ptr<f32>,
-// CHECK-SAME:    %[[ARG2:arg[0-9]+]]: !llvm.ptr<f32>,
+// CHECK-SAME:    %[[ARG1:arg[0-9]+]]: !llvm.ptr,
+// CHECK-SAME:    %[[ARG2:arg[0-9]+]]: !llvm.ptr,
 // CHECK-SAME:    %[[ARG3:arg[0-9]+]]: i64,
 // CHECK-SAME:    %[[ARG4:arg[0-9]+]]: i64,
 // CHECK-SAME:    %[[ARG5:arg[0-9]+]]: i64

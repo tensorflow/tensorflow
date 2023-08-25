@@ -17,10 +17,10 @@ cc_library(
         "test_pass.h",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/platform:logging",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
     ],

@@ -823,7 +823,7 @@ TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
   Status error_status = layout_assignment.Run(m.get()).status();
   EXPECT_FALSE(error_status.ok());
   EXPECT_THAT(
-      error_status.error_message(),
+      error_status.message(),
       ::testing::HasSubstr(
           "Unexpected bitcast operation seen during layout assignment"));
 }
@@ -1372,13 +1372,10 @@ TEST_F(LayoutAssignmentTest, OverwriteDiamondShapedConstraintsX) {
   ForceParameterLayout(m.get(), 0, r2_dim0major);
   ForceParameterLayout(m.get(), 1, r2_dim0major);
   TF_ASSERT_OK(AssignLayoutsToComputation(m.get()));
-
-  EXPECT_THAT(add->shape().layout().minor_to_major(), ElementsAre(1, 0));
+  EXPECT_THAT(m->entry_computation()->root_instruction()->operand(0)->shape(),
+              ashape_major);
   EXPECT_THAT(add->operand(0)->shape().layout().minor_to_major(),
-              ElementsAre(1, 0));
-  EXPECT_THAT(add->operand(1)->shape().layout().minor_to_major(),
-              ElementsAre(1, 0));
-
+              add->operand(1)->shape().layout().minor_to_major());
   EXPECT_THAT(transpose->shape().layout().minor_to_major(), ElementsAre(0, 1));
 }
 
@@ -1611,5 +1608,89 @@ ENTRY main {
   ExpectLayoutIs(subtract_14->shape(), {2, 3, 1, 0});
 }
 
+// Test the ability to propagate operand constraints across multiple operations.
+TEST_F(LayoutAssignmentTest, PropagateOperandLayout2) {
+  const char* module_str = R"(
+ HloModule TensorFlowGather, entry_computation_layout={(f32[32,650]{1,0},s32[16,1,18]{0,1,2})->f32[16,1,18,32]{3,1,2,0}}
+ 
+ ENTRY %main (operand: f32[32,650], indices: s32[16,1,18]) -> f32[16,1,18,32] {
+   %operand = f32[32,650]{1,0} parameter(0)
+   %transpose = f32[650,32]{0,1} transpose(f32[32,650]{1,0} %operand), dimensions={1,0}
+   %indices = s32[16,1,18]{0,1,2} parameter(1)
+   %reshape.1 = s32[288,1]{1,0} reshape(s32[16,1,18]{0,1,2} %indices)
+   %gather.1 = f32[288,1,32]{2,1,0} gather(f32[650,32]{0,1} %transpose, s32[288,1]{1,0} %reshape.1), offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,32}
+   ROOT %reshape.3 = f32[16,1,18,32]{3,2,1,0} reshape(f32[288,1,32]{2,1,0} %gather.1)
+ } )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
+                                     nullptr);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+  const HloInstruction* reshape_1 = FindInstruction(m.get(), "reshape.1");
+  ExpectLayoutIs(reshape_1->shape(), {1, 0});
+  const HloInstruction* reshape_3 = FindInstruction(m.get(), "reshape.3");
+  ExpectLayoutIs(reshape_3->shape(), {3, 1, 2, 0});
+}
+
+// Test the ability to preset layout for instruction.
+TEST_F(LayoutAssignmentTest, PreserveInstructionLayout) {
+  const char* module_str = R"(
+ HloModule TensorFlowGather, entry_computation_layout={(f32[32,650]{1,0},s32[16,1,18]{0,1,2})->(f32[16,1,18,32]{3,1,2,0})}
+ 
+ ENTRY %main  {
+   %operand = f32[32,650]{1,0} parameter(0)
+   %transpose = f32[650,32]{0,1} transpose(f32[32,650]{1,0} %operand), dimensions={1,0}
+   %indices = s32[16,1,18]{0,1,2} parameter(1)
+   %reshape.1 = s32[288,1]{1,0} reshape(s32[16,1,18]{0,1,2} %indices)
+   %gather.1 = f32[288,1,32]{2,1,0} gather(f32[650,32]{0,1} %transpose, s32[288,1]{1,0} %reshape.1), offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,32}
+   %reshape.3 = f32[16,1,18,32]{3,2,1,0} reshape(f32[288,1,32]{2,1,0} %gather.1), metadata={preserve_layout=true}
+   ROOT %tuple.1 = (f32[16,1,18,32]{3,1,2,0}) tuple(reshape.3)
+ } )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
+                                     nullptr);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+  const HloInstruction* reshape_1 = FindInstruction(m.get(), "reshape.1");
+  ExpectLayoutIs(reshape_1->shape(), {1, 0});
+  const HloInstruction* reshape_3 = FindInstruction(m.get(), "reshape.3");
+  ExpectLayoutIs(reshape_3->shape(), {3, 2, 1, 0});
+}
+
+// Different instructions should not share buffers when assigning layout.
+TEST_F(LayoutAssignmentTest, BreakBufferAliasAcrossInstructions) {
+  const char* module_str = R"(
+ HloModule break_alias_test, entry_computation_layout={(f32[256,8]{0,1})->f32[256,8]{1,0}}
+
+called_computation {
+  init = f32[256,8]{1,0:T(8)} parameter(0)
+  one = f32[] constant(1)
+  ones = f32[256,8] broadcast(one), dimensions={}
+  ROOT add = f32[256,8] add(init, ones)
+}
+
+ENTRY main {
+  init = f32[256,8] parameter(0)
+  ROOT start = f32[256,8]{1,0} custom-call(init), custom_call_target="baz", to_apply=called_computation, custom_call_has_side_effect=true, output_to_operand_aliasing={{}: (0, {})}, metadata={preserve_layout=true}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
+                                     nullptr);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+  const HloInstruction* param =
+      m->entry_computation()->parameter_instruction(0);
+  ExpectLayoutIs(param->shape(), {0, 1});
+  const HloInstruction* root = m->entry_computation()->root_instruction();
+  ExpectLayoutIs(root->shape(), {1, 0});
+  // Expecting a copy before custom call to reconcile the different layouts.
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kCopy);
+}
 }  // namespace
 }  // namespace xla

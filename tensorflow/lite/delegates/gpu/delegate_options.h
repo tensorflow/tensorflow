@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -61,7 +61,7 @@ enum TfLiteGpuExperimentalFlags {
   // Enforces execution with the provided backend.
   TFLITE_GPU_EXPERIMENTAL_FLAGS_CL_ONLY = 1 << 1,
   TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY = 1 << 2,
-  // Enable serialization of GPU kernels & model data. Speeds up initilization
+  // Enable serialization of GPU kernels & model data. Speeds up initialization
   // at the cost of space on disk.
   // Delegate performs serialization the first time it is applied with a new
   // model or inference params. Later initializations are fast.
@@ -136,6 +136,13 @@ typedef struct {
   // Set to nullptr in TfLiteGpuDelegateOptionsV2Default(), which implies the
   // delegate will not try serialization.
   const char* model_token;
+
+#ifdef TFLITE_DEBUG_DELEGATE
+  // This sets the index of the first node that could be delegated.
+  int first_delegate_node_index;
+  // This sets the index of the last node that could be delegated.
+  int last_delegate_node_index;
+#endif
 } TfLiteGpuDelegateOptionsV2;
 
 // Populates TfLiteGpuDelegateOptionsV2 as follows:

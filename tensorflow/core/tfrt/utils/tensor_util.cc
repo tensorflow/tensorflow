@@ -110,8 +110,7 @@ StatusOr<tensorflow::DataType> ConvertTFRTDTypeToTFDType(DType dtype) {
 
 }  // namespace
 
-llvm::Expected<tensorflow::Tensor> TFRTTensorToTFTensor(const Tensor& tensor,
-                                                        HostContext* host) {
+llvm::Expected<tensorflow::Tensor> TFRTTensorToTFTensor(const Tensor& tensor) {
   if (auto* knfbt = llvm::dyn_cast<tensorflow::KernelFallbackTensor>(&tensor)) {
     return *knfbt->GetTensor();
   }
@@ -211,6 +210,25 @@ StatusOr<tensorflow::Tensor> CreateTFTensorFromTensorHandle(
   }
 
   return tensorflow::errors::Internal("unknown host tensor type");
+}
+
+Expected<tfrt::DenseHostTensor> ConvertTfTensorToDHT(
+    tensorflow::Tensor tf_tensor) {
+  auto metadata = tensorflow::tfd::GetTensorMetadata(tf_tensor);
+  if (!IsTriviallyCopyable(metadata.dtype))
+    return MakeStringError(
+        "Cannot convert tf Tensor with non-trivially copyable dtype to DHT");
+
+  void* data = tf_tensor.data();
+  size_t size = tf_tensor.AllocatedBytes();
+  tfrt::RCReference<tfrt::HostBuffer> host_buffer =
+      tfrt::HostBuffer::CreateFromExternal(
+          data, size, [tf_tensor = std::move(tf_tensor)](void*, size_t) {});
+
+  // Assume HostBuffer::CreateFromExternal never fails.
+  assert(host_buffer);
+
+  return tfrt::DenseHostTensor(metadata, std::move(host_buffer));
 }
 
 }  // namespace tfrt

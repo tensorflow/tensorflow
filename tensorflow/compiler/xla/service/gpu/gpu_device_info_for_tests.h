@@ -24,6 +24,7 @@ namespace gpu {
 class TestGpuDeviceInfo {
  public:
   static GpuDeviceInfo RTXA6000DeviceInfo();
+  static GpuDeviceInfo AMDMI210DeviceInfo();
 };
 
 }  // namespace gpu

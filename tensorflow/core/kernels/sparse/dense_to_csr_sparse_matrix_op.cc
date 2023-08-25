@@ -41,10 +41,10 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
-using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+using ::stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_activation.h"
-using ::perftools::gputools::rocm::ScopedActivateExecutorContext;
+using ::stream_executor::rocm::ScopedActivateExecutorContext;
 #endif
 
 namespace tensorflow {
@@ -201,7 +201,7 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
           c, calculate_nnz_from_indices(c, indices, nnz_per_batch_device),
           done);
 
-      perftools::gputools::DeviceMemoryBase nnz_per_batch_device_ptr(
+      stream_executor::DeviceMemoryBase nnz_per_batch_device_ptr(
           static_cast<void*>(nnz_per_batch_device.data()));
 
       OP_REQUIRES_ASYNC(

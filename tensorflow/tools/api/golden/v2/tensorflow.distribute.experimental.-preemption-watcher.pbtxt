@@ -10,4 +10,8 @@ tf_class {
     name: "__init__"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
+  member_method {
+    name: "block_until_worker_exit"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
 }

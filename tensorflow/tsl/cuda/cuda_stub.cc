@@ -49,17 +49,15 @@ CUresult GetSymbolNotFoundError() {
 }
 }  // namespace
 
-#if CUDA_VERSION < 8000
-#error CUDA version earlier than 8 is not supported.
+#if CUDA_VERSION < 10000
+#error CUDA version earlier than 10 is not supported.
 #endif
 
 #ifndef __CUDA_DEPRECATED
 #define __CUDA_DEPRECATED
 #endif
 
-#if CUDA_VERSION < 10000
-#include "tensorflow/tsl/cuda/cuda_9_0.inc"
-#elif CUDA_VERSION < 10010
+#if CUDA_VERSION < 10010
 #include "tensorflow/tsl/cuda/cuda_10_0.inc"
 #elif CUDA_VERSION < 10020
 #include "tensorflow/tsl/cuda/cuda_10_1.inc"

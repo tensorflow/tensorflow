@@ -186,8 +186,8 @@ class BaseMatrixTriangularSolveOp : public OpKernel {
                     "In[0] mismatch In[1] shape: ", d1, " vs. ", d2, ": ",
                     in0.shape().DebugString(), " ", in1.shape().DebugString(),
                     " ", lower_, " ", adjoint_));
-    out_shape.AddDim(d0);
-    out_shape.AddDim(d3);
+    OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(d0));
+    OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(d3));
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, out_shape, &out));
     if (out->NumElements() == 0) {
@@ -373,8 +373,6 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
     typedef Scalar Coefficient;
     const Scalar alpha = Scalar(1.0);
 
-#if GOOGLE_CUDA
-
     // TODO(b/146763573): Consider using Trsv here when the right hand side is
     // a vector. This will require an explicit transpose since Trsv assumes
     // CUBLAS_SIDE_LEFT.
@@ -408,15 +406,6 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
         }
       }
     }
-#elif TENSORFLOW_USE_ROCM
-    for (int batch = 0; batch < batch_size; ++batch) {
-      OP_REQUIRES_OK(
-          context,
-          solver->Trsm(side, uplo, trans, diag, colmajor_rows, colmajor_cols,
-                       &alpha, a_ptrs[batch], leading_dim_matrix /*lda*/,
-                       out_ptrs[batch], leading_dim_output /*ldb*/));
-    }
-#endif
   }
 };
 

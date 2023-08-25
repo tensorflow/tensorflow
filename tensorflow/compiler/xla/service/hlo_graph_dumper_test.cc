@@ -164,6 +164,25 @@ TEST_F(HloGraphDumperTest, Compare) {
   EXPECT_THAT(graph, HasSubstr("direction=LT"));
 }
 
+TEST_F(HloGraphDumperTest, HasStatisticsViz) {
+  const char* hlo_string = R"(
+    HloModule comp
+
+    ENTRY comp {
+      param.0 = f32[10] parameter(0), statistics={visualizing_index=0,stat-0=0.5}
+      param.1 = f32[10] parameter(1), statistics={visualizing_index=1,stat-0=55.5,stat-1=44.4}
+      ROOT lt = pred[10] compare(param.0, param.1), direction=LT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  // Just check that it doesn't crash.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::string graph,
+      RenderGraph(*module->entry_computation(), /*label=*/"tuple_constant",
+                  DebugOptions(), RenderedGraphFormat::kDot));
+}
+
 TEST_F(HloGraphDumperTest, RootIsConstant) {
   const char* hlo_string = R"(
 HloModule indexed_conditional

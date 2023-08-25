@@ -49,6 +49,7 @@ enum class GpuApi {
 
 enum class AdrenoGpu {
   // Adreno 7xx series
+  kAdreno740,
   kAdreno730,
   // Adreno 6xx series
   kAdreno685,
@@ -127,6 +128,7 @@ struct AdrenoInfo {
   bool IsAdreno6xx() const;
   bool IsAdreno7xx() const;
   bool IsAdreno6xxOrHigher() const;
+  bool IsBetterThan(AdrenoGpu gpu) const;
 
   // This function returns some not very documented physical parameter of
   // Adreno6xx GPU.
@@ -235,6 +237,7 @@ enum class MaliGpu {
   kG510,
   kG610,
   kG710,
+  kG715,
 };
 
 struct MaliInfo {
@@ -253,10 +256,48 @@ struct MaliInfo {
   bool IsValhallGen1() const;
   bool IsValhallGen2() const;
   bool IsValhallGen3() const;
+  bool IsValhallGen4() const;
   bool IsValhall() const;
 
   // returns approximate compute units count using GPU name
   int GetApproximateComputeUnitsCount() const;
+};
+
+enum class PowerVRGpu {
+  kRogueGm9xxx,
+  kRogueGe8xxx,
+  kRogue,
+  // New generation of IMG gpus after 2019:
+  kAXE,
+  kAXM,
+  kAXT,
+  kBXE,
+  kBXM,
+  kBXS,
+  kBXT,
+  kCXT,
+  kDXT,
+  kUnknown,
+};
+
+struct PowerVRInfo {
+  struct DriverVersion {
+    int branch_main = 0;
+    int branch_minor = 0;
+    int id = 0;
+  };
+  PowerVRInfo() = default;
+  explicit PowerVRInfo(const std::string& gpu_description);
+  PowerVRGpu gpu_version;
+  DriverVersion driver_version;
+
+  bool IsRogue() const;
+  bool IsImgAxx() const;
+  bool IsImgBxx() const;
+  bool IsImgCxx() const;
+  bool IsImgDxx() const;
+
+  bool IsBetterThan(PowerVRGpu gpu) const;
 };
 
 struct OpenGlInfo {
@@ -486,6 +527,7 @@ struct GpuInfo {
   AMDInfo amd_info;
   AppleInfo apple_info;
   MaliInfo mali_info;
+  PowerVRInfo powervr_info;
 
   // OpenGL specific, gpu_api should be kOpenGl
   OpenGlInfo opengl_info;
@@ -511,6 +553,7 @@ struct GpuInfo {
 // AdrenoInfo if vendor is kQualcomm
 // AppleInfo if vendor is kApple
 // MaliInfo if vendor is kMali
+// PowerVRInfo if vendor is kPowerVR
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
                                      GpuApi gpu_api, GpuInfo* gpu_info);
 

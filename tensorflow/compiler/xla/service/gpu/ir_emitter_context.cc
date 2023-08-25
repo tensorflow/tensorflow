@@ -77,7 +77,7 @@ void IrEmitterContext::emit_constant(int64_t num_elements,
       /*AddressSpace=*/0,
       /*isExternallyInitialized=*/false);
   global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
-  llvm_module_->getGlobalList().push_back(global_for_const);
+  llvm_module_->insertGlobalVariable(global_for_const);
 
   info.symbol_name.assign(symbol_name);
   info.allocation_index = allocation_idx;

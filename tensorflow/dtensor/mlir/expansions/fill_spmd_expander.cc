@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/fill_spmd_expander.h"
 
+#include <optional>
+
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -42,9 +44,10 @@ StatusOr<mlir::Operation*> FillSPMDExpander::ExpandOp(mlir::Operation* op) {
   if (!dims_layout->IsFullyReplicated()) {
     return errors::InvalidArgument(
         "Expected the layout for fill's `dims` argument to be fully "
-        "replicated.");
+        "replicated. Got ",
+        dims_layout->ToString());
   }
-  TF_ASSIGN_OR_RETURN(absl::optional<Layout> output_layout,
+  TF_ASSIGN_OR_RETURN(std::optional<Layout> output_layout,
                       ExtractSingleLayoutFromOp(op));
   if (!output_layout.has_value())
     return errors::Internal(

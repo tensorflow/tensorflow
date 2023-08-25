@@ -20,7 +20,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "tensorflow/compiler/jit/xla_launch_util.h"
+#include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -42,12 +42,6 @@ class PjRtCompileOnDemandOp : public OpKernel {
                         const std::vector<XlaCompiler::Argument>& args,
                         XlaCompiler::CompilationResult* result,
                         std::unique_ptr<xla::PjRtLoadedExecutable>* executable);
-
-  static Status Run(OpKernelContext* ctx, xla::PjRtClient* pjrt_client,
-                    const std::vector<const Tensor*>& inputs,
-                    const std::vector<VariableInfo>& variables,
-                    const XlaCompiler::CompilationResult& result,
-                    std::unique_ptr<xla::PjRtLoadedExecutable> executable);
 };
 
 void RegisterPjRtCompileOnDemand(const char* device, const char* jit_device);

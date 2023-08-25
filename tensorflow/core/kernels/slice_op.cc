@@ -297,7 +297,6 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 7); \
   DECLARE_GPU_SPEC(T, 8);
 
-TF_CALL_bfloat16(DECLARE_FOR_N);
 TF_CALL_int8(DECLARE_FOR_N);
 TF_CALL_int32(DECLARE_FOR_N);
 TF_CALL_int64(DECLARE_FOR_N);
@@ -315,7 +314,6 @@ TF_CALL_GPU_ALL_TYPES(DECLARE_FOR_N);
                               .HostMemory("size"),       \
                           SliceOp<GPUDevice, type>)
 
-TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_int8(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);

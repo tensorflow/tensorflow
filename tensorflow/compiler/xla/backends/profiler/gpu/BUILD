@@ -5,7 +5,6 @@ load(
     "tsl_copts",
     "tsl_gpu_library",
 )
-load("//tensorflow/tsl:tsl.default.bzl", "tsl_gpu_cc_test")
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_additional_device_tracer_srcs",
@@ -23,13 +22,17 @@ load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load(
+    "//tensorflow/compiler/xla:xla.bzl",
+    "xla_cc_test",
+)
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/xla:internal"],
     features = [
         "-layering_check",
     ],
-    licenses = ["notice"],
 )
 
 tsl_gpu_library(
@@ -107,13 +110,14 @@ tsl_gpu_library(
     ],
 )
 
-tsl_gpu_cc_test(
+xla_cc_test(
     name = "cupti_error_manager_test",
     size = "small",
     srcs = ["cupti_error_manager_test.cc"],
+    copts = tf_profiler_copts() + tsl_copts(),
     tags = tf_cuda_tests_tags() + [
-        "nomac",
         "gpu_cupti",
+        "nomac",
     ],
     deps = [
         "//tensorflow/tsl/platform:test_main",
@@ -125,9 +129,7 @@ tsl_gpu_cc_test(
         ":cupti_wrapper",
         ":mock_cupti",
         "@com_google_absl//absl/memory",
-        "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/profiler/utils:time_utils",
-        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl",
     ]),
 )
 
@@ -199,6 +201,32 @@ tsl_gpu_library(
 )
 
 tsl_gpu_library(
+    name = "cupti_profiler",
+    srcs = if_cuda(["cupti_profiler.cc"]),
+    hdrs = if_cuda(["cupti_profiler.h"]),
+    copts = tf_profiler_copts() + tsl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cupti_interface",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
+        "//tensorflow/tsl/profiler/lib:scoped_annotation",
+        "//tensorflow/tsl/profiler/utils:buffer_pool",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/container:node_hash_set",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tsl_gpu_library(
     name = "rocm_tracer",
     srcs = if_rocm(["rocm_tracer.cc"]),
     hdrs = if_rocm(["rocm_tracer.h"]),
@@ -240,23 +268,23 @@ tsl_gpu_library(
     copts = tf_profiler_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/tsl/platform:abi",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/utils:parse_annotation",
+        "//tensorflow/tsl/profiler/utils:trace_utils",
+        "//tensorflow/tsl/profiler/utils:xplane_builder",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "//tensorflow/tsl/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/strings",
-        "//tensorflow/tsl/platform:abi",
-        "//tensorflow/tsl/platform:platform_port",
-        "//tensorflow/tsl/platform:mutex",
-        "//tensorflow/tsl/platform:macros",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/tsl/profiler/utils:parse_annotation",
-        "//tensorflow/tsl/profiler/utils:xplane_builder",
-        "//tensorflow/tsl/profiler/utils:xplane_schema",
-        "//tensorflow/tsl/profiler/utils:xplane_utils",
-        "//tensorflow/tsl/profiler/utils:trace_utils",
     ] + tf_additional_cupti_deps(),
 )
 

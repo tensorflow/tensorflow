@@ -39,9 +39,9 @@ const get_email_domain = async ({github, username}) => {
   return domain;
 };
 
-/** For trusted parters like Intel, we want to auto-run tests and mark the PR as ready to pull
+/** For trusted parters like Intel, we want to auto-run tests
     This allows us to reduce the delay to external partners
-    Add Labels - kokoro:force-run, ready to pull
+    Add Labels - kokoro:force-run
     The PR is also assigned to specific teams to fast track review
     Additional reviewers can be added manually based on PR contents
   @param {!object}
@@ -50,7 +50,7 @@ const get_email_domain = async ({github, username}) => {
   @return {string} Returns the message with labels attached and assignees added
 */
 const filter_action = async ({github, context, domain}) => {
-  const labels = ['kokoro:force-run', 'ready to pull'];
+  const labels = ['kokoro:force-run'];
 
   let assignees = [];
   const title = context.payload.pull_request && context.payload.pull_request.title;
@@ -84,6 +84,10 @@ const filter_action = async ({github, context, domain}) => {
     if (lowercased_title.includes('arm_ci')) {
       assignees.push('nitins17', 'penpornk');
     }
+  }
+  if (lowercased_title.includes('tf-mot') && lowercased_title.includes('arm') &&
+      domain.includes('arm.com')) {
+    assignees.push('rino20', 'yyoon', 'lenscloth');
   }
 
   const resp_label = await github.rest.issues.addLabels({

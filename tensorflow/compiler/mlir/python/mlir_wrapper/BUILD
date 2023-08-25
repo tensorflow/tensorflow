@@ -20,8 +20,8 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/python:pybind11_lib",
-        "//tensorflow/python:pybind11_status",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
         "@llvm-project//llvm:FileCheckLib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -36,8 +36,8 @@ tf_python_pybind_extension(
     srcs = ["filecheck_wrapper.cc"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python:pybind11_lib",
-        "//tensorflow/python:pybind11_status",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
         "@llvm-project//llvm:FileCheckLib",
         "@llvm-project//llvm:Support",
         "@pybind11",

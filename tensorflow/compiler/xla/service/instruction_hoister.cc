@@ -97,9 +97,7 @@ bool HoistConstantOperations(
         contains_constant_successor_or_predecessors |=
             !instruction->control_successors().empty();
       } else {
-        auto is_constant = [](const HloInstruction* inst) {
-          return inst->opcode() == HloOpcode::kConstant;
-        };
+        auto is_constant = HloPredicateIsOp<HloOpcode::kConstant>;
         contains_constant_successor_or_predecessors |=
             absl::c_find_if(instruction->control_predecessors(), is_constant) !=
             instruction->control_predecessors().end();

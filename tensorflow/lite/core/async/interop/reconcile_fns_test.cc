@@ -21,8 +21,8 @@ limitations under the License.
 #include <tuple>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/core/async/interop/attribute_keys.h"
 #include "tensorflow/lite/core/async/interop/attribute_map_internal.h"
+#include "tensorflow/lite/core/async/interop/c/types.h"
 
 namespace tflite::interop {
 namespace {
@@ -36,74 +36,74 @@ void SetAttr(ContainerT* c, KeyT k, ValT v) {
 
 template <typename ValT, typename KeyT>
 ValT GetAttr(const ContainerT& c, KeyT k) {
-  return c.at(static_cast<uint32_t>(k)).Get<ValT>();
+  return *(c.at(static_cast<uint32_t>(k)).Get<ValT>());
 }
 
 TEST(ReconcileTest, NullCheck) {
   ContainerT m1, m2;
   // `merged` nullptr
-  EXPECT_FALSE(ReconcileGeneralAttributeKeys(kTfLiteBufferAttrMap, &m1, &m2,
+  EXPECT_FALSE(ReconcileGeneralAttributeKeys(kTfLiteAttrMapTypeBuffer, &m1, &m2,
                                              /*merged=*/nullptr,
                                              /*conflict=*/nullptr));
   // `lhs` nullptr
-  EXPECT_FALSE(ReconcileGeneralAttributeKeys(kTfLiteBufferAttrMap,
+  EXPECT_FALSE(ReconcileGeneralAttributeKeys(kTfLiteAttrMapTypeBuffer,
                                              /*lhs=*/nullptr, &m1, &m2,
                                              /*conflict=*/nullptr));
   // `rhs` nullptr
-  EXPECT_FALSE(ReconcileGeneralAttributeKeys(kTfLiteBufferAttrMap, &m1,
+  EXPECT_FALSE(ReconcileGeneralAttributeKeys(kTfLiteAttrMapTypeBuffer, &m1,
                                              /*rhs=*/nullptr, &m2,
                                              /*conflict=*/nullptr));
   // `lhs` nullptr
-  EXPECT_FALSE(CheckGeneralAttributeKeysCoverage(kTfLiteBufferAttrMap,
+  EXPECT_FALSE(CheckGeneralAttributeKeysCoverage(kTfLiteAttrMapTypeBuffer,
                                                  /*lhs=*/nullptr, &m1, &m2));
   // `rhs` nullptr
-  EXPECT_FALSE(CheckGeneralAttributeKeysCoverage(kTfLiteBufferAttrMap, &m1,
+  EXPECT_FALSE(CheckGeneralAttributeKeysCoverage(kTfLiteAttrMapTypeBuffer, &m1,
                                                  /*rhs=*/nullptr, &m2));
 }
 
 TEST(ReconcileTest, MissingAttributeTest) {
   {
     ContainerT lhs, rhs, merged;
-    SetAttr(&lhs, TfLiteBufferAttributeKey::kAlignment, size_t(4));
-    EXPECT_TRUE(ReconcileGeneralAttributeKeys(kTfLiteBufferAttrMap, &lhs, &rhs,
-                                              &merged, nullptr));
-    EXPECT_EQ(4, GetAttr<size_t>(merged, TfLiteBufferAttributeKey::kAlignment));
+    SetAttr(&lhs, kTfLiteBufferAttrKeyAlignment, size_t(4));
+    EXPECT_TRUE(ReconcileGeneralAttributeKeys(kTfLiteAttrMapTypeBuffer, &lhs,
+                                              &rhs, &merged, nullptr));
+    EXPECT_EQ(4, GetAttr<size_t>(merged, kTfLiteBufferAttrKeyAlignment));
   }
 
   {
     ContainerT lhs, rhs, merged;
-    SetAttr(&rhs, TfLiteBufferAttributeKey::kAlignment, size_t(4));
-    EXPECT_TRUE(ReconcileGeneralAttributeKeys(kTfLiteBufferAttrMap, &lhs, &rhs,
-                                              &merged, nullptr));
-    EXPECT_EQ(4, GetAttr<size_t>(merged, TfLiteBufferAttributeKey::kAlignment));
+    SetAttr(&rhs, kTfLiteBufferAttrKeyAlignment, size_t(4));
+    EXPECT_TRUE(ReconcileGeneralAttributeKeys(kTfLiteAttrMapTypeBuffer, &lhs,
+                                              &rhs, &merged, nullptr));
+    EXPECT_EQ(4, GetAttr<size_t>(merged, kTfLiteBufferAttrKeyAlignment));
   }
 
   {
     ContainerT lhs, rhs, merged;
     const char value[] = "string";
-    SetAttr(&rhs, TfLiteSyncAttributeKey::kSyncObjectTypeName, value);
-    EXPECT_TRUE(ReconcileGeneralAttributeKeys(kTfLiteSyncAttrMap, &lhs, &rhs,
-                                              &merged, nullptr));
+    SetAttr(&rhs, kTfLiteSynchronizationAttrKeyObjectTypeName, value);
+    EXPECT_TRUE(ReconcileGeneralAttributeKeys(kTfLiteAttrMapTypeSync, &lhs,
+                                              &rhs, &merged, nullptr));
     EXPECT_EQ(value, GetAttr<const char*>(
-                         merged, TfLiteSyncAttributeKey::kSyncObjectTypeName));
+                         merged, kTfLiteSynchronizationAttrKeyObjectTypeName));
   }
 }
 
 TEST(CheckCoverageTest, MissingAttributeTest) {
   {
     ContainerT lhs, rhs;
-    SetAttr(&lhs, TfLiteBufferAttributeKey::kAlignment, size_t(4));
-    EXPECT_TRUE(CheckGeneralAttributeKeysCoverage(kTfLiteBufferAttrMap, &lhs,
-                                                  &rhs, nullptr));
+    SetAttr(&lhs, kTfLiteBufferAttrKeyAlignment, size_t(4));
+    EXPECT_TRUE(CheckGeneralAttributeKeysCoverage(kTfLiteAttrMapTypeBuffer,
+                                                  &lhs, &rhs, nullptr));
   }
 
   {
     ContainerT lhs, rhs, merged;
-    SetAttr(&rhs, TfLiteBufferAttributeKey::kAlignment, size_t(4));
-    EXPECT_TRUE(ReconcileGeneralAttributeKeys(kTfLiteBufferAttrMap, &lhs, &rhs,
-                                              &merged, nullptr));
-    EXPECT_FALSE(CheckGeneralAttributeKeysCoverage(kTfLiteBufferAttrMap, &lhs,
-                                                   &rhs, nullptr));
+    SetAttr(&rhs, kTfLiteBufferAttrKeyAlignment, size_t(4));
+    EXPECT_TRUE(ReconcileGeneralAttributeKeys(kTfLiteAttrMapTypeBuffer, &lhs,
+                                              &rhs, &merged, nullptr));
+    EXPECT_FALSE(CheckGeneralAttributeKeysCoverage(kTfLiteAttrMapTypeBuffer,
+                                                   &lhs, &rhs, nullptr));
   }
 }
 
@@ -112,12 +112,12 @@ class ReconcileAlignmentTest
 
 TEST_P(ReconcileAlignmentTest, Test) {
   ContainerT lhs, rhs, merged;
-  SetAttr(&lhs, TfLiteBufferAttributeKey::kAlignment, std::get<0>(GetParam()));
-  SetAttr(&rhs, TfLiteBufferAttributeKey::kAlignment, std::get<1>(GetParam()));
-  EXPECT_TRUE(ReconcileGeneralAttributeKeys(kTfLiteBufferAttrMap, &lhs, &rhs,
-                                            &merged, nullptr));
+  SetAttr(&lhs, kTfLiteBufferAttrKeyAlignment, std::get<0>(GetParam()));
+  SetAttr(&rhs, kTfLiteBufferAttrKeyAlignment, std::get<1>(GetParam()));
+  EXPECT_TRUE(ReconcileGeneralAttributeKeys(kTfLiteAttrMapTypeBuffer, &lhs,
+                                            &rhs, &merged, nullptr));
   EXPECT_EQ(std::get<2>(GetParam()),
-            GetAttr<size_t>(merged, TfLiteBufferAttributeKey::kAlignment));
+            GetAttr<size_t>(merged, kTfLiteBufferAttrKeyAlignment));
 }
 
 INSTANTIATE_TEST_SUITE_P(ReconcileAlignmentTest, ReconcileAlignmentTest,
@@ -131,14 +131,14 @@ class CheckAlignmentTest
 
 TEST_P(CheckAlignmentTest, Test) {
   ContainerT lhs, rhs, conflict;
-  SetAttr(&lhs, TfLiteBufferAttributeKey::kAlignment, std::get<0>(GetParam()));
-  SetAttr(&rhs, TfLiteBufferAttributeKey::kAlignment, std::get<1>(GetParam()));
+  SetAttr(&lhs, kTfLiteBufferAttrKeyAlignment, std::get<0>(GetParam()));
+  SetAttr(&rhs, kTfLiteBufferAttrKeyAlignment, std::get<1>(GetParam()));
   EXPECT_EQ(std::get<2>(GetParam()),
-            CheckGeneralAttributeKeysCoverage(kTfLiteBufferAttrMap, &lhs, &rhs,
-                                              &conflict));
-  EXPECT_EQ(!std::get<2>(GetParam()),
-            conflict.count(
-                static_cast<uint32_t>(TfLiteBufferAttributeKey::kAlignment)));
+            CheckGeneralAttributeKeysCoverage(kTfLiteAttrMapTypeBuffer, &lhs,
+                                              &rhs, &conflict));
+  EXPECT_EQ(
+      !std::get<2>(GetParam()),
+      conflict.count(static_cast<uint32_t>(kTfLiteBufferAttrKeyAlignment)));
 }
 
 INSTANTIATE_TEST_SUITE_P(CheckAlignmentTest, CheckAlignmentTest,
@@ -151,12 +151,12 @@ class ReconcilePaddingTest
 
 TEST_P(ReconcilePaddingTest, Test) {
   ContainerT lhs, rhs, merged;
-  SetAttr(&lhs, TfLiteBufferAttributeKey::kPadding, std::get<0>(GetParam()));
-  SetAttr(&rhs, TfLiteBufferAttributeKey::kPadding, std::get<1>(GetParam()));
-  EXPECT_TRUE(ReconcileGeneralAttributeKeys(kTfLiteBufferAttrMap, &lhs, &rhs,
-                                            &merged, nullptr));
+  SetAttr(&lhs, kTfLiteBufferAttrKeyPadding, std::get<0>(GetParam()));
+  SetAttr(&rhs, kTfLiteBufferAttrKeyPadding, std::get<1>(GetParam()));
+  EXPECT_TRUE(ReconcileGeneralAttributeKeys(kTfLiteAttrMapTypeBuffer, &lhs,
+                                            &rhs, &merged, nullptr));
   EXPECT_EQ(std::get<2>(GetParam()),
-            GetAttr<size_t>(merged, TfLiteBufferAttributeKey::kPadding));
+            GetAttr<size_t>(merged, kTfLiteBufferAttrKeyPadding));
 }
 
 INSTANTIATE_TEST_SUITE_P(ReconcilePaddingTest, ReconcilePaddingTest,
@@ -170,13 +170,13 @@ class CheckPaddingTest
 
 TEST_P(CheckPaddingTest, Test) {
   ContainerT lhs, rhs, conflict;
-  SetAttr(&lhs, TfLiteBufferAttributeKey::kPadding, std::get<0>(GetParam()));
-  SetAttr(&rhs, TfLiteBufferAttributeKey::kPadding, std::get<1>(GetParam()));
+  SetAttr(&lhs, kTfLiteBufferAttrKeyPadding, std::get<0>(GetParam()));
+  SetAttr(&rhs, kTfLiteBufferAttrKeyPadding, std::get<1>(GetParam()));
   EXPECT_EQ(std::get<2>(GetParam()),
-            CheckGeneralAttributeKeysCoverage(kTfLiteBufferAttrMap, &lhs, &rhs,
-                                              &conflict));
-  EXPECT_EQ(!std::get<2>(GetParam()), conflict.count(static_cast<uint32_t>(
-                                          TfLiteBufferAttributeKey::kPadding)));
+            CheckGeneralAttributeKeysCoverage(kTfLiteAttrMapTypeBuffer, &lhs,
+                                              &rhs, &conflict));
+  EXPECT_EQ(!std::get<2>(GetParam()),
+            conflict.count(static_cast<uint32_t>(kTfLiteBufferAttrKeyPadding)));
 }
 
 INSTANTIATE_TEST_SUITE_P(CheckPaddingTest, CheckPaddingTest,
@@ -189,12 +189,12 @@ class ReconcileSizeTest
 
 TEST_P(ReconcileSizeTest, Test) {
   ContainerT lhs, rhs, merged;
-  SetAttr(&lhs, TfLiteBufferAttributeKey::kSize, std::get<0>(GetParam()));
-  SetAttr(&rhs, TfLiteBufferAttributeKey::kSize, std::get<1>(GetParam()));
-  EXPECT_TRUE(ReconcileGeneralAttributeKeys(kTfLiteBufferAttrMap, &lhs, &rhs,
-                                            &merged, nullptr));
+  SetAttr(&lhs, kTfLiteBufferAttrKeySize, std::get<0>(GetParam()));
+  SetAttr(&rhs, kTfLiteBufferAttrKeySize, std::get<1>(GetParam()));
+  EXPECT_TRUE(ReconcileGeneralAttributeKeys(kTfLiteAttrMapTypeBuffer, &lhs,
+                                            &rhs, &merged, nullptr));
   EXPECT_EQ(std::get<2>(GetParam()),
-            GetAttr<size_t>(merged, TfLiteBufferAttributeKey::kSize));
+            GetAttr<size_t>(merged, kTfLiteBufferAttrKeySize));
 }
 
 INSTANTIATE_TEST_SUITE_P(ReconcileSizeTest, ReconcileSizeTest,
@@ -208,14 +208,13 @@ class CheckSizeTest
 
 TEST_P(CheckSizeTest, Test) {
   ContainerT lhs, rhs, conflict;
-  SetAttr(&lhs, TfLiteBufferAttributeKey::kSize, std::get<0>(GetParam()));
-  SetAttr(&rhs, TfLiteBufferAttributeKey::kSize, std::get<1>(GetParam()));
+  SetAttr(&lhs, kTfLiteBufferAttrKeySize, std::get<0>(GetParam()));
+  SetAttr(&rhs, kTfLiteBufferAttrKeySize, std::get<1>(GetParam()));
   EXPECT_EQ(std::get<2>(GetParam()),
-            CheckGeneralAttributeKeysCoverage(kTfLiteBufferAttrMap, &lhs, &rhs,
-                                              &conflict));
-  EXPECT_EQ(
-      !std::get<2>(GetParam()),
-      conflict.count(static_cast<uint32_t>(TfLiteBufferAttributeKey::kSize)));
+            CheckGeneralAttributeKeysCoverage(kTfLiteAttrMapTypeBuffer, &lhs,
+                                              &rhs, &conflict));
+  EXPECT_EQ(!std::get<2>(GetParam()),
+            conflict.count(static_cast<uint32_t>(kTfLiteBufferAttrKeySize)));
 }
 
 INSTANTIATE_TEST_SUITE_P(CheckSizeTest, CheckSizeTest,
@@ -252,12 +251,12 @@ TEST_P(ReconcileNameTest, Test) {
 INSTANTIATE_TEST_SUITE_P(
     ReconcileNameTest, ReconcileNameTest,
     testing::Values(
-        std::make_tuple(kTfLiteBufferAttrMap,
+        std::make_tuple(
+            kTfLiteAttrMapTypeBuffer,
+            static_cast<uint32_t>(kTfLiteBufferAttrKeyResourceTypeName)),
+        std::make_tuple(kTfLiteAttrMapTypeSync,
                         static_cast<uint32_t>(
-                            TfLiteBufferAttributeKey::kBufferResourceTypeName)),
-        std::make_tuple(kTfLiteSyncAttrMap,
-                        static_cast<uint32_t>(
-                            TfLiteSyncAttributeKey::kSyncObjectTypeName))));
+                            kTfLiteSynchronizationAttrKeyObjectTypeName))));
 
 class CheckNameTest
     : public testing::TestWithParam<std::tuple<TfLiteAttrMapType, uint32_t>> {};
@@ -286,12 +285,12 @@ TEST_P(CheckNameTest, Test) {
 INSTANTIATE_TEST_SUITE_P(
     CheckNameTest, CheckNameTest,
     testing::Values(
-        std::make_tuple(kTfLiteBufferAttrMap,
+        std::make_tuple(
+            kTfLiteAttrMapTypeBuffer,
+            static_cast<uint32_t>(kTfLiteBufferAttrKeyResourceTypeName)),
+        std::make_tuple(kTfLiteAttrMapTypeSync,
                         static_cast<uint32_t>(
-                            TfLiteBufferAttributeKey::kBufferResourceTypeName)),
-        std::make_tuple(kTfLiteSyncAttrMap,
-                        static_cast<uint32_t>(
-                            TfLiteSyncAttributeKey::kSyncObjectTypeName))));
+                            kTfLiteSynchronizationAttrKeyObjectTypeName))));
 
 }  // namespace
 }  // namespace tflite::interop

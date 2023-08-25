@@ -99,7 +99,7 @@ TemporaryMemoryManager::AllocateArrayBase(uint64_t element_count,
   DeviceMemoryBase device_memory =
       stream_->parent()->AllocateArray<uint8_t>(byte_size);
   if (device_memory == nullptr) {
-    return tsl::Status(port::error::RESOURCE_EXHAUSTED,
+    return tsl::Status(absl::StatusCode::kResourceExhausted,
                        absl::StrCat("could not allocate temporary memory of ",
                                     byte_size, " bytes"));
   }

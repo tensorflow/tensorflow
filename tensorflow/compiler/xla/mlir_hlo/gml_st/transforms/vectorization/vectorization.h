@@ -16,10 +16,36 @@ limitations under the License.
 #ifndef MLIR_HLO_GML_ST_TRANSFORMS_VECTORIZATION_VECTORIZATION_H
 #define MLIR_HLO_GML_ST_TRANSFORMS_VECTORIZATION_VECTORIZATION_H
 
-#include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Support/LogicalResult.h"
 
 namespace mlir {
 namespace gml_st {
+
+// TODO(manany): This should be parameterized later on depending on hardware.
+static constexpr int64_t kNumElementsVectorization = 8;
+
+template <typename OpTy>
+struct VectorizationPattern : public mlir::OpRewritePattern<OpTy> {
+  VectorizationPattern(MLIRContext *context,
+                       llvm::function_ref<bool(OpTy)> matchFn,
+                       mlir::PatternBenefit benefit = 1)
+      : mlir::OpRewritePattern<OpTy>(context, benefit), filterFn(matchFn) {}
+
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter &rewriter) const override {
+    if (!filterFn(op))
+      return rewriter.notifyMatchFailure(op, "did not match filter");
+    return mlir::linalg::vectorize(rewriter, op);
+  }
+
+ private:
+  llvm::function_ref<bool(OpTy)> filterFn;
+};
+
+RewritePatternSet getDefaultVectorizationPatterns(MLIRContext *ctx);
 
 }  // namespace gml_st
 }  // namespace mlir

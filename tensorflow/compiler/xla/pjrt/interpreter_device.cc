@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"

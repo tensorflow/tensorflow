@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 
+#include <limits>
+
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -40,7 +42,7 @@ XLA_TEST_F(ConstantsTest, ConstantR0WithTypeS32DoesNotAcceptFloats) {
   ConstantR0WithType(&builder, xla::S32, 4.5);
   auto statusor = builder.Build();
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().error_message(), HasSubstr("Invalid cast"));
+  EXPECT_THAT(statusor.status().message(), HasSubstr("Invalid cast"));
 }
 
 XLA_TEST_F(ConstantsTest, ConstantR0WithTypeF32) {

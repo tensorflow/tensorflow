@@ -79,10 +79,6 @@ class IteratorMetricsCollector {
   // Records the end time (in microseconds) of the most recent `RecordStop()`
   // call.
   uint64_t end_time_us_ TF_GUARDED_BY(mu_) = 0;
-
-  // Records the iterators' performance metrics which will then be exported to
-  // /tfdataz page.
-  TfDatazMetricsCollector tf_dataz_metrics_collector_;
 };
 
 }  // namespace data

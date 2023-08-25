@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -81,6 +82,9 @@ class ComputationLayout {
 
   // Returns true if all layouts (parameters and result) have been set.
   bool LayoutIsSet() const;
+
+  // Prints a string representation of this object.
+  void Print(Printer* printer) const;
 
   // Returns a string representation of this object.
   std::string ToString() const;

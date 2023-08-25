@@ -322,7 +322,6 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-
 #define REGISTER_SPLIT(type)                             \
   REGISTER_KERNEL_BUILDER(Name("Split")                  \
                               .Device(DEVICE_CPU)        \
@@ -344,12 +343,10 @@ REGISTER_SPLIT(quint8);
                               .HostMemory("split_dim"),  \
                           SplitOpGPU<type>)
 
-TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 
 }  // end namespace tensorflow

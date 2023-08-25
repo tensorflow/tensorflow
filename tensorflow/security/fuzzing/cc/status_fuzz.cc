@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/security/fuzzing/cc/fuzz_helpers.h"
+#include "tensorflow/security/fuzzing/cc/fuzz_domains.h"
 
 // This is a fuzzer for `tensorflow::Status`. Since `Status` is used almost
 // everywhere, we need to ensure that the common functionality is safe. We don't
@@ -29,9 +29,7 @@ limitations under the License.
 
 namespace {
 
-void FuzzTest(uint32_t code, std::string_view error_message) {
-  tensorflow::error::Code error_code = helper::BuildRandomErrorCode(code);
-
+void FuzzTest(absl::StatusCode error_code, std::string_view error_message) {
   tensorflow::Status s = tensorflow::Status(error_code, error_message);
   const std::string actual_message = s.ToString();
   const std::size_t pos = actual_message.rfind(error_message);
@@ -42,6 +40,7 @@ void FuzzTest(uint32_t code, std::string_view error_message) {
   // unused and then produces an error if also compiling with `-Werror`.
   (void)pos;
 }
-FUZZ_TEST(CC_FUZZING, FuzzTest);
+FUZZ_TEST(CC_FUZZING, FuzzTest)
+    .WithDomains(helper::AnyErrorCode(), fuzztest::Arbitrary<std::string>());
 
 }  // namespace

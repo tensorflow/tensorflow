@@ -18,21 +18,27 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_LAYOUT_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_LAYOUT_UTIL_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
 // Namespaced collection of (static) Layout utilities.
 class LayoutUtil {
  public:
+  LayoutUtil(const LayoutUtil&) = delete;
+  LayoutUtil& operator=(const LayoutUtil&) = delete;
+
   // Creates a layout with the given minor-to-major dimension order. (This is a
   // convenience function for protobuf construction.)
   static Layout MakeLayout(
@@ -43,7 +49,7 @@ class LayoutUtil {
       absl::Span<const Tile> tiles = {},
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
       PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
-      int64_t memory_space = 0,
+      int64_t element_size_in_bits = 0, int64_t memory_space = 0,
       std::optional<Shape> physical_shape = std::nullopt,
       int64_t dynamic_shape_metadata_prefix_bytes = 0);
 
@@ -159,13 +165,23 @@ class LayoutUtil {
   // Returns whether all Shapes within the given ProgramShape have layouts.
   static bool HasLayout(const ProgramShape& program_shape);
 
+  // Returns whether any subshapes of the shape have custom (!= 0)
+  // element_size_in_bits.
+  static bool HasCustomElementSizeInBits(const Shape& shape);
+
   // Returns whether lhs and rhs are identical.
   static bool Equal(const Layout& lhs, const Layout& rhs);
 
   // Returns the minor_to_major array for the given Shape.  Requires that the
   // shape is an array.
-  static absl::Span<const int64_t> MinorToMajor(const Shape& shape);
-  static absl::Span<const int64_t> MinorToMajor(const Layout& layout);
+  static inline absl::Span<const int64_t> MinorToMajor(const Shape& shape) {
+    DCHECK(shape.IsArray());
+    return shape.layout().minor_to_major();
+  }
+
+  static inline absl::Span<const int64_t> MinorToMajor(const Layout& layout) {
+    return layout.minor_to_major();
+  }
 
   // Major(0) is the most major logical dimension number, Major(1) is the
   // second-most-major logical dimension number and so on.
@@ -181,11 +197,22 @@ class LayoutUtil {
   // the most major. Then Major(0) is the most major logical dimension, so Major
   // maps the physical dimension number 0 to the most major logical dimension
   // number Major(0).
-  static int64_t Major(const Layout& layout, int64_t physical_dimension_number);
+  static int64_t Major(const Layout& layout,
+                       int64_t physical_dimension_number) {
+    DCHECK_LE(0, physical_dimension_number);
+    DCHECK_LT(physical_dimension_number, layout.minor_to_major_size());
+    return Minor(layout,
+                 layout.minor_to_major_size() - 1 - physical_dimension_number);
+  }
 
   // Minor(0) is the most minor logical dimension number, minor(1) is the
   // second-most-minor logical dimension number and so on.
-  static int64_t Minor(const Layout& layout, int64_t physical_dimension_number);
+  static inline int64_t Minor(const Layout& layout,
+                              int64_t physical_dimension_number) {
+    DCHECK_LE(0, physical_dimension_number);
+    DCHECK_LT(physical_dimension_number, layout.minor_to_major_size());
+    return layout.minor_to_major(physical_dimension_number);
+  }
 
   // Returns the inverse mapping of the Major() function. More precisely, return
   // a vector v such that if l == Major(p), then v[l] == p.
@@ -201,6 +228,9 @@ class LayoutUtil {
   // physical dimension, and the element with contents (rank - 1) represents
   // the most minor physical dimension.
   static std::vector<int64_t> MakeLogicalToPhysical(const Layout& layout);
+
+  // Prints a human-readable string that represents the given layout.
+  static void PrintHumanString(Printer* printer, const Layout& layout);
 
   // Returns a human-readable string that represents the given layout.
   static std::string HumanString(const Layout& layout);
@@ -249,9 +279,12 @@ class LayoutUtil {
   static bool ValidateDimLevel(xla::DimLevelType dim_level_type,
                                bool dim_unique, bool dim_ordered);
 
- private:
-  LayoutUtil(const LayoutUtil&) = delete;
-  LayoutUtil& operator=(const LayoutUtil&) = delete;
+  // Returns true if `byte_strides` is major to minor order, i.e. the strides
+  // form a cumulative product of the byte size and dimensions in reverse order
+  // and the smallest stride is the byte size for `element_type`.
+  static bool ByteStridesIsMajorToMinor(absl::Span<const int64_t> byte_strides,
+                                        absl::Span<const int64_t> dims,
+                                        PrimitiveType element_type);
 };
 
 }  // namespace xla

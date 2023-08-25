@@ -227,7 +227,7 @@ class OpKernelTest : public ::testing::Test {
     EXPECT_TRUE(op == nullptr);
     EXPECT_FALSE(status.ok());
     if (!status.ok()) {
-      LOG(INFO) << "Status message: " << status.error_message();
+      LOG(INFO) << "Status message: " << status.message();
       EXPECT_EQ(code, status.code());
     }
   }
@@ -426,6 +426,31 @@ TEST_F(OpKernelTest, InputDtype) {
   EXPECT_EQ(dtype, DT_INT32);
 }
 
+TEST_F(OpKernelTest, InputOnly) {
+  Env* env = Env::Default();
+  OpKernelContext::Params params;
+  DummyDevice device(env);
+  params.device = &device;
+  Status status;
+  std::unique_ptr<OpKernel> op(
+      CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
+                     CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}),
+                     TF_GRAPH_DEF_VERSION, &status));
+  EXPECT_TRUE(status.ok());
+  params.op_kernel = op.get();
+  Tensor a(DT_FLOAT, TensorShape({}));
+  gtl::InlinedVector<TensorValue, 2> inputs{TensorValue(&a)};
+  params.inputs = inputs;
+  auto ctx = std::make_unique<OpKernelContext>(&params);
+
+  ASSERT_TRUE(ctx->get_input(0).ok());
+  EXPECT_FALSE(ctx->get_input(1).ok());
+  EXPECT_EQ(ctx->get_input(1).status(),
+            absl::InvalidArgumentError(
+                "Given index was 1, but index of input must be greater than 0, "
+                "less than the number of inputs (1), and not a ref."));
+}
+
 TEST_F(OpKernelTest, RefInputs) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
@@ -476,12 +501,12 @@ TEST_F(OpKernelTest, AllocateOutput) {
   // Allocating to index -1 should fail (Only 0 should work).
   Status s = ctx->allocate_output(-1, TensorShape({}), &output);
   EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
-  EXPECT_THAT(s.error_message(), ::testing::ContainsRegex("bad index=-1"));
+  EXPECT_THAT(s.message(), ::testing::ContainsRegex("bad index=-1"));
 
   // Allocating to index 1 should fail (Only 0 should work).
   s = ctx->allocate_output(1, TensorShape({}), &output);
   EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
-  EXPECT_THAT(s.error_message(), ::testing::ContainsRegex("bad index=1"));
+  EXPECT_THAT(s.message(), ::testing::ContainsRegex("bad index=1"));
 
   // Testing allocate_output when allocator attributes are set.
   AllocatorAttributes attrs;
@@ -491,12 +516,12 @@ TEST_F(OpKernelTest, AllocateOutput) {
   // Index -1 should fail as only 1 output for the op.
   s = ctx->allocate_output(-1, TensorShape({}), &output, attrs);
   EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
-  EXPECT_THAT(s.error_message(), ::testing::ContainsRegex("bad index=-1"));
+  EXPECT_THAT(s.message(), ::testing::ContainsRegex("bad index=-1"));
 
   // Index 1 should fail as only 1 output for the op.
   s = ctx->allocate_output(1, TensorShape({}), &output, attrs);
   EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
-  EXPECT_THAT(s.error_message(), ::testing::ContainsRegex("bad index=1"));
+  EXPECT_THAT(s.message(), ::testing::ContainsRegex("bad index=1"));
 }
 
 // A mock device that mimics the behavior of scoped allocator upon calling
@@ -698,7 +723,7 @@ TEST_F(OpKernelBuilderTest, DuplicateKernel) {
   Status status = SupportedDeviceTypesForNode(DeviceTypes(), ndef, &devs);
   ASSERT_FALSE(status.ok());
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(), "Multiple OpKernel registrations match NodeDef"));
+      status.message(), "Multiple OpKernel registrations match NodeDef"));
 
   ExpectFailure("DuplicateKernel", DEVICE_CPU, {}, error::INVALID_ARGUMENT);
 }
@@ -718,7 +743,7 @@ TEST_F(OpKernelBuilderTest, DuplicateKernelForT) {
   Status status = SupportedDeviceTypesForNode(DeviceTypes(), ndef, &devs);
   ASSERT_FALSE(status.ok());
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(), "Multiple OpKernel registrations match NodeDef"));
+      status.message(), "Multiple OpKernel registrations match NodeDef"));
 
   ExpectFailure("DuplicateKernelForT", DEVICE_CPU, {"T|type|DT_FLOAT"},
                 error::INVALID_ARGUMENT);
@@ -739,7 +764,7 @@ TEST_F(OpKernelBuilderTest, BadConstraint) {
   Status status = SupportedDeviceTypesForNode(DeviceTypes(), ndef, &devs);
   ASSERT_FALSE(status.ok());
   EXPECT_TRUE(
-      absl::StrContains(status.error_message(),
+      absl::StrContains(status.message(),
                         "OpKernel 'BadConstraint' has constraint on attr "
                         "'T' not in NodeDef"));
 
@@ -893,7 +918,7 @@ TEST_F(GetAttrTest, Int) {
     if (key_status.first == "i32") {
       EXPECT_EQ(error::INVALID_ARGUMENT, key_status.second.code());
       EXPECT_EQ("Attr a has value 8589934592 out of range for an int32",
-                key_status.second.error_message());
+                key_status.second.message());
     }
   }
 
@@ -907,7 +932,7 @@ TEST_F(GetAttrTest, Int) {
     if (key_status.first == "i32_list") {
       EXPECT_EQ(error::INVALID_ARGUMENT, key_status.second.code());
       EXPECT_EQ("Attr b has value -8589934592 out of range for an int32",
-                key_status.second.error_message());
+                key_status.second.message());
     }
   }
 }

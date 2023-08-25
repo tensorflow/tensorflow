@@ -68,23 +68,21 @@ const TfLiteTelemetrySubgraphInfo*
 TfLiteTelemetryInterpreterSettingsGetSubgraphInfo(
     const TfLiteTelemetryInterpreterSettings* settings);
 
-size_t TfLiteTelemetrySubgraphInfoGetNumOpTypes(
-    TfLiteTelemetrySubgraphInfo* subgraph_info);
-
-const int32_t* TfLiteTelemetrySubgraphInfoGetOpTypes(
-    TfLiteTelemetrySubgraphInfo* subgraph_info);
-
 size_t TfLiteTelemetrySubgraphInfoGetNumQuantizations(
     TfLiteTelemetrySubgraphInfo* subgraph_info);
 
 const TfLiteQuantization* TfLiteTelemetrySubgraphInfoGetQuantizations(
     TfLiteTelemetrySubgraphInfo* subgraph_info);
 
-size_t TfLiteTelemetrySubgraphInfoGetNumCustomOpNames(
-    TfLiteTelemetrySubgraphInfo* subgraph_info);
+// Telemetry information for GPU delegate.
+typedef struct TfLiteTelemetryGpuDelegateSettings
+    TfLiteTelemetryGpuDelegateSettings;
 
-const char** TfLiteTelemetrySubgraphInfoGetCustomOpNames(
-    TfLiteTelemetrySubgraphInfo* subgraph_info);
+size_t TfLiteTelemetryGpuDelegateSettingsGetNumNodesDelegated(
+    const TfLiteTelemetryGpuDelegateSettings* settings);
+
+int TfLiteTelemetryGpuDelegateSettingsGetBackend(
+    const TfLiteTelemetryGpuDelegateSettings* settings);
 
 #ifdef __cplusplus
 }  // extern "C"

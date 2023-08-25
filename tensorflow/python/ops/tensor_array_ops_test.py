@@ -82,6 +82,12 @@ class TensorArrayOpsTest(test.TestCase):
       return values.concat()
     self.assertAllEqual(fn(), [[1., 1., 1.], [1., 1., 1.]])
 
+  def test_shape_inference_stack_concat(self):
+    arr = tensor_array_ops.TensorArray(size=4, dtype=dtypes.float32)
+    new_arr = arr.write(0, np.ones((2, 3)))
+    self.assertEqual(new_arr.stack().shape, (4, 2, 3))
+    self.assertEqual(new_arr.concat().shape, (8, 3))
+
 
 if __name__ == '__main__':
   test.main()

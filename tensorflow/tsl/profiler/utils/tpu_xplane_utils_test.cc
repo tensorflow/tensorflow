@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
@@ -49,6 +50,19 @@ TEST(TpuXPlaneUtilsTest, GetMutableTensorCoreXPlanesFromXSpace) {
   std::vector<XPlane*> xplanes = FindMutableTensorCorePlanes(&xspace);
 
   EXPECT_THAT(xplanes, UnorderedElementsAre(p1, p2));
+}
+
+TEST(TpuXPlaneUtilsTest, GetTensorCoreIdFromPlaneName) {
+  EXPECT_EQ(GetTensorCoreId(TpuPlaneName(0)), 0);
+}
+
+TEST(TpuXPlaneUtilsTest, IsNotTensorCorePlaneName) {
+  EXPECT_FALSE(GetTensorCoreId("/metadata:0").has_value());
+}
+
+TEST(TpuXPlaneUtilsTest, IsNotTensorCorePlaneNameWithPrefix) {
+  EXPECT_FALSE(
+      GetTensorCoreId(absl::StrCat("/prefix", TpuPlaneName(0))).has_value());
 }
 
 }  // namespace

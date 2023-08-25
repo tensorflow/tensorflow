@@ -24,8 +24,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
@@ -62,10 +61,6 @@ class MultiPlatformManagerImpl {
       const std::function<bool(const Platform*)>& filter,
       bool initialize_platform) ABSL_LOCKS_EXCLUDED(mu_);
 
-  using Listener = MultiPlatformManager::Listener;
-  tsl::Status RegisterListener(std::unique_ptr<Listener> listener)
-      ABSL_LOCKS_EXCLUDED(mu_);
-
  private:
   // Looks up the platform object with the given name.  Assumes the Platforms
   // mutex is held.
@@ -77,7 +72,7 @@ class MultiPlatformManagerImpl {
   tsl::StatusOr<Platform*> LookupByIdLocked(const Platform::Id& id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Returns the names of the initialied platforms satisfying the given filter.
+  // Returns the names of the initialized platforms satisfying the given filter.
   // By default, it will return all initialized platform names.
   std::vector<std::string> InitializedPlatformNamesWithFilter(
       const std::function<bool(const Platform*)>& filter = [](const Platform*) {
@@ -85,7 +80,6 @@ class MultiPlatformManagerImpl {
       }) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   absl::Mutex mu_;
-  std::vector<std::unique_ptr<Listener>> listeners_ ABSL_GUARDED_BY(mu_);
   absl::flat_hash_map<Platform::Id, Platform*> id_map_ ABSL_GUARDED_BY(mu_);
   absl::flat_hash_map<std::string, Platform*> name_map_ ABSL_GUARDED_BY(mu_);
 };
@@ -96,7 +90,7 @@ tsl::Status MultiPlatformManagerImpl::RegisterPlatform(
   std::string key = absl::AsciiStrToLower(platform->Name());
   absl::MutexLock lock(&mu_);
   if (name_map_.find(key) != name_map_.end()) {
-    return tsl::Status(port::error::INTERNAL,
+    return tsl::Status(absl::StatusCode::kInternal,
                        "platform is already registered with name: \"" +
                            platform->Name() + "\"");
   }
@@ -108,9 +102,6 @@ tsl::Status MultiPlatformManagerImpl::RegisterPlatform(
   // platforms (CUDA, OpenCL) during exit. Since these are fixed-size and 1x per
   // program, these are deemed acceptable.
   name_map_[key] = platform.release();
-  for (const auto& listener : listeners_) {
-    listener->PlatformRegistered(platform_ptr);
-  }
   return ::tsl::OkStatus();
 }
 
@@ -156,7 +147,7 @@ tsl::StatusOr<Platform*> MultiPlatformManagerImpl::InitializePlatformWithName(
   TF_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
   if (platform->Initialized()) {
     return tsl::Status(
-        port::error::FAILED_PRECONDITION,
+        absl::StatusCode::kFailedPrecondition,
         absl::StrCat("platform \"", target, "\" is already initialized"));
   }
 
@@ -172,22 +163,13 @@ tsl::StatusOr<Platform*> MultiPlatformManagerImpl::InitializePlatformWithId(
   TF_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
   if (platform->Initialized()) {
     return tsl::Status(
-        port::error::FAILED_PRECONDITION,
+        absl::StatusCode::kFailedPrecondition,
         absl::StrFormat("platform with id %p is already initialized", id));
   }
 
   TF_RETURN_IF_ERROR(platform->Initialize(options));
 
   return platform;
-}
-
-tsl::Status MultiPlatformManagerImpl::RegisterListener(
-    std::unique_ptr<Listener> listener) {
-  absl::MutexLock lock(&mu_);
-  CHECK(id_map_.empty());
-  CHECK(name_map_.empty());
-  listeners_.push_back(std::move(listener));
-  return ::tsl::OkStatus();
 }
 
 tsl::StatusOr<std::vector<Platform*>>
@@ -232,7 +214,7 @@ tsl::StatusOr<Platform*> MultiPlatformManagerImpl::LookupByNameLocked(
   auto it = name_map_.find(absl::AsciiStrToLower(target));
   if (it == name_map_.end()) {
     return tsl::Status(
-        port::error::NOT_FOUND,
+        absl::StatusCode::kNotFound,
         absl::StrCat("Could not find registered platform with name: \"", target,
                      "\". Available platform names are: ",
                      absl::StrJoin(InitializedPlatformNamesWithFilter(), " ")));
@@ -245,7 +227,7 @@ tsl::StatusOr<Platform*> MultiPlatformManagerImpl::LookupByIdLocked(
   auto it = id_map_.find(id);
   if (it == id_map_.end()) {
     return tsl::Status(
-        port::error::NOT_FOUND,
+        absl::StatusCode::kNotFound,
         absl::StrFormat("could not find registered platform with id: %p", id));
   }
   return it->second;
@@ -273,32 +255,15 @@ MultiPlatformManagerImpl& Impl() {
   return Impl().PlatformWithId(id);
 }
 
-/*static*/ tsl::StatusOr<Platform*> MultiPlatformManager::PlatformWithId(
-    const Platform::Id& id, bool initialize_platform) {
-  return Impl().PlatformWithId(id, initialize_platform);
-}
-
 /*static*/ tsl::StatusOr<Platform*> MultiPlatformManager::PlatformWithName(
     absl::string_view target, bool initialize_platform) {
   return Impl().PlatformWithName(target, initialize_platform);
 }
 
 /*static*/ tsl::StatusOr<Platform*>
-MultiPlatformManager::InitializePlatformWithName(
-    absl::string_view target,
-    const std::map<std::string, std::string>& options) {
-  return Impl().InitializePlatformWithName(target, options);
-}
-
-/*static*/ tsl::StatusOr<Platform*>
 MultiPlatformManager::InitializePlatformWithId(
     const Platform::Id& id, const std::map<std::string, std::string>& options) {
   return Impl().InitializePlatformWithId(id, options);
-}
-
-/*static*/ tsl::Status MultiPlatformManager::RegisterListener(
-    std::unique_ptr<Listener> listener) {
-  return Impl().RegisterListener(std::move(listener));
 }
 
 /*static*/ tsl::StatusOr<std::vector<Platform*>>

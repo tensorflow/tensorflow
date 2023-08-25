@@ -17,6 +17,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <utility>
 
 namespace tsl {
 
@@ -26,12 +27,24 @@ struct StackFrame {
   int line_number;
   std::string function_name;
 
+  StackFrame() = default;
+  StackFrame(std::string file_name, int line_number, std::string function_name)
+      : file_name(std::move(file_name)),
+        line_number(line_number),
+        function_name(std::move(function_name)) {}
+
   bool operator==(const StackFrame& other) const {
     return line_number == other.line_number &&
            function_name == other.function_name && file_name == other.file_name;
   }
 
   bool operator!=(const StackFrame& other) const { return !(*this == other); }
+
+  template <class H>
+  friend H AbslHashValue(H h, const StackFrame& frame) {
+    return h.combine(std::move(h), frame.file_name, frame.line_number,
+                     frame.function_name);
+  }
 };
 
 }  // namespace tsl

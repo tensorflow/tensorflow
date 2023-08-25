@@ -37,6 +37,12 @@ class PjRtDeviceCompilerClient
       const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& result) override;
 
+  // Returns a platform-specific serialization of `executable`. The
+  // serialization is not guaranteed to be stable over time. `executable` must
+  // have been produced by this client.
+  StatusOr<std::string> SerializeExecutable(
+      const xla::PjRtLoadedExecutable& executable) override;
+
   // PjRt doesn't support AOT compilation yet. Builds a PjRtLoadedExecutable and
   // serializes it to string.
   StatusOr<std::string> BuildSerializedExecutable(

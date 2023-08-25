@@ -64,16 +64,6 @@ struct MemRefElementCastOpLowering
     MemRefDescriptor::unpack(rewriter, loc, adaptor.getSrc(),
                              src_type.cast<MemRefType>(), desc_fields);
 
-    // Bitcast allocated and aligned pointers.
-    auto dst_elem_ty =
-        typeConverter->convertType(cast_op.getType().getElementType());
-    auto dst_elem_ptr_ty = LLVM::LLVMPointerType::get(
-        dst_elem_ty, cast_op.getType().getMemorySpaceAsInt());
-    desc_fields[0] =
-        rewriter.create<LLVM::BitcastOp>(loc, dst_elem_ptr_ty, desc_fields[0]);
-    desc_fields[1] =
-        rewriter.create<LLVM::BitcastOp>(loc, dst_elem_ptr_ty, desc_fields[1]);
-
     // Create descriptor.
     auto dst_desc = MemRefDescriptor::pack(rewriter, loc, type_converter,
                                            cast_op.getType(), desc_fields);

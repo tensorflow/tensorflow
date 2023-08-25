@@ -22,10 +22,10 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
+#include "tensorflow/tsl/profiler/utils/group_events.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -53,21 +53,31 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
                0, 100, {{StatType::kStepNum, kFirstStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, kFirstStepId}});
+               10, 90,
+               {{StatType::kStepId, kFirstStepId},
+                {StatType::kProducerType, int64_t{1}},
+                {StatType::kProducerId, kFirstStepId}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
                300, 100, {{StatType::kStepNum, kSecondStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               310, 90, {{StatType::kStepId, kSecondStepId}});
+               310, 90,
+               {{StatType::kStepId, kSecondStepId},
+                {StatType::kProducerType, int64_t{1}},
+                {StatType::kProducerId, kSecondStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 20,
-               {{StatType::kStepId, kFirstStepId}});
+               {{StatType::kStepId, kFirstStepId},
+                {StatType::kConsumerType, int64_t{1}},
+                {StatType::kConsumerId, kFirstStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
                {{StatType::kCorrelationId, kFirstCorrelationId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 320, 20,
-               {{StatType::kStepId, kSecondStepId}});
+               {{StatType::kStepId, kSecondStepId},
+                {StatType::kConsumerType, int64_t{1}},
+                {StatType::kConsumerId, kSecondStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 330, 10,
                {{StatType::kCorrelationId, kSecondCorrelationId}});
 
@@ -79,7 +89,7 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
   CreateXEvent(&device_plane_builder, &stream, "matmul", 50, 40,
                {{StatType::kCorrelationId, kFirstCorrelationId}});
 
-  GroupTfEvents(&space);
+  tsl::profiler::GroupTfEvents(&space);
   StepEvents device_step_events =
       ConvertDeviceTraceXPlaneToStepEvents(*device_plane);
   EXPECT_EQ(device_step_events.size(), 1);

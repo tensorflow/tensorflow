@@ -22,7 +22,7 @@ message XSpace {
 message XPlane {
   int64 id = 1;
 
-  // Name of this line.
+  // Name of this XPlane.
   string name = 2;
 
   // Parallel timelines grouped in this plane. XLines with the same id

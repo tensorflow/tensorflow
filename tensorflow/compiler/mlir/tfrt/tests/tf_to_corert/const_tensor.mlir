@@ -16,7 +16,7 @@ func.func @dense_tensor() -> tensor<4xui64> {
   %0 = "tf.Const"() {value = dense<[1, 2, 3, 4]> : tensor<4xui64>} : () -> tensor<4xui64>
   // CHECK: corert.const_dense_tensor  dense<1.000000e+00> : tensor<1xbf16>
   %1 = "tf.Const"() {device = "/device:CPU:0", value = dense<[1.0]> : tensor<1xbf16>} : () -> tensor<4xbf16>
-  // CHECK-NOT: corert.executeop
+  // CHECK: corert.executeop({{.*}}) "tf.Const"() {dtype = ui64, value = dense<[1, 2, 3, 4]> : tensor<4xui64>} : 1
   %2 = "tf.Const"() {device = "/device:GPU:0", value = dense<[1, 2, 3, 4]> : tensor<4xui64>} : () -> tensor<4xui64>
   func.return %0 : tensor<4xui64>
 }

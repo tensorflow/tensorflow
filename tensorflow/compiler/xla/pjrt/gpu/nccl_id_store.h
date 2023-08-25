@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/compiler/xla/pjrt/distributed/client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -36,18 +36,22 @@ namespace xla {
 // id.
 class NcclIdStore {
  public:
-  NcclIdStore(int node_id, std::shared_ptr<DistributedRuntimeClient> client,
-              absl::flat_hash_map<GlobalDeviceId, int> device_to_node)
+  NcclIdStore(int node_id,
+              absl::flat_hash_map<GlobalDeviceId, int> device_to_node,
+              PjRtClient::KeyValueGetCallback kv_get,
+              PjRtClient::KeyValuePutCallback kv_put)
       : node_id_(node_id),
-        client_(std::move(client)),
-        device_to_node_(std::move(device_to_node)) {}
+        device_to_node_(std::move(device_to_node)),
+        kv_get_(kv_get),
+        kv_put_(kv_put) {}
 
   StatusOr<std::string> GetNcclUniqueId(const gpu::NcclCliqueKey& key);
 
  private:
   const int node_id_;
-  const std::shared_ptr<DistributedRuntimeClient> client_;
   const absl::flat_hash_map<GlobalDeviceId, int> device_to_node_;
+  const PjRtClient::KeyValueGetCallback kv_get_;
+  const PjRtClient::KeyValuePutCallback kv_put_;
 
   absl::Mutex mu_;
   absl::flat_hash_map<gpu::NcclCliqueKey, std::string> cache_

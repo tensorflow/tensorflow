@@ -16,7 +16,7 @@
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape as tape_lib
+from tensorflow.python.eager import record
 from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -421,7 +421,7 @@ def _graph_mode_decorator(f, args, kwargs):
       v.ref() for v in current_var_scope.global_variables() +
       current_var_scope.local_variables()
   ])
-  with tape_lib.VariableWatcher() as variable_watcher:
+  with record.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args)
 
   flat_args = composite_tensor_gradient.get_flat_tensors_for_gradients(
@@ -528,7 +528,7 @@ def _graph_mode_decorator(f, args, kwargs):
   for i, t in enumerate(original_tensors):
     if t.dtype == dtypes.resource and hasattr(t, "_handle_data"):
       all_tensors[i]._handle_data = t._handle_data  # pylint: disable=protected-access
-  tape_lib.record_operation(
+  record.record_operation(
       f.__name__, all_tensors, original_tensors, tape_grad_fn)
   for ot, t in zip(original_tensors, all_tensors):
     handle_data_util.copy_handle_data(ot, t)
@@ -539,7 +539,7 @@ def _graph_mode_decorator(f, args, kwargs):
 
 def _eager_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for eager mode."""
-  with tape_lib.VariableWatcher() as variable_watcher:
+  with record.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args, **kwargs)
   flat_args = composite_tensor_gradient.get_flat_tensors_for_gradients(
       nest.flatten(args))
@@ -594,8 +594,8 @@ def _eager_mode_decorator(f, args, kwargs):
           f"gradients, but returned {len(flat_grads)} instead.")
     return flat_grads + variable_grads
 
-  tape_lib.record_operation(f.__name__, flat_result, recorded_inputs,
-                            actual_grad_fn)
+  record.record_operation(f.__name__, flat_result, recorded_inputs,
+                          actual_grad_fn)
   flat_result = composite_tensor_gradient.replace_flat_tensors_for_gradients(
       nest.flatten(result), flat_result)
   return nest.pack_sequence_as(result, flat_result)
@@ -711,7 +711,7 @@ def recompute_grad(f):
   def inner(*args, **kwargs):
     """Inner function closure for calculating gradients."""
     current_var_scope = variable_scope.get_variable_scope()
-    with tape_lib.stop_recording():
+    with record.stop_recording():
       result = f(*args, **kwargs)
 
     def grad_wrapper(*wrapper_args, variables=None):

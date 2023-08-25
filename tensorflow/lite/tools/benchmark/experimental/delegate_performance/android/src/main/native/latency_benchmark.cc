@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/util/stats_calculator.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/profiling/memory_info.h"
@@ -86,14 +86,17 @@ class DelegatePerformanceReportingListener : public BenchmarkListener {
     profiling::memory::MemoryUsage overall_mem_usage =
         results.overall_mem_usage();
 
-    AddMetric(/*name=*/"model_size_megabyte",
-              /*value=*/results.model_size_mb());
+    if (results.model_size_mb() > 0) {
+      // Ignores invalid model sizes to avoid confusions.
+      AddMetric(/*name=*/"model_size_megabyte",
+                /*value=*/results.model_size_mb());
+    }
     AddMetric(/*name=*/"initialization_latency_us",
               /*value=*/results.startup_latency_us());
     AddMetric(/*name=*/"warmup_latency_average_us", /*value=*/warmup_us.avg());
     AddMetric(/*name=*/"warmup_latency_min_us", /*value=*/warmup_us.min());
     AddMetric(/*name=*/"warmup_latency_max_us", /*value=*/warmup_us.max());
-    AddMetric(/*name=*/"warmup_latency_standard_deviation",
+    AddMetric(/*name=*/"warmup_latency_standard_deviation_us",
               /*value=*/warmup_us.std_deviation());
     AddMetric(/*name=*/"inference_latency_average_us",
               /*value=*/inference_us.avg());
@@ -101,7 +104,7 @@ class DelegatePerformanceReportingListener : public BenchmarkListener {
               /*value=*/inference_us.min());
     AddMetric(/*name=*/"inference_latency_max_us",
               /*value=*/inference_us.max());
-    AddMetric(/*name=*/"inference_latency_standard_deviation",
+    AddMetric(/*name=*/"inference_latency_standard_deviation_us",
               /*value=*/inference_us.std_deviation());
     AddMetric(/*name=*/"initialization_memory_max_rss_mebibyte",
               /*value=*/init_mem_usage.mem_footprint_kb / 1024.0);
@@ -145,14 +148,18 @@ std::vector<std::string> ParseArgumentsFromTfLiteSettings(
                                    tflite_settings_path));
     return args;
   }
-  if (tflite_settings.delegate() == Delegate_XNNPACK) {
-    args.push_back("--use_xnnpack=true");
-    if (tflite_settings.xnnpack_settings() &&
-        tflite_settings.xnnpack_settings()->num_threads()) {
-      args.push_back(
-          absl::StrFormat("--num_threads=%d",
-                          tflite_settings.xnnpack_settings()->num_threads()));
-    } else if (tflite_settings.delegate() == Delegate_GPU) {
+  switch (tflite_settings.delegate()) {
+    case Delegate_XNNPACK: {
+      args.push_back("--use_xnnpack=true");
+      if (tflite_settings.xnnpack_settings() &&
+          tflite_settings.xnnpack_settings()->num_threads()) {
+        args.push_back(
+            absl::StrFormat("--num_threads=%d",
+                            tflite_settings.xnnpack_settings()->num_threads()));
+      }
+      return args;
+    }
+    case Delegate_GPU: {
       args.push_back("--use_gpu=true");
       const tflite::GPUSettings* gpu_settings = tflite_settings.gpu_settings();
       if (gpu_settings) {
@@ -181,15 +188,26 @@ std::vector<std::string> ParseArgumentsFromTfLiteSettings(
                                          gpu_settings->model_token()->c_str()));
         }
       }
-    } else if (tflite_settings.disable_default_delegates()) {
-      // Currently TFLite Benchmark Tool doesn't support handling the case with
-      // applying XNNPack delegate explicitly and disabling the XNNPack delegate
-      // as the default delegate at the same time. When the
-      // "disable_default_delegates" configuration is set to true, it only takes
-      // effect if the delegate is not set to XNNPack. Otherwise, the default
-      // delegates will still be enabled.
-      args.push_back("--use_xnnpack=false");
+      break;
     }
+    case Delegate_EDGETPU: {
+      args.push_back("--use_edgetpu=true");
+      break;
+    }
+    default:
+      TFLITE_LOG_PROD(TFLITE_LOG_WARNING,
+                      "Delegate type %s is not enabled by the latency module.",
+                      EnumNameDelegate(tflite_settings.delegate()));
+      break;
+  }
+  if (tflite_settings.disable_default_delegates()) {
+    // Currently TFLite Benchmark Tool doesn't support handling the case with
+    // applying XNNPack delegate explicitly and disabling the XNNPack delegate
+    // as the default delegate at the same time. When the
+    // "disable_default_delegates" configuration is set to true, it only takes
+    // effect if the delegate is not set to XNNPack. Otherwise, the default
+    // delegates will still be enabled.
+    args.push_back("--use_xnnpack=false");
   }
   return args;
 }

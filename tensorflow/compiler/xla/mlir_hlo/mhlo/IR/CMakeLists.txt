@@ -69,6 +69,7 @@ target_link_libraries(MhloDialect
 target_include_directories(MhloDialect
   PUBLIC
   $<BUILD_INTERFACE:${MLIR_HLO_SOURCE_DIR}>
+  $<BUILD_INTERFACE:${MLIR_HLO_GEN_INCLUDE_DIR}>
 )
 
 add_mlir_dialect_library(MhloRegisterDialects

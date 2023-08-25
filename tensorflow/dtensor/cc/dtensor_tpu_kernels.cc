@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
@@ -292,12 +293,11 @@ class SetGlobalTPUArrayOpKernel : public OpKernel {
         errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
                                 ctx->input(0).DebugString()));
     auto tpu_topology = ctx->input(0).scalar<tstring>()();
-    TF_Status* status = TF_NewStatus();
 
+    StatusHelper status;
     stream_executor::tpu::OpsApiFn()->SetGlobalTPUArrayOp_DoWorkFn(
-        tpu_topology.size(), tpu_topology.data(), status);
-    OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
-    TF_DeleteStatus(status);
+        tpu_topology.size(), tpu_topology.data(), status.c_status);
+    OP_REQUIRES_OK(ctx, status.status());
 
     VLOG(1) << "SetGlobalTPUArrayOpKernel done";
   }

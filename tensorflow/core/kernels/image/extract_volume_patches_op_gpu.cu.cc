@@ -29,7 +29,6 @@ namespace functor {
 #define REGISTER(T) template struct ExtractVolumePatchesForward<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);
-TF_CALL_bfloat16(REGISTER);
 
 #undef REGISTER
 

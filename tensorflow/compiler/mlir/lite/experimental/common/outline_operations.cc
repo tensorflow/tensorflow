@@ -35,6 +35,8 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/cluster_util.h"
 
 namespace mlir {
 namespace TFL {
@@ -43,7 +45,7 @@ namespace common {
 bool IsConstantOrNone(Operation* op) {
   return (op->getNumResults() == 1 &&
           op->getResult(0).getType().isa<NoneType>()) ||
-         matchPattern(op, m_Constant());
+         matchPattern(op, m_Constant()) || isa<QConstOp>(op);
 }
 
 // Pre-order traverse, adding results and BlockArgs to `been_defined` and
@@ -203,6 +205,9 @@ void ExtractSubgraphToFunc(const Subgraph& subgraph, OpBuilder& builder,
     op->dropAllReferences();
     op->erase();
   }
+  // Ensure that users of the call op's results appear after the launch op in
+  // order to preserve the dominance property.
+  TF::ReorderOpResultUses(call_op);
 }
 
 }  // namespace common

@@ -61,7 +61,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFPass();
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
-    bool enable_canonicalization);
+    bool enable_canonicalization, bool disable_fuse_mul_and_fc = false);
 std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass();
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
@@ -222,6 +222,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldLargeSplatConstantPass();
 // Creates a pass that adds control dependencies to keep the relative execution
 // order of operations with side effects frozen.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePinOpsWithSideEffectsPass();
+
+// Legalize TensorList Ops iff all of them are supported.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTensorListPass();
 
 // Creates a pass that brings operations into the same order as graph_info.cc.
 std::unique_ptr<OperationPass<func::FuncOp>>

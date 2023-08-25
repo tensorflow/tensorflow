@@ -26,15 +26,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -321,8 +320,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create1dPlan(Stream *stream, uint64_t num_x,
                                /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
     LOG(ERROR) << "Plan Parameters: num_x: " << num_x;
-    LOG(ERROR) << "Failed to initialize cufft 1d plan: "
-               << status.error_message();
+    LOG(ERROR) << "Failed to initialize cufft 1d plan: " << status.message();
     return nullptr;
   }
   return std::move(fft_plan_ptr);
@@ -339,7 +337,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create1dPlanWithScratchAllocator(
     LOG(ERROR) << "Plan Parameters: num_x: " << num_x;
     LOG(ERROR)
         << "Failed to initialize cufft 1d plan with customized allocator: "
-        << status.error_message();
+        << status.message();
     return nullptr;
   }
   return std::move(fft_plan_ptr);
@@ -355,8 +353,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create2dPlan(Stream *stream, uint64_t num_x,
                                /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
     LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y;
-    LOG(ERROR) << "Failed to initialize cufft 2d plan: "
-               << status.error_message();
+    LOG(ERROR) << "Failed to initialize cufft 2d plan: " << status.message();
     return nullptr;
   }
   return std::move(fft_plan_ptr);
@@ -373,7 +370,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create2dPlanWithScratchAllocator(
     LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y;
     LOG(ERROR)
         << "Failed to initialize cufft 2d plan with customized allocator: "
-        << status.error_message();
+        << status.message();
     return nullptr;
   }
   return std::move(fft_plan_ptr);
@@ -391,8 +388,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create3dPlan(Stream *stream, uint64_t num_x,
   if (!status.ok()) {
     LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y
                << " num_z: " << num_z;
-    LOG(ERROR) << "Failed to initialize cufft 3d plan: "
-               << status.error_message();
+    LOG(ERROR) << "Failed to initialize cufft 3d plan: " << status.message();
     return nullptr;
   }
   return std::move(fft_plan_ptr);
@@ -410,7 +406,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create3dPlanWithScratchAllocator(
                << " num_z: " << num_z;
     LOG(ERROR)
         << "Failed to initialize cufft 3d plan with customized allocator: "
-        << status.error_message();
+        << status.message();
     return nullptr;
   }
   return std::move(fft_plan_ptr);
@@ -437,7 +433,7 @@ std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlan(
                << " output_distance: " << output_distance
                << " batch_count: " << batch_count;
     LOG(ERROR) << "Failed to initialize batched cufft plan: "
-               << status.error_message();
+               << status.message();
     return nullptr;
   }
 
@@ -466,7 +462,7 @@ std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlanWithScratchAllocator(
                << " batch_count: " << batch_count;
     LOG(ERROR)
         << "Failed to initialize batched cufft plan with customized allocator: "
-        << status.error_message();
+        << status.message();
     return nullptr;
   }
   return std::move(fft_plan_ptr);
@@ -479,7 +475,7 @@ void CUDAFft::UpdatePlanWithScratchAllocator(
       cuda_fft_plan->UpdateScratchAllocator(stream, scratch_allocator);
   if (!status.ok()) {
     LOG(FATAL) << "Failed to update custom allocator for cufft plan: "
-               << status.error_message();
+               << status.message();
   }
 }
 
@@ -610,8 +606,7 @@ void initialize_cufft() {
             return new gpu::CUDAFft(cuda_executor);
           });
   if (!status.ok()) {
-    LOG(ERROR) << "Unable to register cuFFT factory: "
-               << status.error_message();
+    LOG(ERROR) << "Unable to register cuFFT factory: " << status.message();
   }
 
   PluginRegistry::Instance()->SetDefaultFactory(

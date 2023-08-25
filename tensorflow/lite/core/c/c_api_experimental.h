@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/profiling/telemetry/c/profiler.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,7 +64,8 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterResetVariableTensors(
 /// practice is making the provided `TfLiteRegistration` instance static.
 ///
 /// Code that uses this function should NOT call
-/// `TfLiteInterpreterOptionsSetOpResolver` on the same options object.
+/// `TfLiteInterpreterOptionsSetOpResolver` (or related functions) on the same
+/// options object.
 ///
 /// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddBuiltinOp(
@@ -87,13 +87,73 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddBuiltinOp(
 /// as the lifetime of the `TfLiteInterpreterOptions`.
 ///
 /// Code that uses this function should NOT call
-/// `TfLiteInterpreterOptionsSetOpResolver` on the same options object.
+/// `TfLiteInterpreterOptionsSetOpResolver` (or related functions) on the same
+/// options object.
 ///
 /// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
     TfLiteInterpreterOptions* options, const char* name,
     const TfLiteRegistration* registration, int32_t min_version,
     int32_t max_version);
+
+/// Registers callbacks for resolving builtin or custom operators.
+///
+/// The `TfLiteInterpreterOptionsSetOpResolverExternal` function provides an
+/// alternative method for registering builtin ops and/or custom ops, by
+/// providing operator resolver callbacks.  Unlike using
+/// `TfLiteInterpreterOptionsAddRegistrationExternal`,
+/// `TfLiteInterpreterOptionsAddBuiltinOp` and/or
+/// `TfLiteInterpreterOptionsAddAddCustomOp`, these let you register all the
+/// operators in a single call.
+///
+/// Code that uses this function should NOT call
+/// `TfLiteInterpreterOptionsAddBuiltin` or
+/// `TfLiteInterpreterOptionsAddCustomOp` on the same options object.
+///
+/// If `op_resolver_user_data` is non-null, its lifetime must be at least as
+/// long as the lifetime of the `TfLiteInterpreterOptions`.
+///
+/// The TfLiteRegistrationExternal objects whose addresses are returned by
+/// `find_builtin_op` and `find_custom_op` must outlive both the
+/// InterpreterOptions object and any Interpreter object created from it.
+///
+/// WARNING: This is an experimental API and subject to change.
+void TfLiteInterpreterOptionsSetOpResolverExternal(
+    TfLiteInterpreterOptions* options,
+    const TfLiteRegistrationExternal* (*find_builtin_op)(void* user_data,
+                                                         int op, int version),
+    const TfLiteRegistrationExternal* (*find_custom_op)(void* user_data,
+                                                        const char* custom_op,
+                                                        int version),
+    void* op_resolver_user_data);
+
+/// \private
+/// Registers callbacks for resolving builtin or custom operators.
+///
+/// This combines the effects of TfLiteInterpreterOptionsSetOpResolverExternal
+/// and TfLiteInterpreterOptionsSetOpResolver.  The callbacks that return
+/// TfLiteRegistrationExternal will be called first, but if they return a
+/// TfLiteRegistrationExternal object that has no methods set, then
+/// the callbacks that return a TfLiteRegistration will be called to get
+/// the methods.
+///
+/// WARNING: This function is experimental and subject to change.
+///
+/// WARNING: This function is not an official part of the API,
+/// and should not be used by apps.  It is intended for use only from
+/// TF Lite itself.
+void TfLiteInterpreterOptionsSetOpResolverExternalWithFallback(
+    TfLiteInterpreterOptions* options,
+    const TfLiteRegistrationExternal* (*find_builtin_op_external)(
+        void* user_data, int op, int version),
+    const TfLiteRegistrationExternal* (*find_custom_op_external)(
+        void* user_data, const char* custom_op, int version),
+    const TfLiteRegistration* (*find_builtin_op)(void* user_data,
+                                                 TfLiteBuiltinOperator op,
+                                                 int version),
+    const TfLiteRegistration* (*find_custom_op)(void* user_data, const char* op,
+                                                int version),
+    void* op_resolver_user_data);
 
 /// Registers callbacks for resolving builtin or custom operators.
 ///
@@ -111,6 +171,8 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
 /// long as the lifetime of the `TfLiteInterpreterOptions`.
 ///
 /// WARNING: This is an experimental API and subject to change.
+///
+/// DEPRECATED: use TfLiteInterpreterOptionsSetOpResolverExternal instead.
 void TfLiteInterpreterOptionsSetOpResolver(
     TfLiteInterpreterOptions* options,
     const TfLiteRegistration* (*find_builtin_op)(void* user_data,
@@ -122,7 +184,37 @@ void TfLiteInterpreterOptionsSetOpResolver(
     void* op_resolver_user_data);
 
 /// \private
-/// `TfLiteRegistration_V1` version of TfLiteInterpreterOptionsSetOpResolver.
+/// Backward-compat version of TfLiteInterpreterOptionsSetOpResolver.
+///
+/// WARNING: This function is deprecated / not an official part of the API, is
+/// only for binary backwards compatibility, and should not be called.
+void TfLiteInterpreterOptionsSetOpResolverV3(
+    TfLiteInterpreterOptions* options,
+    const TfLiteRegistration_V3* (*find_builtin_op_v3)(void* user_data,
+                                                       TfLiteBuiltinOperator op,
+                                                       int version),
+    const TfLiteRegistration_V3* (*find_custom_op_v3)(void* user_data,
+                                                      const char* op,
+                                                      int version),
+    void* op_resolver_user_data);
+
+/// \private
+/// Backward-compat version of TfLiteInterpreterOptionsSetOpResolver.
+///
+/// WARNING: This function is deprecated / not an official part of the API, is
+/// only for binary backwards compatibility, and should not be called.
+void TfLiteInterpreterOptionsSetOpResolverV2(
+    TfLiteInterpreterOptions* options,
+    const TfLiteRegistration_V2* (*find_builtin_op_v2)(void* user_data,
+                                                       TfLiteBuiltinOperator op,
+                                                       int version),
+    const TfLiteRegistration_V2* (*find_custom_op_v2)(void* user_data,
+                                                      const char* op,
+                                                      int version),
+    void* op_resolver_user_data);
+
+/// \private
+/// Backward-compat version of TfLiteInterpreterOptionsSetOpResolver.
 ///
 /// WARNING: This function is deprecated / not an official part of the API, is
 /// only for binary backwards compatibility, and should not be called.
@@ -404,13 +496,18 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteSignatureRunnerCancel(
 TFL_CAPI_EXPORT extern void TfLiteSignatureRunnerDelete(
     TfLiteSignatureRunner* signature_runner);
 
+// Forward declaration, to avoid need for dependency on
+// tensorflow/lite/profiling/telemetry/profiler.h.
+struct TfLiteTelemetryProfilerStruct;
+
 /// Registers the telemetry profiler to the interpreter.
-/// The interpreter takes the ownership of profiler, but the caller needs to
-/// own the underlying profiler->data and ensure it outlives the interpreter.
+/// Note: The interpreter does not take the ownership of profiler, but callers
+/// must ensure profiler->data outlives the lifespan of the interpreter.
 ///
 /// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetTelemetryProfiler(
-    TfLiteInterpreterOptions* options, TfLiteTelemetryProfilerStruct* profiler);
+    TfLiteInterpreterOptions* options,
+    struct TfLiteTelemetryProfilerStruct* profiler);
 
 #ifdef __cplusplus
 }  // extern "C"

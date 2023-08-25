@@ -32,33 +32,23 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/stream_executor/event.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_kernel.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/tsl/platform/fingerprint.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
 class StreamExecutor;
 
 namespace gpu {
-
-// Pointer-to-implementation object type with virtual destruction for any XLA
-// specific data hanging off of the GpuExecutor.
-class XLAInterface {
- public:
-  // Default constructor for the abstract interface.
-  explicit XLAInterface() {}
-
-  // Default destructor for the abstract interface.
-  virtual ~XLAInterface() {}
-};
 
 // CUDA-platform implementation of the platform-agnostic
 // StreamExecutorInterface.
@@ -208,21 +198,13 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                             uint64_t size) override;
 
   bool HostCallback(Stream* stream,
-                    std::function<tsl::Status()> callback) override;
+                    absl::AnyInvocable<tsl::Status() &&> callback) override;
 
   bool AllocateStream(Stream* stream) override;
 
   void DeallocateStream(Stream* stream) override;
 
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;
-
-  bool AllocateTimer(Timer* timer) override;
-
-  void DeallocateTimer(Timer* timer) override;
-
-  bool StartTimer(Stream* stream, Timer* timer) override;
-
-  bool StopTimer(Stream* stream, Timer* timer) override;
 
   tsl::Status AllocateEvent(Event* event) override;
 
@@ -231,6 +213,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   tsl::Status RecordEvent(Stream* stream, Event* event) override;
 
   tsl::Status WaitForEvent(Stream* stream, Event* event) override;
+
+  tsl::Status WaitForEventOnExternalStream(std::intptr_t stream,
+                                           Event* event) override;
 
   Event::Status PollForEventStatus(Event* event) override;
 
@@ -258,19 +243,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   static tsl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
-  bool SupportsBlas() const override;
-
   blas::BlasSupport* CreateBlas() override;
 
-  bool SupportsFft() const override;
-
   fft::FftSupport* CreateFft() override;
-
-  bool SupportsRng() const override;
-
-  rng::RngSupport* CreateRng() override;
-
-  bool SupportsDnn() const override;
 
   dnn::DnnSupport* CreateDnn() override;
 
@@ -281,8 +256,6 @@ class GpuExecutor : public internal::StreamExecutorInterface {
       override;
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
-
-  std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override;
 
   void* GpuContextHack() override;
 
@@ -312,29 +285,11 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   }
 
  private:
-  // Attempts to find a more specific version of the file indicated by
-  // filename by looking for compute-capability-specific suffixed versions; i.e.
-  // looking for "foo.ptx" will check to see if "foo.ptx.cc30.ptx" is present if
-  // we're on a compute capability 3.0 machine.
-  // (supported on CUDA only)
-  bool FindOnDiskForComputeCapability(absl::string_view filename,
-                                      absl::string_view canonical_suffix,
-                                      std::string* found_filename) const;
-
-  // Attempts to find a more specific version of the file indicated by
-  // filename by looking for AMDGPU ISA-specific suffixed versions.
-  // (supported on ROCm only)
-
-  bool FindOnDiskForISAVersion(absl::string_view filename,
-                               absl::string_view canonical_suffix,
-                               std::string* found_filename) const;
-
   // Host callback landing routine invoked by CUDA.
   // data: User-provided callback provided to HostCallback() above, captured
   //       as a std::function<void()>. Allocated/initialized inside
   //       HostCallback() and owned and deleted by this call.
-  static void InternalHostCallback(GpuStreamHandle stream, GpuStatus status,
-                                   void* data);
+  static void InternalHostCallback(void* data);
 
   // Collects metadata for the specified kernel.
   tsl::Status GetKernelMetadata(GpuKernel* cuda_kernel,

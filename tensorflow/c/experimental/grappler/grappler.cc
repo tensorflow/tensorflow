@@ -40,19 +40,19 @@ namespace {
 #define VALIDATE_STRUCT_SIZE(STRUCT_NAME, STRUCT_OBJ, SIZE_VALUE_NAME)    \
   do {                                                                    \
     if (STRUCT_OBJ.struct_size == 0) {                                    \
-      return tensorflow::Status(tensorflow::error::FAILED_PRECONDITION,   \
+      return tensorflow::Status(absl::StatusCode::kFailedPrecondition,    \
                                 "struct_size field in " #STRUCT_NAME      \
                                 " must be set to " #SIZE_VALUE_NAME "."); \
     }                                                                     \
   } while (0)
 
-#define VALIDATE_MEMBER(STRUCT_NAME, STRUCT_OBJ, NAME)                  \
-  do {                                                                  \
-    if (STRUCT_OBJ.NAME == 0) {                                         \
-      return tensorflow::Status(tensorflow::error::FAILED_PRECONDITION, \
-                                "'" #NAME "' field in " #STRUCT_NAME    \
-                                " must be set.");                       \
-    }                                                                   \
+#define VALIDATE_MEMBER(STRUCT_NAME, STRUCT_OBJ, NAME)                 \
+  do {                                                                 \
+    if (STRUCT_OBJ.NAME == 0) {                                        \
+      return tensorflow::Status(absl::StatusCode::kFailedPrecondition, \
+                                "'" #NAME "' field in " #STRUCT_NAME   \
+                                " must be set.");                      \
+    }                                                                  \
   } while (0)
 
 tensorflow::Status ValidateTPOptimizerRegistrationParams(

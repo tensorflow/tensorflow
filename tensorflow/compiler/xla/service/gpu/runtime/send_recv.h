@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_SEND_RECV_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_SEND_RECV_H_
 
+#include <memory>
 #include <utility>
 
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
+#include "tensorflow/compiler/xla/stream_executor/event.h"
 
 namespace xla {
 namespace gpu {
@@ -32,6 +34,21 @@ void RegisterSendRecvTypeIdNames(runtime::TypeIDNameRegistry& registry);
 
 // Adds attributes encoding for Send/Recv custom calls
 void PopulateSendRecvAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding);
+
+//===----------------------------------------------------------------------===//
+// Support for running asynchronous Send/Recv SendDone/RecvDone operations.
+//===----------------------------------------------------------------------===//
+
+class SendRecvEvents {
+ public:
+  absl::Status PushEvent(int32_t handle, tsl::AsyncValueRef<se::Event> event);
+  absl::StatusOr<tsl::AsyncValueRef<se::Event>> PopEvent(int32_t handle);
+
+ private:
+  absl::Mutex mutex_;
+  absl::flat_hash_map<int, tsl::AsyncValueRef<se::Event>> events_
+      ABSL_GUARDED_BY(mutex_);
+};
 
 }  // namespace gpu
 }  // namespace xla

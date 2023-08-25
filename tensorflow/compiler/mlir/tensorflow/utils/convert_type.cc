@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 
+#include <limits>
+
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project

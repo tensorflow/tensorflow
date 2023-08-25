@@ -139,7 +139,7 @@ void CheckBufferDataIsEqual(DataType dtype, int64_t num_elements, void* a,
 AbstractTensorPtr TensorHandleToTensor(ImmediateExecutionTensorHandle* handle) {
   Status status;
   AbstractTensorPtr tensor(handle->Resolve(&status));
-  CHECK(status.ok()) << status.error_message();
+  CHECK(status.ok()) << status.message();
   CHECK_NE(tensor.get(), nullptr);
   return tensor;
 }

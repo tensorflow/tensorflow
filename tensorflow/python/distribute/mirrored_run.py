@@ -15,7 +15,6 @@
 """Class MirroredStrategy implementing tf.distribute.Strategy."""
 
 import contextlib
-import functools
 import threading
 import weakref
 
@@ -76,11 +75,13 @@ def call_for_each_replica(strategy, fn, args=None, kwargs=None):
       # the tf.function. We use _clone() instead of @tf.function wrapped
       # call_for_each_replica() because we would like to retain the arguments to
       # the @tf.function decorator of fn.
+      def wrapped_fn(*args, **kwargs):
+        return call_for_each_replica(strategy, fn.python_function, args, kwargs)
+
       wrapped = fn._clone(  # pylint: disable=protected-access
-          python_function=functools.partial(call_for_each_replica, strategy,
-                                            fn.python_function))
+          python_function=wrapped_fn)
       _cfer_fn_cache[strategy][fn] = wrapped
-    return wrapped(args, kwargs)
+    return wrapped(*args, **kwargs)
 
   if context.executing_eagerly():
     logging.log_first_n(

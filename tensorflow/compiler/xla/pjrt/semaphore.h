@@ -41,6 +41,7 @@ class Semaphore {
     ScopedReservation(ScopedReservation&& other) noexcept;
     ScopedReservation& operator=(const ScopedReservation&) = delete;
     ScopedReservation& operator=(ScopedReservation&& other) noexcept;
+    int64_t amount() const { return amount_; }
 
    private:
     Semaphore* semaphore_;

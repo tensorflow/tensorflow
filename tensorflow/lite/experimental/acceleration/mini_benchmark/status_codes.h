@@ -69,7 +69,7 @@ enum MinibenchmarkStatus {
   //
   // Runner status codes.
   //
-  // Next available code: 515
+  // Next available code: 516
   kMinibenchmarkDladdrReturnedZero = 502,
   kMinibenchmarkDliFnameWasNull = 503,
   kMinibenchmarkDliFnameHasApkNameOnly = 504,
@@ -83,6 +83,8 @@ enum MinibenchmarkStatus {
   kMiniBenchmarkCannotLoadSupportLibrary = 511,
   kMiniBenchmarkInvalidSupportLibraryConfiguration = 512,
   kMinibenchmarkPipeFailed = 513,
+  kMinibenchmarkCannotLoadGpuModule = 515,
+
   // Validator status codes.
   //
   // Next available code: 1018

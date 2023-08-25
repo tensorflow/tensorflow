@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -44,11 +44,11 @@ class HostOpMetricsDbBuilder : public OpMetricsDbBuilder {
 
   // Updates total_host_infeed_enq_duration_ps_ and
   // total_host_infeed_enq_duration_ps_.
-  void EnterHostInfeedEnqueue(Timespan host_infeed_enqueue);
+  void EnterHostInfeedEnqueue(tsl::profiler::Timespan host_infeed_enqueue);
 
  private:
-  // The Timespan of the last InfeedEnqueue op on this thread.
-  Timespan last_host_infeed_enqueue_;
+  // The tsl::profiler::Timespan of the last InfeedEnqueue op on this thread.
+  tsl::profiler::Timespan last_host_infeed_enqueue_;
 };
 
 class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {

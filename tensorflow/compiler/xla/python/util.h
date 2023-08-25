@@ -20,22 +20,38 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
 
-// Backward compatibility for vectorcalls in Python 3.8. Remove this after
-// dropping support for Python 3.8.
-#if PY_VERSION_HEX < 0x03090000
-#define JAX_PyObject_Vectorcall _PyObject_Vectorcall
-#define JAX_TPFLAGS_HAVE_VECTORCALL _Py_TPFLAGS_HAVE_VECTORCALL
-#else  // PY_VERSION_HEX < 0x30900000
-#define JAX_PyObject_Vectorcall PyObject_Vectorcall
-#define JAX_TPFLAGS_HAVE_VECTORCALL Py_TPFLAGS_HAVE_VECTORCALL
-#endif  // PY_VERSION_HEX < 0x30900000
+template <typename T>
+bool is_pybind_reinterpret_cast_ok(pybind11::handle h) {
+  static pybind11::detail::type_info* const type_info = []() {
+    auto* type_info =
+        pybind11::detail::get_type_info(typeid(T), /*throw_if_missing=*/false);
+    CHECK(type_info);
+    CHECK(type_info->simple_type);
+    return type_info;
+  }();
+  PyTypeObject* srctype = Py_TYPE(h.ptr());
+  // Exact type match.
+  if (srctype == type_info->type) {
+    return true;
+  }
+  // If we have a subtype, then look for a base type that matches.
+  if (PyType_IsSubtype(srctype, type_info->type)) {
+    const auto& bases = pybind11::detail::all_type_info(srctype);
+    for (auto* base : bases) {
+      if (PyType_IsSubtype(base->type, type_info->type)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 // Faster version of the pybind11 cast x.cast<T*>.
 // pybind11's cast is fairly slow because it looks up the type information
@@ -46,31 +62,7 @@ namespace xla {
 // Return nullptr if the cast fails.
 template <typename T>
 T* fast_cast(pybind11::handle h) {
-  static pybind11::detail::type_info* const type_info = []() {
-    auto* type_info =
-        pybind11::detail::get_type_info(typeid(T), /*throw_if_missing=*/false);
-    CHECK(type_info);
-    CHECK(type_info->simple_type);
-    return type_info;
-  }();
-  PyTypeObject* srctype = Py_TYPE(h.ptr());
-  auto reinterpret_cast_ok = [&]() {
-    // Exact type match.
-    if (srctype == type_info->type) {
-      return true;
-    }
-    // If we have a subtype, then look for a base type that matches.
-    if (PyType_IsSubtype(srctype, type_info->type)) {
-      const auto& bases = pybind11::detail::all_type_info(srctype);
-      for (auto* base : bases) {
-        if (PyType_IsSubtype(base->type, type_info->type)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-  if (!reinterpret_cast_ok()) {
+  if (!is_pybind_reinterpret_cast_ok<T>(h)) {
     // Fall back to pybind11's usual cast.
     return h.cast<T*>();
   }

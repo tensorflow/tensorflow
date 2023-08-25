@@ -21,8 +21,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
@@ -80,10 +81,9 @@ def kaiser_window(window_length, beta=12., dtype=dtypes.float32, name=None):
     arg = math_ops.cast(arg, dtype=dtype)
     beta = math_ops.cast(beta, dtype=dtype)
     one = math_ops.cast(1.0, dtype=dtype)
-    two = math_ops.cast(2.0, dtype=dtype)
     halflen_float = math_ops.cast(halflen_float, dtype=dtype)
-    num = beta * math_ops.sqrt(
-        one - math_ops.pow(arg, two) / math_ops.pow(halflen_float, two))
+    num = beta * math_ops.sqrt(nn_ops.relu(
+        one - math_ops.square(arg / halflen_float)))
     window = math_ops.exp(num - beta) * (
         special_math_ops.bessel_i0e(num) / special_math_ops.bessel_i0e(beta))
   return window
@@ -239,7 +239,7 @@ def _raised_cosine_window(name, default_name, window_length, periodic,
 
     if window_length_const is not None:
       return math_ops.cast(a - b * math_ops.cos(cos_arg), dtype=dtype)
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.equal(window_length, 1),
         lambda: array_ops.ones([window_length], dtype=dtype),
         lambda: math_ops.cast(a - b * math_ops.cos(cos_arg), dtype=dtype))

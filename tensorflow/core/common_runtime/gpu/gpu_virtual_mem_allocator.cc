@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/tsl/platform/numbers.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"

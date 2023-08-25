@@ -70,9 +70,8 @@ class ExecutionEngine {
   using OptimizingTransformer = std::function<llvm::Error(llvm::Module *)>;
 
   // Callback to construct an optimizing transformer for the given options.
-  using MakeOptimizingTransformer = std::function<OptimizingTransformer(
-      unsigned opt_level, unsigned size_level,
-      llvm::TargetMachine *targetMachine)>;
+  using MakeOptimizingTransformer =
+      std::function<OptimizingTransformer(llvm::TargetMachine *targetMachine)>;
 
   // Compose multiple symbol bindings into a single symbol binding function.
   static SymbolsBinding BindAll(std::vector<SymbolsBinding> bindings);
@@ -98,10 +97,10 @@ class ExecutionEngine {
     SymbolsBinding symbols_binding = nullptr;
 
     // Notify the llvm's global GDB notifications listener.
-    bool enable_gdb_listener = true;
+    bool enable_gdb_listener = false;
 
     // Notify the llvm's global Perf notifications listener.
-    bool enable_perf_listener = true;
+    bool enable_perf_listener = false;
 
     // Save compiled object file.
     bool save_compiled_obj_file = true;
@@ -167,6 +166,14 @@ class ExecutionEngine {
   llvm::JITEventListener *gdb_listener_ = nullptr;
   llvm::JITEventListener *perf_listener_ = nullptr;
 };
+
+// Emits an interface function ('exported_name') that wraps all arguments
+// of a function ('original_name') into a single pointer to a ptr**,
+// thereby exposing a trivial ABI. The original function is also inlined,
+// if possible.
+absl::Status ExportWithXlaRuntimeAbi(llvm::Module &module,
+                                     std::string_view original_name,
+                                     std::string_view exported_name);
 
 }  // namespace runtime
 }  // namespace xla

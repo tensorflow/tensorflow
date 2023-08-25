@@ -26,8 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/python/lib/core/py_util.h"
-#include "tensorflow/tsl/python/lib/core/bfloat16.h"
-#include "tensorflow/tsl/python/lib/core/float8.h"
+#include "tensorflow/tsl/python/lib/core/ml_dtypes.h"
 
 namespace tensorflow {
 
@@ -188,13 +187,13 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       *out_pyarray_type = NPY_INT32;
       break;
     case TF_BFLOAT16:
-      *out_pyarray_type = tsl::Bfloat16NumpyType();
+      *out_pyarray_type = tsl::ml_dtypes::GetBfloat16TypeNum();
       break;
     case TF_FLOAT8_E5M2:
-      *out_pyarray_type = tsl::Float8e5m2NumpyType();
+      *out_pyarray_type = tsl::ml_dtypes::GetFloat8E5m2TypeNum();
       break;
     case TF_FLOAT8_E4M3FN:
-      *out_pyarray_type = tsl::Float8e4m3fnNumpyType();
+      *out_pyarray_type = tsl::ml_dtypes::GetFloat8E4m3fnTypeNum();
       break;
     default:
       return errors::Internal("Tensorflow type ", tf_datatype,

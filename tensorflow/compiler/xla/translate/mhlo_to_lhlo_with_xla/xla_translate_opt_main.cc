@@ -32,12 +32,11 @@ int main(int argc, char **argv) {
   tsl::port::InitMain(argv[0], &dummyArgc, &argv);
 
   mlir::registerAllPasses();
-  mlir::RegisterMhloToLhloWithXlaPass();
-  mlir::mhlo::registerXlaFrameworkPasses();
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
+  mlir::xla_framework::registerXlaFrameworkPasses();
   registry.insert<mlir::xla_framework::XLAFrameworkDialect>();
   return failed(mlir::MlirOptMain(
       argc, argv, "xla translate test pass driver\n", registry));

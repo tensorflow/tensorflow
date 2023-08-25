@@ -73,7 +73,7 @@ def RT_ExportOp : RT_Op<"export", [
   ];
 
   let extraClassDeclaration = [{
-    llvm::Optional<unsigned> ordinal();
+    std::optional<unsigned> ordinal();
     mlir::FunctionOpInterface exported(mlir::SymbolTable& sym_table);
   }];
 

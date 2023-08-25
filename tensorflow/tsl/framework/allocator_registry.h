@@ -17,9 +17,11 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_FRAMEWORK_ALLOCATOR_REGISTRY_H_
 #define TENSORFLOW_TSL_FRAMEWORK_ALLOCATOR_REGISTRY_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/mutex.h"
@@ -87,14 +89,22 @@ class AllocatorFactoryRegistry {
   // Returns the singleton value.
   static AllocatorFactoryRegistry* singleton();
 
-  ProcessStateInterface* process_state() const { return process_state_; }
+  ProcessStateInterface* process_state() const {
+    mutex_lock ml(mu_);
+    return process_state_;
+  }
 
  protected:
   friend class tensorflow::ProcessState;
-  ProcessStateInterface* process_state_ = nullptr;
+
+  void SetProcessState(ProcessStateInterface* interface) {
+    mutex_lock ml(mu_);
+    process_state_ = interface;
+  }
 
  private:
-  mutex mu_;
+  mutable mutex mu_;
+  ProcessStateInterface* process_state_ ABSL_GUARDED_BY(mu_) = nullptr;
   bool first_alloc_made_ = false;
   struct FactoryEntry {
     const char* source_file;
@@ -107,12 +117,12 @@ class AllocatorFactoryRegistry {
     // 1).
     std::vector<std::unique_ptr<SubAllocator>> sub_allocators;
   };
-  std::vector<FactoryEntry> factories_ TF_GUARDED_BY(mu_);
+  std::vector<FactoryEntry> factories_ ABSL_GUARDED_BY(mu_);
 
   // Returns any FactoryEntry registered under 'name' and 'priority',
   // or 'nullptr' if none found.
   const FactoryEntry* FindEntry(const string& name, int priority) const
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(AllocatorFactoryRegistry);
 };
