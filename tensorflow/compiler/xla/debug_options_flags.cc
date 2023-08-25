@@ -190,6 +190,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_split_k_autotuning(true);
 
   opts.set_xla_gpu_single_wave_autotuning(true);
+  opts.set_xla_gpu_enable_reduction_epilogue_fusion(true);
   return opts;
 }
 
@@ -1245,6 +1246,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enable single \"wave\" autotuning. This uses more memory for "
       "compilation, but utilizes CPU cores better, so compilation can be "
       "faster."));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_reduction_epilogue_fusion",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_reduction_epilogue_fusion),
+      debug_options->xla_gpu_enable_reduction_epilogue_fusion(),
+      "Enable fusion for reduction epilogues"));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

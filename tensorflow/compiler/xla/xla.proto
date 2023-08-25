@@ -607,7 +607,10 @@ message DebugOptions {
   bool xla_gpu_enable_split_k_autotuning = 241;
 
   bool xla_gpu_single_wave_autotuning = 242;
-  // Next id: 243
+  // Whether reduction epilogue fusion is enabled in fusion passes.
+  bool xla_gpu_enable_reduction_epilogue_fusion = 243;
+
+  // Next id: 244
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

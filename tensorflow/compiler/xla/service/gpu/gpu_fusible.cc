@@ -388,6 +388,12 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
   }
 
   if (IsInputFusibleReduction(producer)) {
+    if (!producer.GetModule()
+             ->config()
+             .debug_options()
+             .xla_gpu_enable_reduction_epilogue_fusion()) {
+      return "Reduction epilogue fusion is not enabled.";
+    }
     if (!AllSatisfy(consumer, [](const HloInstruction* hlo) {
           return IsIntermediate(hlo, /*allowed_operand_count=*/1);
         })) {
