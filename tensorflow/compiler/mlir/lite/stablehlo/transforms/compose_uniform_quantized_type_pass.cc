@@ -1281,22 +1281,24 @@ class ComposeUniformQuantizedDotGeneralOp
 // %10 = stablehlo.constant  // s1 * s2.
 // %11 = call @uniform_quantize(%0, %2, %3)  // Quantize input (q1).
 // %12 = call @uniform_quantize_0(%1, %5, %6)  // Quantize input (q2).
-// %13 = stablehlo.convert %11  // i8 -> i32 cast for q1.
-// %14 = stablehlo.convert %12  // i8 -> i32 cast for q2.
-// %15 = stablehlo.broadcast_in_dim %4
+// %13 = stablehlo.convert %11  // i8->i32 cast for q1.
+// %14 = stablehlo.convert %3  // [Optional] i8->i32 cast for z1.
+// %15 = stablehlo.broadcast_in_dim %14  // Operand = %4 if no `convert` above.
 // %16 = stablehlo.subtract %13, %15  // q1 - z1
-// %17 = stablehlo.broadcast_in_dim %7
-// %18 = stablehlo.subtract %14, %17  // q2 - z2
-// %19 = stablehlo.dot_general(%16, %18)  // (q1 - z1) * (q2 - z2).
-// %20 = stablehlo.convert %19  // i32 -> f32 cast.
-// %21 = stablehlo.broadcast_in_dim %10
-// %22 = stablehlo.multiply %20 %21  // * s1 s2
+// %17 = stablehlo.convert %12  // i8->i32 cast for q2.
+// %18 = stablehlo.convert %6  // [Optional] i8->i32 cast for z2.
+// %19 = stablehlo.broadcast_in_dim %18  // Operand = %7 if no `convert` above.
+// %20 = stablehlo.subtract %17, %19  // q2 - z2
+// %21 = stablehlo.dot_general(%16, %20)  // (q1 - z1) * (q2 - z2).
+// %22 = stablehlo.convert %21  // i32 -> f32 cast.
+// %23 = stablehlo.broadcast_in_dim %10
+// %24 = stablehlo.multiply %22 %23  // * s1 s2
 //
 // The following quant -> dequant pattern is a no-op, but is required to
 // retrieve the quantization parameters for the output tensor.
 //
-// %23 = call @uniform_quantize_1(%22, %8, %9)  // r3 -> q3
-// %24 = call @uniform_dequantize(%23, %8, %9)  // q3 -> r3
+// %25 = call @uniform_quantize_1(%24, %8, %9)  // r3 -> q3
+// %26 = call @uniform_dequantize(%25, %8, %9)  // q3 -> r3
 // ```
 //
 // The rewritten pattern looks like:
@@ -1326,8 +1328,23 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
             /*name=*/"input1_zero_point_broadcast_in_dim_op");
     if (failed(input1_zero_point_broadcast_in_dim_op)) return failure();
 
+    Value input1_zero_point_constant_value =
+        input1_zero_point_broadcast_in_dim_op->getOperand();
+    // Match optional i8->i32 convert for z1.
+    if (auto input1_zero_point_i8_to_i32_convert_op =
+            TryCast<stablehlo::ConvertOp>(
+                input1_zero_point_constant_value.getDefiningOp(),
+                /*name=*/"input1_zero_point_i8_to_i32_convert_op");
+        succeeded(input1_zero_point_i8_to_i32_convert_op)) {
+      if (!IsI8ToI32Cast(*input1_zero_point_i8_to_i32_convert_op)) {
+        return failure();
+      }
+      input1_zero_point_constant_value =
+          input1_zero_point_i8_to_i32_convert_op->getOperand();
+    }
+
     auto input1_zero_point_constant_op = TryCast<stablehlo::ConstantOp>(
-        input1_zero_point_broadcast_in_dim_op->getOperand().getDefiningOp(),
+        input1_zero_point_constant_value.getDefiningOp(),
         /*name=*/"input1_zero_point_constant_op");
     if (failed(input1_zero_point_constant_op)) return failure();
 
@@ -1371,8 +1388,23 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
             /*name=*/"input2_zero_point_broadcast_in_dim_op");
     if (failed(input2_zero_point_broadcast_in_dim_op)) return failure();
 
+    Value input2_zero_point_constant_value =
+        input2_zero_point_broadcast_in_dim_op->getOperand();
+    // Match optional i8->i32 convert for z2.
+    if (auto input2_zero_point_i8_to_i32_convert_op =
+            TryCast<stablehlo::ConvertOp>(
+                input2_zero_point_constant_value.getDefiningOp(),
+                /*name=*/"input2_zero_point_i8_to_i32_convert_op");
+        succeeded(input2_zero_point_i8_to_i32_convert_op)) {
+      if (!IsI8ToI32Cast(*input2_zero_point_i8_to_i32_convert_op)) {
+        return failure();
+      }
+      input2_zero_point_constant_value =
+          input2_zero_point_i8_to_i32_convert_op->getOperand();
+    }
+
     auto input2_zero_point_constant_op = TryCast<stablehlo::ConstantOp>(
-        input2_zero_point_broadcast_in_dim_op->getOperand().getDefiningOp(),
+        input2_zero_point_constant_value.getDefiningOp(),
         /*name=*/"input2_zero_point_constant_op");
     if (failed(input2_zero_point_constant_op)) return failure();
 
