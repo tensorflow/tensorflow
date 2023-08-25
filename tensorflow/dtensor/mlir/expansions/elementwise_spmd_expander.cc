@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/elementwise_spmd_expander.h"
 
 #include <iterator>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -131,7 +132,7 @@ StatusOr<mlir::Operation*> ElementwiseSPMDExpander::ExpandOp(
 StatusOr<llvm::DenseMap<int, Layout>>
 ElementwiseSPMDExpander::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
-  TF_ASSIGN_OR_RETURN(absl::optional<Layout> merged_operand_layout,
+  TF_ASSIGN_OR_RETURN(std::optional<Layout> merged_operand_layout,
                       GetMergedOperandLayout(input_layouts, op));
 
   if (merged_operand_layout) {
