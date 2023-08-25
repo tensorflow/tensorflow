@@ -941,8 +941,10 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
     std::vector<ShardingStrategy> new_vector;
     std::vector<ShardingStrategy> deduped_replicated_strategies;
     absl::flat_hash_set<std::string> added;
+    size_t num_skipped_due_to_infinity_costs = 0;
     for (size_t i = 0; i < strategies->leaf_vector.size(); ++i) {
       if (AllInfinityCosts(strategies->leaf_vector[i].resharding_costs)) {
+        num_skipped_due_to_infinity_costs++;
         continue;
       }
       std::string key = strategies->leaf_vector[i].output_sharding.ToString();
@@ -962,6 +964,8 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
         }
       }
     }
+    CHECK_LT(num_skipped_due_to_infinity_costs, strategies->leaf_vector.size())
+        << "All strategies removed due to infinite resharding costs";
     // Keeps replicated strategies as the last ones.
     if (!deduped_replicated_strategies.empty()) {
       for (size_t i = 0; i < deduped_replicated_strategies.size(); ++i) {
