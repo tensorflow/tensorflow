@@ -16,20 +16,6 @@ def if_libtpu_tf_tensor():
         if_false = ["//tensorflow/c:tf_tensor"],
     )
 
-# Returns the appropriate tf_buffer_internal target based on whether building LibTPU or Tensorflow.
-def if_libtpu_tf_buffer():
-    return if_libtpu(
-        if_true = ["//tensorflow/c:tf_buffer_hdrs"],
-        if_false = ["//tensorflow/c:tf_buffer"],
-    )
-
-# Returns the appropriate tf_buffer_internal target based on whether building LibTPU or Tensorflow.
-def if_libtpu_tf_buffer_internal():
-    return if_libtpu(
-        if_true = ["//tensorflow/c:tf_buffer_internal_hdrs"],
-        if_false = ["//tensorflow/c:tf_buffer_internal"],
-    )
-
 # Returns the C API headers or full implementation based on whether building LibTPU or Tensorflow.
 def if_libtpu_tf_c_api():
     return if_libtpu(

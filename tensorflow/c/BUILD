@@ -603,28 +603,8 @@ cc_library(
     deps = [
         ":c_api_macros_hdrs",
         ":tf_buffer_internal",
-        ":tf_status",
-        ":tf_tensor_internal",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:protobuf",
-        "//tensorflow/core/platform:status",
-    ],
-)
-
-cc_library(
-    name = "tf_buffer_internal_hdrs",
-    hdrs = [
-        "tf_buffer.h",
-        "tf_buffer_internal.h",
-    ],
-    visibility = [
-        "//tensorflow:internal",
-        "//tensorflow/c:__subpackages__",
-    ],
-    deps = [
-        ":c_api_macros_hdrs",
-        ":tf_tensor_hdrs",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:status",
     ],
@@ -642,8 +622,6 @@ tf_cuda_library(
     ],
     deps = [
         ":c_api_macros_hdrs",
-        ":tf_status",
-        ":tf_tensor_internal",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:status",
     ],
