@@ -1571,19 +1571,19 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     };
   }
 
-  GpuVersion gpu_version = GetGpuVersion(stream_exec);
   TF_ASSIGN_OR_RETURN(
       auto gpu_executable,
       GpuExecutable::Create(GpuExecutable::Params{
           /*asm_text=*/std::move(backend_result.first),
           /*binary=*/std::move(backend_result.second),
-          /*gpu_version=*/gpu_version,
+          /*gpu_version=*/GetGpuVersion(stream_exec),
           /*executable=*/std::move(compile_module_results.executable),
-          /*entry_func_attrs=*/compile_module_results.entry_func_attrs,
+          /*entry_func_attrs=*/
+          std::move(compile_module_results.entry_func_attrs),
           /*constants=*/std::move(compile_module_results.constants),
           /*output_info=*/std::move(compile_module_results.output_info),
-          /*module_name=*/compile_module_results.module_name,
-          /*output_shape=*/compile_module_results.output_shape,
+          /*module_name=*/std::move(compile_module_results.module_name),
+          /*output_shape=*/std::move(compile_module_results.output_shape),
           /*allocations=*/std::move(compile_module_results.allocations),
           /*enable_persistent_temp_buffers=*/
           module->config()
