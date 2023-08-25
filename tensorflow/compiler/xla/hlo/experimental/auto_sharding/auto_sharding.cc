@@ -2649,9 +2649,13 @@ void SetHloShardingPostProcessing(
       const auto& rhs_con_dims = dot_dnums.rhs_contracting_dimensions();
 
       const auto& lhs_tensor_dim_to_mesh_dim =
-          cluster_env.GetTensorDimToMeshDimWrapper(lhs->shape(), lhs_sharding);
+          cluster_env.GetTensorDimToMeshDimWrapper(
+              lhs->shape(), lhs_sharding,
+              /* consider_reverse_device_meshes */ true);
       const auto& rhs_tensor_dim_to_mesh_dim =
-          cluster_env.GetTensorDimToMeshDimWrapper(rhs->shape(), rhs_sharding);
+          cluster_env.GetTensorDimToMeshDimWrapper(
+              rhs->shape(), rhs_sharding,
+              /* consider_reverse_device_meshes */ true);
 
       if (absl::StrContains(stra.name, "allreduce") &&
           lhs_tensor_dim_to_mesh_dim[lhs_con_dims[0]] == -1 &&
@@ -2686,9 +2690,13 @@ void SetHloShardingPostProcessing(
           conv_dnums.kernel_input_feature_dimension();
 
       const auto& lhs_tensor_dim_to_mesh_dim =
-          cluster_env.GetTensorDimToMeshDimWrapper(lhs->shape(), lhs_sharding);
+          cluster_env.GetTensorDimToMeshDimWrapper(
+              lhs->shape(), lhs_sharding,
+              /* consider_reverse_device_meshes */ true);
       const auto& rhs_tensor_dim_to_mesh_dim =
-          cluster_env.GetTensorDimToMeshDimWrapper(rhs->shape(), rhs_sharding);
+          cluster_env.GetTensorDimToMeshDimWrapper(
+              rhs->shape(), rhs_sharding,
+              /* consider_reverse_device_meshes */ true);
 
       if (absl::StrContains(stra.name, "allreduce") &&
           lhs_tensor_dim_to_mesh_dim[lhs_in_channel_dim] == -1 &&
