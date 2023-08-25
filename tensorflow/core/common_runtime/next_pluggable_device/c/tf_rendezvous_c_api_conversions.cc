@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
-#include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/c/tf_tensor_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"  // IWYU pragma: keep
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_device_context_c_api_conversions.h"
