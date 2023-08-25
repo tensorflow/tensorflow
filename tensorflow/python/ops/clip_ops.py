@@ -368,7 +368,10 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
       else:
         with ops.colocate_with(v):
           values_clipped.append(
-              array_ops.identity(v * scale, name="%s_%d" % (name, i)))
+              array_ops.identity(
+                  v * math_ops.cast(scale, v.dtype), name="%s_%d" % (name, i)
+              )
+          )
 
     list_clipped = [
         indexed_slices.IndexedSlices(c_v, t.indices, t.dense_shape)
