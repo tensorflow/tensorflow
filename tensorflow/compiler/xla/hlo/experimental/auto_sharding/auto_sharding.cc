@@ -3009,7 +3009,9 @@ void SaveShardingForInstruction(
 // Saves the user shardings that need to be preserved, and check whether they
 // are preserved after this pass.
 absl::flat_hash_map<std::string, std::vector<HloSharding>> SaveUserShardings(
-    HloModule* module, AutoShardingOption::PreserveShardingsType type) {
+    HloModule* module,
+    const absl::flat_hash_set<std::string>& replicated_small_tensors,
+    AutoShardingOption::PreserveShardingsType type) {
   absl::flat_hash_map<std::string, std::vector<HloSharding>> preserve_shardings;
   if (type == AutoShardingOption::PreserveShardingsType::kKeepAllShardings) {
     // Saves shardings for all instructions.
@@ -3039,16 +3041,17 @@ absl::flat_hash_map<std::string, std::vector<HloSharding>> SaveUserShardings(
         }
       }
     }
+    for (const auto computation : module->computations()) {
+      for (const auto inst : computation->instructions()) {
+        if (inst->opcode() == HloOpcode::kOutfeed ||
+            replicated_small_tensors.count(inst->name())) {
+          SaveShardingForInstruction(preserve_shardings, inst);
+        }
+      }
+    }
     // Saves output shardings
     auto inst = module->entry_computation()->root_instruction();
     SaveShardingForInstruction(preserve_shardings, inst);
-  }
-  for (const auto computation : module->computations()) {
-    for (const auto inst : computation->instructions()) {
-      if (inst->opcode() == HloOpcode::kOutfeed) {
-        SaveShardingForInstruction(preserve_shardings, inst);
-      }
-    }
   }
 
   if (VLOG_IS_ON(1)) {
@@ -3872,6 +3875,7 @@ bool HasReduceScatterOpportunity(
 
 StatusOr<bool> AutoShardingImplementation::RemoveShardingAnnotation(
     HloModule* module,
+    const absl::flat_hash_set<std::string>& replicated_small_tensors,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (option_.preserve_shardings ==
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings) {
@@ -3884,6 +3888,13 @@ StatusOr<bool> AutoShardingImplementation::RemoveShardingAnnotation(
     bool is_entry_computation = computation->IsEntryComputation();
 
     for (HloInstruction* ins : computation->instructions()) {
+      // Do not remove sharding annotations from instructions replicated as they
+      // are small tensors
+      if (replicated_small_tensors.count(ins->name())) {
+        keep_inst.insert(ins);
+        continue;
+      }
+
       // Do not remove entry computation's parameter and root instruction's
       // sharding if preserve_shardings is kKeepInputOutputShardings.
       if (option_.preserve_shardings ==
@@ -3938,6 +3949,7 @@ AutoShardingImplementation::AutoShardingImplementation(
 
 StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     HloModule* module,
+    const absl::flat_hash_set<std::string>& replicated_small_tensors,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!option_.enable) {
     return AutoShardingResult::kModuleUnchanged;
@@ -4009,14 +4021,14 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   }
 
   absl::flat_hash_map<std::string, std::vector<HloSharding>>
-      preserve_shardings =
-          spmd::SaveUserShardings(module, option_.preserve_shardings);
+      preserve_shardings = spmd::SaveUserShardings(
+          module, replicated_small_tensors, option_.preserve_shardings);
 
   // Remove xla sharding annotations, if there is any.
   if (option_.preserve_shardings !=
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings) {
-    StatusOr<bool> status_or_changed =
-        RemoveShardingAnnotation(module, execution_threads);
+    StatusOr<bool> status_or_changed = RemoveShardingAnnotation(
+        module, replicated_small_tensors, execution_threads);
     if (!status_or_changed.ok()) {
       return status_or_changed.status();
     }
@@ -4263,8 +4275,8 @@ AutoSharding::AutoSharding(const AutoShardingOption& option)
 
 bool IsSmallTensor(const HloInstruction* ins,
                    const AutoShardingOption& option) {
-  return !ins->shape().IsTuple() &&
-         ShapeUtil::ByteSizeOf(ins->shape()) <= option.small_tensor_byte_size;
+  return spmd::GetInstructionSize(ins->shape()) <=
+         option.small_tensor_byte_size;
 }
 
 StatusOr<bool> AutoSharding::Run(
@@ -4288,14 +4300,19 @@ StatusOr<bool> AutoSharding::Run(
   TF_RETURN_IF_ERROR(option_.CheckAndSetup());
   VLOG(1) << "AutoShardingOptions:\n" << option_.ToString();
 
+  absl::flat_hash_set<std::string> replicated_small_tensors;
   if (option_.small_tensor_byte_size > 0) {
     for (auto computation : module->computations()) {
       for (auto instruction : computation->instructions()) {
-        if (!instruction->has_sharding() && !instruction->shape().IsTuple() &&
+        if (!instruction->has_sharding() &&
             IsSmallTensor(instruction, option_)) {
-          VLOG(1) << "Replicated small tensor: " << instruction->name()
-                  << "                     " << module->name();
-          instruction->set_sharding(HloSharding::Replicate());
+          VLOG(1) << "Replicated small tensor: " << instruction->name();
+          instruction->set_sharding(
+              instruction->shape().IsTuple()
+                  ? HloSharding::SingleTuple(instruction->shape(),
+                                             HloSharding::Replicate())
+                  : HloSharding::Replicate());
+          replicated_small_tensors.insert(std::string(instruction->name()));
         }
       }
     }
@@ -4340,8 +4357,8 @@ StatusOr<bool> AutoSharding::Run(
     auto module_clone = module->Clone("");
     module_clone->set_layout_canonicalization_callback(
         module->layout_canonicalization_callback());
-    auto pass_result =
-        pass->RunAutoSharding(module_clone.get(), execution_threads);
+    auto pass_result = pass->RunAutoSharding(
+        module_clone.get(), replicated_small_tensors, execution_threads);
 
     changed[i] = pass_result;
     objective_values[i] = pass->GetSolverOptimalObjectiveValue();
