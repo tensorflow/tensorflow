@@ -639,7 +639,7 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Free(const BufferType* buffer,
   }
   BufferInterval& buffer_interval = FindOrDie(buffer_intervals_, buffer);
   DCHECK_EQ(buffer_interval.buffer, buffer);
-  DCHECK_EQ(buffer_interval.size, size);
+  DCHECK_GE(buffer_interval.size, size);
   DCHECK_EQ(buffer_interval.end, -1);
   if (buffer_interval.end != -1) {
     return;

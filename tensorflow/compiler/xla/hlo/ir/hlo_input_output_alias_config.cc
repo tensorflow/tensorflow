@@ -220,11 +220,11 @@ Status HloInputOutputAliasConfig::Verify(
     TF_RET_CHECK(LayoutUtil::IsDenseArray(param_subshape));
     TF_RET_CHECK(LayoutUtil::IsDenseArray(output_subshape));
 
-    if (size_func(param_subshape) != size_func(output_subshape)) {
+    if (size_func(param_subshape) < size_func(output_subshape)) {
       return InternalError(
-          "Expected aliased input %lld at index %s and output at index %s to "
-          "have the same size. Input sub-shape is %s with size %lld, output "
-          "sub-shape is %s with size %lld",
+          "Expected aliased input %lld at index %s is not smaller than output "
+          "at index %s. Input sub-shape is %s with size %lld, output sub-shape "
+          "is %s with size %lld",
           alias.parameter_number, alias.parameter_index.ToString(),
           output_index.ToString(),
           ShapeUtil::HumanStringWithLayout(param_subshape),
