@@ -130,12 +130,6 @@ class Platform {
   // the Platform owns the executors in a singleton-like fashion.
   virtual tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) = 0;
 
-  // Returns a device or error, as above, with the specified plugins.
-  //
-  // Ownership of the executor is NOT transferred to the caller.
-  virtual tsl::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
-      int ordinal, const PluginConfig& plugin_config) = 0;
-
   // Returns a device constructed with the options specified in "config".
   // Ownership of the executor is NOT transferred to the caller.
   virtual tsl::StatusOr<StreamExecutor*> GetExecutor(
