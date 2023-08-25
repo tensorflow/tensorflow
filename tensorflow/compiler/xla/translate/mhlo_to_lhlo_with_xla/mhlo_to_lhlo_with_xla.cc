@@ -1333,8 +1333,6 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
         builder_, config.bmm2_grad_gemm2_dot_dimension_numbers()));
 
     op.setFmhaScaleAttr(builder_.getF64FloatAttr(config.fmha_scale()));
-    op.setDropoutRateAttr(builder_.getF64FloatAttr(config.dropout_rate()));
-    op.setSeedAttr(builder_.getI64IntegerAttr(config.seed()));
 
     const auto& algorithm = config.algorithm();
     std::vector<int64_t> knob_ids;
@@ -1361,8 +1359,6 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
   switch (kind) {
     case xla::gpu::CudnnfMHAKind::kBackwardBmmBmm:
     case xla::gpu::CudnnfMHAKind::kBackwardSoftmax:
-    case xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout:
-    case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout:
     case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasSoftmax: {
       TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
       auto fmha_default_backward =
@@ -1370,10 +1366,21 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
                                                               operands);
       return set_common_fmha_backward_attributes(fmha_default_backward);
     }
+    case xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout:
+    case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout: {
+      TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+      auto fmha_default_backward =
+          CreateOpWithoutAttrs<lmhlo_gpu::fusedMHABackwardOp>(custom_call,
+                                                              operands);
+      fmha_default_backward.setDropoutRateAttr(
+          builder_.getF64FloatAttr(config.dropout_rate()));
+      fmha_default_backward.setSeedAttr(
+          builder_.getI64IntegerAttr(config.seed()));
+      return set_common_fmha_backward_attributes(fmha_default_backward);
+    }
+
     case xla::gpu::CudnnfMHAKind::kBackwardScaleMaskSoftmax:
-    case xla::gpu::CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
-    case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax:
-    case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout: {
+    case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax: {
       TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
       TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
 
@@ -1383,6 +1390,23 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
       return set_common_fmha_backward_attributes(
           fmha_scale_mask_softmax_backward);
     }
+
+    case xla::gpu::CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
+    case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout: {
+      TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
+      TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+
+      auto fmha_scale_mask_softmax_backward =
+          CreateOpWithoutAttrs<lmhlo_gpu::fusedMHAWithMaskBackwardOp>(
+              custom_call, operands);
+      fmha_scale_mask_softmax_backward.setDropoutRateAttr(
+          builder_.getF64FloatAttr(config.dropout_rate()));
+      fmha_scale_mask_softmax_backward.setSeedAttr(
+          builder_.getI64IntegerAttr(config.seed()));
+      return set_common_fmha_backward_attributes(
+          fmha_scale_mask_softmax_backward);
+    }
+
     default:
       return xla::InternalError("Unknown backward fused MHA call.");
   }
