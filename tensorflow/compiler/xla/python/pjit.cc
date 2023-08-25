@@ -629,6 +629,7 @@ xla::Status PjitFunction::UpdateArgsSignature(
 
   arguments.signature.default_device = GetDefaultDevice();
   arguments.signature.jax_enable_x64 = jax_enable_x64;
+  arguments.signature.jax_enable_memories = GetEnableMemories();
 
   auto& dynamic_arg_signatures = arguments.signature.dynamic_arg_signatures;
   dynamic_arg_signatures.reserve(arguments.flat_dynamic_args.size());
