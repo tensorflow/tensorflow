@@ -1427,6 +1427,28 @@ ENTRY e {
                    .value());
 }
 
+TEST_F(GemmRewriterTritonLevel2Test, NarrowingConversionIsAlwaysBetterToFuse) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = s8[512,512] parameter(0)
+  c0 = f16[512,512] convert(p0)
+  p1 = f16[512,512] parameter(1)
+  dot0 = f16[512,512] dot(c0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  n = f16[512,512] negate(c0)
+  ROOT a = f16[512,512] add(dot0, n)
+})"));
+  EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
+                                     se::CudaComputeCapability::AMPERE, 0})
+                  .Run(module.get())
+                  .value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Add(m::Fusion(m::Parameter(), m::Parameter()),
+                                 m::Negate()))));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
