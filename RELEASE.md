@@ -55,6 +55,10 @@
 * <NOTES SHOULD BE GROUPED PER AREA>
 
 * Add ops to tensorflow.raw_ops that were missing.
+* `tf.CheckpointOptions`
+    * It now takes in a new argument called `experimental_write_callbacks`.
+    These are callbacks that will be executed after a saving event finishes
+    writing the checkpoint file.
 
 ## Thanks to our Contributors
 
