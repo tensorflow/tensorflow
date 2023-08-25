@@ -4520,7 +4520,6 @@ def ssim_multiscale(img1,
     ValueError: When static shape check fails.
     RuntimeError: When `filter_size` is not small enough to calculate ssim
       values for all the `power_factors` spatial scales.
-
   """
 
   with ops.name_scope(None, 'MS-SSIM', [img1, img2]):
@@ -4535,9 +4534,9 @@ def ssim_multiscale(img1,
     if context.executing_eagerly() and (int(smallest_dim) < filter_size):
       raise RuntimeError(
         f'You defined {len(power_factors)} "power_factors" '
-        f'values and images with {min_dimension} as smallest dimension. '
+        f'values and images with {min_dimension} as the smallest dimension. '
         f'Reduce the number of "power_factors" to '
-        f'{int(smallest_dim)} or less or use images with bigger dimensions.')
+        f'{int(smallest_dim)} or less or use images with larger dimensions.')
     checks.append(
       control_flow_ops.Assert(
         math_ops.greater(smallest_dim, filter_size),
