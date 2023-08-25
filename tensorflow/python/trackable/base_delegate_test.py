@@ -14,7 +14,11 @@
 # ==============================================================================
 """Tests for base_delegate."""
 import os
+
+from absl.testing import parameterized
+
 from tensorflow.python.checkpoint import checkpoint as util
+from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables as variables_lib
@@ -30,6 +34,11 @@ class Inner(base.Trackable):
     self.v = v
     self._track_trackable(v, "v")
 
+  def _copy_trackable_to_cpu(self, object_map):
+    if self not in object_map:
+      object_map[self] = Inner(self.v)
+    self.v._copy_trackable_to_cpu(object_map)
+
 
 class Wrapper(base_delegate.DelegatingTrackableMixin, base.Trackable):
 
@@ -43,9 +52,13 @@ class Wrapper(base_delegate.DelegatingTrackableMixin, base.Trackable):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class BaseDelegateTest(test.TestCase):
+class BaseDelegateTest(parameterized.TestCase, test.TestCase):
 
-  def test_checkpoint(self):
+  @parameterized.named_parameters(
+      ("_enable_async_ckpt", True),
+      ("_disable_async_ckpt", False)
+  )
+  def test_checkpoint(self, enable_async_ckpt):
     a = Wrapper(Inner(variables_lib.Variable(15.0)))
     b = Wrapper(Inner(variables_lib.Variable(-15.0)))
     self.evaluate([a.v.initializer, b.v.initializer])
@@ -53,7 +66,9 @@ class BaseDelegateTest(test.TestCase):
     test_dir = self.get_temp_dir()
     prefix = os.path.join(test_dir, "ckpt")
     ckpt = util.Checkpoint(a=a, b=b)
-    prefix_tensor = ckpt.save(prefix)
+    ckpt_options = checkpoint_options.CheckpointOptions(
+        experimental_enable_async_checkpoint=enable_async_ckpt)
+    prefix_tensor = ckpt.save(prefix, options=ckpt_options)
 
     self.assertEqual([15, -15], self.evaluate([a.v, b.v]))
     self.evaluate(a.v.assign(-3))
@@ -62,6 +77,8 @@ class BaseDelegateTest(test.TestCase):
 
     # Test that the model can be saved with the wrapper and loaded without it.
     ckpt2 = util.Checkpoint(a=a.inner, b=b.inner)
+    if enable_async_ckpt:
+      ckpt.sync()
     ckpt2.restore(prefix_tensor).assert_consumed().run_restore_ops()
     self.assertEqual([15, -15], self.evaluate([a.v, b.v]))
 
