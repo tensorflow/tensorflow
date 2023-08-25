@@ -763,6 +763,7 @@ cc_library(
     deps = [
         ":c_api_headers",
         ":c_api_macros_hdrs",
+        ":tf_buffer_hdrs",
         ":tf_datatype_hdrs",
         ":tf_status_headers",
         ":tf_tensor_hdrs",
@@ -788,6 +789,10 @@ tf_cuda_library(
         ":tf_status",
         ":tf_status_helper",
         ":tf_tensor_internal",
+        "//tensorflow/core/platform:notification",
+        "//tensorflow/tsl/c:tsl_status_internal",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
