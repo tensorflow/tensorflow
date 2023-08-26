@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 23
+#define PJRT_API_MINOR 24
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1616,6 +1616,17 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_Device_Args, device);
 // Returns this buffer's storage device.
 typedef PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args);
 
+struct PJRT_Buffer_Memory_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  PJRT_Memory* memory;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_Memory_Args, memory);
+
+// Returns this buffer's storage memory.
+typedef PJRT_Error* PJRT_Buffer_Memory(PJRT_Buffer_Memory_Args* args);
+
 struct PJRT_Buffer_ReadyEvent_Args {
   size_t struct_size;
   void* priv;
@@ -2008,9 +2019,15 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Serialize);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Compile);
+
+  // Always add new fields to the end of the struct.
+  // TODO(skyewm, jieying): Move fields below to their corresponding places
+  // after each major version bump.
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Memory);
 } PJRT_Api;
 
-const size_t PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Compile);
+const size_t PJRT_Api_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_Memory);
 
 #undef _PJRT_API_STRUCT_FIELD
 #undef PJRT_DEFINE_STRUCT_TRAITS
