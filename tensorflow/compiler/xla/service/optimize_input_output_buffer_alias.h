@@ -34,10 +34,10 @@ namespace xla {
 // This pass finds input and output buffers that can be aliased, and writes the
 // alias config into the HloModule.
 //
-// The input and the output buffers can be in any shape. They can be paired if
-// their size satisfies input >= output. Each input buffer may only alias with a
-// single output buffer. For example, for the following parameter and the output
-// buffers,
+// The input and the output buffers can be in any shape, and each output buffer
+// can alias with an input buffer with the same shape. Each input buffer may
+// only alias with a single output buffer. For example, for the following
+// parameter and the output buffers,
 //
 //  Parameters : { P1(f32[3]), P2(s32[3]), P3(f32[3,12]), P4(f32[16,12]), ... }
 //  Outputs    : { O1(s32[3]), O2(f32[3]), O3(f32[16,12]), ... }
