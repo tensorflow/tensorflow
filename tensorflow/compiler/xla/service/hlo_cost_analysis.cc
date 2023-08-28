@@ -1000,7 +1000,6 @@ Status HloCostAnalysis::HandleRngGetAndUpdateState(
 
 Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
   VLOG(8) << "Processing fusion " << fusion->ToString();
-  const HloInstruction* root = fusion->fused_expression_root();
 
   if (fusion->IsCustomFusion()) {
     for (const HloInstruction* hlo :
@@ -1023,31 +1022,24 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
   current_properties_[kBytesAccessedKey] = 0;
   ShapeUtil::ForEachSubshape(
       fusion->shape(),
-      [this, root](const Shape& subshape, const ShapeIndex& shape_index) {
+      [this, fusion](const Shape& subshape, const ShapeIndex& shape_index) {
         if (!subshape.IsArray()) {
           return;
         }
-        if (shape_index.empty()) {
-          if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
-            int64_t size = GetShapeSize(root->operand(1)->shape());
-            current_properties_[kBytesAccessedKey] += size;
-            current_properties_.set_output_bytes_accessed(shape_index, size);
-            hlo_properties_[root][GetOperandUtilizationKey(0)] = 0;
-            return;
-          }
-        } else if (shape_index.size() == 1) {
-          if (root->opcode() == HloOpcode::kTuple &&
-              root->operand(shape_index[0])->opcode() ==
-                  HloOpcode::kDynamicUpdateSlice) {
-            int64_t size = GetShapeSize(
-                root->operand(shape_index[0])->operand(1)->shape());
-            current_properties_[kBytesAccessedKey] += size;
-            current_properties_.set_output_bytes_accessed(shape_index, size);
-            hlo_properties_[root->operand(shape_index[0])]
-                           [GetOperandUtilizationKey(0)] = 0;
-            return;
-          }
+
+        const HloInstruction* root = fusion->fused_expression_root();
+        if (shape_index.size() == 1 && root->opcode() == HloOpcode::kTuple) {
+          root = root->operand(shape_index[0]);
         }
+
+        if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
+          int64_t size = GetShapeSize(root->operand(1)->shape());
+          current_properties_[kBytesAccessedKey] += size;
+          current_properties_.set_output_bytes_accessed(shape_index, size);
+          hlo_properties_[root][GetOperandUtilizationKey(0)] = 0;
+          return;
+        }
+
         current_properties_[kBytesAccessedKey] += GetShapeSize(subshape);
         current_properties_.set_output_bytes_accessed(shape_index,
                                                       GetShapeSize(subshape));
