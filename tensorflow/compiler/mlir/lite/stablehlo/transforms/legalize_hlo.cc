@@ -2084,6 +2084,31 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
   }
 };
 
+class ConvertReduceOpToTfProd
+    : public ConvertReduceOpToTfOp<mhlo::MulOp, TF::ProdOp, TF::MulOp> {
+ public:
+  using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
+
+  LogicalResult MatchInitValue(Value init_value) const override {
+    auto type = init_value.getType().cast<ShapedType>().getElementType();
+    if (type.isa<FloatType>()) {
+      float const_value;
+      if (failed(GetConstantSplatValue<float>(init_value, const_value)) ||
+          const_value != 1.0)
+        return failure();
+    } else if (type.isa<IntegerType>() && type.isSignlessInteger()) {
+      int32_t const_value;
+      if (failed(GetConstantSplatValue<int32_t>(init_value, const_value)) ||
+          const_value != 1)
+        return failure();
+    } else {
+      return failure();
+    }
+
+    return success();
+  }
+};
+
 class ConvertReduceOpToTfSum
     : public ConvertReduceOpToTfOp<mhlo::AddOp, TF::SumOp, TF::AddOp> {
  public:
@@ -4120,19 +4145,19 @@ void LegalizeHloToTf::runOnOperation() {
 
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context) {
-  patterns
-      ->add<ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
-            ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
-            ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
-            ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertScatterAddOp,
-            ConvertScatterMaxOp, ConvertScatterMinOp, ConvertScatterSubOp,
-            ConvertScatterUpdateOp, ConvertSliceOp, ConvertReduceOpToTfArgmax,
-            ConvertReduceOpToTfArgmin, ConvertReduceOpToTfMax,
-            ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
-            ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertSortToTfTopk,
-            ConvertIotaOpToTfRange, ConvertWhileOp, ConvertLoweredCumSumOp,
-            ConvertLoweredCumProdOp, ConvertGetDimensionSizeOp,
-            ConvertDynamicIotaOp, ConvertRealDynamicSliceOp>(context);
+  patterns->add<
+      ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
+      ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
+      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
+      ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertScatterAddOp,
+      ConvertScatterMaxOp, ConvertScatterMinOp, ConvertScatterSubOp,
+      ConvertScatterUpdateOp, ConvertSliceOp, ConvertReduceOpToTfArgmax,
+      ConvertReduceOpToTfArgmin, ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
+      ConvertReduceOpToTfAll, ConvertReduceOpToTfProd, ConvertReduceOpToTfAny,
+      ConvertReduceOpToTfSum, ConvertSortToTfTopk, ConvertIotaOpToTfRange,
+      ConvertWhileOp, ConvertLoweredCumSumOp, ConvertLoweredCumProdOp,
+      ConvertGetDimensionSizeOp, ConvertDynamicIotaOp,
+      ConvertRealDynamicSliceOp>(context);
   populateWithGenerated(*patterns);
 }
 
