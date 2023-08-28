@@ -769,12 +769,17 @@ class PjRtClient {
   // on_delete_callback is called when the PjRtBuffer is done with the on-device
   // buffer. The buffer may be mutated, for example, if the buffer is donated
   // to an Execute operation.
-  // TODO(phawkins): Currently this API assumes the buffer is ready to use
-  // immediately on the device. Extend it to support, for example, waiting for a
-  // CUDA stream/event.
+  //
+  // `stream`, if specified, is a platform-specific stream handle that should
+  // contain the work or events needed to materialize the on-device
+  // buffer. CreateViewOfDeviceBuffer will add a wait to `stream` that
+  // indicates when the returned buffer is ready to use. This is intended to
+  // support dlpack on GPU and is not expected to be supported on all hardware
+  // platforms.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
-      std::function<void()> on_delete_callback) = 0;
+      std::function<void()> on_delete_callback,
+      std::optional<std::intptr_t> stream = std::nullopt) = 0;
 
   // Returns platform-dependent address for the given buffer that is often but
   // not guaranteed to be the physical/device address.

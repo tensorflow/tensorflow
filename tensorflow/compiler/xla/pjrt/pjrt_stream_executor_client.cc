@@ -1107,7 +1107,13 @@ PjRtStreamExecutorClient::MakeCrossHostReceiveBuffersForGather(
 StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtDevice* device,
-    std::function<void()> on_delete_callback) {
+    std::function<void()> on_delete_callback,
+    std::optional<std::intptr_t> stream) {
+  if (stream) {
+    return Unimplemented(
+        "PjRtStreamExecutorClient::CreateViewOfDeviceBuffer does not support "
+        "`stream` argument.");
+  }
   se::DeviceMemoryBase buffer(device_ptr, ShapeUtil::ByteSizeOf(shape));
 
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
