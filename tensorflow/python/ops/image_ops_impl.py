@@ -4538,7 +4538,7 @@ def ssim_multiscale(img1,
         f'Reduce the number of "power_factors" to '
         f'{int(smallest_dim)} or less or use images with larger dimensions.')
     checks.append(
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
         math_ops.greater(smallest_dim, filter_size),
         [smallest_dim, filter_size],
         summarize=10
