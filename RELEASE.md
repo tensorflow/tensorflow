@@ -4,6 +4,9 @@
 
 ### Breaking Changes
 
+*   Support for Python 3.8 has been removed starting with TF 2.14. The TensorFlow
+    2.13.1 patch release will still have Python 3.8 support.
+
 *  `tf.Tensor`
     * The class hierarchy for `tf.Tensor` has changed, and there are now
       explicit `EagerTensor` and `SymbolicTensor` classes for eager and
@@ -33,7 +36,12 @@
 
 ### Major Features and Improvements
 
-*  Support for Python 3.8 has been removed starting TF 2.14. TensorFlow 2.13.1 patch release will still have Python 3.8 support
+*   The `tensorflow` pip package has a new, optional installation method for
+    Linux that installs necessary Nvidia CUDA libraries through pip. As long as
+    the Nvidia driver is already installed on the system, you may now run `pip
+    install tensorflow[and-cuda]` to install TensorFlow's Nvidia CUDA library
+    dependencies in the Python environment. Aside from the Nvidia driver, no
+    other pre-existing Nvidia CUDA packages are necessary.
 
 *   Enable JIT-compiled i64-indexed kernels on GPU for large tensors with more
     than 2**32 elements.
