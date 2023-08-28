@@ -83,8 +83,8 @@ limitations under the License.
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_copy_node.h"
-#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
@@ -1573,7 +1573,7 @@ Status CreateUnshapedOutput(
 #if defined(IS_MOBILE_PLATFORM)
   return errors::Unimplemented(
       "Remote outputs are not available on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
   int64_t op_id;
   if (eager_func_params.has_value()) {
     op_id = eager_func_params.value().op_id;
@@ -1616,7 +1616,7 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
 #if defined(IS_MOBILE_PLATFORM)
     return errors::Unimplemented(
         "Cross-process functions are not supported on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
     const int64_t op_id = ctx.RemoteMgr()->NextOpId();
     eager_func_params = EagerFunctionParams{
         op_id, /* is_component_function= */ false, /* step_id= */ std::nullopt};
@@ -1717,6 +1717,10 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   TF_RETURN_IF_ERROR(EagerOpRewriteRegistry::Global()->RunRewrite(
       EagerOpRewriteRegistry::POST_PLACEMENT, op, &out_op));
   if (out_op) {
+    // After rewrite, we have two versions of the EagerOperation. The original
+    // op is tracked by callers of the API and expect it to be cleared before
+    // the next iteration. We clear the rewritten op after executing.
+    op->Clear();
     op = out_op.get();
     // If the out op doesn't have device, either because it is a new op or
     // the op wasn't placed successfully, then we do the placement again.
@@ -2038,7 +2042,7 @@ Status GetKernelOutputs(
 #if defined(IS_MOBILE_PLATFORM)
         return errors::Unimplemented(
             "Remote outputs are not available on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
         TF_RETURN_IF_ERROR(retvals[i]->SetRemoteShape(
             std::get<TensorShape>(ret), retvals[i]->device(),
             ctx->GetContextViewId()));
@@ -2101,6 +2105,10 @@ Status DoEagerExecute(EagerOperation* op, TensorHandle** retvals,
 
   if (op->IsLocal()) {
     if (out_op) {
+      // After rewrite, we have two versions of the EagerOperation. The original
+      // op is tracked by callers of the API and expect it to be cleared before
+      // the next iteration. We clear the rewritten op after executing.
+      op->Clear();
       op = out_op.get();
     }
     TF_RETURN_IF_ERROR(MaybePackInputTensor(op));
@@ -2112,6 +2120,10 @@ Status DoEagerExecute(EagerOperation* op, TensorHandle** retvals,
       "Eager's remote execution is not available on mobile devices.");
 #else   // !IS_MOBILE_PLATFORM
   if (out_op) {
+    // After rewrite, we have two versions of the EagerOperation. The original
+    // op is tracked by callers of the API and expect it to be cleared before
+    // the next iteration. We clear the rewritten op after executing.
+    op->Clear();
     op = out_op.get();
   }
   return EagerRemoteExecute(op, retvals, num_retvals);
