@@ -35,7 +35,6 @@ SE_StreamExecutor* TpuPlatform_GetExecutor(SE_Platform* platform,
                                            TF_Status* status);
 SE_PlatformId TpuPlatform_Id(SE_Platform* platform);
 int64_t TpuPlatform_VisibleDeviceCount(SE_Platform* platform);
-int64_t TpuPlatform_TpuMemoryLimit(SE_Platform* platform);
 bool TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy(SE_Platform* platform);
 SE_TpuTopology* TpuPlatform_GetTopologyPtr(SE_Platform* platform);
 SE_TpuTopology_Host* TpuPlatform_GetHostLocation(SE_Platform* platform);
@@ -388,7 +387,6 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_GetExecutor);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_Id);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_VisibleDeviceCount);
-  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_TpuMemoryLimit);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_GetTopologyPtr);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_GetHostLocation);
