@@ -54,11 +54,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
     std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt,
     bool prefer_tf2xla = false);
 
-/// Lowers from TF dialect to HLO dialect. When allow_partial_conversion is
-/// false, emits an error if there is any operation that can't be legalized.
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFNoFallbackPass(
-    bool allow_partial_conversion = false);
-
 /// Converter to be used along with the fallback Tf2Xla patterns below.
 class Tf2XlaTypeConverter : public TypeConverter {
  public:
@@ -127,7 +122,6 @@ CreateInfeedsOpsXlaAdjustLayoutPass();
 #define GEN_PASS_DECL_LEGALIZETF
 #define GEN_PASS_DECL_LEGALIZETFCOLLECTIVE
 #define GEN_PASS_DECL_LEGALIZETFMODULEPASS
-#define GEN_PASS_DECL_LEGALIZETFNOFALLBACK
 #define GEN_PASS_DECL_LEGALIZETFTYPESPASS
 #define GEN_PASS_DECL_TFXLADEVICESPECIFICTRANSFORMS
 #define GEN_PASS_DECL_VERIFYTFXLALEGALIZATION
