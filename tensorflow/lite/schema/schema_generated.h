@@ -89,6 +89,10 @@ struct StablehloConvolutionOptions;
 struct StablehloConvolutionOptionsBuilder;
 struct StablehloConvolutionOptionsT;
 
+struct StablehloScatterOptions;
+struct StablehloScatterOptionsBuilder;
+struct StablehloScatterOptionsT;
+
 struct Conv2DOptions;
 struct Conv2DOptionsBuilder;
 struct Conv2DOptionsT;
@@ -1140,11 +1144,12 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_STABLEHLO_SELECT = 187,
   BuiltinOperator_STABLEHLO_SUBTRACT = 188,
   BuiltinOperator_STABLEHLO_TANH = 189,
+  BuiltinOperator_STABLEHLO_SCATTER = 190,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_TANH
+  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_SCATTER
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[190] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[191] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1335,13 +1340,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[190] {
     BuiltinOperator_STABLEHLO_RSQRT,
     BuiltinOperator_STABLEHLO_SELECT,
     BuiltinOperator_STABLEHLO_SUBTRACT,
-    BuiltinOperator_STABLEHLO_TANH
+    BuiltinOperator_STABLEHLO_TANH,
+    BuiltinOperator_STABLEHLO_SCATTER
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[191] = {
+  static const char * const names[192] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1532,13 +1538,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "STABLEHLO_SELECT",
     "STABLEHLO_SUBTRACT",
     "STABLEHLO_TANH",
+    "STABLEHLO_SCATTER",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_TANH)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_SCATTER)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -4015,11 +4022,12 @@ enum BuiltinOptions2 : uint8_t {
   BuiltinOptions2_StablehloConvolutionOptions = 4,
   BuiltinOptions2_StablehloCustomCallOptions = 5,
   BuiltinOptions2_StablehloReduceOptions = 6,
+  BuiltinOptions2_StablehloScatterOptions = 7,
   BuiltinOptions2_MIN = BuiltinOptions2_NONE,
-  BuiltinOptions2_MAX = BuiltinOptions2_StablehloReduceOptions
+  BuiltinOptions2_MAX = BuiltinOptions2_StablehloScatterOptions
 };
 
-inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[7] {
+inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[8] {
   static const BuiltinOptions2 values[] = {
     BuiltinOptions2_NONE,
     BuiltinOptions2_StablehloConcatenateOptions,
@@ -4027,13 +4035,14 @@ inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[7] {
     BuiltinOptions2_StablehloSliceOptions,
     BuiltinOptions2_StablehloConvolutionOptions,
     BuiltinOptions2_StablehloCustomCallOptions,
-    BuiltinOptions2_StablehloReduceOptions
+    BuiltinOptions2_StablehloReduceOptions,
+    BuiltinOptions2_StablehloScatterOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions2() {
-  static const char * const names[8] = {
+  static const char * const names[9] = {
     "NONE",
     "StablehloConcatenateOptions",
     "StablehloBroadcastInDimOptions",
@@ -4041,13 +4050,14 @@ inline const char * const *EnumNamesBuiltinOptions2() {
     "StablehloConvolutionOptions",
     "StablehloCustomCallOptions",
     "StablehloReduceOptions",
+    "StablehloScatterOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions2(BuiltinOptions2 e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOptions2_NONE, BuiltinOptions2_StablehloReduceOptions)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOptions2_NONE, BuiltinOptions2_StablehloScatterOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions2()[index];
 }
@@ -4080,6 +4090,10 @@ template<> struct BuiltinOptions2Traits<tflite::StablehloReduceOptions> {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloReduceOptions;
 };
 
+template<> struct BuiltinOptions2Traits<tflite::StablehloScatterOptions> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloScatterOptions;
+};
+
 template<typename T> struct BuiltinOptions2UnionTraits {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_NONE;
 };
@@ -4106,6 +4120,10 @@ template<> struct BuiltinOptions2UnionTraits<tflite::StablehloCustomCallOptionsT
 
 template<> struct BuiltinOptions2UnionTraits<tflite::StablehloReduceOptionsT> {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloReduceOptions;
+};
+
+template<> struct BuiltinOptions2UnionTraits<tflite::StablehloScatterOptionsT> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloScatterOptions;
 };
 
 struct BuiltinOptions2Union {
@@ -4185,6 +4203,14 @@ struct BuiltinOptions2Union {
   const tflite::StablehloReduceOptionsT *AsStablehloReduceOptions() const {
     return type == BuiltinOptions2_StablehloReduceOptions ?
       reinterpret_cast<const tflite::StablehloReduceOptionsT *>(value) : nullptr;
+  }
+  tflite::StablehloScatterOptionsT *AsStablehloScatterOptions() {
+    return type == BuiltinOptions2_StablehloScatterOptions ?
+      reinterpret_cast<tflite::StablehloScatterOptionsT *>(value) : nullptr;
+  }
+  const tflite::StablehloScatterOptionsT *AsStablehloScatterOptions() const {
+    return type == BuiltinOptions2_StablehloScatterOptions ?
+      reinterpret_cast<const tflite::StablehloScatterOptionsT *>(value) : nullptr;
   }
 };
 
@@ -6111,6 +6137,150 @@ inline ::flatbuffers::Offset<StablehloConvolutionOptions> CreateStablehloConvolu
 }
 
 ::flatbuffers::Offset<StablehloConvolutionOptions> CreateStablehloConvolutionOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloConvolutionOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct StablehloScatterOptionsT : public ::flatbuffers::NativeTable {
+  typedef StablehloScatterOptions TableType;
+  bool indices_are_sorted = false;
+  std::vector<int64_t> update_window_dims{};
+  std::vector<int64_t> inserted_window_dims{};
+  std::vector<int64_t> scatter_dims_to_operand_dims{};
+  int64_t index_vector_dim = 0;
+  bool unique_indices = false;
+  int32_t update_computation_subgraph_index = 0;
+};
+
+struct StablehloScatterOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef StablehloScatterOptionsT NativeTableType;
+  typedef StablehloScatterOptionsBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_INDICES_ARE_SORTED = 4,
+    VT_UPDATE_WINDOW_DIMS = 6,
+    VT_INSERTED_WINDOW_DIMS = 8,
+    VT_SCATTER_DIMS_TO_OPERAND_DIMS = 10,
+    VT_INDEX_VECTOR_DIM = 12,
+    VT_UNIQUE_INDICES = 14,
+    VT_UPDATE_COMPUTATION_SUBGRAPH_INDEX = 16
+  };
+  bool indices_are_sorted() const {
+    return GetField<uint8_t>(VT_INDICES_ARE_SORTED, 0) != 0;
+  }
+  const ::flatbuffers::Vector<int64_t> *update_window_dims() const {
+    return GetPointer<const ::flatbuffers::Vector<int64_t> *>(VT_UPDATE_WINDOW_DIMS);
+  }
+  const ::flatbuffers::Vector<int64_t> *inserted_window_dims() const {
+    return GetPointer<const ::flatbuffers::Vector<int64_t> *>(VT_INSERTED_WINDOW_DIMS);
+  }
+  const ::flatbuffers::Vector<int64_t> *scatter_dims_to_operand_dims() const {
+    return GetPointer<const ::flatbuffers::Vector<int64_t> *>(VT_SCATTER_DIMS_TO_OPERAND_DIMS);
+  }
+  int64_t index_vector_dim() const {
+    return GetField<int64_t>(VT_INDEX_VECTOR_DIM, 0);
+  }
+  bool unique_indices() const {
+    return GetField<uint8_t>(VT_UNIQUE_INDICES, 0) != 0;
+  }
+  int32_t update_computation_subgraph_index() const {
+    return GetField<int32_t>(VT_UPDATE_COMPUTATION_SUBGRAPH_INDEX, 0);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint8_t>(verifier, VT_INDICES_ARE_SORTED, 1) &&
+           VerifyOffset(verifier, VT_UPDATE_WINDOW_DIMS) &&
+           verifier.VerifyVector(update_window_dims()) &&
+           VerifyOffset(verifier, VT_INSERTED_WINDOW_DIMS) &&
+           verifier.VerifyVector(inserted_window_dims()) &&
+           VerifyOffset(verifier, VT_SCATTER_DIMS_TO_OPERAND_DIMS) &&
+           verifier.VerifyVector(scatter_dims_to_operand_dims()) &&
+           VerifyField<int64_t>(verifier, VT_INDEX_VECTOR_DIM, 8) &&
+           VerifyField<uint8_t>(verifier, VT_UNIQUE_INDICES, 1) &&
+           VerifyField<int32_t>(verifier, VT_UPDATE_COMPUTATION_SUBGRAPH_INDEX, 4) &&
+           verifier.EndTable();
+  }
+  StablehloScatterOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(StablehloScatterOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<StablehloScatterOptions> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloScatterOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct StablehloScatterOptionsBuilder {
+  typedef StablehloScatterOptions Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_indices_are_sorted(bool indices_are_sorted) {
+    fbb_.AddElement<uint8_t>(StablehloScatterOptions::VT_INDICES_ARE_SORTED, static_cast<uint8_t>(indices_are_sorted), 0);
+  }
+  void add_update_window_dims(::flatbuffers::Offset<::flatbuffers::Vector<int64_t>> update_window_dims) {
+    fbb_.AddOffset(StablehloScatterOptions::VT_UPDATE_WINDOW_DIMS, update_window_dims);
+  }
+  void add_inserted_window_dims(::flatbuffers::Offset<::flatbuffers::Vector<int64_t>> inserted_window_dims) {
+    fbb_.AddOffset(StablehloScatterOptions::VT_INSERTED_WINDOW_DIMS, inserted_window_dims);
+  }
+  void add_scatter_dims_to_operand_dims(::flatbuffers::Offset<::flatbuffers::Vector<int64_t>> scatter_dims_to_operand_dims) {
+    fbb_.AddOffset(StablehloScatterOptions::VT_SCATTER_DIMS_TO_OPERAND_DIMS, scatter_dims_to_operand_dims);
+  }
+  void add_index_vector_dim(int64_t index_vector_dim) {
+    fbb_.AddElement<int64_t>(StablehloScatterOptions::VT_INDEX_VECTOR_DIM, index_vector_dim, 0);
+  }
+  void add_unique_indices(bool unique_indices) {
+    fbb_.AddElement<uint8_t>(StablehloScatterOptions::VT_UNIQUE_INDICES, static_cast<uint8_t>(unique_indices), 0);
+  }
+  void add_update_computation_subgraph_index(int32_t update_computation_subgraph_index) {
+    fbb_.AddElement<int32_t>(StablehloScatterOptions::VT_UPDATE_COMPUTATION_SUBGRAPH_INDEX, update_computation_subgraph_index, 0);
+  }
+  explicit StablehloScatterOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<StablehloScatterOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<StablehloScatterOptions>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<StablehloScatterOptions> CreateStablehloScatterOptions(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    bool indices_are_sorted = false,
+    ::flatbuffers::Offset<::flatbuffers::Vector<int64_t>> update_window_dims = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<int64_t>> inserted_window_dims = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<int64_t>> scatter_dims_to_operand_dims = 0,
+    int64_t index_vector_dim = 0,
+    bool unique_indices = false,
+    int32_t update_computation_subgraph_index = 0) {
+  StablehloScatterOptionsBuilder builder_(_fbb);
+  builder_.add_index_vector_dim(index_vector_dim);
+  builder_.add_update_computation_subgraph_index(update_computation_subgraph_index);
+  builder_.add_scatter_dims_to_operand_dims(scatter_dims_to_operand_dims);
+  builder_.add_inserted_window_dims(inserted_window_dims);
+  builder_.add_update_window_dims(update_window_dims);
+  builder_.add_unique_indices(unique_indices);
+  builder_.add_indices_are_sorted(indices_are_sorted);
+  return builder_.Finish();
+}
+
+inline ::flatbuffers::Offset<StablehloScatterOptions> CreateStablehloScatterOptionsDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    bool indices_are_sorted = false,
+    const std::vector<int64_t> *update_window_dims = nullptr,
+    const std::vector<int64_t> *inserted_window_dims = nullptr,
+    const std::vector<int64_t> *scatter_dims_to_operand_dims = nullptr,
+    int64_t index_vector_dim = 0,
+    bool unique_indices = false,
+    int32_t update_computation_subgraph_index = 0) {
+  auto update_window_dims__ = update_window_dims ? _fbb.CreateVector<int64_t>(*update_window_dims) : 0;
+  auto inserted_window_dims__ = inserted_window_dims ? _fbb.CreateVector<int64_t>(*inserted_window_dims) : 0;
+  auto scatter_dims_to_operand_dims__ = scatter_dims_to_operand_dims ? _fbb.CreateVector<int64_t>(*scatter_dims_to_operand_dims) : 0;
+  return tflite::CreateStablehloScatterOptions(
+      _fbb,
+      indices_are_sorted,
+      update_window_dims__,
+      inserted_window_dims__,
+      scatter_dims_to_operand_dims__,
+      index_vector_dim,
+      unique_indices,
+      update_computation_subgraph_index);
+}
+
+::flatbuffers::Offset<StablehloScatterOptions> CreateStablehloScatterOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloScatterOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct Conv2DOptionsT : public ::flatbuffers::NativeTable {
   typedef Conv2DOptions TableType;
@@ -13372,6 +13542,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const tflite::StablehloReduceOptions *builtin_options_2_as_StablehloReduceOptions() const {
     return builtin_options_2_type() == tflite::BuiltinOptions2_StablehloReduceOptions ? static_cast<const tflite::StablehloReduceOptions *>(builtin_options_2()) : nullptr;
   }
+  const tflite::StablehloScatterOptions *builtin_options_2_as_StablehloScatterOptions() const {
+    return builtin_options_2_type() == tflite::BuiltinOptions2_StablehloScatterOptions ? static_cast<const tflite::StablehloScatterOptions *>(builtin_options_2()) : nullptr;
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint32_t>(verifier, VT_OPCODE_INDEX, 4) &&
@@ -13927,6 +14100,10 @@ template<> inline const tflite::StablehloCustomCallOptions *Operator::builtin_op
 
 template<> inline const tflite::StablehloReduceOptions *Operator::builtin_options_2_as<tflite::StablehloReduceOptions>() const {
   return builtin_options_2_as_StablehloReduceOptions();
+}
+
+template<> inline const tflite::StablehloScatterOptions *Operator::builtin_options_2_as<tflite::StablehloScatterOptions>() const {
+  return builtin_options_2_as_StablehloScatterOptions();
 }
 
 struct OperatorBuilder {
@@ -15283,6 +15460,50 @@ inline ::flatbuffers::Offset<StablehloConvolutionOptions> CreateStablehloConvolu
       _feature_group_count,
       _batch_group_count,
       _precision_config);
+}
+
+inline StablehloScatterOptionsT *StablehloScatterOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<StablehloScatterOptionsT>(new StablehloScatterOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void StablehloScatterOptions::UnPackTo(StablehloScatterOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = indices_are_sorted(); _o->indices_are_sorted = _e; }
+  { auto _e = update_window_dims(); if (_e) { _o->update_window_dims.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->update_window_dims[_i] = _e->Get(_i); } } else { _o->update_window_dims.resize(0); } }
+  { auto _e = inserted_window_dims(); if (_e) { _o->inserted_window_dims.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->inserted_window_dims[_i] = _e->Get(_i); } } else { _o->inserted_window_dims.resize(0); } }
+  { auto _e = scatter_dims_to_operand_dims(); if (_e) { _o->scatter_dims_to_operand_dims.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->scatter_dims_to_operand_dims[_i] = _e->Get(_i); } } else { _o->scatter_dims_to_operand_dims.resize(0); } }
+  { auto _e = index_vector_dim(); _o->index_vector_dim = _e; }
+  { auto _e = unique_indices(); _o->unique_indices = _e; }
+  { auto _e = update_computation_subgraph_index(); _o->update_computation_subgraph_index = _e; }
+}
+
+inline ::flatbuffers::Offset<StablehloScatterOptions> StablehloScatterOptions::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloScatterOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateStablehloScatterOptions(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<StablehloScatterOptions> CreateStablehloScatterOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloScatterOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const StablehloScatterOptionsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _indices_are_sorted = _o->indices_are_sorted;
+  auto _update_window_dims = _o->update_window_dims.size() ? _fbb.CreateVector(_o->update_window_dims) : 0;
+  auto _inserted_window_dims = _o->inserted_window_dims.size() ? _fbb.CreateVector(_o->inserted_window_dims) : 0;
+  auto _scatter_dims_to_operand_dims = _o->scatter_dims_to_operand_dims.size() ? _fbb.CreateVector(_o->scatter_dims_to_operand_dims) : 0;
+  auto _index_vector_dim = _o->index_vector_dim;
+  auto _unique_indices = _o->unique_indices;
+  auto _update_computation_subgraph_index = _o->update_computation_subgraph_index;
+  return tflite::CreateStablehloScatterOptions(
+      _fbb,
+      _indices_are_sorted,
+      _update_window_dims,
+      _inserted_window_dims,
+      _scatter_dims_to_operand_dims,
+      _index_vector_dim,
+      _unique_indices,
+      _update_computation_subgraph_index);
 }
 
 inline Conv2DOptionsT *Conv2DOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
@@ -21899,6 +22120,10 @@ inline bool VerifyBuiltinOptions2(::flatbuffers::Verifier &verifier, const void 
       auto ptr = reinterpret_cast<const tflite::StablehloReduceOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions2_StablehloScatterOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloScatterOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -21942,6 +22167,10 @@ inline void *BuiltinOptions2Union::UnPack(const void *obj, BuiltinOptions2 type,
       auto ptr = reinterpret_cast<const tflite::StablehloReduceOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions2_StablehloScatterOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloScatterOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -21973,6 +22202,10 @@ inline ::flatbuffers::Offset<void> BuiltinOptions2Union::Pack(::flatbuffers::Fla
       auto ptr = reinterpret_cast<const tflite::StablehloReduceOptionsT *>(value);
       return CreateStablehloReduceOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions2_StablehloScatterOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloScatterOptionsT *>(value);
+      return CreateStablehloScatterOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -22001,6 +22234,10 @@ inline BuiltinOptions2Union::BuiltinOptions2Union(const BuiltinOptions2Union &u)
     }
     case BuiltinOptions2_StablehloReduceOptions: {
       value = new tflite::StablehloReduceOptionsT(*reinterpret_cast<tflite::StablehloReduceOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions2_StablehloScatterOptions: {
+      value = new tflite::StablehloScatterOptionsT(*reinterpret_cast<tflite::StablehloScatterOptionsT *>(u.value));
       break;
     }
     default:
@@ -22037,6 +22274,11 @@ inline void BuiltinOptions2Union::Reset() {
     }
     case BuiltinOptions2_StablehloReduceOptions: {
       auto ptr = reinterpret_cast<tflite::StablehloReduceOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions2_StablehloScatterOptions: {
+      auto ptr = reinterpret_cast<tflite::StablehloScatterOptionsT *>(value);
       delete ptr;
       break;
     }

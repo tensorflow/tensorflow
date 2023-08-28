@@ -450,6 +450,7 @@ enum BuiltinOperator : int32 {
   STABLEHLO_SELECT = 187, // WARNING: No runtime support
   STABLEHLO_SUBTRACT = 188, // WARNING: No runtime support
   STABLEHLO_TANH = 189, // WARNING: No runtime support
+  STABLEHLO_SCATTER = 190,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -593,6 +594,7 @@ union BuiltinOptions2{
   StablehloConvolutionOptions,
   StablehloCustomCallOptions,
   StablehloReduceOptions,
+  StablehloScatterOptions,
 }
 
 enum StablehloPrecisionConfig : uint {
@@ -647,6 +649,16 @@ table StablehloConvolutionOptions{
   feature_group_count : long;
   batch_group_count : long;
   precision_config : [StablehloPrecisionConfig];
+}
+
+table StablehloScatterOptions {
+  indices_are_sorted: bool;
+  update_window_dims: [long];
+  inserted_window_dims: [long];
+  scatter_dims_to_operand_dims: [long];
+  index_vector_dim: long;
+  unique_indices: bool;
+  update_computation_subgraph_index: int;
 }
 
 // LINT.IfChange

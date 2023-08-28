@@ -280,6 +280,8 @@ TfLiteRegistration*
 Register_STABLEHLO_TANH();  // WARNING: not implemented, using this
                             // op will crash the runtime
 
+TfLiteRegistration* Register_STABLEHLO_SCATTER();
+
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite
