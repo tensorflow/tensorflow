@@ -112,6 +112,14 @@ This release contains contributions from many people at Google, as well as:
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+*   The `tensorflow` pip package has a new, optional installation method for
+    Linux that installs necessary Nvidia CUDA libraries through pip. As long as
+    the Nvidia driver is already installed on the system, you may now run `pip
+    install tensorflow[and-cuda]` to install TensorFlow's Nvidia CUDA library
+    dependencies in the Python environment. Aside from the Nvidia driver, no
+    other pre-existing Nvidia CUDA packages are necessary.
+
 * `tf.keras`
     * `Model.compile` now support `steps_per_execution='auto'` as a parameter,
     allowing automatic tuning of steps per execution during `Model.fit`,
