@@ -148,9 +148,9 @@ HloInstruction *PadOperandToMultipleOf16(absl::Span<const int64_t> batch_dims,
   return PadOperandToTargetShape(padded_shape, x);
 }
 
-// Recursively collects unary, pad, divide or multiply operands of instr until
-// an instruction with FP8 element type is reached. Returns std::nullopt when no
-// FP8 instruction is reached.
+// Recursively collects unary, divide, dynamic-slice, pad or multiply operands
+// of instr until an instruction with FP8 element type is reached. Returns
+// std::nullopt when no FP8 instruction is reached.
 std::optional<std::vector<HloInstruction *>> FindF8SubgraphRecursive(
     HloInstruction *instr, absl::flat_hash_set<int> &visited_instrs,
     std::vector<HloInstruction *> subgraph) {
@@ -163,6 +163,7 @@ std::optional<std::vector<HloInstruction *>> FindF8SubgraphRecursive(
     return subgraph;
   } else {
     if (instr->operand_count() == 1 || instr->opcode() == HloOpcode::kDivide ||
+        instr->opcode() == HloOpcode::kDynamicSlice ||
         instr->opcode() == HloOpcode::kPad) {
       return FindF8SubgraphRecursive(instr->mutable_operand(0), visited_instrs,
                                      subgraph);
@@ -230,15 +231,17 @@ bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
   };
   for (int i = 3; i < subgraph->size(); ++i) {
     // The remaining instructions must be commutative with dequantization.
-    // Bitcast, broadcast, copy, pad, reshape, slice and all-gather instructions
-    // are supported. Specifically, the 'all-gather' operation is permitted only
-    // in SPMD or no-partition cases since the optimization cannot be guaranteed
-    // to be applied to all replicas in the MPMD scenario.
+    // Bitcast, broadcast, copy, dynamic-slice, pad, reshape, slice,
+    // all-gather, all-to-all and collective-permute instructions are supported.
+    // Specifically, the all-gather, all-to-all and collective-permute
+    // operations are permitted only in SPMD cases since the optimization cannot
+    // be guaranteed to be applied to all replicas in the MPMD scenario.
     if (!Match(
             (*subgraph)[i],
             m::AnyOf<HloInstruction>(
                 m::Bitcast().WithPredicate(preserves_element_type),
-                m::Broadcast(), m::Copy(), m::Pad(), m::Reshape(), m::Slice(),
+                m::Broadcast(), m::Copy(), m::DynamicSlice(), m::Pad(),
+                m::Reshape(), m::Slice(),
                 m::AllGather().WithPredicate(use_spmd_partitioning),
                 m::AllToAll().WithPredicate(use_spmd_partitioning),
                 m::CollectivePermute().WithPredicate(use_spmd_partitioning)))) {
@@ -906,13 +909,20 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return false;
     }
 
-    // Sequentially apply the collected unary and pad ops to the unconverted and
-    // unscaled operands.
+    // Sequentially apply the collected unary, dynamic-slice and pad ops to the
+    // unconverted and unscaled operands.
     auto shift_unary_ops =
         [&instr](HloInstruction *&x,
                  std::vector<HloInstruction *> &x_unary_ops) -> void {
       for (HloInstruction *unary_op : x_unary_ops) {
         std::vector<HloInstruction *> operands = {x};
+        // Insert the additional operands of dynamic-slice ops.
+        if (unary_op->opcode() == HloOpcode::kDynamicSlice) {
+          for (int i = 1; i < unary_op->operand_count(); ++i) {
+            operands.emplace_back(unary_op->mutable_operand(i));
+          }
+        }
+        // Convert the second operand of pad ops.
         if (unary_op->opcode() == HloOpcode::kPad) {
           HloInstruction *convert =
               instr->AddInstruction(HloInstruction::CreateConvert(
