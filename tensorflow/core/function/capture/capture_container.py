@@ -233,7 +233,7 @@ class FunctionCaptures(object):
     def lam_fn():
       # pytype: disable=attribute-error
       value = lam()
-      return capture_trace_type._to_tensors(value)  # pylint: disable=protected-access
+      return capture_trace_type.to_tensors(value)
       # pytype: enable=attribute-error
 
     self._by_ref_external[key] = lam_fn

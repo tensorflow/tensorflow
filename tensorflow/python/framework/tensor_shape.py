@@ -1282,8 +1282,28 @@ class TensorShape(trace.TraceType, trace_type.Serializable):
 
   @doc_controls.do_not_doc_inheritable
   def placeholder_value(self, placeholder_context):
-    raise NotImplementedError("A graph placeholder is not currently supported"
-                              "for an object of type: TensorShape.")
+    """See tf.types.experimental.TraceType base class."""
+    return super().placeholder_value(placeholder_context)
+
+  @doc_controls.do_not_doc_inheritable
+  def from_tensors(self, tensors):
+    """See tf.types.experimental.TraceType base class."""
+    return super().from_tensors(tensors)
+
+  @doc_controls.do_not_doc_inheritable
+  def to_tensors(self, value):
+    """See tf.types.experimental.TraceType base class."""
+    return super().to_tensors(value)
+
+  @doc_controls.do_not_doc_inheritable
+  def flatten(self):
+    """See tf.types.experimental.TraceType base class."""
+    return super().flatten()
+
+  @doc_controls.do_not_doc_inheritable
+  def cast(self, value, cast_context):
+    """See tf.types.experimental.TraceType base class."""
+    return super().cast(value, cast_context)
 
   @classmethod
   def experimental_type_proto(cls) -> Type[tensor_shape_pb2.TensorShapeProto]:
