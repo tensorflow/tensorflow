@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_GPU2_CONVERSION_CONVERT_COMPILED_OPS_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_GPU2_CONVERSION_CONVERT_COMPILED_OPS_H_
 
-#include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputOps.h"
+#include "iree-dialects/Dialect/Input/InputOps.h"
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/de_bufferization.h"

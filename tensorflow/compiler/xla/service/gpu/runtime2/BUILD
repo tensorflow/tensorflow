@@ -40,7 +40,7 @@ package_group(
 #     ) + if_gpu2([
 #         "//third_party/iree/compiler/bindings/c:headers",
 #         "//third_party/iree/compiler/bindings/c:loader",
-#         "//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect",
+#         "//third_party/iree/llvm-external-projects/iree-dialects/google_internal:IREEInputDialect",
 #     ]),
 # )
 #
