@@ -190,9 +190,6 @@ class HostComputeOp : public XlaOpKernel {
           channel_name;
       (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
           xla::kXlaHostTransferTfRendezvousHandlerName;
-      (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
-          xla::primitive_util::LowercasePrimitiveTypeName(
-              xla_shape.element_type());
       b->SetFrontendAttributes(attrs);
       xla::ChannelHandle channel;
       OP_REQUIRES_OK(
@@ -252,9 +249,6 @@ class HostComputeOp : public XlaOpKernel {
           channel_name;
       (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
           xla::kXlaHostTransferTfRendezvousHandlerName;
-      (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
-          xla::primitive_util::LowercasePrimitiveTypeName(
-              xla_output_shapes->at(i).element_type());
       b->SetFrontendAttributes(attrs);
       xla::ChannelHandle channel;
       OP_REQUIRES_OK(
@@ -464,9 +458,6 @@ class SendToHostOp : public XlaOpKernel {
     (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] = key_;
     (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
         xla::kXlaHostTransferTfRendezvousHandlerName;
-    (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
-        xla::primitive_util::LowercasePrimitiveTypeName(
-            xla_shape.element_type());
     b->SetFrontendAttributes(attrs);
     xla::ChannelHandle channel;
     OP_REQUIRES_OK(ctx, compiler->GetDeviceToHostChannelHandle(key_, &channel));
@@ -522,9 +513,6 @@ class RecvFromHostOp : public XlaOpKernel {
     (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] = key_;
     (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
         xla::kXlaHostTransferTfRendezvousHandlerName;
-    (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
-        xla::primitive_util::LowercasePrimitiveTypeName(
-            xla_shape.element_type());
     b->SetFrontendAttributes(attrs);
     xla::ChannelHandle channel;
     OP_REQUIRES_OK(ctx, compiler->GetHostToDeviceChannelHandle(key_, &channel));

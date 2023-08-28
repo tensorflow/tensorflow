@@ -44,24 +44,6 @@ HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
 }
 
 namespace {
-mlir::ArrayAttr ConvertDynamicParameterBindings(
-    const DynamicParameterBinding dpb, mlir::Builder* builder) {
-  llvm::SmallVector<mlir::Attribute, 4> bindings;
-  (void)dpb.ForEachBinding(
-      [&](const DynamicParameterBinding::DynamicParameter& source,
-          const DynamicParameterBinding::DynamicDimension& target) {
-        llvm::SmallVector<int64_t, 4> dpis;
-        for (auto dpi : source.parameter_index) dpis.push_back(dpi);
-        llvm::SmallVector<int64_t, 4> tpis;
-        for (auto tpi : target.parameter_index) tpis.push_back(tpi);
-        bindings.push_back(mlir::mhlo::DynamicParameterBindingAttr::get(
-            builder->getContext(), source.parameter_num, dpis,
-            target.parameter_num, tpis, target.dimension));
-        return OkStatus();
-      });
-  return mlir::ArrayAttr::get(builder->getContext(), bindings);
-}
-
 mlir::ArrayAttr ConvertCrossProgramPrefetches(
     const absl::Span<const xla::HloModule::CrossProgramPrefetchInfo> prefetches,
     mlir::Builder* builder) {
@@ -86,9 +68,6 @@ Status HloModuleImporter::Import(const xla::HloModule& hlo_module) {
   module->setAttr("mhlo.cross_program_prefetches",
                   ConvertCrossProgramPrefetches(
                       hlo_module.CrossProgramPrefetches(), &builder_));
-  module->setAttr("mhlo.dynamic_parameter_bindings",
-                  ConvertDynamicParameterBindings(
-                      hlo_module.dynamic_parameter_binding(), &builder_));
   module->setAttr(
       "mhlo.is_dynamic",
       mlir::BoolAttr::get(builder_.getContext(), hlo_module.is_dynamic()));

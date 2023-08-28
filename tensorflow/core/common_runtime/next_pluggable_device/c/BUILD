@@ -1,5 +1,9 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object", "tf_cc_test")
+load(
+    "//tensorflow/core/tpu:build_defs.bzl",
+    "if_libtpu_tf_tensor",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -100,17 +104,17 @@ cc_library(
         ":tf_rendezvous_c_api_defn",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c:tf_tensor_internal",
-        "//tensorflow/compiler/xla/stream_executor/tpu:proto_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/tsl/framework:allocator",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
-        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_libtpu_tf_tensor(),
 )
 
 tf_cc_test(
@@ -123,9 +127,26 @@ tf_cc_test(
     deps = [
         ":tf_rendezvous_c_api",
         ":tf_rendezvous_c_api_conversions",
-        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_tensor",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:stringpiece",
         "//tensorflow/tsl/framework:allocator",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -143,10 +164,9 @@ cc_library(
         ":tf_device_context_c_api",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/core:framework_internal",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_libtpu_tf_tensor(),
 )

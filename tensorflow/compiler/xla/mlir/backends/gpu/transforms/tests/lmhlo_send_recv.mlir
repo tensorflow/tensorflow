@@ -10,16 +10,12 @@ func.func @send(%arg0: memref<4xf32>) {
   // CHECK-SAME:   frontend_attributes = {
   // CHECK-SAME:     _xla_dcn_recv_channel = "2",
   // CHECK-SAME:     _xla_host_transfer_handler_name = "undef",
-  // CHECK-SAME:     _xla_host_transfer_is_lower_bits = "false",
-  // CHECK-SAME:     _xla_host_transfer_original_type = "f32",
   // CHECK-SAME:     _xla_host_transfer_rendezvous = "undef"
   // CHECK-SAME:   }} : (memref<4xf32>) -> ()
   "lmhlo.send"(%arg0) {
     channel_handle = #mhlo.channel_handle<handle = 1, type = 2>,
     frontend_attributes = {_xla_dcn_recv_channel = "2",
                            _xla_host_transfer_handler_name = "undef",
-                           _xla_host_transfer_is_lower_bits = "false",
-                           _xla_host_transfer_original_type = "f32",
                            _xla_host_transfer_rendezvous = "undef"},
     is_host_transfer = true
   } : (memref<4xf32>) -> !mhlo.token
@@ -39,15 +35,11 @@ func.func @recv(%arg0: memref<4xf32>) {
   // CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 1, type = 2>,
   // CHECK-SAME:   frontend_attributes = {
   // CHECK-SAME:     _xla_host_transfer_handler_name = "undef",
-  // CHECK-SAME:     _xla_host_transfer_is_lower_bits = "false",
-  // CHECK-SAME:     _xla_host_transfer_original_type = "f32",
   // CHECK-SAME:     _xla_host_transfer_rendezvous = "undef"
   // CHECK-SAME:   }} : (memref<4xf32>) -> ()
   "lmhlo.recv"(%arg0) {
     channel_handle = #mhlo.channel_handle<handle = 1, type = 2>,
     frontend_attributes = {_xla_host_transfer_handler_name = "undef",
-                           _xla_host_transfer_is_lower_bits = "false",
-                           _xla_host_transfer_original_type = "f32",
                            _xla_host_transfer_rendezvous = "undef"},
     is_host_transfer = true
   } : (memref<4xf32>) -> !mhlo.token

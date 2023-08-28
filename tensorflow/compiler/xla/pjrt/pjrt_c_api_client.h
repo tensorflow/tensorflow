@@ -261,7 +261,8 @@ class PjRtCApiClient : public PjRtClient {
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
-      std::function<void()> on_delete_callback) override {
+      std::function<void()> on_delete_callback,
+      std::optional<std::intptr_t> stream) override {
     return Unimplemented(
         "PJRT C API does not support CreateViewOfDeviceBuffer");
   }
@@ -378,6 +379,8 @@ class PjRtCApiBuffer : public PjRtBuffer {
   StatusOr<std::vector<int64_t>> logical_dimensions() override;
 
   StatusOr<Shape> logical_on_device_shape() override;
+
+  PjRtMemorySpace* memory_space() const override;
 
   PjRtDevice* device() const override;
 

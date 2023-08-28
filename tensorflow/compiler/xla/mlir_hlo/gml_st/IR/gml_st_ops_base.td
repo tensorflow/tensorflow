@@ -27,6 +27,7 @@ def GmlSt_Dialect : Dialect {
     The GmlSt (Google ML Structured) dialect is intended to hold operations,
     types and transformations to assist structured code generation.
   }];
+  let usePropertiesForAttributes = 0;
 }
 
 class GMLST_Op<string mnemonic, list<Trait> traits> :

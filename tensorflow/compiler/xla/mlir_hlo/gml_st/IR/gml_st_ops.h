@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef MLIR_HLO_GML_ST_IR_GML_ST_OPS_H
 #define MLIR_HLO_GML_ST_IR_GML_ST_OPS_H
 
+#include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"

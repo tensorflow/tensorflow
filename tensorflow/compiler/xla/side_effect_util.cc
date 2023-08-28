@@ -20,12 +20,6 @@ namespace xla {
 const char kXlaHostTransferRendezvousNameAttr[] =
     "_xla_host_transfer_rendezvous";
 
-const char kXlaHostTransferOriginalTypeAttr[] =
-    "_xla_host_transfer_original_type";
-
-const char kXlaHostTransferIsLowerBitsAttr[] =
-    "_xla_host_transfer_is_lower_bits";
-
 const char kXlaHostTransferHandlerNameAttr[] =
     "_xla_host_transfer_handler_name";
 

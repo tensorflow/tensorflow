@@ -240,15 +240,6 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
       StringAttr::get(context, xla::kXlaHostTransferRendezvousNameAttr),
       rendezvous_name);
 
-  auto element_type = getElementTypeOrSelf(type);
-  auto xla_element_type = ::xla::TypeToPrimitiveType(element_type);
-  const std::string& xla_element_type_str =
-      ::xla::primitive_util::LowercasePrimitiveTypeName(xla_element_type);
-  auto original_type = StringAttr::get(context, xla_element_type_str);
-  auto original_type_attr = NamedAttribute(
-      StringAttr::get(context, xla::kXlaHostTransferOriginalTypeAttr),
-      original_type);
-
   auto host_handler_name_value =
       StringAttr::get(context, host_handler_name.str());
   auto host_handler_name_attr = NamedAttribute(
@@ -257,8 +248,7 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
 
   auto frontend_attributes = DictionaryAttr::get(
       context,
-      ArrayRef<NamedAttribute>{rendezvous_name_attr, original_type_attr,
-                               host_handler_name_attr});
+      ArrayRef<NamedAttribute>{rendezvous_name_attr, host_handler_name_attr});
   op->setAttr(kFrontendAttributesAttr, frontend_attributes);
 }
 

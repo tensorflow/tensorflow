@@ -45,7 +45,7 @@ def cast_and_return_whether_casted(
   did_cast = False
   casted_values = []
   for t, v in zip(trace_types, values):
-    casted_v = t._cast(v, context)  # pylint: disable=protected-access
+    casted_v = t.cast(v, context)
     casted_values.append(casted_v)
     if casted_v is not v:
       did_cast = True

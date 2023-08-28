@@ -6899,7 +6899,21 @@ tsl::Status CreateOpRunners(
   for (auto status : ret) {
     RETURN_IF_CUDNN_ERROR(status);
   }
-  VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
+  // Also try heuristics_mode_a, because it may contain other fast algorithms
+  // that are not included in heuristics_mode_b.
+  // TODO(b/235475195): Remove once cuDNN 9.0.0 is available that improves
+  // heuristics_mode_b.
+  if (!use_fallback) {
+    cudnn_frontend::EngineConfigList filtered_configs_a;
+    ret = cudnn_frontend::get_heuristics_list(
+        std::array<std::string, 1>{"heuristics_mode_a"}, *op_graph,
+        generic_filter_fn, filtered_configs_a);
+    for (auto status : ret) {
+      RETURN_IF_CUDNN_ERROR(status);
+    }
+    filtered_configs.insert(filtered_configs.end(), filtered_configs_a.begin(),
+                            filtered_configs_a.end());
+  }
 
   auto fn = []() { return true; };
   auto maybe_json_handle_static = CudnnExecutionPlanEngineFilterStatic();

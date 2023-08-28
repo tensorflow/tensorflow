@@ -156,11 +156,16 @@ TEST_F(DynamicPadderTest, ReduceTest) {
   auto builder = HloComputation::Builder(TestName());
   auto input_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
   auto reduce_shape = ShapeUtil::MakeShape(F32, {2});
+  auto dynamic_shape =
+      ShapeUtil::MakeShape(F32, {1, 2, 2}, {false, false, true});
 
   auto data_param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_shape, "data_param"));
-  builder.AddInstruction(
+  auto* size_param = builder.AddInstruction(
       HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
+
+  data_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
+      dynamic_shape, data_param, size_param, 2));
 
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(input_shape, HloOpcode::kNegate, data_param));
@@ -172,11 +177,6 @@ TEST_F(DynamicPadderTest, ReduceTest) {
       reduce_shape, negate, init, {0, 2}, GetScalarAddComputation()));
   EXPECT_FALSE(module_->is_dynamic());
   module_->AddEntryComputation(builder.Build());
-
-  // Set up dynamic parameter binding.
-  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{1, {}},
-      DynamicParameterBinding::DynamicDimension{0, {}, 2}));
 
   TF_ASSERT_OK(RunPadder().status());
 
@@ -335,12 +335,14 @@ TEST_F(DynamicPadderTest, ConvolutionTest) {
   auto xy_shape = ShapeUtil::MakeShape(F32, {xdim, ydim});
   auto yz_shape = ShapeUtil::MakeShape(F32, {ydim, zdim});
   auto zx_shape = ShapeUtil::MakeShape(F32, {zdim, xdim});
+  auto xy_shape_dynamic =
+      ShapeUtil::MakeShape(F32, {xdim, ydim}, {false, true});
 
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, xy_shape, "A"));
   auto* b_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/1, yz_shape, "B"));
-  builder.AddInstruction(HloInstruction::CreateParameter(
+  auto* size_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/2, scalar_shape_, "size_param"));
 
   auto dnums = XlaBuilder::CreateDefaultConvDimensionNumbers(0);
@@ -353,17 +355,15 @@ TEST_F(DynamicPadderTest, ConvolutionTest) {
 
   Window window;
 
+  a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
+      xy_shape_dynamic, a_param, size_param, 1));
+
   auto* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       zx_shape, a_param, b_param, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums,
       HloTestBase::DefaultPrecisionConfig(2)));
 
   module_->AddEntryComputation(builder.Build());
-
-  // Set up binding for contracting dimensions.
-  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{2, {}},
-      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
 
   TF_ASSERT_OK(RunPadder().status());
 
@@ -379,12 +379,17 @@ TEST_F(DynamicPadderTest, ConvolutionNoPad) {
   auto yz_shape = ShapeUtil::MakeShape(F32, {ydim, zdim});
   auto zx_shape = ShapeUtil::MakeShape(F32, {zdim, xdim});
 
+  auto dynamic_shape = ShapeUtil::MakeShape(F32, {xdim, ydim}, {true, false});
+
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, xy_shape, "A"));
   auto* b_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/1, yz_shape, "B"));
-  builder.AddInstruction(HloInstruction::CreateParameter(
+  auto* size_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/2, scalar_shape_, "size_param"));
+
+  a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
+      dynamic_shape, a_param, size_param, 0));
 
   auto dnums = XlaBuilder::CreateDefaultConvDimensionNumbers(0);
 
@@ -403,11 +408,6 @@ TEST_F(DynamicPadderTest, ConvolutionNoPad) {
 
   module_->AddEntryComputation(builder.Build());
 
-  // Set up dynamic parameter binding for non-contracting dimension.
-  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{2, {}},
-      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
-
   TF_ASSERT_OK(RunPadder().status());
 
   EXPECT_THAT(conv->operand(0), op::Parameter());
@@ -417,11 +417,16 @@ TEST_F(DynamicPadderTest, ReduceWindowNoPadForTrivialWindow) {
   auto builder = HloComputation::Builder(TestName());
   auto input_shape = ShapeUtil::MakeShape(F32, {4, 5});
   auto reduce_shape = ShapeUtil::MakeShape(F32, {3, 5});
+  auto dynamic_shape = ShapeUtil::MakeShape(F32, {4, 5}, {false, true});
 
   auto input = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_shape, "input"));
-  builder.AddInstruction(
+  auto* size_param = builder.AddInstruction(
       HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
+
+  input = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
+      dynamic_shape, input, size_param, 1));
+
   auto init = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
   TF_ASSERT_OK_AND_ASSIGN(Window window, ParseWindow("size=2x1 pad=0_0x0_0"));
@@ -429,11 +434,6 @@ TEST_F(DynamicPadderTest, ReduceWindowNoPadForTrivialWindow) {
       reduce_shape, input, init, window, GetScalarAddComputation()));
 
   module_->AddEntryComputation(builder.Build());
-
-  // Set up dynamic parameter binding.
-  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{1, {}},
-      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
 
   TF_ASSERT_OK(RunPadder().status());
 
@@ -459,20 +459,16 @@ ENTRY main {
   input.1 = s32[4, 5] parameter(1)
   size_param.0 = s32[] parameter(2)
   size_param.1 = s32[] parameter(3)
+  input_dynamic.0 = f32[4,<=5] set-dimension-size(input.0, size_param.0), dimensions={1}
+  input_dynamic.1 = s32[4,<=5] set-dimension-size(input.1, size_param.0), dimensions={1}
   init.0 = f32[] constant(0.0)
   init.1 = s32[] constant(0)
-  ROOT output = (f32[3, 5], s32[3, 5]) reduce-window(input.0, input.1, init.0, init.1), window={size=2x1 pad=0_0x0_0}, to_apply=add_f32
+  ROOT output = (f32[3, 5], s32[3, 5]) reduce-window(input_dynamic.0, input_dynamic.1, init.0, init.1), window={size=2x1 pad=0_0x0_0}, to_apply=add_f32
 }
 )";
 
   const int kNumParams = 2;
   module_ = ParseAndReturnVerifiedModule(hlo_text).value();
-  // Set up dynamic parameter binding.
-  for (int i = 0; i < kNumParams; ++i) {
-    TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
-        DynamicParameterBinding::DynamicParameter{2, {}},
-        DynamicParameterBinding::DynamicDimension{i, {}, 1}));
-  }
 
   TF_ASSERT_OK(RunPadder().status());
 
@@ -573,16 +569,14 @@ ENTRY main {
   p0 = f32[4,511,432]{2,1,0} parameter(0)
   p1 = s32[] parameter(1)
   p2 = f32[432,337]{1,0:T(8,128)} parameter(2)
-  reshape.4179 = f32[2044,432]{1,0} reshape(p0)
+  p0_dynamic = f32[<=4,511,432] set-dimension-size(p0, p1), dimensions={0}
+  reshape.4179 = f32[2044,432]{1,0} reshape(p0_dynamic)
    dot.4180 = f32[2044,337]{1,0} dot(reshape.4179, p2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   transpose.4181 = f32[2044,337]{1,0} transpose(dot.4180), dimensions={0,1}
   ROOT reshape.4183 = f32[4,511,337]{2,1,0} reshape(transpose.4181)
 })";
   module_ = GetHloModule(hlo_text);
   // Set up dynamic parameter binding.
-  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{1, {}},
-      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
   TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
   VLOG(3) << module_->ToString();
   CHECK(module_->is_dynamic());
@@ -636,7 +630,9 @@ ENTRY main {
   indices = s32[INDICES_BOUND] parameter(1)
   updates = s32[INDICES_BOUND,3] parameter(2)
   dynamic_size = s32[] parameter(3)
-  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+  indices_dynamic = s32[<=INDICES_BOUND] set-dimension-size(indices, dynamic_size), dimensions={0}
+  updates_dynamic = s32[<=INDICES_BOUND,3] set-dimension-size(updates, dynamic_size), dimensions={0}
+  ROOT scatter = s32[3,3] scatter(operand, indices_dynamic, updates_dynamic),
       to_apply=update_s32,
       update_window_dims={1},
       inserted_window_dims={0},
@@ -664,13 +660,6 @@ ENTRY main {
   const std::string hlo_text_padded =
       absl::StrReplaceAll(hlo_text, {{"INDICES_BOUND", "4"}});
   auto module_padded = GetHloModule(hlo_text_padded);
-  // Set up dynamic parameter binding.
-  TF_CHECK_OK(module_padded->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{3, {}},
-      DynamicParameterBinding::DynamicDimension{1, {}, 0}));
-  TF_CHECK_OK(module_padded->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{3, {}},
-      DynamicParameterBinding::DynamicDimension{2, {}, 0}));
   // Pad the rest of input with garbage data.
   Literal scatter_indices_padded = LiteralUtil::CreateR1<int32_t>({0, 2, 0, 4});
   Literal updates_padded = LiteralUtil::CreateR2<int32_t>(
@@ -741,7 +730,9 @@ ENTRY main {
   indices = s32[2] parameter(1)
   updates = f32[2,3] parameter(2)
   dynamic_size = s32[] parameter(3)
-  ROOT scatter = f32[3,3] scatter(operand, indices, updates),
+  indices_dynamic = s32[<=2] set-dimension-size(indices, dynamic_size), dimensions={0}
+  updates_dynamic = f32[<=2,3] set-dimension-size(updates, dynamic_size), dimensions={0}
+  ROOT scatter = f32[3,3] scatter(operand, indices_dynamic, updates_dynamic),
       to_apply=update_f32,
       update_window_dims={1},
       inserted_window_dims={0},
@@ -762,13 +753,6 @@ ENTRY main {
   Literal dynamic_size = LiteralUtil::CreateR0<int32_t>(1);
 
   auto module_padded = GetHloModule(hlo_text);
-  // Set up dynamic parameter binding.
-  TF_CHECK_OK(module_padded->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{3, {}},
-      DynamicParameterBinding::DynamicDimension{1, {}, 0}));
-  TF_CHECK_OK(module_padded->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{3, {}},
-      DynamicParameterBinding::DynamicDimension{2, {}, 0}));
   DynamicPadder padder;
   TF_CHECK_OK(padder.Run(module_padded.get()).status());
   Literal not_padded =
@@ -849,8 +833,10 @@ update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
 ENTRY main {
   param = s32[INDICES_BOUND, INDICES_BOUND] parameter(0)
   dynamic_size = s32[] parameter(1)
+  param_0 = s32[<=INDICES_BOUND,INDICES_BOUND] set-dimension-size(param, dynamic_size), dimensions={0}
+  param_1 = s32[<=INDICES_BOUND,INDICES_BOUND] set-dimension-size(param_0, dynamic_size), dimensions={1}
   const = s32[] constant(0)
-  ROOT reduce = s32[] reduce(param, const),
+  ROOT reduce = s32[] reduce(param_1, const),
       dimensions={0, 1},
       to_apply=update_s32
 }
@@ -869,13 +855,6 @@ ENTRY main {
   const std::string hlo_text_padded =
       absl::StrReplaceAll(hlo_text, {{"INDICES_BOUND", "4"}});
   auto module_padded = GetHloModule(hlo_text_padded);
-  // Set up dynamic parameter binding.
-  TF_CHECK_OK(module_padded->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{1, {}},
-      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
-  TF_CHECK_OK(module_padded->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{1, {}},
-      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
   // Pad the rest of input with garbage data.
   Literal operand_padded = LiteralUtil::CreateR2<int32_t>(
       {{1, 2, 3, 4}, {4, 5, 6, 7}, {1, 2, 3, 4}, {4, 5, 6, 7}});

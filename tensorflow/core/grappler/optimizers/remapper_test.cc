@@ -1405,6 +1405,139 @@ TEST_F(RemapperFuseSoftplusTanhMul, BF16) {
 }
 #endif
 
+TEST_F(RemapperTest, FuseMklLayerNorm) {
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+  using ::tensorflow::ops::Placeholder;
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  TensorShape input_shape = TensorShape({2, 4});
+  auto input = Placeholder(s.WithOpName("input"), DT_FLOAT,
+                           ops::Placeholder::Shape(input_shape));
+  auto add_const = ops::Const(s.WithOpName("add_const"), 1.0f, {2, 4});
+  auto add = ops::Add(s.WithOpName("b_add"), add_const, input);
+  auto r_indices = ops::Const(s.WithOpName("r_indices"), {1}, {1});
+  ops::Mean::Attrs attrs;
+  attrs = attrs.KeepDims(true);
+  auto mean = ops::Mean(s.WithOpName("mean"), add, r_indices, attrs);
+  auto s_diff = ops::SquaredDifference(s.WithOpName("s_diff"), mean, add);
+  auto variance = ops::Mean(s.WithOpName("variance"), s_diff, r_indices, attrs);
+  auto e_const = ops::Const(s.WithOpName("e_const"), {0.001f}, {});
+  auto add_1 = ops::Add(s.WithOpName("add_1"), e_const, variance);
+  auto rsqrt = ops::Rsqrt(s.WithOpName("rsqrt"), add_1);
+  auto g_const = ops::Const(s.WithOpName("g_const"), 1.0f, {4});
+  auto mul = ops::Mul(s.WithOpName("mul"), rsqrt, g_const);
+  auto mul_1 = ops::Mul(s.WithOpName("mul_1"), mul, add);
+  auto mul_2 = ops::Mul(s.WithOpName("mul_2"), mul, mean);
+  auto b_const = ops::Const(s.WithOpName("b_const"), 0.0f, {4});
+  auto sub = ops::Sub(s.WithOpName("sub"), b_const, mul_2);
+  auto add_2 = ops::Add(s.WithOpName("add_2"), mul_1, sub);
+  auto fetch = ops::Identity(s.WithOpName("fetch"), add_2);
+
+  auto input_t = GenerateTensorWithSetRandom<DT_FLOAT>({2, 4});
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  item.feed = {{"input", input_t}};
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+  // Place all nodes on CPU.
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device("/device:CPU:0");
+  }
+
+  Remapper optimizer(RewriterConfig::ON);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "add_2") {
+      EXPECT_EQ(node.op(), "_MklLayerNorm");
+      ASSERT_GE(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "b_add");
+      EXPECT_EQ(node.input(1), "g_const");
+      EXPECT_EQ(node.input(2), "b_const");
+      found++;
+    }
+  }
+  EXPECT_EQ(found, 1);
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  ASSERT_EQ(tensors_expected.size(), 1);
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  ASSERT_EQ(tensors.size(), 1);
+  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-4);
+}
+
+class FuseMklLayerNormPattern : public RemapperTest {
+ public:
+  template <DataType DTYPE>
+  void RunTest() {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+    using ::tensorflow::ops::Placeholder;
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    TensorShape input_shape = TensorShape({2, 4});
+    auto input = Placeholder(s.WithOpName("input"), DTYPE,
+                             ops::Placeholder::Shape(input_shape));
+    auto add_const = ops::Const(s.WithOpName("add_const"), 1.0f, {2, 4});
+    auto add = ops::Add(s.WithOpName("b_add"), add_const, input);
+    auto r_indices = ops::Const(s.WithOpName("r_indices"), {1}, {1});
+    ops::Mean::Attrs attrs;
+    attrs = attrs.KeepDims(true);
+    auto mean = ops::Mean(s.WithOpName("mean"), add, r_indices, attrs);
+    auto sub = ops::Sub(s.WithOpName("sub"), add, mean);
+    auto s_diff = ops::SquaredDifference(s.WithOpName("s_diff"), mean, add);
+    auto variance =
+        ops::Mean(s.WithOpName("variance"), s_diff, r_indices, attrs);
+    auto e_const = ops::Const(s.WithOpName("e_const"), {0.001f}, {});
+    auto add_1 = ops::AddV2(s.WithOpName("add_1"), e_const, variance);
+    auto rsqrt = ops::Rsqrt(s.WithOpName("rsqrt"), add_1);
+    auto mul = ops::Mul(s.WithOpName("mul"), sub, rsqrt);
+    auto g_const = ops::Const(s.WithOpName("g_const"), 1.0f, {4});
+    auto mul_1 = ops::Mul(s.WithOpName("mul_1"), g_const, mul);
+    auto b_const = ops::Const(s.WithOpName("b_const"), 0.0f, {4});
+    auto add_2 = ops::AddV2(s.WithOpName("add_2"), mul_1, b_const);
+    auto fetch = ops::Identity(s.WithOpName("fetch"), add_2);
+
+    auto input_t = GenerateTensorWithSetRandom<DTYPE>({2, 4});
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", input_t}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    // Place all nodes on CPU.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "add_2") {
+        EXPECT_EQ(node.op(), "_MklLayerNorm");
+        ASSERT_GE(node.input_size(), 3);
+        EXPECT_EQ(node.input(0), "b_add");
+        EXPECT_EQ(node.input(1), "g_const");
+        EXPECT_EQ(node.input(2), "b_const");
+        found++;
+      }
+    }
+
+    EXPECT_EQ(found, 1);
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-4);
+  }
+};
+
+TEST_F(FuseMklLayerNormPattern, F32) { RunTest<DT_FLOAT>(); }
+
 class RemapperTensorToHashBucketTest : public RemapperTest {
  public:
   template <DataType DTYPE>

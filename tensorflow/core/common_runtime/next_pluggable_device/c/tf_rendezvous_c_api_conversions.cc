@@ -20,22 +20,24 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/c/tf_tensor_internal.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"
+#include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/c/tf_tensor_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"  // IWYU pragma: keep
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_device_context_c_api_conversions.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_defn.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_defn.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/cancellation.h"
-#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/framework/allocator.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/status.h"
 
 #define CONCAT_HELPER(a, b) a##b
@@ -95,6 +97,7 @@ RendezvousInterface::Args FromC(const TF_RendezvousArgsStruct& c_args) {
 void Destroy(TF_RendezvousArgsStruct* c_args) {
   Destroy(c_args->device_context);
   delete c_args->device_context;
+  c_args->device_context = nullptr;
 }
 
 TF_RendezvousParsedKey ToC(const RendezvousInterface::ParsedKey& key) {
@@ -114,7 +117,10 @@ RendezvousInterface::ParsedKey FromC(const TF_RendezvousParsedKey& c_key) {
   return key;
 }
 
-void Destroy(TF_RendezvousParsedKey* c_key) { delete[] c_key->full_key; }
+void Destroy(TF_RendezvousParsedKey* c_key) {
+  delete[] c_key->full_key;
+  c_key->full_key = nullptr;
+}
 
 namespace {
 
@@ -137,15 +143,6 @@ StatusOr<DoneCallbackParamPtr> DoneCallbackParamsToC(
     const Status& status, const RendezvousInterface::Args& sender_args,
     const RendezvousInterface::Args& recver_args, const Tensor& tensor,
     bool is_dead);
-
-// Use in `TF_RendezvousThunk ToC(tensorflow::RendezvousInterface* rendezvous)`
-TF_RendezvousSenderImpl BindSendFunction(RendezvousInterface* rendezvous);
-
-// Use in `TF_RendezvousThunk ToC(tensorflow::RendezvousInterface* rendezvous)`
-TF_RendezvousAsyncRecverImpl BindAsyncRecvFunction(
-    RendezvousInterface* rendezvous);
-
-TF_RendezvousStartAbortImpl BindStartAborter(RendezvousInterface* rendezvous);
 
 void RendezvousCallbackThunk(void* context,
                              TF_RendezvousDoneCallback_Params* params) {
@@ -205,30 +202,8 @@ void Destroy(TF_RendezvousDoneCallbackImpl* c_on_done) {
         static_cast<std::function<void(TF_RendezvousDoneCallback_Params*)>*>(
             c_on_done->context);
     delete runner;
+    c_on_done->context = nullptr;
   }
-}
-
-TF_RendezvousThunk* ToC(RendezvousInterface* rendezvous) {
-  TF_RendezvousThunk* thunk = new TF_RendezvousThunk();
-  thunk->send = BindSendFunction(rendezvous);
-  thunk->async_recv = BindAsyncRecvFunction(rendezvous);
-  thunk->start_abort = BindStartAborter(rendezvous);
-  return thunk;
-}
-
-std::unique_ptr<c_api::TfCThunkRendezvous> FromC(
-    const TF_RendezvousThunk* thunk) {
-  return std::make_unique<c_api::TfCThunkRendezvous>(thunk);
-}
-
-void Destroy(TF_RendezvousThunk* thunk) {
-  if (thunk == nullptr) {
-    return;
-  }
-  Destroy(&thunk->send);
-  Destroy(&thunk->async_recv);
-  Destroy(&thunk->start_abort);
-  delete thunk;
 }
 
 namespace {
@@ -245,9 +220,13 @@ SendParamDeleter MakeSendParamDeleter() {
     Destroy(key);
     Destroy(args);
     delete params->key;
+    params->key = nullptr;
     delete params->args;
+    params->args = nullptr;
     TF_DeleteTensor(params->tensor);
+    params->tensor = nullptr;
     TF_DeleteStatus(params->status);
+    params->status = nullptr;
     delete params;
   };
 }
@@ -274,10 +253,15 @@ struct RecvParamDeleter {
     TF_RendezvousArgsStruct* args =
         const_cast<TF_RendezvousArgsStruct*>(params->args);
     Destroy(key);
-    Destroy(args);
-    Destroy(&params->on_done);
     delete params->key;
+    params->key = nullptr;
+
+    Destroy(args);
     delete params->args;
+    params->args = nullptr;
+
+    Destroy(&params->on_done);
+
     delete params;
   }
 };
@@ -298,7 +282,11 @@ DoneCallbackParamDeleter MakeDoneCallbackParamDeleter() {
     // delete params->recver_args;
     TF_Status* status = const_cast<TF_Status*>(params->status);
     TF_DeleteStatus(status);
-    delete params->tensor;
+    params->status = nullptr;
+
+    TF_DeleteTensor(const_cast<TF_Tensor*>(params->tensor));
+    params->tensor = nullptr;
+
     delete params;
   };
 }
@@ -325,113 +313,49 @@ StatusOr<DoneCallbackParamPtr> DoneCallbackParamsToC(
   return DoneCallbackParamPtr(params, MakeDoneCallbackParamDeleter());
 }
 
-void SendFunctionThunk(void* context, TF_RendezvousSend_Params* params) {
-  using SendFunction = std::function<void(TF_RendezvousSend_Params*)>;
-  auto* send_func = static_cast<SendFunction*>(context);
-  (*send_func)(params);
+void SendFunctionThunk(void* opa_rendezvous, TF_RendezvousSend_Params* params) {
+  RendezvousInterface* rendezvous =
+      static_cast<RendezvousInterface*>(opa_rendezvous);
+  RendezvousInterface::ParsedKey key = FromC(*params->key);
+  RendezvousInterface::Args args = FromC(*params->args);
+  Tensor tensor;
+  Status tensor_status = TF_TensorToTensor(params->tensor, &tensor);
+  bool is_dead = params->is_dead;
+  if (tensor_status.ok()) {
+    tsl::Set_TF_Status_from_Status(
+        params->status, rendezvous->Send(key, args, tensor, is_dead));
+  } else {
+    tsl::Set_TF_Status_from_Status(params->status, tensor_status);
+  }
+  // Releases TfCThunkDeviceContext allocated in FromC().
+  args.device_context->Unref();
 }
 
-// Use in `TF_RendezvousThunk ToC(tensorflow::RendezvousInterface* rendezvous)`
-TF_RendezvousSenderImpl BindSendFunction(RendezvousInterface* rendezvous) {
-  TF_RendezvousSenderImpl send_func;
-  using SendFunction = std::function<void(TF_RendezvousSend_Params*)>;
-  auto sender =
-      new SendFunction([rendezvous](TF_RendezvousSend_Params* params) -> void {
-        RendezvousInterface::ParsedKey key = FromC(*params->key);
-        RendezvousInterface::Args args = FromC(*params->args);
-        Tensor tensor;
-        Status tensor_status = TF_TensorToTensor(params->tensor, &tensor);
-        bool is_dead = params->is_dead;
-        if (tensor_status.ok()) {
-          tsl::Set_TF_Status_from_Status(
-              params->status, rendezvous->Send(key, args, tensor, is_dead));
-        } else {
-          tsl::Set_TF_Status_from_Status(params->status, tensor_status);
-        }
+void RecvFunctionThunk(void* opa_rendezvous,
+                       TF_RendezvousAsyncRecv_Params* params) {
+  RendezvousInterface* rendezvous =
+      static_cast<RendezvousInterface*>(opa_rendezvous);
+  RendezvousInterface::ParsedKey key = FromC(*params->key);
+  RendezvousInterface::Args args = FromC(*params->args);
+  RendezvousInterface::DoneCallback on_done =
+      [device_context = args.device_context, on_done = params->on_done](
+          const Status& status, const RendezvousInterface::Args& send_args,
+          const RendezvousInterface::Args& recv_args, const Tensor& tensor,
+          const bool is_dead) {
+        FromC(on_done)(status, send_args, recv_args, tensor, is_dead);
         // Releases TfCThunkDeviceContext allocated in FromC().
-        args.device_context->Unref();
-      });
-  send_func.context = static_cast<void*>(sender);
-  send_func.send_func = SendFunctionThunk;
-  return send_func;
+        device_context->Unref();
+      };
+  rendezvous->RecvAsync(key, args, on_done);
 }
 
-void RecvFunctionThunk(void* context, TF_RendezvousAsyncRecv_Params* params) {
-  using RecvFunction = std::function<void(TF_RendezvousAsyncRecv_Params*)>;
-  auto* recv_func = static_cast<RecvFunction*>(context);
-  (*recv_func)(params);
-}
-
-// Use in `TF_RendezvousThunk ToC(tensorflow::RendezvousInterface* rendezvous)`
-TF_RendezvousAsyncRecverImpl BindAsyncRecvFunction(
-    RendezvousInterface* rendezvous) {
-  TF_RendezvousAsyncRecverImpl recv_func;
-  using RecvFunction = std::function<void(TF_RendezvousAsyncRecv_Params*)>;
-  auto recver = new RecvFunction(
-      [rendezvous](TF_RendezvousAsyncRecv_Params* params) -> void {
-        RendezvousInterface::ParsedKey key = FromC(*params->key);
-        RendezvousInterface::Args args = FromC(*params->args);
-        RendezvousInterface::DoneCallback on_done =
-            [device_context = args.device_context, on_done = params->on_done](
-                const Status& status,
-                const RendezvousInterface::Args& send_args,
-                const RendezvousInterface::Args& recv_args,
-                const Tensor& tensor, const bool is_dead) {
-              FromC(on_done)(status, send_args, recv_args, tensor, is_dead);
-              // Releases TfCThunkDeviceContext allocated in FromC().
-              device_context->Unref();
-            };
-        rendezvous->RecvAsync(key, args, on_done);
-      });
-  recv_func.context = static_cast<void*>(recver);
-  recv_func.async_recv_func = RecvFunctionThunk;
-  return recv_func;
-}
-
-void StartAbortFunctionThunk(void* context, const TF_Status* tf_status) {
-  auto* rendezvous = static_cast<RendezvousInterface*>(context);
+void StartAbortFunctionThunk(void* opa_rendezvous, const TF_Status* tf_status) {
+  auto* rendezvous = static_cast<RendezvousInterface*>(opa_rendezvous);
   absl::Status status = tsl::StatusFromTF_Status(tf_status);
   rendezvous->StartAbort(status);
 }
 
-// Use in `TF_RendezvousThunk ToC(tensorflow::RendezvousInterface* rendezvous)`
-TF_RendezvousStartAbortImpl BindStartAborter(RendezvousInterface* rendezvous) {
-  TF_RendezvousStartAbortImpl start_abort;
-  start_abort.context = static_cast<void*>(rendezvous);
-  start_abort.start_abort_func = StartAbortFunctionThunk;
-  return start_abort;
-}
-
 }  // namespace
-
-void Destroy(TF_RendezvousSenderImpl* send_func) {
-  if (send_func == nullptr) {
-    return;
-  }
-  if (send_func->context != nullptr) {
-    auto runner = static_cast<std::function<void(TF_RendezvousSend_Params*)>*>(
-        send_func->context);
-    delete runner;
-  }
-}
-
-void Destroy(TF_RendezvousAsyncRecverImpl* recv_func) {
-  if (recv_func == nullptr) {
-    return;
-  }
-  if (recv_func->context != nullptr) {
-    auto runner =
-        static_cast<std::function<void(TF_RendezvousAsyncRecv_Params*)>*>(
-            recv_func->context);
-    delete runner;
-  }
-}
-
-void Destroy(TF_RendezvousStartAbortImpl* start_abort_func) {
-  if (start_abort_func == nullptr) {
-    return;
-  }
-}
 
 namespace c_api {
 
@@ -439,8 +363,7 @@ Status TfCThunkRendezvous::Send(const ParsedKey& key, const Args& args,
                                 const Tensor& val, const bool is_dead) {
   CHECK_OK_AND_ASSIGN(SendParamPtr params,
                       SendParamsToC(key, args, val, is_dead));
-  const TF_RendezvousSenderImpl& sender = thunk_->send;
-  sender.send_func(sender.context, params.get());
+  thunk_.send_func(thunk_.rendezvous, params.get());
   return tsl::StatusFromTF_Status(params->status);
 }
 
@@ -459,31 +382,36 @@ void TfCThunkRendezvous::RecvAsync(const ParsedKey& key, const Args& args,
         RecvParamDeleter()(params);
       });
 
-  const TF_RendezvousAsyncRecverImpl& async_recv = thunk_->async_recv;
-  async_recv.async_recv_func(async_recv.context, params);
+  thunk_.async_recv_func(thunk_.rendezvous, params);
 }
 
 void TfCThunkRendezvous::StartAbort(const Status& status) {
   std::unique_ptr<TF_Status, std::function<void(TF_Status*)>> c_status(
       TF_NewStatus(), &TF_DeleteStatus);
   tsl::Set_TF_Status_from_Status(c_status.get(), status);
-  const TF_RendezvousStartAbortImpl& start_abort = thunk_->start_abort;
-  start_abort.start_abort_func(start_abort.context, c_status.get());
+  thunk_.start_abort_func(thunk_.rendezvous, c_status.get());
 }
 
 }  // namespace c_api
 
-void DestroyOCParams::operator()(SE_OutsideCompilationParams* params) {
-  if (params == nullptr) {
+TF_RendezvousThunk* ToC(RendezvousInterface* rendezvous) {
+  TF_RendezvousThunk* thunk = new TF_RendezvousThunk();
+  thunk->rendezvous = static_cast<void*>(rendezvous);
+  thunk->send_func = SendFunctionThunk;
+  thunk->async_recv_func = RecvFunctionThunk;
+  thunk->start_abort_func = StartAbortFunctionThunk;
+  return thunk;
+}
+
+std::unique_ptr<c_api::TfCThunkRendezvous> FromC(
+    const TF_RendezvousThunk* thunk) {
+  return std::make_unique<c_api::TfCThunkRendezvous>(*thunk);
+}
+
+void Destroy(TF_RendezvousThunk* thunk) {
+  if (thunk == nullptr) {
     return;
   }
-  delete[] params->device_name;
-  delete[] params->rendezvous_key;
-  Destroy(params->rendezvous);
-  if (params->host_transfers.size > 0) {
-    StreamExecutor_Tpu_FreeSerializedProto(&params->host_transfers);
-  }
-  delete params;
 }
 
 }  // namespace tensorflow

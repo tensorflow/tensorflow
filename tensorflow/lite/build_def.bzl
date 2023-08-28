@@ -14,6 +14,7 @@ def tflite_copts():
     """Defines common compile time flags for TFLite libraries."""
     copts = [
         "-DFARMHASH_NO_CXX_STRING",
+        "-DEIGEN_ALLOW_UNALIGNED_SCALARS",  # TODO(b/296071640): Remove when underlying bugs are fixed.
     ] + select({
         clean_dep("//tensorflow:android_arm"): [
             "-mfpu=neon",

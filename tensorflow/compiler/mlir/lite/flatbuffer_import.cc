@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "llvm/ADT/APFloat.h"
@@ -858,6 +859,26 @@ ConvertSubgraphIdxsToFunctionAttrs(tflite::BuiltinOptionsUnion options,
   return llvm::SmallVector<mlir::NamedAttribute, 4>{};
 }
 
+Status ConvertSubgraphIdxToReduceRegion(
+    const tflite::OperatorT& op, const std::vector<std::string>& func_names,
+    Builder builder, OperationState& op_state) {
+  if (auto* opts = op.builtin_options_2.AsStablehloReduceOptions()) {
+    int32_t body_idx = opts->body_subgraph_index;
+    if (body_idx >= func_names.size()) {
+      return absl::AbortedError("subgraph with index not found: " +
+                                std::to_string(body_idx));
+    }
+    auto body_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
+
+    op_state.addAttribute("body", body_attr);
+
+    return ::tensorflow::OkStatus();
+  }
+  // skip if not supported
+  return ::tensorflow::OkStatus();
+}
+
 Status AddOpIntermediatesForLstm(
     const tflite::OperatorT& op,
     const std::vector<mlir::TensorType>& intermediate_types,
@@ -1007,6 +1028,9 @@ StatusOr<Operation*> ConvertOp(
       }
     }
   }
+  if (op_name == "stablehlo.reduce") {
+    op_state.addRegion();
+  }
 
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
   auto builtin_code = tflite::GetBuiltinCode(&op_code);
@@ -1042,6 +1066,12 @@ StatusOr<Operation*> ConvertOp(
                       ConvertSubgraphIdxsToFunctionAttrs(op.builtin_options,
                                                          func_names, builder));
   op_state.addAttributes(function_ref_attrs);
+  // Handle conversion from subgraph to regions in StableHLO ops.
+  auto status =
+      ConvertSubgraphIdxToReduceRegion(op, func_names, builder, op_state);
+  if (!status.ok()) {
+    return emitError(loc, status.ToString()), status;
+  }
 
   return builder.create(op_state);
 }
@@ -1650,6 +1680,17 @@ void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
   op_builder.create<mlir::TFL::YieldOp>(loc, call_op.getResults());
 }
 
+void InlineStablehloOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
+  OpBuilder op_builder{region};
+  mlir::IRMapping mapper;
+  func.getBody().cloneInto(&region, mapper);
+  mlir::Operation& return_op = region.back().back();
+  mlir::Location loc = return_op.getLoc();
+  op_builder.setInsertionPointToEnd(&region.back());
+  op_builder.create<mlir::stablehlo::ReturnOp>(loc, return_op.getOperands());
+  return_op.erase();
+}
+
 // TFL::WhileOp has regions, so we add CallOp to call the FuncOp in the regions
 // if we have while ops.
 void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
@@ -1664,6 +1705,20 @@ void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
     AddCallOpInWhileOpRegion(while_op.getBody(), body);
     while_op->removeAttr("body");
   });
+}
+
+void AddRegionsForStableHLOOp(mlir::ModuleOp module) {
+  mlir::SymbolTable symbol_table(module);
+  std::vector<mlir::func::FuncOp> to_delete_funcs;
+  module.walk([&](mlir::stablehlo::ReduceOp reduce_op) {
+    auto body = symbol_table.lookup<mlir::func::FuncOp>(
+        reduce_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
+    InlineStablehloOpRegion(reduce_op.getBody(), body);
+    reduce_op->removeAttr("body");
+  });
+  for (auto& func : to_delete_funcs) {
+    func.erase();
+  }
 }
 }  // namespace
 
@@ -1786,5 +1841,6 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     module.push_back(std::move(func_or_error).value());
   }
   AddRegionsForTflWhileOp(module);
+  AddRegionsForStableHLOOp(module);
   return OwningOpRef<mlir::ModuleOp>(module);
 }

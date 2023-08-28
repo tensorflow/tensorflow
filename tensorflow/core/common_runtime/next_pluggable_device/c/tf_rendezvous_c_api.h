@@ -57,11 +57,6 @@ typedef struct TF_RendezvousSend_Params {
 
 typedef void (*TF_RendezvousSend_Function)(void*, TF_RendezvousSend_Params*);
 
-typedef struct TF_RendezvousSenderImpl {
-  void* context;
-  TF_RendezvousSend_Function send_func;
-} TF_RendezvousSenderImpl;
-
 typedef struct TF_RendezvousDoneCallback_Params {
   void* context;
   const TF_Status* status;
@@ -90,25 +85,17 @@ typedef struct TF_RendezvousAsyncRecv_Params {
 typedef void (*TF_RendezvousAsyncRecv_Function)(void*,
                                                 TF_RendezvousAsyncRecv_Params*);
 
-typedef struct TF_RendezvousAsyncRecverImpl {
-  void* context;
-  TF_RendezvousAsyncRecv_Function async_recv_func;
-} TF_RendezvousAsyncRecverImpl;
-
 typedef void (*TF_RendezvousStartAbort_Function)(void* context,
                                                  const TF_Status*);
 
-typedef struct TF_RendezvousStartAbortImpl {
-  void* context;
-  TF_RendezvousStartAbort_Function start_abort_func;
-} TF_RendezvousStartAbortImpl;
-
 typedef struct TF_RendezvousThunk {
-  void* context;  // not owned
-  TF_RendezvousSenderImpl send;
-  TF_RendezvousAsyncRecverImpl async_recv;
-  TF_RendezvousStartAbortImpl start_abort;
+  void* rendezvous;
+  TF_RendezvousSend_Function send_func;
+  TF_RendezvousAsyncRecv_Function async_recv_func;
+  TF_RendezvousStartAbort_Function start_abort_func;
 } TF_RendezvousThunk;
+
+typedef struct OpaqueTransferManagerImpl OpaqueTransferManagerImpl;
 
 #ifdef __cplusplus
 }  // extern "C"

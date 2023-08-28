@@ -240,8 +240,28 @@ class DType(
 
   @doc_controls.do_not_doc_inheritable
   def placeholder_value(self, placeholder_context):
-    """TensorShape does not support placeholder values."""
-    raise NotImplementedError
+    """See tf.types.experimental.TraceType base class."""
+    return super().placeholder_value(placeholder_context)
+
+  @doc_controls.do_not_doc_inheritable
+  def from_tensors(self, tensors):
+    """See tf.types.experimental.TraceType base class."""
+    return super().from_tensors(tensors)
+
+  @doc_controls.do_not_doc_inheritable
+  def to_tensors(self, value):
+    """See tf.types.experimental.TraceType base class."""
+    return super().to_tensors(value)
+
+  @doc_controls.do_not_doc_inheritable
+  def flatten(self):
+    """See tf.types.experimental.TraceType base class."""
+    return super().flatten()
+
+  @doc_controls.do_not_doc_inheritable
+  def cast(self, value, cast_context):
+    """See tf.types.experimental.TraceType base class."""
+    return super().cast(value, cast_context)
 
   @classmethod
   def experimental_type_proto(cls) -> Type[types_pb2.SerializedDType]:

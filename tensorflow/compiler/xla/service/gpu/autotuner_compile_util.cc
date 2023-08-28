@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -34,9 +35,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -48,13 +52,12 @@ namespace gpu {
 namespace {
 
 std::vector<ExecutionInput> ExecutionInputsFromBuffers(
-    Executable* executable, absl::Span<se::DeviceMemoryBase const> buffers) {
-  const HloInstruction::InstructionVector& params =
-      executable->module().entry_computation()->parameter_instructions();
-  CHECK_EQ(params.size(), buffers.size());
+    absl::Span<se::DeviceMemoryBase const> buffers,
+    absl::Span<Shape const> shapes) {
+  CHECK_EQ(buffers.size(), shapes.size());
   std::vector<ExecutionInput> inputs;
-  for (int i = 0; i < params.size(); ++i) {
-    inputs.emplace_back(params.at(i)->shape());
+  for (int i = 0; i < buffers.size(); ++i) {
+    inputs.emplace_back(shapes.at(i));
     // Our executable doesn't have input-output aliasing, so we can pass
     // unowned input buffers.
     inputs.back().SetUnownedBuffer(
@@ -88,15 +91,18 @@ AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
   opts_.set_xla_gpu_graph_level(0);
   // Disable experimental XLA:GPU runtime.
   opts_.set_xla_gpu_enable_gpu2_runtime(false);
+  opts_.set_xla_embed_ir_in_executable(false);
+  opts_.set_xla_gpu_enable_persistent_temp_buffers(false);
 }
 
 StatusOr<std::optional<AutotunerCompileUtil::ProfilingOutput>>
 AutotunerCompileUtil::ProfileExecutable(
     Executable* executable, se::Stream* stream,
-    absl::Span<se::DeviceMemoryBase const> input_buffers) {
+    absl::Span<se::DeviceMemoryBase const> input_buffers,
+    absl::Span<Shape const> input_shapes) {
   {
     std::vector<ExecutionInput> execution_inputs =
-        ExecutionInputsFromBuffers(executable, input_buffers);
+        ExecutionInputsFromBuffers(input_buffers, input_shapes);
     // Warmup: in and out buffers are reused while probing different configs,
     // so GPU caches should be in some comparable states during measurements.
     TF_ASSIGN_OR_RETURN(ExecutionOutput execution_output,
@@ -104,7 +110,7 @@ AutotunerCompileUtil::ProfileExecutable(
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
   std::vector<ExecutionInput> execution_inputs =
-      ExecutionInputsFromBuffers(executable, input_buffers);
+      ExecutionInputsFromBuffers(input_buffers, input_shapes);
   TF_ASSIGN_OR_RETURN(auto timer,
                       se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(stream)));
   TF_ASSIGN_OR_RETURN(ExecutionOutput execution_output,

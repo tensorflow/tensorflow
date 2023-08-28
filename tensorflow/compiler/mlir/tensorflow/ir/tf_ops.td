@@ -309,8 +309,13 @@ else_branch: A function that takes 'inputs' and returns a list of
 }
 
 def TF_YieldOp : TF_Op<"Yield",
-      [Pure, ReturnLike, Terminator,
-       ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp"]>]> {
+      [Terminator,
+       Pure,
+       NativeOpTrait<"ReturnLike", [], "", "">,
+       ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp"]>,
+       DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface,
+           ["getMutableSuccessorOperands"]>,
+      ]> {
   let summary = "Yield operation";
 
   let description = [{
@@ -682,6 +687,9 @@ body: A function that takes a list of tensors and returns another
 
 def TF_WhileRegionOp : TF_Op<"WhileRegion",
       [DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+       DeclareOpInterfaceMethods<RegionBranchOpInterface, [
+           "getRegionInvocationBounds", "getEntrySuccessorOperands",
+           "areTypesCompatible"]>,
        SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "while operation";
   let description = [{

@@ -163,6 +163,40 @@ cc_library(
     }),
 )
 
+# Enable transient indirection buffers in XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_transient_indirection_buffer_explicit_true",
+    define_values = {"tflite_with_xnnpack_transient_indirection_buffer": "true"},
+)
+
+# Disable transient indirection buffers in XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_transient_indirection_buffer_explicit_false",
+    define_values = {"tflite_with_xnnpack_transient_indirection_buffer": "false"},
+)
+
+# Default setting for transient indirection buffers in XNNPACK delegate
+cc_library(
+    name = "tflite_with_xnnpack_transient_indirection_buffer_default",
+    compatible_with = get_compatible_with_portable(),
+    defines = [],
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_transient_indirection_buffer",
+    compatible_with = get_compatible_with_portable(),
+    defines = select({
+        ":tflite_with_xnnpack_transient_indirection_buffer_explicit_true": ["XNNPACK_DELEGATE_ENABLE_TRANSIENT_INDIRECTION_BUFFER=1"],
+        ":tflite_with_xnnpack_transient_indirection_buffer_explicit_false": [],
+        "//conditions:default": [],
+    }),
+    deps = select({
+        ":tflite_with_xnnpack_transient_indirection_buffer_explicit_true": [],
+        ":tflite_with_xnnpack_transient_indirection_buffer_explicit_false": [],
+        "//conditions:default": [":tflite_with_xnnpack_transient_indirection_buffer_default"],
+    }),
+)
+
 cc_library(
     name = "xnnpack_delegate_test",
     testonly = True,
@@ -188,6 +222,7 @@ cc_library(
         ":tflite_with_xnnpack_logging",
         ":tflite_with_xnnpack_qs8",
         ":tflite_with_xnnpack_qu8",
+        ":tflite_with_xnnpack_transient_indirection_buffer",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/api",

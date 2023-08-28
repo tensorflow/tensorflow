@@ -147,15 +147,6 @@ tsl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
   return GetExecutor(config);
 }
 
-tsl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDeviceWithPluginConfig(
-    int device_ordinal, const PluginConfig& plugin_config) {
-  StreamExecutorConfig config;
-  config.ordinal = device_ordinal;
-  config.plugin_config = plugin_config;
-  config.device_options = GetDeviceOptionsFromEnv();
-  return GetExecutor(config);
-}
-
 tsl::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   if (config.gpu_stream) {

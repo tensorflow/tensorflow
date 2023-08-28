@@ -334,7 +334,7 @@ PyArray PyArray::MakeFromSingleDeviceArray(
   auto dtype = IfrtDtypeToDtype(key.dtype).value();
   const ifrt::MemoryKind memory_kind = ifrt_array->sharding().memory_kind();
   auto py_memory_kind =
-      (jax::GetJaxEnableMemoryKind() && memory_kind.memory_kind().has_value())
+      (jax::GetEnableMemories() && memory_kind.memory_kind().has_value())
           ? py::object(py::str(*memory_kind.memory_kind()))
           : py::none();
   auto sharding = py::cast(std::make_unique<jax::SingleDeviceSharding>(

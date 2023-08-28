@@ -81,6 +81,10 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#include "tensorflow/compiler/xla/service/cpu/onednn_memory_util.h"
+#endif
+
 namespace xla {
 
 namespace {
@@ -2428,6 +2432,45 @@ Status IrEmitter::HandleTopK(HloInstruction* hlo) {
   return OkStatus();
 }
 
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+Status IrEmitter::HandleOneDnnMatMul(HloInstruction* custom_call) {
+  auto lhs = custom_call->operand(0);
+  llvm_ir::IrArray lhs_array(GetIrArrayFor(lhs));
+  auto lhs_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, lhs_array);
+
+  auto rhs = custom_call->operand(1);
+  llvm_ir::IrArray rhs_array(GetIrArrayFor(rhs));
+  auto rhs_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, rhs_array);
+
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
+  llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
+  auto result_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, result_array);
+
+  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
+  auto backend_config = typed_custom_call->backend_config<BackendConfig>();
+  OneDnnMatMulConfig matmul_config;
+  matmul_config.CopyFrom(backend_config->onednn_matmul_config());
+  std::string str_config;
+  matmul_config.SerializeToString(&str_config);
+
+  EmitCallToFunc(runtime::kOneDnnMatMulSymbolName,
+                 {
+                     GetExecutableRunOptionsArgument(),
+                     lhs_stack_alloca.value,
+                     rhs_stack_alloca.value,
+                     result_stack_alloca.value,
+                     b_.CreateGlobalStringPtr(llvm_ir::AsStringRef(str_config)),
+                 },
+                 b_.getVoidTy());
+
+  lhs_stack_alloca.EmitLifetimeEnd();
+  rhs_stack_alloca.EmitLifetimeEnd();
+  result_stack_alloca.EmitLifetimeEnd();
+
+  return OkStatus();
+}
+#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   if (custom_call->custom_call_target() == "PadToStatic") {
     return HandlePadToStatic(custom_call);
@@ -2438,7 +2481,11 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   if (custom_call->custom_call_target() == "TopK") {
     return HandleTopK(custom_call);
   }
-
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+  if (custom_call->custom_call_target() == "__onednn$matmul") {
+    return HandleOneDnnMatMul(custom_call);
+  }
+#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
   absl::Span<HloInstruction* const> operands(custom_call->operands());
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =

@@ -844,13 +844,6 @@ class ReadySetLt {
         return *value;
       }
     }
-    if (sched_state_.config.depth_based_memory_pressure_reduction) {
-      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-              a.node->GetGraphDepth() > b.node->GetGraphDepth(), a,
-              b.node->GetGraphDepth() > a.node->GetGraphDepth(), b, "kDepth")) {
-        return *value;
-      }
-    }
     if (sched_state_.config.aggressive_scheduling_policies) {
       // Favor nodes that unlock other nodes to be scheduled if possible.
       // This makes us more flexible in what we can use in scheduling.

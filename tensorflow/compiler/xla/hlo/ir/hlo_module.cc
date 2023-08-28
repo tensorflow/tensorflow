@@ -423,8 +423,6 @@ HloModuleProto HloModule::ToProto() const {
   }
   *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
   *proto.mutable_buffer_donor() = buffer_donor_config().ToProto();
-  *proto.mutable_dynamic_parameter_binding() =
-      dynamic_parameter_binding().ToProto();
   for (const auto& [parameter, indices, alt_memory_offset] :
        CrossProgramPrefetches()) {
     auto* prefetch = proto.mutable_cross_program_prefetches()->Add();
@@ -586,12 +584,6 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   TF_ASSIGN_OR_RETURN(
       module->buffer_donor_config_,
       HloBufferDonorConfig::CreateFromProto(proto.buffer_donor()));
-
-  // Because we didn't uniquify the names or the ids, double-check that the
-  // instruction and computation names and ids are unique from the proto.
-  TF_ASSIGN_OR_RETURN(module->dynamic_parameter_binding_,
-                      DynamicParameterBinding::CreateFromProto(
-                          proto.dynamic_parameter_binding()));
 
   TF_RETURN_IF_ERROR(
       module->CheckUniqueNamesAndIdsForComputationsAndInstructions());

@@ -389,6 +389,20 @@ static PJRT_Device* FindDeviceWrapper(
   return nullptr;
 }
 
+// Searches `memory_list` for a PJRT_Memory* that wraps a provided
+// `xla::PjRtMemorySpace *` (`cpp_memory`). If a match is found, that
+// PJRT_Memory* is returned. Otherwise, returns nullptr.
+static PJRT_Memory* FindMemoryWrapper(
+    xla::PjRtMemorySpace* cpp_memory,
+    absl::Span<PJRT_Memory* const> memory_list) {
+  for (PJRT_Memory* memory : memory_list) {
+    if (memory->memory_space == cpp_memory) {
+      return memory;
+    }
+  }
+  return nullptr;
+}
+
 static void PopulatePjrtExecutableAddressableDevices(
     PJRT_LoadedExecutable* executable) {
   CHECK(executable->client != nullptr) << ": client was null";
@@ -1524,6 +1538,15 @@ PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args) {
       << "No PJRT_Device* found in the client's `addressable_devices` that "
          "wraps this "
       << args->buffer->buffer->device()->DebugString();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_Memory(PJRT_Buffer_Memory_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_Memory_Args", PJRT_Buffer_Memory_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->memory = FindMemoryWrapper(args->buffer->buffer->memory_space(),
+                                   args->buffer->client->addressable_memories);
   return nullptr;
 }
 

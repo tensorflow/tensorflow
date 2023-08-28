@@ -211,7 +211,6 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
             CpuBackendContext::GetFromContext(context);
         pthreadpool_t threadpool =
             cpu_backend_context->get_xnnpack_threadpool();
-        threadpool = nullptr;
         float output_min = -std::numeric_limits<float>::infinity();
         float output_max = std::numeric_limits<float>::infinity();
         // NOTE: In the case of NaN inputs the behavior is platform-dependent.

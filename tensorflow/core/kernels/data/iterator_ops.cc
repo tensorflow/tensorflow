@@ -164,8 +164,11 @@ Status IteratorResource::Save(OpKernelContext* ctx,
   if (SymbolicCheckpointEnabled(dataset->options())) {
     const auto& checkpoint = captured_state->checkpoint();
     if (!checkpoint.GetStatus().ok()) {
+      LOG(WARNING) << "Symbolic checkpointing failed: "
+                   << checkpoint.GetStatus();
       return checkpoint.GetStatus();
     }
+    VLOG(1) << "Saving symbolic checkpoint";
     TF_RETURN_IF_ERROR(checkpoint.Save(writer));
     return OkStatus();
   }

@@ -810,7 +810,7 @@ absl::Status GPUOperationFromNodePart0(
         return absl::OkStatus();
       } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
         Value* input = inputs[0];
-        Value* output = inputs[0];
+        Value* output = outputs[0];
         switch (inputs[0]->tensor.type) {
           case DataType::BOOL:
             return CreateElementwiseTwoInputWithOneConstant<DataType::BOOL,

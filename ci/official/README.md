@@ -45,8 +45,8 @@ like this:
 ```
 cd <tensorflow-root-directory>
 mkdir -p build_output
-cp ci/official/envs/nightly_linux_x86_cuda_py311 build_output/env
-vim build_output/env  # Fix TFCI_BAZEL_COMMON_ARGS
+cp ci/official/envs/sample build_output/env
+vim build_output/env  # update "your_choice_here" to a real path
 export TFCI=$(realpath build_output/env)
 ./ci/official/wheel.sh
 ls build_output
@@ -72,39 +72,31 @@ documentation in the future.
 
 ### Running Tests Yourself
 
-To run tests yourself, you'll copy an `env` file, adjust it to match your
-environment, `export TFCI=your-path`, and then simply run the script you want.
-We generally use `<tensorflow-directory>/build_output` for all temporary storage
-and build artifacts, and you'll find all output files there.
+To run tests yourself, you'll copy the `envs/sample` file, adjust it to match
+your environment, `export TFCI=your-path`, and then simply run the script you
+want. A complete example is below this explanation. Some tips:
 
-You can find out which env file a TensorFlow job used by looking at the `TFCI`
-variable in the `BUILD_CONFIG` section of the Invocation Details for that job,
-either in Sponge (internal) or ResultStore (external). The files in `envs/` are
-configured to match TensorFlow's CI system and reference paths and settings.
-
-**You MUST make one configuration adjustment to successfully run the tests
-locally**: in your copy of the env file, look at `TFCI_BAZEL_COMMON_ARGS` and
-change these flags if they are present (they may have spaces instead of equal
-signs):
-
--   Replace `--config=sigbuild_remote_cache_push` with
-    `--config=sigbuild_remote_cache`
--   Remove `--config=rbe`
--   Remove `--config=resultstore`
-
-All of these settings rely on `--google_default_credentials`. Bazel will abort
-if you are not logged in to a GCP account or lack significant permissions for
-TensorFlow's Google Cloud Platform account. Google employees can re-enable RBE
-and ResultStore and use those features when building locally. Read the sections
-below for more details.
+-   We generally use `<tensorflow-directory>/build_output` for all temporary
+    storage and build artifacts, and you'll find all output files there,
+    including `script.log`, the log of the last executed build script.
+-   You can find out which env file a TensorFlow job used by looking at the
+    `TFCI` variable in the `BUILD_CONFIG` section of the Invocation Details for
+    that job, either in Sponge (internal) or ResultStore (external).
+-   The files in `envs/` are configured to match TensorFlow's CI system and
+    reference paths and settings. They will not work out-of-the-box, so you'll
+    need to copy `sample` instead, which removes all of those custom details.
+-   `sample` also resets the Python version to TensorFlow's default. You can
+    target a specific version by providing e.g.
+    `--repo_env=TF_PYTHON_VERSION=3.10` in `TFCI_BAZEL_COMMON_ARGS` as the other
+    `env` files do.
 
 Here is a complete example of how to set up and run a script:
 
 ```
 cd <tensorflow-root-directory>
 mkdir -p build_output
-cp ci/official/envs/nightly_linux_x86_cuda_py311 build_output/env
-vim build_output/env  # Fix TFCI_BAZEL_COMMON_ARGS
+cp ci/official/envs/sample build_output/env
+vim build_output/env  # update "your_choice_here" to a real path
 export TFCI=$(realpath build_output/env)
 ./ci/official/wheel.sh
 ls build_output
@@ -116,10 +108,12 @@ Options in `env` files should mostly be self-explanatory. Search within this
 directory for options and their usage. This section will explain usage that is
 not as obvious.
 
-Variables are not order-dependent and can reference any `TFCI` variable defined
-in the same file. In the examples below, many settings modify arrays (`ARRAY=(
-first second third )`). Arrays must be merged to combine behavior their
-behavior. For example, you can't do this:
+All `env` files are just bash scripts. We use them as variable lists and
+minimize the logic in them, but it's still possible to include logic. Variables
+are not order-dependent and can reference any `TFCI` variable defined in the
+same file, because the file is sourced twice in a row. In the examples below,
+many settings modify arrays (`ARRAY=( first second third )`). Arrays must be
+merged to combine behavior their behavior. For example, you can't do this:
 
 ```
 # I want to use a GPU
@@ -128,7 +122,7 @@ TFCI_DOCKER_ARGS=( --gpus all )
 TFCI_DOCKER_ARGS=( -v "$HOME/bazelcache:/root/bazelcache" )
 ```
 
-Instead, those settings must be defined as:
+Only the second setting will remain. Instead, those settings must be defined as:
 
 ```
 TFCI_DOCKER_ARGS=( --gpus all -v "$HOME/bazelcache:/root/bazelcache" )
@@ -215,8 +209,12 @@ resolves to `build_output/cache`. On Docker, since `build_output` is inside the
 TensorFlow source code volume mount, the cache directory will not be deleted
 when the container is removed.
 
-If you're using Docker, you can also mount a specific directory to use as the
-cache if you want to use a system-wide bazel cache:
+**The `sample` environment configuration is pre-configured with the
+combo-cache.**
+
+Advanced users may already have their own system-wide shared bazel caches. If
+you're using Docker, you can mount a specific directory to use as the cache if
+you want to use that cache instead:
 
 ```
 TFCI_DOCKER_ARGS=( -v "$HOME/bazelcache:/root/bazelcache" )
@@ -279,8 +277,19 @@ terminates.
 
 Artifact uploads, part of the TF release process, are controlled by
 `UPLOAD_ENABLE` variables. Normal users will not have the authentication
-necessary to perform uploads, but it's possible a Google developer could. As
-such, all `UPLOAD_ENABLE` variables are set to `${TFCI_GLOBAL_UPLOAD_ENABLE:-}`,
-which quietly resolves to empty unless `TFCI_GLOBAL_UPLOAD_ENABLE=1`.
-TensorFlow's CI system sets this variable explicitly. Developers have no reason
-to set it.
+necessary to perform uploads, but it's possible a Google developer could. The
+`sample` config disables all uploads for you. When running locally, there is no
+reason to turn them back on.
+
+### Contributing & Maintenance
+
+The TensorFlow team does not yet have guidelines in place for contributing to
+this directory. We are working on it. Please join a TF SIG Build meeting (see:
+bit.ly/tf-sig-build-notes) if you'd like to discuss the future of contributions.
+
+#### What should go in an `env` vs a `.bazelrc` config option?
+
+Since `env`s contain multiple `BAZEL` variables that expand to bazel flags, we
+have the option of repeating those flags in `env` files or in TensorFlow's
+`.bazelrc`s. We favor adding flags to `.bazelrc` under a `--config=...` flag
+instead of adding extensive options to `env` files.

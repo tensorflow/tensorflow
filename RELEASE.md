@@ -20,6 +20,9 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
+* tf.types.experimental.TraceType now allows custom tf.function inputs to
+  declare Tensor decomposition and type casting support.
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -55,6 +58,10 @@
 * <NOTES SHOULD BE GROUPED PER AREA>
 
 * Add ops to tensorflow.raw_ops that were missing.
+* `tf.CheckpointOptions`
+    * It now takes in a new argument called `experimental_write_callbacks`.
+    These are callbacks that will be executed after a saving event finishes
+    writing the checkpoint file.
 
 ## Thanks to our Contributors
 
@@ -105,6 +112,14 @@ This release contains contributions from many people at Google, as well as:
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+*   The `tensorflow` pip package has a new, optional installation method for
+    Linux that installs necessary Nvidia CUDA libraries through pip. As long as
+    the Nvidia driver is already installed on the system, you may now run `pip
+    install tensorflow[and-cuda]` to install TensorFlow's Nvidia CUDA library
+    dependencies in the Python environment. Aside from the Nvidia driver, no
+    other pre-existing Nvidia CUDA packages are necessary.
+
 * `tf.keras`
     * `Model.compile` now support `steps_per_execution='auto'` as a parameter,
     allowing automatic tuning of steps per execution during `Model.fit`,

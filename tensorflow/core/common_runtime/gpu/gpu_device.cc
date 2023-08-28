@@ -1595,9 +1595,22 @@ Status BaseGPUDeviceFactory::CreateDevices(
       TF_RETURN_IF_ERROR(
           SingleVirtualDeviceMemoryLimit(gpu_options, platform_device_id,
                                          &single_virtual_device_memory_limit));
-      tf_device_specs.emplace_back(
-          platform_device_id, single_virtual_device_memory_limit,
-          /*index=*/tf_device_specs.size(), /*device_ordinal=*/0);
+      const int num_virtual_devices =
+          gpu_options.experimental().num_virtual_devices_per_gpu();
+      if (num_virtual_devices > 1) {
+        // The available memory is split equally among all virtual devices.
+        const int64_t memory_limit_per_virtual_device =
+            single_virtual_device_memory_limit / num_virtual_devices;
+        for (int j = 0; j < num_virtual_devices; ++j) {
+          tf_device_specs.emplace_back(
+              platform_device_id, memory_limit_per_virtual_device,
+              /*index=*/tf_device_specs.size(), /*device_ordinal=*/0);
+        }
+      } else {
+        tf_device_specs.emplace_back(
+            platform_device_id, single_virtual_device_memory_limit,
+            /*index=*/tf_device_specs.size(), /*device_ordinal=*/0);
+      }
     } else {
       const GPUOptions::Experimental::VirtualDevices& virtual_devices_for_gpu =
           virtual_devices.Get(i);

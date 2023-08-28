@@ -52,6 +52,8 @@ void registerAttributes();
 
 public:
   }];
+
+  let usePropertiesForAttributes = 0;
 }
 
 //===----------------------------------------------------------------------===//

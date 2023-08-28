@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
@@ -717,8 +719,15 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       }))
       .def(py::pickle(
           [](const CompileOptions& self) -> py::tuple {
-            return py::make_tuple(
-                py::bytes(ValueOrThrow(self.ToProto()).SerializeAsString()));
+            auto proto = ValueOrThrow(self.ToProto());
+            std::string result;
+            if (!tsl::SerializeToStringDeterministic(proto, &result)) {
+              // throw converted by PyBind to a Python RuntimeError.
+              throw XlaRuntimeError(
+                  absl::StrCat("CompileOptions.py_pickle: ",
+                               "SerializeToStringDeterministic failed"));
+            }
+            return py::make_tuple(py::bytes(result));
           },
           [](py::tuple t) {
             CompileOptionsProto result;
@@ -727,7 +736,15 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           }))
       .def("SerializeAsString",
            [](const CompileOptions& self) -> py::bytes {
-             return py::bytes(ValueOrThrow(self.ToProto()).SerializeAsString());
+             auto proto = ValueOrThrow(self.ToProto());
+             std::string result;
+             if (!tsl::SerializeToStringDeterministic(proto, &result)) {
+               // throw converted by PyBind to a Python RuntimeError.
+               throw XlaRuntimeError(
+                   absl::StrCat("CompileOptions.SerializeAsString: ",
+                                "SerializeToStringDeterministic failed"));
+             }
+             return py::bytes(result);
            })
       .def_static("ParseFromString",
                   [](py::bytes s) {

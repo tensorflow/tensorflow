@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/repository.h"
+#include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -31,6 +32,10 @@ StatusOr<bool> ConvertMultiXSpaceToDcnCollectiveStats(
 // Returns whether there are dcn collective stats in the profile.
 StatusOr<bool> HasDcnCollectiveStatsInMultiXSpace(
     const SessionSnapshot& session_snapshot);
+
+// Gets DcnSlackAnalysis proto for a host.
+StatusOr<DcnSlackAnalysis> GetDcnSlackAnalysisByHostName(
+    const SessionSnapshot& session_snapshot, std::string hostname);
 
 }  // namespace profiler
 }  // namespace tensorflow

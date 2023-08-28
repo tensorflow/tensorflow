@@ -471,41 +471,6 @@ message HloBufferDonorProto {
   repeated BufferDonorEntryProto entries = 1;
 }
 
-message DynamicParameterBindingProto {
-  // A list of bindings which indicates that the `target_param_dim_num` in
-  // the subshape `target_param_index` of parameter `target_param_num`
-  // is a dynamic dimension and its real dynamic size is represented
-  // by `dynamic_param_index` in parameter `dynamic_param_num`.
-  //
-  // As an example, imagine we have a program:
-  //
-  // ENTRY main {
-  //   a = f32[] parameter(0)
-  //   b = f32[10] parameter(1)
-  //   ROOT root = (f32[], f32[10]) tuple(%a, %b)
-  // }
-  //
-  // Let's say 'b' (param index 1) is a dynamic shape whose input has
-  // an upperbound of 10 and real size is determined at runtime.'a'
-  // represents the real size of b's first dimension.
-  //
-  // In this case, the fields are set in the following way:
-  // dynamic_param_num = 1
-  // dynamic_param_index = {}
-  // target_param_num = 0
-  // target_param_index = {}
-  // target_param_dim_num = 0
-  message Binding {
-    int64 dynamic_param_num = 1;
-    repeated int64 dynamic_param_index = 2;
-    int64 target_param_num = 3;
-    repeated int64 target_param_index = 4;
-    int64 target_param_dim_num = 5;
-  }
-
-  repeated Binding entries = 1;
-}
-
 message CrossProgramPrefetch {
   int64 parameter = 1;
   repeated int64 index = 2;
@@ -577,8 +542,6 @@ message HloModuleProto {
   // Describes the information of input buffer donors.
   HloBufferDonorProto buffer_donor = 18;
 
-  DynamicParameterBindingProto dynamic_parameter_binding = 9;
-
   repeated CrossProgramPrefetch cross_program_prefetches = 10;
 
   // True if the module contains dynamic computation.
@@ -620,6 +583,9 @@ message HloModuleProto {
 
   // Stack frames index.
   StackFrameIndexProto stack_frame_index = 17;
+
+  reserved 9;
+  reserved "dynamic_parameter_binding";
 }
 
 // Serialization of LogicalBuffer.

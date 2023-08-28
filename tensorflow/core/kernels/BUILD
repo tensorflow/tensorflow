@@ -3148,6 +3148,7 @@ SAVE_RESTORE_DEPS = [
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/util/tensor_bundle",
+    "//tensorflow/core/util/tensor_bundle:naming",
 ]
 
 tf_kernel_library(

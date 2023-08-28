@@ -230,7 +230,8 @@ class TfrtCpuClient final : public PjRtClient {
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
-      std::function<void()> on_delete_callback) override;
+      std::function<void()> on_delete_callback,
+      std::optional<std::intptr_t> stream) override;
 
   StatusOr<ChannelHandle> CreateChannelHandle() override {
     return Unimplemented("CreateChannelHandle not implemented.");
@@ -322,6 +323,7 @@ class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
   TfrtCpuBuffer& operator=(const TfrtCpuBuffer&) = delete;
   TfrtCpuBuffer& operator=(TfrtCpuBuffer&&) = delete;
 
+  PjRtMemorySpace* memory_space() const override { return nullptr; }
   TfrtCpuDevice* device() const override { return device_; }
   TfrtCpuClient* client() const override { return client_; }
 

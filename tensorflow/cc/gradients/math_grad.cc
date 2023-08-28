@@ -1346,6 +1346,50 @@ Status UnsortedSegmentSumGrad(const Scope& scope, const Operation& op,
 
 REGISTER_GRADIENT_OP("UnsortedSegmentSum", UnsortedSegmentSumGrad);
 
+Status ClipByValueGrad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
+  if (op.num_inputs() != 3) {
+    return absl::InvalidArgumentError("ClipByValue requires 3 arguments");
+  }
+  if (grad_inputs.size() != 1) {
+    return absl::InvalidArgumentError("ClipByValue grad requires 1 grad input");
+  }
+
+  Output x = op.input(0);
+  Output min = op.input(1);
+  Output max = op.input(2);
+
+  Output s_x = Shape(scope, x);
+  Output s_min = Shape(scope, min);
+  Output s_max = Shape(scope, max);
+
+  Output min_mask = Less(scope, x, min);
+  Output max_mask = Greater(scope, x, max);
+
+  auto r_min = internal::BroadcastGradientArgs(scope, s_x, s_min);
+  auto r_max = internal::BroadcastGradientArgs(scope, s_x, s_max);
+
+  Output grad = grad_inputs[0];
+  Output zeros = ZerosLike(scope, grad);
+
+  Output x_grad =
+      Where3(scope, LogicalOr(scope, min_mask, max_mask), zeros, grad);
+  Output min_grad = Reshape(
+      scope, ReduceSum(scope, Where3(scope, min_mask, grad, zeros), r_min.r1),
+      s_min);
+  Output max_grad = Reshape(
+      scope, ReduceSum(scope, Where3(scope, max_mask, grad, zeros), r_max.r1),
+      s_max);
+
+  grad_outputs->push_back(x_grad);
+  grad_outputs->push_back(min_grad);
+  grad_outputs->push_back(max_grad);
+  return scope.status();
+}
+
+REGISTER_GRADIENT_OP("ClipByValue", ClipByValueGrad);
+
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow
