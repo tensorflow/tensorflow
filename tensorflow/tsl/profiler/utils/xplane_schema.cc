@@ -271,7 +271,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"matrix_unit_utilization_percent", kMatrixUnitUtilizationPercent},
       // XLA metadata map related.
       {"Hlo Proto", kHloProto},
-      {"Model information", kModelInfo},
+      {"EdgeTPU Model information", kModelInfo},
+      {"EdgeTPU Model Profile information", kModelProfileInfo},
       // Device capability related.
       {"clock_rate", kDevCapClockRateKHz},
       {"core_count", kDevCapCoreCount},

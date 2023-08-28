@@ -308,7 +308,8 @@ enum StatType {
   kDcnChunk,
   kDcnLoopIndex,
   kModelInfo,
-  kLastStatType = kModelInfo,
+  kModelProfileInfo,
+  kLastStatType = kModelProfileInfo,
 };
 
 static constexpr uint32_t kLineIdOffset = 10000;
