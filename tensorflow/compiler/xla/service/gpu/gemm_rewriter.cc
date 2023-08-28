@@ -796,19 +796,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 #if GOOGLE_CUDA
     auto cuda_compute_capability_ =
         std::get<se::CudaComputeCapability>(gpu_version_);
-<<<<<<< HEAD
-
-    // FP8 GEMM kernels are only available on Hopper and newer architectures.
-    if (!cuda_compute_capability_.IsAtLeast(
-            se::CudaComputeCapability::HOPPER)) {
-      VLOG(1) << "FP8 Custom Calls require Hopper or newer architecture.";
-=======
     // FP8 GEMM kernels are only available on Ada, Hopper, and later
     // architectures.
     if (!cuda_compute_capability_.IsAtLeast(8, 9)) {
       VLOG(1)
           << "FP8 Custom Calls require Ada, Hopper, or later architectures.";
->>>>>>> upstream/master
       return false;
     }
 #if CUDA_VERSION < 12000
