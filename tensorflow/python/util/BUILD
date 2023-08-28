@@ -66,6 +66,10 @@ cc_library(
 tf_python_pybind_extension(
     name = "_pywrap_tfprof",
     srcs = ["tfprof_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_tfprof.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -120,6 +124,10 @@ tf_python_pybind_extension(
     name = "_pywrap_kernel_registry",
     srcs = ["kernel_registry_wrapper.cc"],
     hdrs = ["kernel_registry.h"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_kernel_registry.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -133,6 +141,10 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_stat_summarizer",
     srcs = ["stat_summarizer_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_stat_summarizer.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
@@ -150,6 +162,10 @@ tf_python_pybind_extension(
     srcs = ["tensor_float_32.cc"],
     hdrs = ["//tensorflow/core/platform:tensor_float_32_hdr"],
     compatible_with = get_compatible_with_portable(),
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_tensor_float_32_execution.pyi",
+    ],
     deps = [
         "@pybind11",
     ],
@@ -160,6 +176,10 @@ tf_python_pybind_extension(
     srcs = ["determinism.cc"],
     hdrs = ["//tensorflow/core/util:determinism_hdr"],
     compatible_with = get_compatible_with_portable(),
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_determinism.pyi",
+    ],
     deps = [
         "@pybind11",
     ],
@@ -169,6 +189,10 @@ tf_python_pybind_extension(
     name = "_pywrap_util_port",
     srcs = ["port_wrapper.cc"],
     hdrs = ["//tensorflow/core/util:port_hdrs"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_util_port.pyi",
+    ],
     deps = [
         "//tensorflow/core/util:port",
         "//third_party/python_runtime:headers",
@@ -180,6 +204,10 @@ tf_python_pybind_extension(
     name = "_pywrap_transform_graph",
     srcs = ["transform_graph_wrapper.cc"],
     hdrs = ["//tensorflow/tools/graph_transforms:transform_graph_hdrs"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_transform_graph.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -201,6 +229,10 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:ndarray_tensor_hdr",
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
+    ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_checkpoint_reader.pyi",
     ],
     deps = [
         "//tensorflow/core:lib_headers_for_pybind",
@@ -392,6 +424,10 @@ tf_python_pybind_extension(
         # Using header directly is required to avoid ODR violations.
         "stack_trace.h",
     ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_tf_stack.pyi",
+    ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
@@ -462,6 +498,10 @@ tf_python_pybind_extension(
     hdrs = [
         "function_parameter_canonicalizer.h",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
+    ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_function_parameter_canonicalizer_binding_for_test.pyi",
     ],
     deps = [
         "//tensorflow/core:lib",
@@ -1037,6 +1077,10 @@ tf_py_strict_test(
 tf_python_pybind_extension(
     name = "fast_module_type",
     srcs = ["fast_module_type.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "fast_module_type.pyi",
+    ],
     deps = [
         "//tensorflow/core/platform:logging",
         "//third_party/python_runtime:headers",
@@ -1152,6 +1196,10 @@ tf_python_pybind_extension(
     srcs = ["tf2xla_opset_wrapper.cc"],
     hdrs = [
         "//tensorflow/compiler/tf2xla:tf2xla_opset_hdrs",
+    ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "pywrap_xla_ops.pyi",
     ],
     deps = [
         "//tensorflow/python/lib/core:pybind11_lib",
