@@ -169,7 +169,7 @@ function prepare_src() {
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles \
       "${EXTERNAL_INCLUDES}/"
     cp_local_config_python \
-      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles \
       "${EXTERNAL_INCLUDES}/"
     copy_xla_aot_runtime_sources \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow \
