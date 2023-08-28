@@ -197,19 +197,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow:tensorflow_py",
 ]
 
-# On Windows, python binary is a zip file of runfiles tree.
-# Add everything to its data dependency for generating a runfiles tree
-# for building the pip package on Windows.
-py_binary(
-    name = "simple_console_for_windows",
-    srcs = ["simple_console_for_windows.py"],
-    data = COMMON_PIP_DEPS + [
-        "//tensorflow/python:pywrap_tensorflow_import_lib_file",
-    ],
-    srcs_version = "PY3",
-    deps = ["//tensorflow:tensorflow_py"],
-)
-
 filegroup(
     name = "licenses",
     data = [
@@ -271,35 +258,13 @@ sh_binary(
     data = COMMON_PIP_DEPS +
            select({
                "//tensorflow:windows": [
-                   ":simple_console_for_windows",
+                    "//tensorflow/python:pywrap_tensorflow_import_lib_file",
                ],
-               "//conditions:default": [
-                   ":simple_console",
-               ],
+               "//conditions:default": [],
            }) +
            select({
                "//tensorflow:dynamic_loaded_kernels": DYNAMIC_LOADED_KERNELS,
                "//conditions:default": [],
            }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
-    visibility = ["//visibility:public"],
-)
-
-# A genrule for generating a marker file for the pip package on Windows
-#
-# This only works on Windows, because :simple_console_for_windows is a
-# python zip file containing everything we need for building the pip package.
-# However, on other platforms, due to https://github.com/bazelbuild/bazel/issues/4223,
-# when C++ extensions change, this generule doesn't rebuild.
-genrule(
-    name = "win_pip_package_marker",
-    srcs = if_windows([
-        ":build_pip_package",
-        ":simple_console_for_windows",
-    ]),
-    outs = ["win_pip_package_marker_file"],
-    cmd = select({
-        "//conditions:default": "touch $@",
-        "//tensorflow:windows": "sha1sum $(locations :build_pip_package) $(locations :simple_console_for_windows) > $@",
-    }),
     visibility = ["//visibility:public"],
 )
