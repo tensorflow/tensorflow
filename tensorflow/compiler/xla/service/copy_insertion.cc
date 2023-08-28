@@ -2218,7 +2218,6 @@ StatusOr<bool> CopyInsertion::Run(
   DumpHloModuleDuringPassIfEnabled(
       name(), "after adding copies to resolve interference", *module);
 
-  DependencyHloOrdering ordering(module);
   TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(module,
                                              /*check_live_range_ordering=*/true,
                                              execution_threads));
