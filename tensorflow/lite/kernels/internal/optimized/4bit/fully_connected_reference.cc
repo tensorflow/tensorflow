@@ -69,26 +69,27 @@ void ReferencePackInner(const int8_t* src, uint8_t* box, int src_rows,
         k += 2;
       }
     }
-    // Handle remaining 16 values
-    for (; i < (real_src_depth & (~(half_half_depth - 1)));
-         i += half_half_depth) {
-      for (int j = 0; j < 8; ++j) {
+    // Handle remaining values -- if greater than or equal to
+    // 16 values remaining, do the shuffle.
+    if (i < real_src_depth) {
+      const int remaining = half_half_depth < (real_src_depth - i)
+                                ? half_half_depth
+                                : real_src_depth - i;
+      for (int j = 0; j < remaining; ++j) {
         const int8_t v1 = (int8_t)src_data[i + j];
         int8_t uv1 = upper(v1);
         int8_t lv1 = lower(v1);
-        box[k] = merge(lv1, 0);
-        box[k + 1] = merge(uv1, 0);
+        int8_t uv2 = 0;
+        int8_t lv2 = 0;
+        if ((i + j + half_half_depth) < real_src_depth) {
+          const int8_t v2 = (int8_t)src_data[i + j + half_half_depth];
+          uv2 = upper(v2);
+          lv2 = lower(v2);
+        }
+        box[k] = merge(lv1, lv2);
+        box[k + 1] = merge(uv1, uv2);
         k += 2;
       }
-    }
-    // Any remaining values are just interleaved with 0.
-    for (; i < real_src_depth; i++) {
-      const int8_t v1 = (int8_t)src_data[i];
-      int8_t uv1 = upper(v1);
-      int8_t lv1 = lower(v1);
-      box[k] = merge(lv1, 0);
-      box[k + 1] = merge(uv1, 0);
-      k += 2;
     }
     box += real_depth;
     src_data += real_src_cols;

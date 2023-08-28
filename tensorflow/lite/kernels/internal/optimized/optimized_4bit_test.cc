@@ -133,8 +133,11 @@ INSTANTIATE_TEST_SUITE_P(RunPackTests, RunPackTests,
                          ::testing::ValuesIn({
                              std::make_tuple(4, 32),
                              std::make_tuple(4, 46),
+                             std::make_tuple(4, 56),
                              std::make_tuple(5, 64),
                              std::make_tuple(5, 72),
+                             std::make_tuple(5, 80),
+                             std::make_tuple(5, 84),
                          }));
 
 struct TestQuantize {
