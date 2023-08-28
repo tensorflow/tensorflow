@@ -568,11 +568,17 @@ class MklDnnConvUtil {
       OP_REQUIRES(context_, input_tf_shape.dims() == 4,
                   errors::InvalidArgument("input must be 4-dimensional",
                                           input_tf_shape.DebugString()));
+      OP_REQUIRES(context_, filter_tf_shape.dims() == 4,
+                  errors::InvalidArgument("filter must be 4-dimensional",
+                                          filter_tf_shape.DebugString()));
     } else {
       // Conv3D
       OP_REQUIRES(context_, input_tf_shape.dims() == 5,
                   errors::InvalidArgument("input must be 5-dimensional",
                                           input_tf_shape.DebugString()));
+      OP_REQUIRES(context_, filter_tf_shape.dims() == 5,
+                  errors::InvalidArgument("filter must be 5-dimensional",
+                                          filter_tf_shape.DebugString()));
     }
 
     GetOutputAndPadSizeInMklOrder(input_tf_shape, filter_tf_shape, strides,
