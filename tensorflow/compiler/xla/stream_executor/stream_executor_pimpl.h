@@ -138,17 +138,6 @@ class StreamExecutor {
     return AllocateOwnedArray<T>(1);
   }
 
-  // Synchronously allocates a scalar of type T on the device that is (POD)
-  // zero-byte initialized.
-  template <typename T>
-  DeviceMemory<T> AllocateZeroed();
-
-  // As AllocateZeroed(), but returns a ScopedDeviceMemory<T>.
-  template <typename T>
-  ScopedDeviceMemory<T> AllocateOwnedZeroed() {
-    return ScopedDeviceMemory<T>(this, AllocateZeroed<T>());
-  }
-
   // Allocate a memory region inside another allocated memory region.
   // Offset and size are specified in terms of T elements.
   // Warning: Do not free a parent buffer before its sub-buffers; this may cause
@@ -160,15 +149,6 @@ class StreamExecutor {
   template <typename T>
   DeviceMemory<T> GetSubBuffer(DeviceMemory<T>* parent, uint64_t element_offset,
                                uint64_t element_count);
-
-  // Finds a symbol within the module corresponding to `module_handle` and
-  // returns device memory allocated to the symbol. The user has to make sure
-  // that the type of symbol and T match.
-  // - Note: symbol_name should include its namespace as well. For example,
-  //         pass "nms0::symbol" if referring to nms0::symbol.
-  template <typename T>
-  tsl::StatusOr<DeviceMemory<T>> GetSymbol(const std::string& symbol_name,
-                                           ModuleHandle module_handle);
 
   // An untyped version of GetSymbol.
   tsl::StatusOr<DeviceMemoryBase> GetUntypedSymbol(
@@ -200,18 +180,6 @@ class StreamExecutor {
   // Deallocates a region of host memory allocated by HostMemoryAllocate().
   void HostMemoryDeallocate(void* location);
 
-  // Registers a region of host memory with the platform API. Registered memory
-  // (or memory allocated with HostMemoryAllocate) is required for use with
-  // asynchronous memcpy operations, such as Stream::ThenMemcpy. This method
-  // is used to register memory allocated outside the StreamExecutor;
-  // HostMemoryAllocate implicitly registers its allocations and
-  // HostMemoryDeallocate implicitly deregisters on deallocation.
-  bool HostMemoryRegister(void* location, uint64_t size) ABSL_MUST_USE_RESULT;
-
-  // Unregisters a region of host memory registered with HostMemoryRegister.
-  // This should be done before deallocating the region with delete[]/free/etc.
-  bool HostMemoryUnregister(void* location) ABSL_MUST_USE_RESULT;
-
   // Synchronizes all activity occurring in the StreamExecutor's context (most
   // likely a whole device).
   bool SynchronizeAllActivity() ABSL_MUST_USE_RESULT;
@@ -220,11 +188,6 @@ class StreamExecutor {
   // given location in device memory.
   tsl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                  uint64_t size) ABSL_MUST_USE_RESULT;
-
-  // Blocks the caller while "size" bytes are initialized to "value" (in POD
-  // fashion) at the given location in device memory.
-  tsl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Same as SynchronousMemcpy(DeviceMemoryBase*, ...) above.
   tsl::Status SynchronousMemcpyH2D(const void* host_src, int64_t size,
@@ -244,17 +207,6 @@ class StreamExecutor {
   // Same as SynchronousMemcpy(void*, ...) above.
   tsl::Status SynchronousMemcpyD2H(const DeviceMemoryBase& device_src,
                                    int64_t size, void* host_dst);
-
-  // Alternative interface for memcpying from device to host that takes an
-  // array slice. Checks that the destination size can accommodate the host
-  // slice size.
-  template <typename T>
-  tsl::Status SynchronousMemcpyD2H(const DeviceMemory<T>& device_src,
-                                   absl::Span<T> host_dst) {
-    auto host_size = host_dst.size() * sizeof(T);
-    CHECK(device_src.size() == 0 || host_size >= device_src.size());
-    return SynchronousMemcpyD2H(device_src, host_size, host_dst.begin());
-  }
 
   // Blocks the caller while a data segment of the given size is copied from the
   // device source to the device destination.
@@ -475,9 +427,6 @@ class StreamExecutor {
   // underlying platform.
   blas::BlasSupport* AsBlas();
 
-  // Turns StreamExecutor operation tracing on or off.
-  void EnableTracing(bool enable);
-
   // Registers a trace listener to receive callbacks for only a single
   // StreamExecutor instance.
   // To register a listener for all executors for a given platform, see
@@ -500,10 +449,6 @@ class StreamExecutor {
   // Return an allocator which delegates to this stream executor for memory
   // allocation.
   StreamExecutorMemoryAllocator* GetAllocator() { return &allocator_; }
-
-  internal::StreamExecutorInterface* GetInternalExecutor() {
-    return implementation_.get();
-  }
 
   // Returns a stream allocated by this executor, or nullptr if not found.
   // Performs linear search over alive GPU streams.
@@ -748,17 +693,6 @@ inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64_t element_count,
   return DeviceMemory<T>(Allocate(bytes, memory_space));
 }
 
-template <typename T>
-inline tsl::StatusOr<DeviceMemory<T>> StreamExecutor::GetSymbol(
-    const std::string& symbol_name, ModuleHandle module_handle) {
-  tsl::StatusOr<DeviceMemoryBase> untyped_symbol =
-      GetUntypedSymbol(symbol_name, module_handle);
-  if (!untyped_symbol.ok()) {
-    return untyped_symbol.status();
-  }
-  return DeviceMemory<T>(untyped_symbol.value());
-}
-
 template <typename ElemT>
 ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(StreamExecutor* parent,
                                               DeviceMemoryBase value)
@@ -777,23 +711,6 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
       TF_CHECK_OK(Free());
     }
   }
-}
-
-template <typename T>
-DeviceMemory<T> StreamExecutor::AllocateZeroed() {
-  DeviceMemoryBase buf = Allocate(sizeof(T), /*memory_space=*/0);
-  if (buf.is_null()) {
-    return DeviceMemory<T>{};
-  }
-
-  DeviceMemory<T> result(buf);
-  bool ok = SynchronousMemZero(&result, sizeof(T)).ok();
-  if (!ok) {
-    Deallocate(&result);
-    return DeviceMemory<T>{};
-  }
-
-  return result;
 }
 
 template <typename T>
