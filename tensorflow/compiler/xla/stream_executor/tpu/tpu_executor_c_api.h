@@ -417,11 +417,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_MemcpyFromHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_EnqueueInfeed);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DequeueOutfeed);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_WaitForInfeedReady);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_WaitForOutfeedReady);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_BlockHostUntilDone);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_BlockUntilDoneOrFailed);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SyncAndForgetFailedStreams);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SynchronizeAllActivity);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_UnloadAllPrograms);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_EnqueueCompactionOnStreamForHbm);

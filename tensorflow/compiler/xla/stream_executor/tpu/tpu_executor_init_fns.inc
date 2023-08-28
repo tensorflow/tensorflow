@@ -39,11 +39,7 @@ tsl::Status SetExecutorStructFn(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(executor_fn, TpuExecutor_MemcpyFromHost);
   TFTPU_SET_FN(executor_fn, TpuExecutor_EnqueueInfeed);
   TFTPU_SET_FN(executor_fn, TpuExecutor_DequeueOutfeed);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_WaitForInfeedReady);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_WaitForOutfeedReady);
   TFTPU_SET_FN(executor_fn, TpuExecutor_BlockHostUntilDone);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_BlockUntilDoneOrFailed);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_SyncAndForgetFailedStreams);
   TFTPU_SET_FN(executor_fn, TpuExecutor_SynchronizeAllActivity);
   TFTPU_SET_FN(executor_fn, TpuExecutor_UnloadAllPrograms);
   TFTPU_SET_FN(executor_fn, TpuExecutor_EnqueueCompactionOnStreamForHbm);
