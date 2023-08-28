@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
+#include <any>
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/any.h"
