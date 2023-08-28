@@ -1781,7 +1781,22 @@ StatusOr<size_t> PjRtCApiBuffer::GetOnDeviceSizeInBytes() const {
   return args.on_device_size_in_bytes;
 }
 
-PjRtMemorySpace* PjRtCApiBuffer::memory_space() const { return nullptr; }
+PjRtMemorySpace* PjRtCApiBuffer::memory_space() const {
+  PJRT_Buffer_Memory_Args args;
+  args.struct_size = PJRT_Buffer_Memory_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_.get();
+  const PJRT_Api* api = pjrt_c_api();
+  std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> error(
+      api->PJRT_Buffer_Memory(&args), pjrt::MakeErrorDeleter(api));
+  if (error == nullptr && args.memory != nullptr) {
+    return client_->GetCppMemory(args.memory);
+  } else if (error != nullptr && pjrt::GetErrorCode(error.get(), api) !=
+                                     PJRT_Error_Code_UNIMPLEMENTED) {
+    pjrt::LogFatalIfPjrtError(error.get(), api);
+  }
+  return nullptr;
+}
 
 PjRtDevice* PjRtCApiBuffer::device() const {
   PJRT_Buffer_Device_Args args;

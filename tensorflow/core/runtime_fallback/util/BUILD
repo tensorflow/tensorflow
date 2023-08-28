@@ -81,6 +81,7 @@ cc_library(
     hdrs = ["fallback_test_util.h"],
     tags = ["no_oss"],
     deps = [
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
@@ -98,7 +99,11 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":type_util",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/core/framework:tensor_shape",
+        "//tensorflow/core/framework:types_proto_cc",
         "@tf_runtime//:core_runtime",
+        "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
         "@tf_runtime//:tensor",
@@ -142,9 +147,19 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":tensor_util",
+        "//tensorflow/c:tf_tensor",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/framework:tensor_shape",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:protobuf",
+        "//third_party/eigen3",
+        "@com_google_googletest//:gtest_main",
         "@tf_runtime//:core_runtime",
+        "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
+        "@tf_runtime//:tensor",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -167,6 +182,7 @@ tf_cc_test(
     ]),  # b/169705709, no protobuf matchers in OSS.
     deps = [
         ":attr_util",
+        "//tensorflow/c:tf_tensor",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",

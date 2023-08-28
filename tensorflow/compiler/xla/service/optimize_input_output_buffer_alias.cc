@@ -106,7 +106,11 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
          donee_vector_index < donee_vectors.size()) {
     const auto& donor = donor_vectors[donor_vector_index];
     const auto& donee = donee_vectors[donee_vector_index];
-    if (donor.shape_size >= donee.shape_size) {
+    if (donor.shape_size > donee.shape_size) {
+      donor_vector_index += 1;
+    } else if (donor.shape_size < donee.shape_size) {
+      donee_vector_index += 1;
+    } else {
       // The current donor and donee match.
       TF_RETURN_IF_ERROR(alias_config->SetUpAlias(
           donee.index, donor.param_number, donor.index));
@@ -115,9 +119,6 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
       donor_vector_index += 1;
       donee_vector_index += 1;
       changed = true;
-    } else {
-      // The donee is too large to match. We proceed with the next donee.
-      donee_vector_index += 1;
     }
   }
 

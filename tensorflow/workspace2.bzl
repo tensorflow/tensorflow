@@ -147,9 +147,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "f63e2ed14c18f0b6e5fc51672568ce05b73ec93cc90ee46c2a3d1d547aab20cf",
-        strip_prefix = "XNNPACK-4a390902f647b604e2c6962c96b941fc81c60213",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/4a390902f647b604e2c6962c96b941fc81c60213.zip"),
+        sha256 = "09acd3e8112421fb7883f1c2966c9abc404349359ff9a18b12884f39dc6177a7",
+        strip_prefix = "XNNPACK-1d5830644349f5c66ddc3846c32b16010ac4cf4f",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/1d5830644349f5c66ddc3846c32b16010ac4cf4f.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -162,9 +162,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "2b4bd93beb478e1919ca81262e9f4998ceaa798bac1c3185ee64be907be1babd",
-        strip_prefix = "pthreadpool-0a4b81c950fa4fb08037ceeaa54d008efdf4e739",
-        urls = tf_mirror_urls("https://github.com/Maratyszcza/pthreadpool/archive/0a4b81c950fa4fb08037ceeaa54d008efdf4e739.zip"),
+        sha256 = "bac17ab3365ba7a21a6eacf9bbb6fef3e69a4cd4eadde33cf48eada4a44f9694",
+        strip_prefix = "pthreadpool-966fbf7c86390b7f489f7474ecf99c42c91fddac",
+        urls = tf_mirror_urls("https://github.com/Maratyszcza/pthreadpool/archive/966fbf7c86390b7f489f7474ecf99c42c91fddac.zip"),
     )
 
     tf_http_archive(

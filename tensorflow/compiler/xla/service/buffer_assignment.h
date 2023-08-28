@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_BUFFER_ASSIGNMENT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_BUFFER_ASSIGNMENT_H_
 
-#include <algorithm>
 #include <functional>
 #include <iosfwd>
 #include <memory>
@@ -552,9 +551,9 @@ class BufferAssignment {
   BufferAllocation* GetMutableAllocation(BufferAllocation::Index index);
 
   int64_t HloBufferSize(const HloBuffer& buffer) {
-    int64_t result = 0;
+    int64_t result = buffer_size_(*buffer.values()[0]);
     for (const HloValue* value : buffer.values()) {
-      result = std::max(result, buffer_size_(*value));
+      DCHECK_EQ(result, buffer_size_(*value));
     }
     return result;
   }

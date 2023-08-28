@@ -154,12 +154,12 @@ TEST_F(OptimizeInputOutputBufferAliasTest, UnorderedNestedTuple) {
   bool changed = BuildAliasConfig(input, output);
   EXPECT_TRUE(changed);
 
-  EXPECT_EQ(AliasCount(), 4);
+  EXPECT_EQ(AliasCount(), 3);
 
   EXPECT_EQ(alias_config_.GetAliasedOutput(0, {0, 0}), ShapeIndex{0});
-  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {1}), ShapeIndex{2});
-  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {2}), ShapeIndex({1, 1}));
-  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {3}), ShapeIndex({1, 0}));
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {1}), ShapeIndex({1, 1}));
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {2}), ShapeIndex({1, 0}));
+  EXPECT_FALSE(alias_config_.ParameterHasAlias(0, {0, 3}));
 }
 
 TEST_F(OptimizeInputOutputBufferAliasTest, MultipleParameters) {
