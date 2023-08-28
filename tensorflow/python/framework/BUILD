@@ -274,6 +274,7 @@ py_strict_library(
         "//tensorflow/python/eager:execute",
         "//tensorflow/security/fuzzing/py:annotation_types",
         "//tensorflow/tools/docs:doc_controls",
+        "@typing_extensions_archive//:typing_extensions",
     ],
 )
 
@@ -1982,6 +1983,7 @@ py_strict_library(
         "//third_party/py/keras:__subpackages__",
         "//third_party/py/neural_structured_learning:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
+        "//third_party/py/tf_keras:__subpackages__",
     ],
     deps = [
         ":_test_metrics_util",
@@ -2017,6 +2019,7 @@ py_strict_library(
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:script_ops",
+        "//tensorflow/python/ops:sparse_ops_gen",
         "//tensorflow/python/ops:summary_ops_v2",
         "//tensorflow/python/ops:sync_ops_gen",
         "//tensorflow/python/ops:variables",
@@ -2052,6 +2055,7 @@ py_strict_library(
         "//tensorflow_models:__subpackages__",
         "//third_party/py/keras:__subpackages__",
         "//third_party/py/keras_cv:__subpackages__",
+        "//third_party/py/tf_keras:__subpackages__",
     ],
 )
 
@@ -2898,6 +2902,7 @@ tf_py_strict_test(
         "nomsan",  # TODO(b/149948895): Re-enable.
         "not_run:arm",
         "notsan",  # TODO(b/149948895): Re-enable.
+        "nozapfhahn",
     ],
     deps = [
         ":constant_op",

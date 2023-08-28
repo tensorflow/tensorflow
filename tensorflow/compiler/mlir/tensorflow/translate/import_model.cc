@@ -368,7 +368,7 @@ class ImporterBase {
   // Converts the given function-call AttrValue to MLIR Attributes and pushes
   // them to the given attributes list. For example, if there is a kFunc
   // AttrValue {name : foo, attrs : {k1 : bar, k2 : rfc}}, it will convert it to
-  // a list of MLIR Attributes: [{base_name : foo}, {base_name.k1 : bar},
+  // a list of MLIR Attributes: {{base_name : foo}, {base_name.k1 : bar},
   // {base_name.k2 : rfc}}.
   Status ConvertFunctionCallAttribute(const std::string& base_name,
                                       const AttrValue& value,

@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -34,8 +33,8 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
@@ -49,141 +48,131 @@ namespace transforms {
 namespace {
 
 constexpr int64_t i32Limit = 2147483647;
+using func::FuncOp;
 using shape::ShapeOfOp;
 
-bool IsSingleResultTFOperation(Operation *op) {
-  assert(op != nullptr && "expect op");
-  if (op->getDialect() !=
-      op->getContext()->getLoadedDialect<TF::TensorFlowDialect>())
-    return false;
-  if (op->getNumResults() != 1) return false;
-  return true;
+LogicalResult RewriteToFullJit(func::FuncOp op) {
+  // Rewrite all functions that have a single result.
+  if (op.getResultTypes().size() != 1) return failure();
+
+  IRRewriter rewriter(op.getContext());
+
+  // Insert a new block at the front of the function.
+  Block *old_body = &op.getFunctionBody().front();
+  Location loc = op.getLoc();
+  llvm::SmallVector<Location> locs(old_body->getNumArguments(), loc);
+  Block *new_body = rewriter.createBlock(&op.getBody(), op.getBody().begin(),
+                                         old_body->getArgumentTypes(), locs);
+
+  // Create the JIT compile op.
+  auto jit_compile_op = rewriter.create<tf_framework::JITCompileOp>(
+      loc, rewriter.getType<tf_framework::JITCallableType>(),
+      /*ctx=*/std::nullopt);
+
+  // Move the original functions operations into the body.
+  {
+    OpBuilder::InsertionGuard guard(rewriter);
+    Block *jit_block = rewriter.createBlock(&jit_compile_op.getBody(), {},
+                                            old_body->getArgumentTypes(), locs);
+
+    rewriter.inlineBlockBefore(old_body, jit_block, jit_block->begin(),
+                               jit_block->getArguments());
+
+    Operation *terminator = jit_block->getTerminator();
+    rewriter.setInsertionPointAfter(terminator);
+    rewriter.create<tf_framework::JITCompileYieldOp>(
+        loc, terminator->getOperands().front());
+    terminator->erase();
+  }
+
+  // Create JIT execute op.
+  auto execute = rewriter.create<tf_framework::JITExecuteOp>(
+      loc, op.getResultTypes().front(), /*ctx=*/Value(),
+      jit_compile_op.getResult(), new_body->getArguments());
+
+  // Create a return.
+  rewriter.create<func::ReturnOp>(loc, execute.getResult());
+  return success();
 }
 
-bool IsUnaryTFOperation(Operation *op) {
-  return IsSingleResultTFOperation(op) && op->getNumOperands() == 1;
-}
+LogicalResult RewriteToLargeSizeJit(FuncOp op) {
+  // Rewrite all functions that have at most two arguments and a single result.
+  if (op.getArgumentTypes().size() > 2 || op.getResultTypes().size() != 1)
+    return failure();
 
-bool IsBinaryTFOperation(Operation *op) {
-  return IsSingleResultTFOperation(op) && op->getNumOperands() == 2;
-}
+  IRRewriter rewriter(op.getContext());
+  Location loc = op.getLoc();
 
-struct TFToJITInvocationsPattern : public RewritePattern {
-  explicit TFToJITInvocationsPattern(MLIRContext *ctx)
-      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
+  // Insert a new block at the front of the function.
+  Block *old_body = &op.getFunctionBody().front();
+  llvm::SmallVector<Location> locs(old_body->getNumArguments(), loc);
+  Block *new_body = rewriter.createBlock(&op.getBody(), op.getBody().begin(),
+                                         old_body->getArgumentTypes(), locs);
 
-  LogicalResult matchAndRewrite(Operation *op,
-                                PatternRewriter &rewriter) const override {
-    // Apply to all single result TF ops except those that are already in a
-    // JIT-compiled region.
-    if (!IsSingleResultTFOperation(op) ||
-        op->getParentOfType<tf_framework::JITCompileOp>())
-      return failure();
+  // Create large argument condition.
+  auto arg_1 = new_body->getArgument(0);
+  auto shape_1 = rewriter.create<shape::ShapeOfOp>(loc, arg_1);
+  auto num_elems_1 = rewriter.create<shape::NumElementsOp>(loc, shape_1);
+  Value cst_i32_limit = rewriter.create<arith::ConstantIndexOp>(loc, i32Limit);
+  Value large_tensor_predicate = rewriter.create<arith::CmpIOp>(
+      loc, arith::CmpIPredicate::sgt, num_elems_1, cst_i32_limit);
+  if (new_body->getNumArguments() > 1) {
+    auto arg_2 = new_body->getArgument(1);
+    auto shape_2 = rewriter.create<shape::ShapeOfOp>(loc, arg_2);
+    auto num_elems_2 = rewriter.create<shape::NumElementsOp>(loc, shape_2);
+    large_tensor_predicate = rewriter.create<arith::OrIOp>(
+        loc, large_tensor_predicate,
+        // Compare op to check size of the second op
+        rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sgt,
+                                       num_elems_2, cst_i32_limit));
+  }
 
-    Location loc = op->getLoc();
-    Value op_result = op->getResults().front();
-
-    // Create the JIT compile op.
-    auto jit_compile_op = rewriter.create<tf_framework::JITCompileOp>(
-        loc, rewriter.getType<tf_framework::JITCallableType>(),
-        /*ctx=*/std::nullopt);
-
-    // Move the TF operation into the body.
+  // Create dispatch code.
+  auto jit_body_builder_fn = [&](OpBuilder &b, Location loc) {
+    // Create JIT compile op.
+    auto callable_ty = b.getType<tf_framework::JITCallableType>();
+    auto jit_compile_op =
+        b.create<tf_framework::JITCompileOp>(loc, callable_ty, /*ctx=*/Value());
     {
-      OpBuilder::InsertionGuard guard(rewriter);
-      llvm::SmallVector<Location> locs(op->getNumOperands(), loc);
-      Block *block = rewriter.createBlock(&jit_compile_op.getBody(), {},
-                                          op->getOperandTypes(), locs);
-
-      // Map operands.
+      OpBuilder::InsertionGuard g(b);
+      Block *block = b.createBlock(
+          &jit_compile_op.getBody(), {}, new_body->getArgumentTypes(),
+          SmallVector<Location>(new_body->getNumArguments(), loc));
+      b.setInsertionPointToStart(block);
       IRMapping bvm;
-      for (auto it : llvm::zip(op->getOperands(), block->getArguments()))
-        bvm.map(std::get<0>(it), std::get<1>(it));
-
-      rewriter.setInsertionPointToStart(block);
-      rewriter.clone(*op, bvm);
-      rewriter.create<tf_framework::JITCompileYieldOp>(loc,
-                                                       bvm.lookup(op_result));
+      bvm.map(old_body->getArguments(), block->getArguments());
+      for (auto &op : old_body->without_terminator()) {
+        b.clone(op, bvm);
+      }
+      b.create<tf_framework::JITCompileYieldOp>(
+          loc, block->back().getResults().front());
     }
 
     // Create JIT execute op.
-    rewriter.replaceOpWithNewOp<tf_framework::JITExecuteOp>(
-        op, op_result.getType(), /*ctx=*/Value(), jit_compile_op.getResult(),
-        op->getOperands());
-    return success();
-  }
-};
-
-struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
-  explicit TFToI64JITInvocationForLargeTensorsPattern(MLIRContext *ctx)
-      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
-
-  LogicalResult matchAndRewrite(Operation *op,
-                                PatternRewriter &rewriter) const override {
-    if ((!IsUnaryTFOperation(op) && !IsBinaryTFOperation(op)) ||
-        !llvm::isa<func::FuncOp>(op->getParentOp())) {
-      return failure();
+    auto jit_execute_op = b.create<tf_framework::JITExecuteOp>(
+        loc, op.getResultTypes().front(), /*ctx=*/Value(),
+        jit_compile_op.getResult(), new_body->getArguments());
+    b.create<scf::YieldOp>(loc, jit_execute_op.getResult());
+  };
+  auto aot_body_builder_fn = [&](OpBuilder &b, Location loc) {
+    IRMapping bvm;
+    bvm.map(old_body->getArguments(), new_body->getArguments());
+    Operation *last_clone;
+    for (auto &op : old_body->without_terminator()) {
+      last_clone = b.clone(op, bvm);
     }
+    b.create<scf::YieldOp>(loc, last_clone->getResults().front());
+  };
 
-    // Create large argument condition.
-    auto loc = op->getLoc();
-    auto arg_1 = op->getOperands().front();
-    auto shape_1 = rewriter.create<shape::ShapeOfOp>(loc, arg_1);
-    auto num_elems_1 = rewriter.create<shape::NumElementsOp>(loc, shape_1);
-    Value cst_i32_limit =
-        rewriter.create<arith::ConstantIndexOp>(loc, i32Limit);
-    Value large_tensor_predicate = rewriter.create<arith::CmpIOp>(
-        loc, arith::CmpIPredicate::sgt, num_elems_1, cst_i32_limit);
-    if (IsBinaryTFOperation(op)) {
-      auto arg_2 = op->getOperands().back();
-      auto shape_2 = rewriter.create<shape::ShapeOfOp>(loc, arg_2);
-      auto num_elems_2 = rewriter.create<shape::NumElementsOp>(loc, shape_2);
-      large_tensor_predicate = rewriter.create<arith::OrIOp>(
-          loc, large_tensor_predicate,
-          // Compare op to check size of the second op
-          rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sgt,
-                                         num_elems_2, cst_i32_limit));
-    }
+  // Create the conditional and return operation.
+  auto ifOp = rewriter.create<scf::IfOp>(
+      loc, large_tensor_predicate, jit_body_builder_fn, aot_body_builder_fn);
+  rewriter.create<func::ReturnOp>(loc, ifOp.getResults().front());
 
-    // Create dispatch code.
-    auto jit_body_builder_fn = [&](OpBuilder &b, Location loc) {
-      // Create JIT compile op.
-      auto callable_ty = b.getType<tf_framework::JITCallableType>();
-      auto jit_compile_op = b.create<tf_framework::JITCompileOp>(
-          loc, callable_ty, /*ctx=*/Value());
-      IRMapping bvm;
-      {
-        OpBuilder::InsertionGuard g(b);
-        Block *block =
-            b.createBlock(&jit_compile_op.getBody(), {}, op->getOperandTypes(),
-                          SmallVector<Location>(op->getNumOperands(), loc));
-        for (auto it : llvm::zip(op->getOperands(), block->getArguments()))
-          bvm.map(std::get<0>(it), std::get<1>(it));
-        b.setInsertionPointToStart(block);
-        Operation *cloned_op = b.clone(*op, bvm);
-        b.create<tf_framework::JITCompileYieldOp>(
-            loc, cloned_op->getResults().front());
-      }
-
-      // Create JIT execute op.
-      assert(op->getOperands().size() == 1 || op->getOperands().size() == 2);
-      auto jit_execute_op = b.create<tf_framework::JITExecuteOp>(
-          loc, op->getResultTypes().front(), /*ctx=*/Value(),
-          jit_compile_op.getResult(), op->getOperands());
-      b.create<scf::YieldOp>(loc, jit_execute_op.getResult());
-    };
-    auto aot_body_builder_fn = [&](OpBuilder &b, Location loc) {
-      Operation *cloned_op = b.clone(*op);
-      b.create<scf::YieldOp>(loc, cloned_op->getResults().front());
-    };
-
-    // Create and replace in two steps to clone the original op.
-    auto ifOp = rewriter.create<scf::IfOp>(
-        loc, large_tensor_predicate, jit_body_builder_fn, aot_body_builder_fn);
-    rewriter.replaceOp(op, ifOp.getResults());
-    return success();
-  }
-};
+  // Remove the old body.
+  rewriter.eraseBlock(old_body);
+  return success();
+}
 
 struct PackJITCompileOpPattern
     : public OpRewritePattern<tf_framework::JITCompileOp> {
@@ -282,12 +271,23 @@ struct TFToJITInvocationPass
   }
 
   void runOnOperation() override {
+    if (jit_i64_indexed_for_large_tensors_) {
+      if (failed(RewriteToLargeSizeJit(getOperation()))) {
+        return signalPassFailure();
+      }
+    } else {
+      if (failed(RewriteToFullJit(getOperation()))) {
+        return signalPassFailure();
+      }
+    }
+
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    PopulateTFToJITInvocationPatterns(ctx, &patterns, tile_sizes_,
-                                      unroll_factors_, max_supported_rank_,
-                                      enable_ftz_, index_64bit_, cpu_codegen_,
-                                      jit_i64_indexed_for_large_tensors_);
+    PopulatePackJitInvocationsPatterns(
+        ctx, &patterns, tile_sizes_, unroll_factors_, max_supported_rank_,
+        enable_ftz_, index_64bit_ || jit_i64_indexed_for_large_tensors_,
+        cpu_codegen_);
+
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();
@@ -297,22 +297,16 @@ struct TFToJITInvocationPass
 
 }  // namespace
 
-void PopulateTFToJITInvocationPatterns(
-    MLIRContext *ctx, RewritePatternSet *patterns,
-    llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
-    int64_t max_supported_rank, bool enable_ftz, bool index_64bit,
-    bool cpu_codegen, bool jit_i64_indexed_for_large_tensors) {
-  if (jit_i64_indexed_for_large_tensors) {
-    patterns->add<TFToI64JITInvocationForLargeTensorsPattern>(ctx);
-  } else {
-    patterns->add<TFToJITInvocationsPattern>(ctx);
-  }
-
-  bool index_64bit_if_jit_compiling =
-      jit_i64_indexed_for_large_tensors ? true : index_64bit;
-  patterns->add<PackJITCompileOpPattern>(
-      ctx, tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
-      index_64bit_if_jit_compiling, cpu_codegen);
+void PopulatePackJitInvocationsPatterns(MLIRContext *ctx,
+                                        RewritePatternSet *patterns,
+                                        llvm::ArrayRef<int64_t> tile_sizes,
+                                        llvm::ArrayRef<int64_t> unroll_factors,
+                                        int64_t max_supported_rank,
+                                        bool enable_ftz, bool index_64bit,
+                                        bool cpu_codegen) {
+  patterns->add<PackJITCompileOpPattern>(ctx, tile_sizes, unroll_factors,
+                                         max_supported_rank, enable_ftz,
+                                         index_64bit, cpu_codegen);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTFToJITInvocationPass(

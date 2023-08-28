@@ -59,7 +59,7 @@ def ConvertTFConv2DToXLAConvOp : Pat<
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Same as ConvertTFConv2DToXLAConvOp but handles the case where input zero
 // point is dynaically calculated so not a constant.
@@ -79,7 +79,7 @@ def ConvertTFConv2DToXLAConvOpDynamicRange : Pat<
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Convert Conv2D with hybrid inputs (f32 activation/int8 weight) to XlaConv
 def ConvertTFConv2DToXLAConvOpWeightOnly : Pat<
@@ -98,7 +98,7 @@ def ConvertTFConv2DToXLAConvOpWeightOnly : Pat<
    (IsF32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Same as ConvertTFConv2DToXLAConvOp but handles the case where input zero
 // point is 0 and the Sub op has been folded.
@@ -117,7 +117,7 @@ def ConvertTFConv2DWithNoZeroPointToXLAConvOp : Pat<
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Converts inlined DepthwiseConv2D pattern to TF XlaConvV2 op. This pattern
 // doesn't support non-constant weights.
@@ -141,7 +141,7 @@ def ConvertTFDepthwiseConv2DToXLAConvOp : Pat<
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Same as ConvertTFDepthwiseConv2DToXLAConvOp but handles the case where input
 // zero point is dynaically calculated so not a constant.
@@ -164,7 +164,7 @@ def ConvertTFDepthwiseConv2DToXLAConvOpDynamicRange : Pat<
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Convert DepthwiseConv2D with hybrid inputs (f32 activation/int8 weight) to
 // XlaConv
@@ -183,7 +183,7 @@ def ConvertTFDepthwiseConv2DToXLAConvOpWeightOnly : Pat<
    (IsF32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 
 // Same as ConvertTFDepthwiseConv2DToXLAConvOp but handles the case where input
@@ -207,7 +207,7 @@ def ConvertTFDepthwiseConv2DWithNoZeroPointToXLAConvOp : Pat<
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 
 // Converts inlined MatMul pattern to TF XlaDotV2 op. This pattern doesn't
@@ -227,7 +227,7 @@ def ConvertTFMatMulToXLADotV2Op : Pat<
    (IsConstTensor $weight),
    (IsInt32ElementType $matmul),
    (HasStaticShapeConstraint $weight)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Same as ConvertTFMatMulToXLADotV2Op but handles the case where input zero
 // point is dynaically calculated so not a constant.
@@ -245,7 +245,7 @@ def ConvertTFMatMulToXLADotV2OpDynamicRange : Pat<
    (IsConstTensor $weight),
    (IsInt32ElementType $matmul),
    (HasStaticShapeConstraint $weight)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Convert Matmul with hybrid inputs (f32 activation/int8 weight) to XlaDotV2
 def ConvertTFMatMulToXLADotV2OpWeightOnly : Pat<
@@ -262,7 +262,7 @@ def ConvertTFMatMulToXLADotV2OpWeightOnly : Pat<
    (IsConstTensor $weight),
    (IsF32ElementType $matmul),
    (HasStaticShapeConstraint $weight)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Same as ConvertTFMatMulToXLADotV2Op but handles the case where input
 // zero point is 0 and the Sub op has been folded.
@@ -280,7 +280,7 @@ def ConvertTFMatMulWithNoZeroPointToXLADotV2Op : Pat<
    (IsConstTensor $weight),
    (IsInt32ElementType $matmul),
    (HasStaticShapeConstraint $weight)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Converts inlined MatMul pattern to TF XlaDotV2 op. This pattern supports
 // non-constant weights.
@@ -298,7 +298,7 @@ def ConvertTFMatMulWithTwoInputTensorsToXLADotV2Op : Pat<
    (HasRankOf<0> $input_zp),
    (HasRankOf<0> $weight_zp),
    (IsInt32ElementType $matmul)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Same as ConvertTFMatMulWithTwoInputTensorsToXLADotV2Op but handles the case
 // where input zero point is 0 and the Sub op has been folded.
@@ -316,7 +316,7 @@ def ConvertTFMatMulWithTwoInputTensorsAndNoInputZeroPointToXLADotV2Op : Pat<
    (HasRank $weight),
    (HasRankOf<0> $weight_zp),
    (IsInt32ElementType $matmul)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Same as ConvertTFMatMulWithTwoInputTensorsToXLADotV2Op but handles the case
 // where weight zero point is 0 and the Sub op has been folded.
@@ -335,7 +335,7 @@ def ConvertTFMatMulWithTwoInputTensorsAndNoWeightZeroPointToXLADotV2Op : Pat<
    (HasRank $weight),
    (HasRankOf<0> $input_zp),
    (IsInt32ElementType $matmul)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Same as ConvertTFMatMulWithTwoInputTensorsToXLADotV2Op but handles the case
 // where both zero point is 0 and the Sub op has been folded.
@@ -353,7 +353,7 @@ def ConvertTFMatMulWithTwoInputTensorsAndNoBothZeroPointsToXLADotV2Op : Pat<
    (HasRank $input),
    (HasRank $weight),
    (IsInt32ElementType $matmul)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 
 // Converts inlined Conv3D pattern to TF XlaConvV2 op. This pattern
@@ -376,7 +376,7 @@ def ConvertTFConv3DToXLAConvOp : Pat<
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"4"> $input)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Same as ConvertTFConv3DToXLAConvOp but handles the case where input
 // zero point is 0 and the Sub op has been folded.
@@ -399,7 +399,7 @@ def ConvertTFConv3DWithNoZeroPointToXLAConvOp : Pat<
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"4"> $input)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Converts inlined BatchMatMul pattern to TF XlaDotV2 op. This pattern doesn't
 // support non-constant weights.
@@ -418,7 +418,7 @@ def ConvertTFBatchMatMulToXLADotV2Op : Pat<
    (IsConstTensor $weight),
    (IsInt32ElementType $batch_matmul),
    (HasStaticShapeConstraint $weight)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Same as ConvertTFBatchMatMulToXLADotV2Op but handles the case where input
 // zero point is 0 and the Sub op has been folded.
@@ -437,7 +437,7 @@ def ConvertTFBatchMatMulWithNoZeroPointToXLADotV2Op : Pat<
    (IsConstTensor $weight),
    (IsInt32ElementType $batch_matmul),
    (HasStaticShapeConstraint $weight)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Converts inlined BatchMatMul pattern to TF XlaDotV2 op. Support for
 // non-constant weights.
@@ -457,7 +457,7 @@ def ConvertTFBatchMatMulWithTwoInputTensorsToXLADotV2Op : Pat<
    (HasRankOf<0> $input_zp),
    (HasRankOf<0> $weight_zp),
    (IsInt32ElementType $batch_matmul)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Same as ConvertTFBatchMatMulWithTwoInputTensorsToXLADotV2O but handles
 // the case where input zero point is 0 and the Sub op has been folded.
@@ -475,7 +475,7 @@ def ConvertTFBatchMatMulWithTwoInputTensorsAndNoInputZeroPointToXLADotV2Op : Pat
    (HasRank $weight),
    (HasRankOf<0> $weight_zp),
    (IsInt32ElementType $batch_matmul)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Same as ConvertTFBatchMatMulWithTwoInputTensorsToXLADotV2O but handles
 // the case where weight zero point is 0 and the Sub op has been folded.
@@ -494,7 +494,7 @@ def ConvertTFBatchMatMulWithTwoInputTensorsAndNoWeightZeroPointToXLADotV2Op : Pa
    (HasRank $weight),
    (HasRankOf<0> $input_zp),
    (IsInt32ElementType $batch_matmul)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Same as ConvertTFBatchMatMulWithTwoInputTensorsToXLADotV2O but handles
 // the case where both zero points are 0 and the Sub op has been folded.
@@ -512,7 +512,7 @@ def ConvertTFBatchMatMulWithTwoInputTensorsAndNoBothZeroPointsToXLADotV2Op : Pat
    (HasRank $input),
    (HasRank $weight),
    (IsInt32ElementType $batch_matmul)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // Converts inlined Einsum pattern to TF XlaDotV2 op.
 def ConvertTFEinsumToXLADotV2Op : Pat<
@@ -528,4 +528,4 @@ def ConvertTFEinsumToXLADotV2Op : Pat<
    // 4. Both inputs have the graph ancestor of either const-(sub), or cast-sub.
    // 5. The type of the const tensor (or input of the cast operation) is int8.
    (IsEinsumOpSupported $einsum, $args, $equation)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;

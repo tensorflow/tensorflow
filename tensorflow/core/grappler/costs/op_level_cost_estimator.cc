@@ -2179,6 +2179,7 @@ OpLevelCostEstimator::OpDimensionsFromInputs(
     bool* found_unknown_shapes) {
   VLOG(2) << "op features: " << op_info.DebugString();
   VLOG(2) << "Original image shape: " << original_image_shape.DebugString();
+  *found_unknown_shapes = false;
   auto image_shape =
       MaybeGetMinimumShape(original_image_shape, 4, found_unknown_shapes);
   VLOG(2) << "Image shape: " << absl::StrJoin(image_shape, ", ");

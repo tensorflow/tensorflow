@@ -1,4 +1,4 @@
-load("//tensorflow:py.default.bzl", "py_binary", "py_library", "py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
@@ -28,7 +28,7 @@ flatbuffer_py_library(
     srcs = ["//tensorflow/lite/schema:conversion_metadata.fbs"],
 )
 
-py_library(
+py_strict_library(
     name = "interpreter",
     srcs = [
         "interpreter.py",
@@ -44,7 +44,7 @@ py_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "interpreter_test",
     srcs = ["interpreter_test.py"],
     data = [
@@ -69,7 +69,7 @@ py_test(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "tflite_convert",
     srcs = ["tflite_convert.py"],
     python_version = "PY3",
@@ -82,48 +82,38 @@ py_binary(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "tflite_convert_main_lib",
     srcs = ["tflite_convert.py"],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        ":tflite_convert_lib",
+        ":convert",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/platform:gfile",
-        "//tensorflow/python/util:keras_deps",
-        "@absl_py//absl:app",
-    ],
-)
-
-py_library(
-    name = "tflite_convert_lib",
-    srcs = ["tflite_convert.py"],
-    srcs_version = "PY3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":lite",
+        "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/toco/logging:gen_html",
-        "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/util:keras_deps",
         "@absl_py//absl:app",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "test_util",
     srcs = ["test_util.py"],
     srcs_version = "PY3",
     deps = [
         ":lite",
+        ":schema_py",
         ":schema_util",
-        "//tensorflow/lite/tools:visualize",
+        "//tensorflow/lite/tools:visualize_lib",
         "//tensorflow/python/framework",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "test_util_test",
     srcs = ["test_util_test.py"],
     data = [
@@ -133,17 +123,19 @@ py_test(
     python_version = "PY3",
     deps = [
         ":test_util",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:resource_loader",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "tflite_convert_test",
     srcs = ["tflite_convert_test.py"],
     data = [
         ":tflite_convert.par",
+        "//tensorflow/lite/python:tflite_convert",  # Necessary because the test runs the binary from the command line
         "@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb",
     ],
     python_version = "PY3",
@@ -157,8 +149,9 @@ py_test(
     deps = [
         ":convert",
         ":test_util",
-        ":tflite_convert",
+        ":tflite_convert_main_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:tf2",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:def_function",
@@ -177,10 +170,11 @@ py_test(
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/training:training_util",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "lite",
     srcs = ["lite.py"],
     srcs_version = "PY3",
@@ -194,6 +188,7 @@ py_library(
         ":lite_constants",
         ":op_hint",
         ":util",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/python/metrics",
         "//tensorflow/lite/python/optimize:calibrator",
@@ -204,6 +199,7 @@ py_library(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework",
+        "//tensorflow/python/framework:byte_swap_tensor",
         "//tensorflow/python/framework:convert_to_constants",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
@@ -213,6 +209,7 @@ py_library(
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
@@ -223,7 +220,7 @@ py_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
     data = [
@@ -237,16 +234,41 @@ py_test(
         "no_windows",
     ],
     deps = [
+        ":conversion_metadata_schema_py",
+        ":convert",
+        ":interpreter",
         ":lite",
+        ":lite_constants",
+        ":schema_py",
+        ":util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:convert_to_constants",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/framework:versions",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:logging_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/ops:variable_scope",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:resource_loader",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/training:training_util",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
     data = [
@@ -260,21 +282,40 @@ py_test(
         "no_windows",
     ],
     deps = [
+        ":conversion_metadata_schema_py",
+        ":convert",
+        ":interpreter",
         ":lite",
         ":lite_v2_test_util",
+        ":schema_py",
         ":test_util",
+        ":util",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_py",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
         "//tensorflow/lite/python/testdata:double_op",
+        "//tensorflow/lite/tools:flatbuffer_utils",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/framework:versions",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/ops:map_ops",
+        "//tensorflow/python/ops:rnn",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/saved_model:save_options",
+        "//tensorflow/python/trackable:autotrackable",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
         "@pypi_jax//:pkg",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "lite_v2_test_util",
     testonly = 1,
     srcs = ["lite_v2_test_util.py"],
@@ -283,28 +324,57 @@ py_library(
         "no_windows",
     ],
     deps = [
+        ":interpreter",
         ":lite",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/trackable:autotrackable",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "lite_flex_test",
     srcs = ["lite_flex_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        ":convert",
+        ":interpreter",
         ":lite",
         ":test_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/python/testdata:double_op",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:list_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/trackable:autotrackable",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "util",
     srcs = ["util.py"],
     srcs_version = "PY3",
@@ -314,7 +384,8 @@ py_library(
         ":op_hint",
         ":schema_py",
         ":schema_util",
-        "//tensorflow/lite/python:tflite_keras_util",
+        ":tflite_keras_util",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python/eager:function",
@@ -329,7 +400,7 @@ py_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "util_test",
     srcs = ["util_test.py"],
     python_version = "PY3",
@@ -354,7 +425,7 @@ py_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "tflite_keras_util",
     srcs = [
         "tflite_keras_util.py",
@@ -368,7 +439,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "wrap_toco",
     srcs = [
         "wrap_toco.py",
@@ -380,7 +451,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "lite_constants",
     srcs = ["lite_constants.py"],
     srcs_version = "PY3",
@@ -402,6 +473,8 @@ pytype_strict_library(
         ":lite_constants",
         ":util",
         ":wrap_toco",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
         "//tensorflow/lite/python/metrics:metrics_wrapper",
         "//tensorflow/lite/toco:model_flags_proto_py",
@@ -416,13 +489,17 @@ pytype_strict_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "op_hint",
     srcs = ["op_hint.py"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:graph_util",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/util:all_util",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
@@ -453,7 +530,7 @@ pytype_strict_contrib_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "convert_saved_model",
     srcs = ["convert_saved_model.py"],
     srcs_version = "PY3",
@@ -463,13 +540,17 @@ py_library(
     deps = [
         ":convert_phase",
         ":util",
+        "//tensorflow/python/client:session",
         "//tensorflow/python/framework:graph_util",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/python/saved_model:loader",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "convert_saved_model_test",
     srcs = ["convert_saved_model_test.py"],
     python_version = "PY3",
@@ -481,15 +562,22 @@ py_test(
     deps = [
         ":convert_saved_model",
         "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/layers",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "convert_file_to_c_source",
     srcs = ["convert_file_to_c_source.py"],
     python_version = "PY3",
@@ -508,7 +596,7 @@ sh_test(
     data = [":convert_file_to_c_source"],
 )
 
-py_library(
+py_strict_library(
     name = "schema_util",
     srcs = ["schema_util.py"],
     srcs_version = "PY3",
@@ -520,7 +608,7 @@ py_library(
 
 # Use py_library since the metrics module is imported in a try-except block,
 # which doesn't work with the pytype_strict_library.
-py_library(
+py_strict_library(
     name = "convert_phase",
     srcs = ["convert_phase.py"],
     srcs_version = "PY3",
@@ -531,7 +619,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "analyzer",
     srcs = [
         "analyzer.py",
@@ -539,13 +627,13 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/lite/python:wrap_toco",
+        ":wrap_toco",
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "analyzer_test",
     srcs = ["analyzer_test.py"],
     data = [
@@ -560,5 +648,6 @@ py_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
+        "//tensorflow/python/trackable:autotrackable",
     ],
 )

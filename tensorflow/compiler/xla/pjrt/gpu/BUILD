@@ -63,6 +63,7 @@ cc_library(
         "//tensorflow/tsl/framework:bfc_allocator",
         "//tensorflow/tsl/framework:device_id",
         "//tensorflow/tsl/framework:device_id_impl",
+        "//tensorflow/tsl/lib/strings:proto_serialization",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/profiler/lib:connected_traceme",

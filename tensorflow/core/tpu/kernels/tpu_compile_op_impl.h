@@ -19,9 +19,14 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_common.h"
+#include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 
 namespace tensorflow {
@@ -49,13 +54,14 @@ class TpuCompileOpKernelImpl : public TpuCompileOpKernelCommon {
             function, metadata, num_computations, return_hlo_protos,
             unload_cache_on_session_close, /*persistent_cache=*/nullptr) {}
 
-  Status Compile(
+  absl::Status Compile(
       const std::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
       const XLA_TpuMeshState* mesh_state,
       const std::vector<TensorShape>& arg_shapes,
       const TpuCompilationCacheKey* key,
       TpuProgramGroupInterface* tpu_program_group) override;
 };
+
 }  // namespace tpu
 }  // namespace tensorflow
 

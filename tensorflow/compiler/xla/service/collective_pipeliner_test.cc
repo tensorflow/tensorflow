@@ -23,10 +23,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace {
@@ -44,25 +47,25 @@ class CollectivePipelinerTest : public HloTestBase {
   }
 
  protected:
+  const HloPredicate IsAllGather = HloPredicateIsOp<HloOpcode::kAllGather>;
   HloModuleConfig config_;
 };
 
 StatusOr<bool> RunOptimizer(
     HloModule* module, bool last_run, int64_t level_to_operate_on = 0,
-    bool process_different_sized_ops = true,
+    bool pipeline_use_tree = false, bool process_different_sized_ops = true,
     CollectivePipeliner::PipeliningDirection direction =
         CollectivePipeliner::PipeliningDirection::kForward,
-    HloOpcode op = HloOpcode::kAllReduce) {
+    HloPredicate should_process = HloPredicateIsOp<HloOpcode::kAllReduce>) {
   CollectivePipeliner::Config config = {
-      /*op=*/op,
       /*level_to_operate_on=*/level_to_operate_on,
       /*max_pipelining_per_loop=*/INT64_MAX,
       /*last_run=*/last_run,
+      /*pipeline_use_tree=*/pipeline_use_tree,
       /*process_different_sized_ops=*/process_different_sized_ops,
-      /*/
       /*direction=*/
       direction,
-      /*should_process=*/HloPredicateTrue,
+      /*should_process=*/should_process,
   };
   HloPassPipeline pass("optimizer");
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
@@ -526,9 +529,10 @@ ENTRY entry {
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
+                           /*pipeline_use_tree=*/false,
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::PipeliningDirection::kForward,
-                           HloOpcode::kAllGather)
+                           IsAllGather)
                   .value());
   XLA_VLOG_LINES(1, module->ToString());
   auto* root = module->entry_computation()->root_instruction();
@@ -591,9 +595,10 @@ ENTRY entry {
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
+                           /*pipeline_use_tree=*/false,
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::PipeliningDirection::kForward,
-                           HloOpcode::kAllGather)
+                           IsAllGather)
                   .value());
   XLA_VLOG_LINES(1, module->ToString());
   auto* root = module->entry_computation()->root_instruction();
@@ -646,9 +651,10 @@ ENTRY entry {
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/false, 0,
+                           /*pipeline_use_tree=*/false,
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::PipeliningDirection::kForward,
-                           HloOpcode::kAllGather)
+                           IsAllGather)
                   .value());
   XLA_VLOG_LINES(1, module->ToString());
   RunOptimizer(module.get(), /*last_run=*/true, 1).value();
@@ -725,9 +731,10 @@ ENTRY %entry (p0: bf16[3,8,128]) -> bf16[3,8,128] {
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 1,
+                           /*pipeline_use_tree=*/false,
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::PipeliningDirection::kForward,
-                           HloOpcode::kAllGather)
+                           IsAllGather)
                   .value());
   XLA_VLOG_LINES(1, module->ToString());
   auto* root = module->entry_computation()->root_instruction();
@@ -805,9 +812,10 @@ ENTRY %entry (p0: bf16[3,8,128]) -> bf16[3,8,128] {
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
   EXPECT_FALSE(RunOptimizer(module.get(), /*last_run=*/false, 1,
+                            /*pipeline_use_tree=*/false,
                             /*process_different_sized_ops=*/false,
                             CollectivePipeliner::PipeliningDirection::kForward,
-                            HloOpcode::kAllGather)
+                            IsAllGather)
                    .value());
   XLA_VLOG_LINES(1, module->ToString());
 }
@@ -993,9 +1001,10 @@ ENTRY entry {
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
+                           /*pipeline_use_tree=*/false,
                            /*process_different_sized_ops=*/false,
                            CollectivePipeliner::PipeliningDirection::kBackward,
-                           HloOpcode::kAllGather)
+                           IsAllGather)
                   .value());
   XLA_VLOG_LINES(1, module->ToString());
   const int64_t while_count = absl::c_count_if(
@@ -1064,9 +1073,10 @@ ENTRY entry {
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
   EXPECT_FALSE(RunOptimizer(module.get(), /*last_run=*/true, 0,
+                            /*pipeline_use_tree=*/false,
                             /*process_different_sized_ops=*/false,
                             CollectivePipeliner::PipeliningDirection::kBackward,
-                            HloOpcode::kAllGather)
+                            IsAllGather)
                    .value());
   XLA_VLOG_LINES(1, module->ToString());
 }
@@ -1127,12 +1137,14 @@ ENTRY entry {
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/false, 0,
+                           /*pipeline_use_tree=*/false,
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::PipeliningDirection::kBackward,
-                           HloOpcode::kAllGather)
+                           IsAllGather)
                   .value());
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
+                           /*pipeline_use_tree=*/false,
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::PipeliningDirection::kForward)
                   .value());
@@ -1197,12 +1209,132 @@ ENTRY entry {
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/false, 0,
+                           /*pipeline_use_tree=*/false,
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::PipeliningDirection::kBackward,
-                           HloOpcode::kAllGather)
+                           IsAllGather)
                   .value());
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
+                           /*pipeline_use_tree=*/false,
+                           /*process_different_sized_ops=*/true,
+                           CollectivePipeliner::PipeliningDirection::kForward)
+                  .value());
+  XLA_VLOG_LINES(1, module->ToString());
+}
+
+TEST_F(CollectivePipelinerTest, MultiUsesElementwise) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.395, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  c2 = bf16[] constant(2.0)
+  bc = bf16[1,8,128] broadcast(c2)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  mul2 = bf16[1,8,128] multiply(ar.1, bc)
+  mul3 = bf16[1,8,128] multiply(mul2, ar.1)
+  mul4 = bf16[1,8,128] multiply(mul3, mul)
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, mul4, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128]) tuple(c0, p0)
+  while = (s32[], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
+                           /*pipeline_use_tree=*/true,
+                           /*process_different_sized_ops=*/true,
+                           CollectivePipeliner::PipeliningDirection::kForward)
+                  .value());
+  XLA_VLOG_LINES(1, module->ToString());
+}
+
+TEST_F(CollectivePipelinerTest, ElementWiseUser) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.395, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  mul2 = bf16[1,8,128] multiply(ar.1, mul)
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, mul2, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128]) tuple(c0, p0)
+  while = (s32[], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
+                           /*pipeline_use_tree=*/true,
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::PipeliningDirection::kForward)
                   .value());

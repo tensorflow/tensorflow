@@ -427,93 +427,118 @@ std::vector<std::unique_ptr<HloModule>> SliceModuleAndExtract(
     const HloModule* hlo_module,
     absl::Span<const HloInstruction*> slice_starting_instructions,
     const SlicingConfiguration& slicing_configuration) {
-  // Forward slicing.
-  SliceOutput forward_slice_output;
-  if (slicing_configuration.forward_slicing ==
-      SlicingConfiguration::ForwardSlicingConfig::kRoot) {
-    // Slice to the root instruction of the entry computation of `hlo_module`.
-    forward_slice_output = SliceModule(
-        hlo_module, slice_starting_instructions, /*frontier_selector=*/nullptr,
-        /*ignore_control_dependency=*/false, /*forward_slice=*/true,
-        /*nearest_common_ancestor_as_root=*/false);
-  } else if (slicing_configuration.forward_slicing ==
-             SlicingConfiguration::ForwardSlicingConfig::kNca) {
-    // slice to the nearest common ancestors of `slice_starting_instructions`
-    forward_slice_output = SliceModule(
-        hlo_module, slice_starting_instructions, /*frontier_selector=*/nullptr,
-        /*ignore_control_dependency=*/false, /*forward_slice=*/true,
-        /*nearest_common_ancestor_as_root=*/true);
-  }
-  VLOG(1) << "[Num of forward sliced insts]: "
-          << forward_slice_output.NumSlicedInstructions();
+  std::vector<std::unique_ptr<HloModule>> sliced_modules;
 
-  // Backward slicing.
-  SliceOutput backward_slice_output;
-  if (slicing_configuration.backward_slicing) {
-    backward_slice_output = SliceModule(
-        hlo_module, slice_starting_instructions, /*frontier_selector=*/nullptr,
-        /*ignore_control_dependency=*/false, /*forward_slice=*/false);
+  // Group `slice_starting_instructions` based on `slicing_group` configuration.
+  int slicing_group = slicing_configuration.slicing_group;
+  CHECK(slicing_group >= 1 || slicing_group == -1);
+  std::vector<absl::Span<const HloInstruction*>> grouped_instructions;
+  if (slicing_group == -1) {
+    grouped_instructions = {slice_starting_instructions};
   } else {
-    // Return the empty SliceOutput if backward slicing is not enabled.
-    backward_slice_output = SliceOutput();
-  }
-
-  // Combine forward slicing output and backward slicing output.
-  auto sliced_result = SliceOutput(SliceOutput::UnionSlicedInstructions(
-      forward_slice_output, backward_slice_output));
-
-  // Decide Root to start extraction based on `forward_slicing_config`.
-  const HloInstruction* extraction_root =
-      slicing_configuration.forward_slicing ==
-              SlicingConfiguration::ForwardSlicingConfig::kNca
-          ? forward_slice_output.nearest_common_ancestor_root()
-          : hlo_module->entry_computation()->root_instruction();
-  VLOG(1) << "[Root instruction of the sliced module]: "
-          << extraction_root->ToString();
-
-  // Exclude the instructions that are not in the slicing results.
-  auto extract_selector = [&sliced_result](const HloInstruction* hlo_inst) {
-    for (const auto& [computation, instructions] :
-         sliced_result.sliced_instructions()) {
-      if (instructions.contains(hlo_inst)) {
-        return true;
-      }
+    for (int i = 0; i < slice_starting_instructions.size();
+         i += slicing_group) {
+      // subspan can correctly handel the last group, which may be smaller than
+      // `slicing_group`.
+      grouped_instructions.push_back(
+          slice_starting_instructions.subspan(i, slicing_group));
     }
-    return false;
-  };
-
-  // Replace the excluded instructions in the entry computation with zeros.
-  auto replace_type_selector =
-      [](const HloInstruction* hlo_inst) -> ReplaceType {
-    return ReplaceType::kReplaceZeroBroadcast;
-  };
-
-  // Extract from the original module.
-  auto extracted_module =
-      ExtractModule(/*instruction=*/extraction_root, /*height=*/-1,
-                    /*extract_selector=*/extract_selector,
-                    /*replace_type_selector=*/replace_type_selector,
-                    /*cross_computation=*/true);
-
-  // Remove the custom-call to sharding if `remove_sharding` is specified.
-  if (slicing_configuration.remove_sharding) {
-    RemoveSharding(extracted_module.get());
   }
 
-  // Reduce the parameter instructions of tuple shape if
-  // `reduce_tuple_parameter` is specified.
-  if (slicing_configuration.reduce_tuple_parameter) {
-    ReduceTupleParameter(extracted_module.get());
-  }
+  for (const auto& grouped_slice_starting_instructions : grouped_instructions) {
+    // Forward slicing.
+    SliceOutput forward_slice_output;
+    if (slicing_configuration.forward_slicing ==
+        SlicingConfiguration::ForwardSlicingConfig::kRoot) {
+      // Slice to the root instruction of the entry computation of `hlo_module`.
+      forward_slice_output = SliceModule(
+          hlo_module, grouped_slice_starting_instructions,
+          /*frontier_selector=*/nullptr,
+          /*ignore_control_dependency=*/false, /*forward_slice=*/true,
+          /*nearest_common_ancestor_as_root=*/false);
+    } else if (slicing_configuration.forward_slicing ==
+               SlicingConfiguration::ForwardSlicingConfig::kNca) {
+      // slice to the nearest common ancestors of
+      // `grouped_slice_starting_instructions`
+      forward_slice_output = SliceModule(
+          hlo_module, grouped_slice_starting_instructions,
+          /*frontier_selector=*/nullptr,
+          /*ignore_control_dependency=*/false, /*forward_slice=*/true,
+          /*nearest_common_ancestor_as_root=*/true);
+    }
+    VLOG(1) << "[Num of forward sliced insts]: "
+            << forward_slice_output.NumSlicedInstructions();
 
-  // Verify if the extracted module (after processing) is valid or not.
-  HloVerifier verifier(/*layout_sensitive=*/false,
-                       /*allow_mixed_precision=*/true);
-  TF_CHECK_OK(verifier.Run(extracted_module.get()).status());
+    // Backward slicing.
+    SliceOutput backward_slice_output;
+    if (slicing_configuration.backward_slicing) {
+      backward_slice_output = SliceModule(
+          hlo_module, grouped_slice_starting_instructions,
+          /*frontier_selector=*/nullptr,
+          /*ignore_control_dependency=*/false, /*forward_slice=*/false);
+    } else {
+      // Return the empty SliceOutput if backward slicing is not enabled.
+      backward_slice_output = SliceOutput();
+    }
+
+    // Combine forward slicing output and backward slicing output.
+    auto sliced_result = SliceOutput(SliceOutput::UnionSlicedInstructions(
+        forward_slice_output, backward_slice_output));
+
+    // Decide Root to start extraction based on `forward_slicing_config`.
+    const HloInstruction* extraction_root =
+        slicing_configuration.forward_slicing ==
+                SlicingConfiguration::ForwardSlicingConfig::kNca
+            ? forward_slice_output.nearest_common_ancestor_root()
+            : hlo_module->entry_computation()->root_instruction();
+    VLOG(1) << "[Root instruction of the sliced module]: "
+            << extraction_root->ToString();
+
+    // Exclude the instructions that are not in the slicing results.
+    auto extract_selector = [&sliced_result](const HloInstruction* hlo_inst) {
+      for (const auto& [computation, instructions] :
+           sliced_result.sliced_instructions()) {
+        if (instructions.contains(hlo_inst)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // Replace the excluded instructions in the entry computation with zeros.
+    auto replace_type_selector =
+        [](const HloInstruction* hlo_inst) -> ReplaceType {
+      return ReplaceType::kReplaceZeroBroadcast;
+    };
+
+    // Extract from the original module.
+    auto extracted_module =
+        ExtractModule(/*instruction=*/extraction_root, /*height=*/-1,
+                      /*extract_selector=*/extract_selector,
+                      /*replace_type_selector=*/replace_type_selector,
+                      /*cross_computation=*/true);
+
+    // Remove the custom-call to sharding if `remove_sharding` is specified.
+    if (slicing_configuration.remove_sharding) {
+      RemoveSharding(extracted_module.get());
+    }
+
+    // Reduce the parameter instructions of tuple shape if
+    // `reduce_tuple_parameter` is specified.
+    if (slicing_configuration.reduce_tuple_parameter) {
+      ReduceTupleParameter(extracted_module.get());
+    }
+
+    // Verify if the extracted module (after processing) is valid or not.
+    HloVerifier verifier(/*layout_sensitive=*/false,
+                         /*allow_mixed_precision=*/true);
+    TF_CHECK_OK(verifier.Run(extracted_module.get()).status());
+
+    sliced_modules.emplace_back(std::move(extracted_module));
+  }
 
   // Return all the sliced modules.
-  std::vector<std::unique_ptr<HloModule>> sliced_modules;
-  sliced_modules.emplace_back(std::move(extracted_module));
+  CHECK_EQ(sliced_modules.size(), grouped_instructions.size());
   return sliced_modules;
 }
 

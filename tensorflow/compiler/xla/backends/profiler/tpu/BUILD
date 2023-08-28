@@ -13,9 +13,11 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/compiler/xla:internal"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_profiler_init_fns",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tsl_status_helper",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:types",

@@ -483,6 +483,7 @@ py_strict_library(
     srcs = ["session_manager.py"],
     srcs_version = "PY3",
     deps = [
+        ":saver",
         "//tensorflow/python/checkpoint:checkpoint_lib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/distribute:distribute_lib",

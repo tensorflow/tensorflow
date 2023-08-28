@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/python/xla.h"
+
 #include <cstdint>
 #include <exception>
 #include <functional>
@@ -28,6 +30,8 @@ limitations under the License.
 // Must be included first
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/tsl/python/lib/core/numpy.h"  //NOLINT
 // clang-format on
@@ -58,7 +62,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
 #ifdef XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::LoadTpuLibraryAndInitializeTpuStructFns
 #endif  // XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/python/custom_call_sharding.h"
@@ -137,7 +140,7 @@ bool IsSanitized() { return IsAsan() || IsMsan() || IsTsan(); }
 
 }  // namespace
 
-PYBIND11_MODULE(xla_extension, m) {
+static void Init(py::module_& m) {
   tsl::ImportNumpy();
 
   // Exceptions
@@ -201,6 +204,18 @@ PYBIND11_MODULE(xla_extension, m) {
                              [](const ClientAndPtr<PjRtDevice>& device) {
                                return device.client();
                              })
+      .def_property_readonly(
+          "local_hardware_id",
+          [](const ClientAndPtr<PjRtDevice>& device) -> std::optional<int> {
+            int local_hardware_id = device->local_hardware_id();
+            if (local_hardware_id == -1) {
+              return std::nullopt;
+            }
+            return local_hardware_id;
+          },
+          "Opaque hardware ID, e.g., the CUDA device number. In general, not "
+          "guaranteed to be dense, and not guaranteed to be defined on all "
+          "platforms.")
       .def("__str__", &PjRtDevice::DebugString)
       .def("__repr__", &PjRtDevice::ToString)
       .def("transfer_to_infeed",
@@ -353,8 +368,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("kind", &PjRtMemorySpace::memory_space_kind)
       .def("__str__", &PjRtMemorySpace::DebugString)
       .def("__repr__", &PjRtMemorySpace::ToString)
-      // Returns the devices this `Memory` is attached to.
-      .def("attached_devices",
+      // Returns the devices that can address this `Memory`.
+      .def("addressable_by_devices",
            [](const ClientAndPtr<PjRtMemorySpace>& memory_space) {
              std::vector<ClientAndPtr<PjRtDevice>> devices;
              auto span = memory_space->devices();
@@ -384,6 +399,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("local_device_count", &PyClient::addressable_device_count)
       .def("devices", &PyClient::Devices)
       .def("local_devices", &PyClient::LocalDevices)
+      .def("device_from_local_hardware_id",
+           xla::ValueOrThrowWrapper(&PyClient::DeviceFromLocalHardwareId))
       .def("live_buffers", &PyClient::LiveBuffers)
       .def("live_executables", &PyClient::LiveExecutables)
       .def("live_arrays", &PyClient::LiveArrays)
@@ -470,6 +487,12 @@ PYBIND11_MODULE(xla_extension, m) {
         [](std::string platform_name, std::string library_path) {
           xla::ThrowIfError(pjrt::LoadPjrtPlugin(platform_name, library_path));
         });
+  m.def("pjrt_plugin_initialized", [](std::string platform_name) -> bool {
+    return xla::ValueOrThrow(pjrt::IsPjrtPluginInitialized(platform_name));
+  });
+  m.def("initialize_pjrt_plugin", [](std::string platform_name) {
+    return xla::ThrowIfError(pjrt::InitializePjrtPlugin(platform_name));
+  });
 
 #ifdef XLA_PYTHON_ENABLE_GPU
   py::class_<GpuAllocatorConfig> alloc_config(m, "GpuAllocatorConfig");
@@ -524,6 +547,74 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("distributed_client") = nullptr, py::arg("node_id") = 0,
       py::arg("num_nodes") = 1, py::arg("allowed_devices") = std::nullopt,
       py::arg("platform_name") = std::nullopt);
+  m.def(
+      "get_mock_gpu_client",
+      [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
+         std::shared_ptr<DistributedRuntimeClient> distributed_client,
+         int node_id, int num_nodes,
+         std::optional<std::set<int>> allowed_devices,
+         std::optional<std::string> platform_name)
+          -> std::shared_ptr<PyClient> {
+        py::gil_scoped_release gil_release;
+        PjRtClient::KeyValueGetCallback kv_get = nullptr;
+        PjRtClient::KeyValuePutCallback kv_put = nullptr;
+        absl::flat_hash_map<std::string, std::string> device_maps;
+        absl::Mutex mu;
+        if (num_nodes > 1) {
+          kv_get = [&device_maps, &mu, &num_nodes](
+                       const std::string& k,
+                       absl::Duration timeout) -> xla::StatusOr<std::string> {
+            std::string result;
+            {
+              absl::MutexLock lock(&mu);
+              if (device_maps.find(k) != device_maps.end()) {
+                result = device_maps[k];
+              } else {
+                // TODO(wangtao): Move fake topology logic down to
+                // GetStreamExecutorGpuClient.
+                // Get device_id from key.
+                int device_id;
+                std::vector<std::string> tokens = absl::StrSplit(k, ':');
+                if (tokens.size() != 2 ||
+                    !absl::SimpleAtoi(tokens[1], &device_id)) {
+                  device_id = num_nodes - 1;
+                }
+                // Return fake local topology with device_id info back.
+                LocalTopologyProto local;
+                local.set_boot_id("fake_boot_id");
+                local.set_node_id(device_id);
+                DeviceProto* device = local.add_devices();
+                device->set_global_device_id(device_id);
+                device->set_name("fake_device");
+                device->set_vendor("fake_vendor");
+                result = local.SerializeAsString();
+              }
+            }
+            return result;
+          };
+          kv_put = [&device_maps, &mu](const std::string& k,
+                                       const std::string& v) -> xla::Status {
+            {
+              absl::MutexLock lock(&mu);
+              device_maps[k] = v;
+            }
+            return xla::OkStatus();
+          };
+        }
+        std::unique_ptr<PjRtClient> client =
+            xla::ValueOrThrow(GetStreamExecutorGpuClient(
+                asynchronous, allocator_config, node_id, num_nodes,
+                allowed_devices, platform_name,
+                /*should_stage_host_to_device_transfers=*/true, kv_get,
+                kv_put));
+        return std::make_shared<PyClient>(
+            ifrt::PjRtClient::Create(std::move(client)));
+      },
+      py::arg("asynchronous") = true,
+      py::arg("allocator_config") = GpuAllocatorConfig(),
+      py::arg("distributed_client") = nullptr, py::arg("node_id") = 0,
+      py::arg("num_nodes") = 1, py::arg("allowed_devices") = std::nullopt,
+      py::arg("platform_name") = std::nullopt);
 #endif  // XLA_PYTHON_ENABLE_GPU
 
   m.def(
@@ -533,15 +624,6 @@ PYBIND11_MODULE(xla_extension, m) {
          std::shared_ptr<DistributedRuntimeClient> distributed_client)
           -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
-#ifdef XLA_PYTHON_ENABLE_TPU
-#if !defined(PLATFORM_GOOGLE)
-        if (absl::AsciiStrToLower(platform_name) == "tpu") {
-          // TODO(b/261484192): handle device specific initialization.
-          xla::ThrowIfError(
-              tensorflow::tpu::LoadTpuLibraryAndInitializeTpuStructFns());
-        }
-#endif  // PLATFORM_GOOGLE
-#endif  // XLA_PYTHON_ENABLE_TPU
         PjRtClient::KeyValueGetCallback kv_get = nullptr;
         PjRtClient::KeyValuePutCallback kv_put = nullptr;
         if (distributed_client != nullptr) {
@@ -701,7 +783,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def("buffer_to_dlpack_managed_tensor",
         xla::ValueOrThrowWrapper(BufferToDLPackManagedTensor),
-        py::arg("buffer"), py::arg("take_ownership") = true);
+        py::arg("buffer"), py::arg("take_ownership") = true,
+        py::arg("stream") = py::none());
   m.def(
       "dlpack_managed_tensor_to_buffer",
       [](const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
@@ -950,7 +1033,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("platform_version",
                              [](PjRtTopologyDescription& topology) {
                                return topology.platform_version();
-                             });
+                             })
+      .def("serialize", [](PjRtTopologyDescription& topology) {
+        return ValueOrThrow(topology.Serialize());
+      });
 
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")
       .def("hlo_modules",
@@ -987,10 +1073,31 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("committed") = true, py::arg("force_copy") = false,
       py::arg("host_buffer_semantics") =
           PjRtClient::HostBufferSemantics::kZeroCopy);
-  m.def("canonicalize_memory_kind",
-        [](py::object memory_kind, py::object device) -> py::object {
-          return jax::CanonicalizeMemoryKind(memory_kind, device);
-        });
+  m.def(
+      "check_and_canonicalize_memory_kind",
+      [](py::object memory_kind, jax::PyDeviceList* device_list) -> py::object {
+        return jax::CheckAndCanonicalizeMemoryKind(memory_kind, device_list);
+      });
 }  // NOLINT(readability/fn_size)
+
+// This code in essence is a copy of PYBIND11_MODULE(). We can't just call
+// PYBIND11_MODULE because we want the entry point of the module to be in
+// the py_extension() translation unit but we don't want anything else to be
+// defined there. Inside Google, py_extension() translation units are linked
+// differently and they end up with a different instance of the
+// py::module_local() state, breaking that feature of pybind11.
+static py::module_::module_def xla_module_def;
+
+PyObject* InitializeXlaExtension() {
+  PYBIND11_CHECK_PYTHON_VERSION
+  PYBIND11_ENSURE_INTERNALS_READY
+  auto m = py::module_::create_extension_module("xla_extension", nullptr,
+                                                &xla_module_def);
+  try {
+    Init(m);
+    return m.ptr();
+  }
+  PYBIND11_CATCH_INIT_EXCEPTIONS
+}
 
 }  // namespace xla

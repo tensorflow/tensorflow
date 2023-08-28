@@ -215,12 +215,27 @@ SliceOutput SliceModule(
 // each parameters of entry computation, if it is of tuple type, we will remove
 // the elements that are not used by any other instructions. This is useful when
 // slicing from a large module.
+//
+// `slicing_group`: `SliceModuleAndExtract` groups
+// `slicing_starting_instructions` into multiple non-overlapping groups, and
+// for each group of `slicing_starting_instructions`, slice/extract an HLO
+// module. The `slicing_group` specifies the number of
+// `slicing_starting_instructions` each group contains. For example,
+// say `slicing_start_instructions` = {a, b, c ,d}. If `slicing_group` = 1,
+// there would be 4 sliced/extracted HLO modules, sliced from {a}, {b}, {c},
+// {d}, respectively. If `slicing_group` = 2, there would be 2 sliced/extracted
+// HLO modules, sliced from {a, b}, {c, d}, respectively. The
+// `slicing_starting_instructions` are grouped accoding to order in the
+// absl::Span. When `slicing_group` = -1, there would be only one group which
+// contains all the `slice_starting_instructions`, so there would be only 1
+// sliced/extracted module. `slicing_group` can only be -1 or positive integer.
 struct SlicingConfiguration {
   enum class ForwardSlicingConfig { kRoot, kNca };
   ForwardSlicingConfig forward_slicing = ForwardSlicingConfig::kRoot;
   bool backward_slicing = false;
   bool remove_sharding = false;
   bool reduce_tuple_parameter = false;
+  int slicing_group = -1;
 };
 
 // Slices from the `hlo_module` from the `slicing_starting_instructions`,

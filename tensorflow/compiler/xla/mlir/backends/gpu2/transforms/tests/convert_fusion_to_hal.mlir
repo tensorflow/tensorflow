@@ -25,9 +25,14 @@ func.func @fusion(
 // CHECK:   %[[ARG0:.*]]: tensor<12xi8>, %[[ARG1:.*]]: tensor<12xi8>,
 // CHECK:   %[[ARG2:.*]]: tensor<12xi8> {lmhlo.output_index = {{.*}}}
 // CHECK: ) {
-// CHECK:   %[[TENSOR0:.*]] = iree_input.tensor.import {{.*}} -> tensor<3xf32>
-// CHECK:   %[[TENSOR1:.*]] = iree_input.tensor.import {{.*}} -> tensor<3xf32>
-// CHECK:   %[[TENSOR2:.*]] = iree_input.tensor.import {{.*}} -> tensor<3xf32>
+
+// CHECK-DAG: %[[BUFFER0:.*]] = iree_input.tensor.export %[[ARG0]]
+// CHECK-DAG: %[[BUFFER1:.*]] = iree_input.tensor.export %[[ARG1]]
+// CHECK-DAG: %[[BUFFER2:.*]] = iree_input.tensor.export %[[ARG2]]
+// CHECK-DAG: %[[TENSOR0:.*]] = iree_input.tensor.import %[[BUFFER0]]
+// CHECK-DAG: %[[TENSOR1:.*]] = iree_input.tensor.import %[[BUFFER1]]
+// CHECK-DAG: %[[TENSOR2:.*]] = iree_input.tensor.import %[[BUFFER2]]
+
 // CHECK:   %[[RES:.*]] = iree_input.dispatch @xla.module.ptx
 // CHECK:     (%[[TENSOR0]], %[[TENSOR1]], %[[TENSOR2]]) {{.*}} -> %[[TENSOR2]]
 // CHECK:   iree_input.optimization_barrier %[[RES]] : tensor<3xf32>
@@ -79,9 +84,14 @@ func.func @fusions(
 // CHECK:   %[[ARG0:.*]]: tensor<12xi8>, %[[ARG1:.*]]: tensor<12xi8>,
 // CHECK:   %[[ARG2:.*]]: tensor<12xi8> {lmhlo.output_index = {{.*}}}
 // CHECK: ) {
-// CHECK:   %[[TENSOR0:.*]] = iree_input.tensor.import {{.*}} -> tensor<3xf32>
-// CHECK:   %[[TENSOR1:.*]] = iree_input.tensor.import {{.*}} -> tensor<3xf32>
-// CHECK:   %[[TENSOR2:.*]] = iree_input.tensor.import {{.*}} -> tensor<3xf32>
+
+// CHECK-DAG: %[[BUFFER0:.*]] = iree_input.tensor.export %[[ARG0]]
+// CHECK-DAG: %[[BUFFER1:.*]] = iree_input.tensor.export %[[ARG1]]
+// CHECK-DAG: %[[BUFFER2:.*]] = iree_input.tensor.export %[[ARG2]]
+// CHECK-DAG: %[[TENSOR1:.*]] = iree_input.tensor.import %[[BUFFER1]]
+// CHECK-DAG: %[[TENSOR0:.*]] = iree_input.tensor.import %[[BUFFER0]]
+// CHECK-DAG: %[[TENSOR2:.*]] = iree_input.tensor.import %[[BUFFER2]]
+
 // CHECK:   %[[RES0:.*]] = iree_input.dispatch @xla.module.ptx
 // CHECK:     (%[[TENSOR0]], %[[TENSOR1]], %[[TENSOR2]]) {{.*}} -> %[[TENSOR2]]
 // CHECK:   %[[RES1:.*]] = iree_input.dispatch @xla.module.ptx

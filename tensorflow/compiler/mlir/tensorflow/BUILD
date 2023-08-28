@@ -1572,7 +1572,7 @@ tf_cc_test(
     deps = [
         ":dump_mlir_util",
         ":tensorflow",
-        ":tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -1635,7 +1635,7 @@ tf_cc_test(
         ":bridge_logger",
         ":serialize_mlir_module_utils",
         ":tensorflow",
-        ":tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:test",
@@ -1652,7 +1652,7 @@ tf_cc_test(
         ":bridge_logger",
         ":serialize_mlir_module_utils",
         ":tensorflow",
-        ":tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:test",
@@ -2002,25 +2002,9 @@ build_test(
 # Required as we created the transforms subpackage and need to update
 # these BUILD targets in a follow up.
 aliased_targets = [
-    "set_tpu_infeed_layout",
-    "shape_inference_pass",
-    "tensorflow_optimize_inc_gen",
-    "lower_tf_lib",
     "tensorflow_passes",
-    "tf_saved_model_passes",
-    "graph_optimization_pass_registration",
-    "tensorflow_optimize_td_files",
-    "bridge_pass_test_pipeline_registration",
-    "tensorflow_reduce_patterns_inc_gen",
-    "tf_device_pass_inc_gen",
-    "tensorflow_test_passes",
-    "tf_graph_optimization_pass",
-    "unroll_batch_matmul_pass",
-    "tf_dialect_passes",
-    "graph_optimization_pass",
-    "constant_fold_utils",
     "tf_saved_model_freeze_variables",
-    "tf_saved_model_asset_sinking_pass",
+    "tf_dialect_passes",
 ]
 
 [

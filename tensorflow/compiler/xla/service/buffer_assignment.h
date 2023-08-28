@@ -639,7 +639,9 @@ class BufferAssigner {
       HloDataflowAnalysis::CanShareBuffer can_share_buffer = nullptr,
       std::unique_ptr<memory_space_assignment::PresetAssignments>
           preset_assignments = {},
-      const PrivateStacks& private_stacks = {});
+      const PrivateStacks& private_stacks = {},
+      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+          heap_buffer_interval_compare = nullptr);
 
  private:
   BufferAssigner(bool allocate_buffers_for_constants, Colorer colorer,
@@ -658,7 +660,9 @@ class BufferAssigner {
       BufferValue::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment,
       HloDataflowAnalysis::CanShareBuffer can_share_buffer,
-      const PrivateStacks& private_stacks);
+      const PrivateStacks& private_stacks,
+      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+          heap_buffer_interval_compare);
 
   // Assigns buffers to the instructions in the given computations. "assignment"
   // is modified to reflect the new buffer assignments. If is_thread_local is
@@ -701,7 +705,9 @@ class BufferAssigner {
                                 absl::flat_hash_set<const HloValue*>>&
           buffers_to_assign_sequentially,
       bool run_whole_module_heap_simulation, BufferAssignment* assignment,
-      const PrivateStacks& private_stacks);
+      const PrivateStacks& private_stacks,
+      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+          heap_buffer_interval_compare);
 
   // Uses the results of the heap simulator to create a single allocation, with
   // LogicalBuffers packed to specific offsets.

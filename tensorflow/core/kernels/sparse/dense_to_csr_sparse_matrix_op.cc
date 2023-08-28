@@ -201,7 +201,7 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
           c, calculate_nnz_from_indices(c, indices, nnz_per_batch_device),
           done);
 
-      perftools::gputools::DeviceMemoryBase nnz_per_batch_device_ptr(
+      stream_executor::DeviceMemoryBase nnz_per_batch_device_ptr(
           static_cast<void*>(nnz_per_batch_device.data()));
 
       OP_REQUIRES_ASYNC(

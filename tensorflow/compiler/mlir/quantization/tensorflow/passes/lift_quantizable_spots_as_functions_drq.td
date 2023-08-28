@@ -36,7 +36,7 @@ def LiftConv : Pat<
       (NamedAttr<"padding"> $padding),
       (NamedAttr<"explicit_paddings"> $explicit_paddings),
       (NamedAttr<"dilations"> $dilations))),
-  [(IsNotInLiftedFunc $res), (IsConstTensor $filter)], (addBenefit 1)>;
+  [(IsNotInLiftedFunc $res), (IsConstTensor $filter)], [], (addBenefit 1)>;
 
 def LiftDepthwiseConv : Pat<
   (TF_DepthwiseConv2dNativeOp:$res $input, $filter, $strides, $padding,
@@ -49,7 +49,7 @@ def LiftDepthwiseConv : Pat<
       (NamedAttr<"padding"> $padding),
       (NamedAttr<"explicit_paddings"> $explicit_paddings),
       (NamedAttr<"dilations"> $dilations))),
-  [(IsNotInLiftedFunc $res), (IsConstTensor $filter)], (addBenefit 1)>;
+  [(IsNotInLiftedFunc $res), (IsConstTensor $filter)], [], (addBenefit 1)>;
 
 def LiftMatMul : Pat<
   (TF_MatMulOp:$res $a, $b, $transpose_a, $transpose_b),
@@ -59,7 +59,7 @@ def LiftMatMul : Pat<
     (NamedAttributeList
       (NamedAttr<"transpose_a"> $transpose_a),
       (NamedAttr<"transpose_b"> $transpose_b))),
-  [(IsNotInLiftedFunc $res), (IsConstTensor $b)], (addBenefit 1)>;
+  [(IsNotInLiftedFunc $res), (IsConstTensor $b)], [], (addBenefit 1)>;
 
 def LiftGather : Pat<
   (TF_GatherV2Op:$res $params, $indices, $axis, $batch_dims),
@@ -68,7 +68,7 @@ def LiftGather : Pat<
     (ResultList $res),
     (NamedAttributeList
       (NamedAttr<"batch_dims"> $batch_dims))),
-  [(IsNotInLiftedFunc $res), (IsConstTensor $params)], (addBenefit 1)>;
+  [(IsNotInLiftedFunc $res), (IsConstTensor $params)], [], (addBenefit 1)>;
 
 def LiftConv3D : Pat<
   (TF_Conv3DOp:$res $input, $filter, $strides, $padding,
@@ -80,7 +80,7 @@ def LiftConv3D : Pat<
       (NamedAttr<"strides"> $strides),
       (NamedAttr<"padding"> $padding),
       (NamedAttr<"dilations"> $dilations))),
-  [(IsNotInLiftedFunc $res), (IsConstTensor $filter)], (addBenefit 1)>;
+  [(IsNotInLiftedFunc $res), (IsConstTensor $filter)], [], (addBenefit 1)>;
 
 def LiftBatchMatMul : Pat<
   (TF_BatchMatMulV2Op:$res $x, $y, $adj_x, $adj_y),
@@ -90,4 +90,4 @@ def LiftBatchMatMul : Pat<
     (NamedAttributeList
       (NamedAttr<"adj_x"> $adj_x),
       (NamedAttr<"adj_y"> $adj_y))),
-  [(IsNotInLiftedFunc $res), (IsConstTensor $y)], (addBenefit 1)>;
+  [(IsNotInLiftedFunc $res), (IsConstTensor $y)], [], (addBenefit 1)>;

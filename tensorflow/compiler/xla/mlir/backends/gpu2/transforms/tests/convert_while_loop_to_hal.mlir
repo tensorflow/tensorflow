@@ -40,12 +40,16 @@ func.func @main(%arg0: memref<4xi8>, %arg1: memref<4xi8>, %arg2: memref<1xi8>) {
 // CHECK:   %[[ARG2:.*]]: tensor<1xi8>
 // CHECK: ) {
 
-// CHECK:   %[[BUFFER:.*]] = iree_input.tensor.import {{.*}} -> tensor<1xf32>
-// CHECK:   %[[CST:.*]] = iree_input.tensor.import {{.*}} -> tensor<1xf32>
-// CHECK:   %[[PRED:.*]] = iree_input.tensor.import {{.*}} -> tensor<1xi1>
+// CHECK-DAG: %[[BUFFER0:.*]] = iree_input.tensor.export %[[ARG0]]
+// CHECK-DAG: %[[BUFFER1:.*]] = iree_input.tensor.export %[[ARG1]]
+// CHECK-DAG: %[[BUFFER2:.*]] = iree_input.tensor.export %[[ARG2]]
+
+// CHECK-DAG: %[[TENSOR:.*]] = iree_input.tensor.import %[[BUFFER0]]
+// CHECK-DAG: %[[CST:.*]] = iree_input.tensor.import %[[BUFFER1]]
+// CHECK-DAG: %[[PRED:.*]] = iree_input.tensor.import %[[BUFFER2]]
 
 // CHECK:   %[[LOOP:.*]]:2 = scf.while (%[[COND_PRED:.*]] = %[[PRED]],
-// CHECK:                               %[[COND_BUF:.*]] = %[[BUFFER]])
+// CHECK:                               %[[COND_BUF:.*]] = %[[TENSOR]])
 // CHECK:     : (tensor<1xi1>, tensor<1xf32>) -> (tensor<1xi1>, tensor<1xf32>) {
 // CHECK:      %[[NEXT_PRED:.*]] = iree_input.dispatch @xla.module.ptx
 // CHECK:        (%[[COND_PRED]], %[[COND_PRED]]) {{.*}} -> %[[COND_PRED]]
@@ -56,9 +60,9 @@ func.func @main(%arg0: memref<4xi8>, %arg1: memref<4xi8>, %arg2: memref<1xi8>) {
 // CHECK:   do {
 // CHECK:     ^[[BB:.*]](%[[BODY_PRED:.*]]: tensor<1xi1>,
 // CHECK:                %[[BODY_BUF:.*]]: tensor<1xf32>):
-// CHECK:     %[[NEXT_BUFFER:.*]] = iree_input.dispatch @xla.module.ptx
+// CHECK:     %[[NEXT_TENSOR:.*]] = iree_input.dispatch @xla.module.ptx
 // CHECK:       (%[[BODY_BUF]], %[[CST]], %[[BODY_BUF]]) {{.*}} -> %[[BODY_BUF]]
-// CHECK:     scf.yield %[[BODY_PRED]], %[[NEXT_BUFFER]]
+// CHECK:     scf.yield %[[BODY_PRED]], %[[NEXT_TENSOR]]
 // CHECK:   }
 
 // CHECK: }

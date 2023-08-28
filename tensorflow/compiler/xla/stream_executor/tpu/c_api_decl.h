@@ -342,6 +342,7 @@ typedef struct XLA_HloModule {
 } XLA_HloModule;
 
 typedef struct XLA_TransferManager XLA_TransferManager;
+typedef struct XLA_TpuMeshState XLA_TpuMeshState;
 
 typedef struct XLA_ComputationPlacer XLA_ComputationPlacer;
 

@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/util/command_line_flags.h"
 
 namespace xla {
@@ -64,6 +63,8 @@ int RunProfiler(int argc, char** argv) {
       tsl::Flag("output_file", &output_file,
                 "Output measurements protobuf to the destination file."),
   };
+  // Allow setting flags as command line argument (in addition to XLA_FLAGS
+  // environment variable).
   AppendDebugOptionsFlags(&flag_list);
   bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(kUsage.data(), &argc, &argv);
@@ -77,34 +78,40 @@ int RunProfiler(int argc, char** argv) {
       gpu::GetGpuDeviceInfo(runner.backend().stream_executors()[0]);
   VLOG(0) << dev_info.name << " @ " << dev_info.clock_rate_ghz << " GHz";
 
-  constexpr int64_t kInputSize = 1;
-
-  const std::vector<PrimitiveType> dtypes = {S8,  S16, S32, S64, U8,  U16, U32,
-                                             U64, F16, F32, F64, C64, C128};
-  const std::vector<HloOpcode> unary_ops = {
-      HloOpcode::kCbrt,     HloOpcode::kCos,   HloOpcode::kExp,
-      HloOpcode::kExpm1,    HloOpcode::kLog,   HloOpcode::kLog1p,
-      HloOpcode::kLogistic, HloOpcode::kRsqrt, HloOpcode::kSin,
-      HloOpcode::kSqrt,     HloOpcode::kTanh};
-  const std::vector<HloOpcode> binary_ops = {
-      HloOpcode::kAdd,      HloOpcode::kAtan2, HloOpcode::kDivide,
-      HloOpcode::kMultiply, HloOpcode::kPower, HloOpcode::kSubtract};
+  const std::vector<PrimitiveType> dtypes = {
+      S8, S16, S32, S64, U8, U16, U32, U64, F16, F32, F64, C64, C128,
+  };
+  const std::vector<HloOpcode> ops = {
+      // Unary
+      HloOpcode::kCbrt,
+      HloOpcode::kCos,
+      HloOpcode::kExp,
+      HloOpcode::kExpm1,
+      HloOpcode::kLog,
+      HloOpcode::kLog1p,
+      HloOpcode::kLogistic,
+      HloOpcode::kRsqrt,
+      HloOpcode::kSin,
+      HloOpcode::kSqrt,
+      HloOpcode::kTanh,
+      // Binary
+      HloOpcode::kAdd,
+      HloOpcode::kAtan2,
+      HloOpcode::kDivide,
+      HloOpcode::kMultiply,
+      HloOpcode::kPower,
+      HloOpcode::kSubtract,
+  };
 
   HloInstructionProfileList instr_profiles;
 
   for (const PrimitiveType data_type : dtypes) {
-    for (const HloOpcode op : unary_ops) {
-      auto result =
-          profiler.MeasureClockCyclesPerOp(op, false, data_type, kInputSize);
+    for (const HloOpcode op : ops) {
+      auto result = profiler.MeasureClockCyclesPerOp(op, data_type);
       if (result.ok()) {
         instr_profiles.add_entries()->Swap(&*result);
-      }
-    }
-    for (const HloOpcode op : binary_ops) {
-      auto result =
-          profiler.MeasureClockCyclesPerOp(op, true, data_type, kInputSize);
-      if (result.ok()) {
-        instr_profiles.add_entries()->Swap(&*result);
+      } else {
+        LOG(ERROR) << result.status();
       }
     }
   }

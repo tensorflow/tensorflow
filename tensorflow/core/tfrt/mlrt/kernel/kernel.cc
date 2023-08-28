@@ -92,7 +92,9 @@ class AsyncWhileOp : mlrt::KernelFrame {
       std::vector<mlrt::Future> mutable_tensor_futures,
       std::vector<tensorflow::tfrt_stub::FallbackTensor> immutable_tensors,
       std::vector<mlrt::Promise> final_promises, mlrt::bc::Function body_fn,
-      mlrt::ExecutionContext& execution_context, uint32_t counter);
+      std::pair<mlrt::AsyncHandle::Promise, mlrt::AsyncHandle>
+          preallocated_handle_promise,
+      uint32_t counter);
 
   // A utility function to populate the results in final_promises.
   static void PopulateFinalPromise(
@@ -108,7 +110,9 @@ void AsyncWhileOp::OnPredicateReady(
     std::vector<mlrt::Future> mutable_tensor_futures,
     std::vector<tensorflow::tfrt_stub::FallbackTensor> immutable_tensors,
     std::vector<mlrt::Promise> final_promises, mlrt::bc::Function body_fn,
-    mlrt::ExecutionContext& execution_context, uint32_t counter) {
+    std::pair<mlrt::AsyncHandle::Promise, mlrt::AsyncHandle>
+        preallocated_handle_promise,
+    uint32_t counter) {
   // final_promises[0] contains the final predicate and serves something similar
   // as async_handle that the caller can wait and know the program is complete.
   DCHECK_EQ(final_promises.size(),
@@ -129,6 +133,9 @@ void AsyncWhileOp::OnPredicateReady(
   bool predicate_value = predicate.tensor().scalar<bool>()();
   if (!predicate_value) {
     // No more iterations.
+    // Fake done for the preallocated promise and handle.
+    auto& [promise, async_handle] = preallocated_handle_promise;
+    std::move(promise).Finish(absl::OkStatus());
     if (async_handles.empty()) {
       // Initial predicate is false
       PopulateFinalPromise(final_promises, mutable_tensor_futures,
@@ -194,24 +201,24 @@ void AsyncWhileOp::OnPredicateReady(
   }
 
   // Launch this iteration.
-  auto [promise, handle] = mlrt::AsyncHandle::Allocate(execution_context);
-  auto& thread_execution_context = handle.execution_context();
+  auto& [promise, async_handle] = preallocated_handle_promise;
+  auto& thread_execution_context = async_handle.execution_context();
   thread_execution_context.set_exit_handler(
       [&execution_context = thread_execution_context,
        promise = std::move(promise)]() mutable {
         std::move(promise).Finish(execution_context.status());
       });
 
+  // Preallocated context for the next iteration. This is to avoid data race
+  // on params copy.
+  auto next_handle_promise =
+      mlrt::AsyncHandle::Allocate(thread_execution_context);
+
   thread_execution_context.CallByMove(body_fn, absl::MakeSpan(body_args),
                                       absl::Span<mlrt::Value>());
 
-  thread_execution_context.work_queue()->AddTask(
-      [&execution_context = thread_execution_context]() {
-        mlrt::Execute(execution_context);
-      });
-
   // save handles
-  async_handles.push_back(std::move(handle));
+  async_handles.push_back(std::move(async_handle));
 
   std::move(predicate_future)
       .Then([futures = std::move(next_futures),
@@ -219,10 +226,14 @@ void AsyncWhileOp::OnPredicateReady(
              final_promises = std::move(final_promises),
              body_args = std::move(body_args),
              async_handles = std::move(async_handles), body_fn, counter,
-             &execution_context = thread_execution_context](
+             preallocated_handle_promise = std::move(next_handle_promise)](
                 absl::StatusOr<tensorflow::tfrt_stub::FallbackTensor>
                     predicate_result) mutable {
         if (!predicate_result.ok()) {
+          // Fake done for the preallocated promise and handle.
+          auto& [promise, async_handle] = preallocated_handle_promise;
+          std::move(promise).Finish(predicate_result.status());
+
           auto status = predicate_result.status();
           mlrt::Future await_all =
               mlrt::AwaitAll(absl::MakeSpan(async_handles));
@@ -239,8 +250,12 @@ void AsyncWhileOp::OnPredicateReady(
         // Keep body_args alive for thread execution.
         OnPredicateReady(*predicate_result, std::move(async_handles),
                          std::move(futures), immutable_tensors,
-                         std::move(final_promises), body_fn, execution_context,
-                         ++counter);
+                         std::move(final_promises), body_fn,
+                         std::move(preallocated_handle_promise), ++counter);
+      });
+  thread_execution_context.work_queue()->AddTask(
+      [&execution_context = thread_execution_context]() {
+        mlrt::Execute(execution_context);
       });
 }
 
@@ -333,10 +348,13 @@ void AsyncWhileOp::Invoke() {
         arg_iter->Get<tensorflow::tfrt_stub::FallbackTensor>());
     arg_iter++;
   }
+  std::pair<mlrt::AsyncHandle::Promise, mlrt::AsyncHandle>
+      preallocated_handle_promise =
+          mlrt::AsyncHandle::Allocate(execution_context());
   OnPredicateReady(arguments()[0].Get<tensorflow::tfrt_stub::FallbackTensor>(),
                    /*async_handles=*/{}, std::move(mutable_tensor_futures),
                    immutable_tensors, std::move(final_promises), body_fn,
-                   execution_context(),
+                   std::move(preallocated_handle_promise),
                    /*counter=*/0);
 }
 

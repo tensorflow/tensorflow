@@ -22,8 +22,10 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -434,11 +436,13 @@ StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
   return args.buffer_pointer;
 }
 
-StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
+StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtCApiClient::BufferFromHostBufferInternalImpl(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+    std::function<void()> on_done_with_host_buffer,
+    std::variant<PjRtDevice*, PjRtMemorySpace*> device_or_memory,
     const Layout* device_layout) {
   if (host_buffer_semantics != HostBufferSemantics::kImmutableOnlyDuringCall &&
       host_buffer_semantics != HostBufferSemantics::kZeroCopy &&
@@ -478,7 +482,18 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
 
   args.host_buffer_semantics =
       ::pjrt::ConvertToPjRtHostBufferSemantics(host_buffer_semantics);
-  args.device = tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
+  if (std::holds_alternative<PjRtDevice*>(device_or_memory)) {
+    args.device = tensorflow::down_cast<PjRtCApiDevice*>(
+                      std::get<PjRtDevice*>(device_or_memory))
+                      ->c_device();
+    args.memory = nullptr;
+  } else {
+    CHECK(std::holds_alternative<PjRtMemorySpace*>(device_or_memory));
+    args.device = nullptr;
+    args.memory = tensorflow::down_cast<PjRtCApiMemorySpace*>(
+                      std::get<PjRtMemorySpace*>(device_or_memory))
+                      ->c_memory();
+  }
 
   RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Client_BufferFromHostBuffer(&args),
                               c_api_);
@@ -520,10 +535,32 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
+    std::function<void()> on_done_with_host_buffer,
+    PjRtMemorySpace* memory_space, const Layout* device_layout) {
+  return BufferFromHostBufferInternalImpl(
+      data, type, dims, byte_strides, host_buffer_semantics,
+      on_done_with_host_buffer, memory_space, device_layout);
+}
+
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    HostBufferSemantics host_buffer_semantics,
+    std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+    const Layout* device_layout) {
+  return BufferFromHostBufferInternalImpl(
+      data, type, dims, byte_strides, host_buffer_semantics,
+      on_done_with_host_buffer, device, device_layout);
+}
+
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    HostBufferSemantics host_buffer_semantics,
     std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
-  return BufferFromHostBuffer(data, type, dims, byte_strides,
-                              host_buffer_semantics, on_done_with_host_buffer,
-                              device, /*device_layout=*/nullptr);
+  return BufferFromHostBufferInternalImpl(
+      data, type, dims, byte_strides, host_buffer_semantics,
+      on_done_with_host_buffer, device, /*device_layout=*/nullptr);
 }
 
 const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
@@ -880,7 +917,7 @@ PjRtCApiExecutable::GetOutputMemoryKinds() const {
     out.push_back(
         absl::string_view(args.memory_kinds[i], args.memory_kind_sizes[i]));
   }
-  return std::vector<std::vector<absl::string_view>>{out};
+  return std::vector<std::vector<absl::string_view>>{std::move(out)};
 }
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>>
@@ -967,23 +1004,10 @@ StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {
 
   RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_Executable_Serialize(&ser_args),
                               c_api);
-  PJRT_SerializedExecutable* c_serialized_exec = ser_args.serialized_executable;
-  std::unique_ptr<PJRT_SerializedExecutable,
-                  ::pjrt::PJRT_SerializedExecutableDeleter>
-      serialized_executable(c_serialized_exec,
-                            ::pjrt::MakeSerializedExecutableDeleter(c_api));
-
-  PJRT_SerializedExecutable_Data_Args data_args;
-  data_args.struct_size = PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE;
-  data_args.priv = nullptr;
-  data_args.serialized_executable = c_serialized_exec;
-  data_args.data = nullptr;
-  data_args.data_size = 0;
-
-  RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_SerializedExecutable_Data(&data_args),
-                              c_api);
-
-  return std::string(data_args.data, data_args.data_size);
+  absl::Cleanup cleanup = [&ser_args] {
+    ser_args.serialized_executable_deleter(ser_args.serialized_executable);
+  };
+  return std::string(ser_args.serialized_bytes, ser_args.serialized_bytes_size);
 }
 
 // ------------------------ Loaded Executables ---------------------------------
@@ -1955,6 +1979,18 @@ PjRtCApiTopologyDescription::DeviceDescriptions() const {
     out.push_back(
         std::make_unique<PjRtCApiDeviceDescription>(c_api_, device_desc));
   }
+  return out;
+}
+
+StatusOr<std::string> PjRtCApiTopologyDescription::Serialize() const {
+  PJRT_TopologyDescription_Serialize_Args args;
+  args.struct_size = PJRT_TopologyDescription_Serialize_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.topology = c_topology_.get();
+  RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_TopologyDescription_Serialize(&args),
+                              c_api_);
+  auto out = std::string(args.serialized_bytes, args.serialized_bytes_size);
+  args.serialized_topology_deleter(args.serialized_topology);
   return out;
 }
 

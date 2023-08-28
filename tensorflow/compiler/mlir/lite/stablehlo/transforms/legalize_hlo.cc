@@ -3874,6 +3874,36 @@ class ConvertCustomCallWithApproxTopK
   mlir::ModuleOp* module_op_;
 };
 
+// Removes the `mhlo.custom_call @shape_assertion` custom call which represents
+// an assertion that the first operand (`assert_what`) evaluates to `true`.
+// This is a temporary workaround for unblocking dynamic model conversion
+// because starting from version 7, in presence of shape polymorphism JAX will
+// emit stablehlo.custom_call @shape_assertion to verify at compile time that
+// the code is used with compatible actual shapes.
+// TFLite runtime kernels support shape checking and shape inference to some
+// extent, it is okay to remove the shape assertion in most scenarios. However
+// this is not always the case, JAX may trace the program differently based on
+// the shape polymorphism specification, for example, if the program contains
+// a conditional on "x.shape[0] % 2 == 0" that conditional would evaluate to
+// True with x specified as (2*b, ...) and False otherwise. We can revisit
+// this when need arises. See b/295316438 for details.
+class RemoveCustomCallWithShapeAssertion
+    : public OpConversionPattern<mhlo::CustomCallOp> {
+ public:
+  explicit RemoveCustomCallWithShapeAssertion(MLIRContext* context)
+      : OpConversionPattern<mhlo::CustomCallOp>(context, /*benefit=*/0) {}
+
+  LogicalResult matchAndRewrite(
+      mhlo::CustomCallOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    if (op.getCallTargetName() != "shape_assertion") {
+      return mlir::failure();
+    }
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 // Converts a MHLO::GetDimensionSizeOp to TF ops.
 class ConvertGetDimensionSizeOp
     : public OpConversionPattern<mhlo::GetDimensionSizeOp> {
@@ -4070,6 +4100,8 @@ void LegalizeHloToTf::runOnOperation() {
   mlir::ModuleOp module = getOperation();
 
   RewritePatternSet patterns(&getContext());
+  // Conversion patterns for custom calls.
+  patterns.add<RemoveCustomCallWithShapeAssertion>(&context);
   patterns.add<ConvertCustomCallWithApproxTopK>(&context, &module);
   PopulateLegalizeHloToTfPatterns(&patterns, &context);
 

@@ -536,7 +536,8 @@ def TFGraph_YieldOp : TFG_IntrinsicOp<"yield",
 class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     mnemonic, [PreservedAttributesInterface,
                DeclareOpInterfaceMethods<RegionBranchOpInterface,
-                                         ["getRegionInvocationBounds"]>,
+                                         ["getRegionInvocationBounds",
+                                          "getEntrySuccessorRegions"]>,
                DeclareOpInterfaceMethods<ControlArgumentInterface,
                                          ["getControlToken"]>]> {
   let description = [{
@@ -601,9 +602,14 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     void $cppClass::getSuccessorRegions(
-        std::optional<unsigned> index, ArrayRef<Attribute> operands,
+        std::optional<unsigned> index,
         SmallVectorImpl<RegionSuccessor> &regions) {
-      GetIfLikeRegionOpSuccessorRegions(*this, index, operands, regions);
+      GetIfLikeRegionOpSuccessorRegions(*this, index, regions);
+    }
+    void $cppClass::getEntrySuccessorRegions(
+        ArrayRef<Attribute> operands,
+        SmallVectorImpl<RegionSuccessor> &regions) {
+      GetIfLikeRegionOpEntrySuccessorRegions(*this, operands, regions);
     }
     void $cppClass::getRegionInvocationBounds(
         ArrayRef<Attribute> operands,
@@ -652,7 +658,8 @@ def TFGraph_StatefulIfRegionOp : TFGraph_IfLikeRegionOp<"StatefulIfRegion"> {
 class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     mnemonic, [PreservedAttributesInterface,
                DeclareOpInterfaceMethods<RegionBranchOpInterface,
-                                         ["getRegionInvocationBounds"]>,
+                                         ["getRegionInvocationBounds",
+                                          "getEntrySuccessorRegions"]>,
                DeclareOpInterfaceMethods<ControlArgumentInterface,
                                          ["getControlToken"]>]> {
   let description = [{
@@ -714,9 +721,14 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     void $cppClass::getSuccessorRegions(
-        std::optional<unsigned> index, ArrayRef<Attribute> operands,
+        std::optional<unsigned> index,
         SmallVectorImpl<RegionSuccessor> &regions) {
-      GetCaseLikeRegionOpSuccessorRegions(*this, index, operands, regions);
+      GetCaseLikeRegionOpSuccessorRegions(*this, index, regions);
+    }
+    void $cppClass::getEntrySuccessorRegions(
+        ArrayRef<Attribute> operands,
+        SmallVectorImpl<RegionSuccessor> &regions) {
+      GetCaseLikeRegionOpEntrySuccessorRegions(*this, operands, regions);
     }
     void $cppClass::getRegionInvocationBounds(
         ArrayRef<Attribute> operands,
@@ -794,7 +806,7 @@ def TFGraph_ConditionOp : TFG_IntrinsicOp<"condition",
 class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     mnemonic, [AttrSizedOperandSegments, PreservedAttributesInterface,
                DeclareOpInterfaceMethods<RegionBranchOpInterface,
-                                         ["getSuccessorEntryOperands"]>,
+                                         ["getEntrySuccessorOperands"]>,
                DeclareOpInterfaceMethods<ControlArgumentInterface,
                                          ["getControlToken"]>]> {
   let description = [{
@@ -867,15 +879,14 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
       return cast<YieldOp>(getBodyBlock().getTerminator());
     }
 
-    OperandRange $cppClass::getSuccessorEntryOperands(
+    OperandRange $cppClass::getEntrySuccessorOperands(
         std::optional<unsigned> index) {
       return getInit();
     }
     void $cppClass::getSuccessorRegions(
-        std::optional<unsigned> index, ArrayRef<Attribute> operands,
+        std::optional<unsigned> index,
         SmallVectorImpl<RegionSuccessor> &regions) {
-      return GetWhileLikeRegionOpSuccessorRegions(*this, index, operands,
-                                                  regions);
+      return GetWhileLikeRegionOpSuccessorRegions(*this, index, regions);
     }
 
     LogicalResult $cppClass::verify() { return VerifyWhileLikeRegionOp(*this); }
@@ -919,7 +930,7 @@ def TFGraph_StatefulWhileRegionOp : TFGraph_WhileLikeRegionOp<"StatefulWhileRegi
 def TFGraph_ForRegionOp : TFGraph_RegionOp<
     "ForRegion", [AttrSizedOperandSegments, PreservedAttributesInterface,
                   DeclareOpInterfaceMethods<RegionBranchOpInterface,
-                                            ["getSuccessorEntryOperands"]>,
+                                            ["getEntrySuccessorOperands"]>,
                   DeclareOpInterfaceMethods<ControlArgumentInterface,
                                             ["getControlToken"]>]> {
   let description = [{

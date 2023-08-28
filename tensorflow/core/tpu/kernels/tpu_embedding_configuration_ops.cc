@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/cleanup/cleanup.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/util.h"

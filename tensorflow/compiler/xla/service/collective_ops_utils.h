@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -147,7 +148,11 @@ bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
 
 // A custom call target that can be used to create a nop that can legally
 // replace a collective op.
-constexpr char kNopCustomCallTarget[] = "AllocateBuffer";
+inline constexpr absl::string_view kNopCustomCallTarget = "AllocateBuffer";
+// A custom call target that can be used to create a nop that can legally
+// replace a collective op and it returns a token.
+inline constexpr absl::string_view kNopReturnTokenCustomCallTarget =
+    "NopReturnToken";
 
 // Returns true if instruction is a collective op or a collective fusion.
 bool IsCollective(const HloInstruction* instruction);

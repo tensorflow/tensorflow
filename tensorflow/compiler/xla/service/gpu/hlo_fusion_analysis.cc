@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/hlo_fusion_analysis.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -34,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_traversal.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
@@ -42,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/union_find.h"
+#include "tensorflow/tsl/platform/macros.h"
 
 namespace xla {
 namespace gpu {
@@ -107,24 +111,24 @@ bool MayPreventVectorization(const HloComputation* fusion) {
   return false;
 }
 
-// Determine if we enable the row optimized codegen.  When we have a
-// fusion with only point-wise operations, scalar broadcasting and row
-// broadcasting, we can trigger a kernel that vectorize the row loads.
-// This speed up the kernel, in particular on A100.
-// Returns a pair<bool, int>. The bool mean should we try to enable
-// row vectorization.  The int is the number of inputs with the higher
-// rank.
-std::pair<bool, int> RowVectorizationEnabled(const HloInstruction* fusion,
-                                             int64_t out_rank) {
+// Determines if we enable the row optimized codegen. When we have a fusion with
+// only point-wise operations, scalar broadcasting and row broadcasting, we can
+// trigger a kernel that vectorizes the row loads. This speeds up the kernel, in
+// particular on A100. The int is the number of inputs with rank `out_rank`. Its
+// value is only defined if row vectorization is enabled.
+std::pair<bool /*enabled*/, int> RowVectorizationEnabled(
+    const std::vector<HloInstruction*>& fusion_roots, int64_t out_rank) {
   const auto is_row_major = [](const HloInstruction* instr) {
-    // Only tested when the inputs are row-major. So only
-    // enable that case. Maybe it would works if only the
-    // inner dimensions is contiguous.
+    // Only tested when the inputs are row-major. So only enable that case.
+    // Maybe it would work if only the inner dimensions is contiguous.
     return LayoutUtil::IsMonotonicWithDim0Major(instr->shape().layout());
   };
-  bool row_vectorized =
-      !fusion->shape().IsTuple() && is_row_major(fusion) &&
-      absl::c_all_of(fusion->fused_parameters(), is_row_major);
+  bool row_vectorized = fusion_roots.size() == 1 &&
+                        !fusion_roots[0]->shape().IsTuple() &&
+                        is_row_major(fusion_roots[0]);
+  if (!row_vectorized) {
+    return {false, 0};
+  }
 
   // Check that the operations in the fusion are supported.  Each
   // supported operation (or category) must be manually vetted as XLA
@@ -134,32 +138,50 @@ std::pair<bool, int> RowVectorizationEnabled(const HloInstruction* fusion,
   //
   // We also detect at the same time if there is a row broadcasting
   // operation.
-  bool some_row_broadcasting = false;
   int num_big_inputs = 0;
-  for (const HloInstruction* instr : fusion->fused_instructions()) {
-    if (instr->opcode() == HloOpcode::kParameter) {
-      auto rank = instr->shape().rank();
-      num_big_inputs += static_cast<int>(rank == out_rank);
-      continue;
-    }
-    if (instr->opcode() == HloOpcode::kConstant ||
-        HloInstruction::IsOpElementwise(instr->opcode())) {
-      continue;
-    }
-    if (auto broadcast = DynCast<HloBroadcastInstruction>(instr)) {
-      if (broadcast->dimensions().empty()) {
-        continue;
-      }
-      auto rank = broadcast->shape().rank();
-      if (broadcast->dimensions().size() == 1 &&
-          broadcast->dimensions().back() == rank - 1) {
-        some_row_broadcasting = true;
-        continue;
-      }
-    }
-    VLOG(2) << "Row vectorization not enabled due to: " << instr->ToString();
-    return std::make_pair(false, 0);
-  }
+  bool some_row_broadcasting = false;
+  HloBfsConsumersFirstTraversal(
+      *fusion_roots.front(),
+      [&](const HloInstruction& producer, const HloInstruction& consumer) {
+        return consumer.opcode() == HloOpcode::kParameter;
+      },
+      [&](const HloInstruction& node) -> TraversalResult {
+        if (node.IsElementwise()) {
+          return TraversalResult::kVisitOperands;
+        }
+
+        switch (node.opcode()) {
+          case HloOpcode::kConstant:
+            return TraversalResult::kDoNotVisitOperands;
+          case HloOpcode::kParameter:
+            if (node.shape().rank() == out_rank) {
+              ++num_big_inputs;
+            }
+            // TODO(jreiffers): When extending this to work with unfused HLO,
+            // move this check to the boundary function.
+            if (!is_row_major(&node)) {
+              row_vectorized = false;
+              return TraversalResult::kAbortTraversal;
+            }
+            return TraversalResult::kVisitOperands;
+          case HloOpcode::kBroadcast:
+            if (node.dimensions().empty()) {
+              return TraversalResult::kVisitOperands;
+            }
+
+            if (node.dimensions().size() == 1 &&
+                node.dimensions().front() == node.shape().rank() - 1) {
+              some_row_broadcasting = true;
+              return TraversalResult::kVisitOperands;
+            }
+            TF_FALLTHROUGH_INTENDED;
+          default:
+            VLOG(2) << "Row vectorization not enabled due to: "
+                    << node.ToString();
+            row_vectorized = false;
+            return TraversalResult::kAbortTraversal;
+        }
+      });
   // Trigger only when there is a row broadcasting.
   return std::make_pair(row_vectorized && some_row_broadcasting,
                         num_big_inputs);
@@ -358,24 +380,14 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions() {
                               tiling_scheme->GetNumThreadsPerBlockPhysical());
     }
     case EmitterFusionKind::kInputSlices: {
-      auto* root =
-          fusion_->fused_instructions_computation()->root_instruction();
-      xla::Shape shape;
-      if (root->opcode() == HloOpcode::kSlice) {
-        shape = root->operands()[0]->shape();
-      } else {
-        CHECK_EQ(root->opcode(), HloOpcode::kTuple);
-        // We already verified that the shapes are compatible in
-        // `GetEmitterFusionKind`.
-        shape = root->operands()[0]->operands()[0]->shape();
-      }
+      auto* root = fusion_roots().front();
+      fusion_->fused_instructions_computation()->root_instruction();
+      const auto& shape = root->operands()[0]->shape();
       constexpr int kUnrollFactor = 1;
       return CalculateLaunchDimensions(shape, *device_info_, {kUnrollFactor});
     }
     case EmitterFusionKind::kScatter: {
-      const auto& root_shape = fusion_->fused_instructions_computation()
-                                   ->root_instruction()
-                                   ->shape();
+      const auto& root_shape = fusion_roots().front()->shape();
       int64_t num_elements = ShapeUtil::ElementsIn(root_shape);
       int unroll_factor = num_elements % 4 == 0   ? 4
                           : num_elements % 2 == 0 ? 2
@@ -483,7 +495,7 @@ const LaunchDimensionsConfig* HloFusionAnalysis::GetLoopFusionConfig() {
   bool row_vectorized;
   int num_big_inputs;
   std::tie(row_vectorized, num_big_inputs) =
-      RowVectorizationEnabled(fusion_, GetElementShape().rank());
+      RowVectorizationEnabled(fusion_roots(), GetElementShape().rank());
   bool few_waves = [this, row_vectorized, num_big_inputs]() {
     for (const HloInstruction* instr : fused_computation_->instructions()) {
       if (instr->opcode() == HloOpcode::kParameter ||

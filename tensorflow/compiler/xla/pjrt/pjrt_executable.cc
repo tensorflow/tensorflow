@@ -142,6 +142,8 @@ absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
     return absl::UnimplementedError(
         "ExecuteOptions with send/recv calbacks is not serializable");
   }
+  proto.set_use_major_to_minor_data_layout_for_callbacks(
+      use_major_to_minor_data_layout_for_callbacks);
 
   switch (execution_mode) {
     case ExecutionMode::kDefault:
@@ -168,6 +170,9 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
   options.arguments_are_tupled = proto.arguments_are_tupled();
   options.untuple_result = proto.untuple_result();
   options.launch_id = proto.launch_id();
+  options.strict_shape_checking = proto.strict_shape_checking();
+  options.use_major_to_minor_data_layout_for_callbacks =
+      proto.use_major_to_minor_data_layout_for_callbacks();
 
   switch (proto.execution_mode()) {
     case EXECUTION_MODE_DEFAULT:

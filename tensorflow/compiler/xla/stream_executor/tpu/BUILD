@@ -77,8 +77,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -122,7 +122,6 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -140,13 +139,24 @@ cc_library(
 )
 
 cc_library(
+    name = "tsl_status_helper",
+    hdrs = ["tsl_status_helper.h"],
+    deps = [
+        ":c_api_decl",
+        "//tensorflow/tsl/c:tsl_status",
+        "//tensorflow/tsl/c:tsl_status_helper",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
     name = "proto_helper",
     srcs = ["proto_helper.cc"],
     hdrs = ["proto_helper.h"],
     deps = [
         ":c_api_decl",
         "//tensorflow/tsl/platform:logging",
-        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -166,7 +176,6 @@ cc_library(
     deps = [
         ":c_api_decl",
         ":libtftpu_header",
-        ":proto_helper",
     ],
     alwayslink = True,
 )
@@ -197,12 +206,12 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:allocator_stats",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:casts",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
@@ -224,10 +233,10 @@ cc_library(
         ":tpu_platform_interface",
         ":tpu_topology_external",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -252,12 +261,12 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:allocator_stats",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/tsl/platform:casts",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
@@ -300,14 +309,13 @@ cc_library(
         "//tensorflow/tsl/c:tsl_status_internal",
         "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
@@ -320,6 +328,16 @@ cc_library(
     deps = [
         ":tpu_executor_init_fns",
         ":tpu_ops_c_api_hdrs",
+    ],
+)
+
+cc_library(
+    name = "tpu_profiler_init_fns",
+    hdrs = ["tpu_profiler_init_fns.inc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tpu_api",
+        ":tpu_profiler_c_api_hdrs",
     ],
 )
 
@@ -351,6 +369,7 @@ cc_library(
         ":libtftpu_header",
         ":tpu_executor_api",
         ":tpu_ops_c_api_hdrs",
+        ":tpu_profiler_c_api_hdrs",
     ],
 )
 
@@ -403,10 +422,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/tsl/platform:casts",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -448,10 +467,9 @@ cc_library(
         ":tpu_topology_external",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -486,9 +504,7 @@ cc_library(
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/status",
     ],
 )
@@ -569,9 +585,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -599,9 +615,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -613,6 +630,15 @@ cc_library(
     deps = [
         ":libtftpu_header",
         ":tpu_executor_c_api_hdrs",
+    ],
+)
+
+cc_library(
+    name = "tpu_profiler_c_api_hdrs",
+    hdrs = ["tpu_profiler_c_api.h"],
+    deps = [
+        ":c_api_decl",
+        ":libtftpu_header",
     ],
 )
 

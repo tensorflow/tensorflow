@@ -44,7 +44,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 181
+_version = 187
 
 # Version number for MLIR:Python components.
 mlir_api_version = 54
@@ -68,8 +68,14 @@ def make_cpu_client(*, use_tfrt: bool = True) -> ...:
   return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 
-def make_gpu_client(distributed_client=None, node_id=0, num_nodes=1,
-                    platform_name=None, allowed_devices=None):
+def make_gpu_client(
+    distributed_client=None,
+    node_id=0,
+    num_nodes=1,
+    platform_name=None,
+    allowed_devices=None,
+    mock=False,
+):
   """Returns a GPU client. BFC allocator is used by default."""
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
@@ -91,6 +97,17 @@ def make_gpu_client(distributed_client=None, node_id=0, num_nodes=1,
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
+  if mock:
+    return _xla.get_mock_gpu_client(
+        asynchronous=True,
+        allocator_config=config,
+        distributed_client=distributed_client,
+        node_id=node_id,
+        num_nodes=num_nodes,
+        platform_name=platform_name,
+        allowed_devices=allowed_devices,
+    )
+
   return _xla.get_gpu_client(
       asynchronous=True,
       allocator_config=config,
@@ -102,6 +119,9 @@ def make_gpu_client(distributed_client=None, node_id=0, num_nodes=1,
 
 
 def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
+  assert pjrt_plugin_loaded('tpu')
+  if not pjrt_plugin_initialized('tpu'):
+    initialize_pjrt_plugin('tpu')
   if options is None:
     options = {}
   return _xla.get_c_api_client('tpu', options)
@@ -124,6 +144,21 @@ def pjrt_plugin_loaded(plugin_name: str) -> bool:
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
   _xla.load_pjrt_plugin(plugin_name, library_path)
+
+
+def pjrt_plugin_initialized(plugin_name: str) -> bool:
+  return _xla.pjrt_plugin_initialized(plugin_name)
+
+
+def initialize_pjrt_plugin(plugin_name: str) -> None:
+  """Initializes a PJRT plugin.
+
+  The plugin needs to be loaded first (through load_pjrt_plugin_dynamically or
+  static linking) before this method is called.
+  Args:
+    plugin_name: the name of the PJRT plugin.
+  """
+  _xla.initialize_pjrt_plugin(plugin_name)
 
 
 def make_c_api_client(
@@ -762,4 +797,4 @@ weakref_lru_cache = _xla.weakref_lru_cache
 array_result_handler = _xla.array_result_handler
 copy_array_to_devices_with_sharding = _xla.copy_array_to_devices_with_sharding
 batched_device_put = _xla.batched_device_put
-canonicalize_memory_kind = _xla.canonicalize_memory_kind
+check_and_canonicalize_memory_kind = _xla.check_and_canonicalize_memory_kind

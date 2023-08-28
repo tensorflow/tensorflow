@@ -23,6 +23,7 @@ load("//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("//third_party/absl:workspace.bzl", absl = "repo")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
+load("//third_party/ducc:workspace.bzl", ducc = "repo")
 load("//third_party/eigen3:workspace.bzl", eigen3 = "repo")
 load("//third_party/farmhash:workspace.bzl", farmhash = "repo")
 load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
@@ -62,6 +63,7 @@ def _initialize_third_party():
     absl()
     bazel_skylib_workspace()
     benchmark()
+    ducc()
     dlpack()
     eigen3()
     farmhash()
@@ -160,9 +162,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "3e326efdfce5758bc90300d874ac415b791cb715a4230e662c690c6048725da1",
-        strip_prefix = "pthreadpool-5f685cb0780a46e8d4da500f9b34ee6ae2bd437f",
-        urls = tf_mirror_urls("https://github.com/Maratyszcza/pthreadpool/archive/5f685cb0780a46e8d4da500f9b34ee6ae2bd437f.zip"),
+        sha256 = "30cb30fb77cd903eda901651e63be8db5e2e33b1d06e4bbdd3f90a9a4432ae9a",
+        strip_prefix = "pthreadpool-b1b6536539d5ec04416d41a04af636f50a2f2b7a",
+        urls = tf_mirror_urls("https://github.com/Maratyszcza/pthreadpool/archive/b1b6536539d5ec04416d41a04af636f50a2f2b7a.zip"),
     )
 
     tf_http_archive(
@@ -192,9 +194,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "onednn",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "8b1db9cc5799ae39c2a567eb836962de0346d79fbc3d8e6f7090a3d9f8729129",
-        strip_prefix = "oneDNN-3.2",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.2.tar.gz"),
+        sha256 = "2f76b407ef8893cca71340f88cd800019a1f14f8ac1bbdbb89a84be1370b52e3",
+        strip_prefix = "oneDNN-3.2.1",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.2.1.tar.gz"),
     )
 
     tf_http_archive(

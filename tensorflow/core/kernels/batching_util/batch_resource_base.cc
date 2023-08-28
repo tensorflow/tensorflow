@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/cost_util.h"
+#include "tensorflow/core/common_runtime/request_cost.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -834,7 +836,8 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
     if (cleanup_done) {
       return;
     }
-    SplitBatchCosts(batch_cost_measurements, processed_size, *batch);
+    SplitBatchCostsAndRecordMetrics(batch_cost_measurements, processed_size,
+                                    *batch);
     // Clear the measurements before unblocking the batch task, as measurements
     // are associated with the task's thread context.
     batch_cost_measurements.clear();
@@ -926,7 +929,8 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
 
   int64_t processed_size = batch->size();
   auto batch_cost_split_cleanup = gtl::MakeCleanup([&] {
-    SplitBatchCosts(batch_cost_measurements, processed_size, *batch);
+    SplitBatchCostsAndRecordMetrics(batch_cost_measurements, processed_size,
+                                    *batch);
   });
 
   OpKernelContext* last_task_context =
@@ -1049,9 +1053,10 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
   return OkStatus();
 }
 
-void BatchResourceBase::SplitBatchCosts(
+void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
     std::vector<std::unique_ptr<CostMeasurement>>& batch_cost_measurements,
     const int64_t processed_size, BatchT& batch) {
+  // 1. Split the batch costs to each task.
   for (auto& batch_cost_measurement : batch_cost_measurements) {
     if (batch_cost_measurement->GetTotalCost() <= absl::ZeroDuration()) {
       continue;
@@ -1087,6 +1092,19 @@ void BatchResourceBase::SplitBatchCosts(
           {{absl::StrCat(cost_type, kWithSmearSuffix), cost_with_smear},
            {absl::StrCat(cost_type, kNoSmearSuffix), cost_no_smear}});
     }
+  }
+
+  // 2. Records the batch metrics in each task.
+  const int64_t padding_size = processed_size - batch.size();
+  for (int i = 0; i < batch.num_tasks(); i++) {
+    RequestCost* request_cost = batch.task(i).request_cost;
+    // Skip recording the metrics if the request_cost is null.
+    if (!request_cost) continue;
+
+    request_cost->RecordBatchMetrics(RequestCost::BatchMetrics{
+        /*processed_size=*/processed_size,
+        /*input_size=*/static_cast<int64_t>(batch.task(i).size()),
+        /*padding_size=*/padding_size});
   }
 }
 

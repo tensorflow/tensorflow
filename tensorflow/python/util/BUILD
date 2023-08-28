@@ -24,6 +24,7 @@ visibility = [
     "//third_party/py/tf_slim:__subpackages__",
     "//third_party/py/tensorflow_docs:__subpackages__",
     "//third_party/py/keras:__subpackages__",
+    "//third_party/py/tf_keras:__subpackages__",
 ]
 
 util_subpackage_visibility = visibility + [
@@ -315,6 +316,7 @@ pytype_strict_library(
         "//tensorflow:__pkg__",
         "//tensorflow:__subpackages__",
         "//tensorflow_estimator:__subpackages__",
+        "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
         ":tf_decorator",
@@ -362,6 +364,7 @@ py_strict_library(
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
         "//learning/brain/analytics:__subpackages__",
         "//tensorflow:__pkg__",
+        "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
         "@six_archive//:six",
@@ -683,6 +686,7 @@ py_strict_library(
     deps = [
         ":__init__",
         ":compat",
+        ":custom_nest_protocol",
         "//tensorflow/python/platform:tf_logging",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
@@ -1167,4 +1171,9 @@ py_strict_library(
         ":tf_decorator",
         ":tf_export",
     ],
+)
+
+py_strict_library(
+    name = "custom_nest_protocol",
+    srcs = ["custom_nest_protocol.py"],
 )

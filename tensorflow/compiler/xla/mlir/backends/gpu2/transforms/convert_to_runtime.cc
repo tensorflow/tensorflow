@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_case_op.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_compiled_ops.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_graph_region_op.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_library_ops.h"
@@ -176,6 +177,7 @@ class ConvertToXlaGpuRuntimePass
         populateCompiledOpsConversionPatterns(
             patterns, converter, executable_source, thunk_sequence_, state);
         populateWhileOpConversionPatterns(patterns, converter, state);
+        populateCaseOpConversionPatterns(patterns, converter, state);
       } break;
 
       case RuntimeBackend::kStreamExecutor: {

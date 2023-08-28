@@ -634,6 +634,14 @@ class ScopedHoldAsExternalReference : public PjRtBuffer::ExternalReference {
 
   ~ScopedHoldAsExternalReference() override = default;
 
+  Status WaitUntilBufferReadyOnStream(std::intptr_t stream) override {
+    for (const std::shared_ptr<BufferSequencingEvent>& event :
+         external_reference_->definition_events()) {
+      TF_RETURN_IF_ERROR(event->WaitForEventOnExternalStream(stream));
+    }
+    return OkStatus();
+  }
+
  private:
   PjRtStreamExecutorBuffer::ScopedHold external_reference_;
 };

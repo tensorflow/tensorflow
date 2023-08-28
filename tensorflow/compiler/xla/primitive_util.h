@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PRIMITIVE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_PRIMITIVE_UTIL_H_
 
+#include <cstdint>
 #include <limits>
 #include <string>
 #include <tuple>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/float8.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace primitive_util {

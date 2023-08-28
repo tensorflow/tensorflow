@@ -4124,6 +4124,19 @@ func.func @real_dynamic_slice_strides_not_equal_to_1(%arg0: tensor<1x?x2x4xf32>,
 func.return %0 : tensor<1x?x1x2xf32>
 }
 
+// CHECK-LABEL:   func @remove_shape_assertion_custom_call
+// CHECK-NOT:       "mhlo.custom_call"
+func.func @remove_shape_assertion_custom_call(%arg1: tensor<?x5xi32>) -> tensor<i32> {
+  %0 = mhlo.constant dense<3> : tensor<i32>
+  %1 = "mhlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?x5xi32>) -> tensor<i32>
+  %ok = mhlo.compare  EQ, %1, %0,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  mhlo.custom_call @shape_assertion(%ok) {
+    error_message = "The error message",
+    has_side_effect = true
+  } : (tensor<i1>) -> ()
+  return %1 : tensor<i32>
+}
+
 // CHECK-LABEL: func @convert_approx_top_k_custom_call(
 // CHECK-SAME:                                        %[[ARG_0:.*]]: tensor<1x4xf32>,
 // CHECK-SAME:                                        %[[ARG_1:.*]]: tensor<1x4xi32>,

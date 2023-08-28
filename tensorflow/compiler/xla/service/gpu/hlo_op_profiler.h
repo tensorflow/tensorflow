@@ -32,26 +32,21 @@ namespace gpu {
 
 class HloOpProfiler {
   static std::unique_ptr<HloModule> MakeModuleForMeasurements(
-      HloOpcode op, PrimitiveType data_type, int64_t n_elements,
-      int chain_length);
+      HloOpcode op, PrimitiveType data_type, int chain_length);
+
   StatusOr<absl::Duration> MeasureOpChainDuration(HloOpcode op,
                                                   PrimitiveType data_type,
-                                                  int64_t input_size,
                                                   int chain_length);
 
  public:
-  explicit HloOpProfiler(HloRunner& runner)
-      : runner_(runner),
-        dev_info_(GetGpuDeviceInfo(runner.backend().stream_executors()[0])) {}
+  explicit HloOpProfiler(HloRunner& runner);
   StatusOr<HloInstructionProfile> MeasureClockCyclesPerOp(
-      HloOpcode op, bool binary, PrimitiveType data_type, int64_t input_size);
+      HloOpcode op, PrimitiveType data_type);
 
  private:
-  // Long chains can be too slow to compile.
-  static constexpr int kMaxOpChainLength = 4096;
-
   HloRunner& runner_;
   const GpuDeviceInfo dev_info_;
+  absl::Duration min_duration_;
 };
 
 }  // namespace gpu

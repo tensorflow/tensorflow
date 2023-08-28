@@ -91,7 +91,7 @@ def LegalizeTFConstToTFLConst: Pat<(TF_ConstOp:$res ElementsAttr:$value),
 def ConvertTfConstToStdConst : Pat<
   (TF_ConstOp:$res DenseElementsAttr:$value),
   (Arith_ConstantOp $value),
-  [(AnyStaticShapeTensor $res)], (addBenefit 10)>;
+  [(AnyStaticShapeTensor $res)], [], (addBenefit 10)>;
 
 //===----------------------------------------------------------------------===//
 // Unary ops patterns.

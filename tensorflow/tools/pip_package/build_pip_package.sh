@@ -159,28 +159,28 @@ function prepare_src() {
   fi
 
   if is_windows; then
-    rm -rf ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
-    mkdir -p ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
-    echo "Unzipping simple_console_for_windows.zip to create runfiles tree..."
-    unzip -o -q ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_windows.zip -d ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
-    echo "Unzip finished."
-    # runfiles structure after unzip the python binary
     cp -L \
-      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/LICENSE \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow/LICENSE \
       "${TMPDIR}"
-    cp -LR \
-      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/tensorflow \
-      "${TMPDIR}"
+      
+    # Change the format of file path (TMPDIR-->TMPDIR_rsync) which is input to the rsync from
+    # Windows-compatible to Linux-compatible to resolve the error below 
+    # error: ssh: Could not resolve hostname c: No such host is known. 
+    
+    TMPDIR_rsync=`cygpath $TMPDIR`  
+    rsync -a \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow/tensorflow \
+      "${TMPDIR_rsync}"
     cp_external \
-      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles \
       "${EXTERNAL_INCLUDES}/"
     cp_local_config_python \
-      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles \
       "${EXTERNAL_INCLUDES}/"
     copy_xla_aot_runtime_sources \
-      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow \
       "${XLA_AOT_RUNTIME_SOURCES}/"
-    RUNFILES=bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow
+    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow
     # If oneDNN was built with openMP then copy the omp libs over
     if [ -f "bazel-bin/external/llvm_openmp/libiomp5md.dll" ]; then
       cp bazel-bin/external/llvm_openmp/libiomp5md.dll ${TMPDIR}/tensorflow/python
@@ -316,13 +316,13 @@ function build_wheel() {
     source tools/python_bin_path.sh
   fi
   if is_windows; then
-	  PY_DIR=$(find ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/ -maxdepth 1 -type d -name "python_*")
-	  FULL_DIR="$(real_path "$PY_DIR")/python"
-	  export PYTHONPATH="$PYTHONPATH:$PWD/bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/pypi_wheel/site-packages/"
+    PY_DIR=$(find -L ./bazel-tensorflow/external -maxdepth 1 -type d -name "python_*")
+    FULL_DIR="$(real_path "$PY_DIR")/python"
+    export PYTHONPATH="$PYTHONPATH:$PWD/bazel-tensorflow/external/pypi_wheel/site-packages/"
   else
-	  PY_DIR=$(find ./bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/ -maxdepth 1 -type d -name "python_*")
-	  FULL_DIR="$(real_path "$PY_DIR")/bin/python3"
-	  export PYTHONPATH="$PYTHONPATH:$PWD/bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/pypi_wheel/site-packages/"
+    PY_DIR=$(find ./bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/ -maxdepth 1 -type d -name "python_*")
+    FULL_DIR="$(real_path "$PY_DIR")/bin/python3"
+    export PYTHONPATH="$PYTHONPATH:$PWD/bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/pypi_wheel/site-packages/"
   fi
   
   pushd ${TMPDIR} > /dev/null

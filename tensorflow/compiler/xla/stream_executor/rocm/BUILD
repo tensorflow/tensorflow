@@ -43,11 +43,15 @@ cc_library(
 cc_library(
     name = "rocm_driver",
     srcs = if_rocm_is_configured(["rocm_driver.cc"]),
-    hdrs = if_rocm_is_configured(["rocm_driver_wrapper.h"]),
+    hdrs = if_rocm_is_configured([
+        "rocm_driver_wrapper.h",
+        "rocm_driver.h",
+    ]),
     deps = if_rocm_is_configured([
         ":rocm_diagnostics",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor:device_options",

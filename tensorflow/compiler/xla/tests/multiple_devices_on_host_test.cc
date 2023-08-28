@@ -57,7 +57,7 @@ void TestWithDeviceCount(const int device_count) {
   // Run `device_count` copies of the XLA program built by BuildComputation.
   TF_ASSERT_OK_AND_ASSIGN(
       se::Platform* const platform,
-      perftools::gputools::MultiPlatformManager::PlatformWithName("Host"));
+      stream_executor::MultiPlatformManager::PlatformWithName("Host"));
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform);
   TF_ASSERT_OK_AND_ASSIGN(

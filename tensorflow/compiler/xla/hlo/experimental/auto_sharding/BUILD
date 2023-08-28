@@ -1,6 +1,6 @@
 # Automatic sharding annotation
 
-load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "auto_sharding_deps", "xla_cc_binary", "xla_cc_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
@@ -12,6 +12,7 @@ package_group(
     name = "friends",
     packages = [
         "//platforms/...",
+        "//tensorflow/compiler/xla/hlo/experimental/auto_sharding/...",
         "//tensorflow/compiler/xla/service/gpu/...",
     ],
 )
@@ -27,10 +28,12 @@ cc_library(
     ],
     deps = [
         ":auto_sharding_cost_graph",
+        ":auto_sharding_option",
         ":auto_sharding_solver",
         ":auto_sharding_solver_option",
         ":auto_sharding_strategy",
         ":auto_sharding_util",
+        ":auto_sharding_wrapper",
         ":cluster_environment",
         ":matrix",
         ":metrics",
@@ -67,7 +70,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + auto_sharding_deps(),
 )
 
 cc_library(
@@ -111,6 +114,43 @@ cc_library(
         ":auto_sharding_strategy",
         ":matrix",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "auto_sharding_option",
+    hdrs = ["auto_sharding_option.h"],
+    deps = [
+        ":auto_sharding_util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "auto_sharding_wrapper",
+    hdrs = ["auto_sharding_wrapper.h"],
+    deps = [
+        ":auto_sharding_cost_graph",
+        ":auto_sharding_solver",
+        ":auto_sharding_strategy",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_live_range",
+    ],
+)
+
+cc_library(
+    name = "auto_sharding_impl",
+    srcs = ["auto_sharding_impl.cc"],
+    deps = [
+        ":auto_sharding_cost_graph",
+        ":auto_sharding_option",
+        ":auto_sharding_solver",
+        ":auto_sharding_strategy",
+        ":auto_sharding_wrapper",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_live_range",
     ],
 )
 

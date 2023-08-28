@@ -50,6 +50,10 @@ tf_python_pybind_extension(
         "//tensorflow/core/public:session.h",
         "//tensorflow/core/public:session_options.h",
     ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_cost_analyzer.pyi",
+    ],
     deps = [
         ":cost_analyzer_headers",
         "//tensorflow/core:framework_headers_lib",
@@ -82,6 +86,10 @@ tf_python_pybind_extension(
         "model_analyzer.h",
         "//tensorflow/core/grappler:pywrap_required_hdrs",
     ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_model_analyzer.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -112,6 +120,10 @@ tf_python_pybind_extension(
         "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
         "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
         "//tensorflow/core/grappler/utils:pywrap_required_hdrs",
+    ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_tf_item.pyi",
     ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
@@ -193,6 +205,10 @@ tf_python_pybind_extension(
         "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
         "//tensorflow/core/grappler/utils:pywrap_required_hdrs",
     ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_tf_cluster.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -254,6 +270,10 @@ tf_python_pybind_extension(
         "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
         "//tensorflow/core/grappler/optimizers:pywrap_required_hdrs",
         "//tensorflow/core/grappler/verifiers:pywrap_required_hdrs",
+    ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_tf_optimizer.pyi",
     ],
     # This fails Windows builds. Please check b/266870200 for details.
     #    dynamic_deps = ["//tensorflow/python:_pywrap_tensorflow_internal.so"] + select({

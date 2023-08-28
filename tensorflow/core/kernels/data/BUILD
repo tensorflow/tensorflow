@@ -911,6 +911,8 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/data:dataset_utils",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

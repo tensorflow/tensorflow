@@ -393,12 +393,16 @@ tf_cc_test(
     srcs = ["batch_resource_base_test.cc"],
     deps = [
         ":batch_resource_base",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:cost_measurement",
         "//tensorflow/core/common_runtime:cost_measurement_registry",
         "//tensorflow/core/common_runtime:no_op_cost_measurement",
+        "//tensorflow/core/common_runtime:request_cost",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -695,9 +695,6 @@ class ConvertTfCastOp : public OpConversionPattern<TF::CastOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
-  explicit ConvertTfCastOp(PatternBenefit benefit)
-      : OpConversionPattern(getContext(), benefit) {}
-
   LogicalResult matchAndRewrite(
       TF::CastOp op, TF::CastOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
@@ -757,13 +754,7 @@ void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
             ConvertUniformQuantizeOp, ConvertUniformRequantizeOp,
             ConvertUniformDequantizeOp, ConvertUniformQuantizedDotOp,
             ConvertUniformQuantizedConvolutionOp, ConvertUniformQuantizedAddOp,
-            ConvertUniformQuantizedClipByValueOp>(context);
-  // TODO: b/289560952 - These patterns are currently mixed with LegalizeTF
-  // patterns. Set benefit higher so that it is has higher priority than the
-  // generic conversion pattern for CastOp. Since the default benefit is 1, any
-  // number >1 should work. There is no specific reason for using 10. Will
-  // remove this after moving Quantization patterns to a separate pass.
-  patterns->add<ConvertTfCastOp>(context, /*benefit=*/10);
+            ConvertUniformQuantizedClipByValueOp, ConvertTfCastOp>(context);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>>

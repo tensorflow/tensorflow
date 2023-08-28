@@ -126,6 +126,9 @@ def xla_cc_test(
         **kwargs
     )
 
+def auto_sharding_deps():
+    return ["//tensorflow/compiler/xla/hlo/experimental/auto_sharding:auto_sharding_impl"]
+
 register_extension_info(
     extension = xla_cc_test,
     label_regex_for_dep = "{extension_name}",

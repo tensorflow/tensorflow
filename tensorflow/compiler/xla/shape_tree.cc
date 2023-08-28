@@ -15,6 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/shape_tree.h"
 
+#include <cstddef>
+#include <cstdint>
+
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+
 namespace xla {
 namespace internal {
 

@@ -12,7 +12,7 @@ func.func @main(%arg0: tensor<1x3xf32>) -> tensor<*xf32> attributes {tf.entry_fu
   // CHECK: gpurt.compile_and_execute
   // CHECK-SAME: func_name = "xla_func_0"
   // CHECK-SAME: resource_indices = [1]
-  %2 = "tf.XlaLaunch"(%arg0, %1) {_noinline = true, _xla_compile_device_type = "GPU", device = "/device:GPU:0", function = @xla_func_0, operand_segment_sizes = array<i32: 0, 2, 0>} : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<*xf32>
+  %2 = "tf.XlaLaunch"(%arg0, %1) {_noinline = true, _xla_compile_device_type = "GPU", device = "/device:GPU:0", function = @xla_func_0, operandSegmentSizes = array<i32: 0, 2, 0>} : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<*xf32>
   func.return %2 : tensor<*xf32>
 }
 

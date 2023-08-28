@@ -29,7 +29,7 @@ gen_op_libraries(
 
 tf_py_strict_test(
     name = "pad_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["pad_ops_test.py"],
     data = [":pad_ops_mlir"],
     python_version = "PY3",

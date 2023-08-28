@@ -55,7 +55,6 @@ using tsl::profiler::FindPlaneWithName;
 using tsl::profiler::GetStatTypeStr;
 using tsl::profiler::HostEventType;
 using tsl::profiler::IsInternalEvent;
-using tsl::profiler::IsInternalStat;
 using tsl::profiler::ProfilerJoinPath;
 using tsl::profiler::StatType;
 using tsl::profiler::XEventMetadataVisitor;

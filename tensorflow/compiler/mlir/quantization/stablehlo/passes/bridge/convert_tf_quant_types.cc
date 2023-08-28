@@ -73,25 +73,7 @@ Type ToLegalType(Type type) {
   return type;
 }
 
-bool IsUniformQuantizedOp(Operation *op) {
-  return llvm::isa<
-      // clang-format off
-      // go/keep-sorted start
-      TF::UniformDequantizeOp,
-      TF::UniformQuantizeOp,
-      TF::UniformQuantizedAddOp,
-      TF::UniformQuantizedClipByValueOp,
-      TF::UniformQuantizedConvolutionHybridOp,
-      TF::UniformQuantizedConvolutionOp,
-      TF::UniformQuantizedDotHybridOp,
-      TF::UniformQuantizedDotOp,
-      TF::UniformRequantizeOp
-      // go/keep-sorted end
-      // clang-format on
-      >(op);
-}
-
-bool IsUniformQuantizedOpLegal(Operation *op) {
+bool IsTFUniformQuantizedOpLegal(Operation *op) {
   // Check if an op result value is consumed by qint -> int TF Cast OP.
   auto IsQintValueQintToInCast = [](Value v) {
     if (!IsIllegalType(v.getType())) {
@@ -131,11 +113,11 @@ bool IsCastOpLegal(TF::CastOp cast_op) {
   // connected to a non-UQ op.
   if (IsIllegalType(cast_op.getSrcT()) &&
       !(cast_op.getX().getDefiningOp() &&
-        IsUniformQuantizedOp(cast_op.getX().getDefiningOp()))) {
+        IsTFUniformQuantizedOp(cast_op.getX().getDefiningOp()))) {
     return false;
   }
   if (IsIllegalType(cast_op.getDstT()) &&
-      !IsUniformQuantizedOp(*cast_op.getY().getUsers().begin())) {
+      !IsTFUniformQuantizedOp(*cast_op.getY().getUsers().begin())) {
     return false;
   }
   return true;
@@ -158,8 +140,8 @@ class TFQuantTypeConversionTarget : public ConversionTarget {
       : ConversionTarget(ctx), converter_(converter) {
     markUnknownOpDynamicallyLegal([this](Operation *op) {
       // Consider UQ op legal if it has a CastOp next to the qint input/output.
-      if (IsUniformQuantizedOp(op)) {
-        return IsUniformQuantizedOpLegal(op);
+      if (IsTFUniformQuantizedOp(op)) {
+        return IsTFUniformQuantizedOpLegal(op);
       } else if (auto cast_op = llvm::dyn_cast<TF::CastOp>(op)) {
         return IsCastOpLegal(cast_op);
       } else if (auto const_op = llvm::dyn_cast<TF::ConstOp>(op)) {
@@ -187,7 +169,7 @@ class TFQuantTypePattern : public ConversionPattern {
       Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     // This pattern only handle non-UQ, non-const ops.
-    if (IsUniformQuantizedOp(op) || llvm::isa<TF::ConstOp>(op)) {
+    if (IsTFUniformQuantizedOp(op) || llvm::isa<TF::ConstOp>(op)) {
       return failure();
     }
 
@@ -228,7 +210,7 @@ class TFUniformQuantizedOpsPattern : public ConversionPattern {
       Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     // This pattern only handle UQ ops.
-    if (!IsUniformQuantizedOp(op)) {
+    if (!IsTFUniformQuantizedOp(op)) {
       return failure();
     }
 

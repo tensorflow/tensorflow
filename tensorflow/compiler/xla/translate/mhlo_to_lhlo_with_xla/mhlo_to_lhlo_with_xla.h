@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -58,6 +59,11 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   static tsl::StatusOr<mhlo::ScatterDimensionNumbersAttr>
   GetScatterDimensionNumbers(const xla::HloInstruction* instr,
                              mlir::MLIRContext* context);
+
+  absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>
+  ConsumeLhloToHloMap() {
+    return std::move(lhlo_to_hlo_);
+  }
 
  private:
   tsl::StatusOr<lmhlo::SortOp> EmitSortOp(const xla::HloInstruction* instr);
@@ -179,13 +185,6 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   template <typename OpType>
   OpType CreateOpWithoutAttrs(const xla::HloInstruction* instr,
                               ValueRange operands);
-
-  tsl::StatusOr<mlir::Operation*> CreateOpInFusion(
-      const xla::HloInstruction* instr, ValueRange buffer_operands,
-      size_t num_arguments, size_t num_results);
-
-  tsl::StatusOr<mlir::Operation*> CreateOpInFusion(
-      const xla::HloInstruction* instr);
 
   template <typename T>
   DenseIntElementsAttr GetI64DenseElementsAttr(const T& container) {
@@ -310,22 +309,28 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // Map ops returning tokens to their output (async collectives start ops, and
   // point-to-point communication ops), to connect the correct done op.
   absl::flat_hash_map<const xla::HloInstruction*, mlir::Value> ret_tokens_;
+
+  // Maps each LHLO op created directly by this emitter to the corresponding HLO
+  // instruction.
+  // Note: this does not contain ops that are inside the bodies of fusions.
+  absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>
+      lhlo_to_hlo_;
 };
 
 // Populate the MLIR `module` with the computation from the `hlo_module` using
 // the provided buffer `assignment`. The returned `Status` indicates success
 // or failure in the conversion.
-tsl::Status HloToLhloModule(const xla::BufferAssignment& assignment,
-                            const xla::HloModule& hlo_module, ModuleOp module);
+// `lhlo_to_hlo_map`, if non-null, is populated with a mapping from generated
+// top-level MLIR operations to the original HLO instructions. "top-level" means
+// that ops inside the bodies of fusions are not included (but all fusions are).
+tsl::Status HloToLhloModule(
+    const xla::BufferAssignment& assignment, const xla::HloModule& hlo_module,
+    ModuleOp module,
+    absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>*
+        lhlo_to_hlo_map = nullptr);
 
-tsl::Status OptimizeAndConvertHloToLmhlo(
-    std::unique_ptr<xla::HloModule> hlo_module, ModuleOp module,
-    StringRef platform_name, bool optimize_xla_hlo);
 OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(
-    llvm::StringRef input, MLIRContext* context, bool optimize_xla_hlo);
-
-// This register the MLIR pass with the command line.
-void RegisterMhloToLhloWithXlaPass();
+    llvm::StringRef input, MLIRContext* context);
 
 }  // namespace mlir
 

@@ -38,8 +38,7 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
   test \
   --profile="${KOKORO_ARTIFACTS_DIR}/profile.json.gz" \
   --build_event_binary_file="${KOKORO_ARTIFACTS_DIR}/build_events.pb" \
-  --config=rbe_linux_cuda_nvcc_py39 \
-  --config=tensorflow_testing_rbe_linux \
+  --config=rbe_linux_cuda \
   --test_tag_filters="${tag_filters}" \
   --build_tag_filters="${tag_filters}" \
   --test_lang_filters=cc,py \

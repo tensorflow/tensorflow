@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -223,7 +224,7 @@ class FunctionalHloRunner {
   //
   // This is the highest level API in this file.
   static Status LoadAndRunAndDump(
-      PjRtClient& client,
+      PjRtClient& client, const DebugOptions& debug_options,
       const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
       const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
       const xla::FunctionalHloRunner::RunningOptions& running_options,
@@ -236,7 +237,8 @@ class FunctionalHloRunner {
   // The hlo file might be a HLO snapshot and thus contain arguments, otherwise
   // it is run with fake arguments.
   static StatusOr<PerDeviceLiteralVecType> LoadAndRun(
-      PjRtClient& client, const PreprocessingOptions& preproc_options,
+      PjRtClient& client, const DebugOptions& debug_options,
+      const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
       const RunningOptions& running_options,
       absl::Span<const std::string> hlo_files, InputFormat input_format,
@@ -249,7 +251,8 @@ class FunctionalHloRunner {
   // use the same argument literals. This is essential to run HLO modules with
   // large arguments (e.g., models with large weights).
   static StatusOr<PerDeviceLiteralVecType> LoadAndRun(
-      PjRtClient& client, const PreprocessingOptions& preproc_options,
+      PjRtClient& client, const DebugOptions& debug_options,
+      const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
       const RunningOptions& running_options,
       absl::Span<const std::string> hlo_files, InputFormat input_format,
@@ -261,6 +264,7 @@ class FunctionalHloRunner {
   // This function allows compiling multi-device HLOs on machines with fewer
   // devices.
   static Status LoadAndCompile(PjRtClient& client,
+                               const DebugOptions& debug_options,
                                const PreprocessingOptions& preproc_options,
                                const RawCompileOptions& raw_compile_options,
                                std::string_view hlo_file,
@@ -270,7 +274,8 @@ class FunctionalHloRunner {
   // device. The given arguments is a map from device ID to a list of arguments.
   // If the arguments map is empty, the HLO module is run with fake arguments.
   static StatusOr<PerDeviceLiteralVecType> CompileAndRun(
-      PjRtClient& client, const PreprocessingOptions& preproc_options,
+      PjRtClient& client, const DebugOptions& debug_options,
+      const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
       const RunningOptions& running_options, HloModule* hlo_module,
       const PerDeviceLiteralVecType& arguments = {});
@@ -282,7 +287,8 @@ class FunctionalHloRunner {
   // devices may use the same argument literals. This is essential to run HLO
   // modules with large arguments (e.g., models with large weights).
   static StatusOr<PerDeviceLiteralVecType> CompileAndRun(
-      PjRtClient& client, const PreprocessingOptions& preproc_options,
+      PjRtClient& client, const DebugOptions& debug_options,
+      const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
       const RunningOptions& running_options, HloModule* hlo_module,
       const LiteralVec& argument_literals,
@@ -291,6 +297,7 @@ class FunctionalHloRunner {
   // Compiles the HLO module.
   static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       PjRtClient& client, HloModule* hlo_module,
+      const DebugOptions& debug_options,
       const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options);
 
@@ -299,6 +306,7 @@ class FunctionalHloRunner {
   // compilation based on captured information.
   static StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       PjRtClient& client, HloModule* hlo_module,
+      const DebugOptions& debug_options,
       const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
       const PjRtTopologyDescription& topology);
@@ -338,7 +346,8 @@ class FunctionalHloRunner {
   // This would ideally be private, but we need it for the implementation of
   // MultihostHloRunner.
   static Status PrepareHloModuleForCompilation(
-      HloModule* hlo_module, const PreprocessingOptions& preproc_options);
+      HloModule* hlo_module, const DebugOptions& debug_options,
+      const PreprocessingOptions& preproc_options);
   // This would ideally be private, but we need it for the implementation of
   // MultihostHloRunner.
   static CompileOptions CompleteCompileOptions(const HloModule& hlo_module,

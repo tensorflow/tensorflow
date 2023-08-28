@@ -554,6 +554,18 @@ tsl::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
   }
 }
 
+tsl::Status GpuExecutor::WaitForEventOnExternalStream(std::intptr_t stream,
+                                                      Event* event) {
+  if (GpuDriver::WaitStreamOnEvent(context_,
+                                   absl::bit_cast<GpuStreamHandle>(stream),
+                                   AsGpuEvent(event)->gpu_event())) {
+    return ::tsl::OkStatus();
+  } else {
+    return tsl::Status(absl::StatusCode::kInternal,
+                       "error waiting for ROCM event on external stream");
+  }
+}
+
 Event::Status GpuExecutor::PollForEventStatus(Event* event) {
   return AsGpuEvent(event)->PollForStatus();
 }

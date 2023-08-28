@@ -17,6 +17,8 @@
 
 See the [Summaries and
 TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard) guide.
+
+API docstring: tensorflow.summary
 """
 
 import contextlib

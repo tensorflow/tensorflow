@@ -106,7 +106,10 @@ class IrEmitterUnnested : public IrEmitter {
   // the generated code and so must be initialized by XLA. The value of these
   // constants will be stored in 'content'. Constants with initializers in the
   // generated code will have empty 'content'.
-  Status EmitLmhloRegion(mlir::Region* region);
+  Status EmitLmhloRegion(
+      mlir::Region* region,
+      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+          hlo_for_lmhlo);
 
   static void GetDependentDialects(mlir::DialectRegistry& registry);
 
@@ -120,7 +123,10 @@ class IrEmitterUnnested : public IrEmitter {
   // via the ThunkEmitter.
   Status EmitConstant(mlir::Operation* op);
 
-  Status EmitConditional(mlir::Operation* op);
+  Status EmitConditional(
+      mlir::Operation* op,
+      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+          hlo_for_lmhlo);
   Status EmitConvolutionThunk(mlir::Operation* op);
   Status EmitGemmThunk(mlir::Operation* op);
 #if GOOGLE_CUDA || TF_HIPBLASLT
@@ -129,8 +135,10 @@ class IrEmitterUnnested : public IrEmitter {
 #if GOOGLE_CUDA
   Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
   Status EmitConvolutionReorderThunk(mlir::Operation* op);
-  Status EmitTritonFusion(mlir::Operation* op,
-                          const AutotuneResult::TritonGemmKey& config);
+  Status EmitTritonFusion(
+      mlir::Operation* op, const AutotuneResult::TritonGemmKey& config,
+      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+          hlo_for_lmhlo);
   Status EmitFusedMHAThunk(mlir::Operation* op);
   Status EmitFusedMHABackwardThunk(mlir::Operation* op);
 #endif  // GOOGLE_CUDA
@@ -139,16 +147,30 @@ class IrEmitterUnnested : public IrEmitter {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCustomCallThunk(mlir::Operation* op);
   Status EmitFftThunk(mlir::Operation* op);
-  Status EmitFusion(mlir::Operation* op);
-  Status EmitLaunchFunc(mlir::Operation* op);
+  Status EmitFusion(
+      mlir::Operation* op,
+      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+          hlo_for_lmhlo);
   Status EmitReduce(mlir::Operation* op);
-  Status EmitSelectAndScatter(mlir::Operation* op);
-  Status EmitWhile(mlir::Operation* op);
+  Status EmitSelectAndScatter(
+      mlir::Operation* op,
+      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+          hlo_for_lmhlo);
+  Status EmitWhile(
+      mlir::Operation* op,
+      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+          hlo_for_lmhlo);
   Status EmitInfeed(mlir::Operation* op);
   Status EmitOutfeed(mlir::Operation* op);
   Status EmitRngGetAndUpdateState(mlir::Operation* op);
-  Status EmitScatter(mlir::Operation* op);
-  Status EmitSort(mlir::Operation* op);
+  Status EmitScatter(
+      mlir::Operation* op,
+      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+          hlo_for_lmhlo);
+  Status EmitSort(
+      mlir::Operation* op,
+      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+          hlo_for_lmhlo);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitTriangularSolveCustomCall(mlir::Operation* op);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -164,7 +186,10 @@ class IrEmitterUnnested : public IrEmitter {
   template <typename NcclThunkType, typename OpT>
   Status EmitCollectivePermute(mlir::Operation* op);
 
-  Status EmitOp(mlir::Operation* op);
+  Status EmitOp(
+      mlir::Operation* op,
+      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+          hlo_for_lmhlo);
 
   static Thunk::ThunkInfo GetThunkInfo(mlir::Operation* op);
 
@@ -307,12 +332,14 @@ class IrEmitterUnnested : public IrEmitter {
   // update. Using true for unique_indices behaves properly only when it is
   // guaranteed that the indices to be updated do not overlap. The caller is
   // responsible for ensuring this is the case.
-  Status EmitScatter(mlir::lmhlo::ScatterOp scatter,
-                     const LaunchDimensions& launch_dimensions,
-                     const llvm_ir::IrArray& output,
-                     const llvm_ir::ElementGenerator& scatter_indices_gen,
-                     const llvm_ir::ElementGenerator& updates_gen,
-                     std::function<llvm::Type*(int64_t)> get_index_type);
+  Status EmitScatter(
+      mlir::lmhlo::ScatterOp scatter, const LaunchDimensions& launch_dimensions,
+      const llvm_ir::IrArray& output,
+      const llvm_ir::ElementGenerator& scatter_indices_gen,
+      const llvm_ir::ElementGenerator& updates_gen,
+      std::function<llvm::Type*(int64_t)> get_index_type,
+      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+          hlo_for_lmhlo);
 
   // Structure describing a scatter operation for IR emission.
   // TODO(jurahul): Migrate element generators to use MLIR.
@@ -367,22 +394,23 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.
   StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
-      mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info);
+      mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
+      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+          hlo_for_lmhlo);
 
   // Returns a ForThunk which executes 'loop_limit' invocations of a thunk
   // sequence from the 'body' sub-computation of the while instruction 'hlo'.
   StatusOr<std::unique_ptr<Thunk>> BuildForThunk(
       mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
-      int64_t loop_limit);
+      int64_t loop_limit,
+      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
+          hlo_for_lmhlo);
 
   // Returns a ConditionalThunk which executes the thunk sequence for the
   // 'branch_computation' corresponding to the predicate/branch_index of the
   // given conditional instruction.
   StatusOr<std::unique_ptr<Thunk>> BuildConditionalThunk(
       const HloInstruction* conditional);
-
-  StatusOr<HloComputation*> GetOrCreateSubComputationFromRegion(
-      mlir::Region* region, bool is_fusion);
 
   Status AssertNonDeterminismIsOkay(const std::string& op_name);
 

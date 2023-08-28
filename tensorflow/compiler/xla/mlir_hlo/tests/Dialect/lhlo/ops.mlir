@@ -929,7 +929,7 @@ func.func @valid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
-    operand_segment_sizes = array<i32: 2, 2>,
+    operandSegmentSizes = array<i32: 2, 2>,
     target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
       num_args = 4,
       num_results = 3,
@@ -948,7 +948,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
-    operand_segment_sizes = array<i32: 2, 2>,
+    operandSegmentSizes = array<i32: 2, 2>,
     target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
       num_args = 4,
       num_results = 3,
@@ -967,7 +967,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
-    operand_segment_sizes = array<i32: 2, 2>,
+    operandSegmentSizes = array<i32: 2, 2>,
     target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
       num_args = 4,
       num_results = 3,
@@ -986,7 +986,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
-    operand_segment_sizes = array<i32: 2, 2>,
+    operandSegmentSizes = array<i32: 2, 2>,
     target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
       num_args = 4,
       num_results = 3,
@@ -1005,7 +1005,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
-    operand_segment_sizes = array<i32: 2, 2>,
+    operandSegmentSizes = array<i32: 2, 2>,
     target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
       num_args = 4,
       num_results = 3,
@@ -1024,7 +1024,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
-    operand_segment_sizes = array<i32: 2, 2>,
+    operandSegmentSizes = array<i32: 2, 2>,
     target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
       num_args = 4,
       num_results = 3,
@@ -1043,7 +1043,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
-    operand_segment_sizes = array<i32: 2, 2>,
+    operandSegmentSizes = array<i32: 2, 2>,
     target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
       num_args = 4,
       num_results = 3,

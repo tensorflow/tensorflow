@@ -115,12 +115,15 @@ cc_library(
         "passes/bridge/convert_mhlo_quant_to_int.cc",
         "passes/bridge/convert_tf_quant_ops_to_mhlo.cc",
         "passes/bridge/convert_tf_quant_types.cc",
+        "passes/bridge/passes.cc",
+        "passes/bridge/verify_quant_legalization.cc",
     ],
     hdrs = [
         "passes/bridge/passes.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
+        ":internal_visibility_allowlist_package",
         "//tensorflow/compiler/mlir:__subpackages__",
     ],
     deps = [
@@ -143,6 +146,7 @@ cc_library(
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto_cc",
         "//tensorflow/core/util/quantization:uniform_quant_ops_params",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -222,7 +226,7 @@ cc_library(
         ":passes",
         ":quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
         "//tensorflow/core/platform:path",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
@@ -256,7 +260,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
         "//tensorflow/core/platform:path",
         "@llvm-project//mlir:Support",
     ],
@@ -285,6 +289,7 @@ cc_library(
     hdrs = ["utils/tf_type_utils.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:framework",
@@ -310,7 +315,7 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -358,8 +363,8 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:FuncDialect",
@@ -368,5 +373,30 @@ tf_cc_binary(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:ShapeDialect",
         "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "uniform_quantized_types",
+    srcs = ["uniform_quantized_types.cc"],
+    hdrs = ["uniform_quantized_types.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "uniform_quantized_types_test",
+    srcs = ["uniform_quantized_types_test.cc"],
+    deps = [
+        ":uniform_quantized_types",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
     ],
 )

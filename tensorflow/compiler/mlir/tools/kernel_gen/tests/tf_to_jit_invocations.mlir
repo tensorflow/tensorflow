@@ -10,7 +10,7 @@
 // RUN: FileCheck %s --check-prefix=CHECK-JFLT
 
 func.func @unary_tanh(%arg : tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "tf.Tanh"(%arg) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = mhlo.tanh %arg : tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -22,7 +22,7 @@ func.func @unary_tanh(%arg : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SAME:        func @main(%[[ARG_JIT:.*]]: tensor<*xf32>) -> tensor<*xf32>
 // CHECK-SAME:          attributes {tf_entry}
 // CHECK-SAME:        {
-// CHECK-SAME:          %[[RES_JIT:.*]] = \22tf.Tanh\22(%[[ARG_JIT]])
+// CHECK-SAME:          %[[RES_JIT:.*]] = mhlo.tanh %[[ARG_JIT]]
 // CHECK-SAME:          return %[[RES_JIT]]
 // CHECK-SAME:        }
 // CHECK-SAME:      }
@@ -55,14 +55,14 @@ func.func @unary_tanh(%arg : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-JFLT:         %[[JIT_0:.*]] = tf_framework.jit_execute %[[JIT]](%[[ARG0]])
 // CHECK-JFLT:         scf.yield %[[JIT_0]]
 // CHECK-JFLT:       else
-// CHECK-JFLT:         %[[VAL:.*]] = "tf.Tanh"(%[[ARG0]])
+// CHECK-JFLT:         %[[VAL:.*]] = mhlo.tanh %[[ARG0]]
 // CHECK-JFLT:         scf.yield %[[VAL]]
 // CHECK-JFLT:       return %[[IF]]
 
 // -----
 
 func.func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "tf.Sub"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  %0 = chlo.broadcast_subtract %arg0, %arg1 : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -74,7 +74,7 @@ func.func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*x
 // CHECK-SAME:        func @main(%[[ARG0_JIT:.*]]: tensor<*xf32>, %[[ARG1_JIT:.*]]: tensor<*xf32>) -> tensor<*xf32>
 // CHECK-SAME:          attributes {tf_entry}
 // CHECK-SAME:        {
-// CHECK-SAME:          %[[RES_JIT:.*]] = \22tf.Sub\22(%[[ARG0_JIT]], %[[ARG1_JIT]])
+// CHECK-SAME:          %[[RES_JIT:.*]] = chlo.broadcast_subtract %[[ARG0_JIT]], %[[ARG1_JIT]]
 // CHECK-SAME:          return %[[RES_JIT]]
 // CHECK-SAME:        }
 // CHECK-SAME:      }
@@ -106,7 +106,7 @@ func.func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*x
 // CHECK-JFLT-SAME:        func @main(%[[ARG0_JIT:.*]]: tensor<*xf32>, %[[ARG1_JIT:.*]]: tensor<*xf32>) -> tensor<*xf32>
 // CHECK-JFLT-SAME:          attributes {tf_entry}
 // CHECK-JFLT-SAME:        {
-// CHECK-JFLT-SAME:          %[[RES_JIT:.*]] = \22tf.Sub\22(%[[ARG0_JIT]], %[[ARG1_JIT]])
+// CHECK-JFLT-SAME:          %[[RES_JIT:.*]] = chlo.broadcast_subtract %[[ARG0_JIT]], %[[ARG1_JIT]]
 // CHECK-JFLT-SAME:          return %[[RES_JIT]]
 // CHECK-JFLT-SAME:        }
 // CHECK-JFLT-SAME:      }
@@ -121,7 +121,7 @@ func.func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*x
 // CHECK-JFLT:       %[[RES:.*]] = tf_framework.jit_execute %[[CALLABLE]](%[[ARG0]], %[[ARG1]])
 // CHECK-JFLT: scf.yield %[[RES]] : tensor<*xf32>
 // CHECK-JFLT:     } else {
-// CHECK-JFLT:       %[[RES2:.*]] = "tf.Sub"(%[[ARG0]], %[[ARG1]]) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+// CHECK-JFLT:       %[[RES2:.*]] = chlo.broadcast_subtract %[[ARG0]], %[[ARG1]] : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 // CHECK-JFLT:       scf.yield %[[RES2]] : tensor<*xf32>
 // CHECK-JFLT:     }
 // CHECK-JFLT:       return %[[IFRES]]

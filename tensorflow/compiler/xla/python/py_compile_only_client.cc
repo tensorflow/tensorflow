@@ -154,6 +154,12 @@ class CompileOnlyIfRtClient final
         "LookupDevice not available with compile-only client.");
   }
 
+  StatusOr<ifrt::Device*> LookupAddressableDevice(
+      int local_hardware_id) const override {
+    return Unimplemented(
+        "LookupAddressableDevice not available with compile-only client.");
+  }
+
   ifrt::Compiler* GetDefaultCompiler() override { return &default_compiler_; }
 
   static char ID;  // NOLINT

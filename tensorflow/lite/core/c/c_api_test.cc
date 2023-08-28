@@ -28,7 +28,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_opaque.h"
@@ -67,9 +66,8 @@ TEST(CApiSimple, SchemaVersion) {
 }
 
 TEST(CApiSimple, Smoke) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -145,9 +143,8 @@ TEST(CApiSimple, Smoke) {
 
 TEST(CApiSimple, QuantizationParams) {
   TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath(
-          "tensorflow/lite/testdata/add_quantized.bin")
-          .c_str());
+
+      "tensorflow/lite/testdata/add_quantized.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, nullptr);
@@ -206,9 +203,8 @@ TEST(CApiSimple, QuantizationParams) {
 }
 
 TEST(CApiSimple, TfLiteInterpreterGetTensor) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -253,7 +249,7 @@ TEST(CApiSimple, TfLiteInterpreterGetTensor) {
 
   ASSERT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
 
-  // The 'tensorflow/lite/testdata/add.bin' model uses model tensor
+  // The 'third_party/tensorflow/testdata/add.bin' model uses model tensor
   // at index 2 as the output tensor.
   const TfLiteTensor* output_tensor =
       TfLiteInterpreterGetTensor(interpreter, 2);
@@ -281,9 +277,8 @@ TEST(CApiSimple, TfLiteInterpreterGetTensor) {
 }
 
 TEST(CApiSimple, Delegate) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
 
   // Create and install a delegate instance.
   bool delegate_prepared = false;
@@ -308,9 +303,8 @@ TEST(CApiSimple, Delegate) {
 }
 
 TEST(CApiSimple, DelegateExternal_GetExecutionPlan) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
 
   // Create and install a delegate instance.
   bool delegate_prepared = false;
@@ -365,10 +359,8 @@ bool SubgraphIsDelegationSkippable(TfLiteOpaqueContext* context,
 }
 
 TEST(CApiSimple, DelegateExternal_MarkSubgraphAsDelegationSkippable) {
-  TfLiteModel* model =
-      TfLiteModelCreateFromFile(tensorflow::GetDataDependencyFilepath(
-                                    "tensorflow/lite/testdata/2_subgraphs.bin")
-                                    .c_str());
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/2_subgraphs.bin");
 
   // Create and install a delegate instance.
   bool delegate_prepared = false;
@@ -403,9 +395,8 @@ TEST(CApiSimple, DelegateExternal_MarkSubgraphAsDelegationSkippable) {
 }
 
 TEST(CApiSimple, DelegateFails) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
 
   // Create and install a delegate instance.
   TfLiteDelegate delegate = TfLiteDelegateCreate();
@@ -471,9 +462,8 @@ TfLiteRegistrationExternal* CreateDelegateKernelExternalRegistration() {
 TEST(CApiSimple, OpaqueDelegate_ReplaceNodeSubsetsWithDelegateKernels) {
   g_nodes_to_replace = new std::vector<int>();
 
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
 
   // Create and install a delegate instance.
   DelegateState delegate_state{false};
@@ -533,9 +523,8 @@ TEST(CApiSimple,
      OpaqueDelegate_TransferRegistrationExternalOwnershipWithoutNodeToReplace) {
   g_nodes_to_replace = new std::vector<int>();
 
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
 
   // Create and install a delegate instance.
   DelegateState delegate_state{false};
@@ -668,9 +657,8 @@ TEST(CApiSimple, InterpreterOptionsCopy) {
 }
 
 TEST(CApiSimple, ErrorReporter) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
 
   // Install a custom error reporter into the interpreter by way of options.
@@ -698,9 +686,7 @@ TEST(CApiSimple, ModelCreateWithErrorReporter) {
   tflite::TestErrorReporter reporter;
 
   // valid model with error reporter
-  std::ifstream model_file(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  std::ifstream model_file("tensorflow/lite/testdata/add.bin");
   model_file.seekg(0, std::ios_base::end);
   std::vector<char> model_buffer(model_file.tellg());
   model_file.seekg(0, std::ios_base::beg);
@@ -727,9 +713,8 @@ TEST(CApiSimple, ModelCreateFromFileWithErrorReporter) {
 
   // valid model file with error reporter
   model = TfLiteModelCreateFromFileWithErrorReporter(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str(),
-      error_reporter, &reporter);
+      "tensorflow/lite/testdata/add.bin", error_reporter,
+      &reporter);
   ASSERT_NE(model, nullptr);
   EXPECT_EQ(reporter.error_messages(), "");
   TfLiteModelDelete(model);
@@ -813,9 +798,8 @@ TfLiteRegistrationExternal* CreateReg() {
 }
 
 TEST(CApiSimple, OpaqueDelegate_TfLiteOpaqueTensorGet) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
 
   struct DelegateState {
     bool delegate_prepared = false;
@@ -922,9 +906,8 @@ TEST(CApiSimple, OpaqueContextGetNodeAndRegistration) {
   };
   DelegatePrepareStatus delegate_state{false};
 
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
 
   TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
   opaque_delegate_builder.data = &delegate_state;
@@ -1012,9 +995,8 @@ TEST(CApiSimple, TfLiteOpaqueContextResizeTensor) {
   };
   DelegatePrepareStatus delegate_state{false};
 
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
 
   TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
   opaque_delegate_builder.data = &delegate_state;
@@ -1063,9 +1045,7 @@ TEST(CApiSimple, TfLiteOpaqueContextResizeTensor) {
 }
 
 TEST(CApiSimple, ValidModel) {
-  std::ifstream model_file(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  std::ifstream model_file("tensorflow/lite/testdata/add.bin");
 
   model_file.seekg(0, std::ios_base::end);
   std::vector<char> model_buffer(model_file.tellg());
@@ -1080,9 +1060,8 @@ TEST(CApiSimple, ValidModel) {
 }
 
 TEST(CApiSimple, ValidModelFromFile) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
   TfLiteModelDelete(model);
 }
@@ -1146,10 +1125,8 @@ TfLiteStatus FlexSinhEval(TfLiteOpaqueContext* context,
 }
 
 TEST(CApiSimple, CustomOpSupport) {
-  TfLiteModel* model =
-      TfLiteModelCreateFromFile(tensorflow::GetDataDependencyFilepath(
-                                    "tensorflow/lite/testdata/custom_sinh.bin")
-                                    .c_str());
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/custom_sinh.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteRegistrationExternal* reg =
@@ -1571,32 +1548,6 @@ TEST(CApiSimple, OpaqueApiAccessors) {
                        TfLiteOpaqueContextGetName(opaque_context));
           EXPECT_EQ(4, TfLiteOpaqueContextGetNumTensors(opaque_context));
 
-          int first_new_tensor_index = -1;
-          EXPECT_EQ(kTfLiteOk, TfLiteOpaqueContextAddTensors(
-                                   opaque_context, 1, &first_new_tensor_index));
-          EXPECT_EQ(5, TfLiteOpaqueContextGetNumTensors(opaque_context));
-          EXPECT_EQ(4, first_new_tensor_index);
-          TfLiteOpaqueTensor* new_tensor = TfLiteOpaqueContextGetOpaqueTensor(
-              opaque_context, first_new_tensor_index);
-          EXPECT_NE(new_tensor, nullptr);
-
-          EXPECT_EQ(kTfLiteOk, TfLiteOpaqueContextAddTensors(
-                                   opaque_context, 2, &first_new_tensor_index));
-          EXPECT_EQ(7, TfLiteOpaqueContextGetNumTensors(opaque_context));
-          EXPECT_EQ(5, first_new_tensor_index);
-          new_tensor = TfLiteOpaqueContextGetOpaqueTensor(
-              opaque_context, first_new_tensor_index);
-          EXPECT_NE(new_tensor, nullptr);
-          new_tensor = TfLiteOpaqueContextGetOpaqueTensor(
-              opaque_context, first_new_tensor_index + 1);
-          EXPECT_NE(new_tensor, nullptr);
-
-          EXPECT_EQ(kTfLiteError,
-                    TfLiteOpaqueContextAddTensors(opaque_context, 0,
-                                                  &first_new_tensor_index));
-          EXPECT_EQ(kTfLiteError,
-                    TfLiteOpaqueContextAddTensors(opaque_context, -1,
-                                                  &first_new_tensor_index));
           EXPECT_EQ(-1,
                     TfLiteOpaqueTensorNumDims(
                         TfLiteOpaqueContextGetOpaqueTensor(opaque_context, 3)));
@@ -1618,6 +1569,128 @@ TEST(CApiSimple, OpaqueApiAccessors) {
           EXPECT_EQ(kTfLiteOk, TfLiteOpaqueContextReleaseSubgraphContext(
                                    opaque_context, 0));
 
+          //
+          // Create and configure a dynamic tensor.
+          //
+          {
+            TfLiteOpaqueTensorBuilder* builder =
+                TfLiteOpaqueTensorBuilderCreate();
+            TfLiteOpaqueTensorBuilderSetType(builder, kTfLiteUInt8);
+            void* dummy_data = malloc(sizeof(uint8_t));
+            TfLiteOpaqueTensorBuilderSetData(builder, dummy_data);
+            TfLiteQuantizationParams new_quantization_params{};
+            new_quantization_params.scale = 16.0 / 256;
+            new_quantization_params.zero_point = 255;
+
+            TfLiteQuantization new_quantization{};
+            new_quantization.type = kTfLiteAffineQuantization;
+            TfLiteAffineQuantization* affine_quant =
+                (TfLiteAffineQuantization*)malloc(
+                    sizeof(TfLiteAffineQuantization));
+            affine_quant->scale = TfLiteFloatArrayCreate(1);
+            affine_quant->zero_point = TfLiteIntArrayCreate(1);
+            new_quantization.params = affine_quant;
+            TfLiteOpaqueTensorBuilderSetQuantization(
+                TfLiteOpaqueTensorBuilderSetQuantizationParams(
+                    TfLiteOpaqueTensorBuilderSetAllocationType(builder,
+                                                               kTfLiteDynamic),
+                    new_quantization_params),
+                new_quantization);
+
+            int new_tensor_index = -1;
+            EXPECT_EQ(kTfLiteOk,
+                      TfLiteOpaqueContextAddTensor(acquired_opaque_context,
+                                                   builder, &new_tensor_index));
+            TfLiteOpaqueTensorBuilderDelete(builder);
+
+            TfLiteOpaqueTensor* new_tensor = TfLiteOpaqueContextGetOpaqueTensor(
+                opaque_context, new_tensor_index);
+            EXPECT_NE(new_tensor, nullptr);
+            EXPECT_EQ(dummy_data, TfLiteOpaqueTensorData(new_tensor));
+            EXPECT_EQ(kTfLiteUInt8, TfLiteOpaqueTensorType(new_tensor));
+            EXPECT_EQ(new_quantization.type,
+                      TfLiteOpaqueTensorGetQuantization(new_tensor).type);
+            EXPECT_NEAR(
+                new_quantization_params.scale,
+                TfLiteOpaqueTensorGetQuantizationParams(new_tensor).scale,
+                0.0001);
+            EXPECT_EQ(
+                new_quantization_params.zero_point,
+                TfLiteOpaqueTensorGetQuantizationParams(new_tensor).zero_point);
+          }
+          //
+          // Create and configure a 'kTfLiteArenaRw' tensor
+          //
+          {
+            TfLiteOpaqueTensorBuilder* builder =
+                TfLiteOpaqueTensorBuilderCreate();
+            TfLiteOpaqueTensorBuilderSetType(builder, kTfLiteUInt8);
+            TfLiteQuantizationParams new_quantization_params{};
+            new_quantization_params.scale = 16.0 / 256;
+            new_quantization_params.zero_point = 255;
+
+            TfLiteQuantization new_quantization{};
+            new_quantization.type = kTfLiteNoQuantization;
+            TfLiteOpaqueTensorBuilderSetQuantization(
+                TfLiteOpaqueTensorBuilderSetQuantizationParams(
+                    TfLiteOpaqueTensorBuilderSetAllocationType(builder,
+                                                               kTfLiteArenaRw),
+                    new_quantization_params),
+                new_quantization);
+
+            int new_tensor_index = -1;
+            EXPECT_EQ(kTfLiteOk,
+                      TfLiteOpaqueContextAddTensor(acquired_opaque_context,
+                                                   builder, &new_tensor_index));
+            TfLiteOpaqueTensorBuilderDelete(builder);
+
+            TfLiteOpaqueTensor* new_tensor = TfLiteOpaqueContextGetOpaqueTensor(
+                opaque_context, new_tensor_index);
+            EXPECT_NE(new_tensor, nullptr);
+            EXPECT_EQ(kTfLiteUInt8, TfLiteOpaqueTensorType(new_tensor));
+            EXPECT_EQ(new_quantization.type,
+                      TfLiteOpaqueTensorGetQuantization(new_tensor).type);
+            EXPECT_NEAR(
+                new_quantization_params.scale,
+                TfLiteOpaqueTensorGetQuantizationParams(new_tensor).scale,
+                0.0001);
+            EXPECT_EQ(
+                new_quantization_params.zero_point,
+                TfLiteOpaqueTensorGetQuantizationParams(new_tensor).zero_point);
+          }
+          //
+          // Create and configure a 'kTfLiteVariantObject' tensor, which will
+          // result in an error.
+          //
+          {
+            TfLiteOpaqueTensorBuilder* builder =
+                TfLiteOpaqueTensorBuilderCreate();
+            TfLiteOpaqueTensorBuilderSetAllocationType(builder,
+                                                       kTfLiteVariantObject);
+            int new_tensor_index = -1;
+            EXPECT_EQ(kTfLiteError,
+                      TfLiteOpaqueContextAddTensor(acquired_opaque_context,
+                                                   builder, &new_tensor_index));
+            TfLiteOpaqueTensorBuilderDelete(builder);
+          }
+          //
+          // Create and configure a 'kTfLiteArenaRw' tensor and attempt to
+          // provide 'data', which will result in an error because the TF Lite
+          // runtime will provide the memory in this case.
+          //
+          {
+            TfLiteOpaqueTensorBuilder* builder =
+                TfLiteOpaqueTensorBuilderCreate();
+            TfLiteOpaqueTensorBuilderSetType(builder, kTfLiteUInt8);
+            static int dummy_data = 0;
+            TfLiteOpaqueTensorBuilderSetData(builder, &dummy_data);
+            TfLiteOpaqueTensorBuilderSetAllocationType(builder, kTfLiteArenaRw);
+            int new_tensor_index = -1;
+            EXPECT_EQ(kTfLiteError,
+                      TfLiteOpaqueContextAddTensor(acquired_opaque_context,
+                                                   builder, &new_tensor_index));
+            TfLiteOpaqueTensorBuilderDelete(builder);
+          }
           TfLiteOpaqueNode* node = nullptr;
           TfLiteRegistrationExternal* registration_external = nullptr;
           TfLiteOpaqueContextGetNodeAndRegistration(
