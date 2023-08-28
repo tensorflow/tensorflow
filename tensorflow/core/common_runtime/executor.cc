@@ -154,9 +154,9 @@ class ExecutorImpl : public Executor {
     return OkStatus();
   }
 
-  void RunAsync(const Args& args, DoneCallback done) override;
-
  private:
+  void RunAsyncInternal(const Args& args, DoneCallback done) override;
+
   template <class PropagatorStateType>
   friend class ExecutorState;
 
@@ -1478,7 +1478,7 @@ void ExecutorState<PropagatorStateType>::Finish() {
   }
 }
 
-void ExecutorImpl::RunAsync(const Args& args, DoneCallback done) {
+void ExecutorImpl::RunAsyncInternal(const Args& args, DoneCallback done) {
   if (OpOrderDeterminismRequired()) {
     (new ExecutorState<OrderedPropagatorState>(args, immutable_state_,
                                                &kernel_stats_))

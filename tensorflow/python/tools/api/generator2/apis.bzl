@@ -26,6 +26,7 @@ APIS = {
             "//tensorflow/lite/python/...",
             "//tensorflow/python:modules_with_exports",
             "//tensorflow/lite/tools/optimize/debugging/python:all",
+            "//tensorflow/compiler/mlir/quantization/tensorflow/python:all",
         ]),
     },
     "tensorflow_estimator": {

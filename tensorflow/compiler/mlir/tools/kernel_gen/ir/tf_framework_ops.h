@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_IR_TF_FRAMEWORK_OPS_H_
 
 #include "absl/status/status.h"
+#include "mlir/Bytecode/BytecodeOpInterface.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/AllocationOpInterface.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project

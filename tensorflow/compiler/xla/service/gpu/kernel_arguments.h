@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -67,10 +66,6 @@ class KernelArgument {
 
 class KernelArguments {
  public:
-  static StatusOr<KernelArguments> Create(
-      absl::Span<const BufferAllocation> allocations,
-      mlir::gpu::LaunchFuncOp launch);
-
   static StatusOr<KernelArguments> Create(
       absl::Span<const BufferAllocation> allocations,
       mlir::lmhlo::FusionOp fusion);

@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_REWRITER_TRITON_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_REWRITER_TRITON_H_
 
-#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -30,6 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -77,21 +79,14 @@ class TensorIterationSpec {
   // separated into multiple fragments by other dimensions.
   using DimIterationSpec = std::vector<IterationSpecFragment>;
 
-  // At most: contracting, non-contracting, split-K, another batch.
-  static constexpr int kMaxDimsPerTensor = 4;
-  using StorageType = std::array<DimIterationSpec, kMaxDimsPerTensor>;
-
-  const DimIterationSpec& operator[](int dimension) const {
+  using StorageType = absl::flat_hash_map<int, DimIterationSpec>;
+  const DimIterationSpec& operator[](const int dimension) const {
+    return dim_iteration_specs_.at(dimension);
+  }
+  DimIterationSpec& operator[](const int dimension) {
     return dim_iteration_specs_[dimension];
   }
-
-  DimIterationSpec& operator[](int dimension) {
-    return dim_iteration_specs_[dimension];
-  }
-
-  // Compares physical layouts of tensors ignoring subfragments of dimensions.
-  bool operator==(const TensorIterationSpec& other) const;
-
+  const StorageType& Storage() const { return dim_iteration_specs_; }
   StorageType::iterator begin() { return dim_iteration_specs_.begin(); }
   StorageType::iterator end() { return dim_iteration_specs_.end(); }
   StorageType::const_iterator cbegin() const {
@@ -101,23 +96,25 @@ class TensorIterationSpec {
     return dim_iteration_specs_.cend();
   }
 
+  // Compares physical layouts of tensors ignoring subfragments of dimensions.
+  bool operator==(const TensorIterationSpec& other) const;
+
  private:
   StorageType dim_iteration_specs_;
 };
 
-// Analysis of iteration of HLO shapes within a fusion around dot().
-class DotFusionAnalysis {
-  DotFusionAnalysis() {}
+// Analysis of tensor iteration orders within tiled fusions.
+class TritonFusionAnalysis {
+  TritonFusionAnalysis() {}
 
-  Status ExecuteImpl(const HloComputation* computation, int split_k = 1);
+  Status ExecuteForDotFusion(const HloInstruction& dot, int split_k);
 
  public:
-  // Execute the analysis of a dot fusion computation.
-  // `computation` is a computation of a dot fusion to analyze.
+  // Execute the analysis of a fusion computation.
   // `split_k` indicates whether this operation was converted to the split-K
   // form and tells the analysis how to interpret the batch dimensions.
-  static StatusOr<DotFusionAnalysis> Execute(const HloComputation* computation,
-                                             int split_k = 1);
+  static StatusOr<TritonFusionAnalysis> Execute(
+      const HloComputation& computation, int split_k = 1);
 
   // A scope is an HLO graph that can be tiled efficiently using same or
   // compatible tile shapes on all operations. GEMM fusion has 3 scopes

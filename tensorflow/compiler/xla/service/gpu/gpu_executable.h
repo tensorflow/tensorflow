@@ -161,13 +161,20 @@ class GpuExecutable : public Executable {
     ir_module_string_ = ir_module_string;
   }
 
-  // Returns the compiled code for the computation. The compiled code is PTX in
-  // Cuda and unused empty string in ROCm.
+  // Returns the compiled code for the computation.
+  //
+  // The compiled code is PTX in Cuda and unused empty string in ROCm.
+  // This may be left empty for saving memory if we have a non-empty binary.
+  // If both text() and binary() are empty, that means the HLO required no
+  // custom kernels to be compiled.
   const std::string& text() const { return text_; }
 
-  // Returns the binary stored in this GpuExecutable. The binary is cubin in
-  // Cuda, and HSA code object in ROCm. It may be empty, in which case
-  // compilation is left up to the GPU driver.
+  // Returns the binary stored in this GpuExecutable.
+  //
+  // The binary is cubin in Cuda, and HSA code object in ROCm. It may be empty,
+  // in which case compilation is left up to the GPU driver. If both text() and
+  // binary() are empty, that means the HLO required no custom kernels to be
+  // compiled.
   const std::vector<uint8_t>& binary() const { return binary_; }
 
   // ExecuteAsyncOnStream will fail if the compute capability of the stream

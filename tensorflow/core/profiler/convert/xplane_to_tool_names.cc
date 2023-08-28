@@ -33,9 +33,10 @@ namespace profiler {
 StatusOr<std::string> GetAvailableToolNames(
     const SessionSnapshot& session_snapshot) {
   std::vector<std::string> tools;
+  bool is_cloud_vertex_ai = !session_snapshot.HasAccessibleRunDir();
   if (session_snapshot.XSpaceSize() != 0) {
     tools.reserve(11);
-    tools.push_back("trace_viewer@");
+    tools.push_back(is_cloud_vertex_ai ? "trace_viewer" : "trace_viewer@");
     tools.push_back("overview_page");
     tools.push_back("input_pipeline_analyzer");
     tools.push_back("tensorflow_stats");

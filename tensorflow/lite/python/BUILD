@@ -411,6 +411,7 @@ py_strict_test(
     deps = [
         ":util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:convert_to_constants",
         "//tensorflow/python/framework:dtypes",

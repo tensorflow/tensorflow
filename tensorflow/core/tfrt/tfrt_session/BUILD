@@ -1,6 +1,6 @@
-load("//tensorflow:py.default.bzl", "py_library")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_shared_test")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -93,7 +93,7 @@ tf_cc_shared_test(
 )
 
 # copybara:uncomment_begin(C++ Global registration not working in python, b/290988709)
-# py_library(
+# py_strict_library(
 #     name = "tfrt_session_py",
 #     srcs_version = "PY3",
 #     visibility = ["//visibility:public"],
@@ -102,7 +102,7 @@ tf_cc_shared_test(
 #     ],
 # )
 #
-# tf_py_test(
+# tf_py_strict_test(
 #     name = "tfrt_session_python_test",
 #     srcs = ["tfrt_session_python_test.py"],
 #     python_version = "PY3",

@@ -499,6 +499,13 @@ LogicalResult TransferTFAttributesToTFUniformAttributes(
               rewriter, uniform_op, identifier_to_attr, quantization_method,
               enable_per_channel_quantization)))
         return failure();
+    } else if (auto uniform_op =
+                   llvm::dyn_cast<TF::UniformQuantizeOp>(inner_op);
+               uniform_op != nullptr) {
+      if (failed(FillAttributesForUniformQuantizeOp(
+              rewriter, uniform_op, identifier_to_attr, quantization_method,
+              enable_per_channel_quantization)))
+        return failure();
     }
   }
   return success();

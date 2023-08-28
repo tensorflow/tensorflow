@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/fused_attention.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/io_feed.h"
@@ -105,6 +106,8 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
 
 #if GOOGLE_CUDA
   RegisterMatmulCustomCalls(registry);
+  RegisterFusedAttentionCustomCalls(registry);
+  RegisterFusedAttentionBackwardCustomCalls(registry);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Graph launch kernels depend on Cuda Graph API.
@@ -130,6 +133,7 @@ void RegisterXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
 #if GOOGLE_CUDA || TF_HIPBLASLT
   registry.Register<Tagged<se::gpu::BlasLt::Epilogue>>(
       "__type_id_se_cublas_lt_epilogue");
+  RegisterFusedAttentionTypeIdNames(registry);
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 }
 
@@ -141,6 +145,9 @@ void RegisterXlaGpuAttrEncoding(CustomCallAttrEncodingSet& encoding) {
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
   PopulateCublasLtMatmulAttrEncoding(encoding);
+  PopulateFusedAttentionAlgorithmConfigAttrEncoding(encoding);
+  PopulateFusedAttentionForwardDAGSignatureAttrEncoding(encoding);
+  PopulateFusedAttentionBackwardDAGSignatureAttrEncoding(encoding);
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 }
 
@@ -425,6 +432,12 @@ Status GpuRuntimeExecutable::Execute(
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   MatmulPlans::Snapshot matmul_plans = cublas_lt_matmul_plans_.snapshot();
+
+  StreamExecutorFusedAttentionRunners::Snapshot fused_attention_runners =
+      fused_attention_runners_(executor)->snapshot();
+  StreamExecutorFusedAttentionBackwardRunners::Snapshot
+      fused_attention_backward_runners =
+          fused_attention_backward_runners_(executor)->snapshot();
 #endif  // GOOGLE_CUDA
 
   // Initialize state required for running functions exported from FFI modules.
@@ -438,7 +451,13 @@ Status GpuRuntimeExecutable::Execute(
       &collectives_, &fft_plans, &send_recv_events, &gpu_lock,
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       // Auxiliary data that is available only if compiled with CUDA support.
-      &matmul_plans, &graph_instances, &execution_count,
+      &matmul_plans,
+#if GOOGLE_CUDA
+      // Auxiliary data that is available only if compiled with CUDA support
+      // only.
+      &fused_attention_runners, &fused_attention_backward_runners,
+#endif  // GOOGLE_CUDA
+      &graph_instances, &execution_count,
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       &concurrent_region_status,
       // Null pointer will be interpreted as an absence of async collectives

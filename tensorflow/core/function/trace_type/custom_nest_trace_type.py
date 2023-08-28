@@ -71,7 +71,10 @@ class CustomNestTraceType(trace.TraceType):
     )
 
   def __hash__(self) -> int:
-    return hash((self.value_type, self.metadata, self.components))
+    # The hash computation doesn't use self.metadata, so unhashable metadata can
+    # be used. The `self.__eq__` method is used instead to differentiate between
+    # two objects with the same components but different metadata.
+    return hash((self.value_type, self.components))
 
   def __repr__(self) -> str:
     return (

@@ -44,50 +44,6 @@ DynamicParameterBinding::GetBinding(
   return param_iter->second;
 }
 
-DynamicParameterBindingProto DynamicParameterBinding::ToProto() const {
-  DynamicParameterBindingProto result;
-  for (const auto& binding : bindings_) {
-    const DynamicDimension& dynamic_dimension = binding.first;
-    const DynamicParameter& dynamic_param = binding.second;
-    DynamicParameterBindingProto::Binding binding_proto;
-    binding_proto.set_dynamic_param_num(dynamic_param.parameter_num);
-    for (int64_t i : dynamic_param.parameter_index) {
-      binding_proto.add_dynamic_param_index(i);
-    }
-
-    binding_proto.set_target_param_num(dynamic_dimension.parameter_num);
-
-    for (int64_t i : dynamic_dimension.parameter_index) {
-      binding_proto.add_target_param_index(i);
-    }
-
-    binding_proto.set_target_param_dim_num(dynamic_dimension.dimension);
-    result.add_entries()->Swap(&binding_proto);
-  }
-  return result;
-}
-
-StatusOr<DynamicParameterBinding> DynamicParameterBinding::CreateFromProto(
-    const DynamicParameterBindingProto& proto) {
-  DynamicParameterBinding result;
-  for (const DynamicParameterBindingProto::Binding& binding : proto.entries()) {
-    int64_t dynamic_param_num = binding.dynamic_param_num();
-    ShapeIndex dynamic_param_index(binding.dynamic_param_index().begin(),
-                                   binding.dynamic_param_index().end());
-    int64_t target_param_num = binding.target_param_num();
-    ShapeIndex target_param_index(binding.target_param_index().begin(),
-                                  binding.target_param_index().end());
-    int64_t target_dim_num = binding.target_param_dim_num();
-
-    TF_RETURN_IF_ERROR(
-        result.Bind(DynamicParameter{dynamic_param_num, dynamic_param_index},
-                    DynamicDimension{target_param_num, target_param_index,
-                                     target_dim_num}));
-  }
-
-  return result;
-}
-
 std::string DynamicParameterBinding::ToString() const {
   std::vector<std::string> pieces;
   pieces.push_back("DynamicParameterBinding: ");

@@ -172,6 +172,7 @@ def TFGraphDialect : Dialect {
   let useDefaultAttributePrinterParser = 1;
   let hasNonDefaultDestructor = 1;
   let hasOperationInterfaceFallback = 1;
+  let usePropertiesForAttributes = 0;
 }
 
 #endif // TFG_DIALECT

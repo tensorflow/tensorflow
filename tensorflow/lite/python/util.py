@@ -910,8 +910,15 @@ def _remove_redundant_quantize_ops_per_subgraph(model, subgraph_index,
         for output in signature_def.outputs:
           if output.tensorIndex == op.outputs[0]:
             output.tensorIndex = op.inputs[0]
+      deleted_tensor = requantize_op.inputs[0]
       # Reset the input of the requantize op to the float input
       requantize_op.inputs[0] = op.inputs[0]
+      # Migrate other operator users to output tensor of requantize op
+      for op_user in operators:
+        if deleted_tensor in op_user.inputs and op_user != requantize_op:
+          for idx, input_tensor in enumerate(op_user.inputs):
+            if input_tensor == deleted_tensor:
+              op_user.inputs[idx] = requantize_op.outputs[0]
       operators.remove(op)
 
   # Remove all the quant ops which connect to the output dequant op.

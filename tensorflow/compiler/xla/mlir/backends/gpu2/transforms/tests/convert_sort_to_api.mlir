@@ -31,12 +31,16 @@ func.func @main(%arg0: memref<16xi8>, %arg1: memref<16xi8>,
 // CHECK:   %[[ARG0:.*]]: tensor<16xi8>, %[[ARG1:.*]]: tensor<16xi8>,
 // CHECK:   %[[ARG2:.*]]: tensor<16xi8>
 // CHECK: ) {
-// CHECK:   %[[I:.*]] = iree_input.tensor.import {{.*}} -> tensor<4xf32>
-// CHECK:   %[[O:.*]] = iree_input.tensor.import {{.*}} -> tensor<4xf32>
-// CHECK:   %[[TMP:.*]] = iree_input.tensor.import {{.*}} -> tensor<4xi32>
-//
+
+// CHECK-DAG: %[[BUFFER0:.*]] = iree_input.tensor.export %[[ARG0]]
+// CHECK-DAG: %[[BUFFER1:.*]] = iree_input.tensor.export %[[ARG1]]
+// CHECK-DAG: %[[BUFFER2:.*]] = iree_input.tensor.export %[[ARG2]]
+// CHECK-DAG: %[[I:.*]] = iree_input.tensor.import %[[BUFFER0]]
+// CHECK-DAG: %[[O:.*]] = iree_input.tensor.import %[[BUFFER1]]
+// CHECK-DAG: %[[TMP:.*]] = iree_input.tensor.import %[[BUFFER2]]
+
 // CHECK:   %[[KERNEL:.*]] = iree_input.global.load @[[KERNEL_NAME:.*]] :
-//
+
 // CHECK:   %[[C4:.*]] = arith.constant 4 : index
 // CHECK:   %[[ARGS:.*]] = iree_input.list.create %[[C4]]
 // CHECK-SAME: !iree_input.list<!iree_input.buffer_view>
@@ -44,6 +48,6 @@ func.func @main(%arg0: memref<16xi8>, %arg1: memref<16xi8>,
 // CHECK:   iree_input.list.set
 // CHECK:   iree_input.list.set
 // CHECK:   iree_input.list.set
-//
+
 // CHECK:   call @xla_gpu.kernel.dispatch(%[[CTX]], %[[KERNEL]], %[[ARGS]]
 // CHECK: }

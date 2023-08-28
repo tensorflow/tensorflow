@@ -510,7 +510,7 @@ tensorflow::Status RunTFXLABridge(ModuleOp module,
       [](OpPassManager &pm) {
         CreateTFXLABridgePipeline(pm);
         // Add set of passes to lower back to graph (from tf_executor).
-        TF::AddGraphExportLoweringPasses(pm);
+        TF::AddGraphExportLoweringPassesV2(pm);
       },
       module_name);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(

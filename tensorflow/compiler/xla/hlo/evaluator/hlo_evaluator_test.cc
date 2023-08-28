@@ -4366,18 +4366,15 @@ ENTRY main {
   size = s32[] parameter(0)
 
   data = s32[4] parameter(1)
+  
+  data_dynamic = s32[<=4] set-dimension-size(data, size), dimensions={0}
 
-  sum = s32[4] add(data, data)
+  sum = s32[4] add(data_dynamic, data)
 
   ROOT dynamic_size = s32[] get-dimension-size(sum), dimensions={0}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-
-  // Set up dynamic parameter binding.
-  TF_CHECK_OK(m_->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{0, {}},
-      DynamicParameterBinding::DynamicDimension{1, {}, 0}));
 
   TF_ASSERT_OK_AND_ASSIGN(DynamicDimensionInference dynamic_dimension_inference,
                           DynamicDimensionInference::Run(m_.get()));

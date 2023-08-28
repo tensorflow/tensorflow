@@ -712,16 +712,22 @@ Status TensorHandle::RemoteAddress(const Device* d, const bool wait_until_ready,
   DVLOG(3) << "RemoteAddress on TensorHandle: " << this << " device: " << d
            << " " << d->name();
 
+  const tensorflow::RemoteTensorHandleData* remote_data = nullptr;
+
+  // Waiting on a different device handle.
   if (d != device_) {
     tf_shared_lock l(mu_);
     auto mirror = remote_mirrors_.find(d->name());
     if (mirror != remote_mirrors_.end()) {
-      return mirror->second.OpIdAndOutputNum(wait_until_ready, op_id,
-                                             output_num);
+      remote_data = &mirror->second;
+    } else {
+      return errors::FailedPrecondition(
+          "Could not find remote mirror for specified device");
     }
+  }
 
-    return errors::FailedPrecondition(
-        "Could not find remote mirror for specified device");
+  if (remote_data != nullptr) {
+    return remote_data->OpIdAndOutputNum(wait_until_ready, op_id, output_num);
   }
 
   if (Type() != REMOTE) {

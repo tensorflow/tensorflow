@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -40,6 +41,28 @@ using ::testing::Not;
 using ::testing::TempDir;
 
 using GpuCompilerTest = HloTestBase;
+
+TEST_F(GpuCompilerTest, CompiledProgramsCount) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  p = f32[10]{0} parameter(0)
+  ROOT neg = f32[10]{0} negate(p)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+  std::unique_ptr<Executable> executable =
+      backend()
+          .compiler()
+          ->RunBackend(std::move(module), backend().default_stream_executor(),
+                       {/*device_allocator=*/nullptr,
+                        /*thread_pool=*/nullptr,
+                        /*layout_canonicalization_callback=*/{},
+                        /*is_autotuning_compilation=*/false})
+          .value();
+  EXPECT_EQ(GetCompiledProgramsCount(), 1);
+}
 
 TEST_F(GpuCompilerTest, GenerateDebugInfoForNonAutotuningCompilations) {
   const char* hlo_text = R"(
@@ -74,6 +97,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+  int module_id = module->unique_id();
   std::unique_ptr<Executable> executable =
       backend()
           .compiler()
@@ -83,8 +107,7 @@ ENTRY main {
                         /*layout_canonicalization_callback=*/{},
                         /*is_autotuning_compilation=*/true})
           .value();
-  EXPECT_FALSE(XlaDebugInfoManager::Get()->TracksModule(
-      executable->module().unique_id()));
+  EXPECT_FALSE(XlaDebugInfoManager::Get()->TracksModule(module_id));
 }
 
 TEST_F(GpuCompilerTest, CopyInsertionFusion) {

@@ -399,13 +399,7 @@ XLA_TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
 XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
   // Construct a computation which takes a tuple parameter with a very large
   // number of elements.
-
-  // A larger number of elements would make for a better, more strenuous test,
-  // but:
-  // TODO(b/66959878): On cpu a large number of elements results in long
-  //   compilation time.
-  // TODO(b/66954197): On gpu a large number of elements OOMs.
-  const int kElementCount = 100;
+  const int kElementCount = 1000;
 
   // Each element is a 2-element vector.
   const Shape element_shape = ShapeUtil::MakeShape(F32, {2});

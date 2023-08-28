@@ -103,12 +103,9 @@ class MultiPlatformManager {
   // initialization if initialize_platform == false.
   static tsl::StatusOr<Platform*> PlatformWithName(absl::string_view target,
                                                    bool initialize_platform);
-  static tsl::StatusOr<Platform*> PlatformWithId(const Platform::Id& id,
-                                                 bool initialize_platform);
 
-  // Retrieves the platform registered with the given platform name (e.g.
-  // "CUDA", "OpenCL", ...) or id (an opaque, comparable value provided by the
-  // Platform's Id() method).
+  // Retrieves the platform registered with the given platform id (an opaque,
+  // comparable value provided by the Platform's Id() method).
   //
   // The platform will be initialized with the given options. If the platform
   // was already initialized, an error will be returned.
@@ -116,10 +113,6 @@ class MultiPlatformManager {
   // If the requested platform is not registered, an error status is returned.
   // Ownership of the platform is NOT transferred to the caller --
   // the MultiPlatformManager owns the platforms in a singleton-like fashion.
-  static tsl::StatusOr<Platform*> InitializePlatformWithName(
-      absl::string_view target,
-      const std::map<std::string, std::string>& options);
-
   static tsl::StatusOr<Platform*> InitializePlatformWithId(
       const Platform::Id& id,
       const std::map<std::string, std::string>& options);
@@ -145,17 +138,6 @@ class MultiPlatformManager {
   // of any platforms registered with it, and leak checking should be disabled
   // during allocation of such Platforms, to avoid spurious reporting at program
   // exit.
-
-  // Interface for a listener that gets notified at certain events.
-  class Listener {
-   public:
-    virtual ~Listener() = default;
-    // Callback that is invoked when a Platform is registered.
-    virtual void PlatformRegistered(Platform* platform) = 0;
-  };
-  // Registers a listeners to receive notifications about certain events.
-  // Precondition: No Platform has been registered yet.
-  static tsl::Status RegisterListener(std::unique_ptr<Listener> listener);
 };
 
 }  // namespace stream_executor

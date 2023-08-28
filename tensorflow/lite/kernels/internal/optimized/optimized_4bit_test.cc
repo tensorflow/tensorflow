@@ -34,14 +34,14 @@ struct TestPack {
         src_rows(src_rows),
         src_cols(src_cols),
         width(width),
-        depth(depth) {
-    rows = (src_rows + (width - 1)) & ~(width - 1);
-    cols = (src_cols + (depth - 1)) & ~(depth - 1);
-  }
+        depth(depth),
+        rows((src_rows + (width - 1)) & ~(width - 1)),
+        cols((src_cols + (depth - 1)) & ~(depth - 1)),
+        packed_data_buffer(rows * cols + padding) {}
 
-  ~TestPack() { free(packed_data); }
   void Prepack() {
-    optimized_4bit::Prepack(&packed_data, src_data.data(), rows, cols, src_rows,
+    packed_data = packed_data_buffer.data();
+    optimized_4bit::Prepack(packed_data, src_data.data(), rows, cols, src_rows,
                             src_cols, width, depth);
   }
 
@@ -51,6 +51,7 @@ struct TestPack {
     for (int i = 0; i < size; i++) {
       values[i] = packed_data[i];
     }
+    packed_data = nullptr;
     return values;
   }
 
@@ -58,10 +59,12 @@ struct TestPack {
   uint8_t* packed_data;
   int src_rows;
   int src_cols;
-  int rows;
-  int cols;
   int width;
   int depth;
+  int rows;
+  int cols;
+  int padding = optimized_4bit::kDefaultAlignmentPadding;
+  std::vector<uint8_t> packed_data_buffer;
 };
 
 class RunPackTests

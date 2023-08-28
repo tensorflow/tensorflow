@@ -941,8 +941,10 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
     std::vector<ShardingStrategy> new_vector;
     std::vector<ShardingStrategy> deduped_replicated_strategies;
     absl::flat_hash_set<std::string> added;
+    size_t num_skipped_due_to_infinity_costs = 0;
     for (size_t i = 0; i < strategies->leaf_vector.size(); ++i) {
       if (AllInfinityCosts(strategies->leaf_vector[i].resharding_costs)) {
+        num_skipped_due_to_infinity_costs++;
         continue;
       }
       std::string key = strategies->leaf_vector[i].output_sharding.ToString();
@@ -962,6 +964,8 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
         }
       }
     }
+    CHECK_LT(num_skipped_due_to_infinity_costs, strategies->leaf_vector.size())
+        << "All strategies removed due to infinite resharding costs";
     // Keeps replicated strategies as the last ones.
     if (!deduped_replicated_strategies.empty()) {
       for (size_t i = 0; i < deduped_replicated_strategies.size(); ++i) {
@@ -985,7 +989,6 @@ bool IsDivisible(const HloInstruction* ins, const Array<int64_t>& device_mesh,
   }
   return true;
 }
-
 
 // Set sharding, and apply transpose if necessary.
 void SetSharding(HloInstruction* to_split, const HloSharding& output_spec,
@@ -1015,8 +1018,6 @@ bool IsAlwaysReplicated(const HloInstruction* inst) {
   }
   return false;
 }
-
-
 
 // Try to reduce the boundary set to its common ancestor
 void TryReduceWithCommonAncestor(StableHashSet<HloInstruction*>& replicated_set,
@@ -1490,6 +1491,11 @@ void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
                                  const Array<int64_t>& device_mesh,
                                  ReshardingCache* resharding_cache) {
   HloInstruction* operand = inst->mutable_operand(operand_num);
+  if (operand->opcode() == HloOpcode::kOutfeed) {
+    return;
+  }
+
+  CHECK(operand->has_sharding()) << inst->name() << " " << operand->name();
   if (operand->sharding() == dst_sharding) {
     return;
   }

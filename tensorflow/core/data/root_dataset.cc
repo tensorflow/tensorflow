@@ -25,11 +25,14 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/rewrite_utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
@@ -176,9 +179,16 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   bool SymbolicCheckpointCompatible() const override { return true; }
 
   Status Initialize(IteratorContext* ctx) override {
+    // prefetch_autotuner.h currently disregards `autotune` parameter
+    // so no matter whether dataset()->params_.autotune is on or not
+    // we need to pass ram_budget_manager_ to the downstream dataset operations
+    ram_budget_manager_ = std::make_shared<model::RamBudgetManager>(
+        dataset()->params_.autotune_ram_budget);
+
     if (dataset()->params_.autotune) {
       model_ = ctx->model() != nullptr ? ctx->model()
                                        : std::make_shared<model::Model>();
+
       absl::flat_hash_set<string> experiments = GetExperiments();
       if (experiments.contains("stage_based_autotune_v2")) {
         model_->AddExperiment("stage_based_autotune_v2");
@@ -267,6 +277,10 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
  private:
   IteratorContext::Params CreateParams(IteratorContext* ctx) {
     IteratorContext::Params params(ctx);
+    // prefetch_autotuner.h currently disregards `autotune` parameter
+    // so no matter whether dataset()->params_.autotune is on or not
+    // we need to pass ram_budget_manager_ to the downstream dataset operations
+    params.ram_budget_manager = ram_budget_manager_;
     if (dataset()->params_.autotune) {
       params.model = model_;
     }
@@ -287,11 +301,10 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     mutex_lock l(mu_);
     if (!model_thread_) {
       model_thread_ = ctx->StartThread("tf_data_model", [this]() {
-        Status status =
-            model_->OptimizeLoop(dataset()->params_.autotune_algorithm,
-                                 dataset()->params_.autotune_cpu_budget,
-                                 dataset()->params_.autotune_ram_budget,
-                                 cancellation_manager_.get());
+        Status status = model_->OptimizeLoop(
+            dataset()->params_.autotune_algorithm,
+            dataset()->params_.autotune_cpu_budget, *ram_budget_manager_,
+            cancellation_manager_.get());
         if (!status.ok()) {
           LOG(WARNING) << "Optimization loop failed: " << status;
         }
@@ -301,6 +314,9 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   }
 
   std::shared_ptr<model::Model> model_ = nullptr;
+  // `ram_budget_manager_` coordinates the memory budget and allocation
+  // between prefetch legacy autotune and `tensorflow::data::model::Model`
+  std::shared_ptr<model::RamBudgetManager> ram_budget_manager_ = nullptr;
   // Controls cancellation of `model_thread_`. Must be ordered before
   // `model_thread_` so that `model_thread_` is destroyed first.
   std::unique_ptr<CancellationManager> cancellation_manager_;

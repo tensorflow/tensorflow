@@ -200,6 +200,23 @@ typedef enum {
   kTfLiteBuiltinStablehloBroadcastInDim = 170,
   kTfLiteBuiltinStablehloConvolution = 171,
   kTfLiteBuiltinStablehloSlice = 172,
+  kTfLiteBuiltinStablehloCustomCall = 173,
+  kTfLiteBuiltinStablehloReduce = 174,
+  kTfLiteBuiltinStablehloAbs = 175,
+  kTfLiteBuiltinStablehloAnd = 176,
+  kTfLiteBuiltinStablehloCosine = 177,
+  kTfLiteBuiltinStablehloExponential = 178,
+  kTfLiteBuiltinStablehloFloor = 179,
+  kTfLiteBuiltinStablehloLog = 180,
+  kTfLiteBuiltinStablehloMinimum = 181,
+  kTfLiteBuiltinStablehloNegate = 182,
+  kTfLiteBuiltinStablehloOr = 183,
+  kTfLiteBuiltinStablehloPower = 184,
+  kTfLiteBuiltinStablehloRemainder = 185,
+  kTfLiteBuiltinStablehloRsqrt = 186,
+  kTfLiteBuiltinStablehloSelect = 187,
+  kTfLiteBuiltinStablehloSubtract = 188,
+  kTfLiteBuiltinStablehloTanh = 189,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

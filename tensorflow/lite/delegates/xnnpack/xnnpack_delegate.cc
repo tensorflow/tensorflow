@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
+
 #include <algorithm>
 #include <array>
 #include <cinttypes>
@@ -390,6 +391,10 @@ class VariableHolder {
     return tensor_id_to_global_id_.at(local);
   }
 
+  bool HasLocalId(int local) const {
+    return tensor_id_to_global_id_.count(local) != 0;
+  }
+
   // Variable tensors don't have dimensions or type, because VAR_HANDLE don't
   // have that information. When a node (READ_VARIABLE or ASSIGN_VARIABLE) uses
   // a variable, we associate the variable tensor with an underlying TFLite
@@ -540,6 +545,11 @@ class Delegate {
     return false;
   }
 
+  bool transient_indirection_buffer() const {
+    return (options_.flags &
+            TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER) != 0;
+  }
+
   pthreadpool_t threadpool() const {
 #if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
     return nullptr;
@@ -578,8 +588,20 @@ class Delegate {
     return variable_holder_.GetGlobalId(local);
   }
 
+  uint32_t HasLocalId(int local) const {
+    return variable_holder_.HasLocalId(local);
+  }
+
   const std::map<uint32_t, const TfLiteTensor*>& GetAllVariableTensors() const {
     return variable_holder_.GetAllTensors();
+  }
+
+  bool CanVariableBeDelegated(int local_id) const {
+    if (HasLocalId(local_id)) {
+      return GetAllVariableTensors().count(GetGlobalId(local_id)) != 0;
+    } else {
+      return false;
+    }
   }
 
   void maybe_release_threadpool_ownership() {
@@ -988,6 +1010,9 @@ class Subgraph {
     uint32_t flags = XNN_FLAG_YIELD_WORKERS;
     if (has_sparse_weights) {
       flags |= XNN_FLAG_HINT_SPARSE_INFERENCE;
+    }
+    if (delegate.transient_indirection_buffer()) {
+      flags |= XNN_FLAG_TRANSIENT_INDIRECTION_BUFFER;
     }
     if (delegate.force_fp16()) {
       flags |= XNN_FLAG_FORCE_FP16_INFERENCE;
@@ -5921,8 +5946,13 @@ class Subgraph {
     if (subgraph == nullptr) {
       const TfLiteVarHandleParams* params =
           static_cast<const TfLiteVarHandleParams*>(node->builtin_data);
-      return delegate.DefineVariable(params, node->outputs->data[0],
-                                     logging_context, node_index);
+      delegate.DefineVariable(params, node->outputs->data[0], logging_context,
+                              node_index);
+      // Always return error here because we don't know the type of this
+      // variable yet, so we pretend that we can't handle this. Later, after
+      // ReadVariable/AssignVariable tells us the data type, and we decide if we
+      // can handle the datatype, we will update the nodes to delegate.
+      return kTfLiteError;
     }
     // Nothing to do here when actually creating subgraph, as we don't
     // materialize any operators for this node.
@@ -5981,6 +6011,14 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
   std::unordered_set<int> quasi_static_tensors;
   // Set of quasi-static tensors consumed by the delegated nodes.
   std::unordered_set<int> quasi_static_tensors_to_unpack;
+  // Record all VarHandle nodes. At the point of visiting it, we don't know if
+  // it can be delegated yet, because we don't know the type of the variable -
+  // we rely on ReadVariable/AssignVariable to tell us the type. So the first
+  // pass of VisitNode will associate the variable with a tensor, and after
+  // the graph is walked once, we check all VarHandle nodes and decide if we can
+  // handle them based on checking the global id of the variable tensor.
+  // Maps VarHandle node index to local tensor id (i.e. output tensor id).
+  std::unordered_map<int, int> variable_handles;
 
   TfLiteIntArray* nodes_to_delegate =
       TfLiteIntArrayCreate(execution_plan->size);
@@ -6068,6 +6106,11 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       }
     }
 
+    // Record node_index as we need it to check if node is delegated or not.
+    if (registration->builtin_code == kTfLiteBuiltinVarHandle) {
+      variable_handles[node_index] = node->outputs->data[0];
+    }
+
     if (Subgraph::VisitNode(/*subgraph=*/nullptr, /*delegate=*/*this, context,
                             registration, node, node_index,
                             quasi_static_tensors,
@@ -6093,6 +6136,14 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
     }
 
     nodes_to_delegate->data[nodes_to_delegate->size++] = node_index;
+  }
+
+  // Record which resource variables can be delegated.
+  // A resource variable can be delegated if the global id can be found.
+  for (const auto& n : variable_handles) {
+    if (CanVariableBeDelegated(n.second)) {
+      nodes_to_delegate->data[nodes_to_delegate->size++] = n.first;
+    }
   }
 
   // Sort quasi-static tensors to be unpacked by the node index the produced
@@ -6455,6 +6506,9 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
 #endif
 #ifdef XNNPACK_DELEGATE_ENABLE_DYNAMIC_FULLY_CONNECTED
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED;
+#endif
+#ifdef XNNPACK_DELEGATE_ENABLE_TRANSIENT_INDIRECTION_BUFFER
+  options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER;
 #endif
 
   // Enable quantized inference for the delegate build used in unit tests.

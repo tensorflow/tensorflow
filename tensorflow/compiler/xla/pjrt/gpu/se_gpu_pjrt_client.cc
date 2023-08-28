@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/utils.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/tsl/framework/bfc_allocator.h"
+#include "tensorflow/tsl/lib/strings/proto_serialization.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/profiler/lib/connected_traceme.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
@@ -892,6 +893,15 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
       /*node_id=*/node_id, std::move(allocator),
       std::move(host_memory_allocator), should_stage_host_to_device_transfers,
       /*gpu_run_options=*/std::move(gpu_run_options)));
+}
+
+absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
+    const {
+  std::string result;
+  if (!tsl::SerializeToStringDeterministic(gpu_topology_.ToProto(), &result)) {
+    return absl::InternalError("Failed to serialize gpu_topology");
+  }
+  return result;
 }
 
 }  // namespace xla

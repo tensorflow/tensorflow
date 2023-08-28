@@ -37,9 +37,13 @@ func.func @main(%arg0: memref<4xi8>, %arg1: memref<4xi8>, %arg2: memref<1xi8>) {
 // CHECK:   %[[ARG2:.*]]: tensor<1xi8>
 // CHECK: ) {
 
-// CHECK:   %[[BUFFER:.*]] = iree_input.tensor.import {{.*}} -> tensor<1xf32>
-// CHECK:   %[[CST:.*]] = iree_input.tensor.import {{.*}} -> tensor<1xf32>
-// CHECK:   %[[PRED:.*]] = iree_input.tensor.import {{.*}} -> tensor<1xi1>
+// CHECK-DAG: %[[BUFFER0:.*]] = iree_input.tensor.export %[[ARG0]]
+// CHECK-DAG: %[[BUFFER1:.*]] = iree_input.tensor.export %[[ARG1]]
+// CHECK-DAG: %[[BUFFER2:.*]] = iree_input.tensor.export %[[ARG2]]
+
+// CHECK-DAG: %[[TENSOR:.*]] = iree_input.tensor.import %[[BUFFER0]]
+// CHECK-DAG: %[[CST:.*]] = iree_input.tensor.import %[[BUFFER1]]
+// CHECK-DAG: %[[PRED:.*]] = iree_input.tensor.import %[[BUFFER2]]
 
 // CHECK:   scf.while : () -> () {
 // CHECK:      func.call @xla_gpu.kernel.dispatch

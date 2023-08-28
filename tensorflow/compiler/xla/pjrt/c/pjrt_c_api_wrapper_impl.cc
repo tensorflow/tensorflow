@@ -389,6 +389,20 @@ static PJRT_Device* FindDeviceWrapper(
   return nullptr;
 }
 
+// Searches `memory_list` for a PJRT_Memory* that wraps a provided
+// `xla::PjRtMemorySpace *` (`cpp_memory`). If a match is found, that
+// PJRT_Memory* is returned. Otherwise, returns nullptr.
+static PJRT_Memory* FindMemoryWrapper(
+    xla::PjRtMemorySpace* cpp_memory,
+    absl::Span<PJRT_Memory* const> memory_list) {
+  for (PJRT_Memory* memory : memory_list) {
+    if (memory->memory_space == cpp_memory) {
+      return memory;
+    }
+  }
+  return nullptr;
+}
+
 static void PopulatePjrtExecutableAddressableDevices(
     PJRT_LoadedExecutable* executable) {
   CHECK(executable->client != nullptr) << ": client was null";
@@ -577,7 +591,20 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
   };
 
   std::unique_ptr<xla::PjRtBuffer> buffer;
-  if (layout.has_value()) {
+  bool has_layout_and_memory = layout.has_value() && args->memory != nullptr;
+  bool has_layout_and_no_memory = layout.has_value() && args->memory == nullptr;
+  bool has_memory_and_no_layout =
+      !layout.has_value() && args->memory != nullptr;
+  if (has_layout_and_memory) {
+    PJRT_ASSIGN_OR_RETURN(
+        buffer, args->client->client->BufferFromHostBuffer(
+                    args->data, ::pjrt::ConvertFromPjRtBufferType(args->type),
+                    dims, byte_strides,
+                    ::pjrt::ConvertFromPjRtHostBufferSemantics(
+                        args->host_buffer_semantics),
+                    on_done_with_host_buffer, args->memory->memory_space,
+                    &layout.value()));
+  } else if (has_layout_and_no_memory) {
     PJRT_ASSIGN_OR_RETURN(
         buffer,
         args->client->client->BufferFromHostBuffer(
@@ -586,6 +613,15 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
             ::pjrt::ConvertFromPjRtHostBufferSemantics(
                 args->host_buffer_semantics),
             on_done_with_host_buffer, args->device->device, &layout.value()));
+  } else if (has_memory_and_no_layout) {
+    PJRT_ASSIGN_OR_RETURN(
+        buffer, args->client->client->BufferFromHostBuffer(
+                    args->data, ::pjrt::ConvertFromPjRtBufferType(args->type),
+                    dims, byte_strides,
+                    ::pjrt::ConvertFromPjRtHostBufferSemantics(
+                        args->host_buffer_semantics),
+                    on_done_with_host_buffer, args->memory->memory_space,
+                    /*device_layout=*/nullptr));
   } else {
     PJRT_ASSIGN_OR_RETURN(
         buffer, args->client->client->BufferFromHostBuffer(
@@ -1505,6 +1541,15 @@ PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Buffer_Memory(PJRT_Buffer_Memory_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_Memory_Args", PJRT_Buffer_Memory_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->memory = FindMemoryWrapper(args->buffer->buffer->memory_space(),
+                                   args->buffer->client->addressable_memories);
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Buffer_Delete_Args", PJRT_Buffer_Delete_Args_STRUCT_SIZE,
@@ -1824,8 +1869,29 @@ PJRT_Error* PJRT_TopologyDescription_PlatformVersion(
 
 PJRT_Error* PJRT_TopologyDescription_GetDeviceDescriptions(
     PJRT_TopologyDescription_GetDeviceDescriptions_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_TopologyDescription_GetDeviceDescriptions_Args",
+      PJRT_TopologyDescription_GetDeviceDescriptions_Args_STRUCT_SIZE,
+      args->struct_size));
   args->descriptions = args->topology->description_pointers.data();
   args->num_descriptions = args->topology->description_pointers.size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_Serialize(
+    PJRT_TopologyDescription_Serialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_TopologyDescription_Serialize_Args",
+      PJRT_TopologyDescription_Serialize_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(std::string out, args->topology->topology->Serialize());
+  auto* storage = new PJRT_SerializedTopology{std::move(out)};
+  args->serialized_topology = storage;
+  args->serialized_topology_deleter =
+      +[](PJRT_SerializedTopology* serialized_topology) {
+        delete serialized_topology;
+      };
+  args->serialized_bytes = storage->serialized.data();
+  args->serialized_bytes_size = storage->serialized.size();
   return nullptr;
 }
 

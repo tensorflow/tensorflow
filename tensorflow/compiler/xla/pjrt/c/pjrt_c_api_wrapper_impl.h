@@ -158,6 +158,10 @@ struct PJRT_SerializedExecutable {
   std::string serialized;
 };
 
+struct PJRT_SerializedTopology {
+  std::string serialized;
+};
+
 struct PJRT_TopologyDescription {
   std::unique_ptr<xla::PjRtTopologyDescription> topology;
   std::vector<std::unique_ptr<const xla::PjRtDeviceDescription>>
@@ -280,6 +284,7 @@ PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
 PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
     PJRT_Buffer_OnDeviceSizeInBytes_Args* args);
 PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args);
+PJRT_Error* PJRT_Buffer_Memory(PJRT_Buffer_Memory_Args* args);
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
 PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
 PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args);
@@ -313,6 +318,8 @@ PJRT_Error* PJRT_TopologyDescription_PlatformVersion(
     PJRT_TopologyDescription_PlatformVersion_Args* args);
 PJRT_Error* PJRT_TopologyDescription_GetDeviceDescriptions(
     PJRT_TopologyDescription_GetDeviceDescriptions_Args* args);
+PJRT_Error* PJRT_TopologyDescription_Serialize(
+    PJRT_TopologyDescription_Serialize_Args* args);
 
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 
@@ -518,8 +525,15 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_TopologyDescription_PlatformVersion,
       /*PJRT_TopologyDescription_GetDeviceDescriptions=*/
       pjrt::PJRT_TopologyDescription_GetDeviceDescriptions,
+      /*PJRT_TopologyDescription_Serialize=*/
+      pjrt::PJRT_TopologyDescription_Serialize,
 
       /*.PJRT_Compile=*/pjrt::PJRT_Compile,
+
+      // Always add new fields to the end of the struct.
+      // TODO(skyewm, jieying): Move fields below to their corresponding places
+      // after each major version bump.
+      /*PJRT_Buffer_Memory=*/pjrt::PJRT_Buffer_Memory,
   };
 }
 

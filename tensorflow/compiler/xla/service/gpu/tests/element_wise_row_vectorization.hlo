@@ -284,7 +284,7 @@ ENTRY main {
   ROOT %broadcastRowToLong = f32[3025,2025]{1,0} broadcast(%param_0), dimensions={1}
 }
 // Check that we didn't emit the simpler row broadcasting.
-// CHECK-LLVM-LABEL: @broadcastRowToLong
+// CHECK-LLVM-LABEL: @wrapped_broadcastRowToLong
 // CHECK-LLVM-NOT: row_index
 
 // -----

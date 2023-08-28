@@ -375,6 +375,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringprintf",
     ],
 )
@@ -429,6 +430,14 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 

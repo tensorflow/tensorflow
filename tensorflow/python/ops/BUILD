@@ -24,6 +24,7 @@ visibility = [
     "//third_party/py/tensorflow_recommenders:__subpackages__",
     "//third_party/py/tf_agents:__subpackages__",  # For benchmarks.
     "//third_party/py/tf_slim:__subpackages__",
+    "//third_party/py/tf_keras:__subpackages__",
     "//third_party/py/keras:__subpackages__",
     "//third_party/py/starcraft2:__subpackages__",
     "//third_party/py/tensorflow_gnn:__subpackages__",
@@ -945,6 +946,7 @@ tf_py_strict_test(
         ":clip_ops",
         ":numerics",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",

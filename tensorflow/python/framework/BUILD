@@ -274,6 +274,7 @@ py_strict_library(
         "//tensorflow/python/eager:execute",
         "//tensorflow/security/fuzzing/py:annotation_types",
         "//tensorflow/tools/docs:doc_controls",
+        "@typing_extensions_archive//:typing_extensions",
     ],
 )
 
@@ -1982,6 +1983,7 @@ py_strict_library(
         "//third_party/py/keras:__subpackages__",
         "//third_party/py/neural_structured_learning:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
+        "//third_party/py/tf_keras:__subpackages__",
     ],
     deps = [
         ":_test_metrics_util",
@@ -2053,6 +2055,7 @@ py_strict_library(
         "//tensorflow_models:__subpackages__",
         "//third_party/py/keras:__subpackages__",
         "//third_party/py/keras_cv:__subpackages__",
+        "//third_party/py/tf_keras:__subpackages__",
     ],
 )
 

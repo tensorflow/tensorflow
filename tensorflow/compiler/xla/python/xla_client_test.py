@@ -36,6 +36,11 @@ try:
 except ImportError:
   custom_call_for_test = None
 
+xla_client._xla.jax_jit.set_thread_local_state_initialization_callback(
+    lambda: None
+)
+xla_client._xla.jax_jit.global_state().enable_memories = False
+
 bfloat16 = xla_client.bfloat16
 float8_e4m3fn = xla_client.float8_e4m3fn
 float8_e4m3fnuz = xla_client.float8_e4m3fnuz
@@ -2220,6 +2225,13 @@ def TestFactory(xla_backend,
         local_hardware_id = device.local_hardware_id
         if local_hardware_id is not None:
           self.assertGreaterEqual(local_hardware_id, 0)
+
+    def testLocalDeviceFromLocalHardwareId(self):
+      for device in self.backend.local_devices():
+        if device.local_hardware_id is not None:
+          lookup_device = self.backend.device_from_local_hardware_id(
+              device.local_hardware_id)
+          self.assertEqual(lookup_device, device)
 
     @unittest.skipIf(pathways, "not implemented")
     def testMemoryStats(self):

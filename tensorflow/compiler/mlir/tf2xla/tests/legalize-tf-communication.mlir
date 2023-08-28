@@ -22,14 +22,14 @@ func.func @host_compute(%arg0: tensor<i32>, %arg1: tensor<i64>) -> (tensor<f32>,
   // CHECK:      [[SEND_ARG0_TOKEN:%.*]] = "mhlo.send"([[ARG0]], [[INIT_TOKEN]])
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
   // CHECK-SAME: is_host_transfer = true
-  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "host_compute_channel_send_dtoh_0"}
+  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "host_compute_channel_send_dtoh_0"}
   // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\00"
   // CHECK-SAME: (tensor<i32>, !mhlo.token) -> !mhlo.token
 
   // CHECK:      [[SEND_ARG1_TOKEN:%.*]] = "mhlo.send"([[ARG1]], [[INIT_TOKEN]])
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 2>
   // CHECK-SAME: is_host_transfer = true
-  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "s64", _xla_host_transfer_rendezvous = "host_compute_channel_send_dtoh_1"}
+  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "host_compute_channel_send_dtoh_1"}
   // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\00"
   // CHECK-SAME: (tensor<i64>, !mhlo.token) -> !mhlo.token
 
@@ -38,14 +38,14 @@ func.func @host_compute(%arg0: tensor<i32>, %arg1: tensor<i64>) -> (tensor<f32>,
   // CHECK:      [[RECV_RETVAL0_TUPLE:%.*]]:2 = "mhlo.recv"([[SEND_SINK_TOKEN]])
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 3, type = 3>
   // CHECK-SAME: is_host_transfer = true
-  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "host_compute_channel_recv_htod_0"}
+  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "host_compute_channel_recv_htod_0"}
   // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\00"
   // CHECK-SAME: (!mhlo.token) -> (tensor<f32>, !mhlo.token)
 
   // CHECK:      [[RECV_RETVAL1_TUPLE:%.*]]:2 = "mhlo.recv"([[SEND_SINK_TOKEN]])
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 4, type = 3>
   // CHECK-SAME: is_host_transfer = true
-  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f64", _xla_host_transfer_rendezvous = "host_compute_channel_recv_htod_1"}
+  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "host_compute_channel_recv_htod_1"}
   // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\00"
   // CHECK-SAME: (!mhlo.token) -> (tensor<f64>, !mhlo.token)
 
@@ -121,7 +121,7 @@ func.func @send_to_host(%arg0: tensor<i32>) {
   // CHECK:      "mhlo.send"([[ARG0]], [[INIT_TOKEN]])
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
   // CHECK-SAME: is_host_transfer = true
-  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "send_key_dtoh_0"}
+  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "send_key_dtoh_0"}
   // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\00"
   // CHECK-SAME: (tensor<i32>, !mhlo.token) -> !mhlo.token
   "tf.XlaSendToHost"(%arg0) {key = "send_key"} : (tensor<i32>) -> ()
@@ -139,7 +139,7 @@ func.func @recv_from_host() -> tensor<i32> {
   // CHECK:      [[RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[INIT_TOKEN]])
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 3>
   // CHECK-SAME: is_host_transfer = true
-  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "recv_key_htod_0"}
+  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "recv_key_htod_0"}
   // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\00"
   // CHECK-SAME: (!mhlo.token) -> (tensor<i32>, !mhlo.token)
   %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
@@ -159,21 +159,21 @@ func.func @multiple_consecutive_ops(%arg0: tensor<i32>) -> tensor<i32> {
 
   // CHECK:      [[SEND0_ARG0_TOKEN:%.*]] = "mhlo.send"([[ARG0]], [[INIT_TOKEN]])
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
-  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "send0_dtoh_0"}
+  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "send0_dtoh_0"}
 
   // CHECK:      [[RECV0_RETVAL0_TUPLE:%.*]]:2 = "mhlo.recv"([[SEND0_ARG0_TOKEN]])
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 3>
-  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "recv0_htod_0"}
+  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "recv0_htod_0"}
 
   %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "recv0", send_key = "send0", host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
 
   // CHECK:      [[SEND1_ARG0_TOKEN:%.*]] = "mhlo.send"([[RECV0_RETVAL0_TUPLE]]#0, [[RECV0_RETVAL0_TUPLE]]#1)
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 3, type = 2>
-  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "send1_dtoh_0"}
+  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "send1_dtoh_0"}
 
   // CHECK:      [[RECV1_RETVAL0_TUPLE:%.*]]:2 = "mhlo.recv"([[SEND1_ARG0_TOKEN]])
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 4, type = 3>
-  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "recv1_htod_0"}
+  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "recv1_htod_0"}
 
   %1 = "tf._XlaHostComputeMlir"(%0) {recv_key = "recv1", send_key = "send1", host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
 
@@ -377,11 +377,11 @@ func.func @if_both_branches(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor
   %0 = "mhlo.if"(%arg0) ({
     // CHECK:      [[TRUE_SEND_TOKEN:%.*]] = "mhlo.send"([[ARG1]], [[INIT_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "send_if_true_dtoh_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "send_if_true_dtoh_0"}
 
     // CHECK:      [[TRUE_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[TRUE_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 3>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_if_true_htod_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "recv_if_true_htod_0"}
     %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_if_true", send_key = "send_if_true", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      mhlo.return [[TRUE_RECV_TUPLE]]#0, [[TRUE_RECV_TUPLE]]#1
@@ -389,11 +389,11 @@ func.func @if_both_branches(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor
   },  {
     // CHECK:      [[FALSE_SEND_TOKEN:%.*]] = "mhlo.send"([[ARG2]], [[INIT_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 3, type = 2>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "send_if_false_dtoh_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "send_if_false_dtoh_0"}
 
     // CHECK:      [[FALSE_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[FALSE_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 4, type = 3>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_if_false_htod_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "recv_if_false_htod_0"}
     %1 = "tf._XlaHostComputeMlir"(%arg2) {recv_key = "recv_if_false", send_key = "send_if_false", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      mhlo.return [[FALSE_RECV_TUPLE]]#0, [[FALSE_RECV_TUPLE]]#1
@@ -420,11 +420,11 @@ func.func @if_true_branch(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f
   %0 = "mhlo.if"(%arg0) ({
     // CHECK:      [[TRUE_SEND_TOKEN:%.*]] = "mhlo.send"([[ARG1]], [[INIT_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "send_if_true_dtoh_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "send_if_true_dtoh_0"}
 
     // CHECK:      [[TRUE_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[TRUE_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 3>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_if_true_htod_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "recv_if_true_htod_0"}
     %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_if_true", send_key = "send_if_true", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      mhlo.return [[TRUE_RECV_TUPLE]]#0, [[TRUE_RECV_TUPLE]]#1
@@ -457,11 +457,11 @@ func.func @if_false_branch(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<
   },  {
     // CHECK:      [[FALSE_SEND_TOKEN:%.*]] = "mhlo.send"([[ARG2]], [[INIT_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "send_if_false_dtoh_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "send_if_false_dtoh_0"}
 
     // CHECK:      [[FALSE_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[FALSE_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 3>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_if_false_htod_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "recv_if_false_htod_0"}
     %1 = "tf._XlaHostComputeMlir"(%arg2) {recv_key = "recv_if_false", send_key = "send_if_false", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      mhlo.return [[FALSE_RECV_TUPLE]]#0, [[FALSE_RECV_TUPLE]]#1
@@ -682,11 +682,11 @@ func.func @while_cond_body(%arg0: tensor<f32>) -> tensor<f32> {
   ^bb0(%arg1: tensor<f32>):
     // CHECK:      [[COND_SEND_TOKEN:%.*]] = "mhlo.send"([[ITER_ARG_VALUE]], [[ITER_ARG_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "send_while_cond_dtoh_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "send_while_cond_dtoh_0"}
 
     // CHECK:      [[COND_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[COND_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 3>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_while_cond_htod_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "recv_while_cond_htod_0"}
     %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_cond", send_key = "send_while_cond", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      [[COND_COMPARE:%.*]] = mhlo.compare LT, [[COND_RECV_TUPLE]]#0, [[COND_RECV_TUPLE]]#0
@@ -698,11 +698,11 @@ func.func @while_cond_body(%arg0: tensor<f32>) -> tensor<f32> {
   ^bb0(%arg1: tensor<f32>):
     // CHECK:      [[BODY_SEND_TOKEN:%.*]] = "mhlo.send"([[ITER_ARG_VALUE]], [[ITER_ARG_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 3, type = 2>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "send_while_body_dtoh_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "send_while_body_dtoh_0"}
 
     // CHECK:      [[BODY_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[BODY_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 4, type = 3>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_while_body_htod_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "recv_while_body_htod_0"}
     %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_body", send_key = "send_while_body", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      mhlo.return [[BODY_RECV_TUPLE]]#0, [[BODY_RECV_TUPLE]]#1
@@ -728,11 +728,11 @@ func.func @while_cond(%arg0: tensor<f32>) -> tensor<f32> {
 
     // CHECK:      [[COND_SEND_TOKEN:%.*]] = "mhlo.send"([[ITER_ARG_VALUE]], [[ITER_ARG_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "send_while_cond_dtoh_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "send_while_cond_dtoh_0"}
 
     // CHECK:      [[COND_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[COND_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 3>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_while_cond_htod_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "recv_while_cond_htod_0"}
     %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_cond", send_key = "send_while_cond", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      [[COND_COMPARE:%.*]] = mhlo.compare LT, [[COND_RECV_TUPLE]]#0, [[COND_RECV_TUPLE]]#0
@@ -773,11 +773,11 @@ func.func @while_body(%arg0: tensor<f32>) -> tensor<f32> {
 
     // CHECK:      [[BODY_SEND_TOKEN:%.*]] = "mhlo.send"([[ITER_ARG_VALUE]], [[ITER_ARG_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "send_while_body_dtoh_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "send_while_body_dtoh_0"}
 
     // CHECK:      [[BODY_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[BODY_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 3>
-    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_while_body_htod_0"}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "recv_while_body_htod_0"}
     %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_body", send_key = "send_while_body", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      mhlo.return [[BODY_RECV_TUPLE]]#0, [[BODY_RECV_TUPLE]]#1

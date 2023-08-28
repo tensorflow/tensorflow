@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 
 #include "absl/container/flat_hash_map.h"
@@ -2093,12 +2094,23 @@ static int64_t GetNumExistingCopies(
 }
 
 Status CopyInsertion::RemoveUnnecessaryCopies(
-    HloOrdering* ordering, HloModule* module, bool check_live_range_ordering,
+    HloModule* module, bool check_live_range_ordering,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(4, module->ToString());
+
+  // Use SequentialHloOrdering if the module has a schedule. The schedule can
+  // provide more information on the ordering, allowing for detecting more
+  // redundant copies.
+  std::unique_ptr<HloOrdering> ordering;
+  if (module->has_schedule()) {
+    ordering = std::make_unique<SequentialHloOrdering>(module->schedule());
+  } else {
+    ordering = std::make_unique<DependencyHloOrdering>(module);
+  }
+
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer_));
-  CopyRemover copy_remover(*module, *alias_analysis, ordering,
+  CopyRemover copy_remover(*module, *alias_analysis, ordering.get(),
                            check_live_range_ordering);
   if (VLOG_IS_ON(3)) {
     LOG(INFO) << "Removing unnecessary copies in " << module->name();
@@ -2207,7 +2219,7 @@ StatusOr<bool> CopyInsertion::Run(
       name(), "after adding copies to resolve interference", *module);
 
   DependencyHloOrdering ordering(module);
-  TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(&ordering, module,
+  TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(module,
                                              /*check_live_range_ordering=*/true,
                                              execution_threads));
   DumpHloModuleDuringPassIfEnabled(name(), "after removing unnecessary copies",

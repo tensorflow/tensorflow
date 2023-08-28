@@ -1271,7 +1271,8 @@ A set of element-wise binary arithmetic operations is supported.
 
 Where `Op` is one of `Add` (addition), `Sub` (subtraction), `Mul`
 (multiplication), `Div` (division), `Rem` (remainder), `Max` (maximum), `Min`
-(minimum), `LogicalAnd` (logical AND), or `LogicalOr` (logical OR).
+(minimum), `LogicalAnd` (logical AND), or `LogicalOr` (logical OR), or
+`LogicalXor` (logical XOR).
 
 Arguments | Type    | Semantics
 --------- | ------- | ----------------------------------------
@@ -1358,7 +1359,14 @@ XlaBuilder supports these element-wise unary functions:
 
 <b>`Abs(operand)`</b> Element-wise abs `x -> |x|`.
 
+<b>`Atan2(operand)`</b> Element-wise arctangent of $X_i$, $Y_i$ - the angle
+measure in radians between the x-axis and a ray from the origin to a point (x,
+y) `x,y -> atan2(x,y)`.
+
 <b>`Ceil(operand)`</b> Element-wise ceil `x -> ⌈x⌉`.
+
+<b>`Clz(operand)`</b> Element-wise counting of the number of leading zeros `x ->
+clz(x)`.
 
 <b>`Cos(operand)`</b> Element-wise cosine `x -> cos(x)`.
 
@@ -1375,6 +1383,9 @@ of `PRED` values with the same shape as the input, where each element is `true`
 if and only if the corresponding input element is finite.
 
 <b>`Log(operand)`</b> Element-wise natural logarithm `x -> ln(x)`.
+
+<b>`Log1p(operand)`</b> Element-wise natural logarithm of a number plus one `x
+-> ln(x + 1)`
 
 <b>`LogicalNot(operand)`</b> Element-wise logical not `x -> !(x)`.
 

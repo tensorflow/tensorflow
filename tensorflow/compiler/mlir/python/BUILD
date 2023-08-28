@@ -74,7 +74,7 @@ cc_library(
         # TODO: It might be still preferrable to place graph_optimization_pass
         # as part of the libtensorflow_framework.so, as it is the central
         # place for core related components.
-        "//tensorflow/compiler/mlir/tensorflow:graph_optimization_pass_registration",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir/tensorflow/transforms:graph_optimization_pass_registration",  # buildcleaner: keep
     ],
     alwayslink = 1,
 )

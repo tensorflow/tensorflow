@@ -51,6 +51,7 @@ tf_cc_shared_test(
     tags = ["no_oss"],
     deps = [
         ":runtime",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:test",
         "@com_google_googletest//:gtest_main",
         "@tf_runtime//cpp_tests:common",

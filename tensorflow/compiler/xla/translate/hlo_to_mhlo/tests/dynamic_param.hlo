@@ -93,12 +93,6 @@ hlo_module       {
   }
   id: 4
   entry_computation_id: 4
-  # CHECK: mhlo.dynamic_parameter_bindings = [#mhlo.dynamic_parameter_binding<dynamic_param_num = 0, dynamic_param_indices = [], target_param_num = 1, target_param_indices = [], target_param_dim_num = 0
-  dynamic_parameter_binding {
-    entries {
-      target_param_num: 1
-    }
-  }
 }
 
 # CHECK: func.func @main(%arg0: tensor<i32>, %arg1: tensor<?xf32, #mhlo.type_extensions<bounds = [2]>>) -> tuple<> {

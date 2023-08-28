@@ -680,6 +680,26 @@ class ReadySetLt {
       // pressure.
       if (sched_state_.memory_pressure_tracker->memory_usage() >=
           sched_state_.config.memory_limit) {
+        if (sched_state_.config.depth_based_memory_pressure_reduction) {
+          // Try to pick a node that actually reduces memory pressure first.
+          if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+                  a_increase.first < 0 && a_increase.first < b_increase.first,
+                  a,
+                  b_increase.first < 0 && b_increase.first < a_increase.first,
+                  b, "kOnlyDecreaseMemoryOverLimit")) {
+            return *value;
+          }
+          // If there's none than prefer a node that is the deepest. That
+          // matches well with unlocking pressure-reducing nodes for typical ML
+          // graphs.
+          if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+                  a.node->GetGraphDepth() > b.node->GetGraphDepth(), a,
+                  b.node->GetGraphDepth() > a.node->GetGraphDepth(), b,
+                  "kDepthOverLimit")) {
+            return *value;
+          }
+        }
+        // Otherwise pick a node that increases the pressure from the list.
         if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
                 a_increase.first < b_increase.first, a,
                 b_increase.first < a_increase.first, b,
@@ -946,9 +966,32 @@ class ReadySetLt {
     if (cand.pressure_change) {
       return *cand.pressure_change;
     }
+    std::optional<std::pair<int64_t, int64_t>> start_result;
+    // In case of async-done instruction they can increase the memory pressure
+    // but its always a possible move to schedule the start immediately after,
+    // so for memory pressure purpose in the scheduling heuristic actually use
+    // the memory pressure change of the start rather than the -done.
+    if (this->sched_state_.async_tracker->IsSupportedAsyncDone(
+            cand.node->GetInstr())) {
+      const HloInstruction* start = cand.node->GetInstr().operand_count() > 0
+                                        ? cand.node->GetInstr().operand(0)
+                                        : nullptr;
+      if (start != nullptr &&
+          this->sched_state_.async_tracker->IsSupportedAsyncStart(*start)) {
+        start_result =
+            sched_state_.memory_pressure_tracker->MemoryPressureDifference(
+                start);
+      }
+    }
     cand.pressure_change =
         sched_state_.memory_pressure_tracker->MemoryPressureDifference(
             &cand.node->GetInstr());
+    if (start_result.has_value()) {
+      cand.pressure_change->first =
+          std::min(start_result->first, cand.pressure_change->first);
+      cand.pressure_change->second =
+          std::max(start_result->second, cand.pressure_change->second);
+    }
     return *cand.pressure_change;
   }
 };
@@ -1013,6 +1056,13 @@ HloGraphNode* DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
     CandidateResult cand_result = ready_lt(ready_candidate, ready_chosen);
     const bool new_candidate_selected =
         cand_result.result.node == *ready_node_it;
+    auto print_pressure_change =
+        [](const std::optional<std::pair<int64_t, int64_t>>& p) {
+          if (p.has_value()) {
+            return std::to_string(p.value().first);
+          }
+          return std::string("N/A");
+        };
     VLOG(6) << "Choosing from ready ("
             << (new_candidate_selected ? ready_candidate.node->GetInstr().name()
                                        : ready_chosen.node->GetInstr().name())
@@ -1020,7 +1070,14 @@ HloGraphNode* DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
             << (new_candidate_selected
                     ? ready_chosen.node->GetInstr().name()
                     : ready_candidate.node->GetInstr().name())
-            << ") Reason: " << cand_result.reason;
+            << ") Reason: " << cand_result.reason << " mem pressure chosen "
+            << print_pressure_change(
+                   (new_candidate_selected ? ready_candidate : ready_chosen)
+                       .pressure_change)
+            << " mem pressure other "
+            << print_pressure_change(
+                   (new_candidate_selected ? ready_chosen : ready_candidate)
+                       .pressure_change);
     if (new_candidate_selected) {
       ready_chosen = cand_result.result;
       chosen_it = ready_node_it;
@@ -1508,6 +1565,7 @@ void HloScheduleGraph::InitializeGraphAnalysis(
     current_rank[&node] = node.GetIndegree();
     node.SetAsyncDepth(0.0);
     node.SetDepth(0.0);
+    node.SetGraphDepth(0);
     if (node.GetIndegree() == 0) {
       stack.push_back(&node);
     }
@@ -1523,6 +1581,8 @@ void HloScheduleGraph::InitializeGraphAnalysis(
         node->SetDepth(std::max(
             pred.Target().GetDepth() + pred.Target().GetCost() + pred.Latency(),
             node->GetDepth()));
+        node->SetGraphDepth(
+            std::max(pred.Target().GetGraphDepth() + 1, node->GetGraphDepth()));
       }
     } else {
       for (auto& pred : node->GetPredecessors()) {
@@ -1531,6 +1591,8 @@ void HloScheduleGraph::InitializeGraphAnalysis(
         node->SetDepth(std::max(
             pred.Target().GetDepth() + pred.Target().GetCost() + pred.Latency(),
             node->GetDepth()));
+        node->SetGraphDepth(
+            std::max(pred.Target().GetGraphDepth() + 1, node->GetGraphDepth()));
       }
     }
     for (auto& succ : node->GetSuccessors()) {
@@ -1603,7 +1665,8 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
       struct LogFormatter {
         void operator()(std::string* out, const HloGraphNode* n) const {
           out->append(absl::StrCat("\t", n->GetInstr().ToString(),
-                                   " Ready time: ", n->GetReadyTime()));
+                                   " Ready time: ", n->GetReadyTime(),
+                                   " Depth: ", n->GetGraphDepth()));
         }
       };
       return absl::StrJoin(sched_state.ready_set, "\n", LogFormatter());

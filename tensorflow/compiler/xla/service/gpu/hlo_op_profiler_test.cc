@@ -25,20 +25,25 @@ namespace {
 using HloOpProfilerTest = HloTestBase;
 
 TEST_F(HloOpProfilerTest, BasicMeasurementsAreCorrect) {
+#ifndef GOOGLE_CUDA
+  GTEST_SKIP() << "Not built with --config=cuda";
+#endif
   HloOpProfiler profiler(test_runner_);
-  // f32 add is too fast to be measurable here.
-  EXPECT_FALSE(
-      profiler.MeasureClockCyclesPerOp(HloOpcode::kAdd, true, F32, 1).ok());
+  // f32 is fast but measurable.
+  EXPECT_GT(profiler.MeasureClockCyclesPerOp(HloOpcode::kAdd, F32)
+                .value()
+                .clock_cycles(),
+            0);
   // f64 divide is somewhat slow.
-  EXPECT_GT(profiler.MeasureClockCyclesPerOp(HloOpcode::kDivide, true, F64, 1)
+  EXPECT_GT(profiler.MeasureClockCyclesPerOp(HloOpcode::kDivide, F64)
                 .value()
                 .clock_cycles(),
             500);
   // c128 sqrt is slow.
-  EXPECT_GT(profiler.MeasureClockCyclesPerOp(HloOpcode::kSqrt, false, C128, 1)
+  EXPECT_GT(profiler.MeasureClockCyclesPerOp(HloOpcode::kSqrt, C128)
                 .value()
                 .clock_cycles(),
-            5000);
+            1000);
 }
 
 }  // namespace

@@ -862,6 +862,31 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_SLICE:
     case BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM:
     case BuiltinOperator_STABLEHLO_CONVOLUTION:
+    case BuiltinOperator_STABLEHLO_LOGISTIC:
+    case BuiltinOperator_STABLEHLO_ADD:
+    case BuiltinOperator_STABLEHLO_DIVIDE:
+    case BuiltinOperator_STABLEHLO_MULTIPLY:
+    case BuiltinOperator_STABLEHLO_MAXIMUM:
+    case BuiltinOperator_STABLEHLO_RESHAPE:
+    case BuiltinOperator_STABLEHLO_CLAMP:
+    case BuiltinOperator_STABLEHLO_CONCATENATE:
+    case BuiltinOperator_STABLEHLO_CUSTOM_CALL:
+    case BuiltinOperator_STABLEHLO_REDUCE:
+    case BuiltinOperator_STABLEHLO_ABS:
+    case BuiltinOperator_STABLEHLO_AND:
+    case BuiltinOperator_STABLEHLO_COSINE:
+    case BuiltinOperator_STABLEHLO_EXPONENTIAL:
+    case BuiltinOperator_STABLEHLO_FLOOR:
+    case BuiltinOperator_STABLEHLO_LOG:
+    case BuiltinOperator_STABLEHLO_MINIMUM:
+    case BuiltinOperator_STABLEHLO_NEGATE:
+    case BuiltinOperator_STABLEHLO_OR:
+    case BuiltinOperator_STABLEHLO_POWER:
+    case BuiltinOperator_STABLEHLO_REMAINDER:
+    case BuiltinOperator_STABLEHLO_RSQRT:
+    case BuiltinOperator_STABLEHLO_SELECT:
+    case BuiltinOperator_STABLEHLO_SUBTRACT:
+    case BuiltinOperator_STABLEHLO_TANH:
 
     // Below are the ops with no builtin_data structure.
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
@@ -904,14 +929,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SIGN:
     case BuiltinOperator_BITCAST:
     case BuiltinOperator_WHERE:
-    case BuiltinOperator_STABLEHLO_LOGISTIC:
-    case BuiltinOperator_STABLEHLO_ADD:
-    case BuiltinOperator_STABLEHLO_DIVIDE:
-    case BuiltinOperator_STABLEHLO_MULTIPLY:
-    case BuiltinOperator_STABLEHLO_MAXIMUM:
-    case BuiltinOperator_STABLEHLO_RESHAPE:
-    case BuiltinOperator_STABLEHLO_CLAMP:
-    case BuiltinOperator_STABLEHLO_CONCATENATE:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
       return kTfLiteError;

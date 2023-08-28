@@ -67,9 +67,6 @@ class ROCmPlatform : public Platform {
 
   tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
 
-  tsl::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
-      int ordinal, const PluginConfig& config) override;
-
   tsl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;
 

@@ -248,8 +248,6 @@ LogicalResult FillAttributesForUniformQuantizedDotOp(
     // Per-channel activation is not supported
     attrs.push_back(rewriter.getNamedAttr("lhs_quantization_axis",
                                           rewriter.getI64IntegerAttr(-1)));
-    attrs.push_back(rewriter.getNamedAttr("output_quantization_axis",
-                                          rewriter.getI64IntegerAttr(-1)));
   }
 
   std::unique_ptr<OpQuantSpec> spec = GetUniformOpQuantSpec(op);
@@ -259,6 +257,8 @@ LogicalResult FillAttributesForUniformQuantizedDotOp(
     quant_dim = spec->coeff_op_quant_dim[*(operands.begin())];
   }
   attrs.push_back(rewriter.getNamedAttr("rhs_quantization_axis",
+                                        rewriter.getI64IntegerAttr(quant_dim)));
+  attrs.push_back(rewriter.getNamedAttr("output_quantization_axis",
                                         rewriter.getI64IntegerAttr(quant_dim)));
 
   op->setAttrs(rewriter.getDictionaryAttr(attrs));
@@ -331,8 +331,6 @@ LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
     // Per-channel activation is not supported
     attrs.push_back(rewriter.getNamedAttr("lhs_quantization_axis",
                                           rewriter.getI64IntegerAttr(-1)));
-    attrs.push_back(rewriter.getNamedAttr("output_quantization_axis",
-                                          rewriter.getI64IntegerAttr(-1)));
   }
 
   std::unique_ptr<OpQuantSpec> spec = GetUniformOpQuantSpec(op);
@@ -342,6 +340,8 @@ LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
     quant_dim = spec->coeff_op_quant_dim[*(operands.begin())];
   }
   attrs.push_back(rewriter.getNamedAttr("rhs_quantization_axis",
+                                        rewriter.getI64IntegerAttr(quant_dim)));
+  attrs.push_back(rewriter.getNamedAttr("output_quantization_axis",
                                         rewriter.getI64IntegerAttr(quant_dim)));
 
   op->setAttrs(rewriter.getDictionaryAttr(attrs));
@@ -420,19 +420,51 @@ LogicalResult FillAttributesForUniformRequantizeOp(
   }
 
   Attribute activation_quantization_axis = rewriter.getI64IntegerAttr(-1);
+  Attribute output_quantization_axis = rewriter.getI64IntegerAttr(-1);
+  // TODO(b/296916785): Revisit axis assignment logic.
   if (enable_per_channel_quantization) {
     activation_quantization_axis =
         GetQuantizationAxis(rewriter, op, /*operand_index=*/0);
+
+    auto output_scale_type = op->getOperand(3).getType().dyn_cast<ShapedType>();
+    if (!output_scale_type) {
+      return failure();
+    }
+    if (output_scale_type.hasRank() && 0 < output_scale_type.getRank()) {
+      output_quantization_axis = activation_quantization_axis;
+    }
   }
   // For per-axis -> per-axis requantization, input and output quantization
   // axis must be equal.
   attrs.push_back(rewriter.getNamedAttr("input_quantization_axis",
                                         activation_quantization_axis));
   attrs.push_back(rewriter.getNamedAttr("output_quantization_axis",
-                                        activation_quantization_axis));
+                                        output_quantization_axis));
   op->setAttrs(rewriter.getDictionaryAttr(attrs));
 
   return success();
 }
 
+LogicalResult FillAttributesForUniformQuantizeOp(
+    PatternRewriter& rewriter, Operation* op,
+    llvm::StringMap<Attribute>& identifier_to_attr,
+    QuantMethod quantization_method, bool enable_per_channel_quantization) {
+  NamedAttrList attrs;
+
+  // Fill quantization related attributes.
+  if (failed(FillQuantizationAttributes(rewriter, op, attrs, identifier_to_attr,
+                                        OpType::kUnaryOp))) {
+    return failure();
+  }
+  Attribute quantization_axis = rewriter.getI64IntegerAttr(-1);
+  // TODO(b/296916785): Revisit axis assignment logic.
+  if (enable_per_channel_quantization) {
+    quantization_axis = rewriter.getI64IntegerAttr(3);
+  }
+
+  attrs.push_back(
+      rewriter.getNamedAttr("quantization_axis", quantization_axis));
+  op->setAttrs(rewriter.getDictionaryAttr(attrs));
+  return success();
+}
 }  // namespace mlir::quant

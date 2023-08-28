@@ -34,6 +34,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base as trackable
+from tensorflow.python.trackable import base_delegate
 from tensorflow.python.trackable import python_state
 from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object
@@ -654,6 +655,12 @@ class _PythonStringStateSaveable(saveable_object.SaveableObject):
 
 def trackable_has_serialize_to_tensor(obj):
   """Returns whether obj's class has `_serialize_to_tensors` defined."""
+  if obj is base_delegate.DelegatingTrackableMixin:
+    # DelegatingTrackableMixin always delegates "_serialize_to_tensors"
+    # to its inner `trackable`, so we check whether the inner trackable
+    # has `_serialize_to_tensor`.
+    return trackable_has_serialize_to_tensor(obj._trackable)  # pylint: disable=protected-access
+
   try:
     if "_serialize_to_tensors" in obj.__dict__:
       # In some cases (e.g. restored objects), the object may have
@@ -667,6 +674,11 @@ def trackable_has_serialize_to_tensor(obj):
   # object class has not yet been migrated, we'll continue to use the obj
   # class's `_gather_saveables_for_checkpoint` method.
   for t in type(obj).mro():
+    if t is base_delegate.DelegatingTrackableMixin:
+      # DelegatingTrackableMixin always delegates "_serialize_to_tensors"
+      # to its inner `trackable`, so we check whether the inner trackable
+      # has `_serialize_to_tensor`.
+      return trackable_has_serialize_to_tensor(obj._trackable)  # pylint: disable=protected-access
     if t is trackable.Trackable:
       # Base case. Return False since _serialize_to_tensors will raise a
       # NotImplemented Error.

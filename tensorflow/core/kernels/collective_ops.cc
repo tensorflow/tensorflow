@@ -644,6 +644,15 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
             "Failed to get CollectiveExecutor from OpKernelContext for Op ",
             name_),
         done);
+    std::string device_type = c->device()->attributes().device_type();
+    OP_REQUIRES_ASYNC(
+        c,
+        !(col_params->is_stateless &&
+          device_type == DeviceType(DEVICE_GPU).type()),
+        errors::Internal(
+            "is_stateless is not supported with device type GPU for Op ",
+            name_),
+        done);
 
     auto activity_id = activity_watcher::ActivityStart([&]() {
       return activity_watcher::ActivityFromContext(

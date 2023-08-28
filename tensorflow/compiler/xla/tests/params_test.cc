@@ -336,11 +336,7 @@ XLA_TEST_F(ParamsTest,
 //   pN += (1, 1)
 // }
 // result = {p0, p1, ..., pN}
-//
-// TODO(b/70173746): Times out during compilation on GPU and CPU backends as of
-// 2017-12-12.
-XLA_TEST_F(ParamsTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(ManyParametersIntoWhileLoop))) {
+XLA_TEST_F(ParamsTest, ManyParametersIntoWhileLoop) {
   XlaBuilder builder(TestName());
 
   std::vector<std::unique_ptr<GlobalData>> param_data_owner;

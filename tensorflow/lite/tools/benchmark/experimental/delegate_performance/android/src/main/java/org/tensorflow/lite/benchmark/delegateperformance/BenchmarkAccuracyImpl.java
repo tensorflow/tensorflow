@@ -15,6 +15,7 @@ limitations under the License.
 
 package org.tensorflow.lite.benchmark.delegateperformance;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.util.Log;
@@ -64,8 +65,16 @@ public class BenchmarkAccuracyImpl implements BenchmarkAccuracy {
   private BenchmarkReport report;
 
   @Override
-  public boolean benchmark(Context context, String[] tfliteSettingsJsonFiles) {
-    if (!initialize(context, tfliteSettingsJsonFiles)) {
+  public void benchmark(Context context, String[] tfliteSettingsJsonFiles) {
+    Activity activity = (Activity) context;
+    if (!benchmarkInternal(context.getApplicationContext(), tfliteSettingsJsonFiles)) {
+      Log.e(TAG, "Failed to complete accuracy benchmark.");
+    }
+    activity.finish();
+  }
+
+  public boolean benchmarkInternal(Context context, String[] tfliteSettingsJsonFiles) {
+    if (!initialize(context.getApplicationContext(), tfliteSettingsJsonFiles)) {
       Log.e(TAG, "Failed to initialize accuracy benchmark.");
       return false;
     }

@@ -477,7 +477,6 @@ cc_library(
         "@llvm-project//mlir:FuncTransforms",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUToNVVMTransforms",
-        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
@@ -491,7 +490,6 @@ cc_library(
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
-        "@llvm-project//mlir:VectorToSCF",
         "@llvm-project//mlir:VectorTransforms",
     ],
     alwayslink = 1,  # has pipeline registration

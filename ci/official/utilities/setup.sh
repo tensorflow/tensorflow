@@ -31,6 +31,13 @@
 #               (affects 'source $TFCI')
 set -euxo pipefail -o history -o allexport
 
+# Set TFCI_GIT_DIR, the root directory for all commands, to two directories
+# above the location of this file (setup.sh). We could also use "git rev-parse
+# --show-toplevel", but that wouldn't work for non-git repos (like if someone
+# downloaded TF as a zip archive).
+export TFCI_GIT_DIR=$(cd $(dirname "$0"); realpath ../../)
+cd "$TFCI_GIT_DIR"
+
 # "TFCI" may optionally be set to the name of an env-type file with TFCI
 # variables in it, OR may be left empty if the user has already exported the
 # relevant variables in their environment. Because of 'set -o allexport' above
@@ -49,13 +56,6 @@ else
   echo 'already sourced a TFCI env file with "set -a; source <path>; set +a".'
   echo 'If you have not, you will see a lot of undefined variable errors.'
 fi
-
-# Set TFCI_GIT_DIR, the root directory for all commands, to two directories
-# above the location of this file (setup.sh). We could also use "git rev-parse
-# --show-toplevel", but that wouldn't work for non-git repos (like if someone
-# downloaded TF as a zip archive).
-export TFCI_GIT_DIR=$(cd $(dirname "$0"); realpath ../../)
-cd "$TFCI_GIT_DIR"
 
 # Create and expand to the full path of TFCI_OUTPUT_DIR
 export TFCI_OUTPUT_DIR=$(realpath "$TFCI_OUTPUT_DIR")

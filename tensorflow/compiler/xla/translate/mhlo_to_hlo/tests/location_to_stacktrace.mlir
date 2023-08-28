@@ -13,7 +13,7 @@
 // CHECK: stack_frame_index {
 // CHECK-NEXT: }
 #loc = loc(unknown)
-module @main attributes {mhlo.cross_program_prefetches = [], mhlo.dynamic_parameter_bindings = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
+module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
   func.func @main(%arg0: !mhlo.token loc(unknown)) -> !mhlo.token {
     %0 = mhlo.after_all %arg0 {xla_shape = "token[]"} : !mhlo.token loc(#loc)
     return %0 : !mhlo.token loc(#loc)
@@ -50,7 +50,7 @@ module @main attributes {mhlo.cross_program_prefetches = [], mhlo.dynamic_parame
 // CHECK-NEXT: }
 // CHECK-NEXT: }
 #loc = loc(unknown)
-module @main attributes {mhlo.cross_program_prefetches = [], mhlo.dynamic_parameter_bindings = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
+module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
   func.func @main(%arg0: !mhlo.token loc(unknown)) -> !mhlo.token {
     %0 = mhlo.after_all %arg0 {xla_shape = "token[]"} : !mhlo.token loc(#op_loc)
     return %0 : !mhlo.token loc(#loc)
@@ -100,7 +100,7 @@ module @main attributes {mhlo.cross_program_prefetches = [], mhlo.dynamic_parame
 // CHECK-NEXT: }
 // CHECK-NEXT: }
 #loc = loc(unknown)
-module @main attributes {mhlo.cross_program_prefetches = [], mhlo.dynamic_parameter_bindings = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
+module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
   func.func @main(%arg0: !mhlo.token loc(unknown)) -> !mhlo.token {
     %0 = mhlo.after_all %arg0 {xla_shape = "token[]"} : !mhlo.token loc(#op_loc)
     return %0 : !mhlo.token loc(#loc)

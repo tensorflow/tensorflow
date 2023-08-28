@@ -145,7 +145,7 @@ TEST_F(GpuLdgTest, NoLdgWhenSharingBuffer) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   CompileAndOptionallyVerifyPtx(std::move(hlo_module), R"(
-    CHECK-LABEL: .entry add
+    CHECK-LABEL: .entry wrapped_add
     CHECK: {
     CHECK-NOT: ld.global.nc.f32
     CHECK: ld.global.f32

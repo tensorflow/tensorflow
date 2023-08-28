@@ -883,6 +883,7 @@ tf_python_pybind_extension(
     ] + if_google([
         "pywrap_saved_model_merger.h",
     ]),
+    enable_stub_generation = True,
     # This fails Windows builds. Please check b/266870200 for details.
     #    dynamic_deps = ["//tensorflow/python:_pywrap_tensorflow_internal.so"] + select({
     #        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
@@ -891,6 +892,13 @@ tf_python_pybind_extension(
     #    }),
     #    static_deps = tf_python_pybind_static_deps(),
     features = ["-layering_check"],
+    pytype_srcs = [
+        "pywrap_saved_model/__init__.pyi",
+        "pywrap_saved_model/constants.pyi",
+        "pywrap_saved_model/fingerprinting.pyi",
+        "pywrap_saved_model/merger.pyi",
+        "pywrap_saved_model/metrics.pyi",
+    ],
     visibility = [
         "//tensorflow/python/checkpoint:__subpackages__",
         "//tensorflow/python/tpu:__pkg__",

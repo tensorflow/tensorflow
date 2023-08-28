@@ -2179,6 +2179,12 @@ def TF_CollectiveAllToAllV2Op : TF_Op<"CollectiveAllToAllV2", [DeclareOpInterfac
 Mutually exchanges multiple tensors of identical type and shape.
   }];
 
+  let description = [{
+`is_stateless` means each op does not need control dependencies to other
+collective ops. In this case, keys that are unique at runtime
+(e.g. `instance_key`) should be used to distinguish collective groups.
+  }];
+
   let arguments = (ins
     TF_FpOrI32OrI64Tensor:$input,
     TF_Int32Tensor:$group_size,
@@ -2187,7 +2193,8 @@ Mutually exchanges multiple tensors of identical type and shape.
     Variadic<TF_ResourceTensor>:$ordering_token,
 
     DefaultValuedOptionalAttr<StrAttr, "\"auto\"">:$communication_hint,
-    DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds
+    DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stateless
   );
 
   let results = (outs
@@ -2281,6 +2288,12 @@ def TF_CollectiveGatherV2Op : TF_Op<"CollectiveGatherV2", [DeclareOpInterfaceMet
 Mutually accumulates multiple tensors of identical type and shape.
   }];
 
+  let description = [{
+`is_stateless` means each op does not need control dependencies to other
+collective ops. In this case, keys that are unique at runtime
+(e.g. `instance_key`) should be used to distinguish collective groups.
+  }];
+
   let arguments = (ins
     TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$input,
     TF_Int32Tensor:$group_size,
@@ -2289,7 +2302,8 @@ Mutually accumulates multiple tensors of identical type and shape.
     Variadic<TF_ResourceTensor>:$ordering_token,
 
     DefaultValuedOptionalAttr<StrAttr, "\"auto\"">:$communication_hint,
-    DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds
+    DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stateless
   );
 
   let results = (outs
@@ -2361,6 +2375,12 @@ def TF_CollectiveReduceScatterV2Op : TF_Op<"CollectiveReduceScatterV2", [Declare
 Mutually reduces multiple tensors of identical type and shape and scatters the result.
   }];
 
+  let description = [{
+`is_stateless` means each op does not need control dependencies to other
+collective ops. In this case, keys that are unique at runtime
+(e.g. `instance_key`) should be used to distinguish collective groups.
+  }];
+
   let arguments = (ins
     TF_FpOrI32OrI64Tensor:$input,
     TF_Int32Tensor:$group_size,
@@ -2372,6 +2392,7 @@ Mutually reduces multiple tensors of identical type and shape and scatters the r
     TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
     DefaultValuedOptionalAttr<StrAttr, "\"auto\"">:$communication_hint,
     DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stateless,
     DefaultValuedOptionalAttr<I64Attr, "-1">:$max_subdivs_per_device
   );
 
@@ -2388,6 +2409,12 @@ def TF_CollectiveReduceV2Op : TF_Op<"CollectiveReduceV2", [DeclareOpInterfaceMet
 Mutually reduces multiple tensors of identical type and shape.
   }];
 
+  let description = [{
+`is_stateless` means each op does not need control dependencies to other
+collective ops. In this case, keys that are unique at runtime
+(e.g. `instance_key`) should be used to distinguish collective groups.
+  }];
+
   let arguments = (ins
     TF_FpOrI32OrI64Tensor:$input,
     TF_Int32Tensor:$group_size,
@@ -2399,6 +2426,7 @@ Mutually reduces multiple tensors of identical type and shape.
     TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
     DefaultValuedOptionalAttr<StrAttr, "\"auto\"">:$communication_hint,
     DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stateless,
     DefaultValuedOptionalAttr<I64Attr, "-1">:$max_subdivs_per_device
   );
 

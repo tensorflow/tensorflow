@@ -1,5 +1,6 @@
 # Description: Utilities for TPU Operations
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -195,9 +196,19 @@ cc_library(
     ),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_framework_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_base",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initialize_util",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_library_init_fns",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
     ],
     # Always link this in, because even if we don't use it directly we want its
     # static initializers to dynamically load API symbols exported from libtpu.so
@@ -280,8 +291,10 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -323,7 +336,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_init_fns",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_framework_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initialize_util",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_library_init_fns",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core:lib",
@@ -354,4 +367,10 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ] + if_libtpu(["//tensorflow/compiler/jit"]),
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    deps = ["//tensorflow:tensorflow_bzl"],
 )

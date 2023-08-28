@@ -33,13 +33,13 @@ namespace optimized_4bit {
 // Define 4-bit filter block size: 4x32 (64 bytes)
 constexpr int FilterWidth = 4;
 constexpr int FilterDepth = 32;
+constexpr int kDefaultAlignmentPadding = 63;
 
 struct OpData4Bit {
   int rows_right = 1;
   int batch_size = 0;
   bool needs_prepack = true;
-  uint8_t* prepacked_cache = nullptr;
-  ~OpData4Bit() { free(prepacked_cache); }
+  const uint8_t* prepacked_cache;
 };
 
 }  // namespace optimized_4bit

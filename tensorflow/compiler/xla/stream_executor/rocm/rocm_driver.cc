@@ -541,12 +541,15 @@ static std::string_view StreamCaptureModeToString(
     hipGraphExec_t exec, hipGraph_t graph, GraphExecUpdateResultInfo* result) {
   VLOG(2) << "Update HIP graph executable " << exec << " with graph " << graph;
 
-  hipGraphExecUpdateResult hip_result;
-  RETURN_IF_ROCM_ERROR(hipGraphExecUpdate(exec, graph, nullptr, &hip_result),
-                       "Failed to update HIP graph");
-  auto hip_result_enum = hip_result;
+  hipGraphExecUpdateResult hip_result = hipGraphExecUpdateError;
+  hipGraphNode_t error_node = nullptr;
+  auto hip_error = hipGraphExecUpdate(exec, graph, &error_node, &hip_result);
 
-  switch (hip_result_enum) {
+  if (error_node) {
+    result->error_node = error_node;
+  }
+
+  switch (hip_result) {
     case hipGraphExecUpdateSuccess:
       result->result = GraphExecUpdateResult::kSuccess;
       break;
@@ -574,6 +577,7 @@ static std::string_view StreamCaptureModeToString(
       // TODO: HIP hasn't GRAPH_EXEC_UPDATE_ERROR_ATTRIBUTES_CHANGED yet
   }
 
+  RETURN_IF_ROCM_ERROR(hip_error, "Failed to update HIP graph");
   return ::tsl::OkStatus();
 }
 

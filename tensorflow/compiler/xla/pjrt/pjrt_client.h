@@ -932,7 +932,7 @@ class PjRtBuffer {
     return shape;
   }
 
-  virtual PjRtMemorySpace* memory_space() const { return nullptr; }
+  virtual PjRtMemorySpace* memory_space() const = 0;
   // TODO(b/277820585): remove device() after the migration is done.
   virtual PjRtDevice* device() const = 0;
   virtual PjRtClient* client() const = 0;
@@ -949,6 +949,13 @@ class PjRtBuffer {
     virtual ~ExternalReference() = 0;
     // Return opaque device memory pointer to root buffer.
     void* OpaqueDeviceMemoryDataPointer() const { return data_ptr_; }
+
+    // Stream is platform-specific. This is intended to support dlpack on GPU
+    // and is not expected to be implemented for all hardware platforms.
+    virtual Status WaitUntilBufferReadyOnStream(std::intptr_t stream) {
+      return Unimplemented(
+          "WaitUntilBufferReadyOnExternalStream is only implemented for GPU.");
+    }
 
    protected:
     void* data_ptr_;

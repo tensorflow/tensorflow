@@ -36,6 +36,8 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/Transforms/OptimizeForNVVM.h"  // from @llvm-project
@@ -54,15 +56,14 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
-#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/transforms/gpu_passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/transforms/passes.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
@@ -109,18 +110,18 @@ bool IsSmallAlloc(Value alloc) {
   return type.getNumElements() * bitwidth <= kMaximumSizeInBytes * 8;
 }
 
-Status LowerTFToJITInvocation(mlir::ModuleOp module,
-                              llvm::ArrayRef<int64_t> tile_sizes,
-                              llvm::ArrayRef<int64_t> unroll_factors,
-                              int64_t max_supported_rank, bool enable_ftz,
-                              bool index_64bit,
-                              bool jit_i64_indexed_for_large_tensors,
-                              bool apply_cl_options) {
+Status LowerHloToJITInvocation(mlir::ModuleOp module,
+                               llvm::ArrayRef<int64_t> tile_sizes,
+                               llvm::ArrayRef<int64_t> unroll_factors,
+                               int64_t max_supported_rank, bool enable_ftz,
+                               bool index_64bit,
+                               bool jit_i64_indexed_for_large_tensors,
+                               bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
 
   pm.addNestedPass<FuncOp>(
-      mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
+      mlir::kernel_gen::transforms::CreateFuncToJITInvocationPass(
           tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
           index_64bit,
           /*cpu_codegen=*/false, jit_i64_indexed_for_large_tensors));
@@ -135,29 +136,27 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
       mlir::kernel_gen::transforms::populateExtraBufferizePatterns));
 
   if (failed(pm.run(module))) {
-    return tensorflow::errors::Internal(
-        "Lowering TF to JIT invocation failed.");
+    return absl::InternalError("Lowering HLO to JIT invocation failed.");
   }
   return OkStatus();
 }
 
-Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
-                      llvm::ArrayRef<int64_t> unroll_factors,
-                      int64_t max_supported_rank, bool enable_ftz,
-                      bool index_64bit, bool jit_i64_indexed_for_large_tensors,
-                      bool apply_cl_options) {
+Status LowerHlotoLoops(mlir::ModuleOp module,
+                       llvm::ArrayRef<int64_t> tile_sizes,
+                       llvm::ArrayRef<int64_t> unroll_factors,
+                       int64_t max_supported_rank, bool enable_ftz,
+                       bool index_64bit, bool jit_i64_indexed_for_large_tensors,
+                       bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
   if (jit_i64_indexed_for_large_tensors) {
     pm.addNestedPass<FuncOp>(
-        mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
+        mlir::kernel_gen::transforms::CreateFuncToJITInvocationPass(
             tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
             index_64bit,
             /*cpu_codegen=*/false,
             /*jit_i64_indexed_for_large_tensors=*/true));
   }
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeTFNoFallbackPass(
-      /*allow_partial_conversion=*/true));
   pm.addNestedPass<FuncOp>(mlir::mhlo::createRankSpecializationClusterPass());
   pm.addNestedPass<FuncOp>(
       mlir::mhlo::createRankSpecializationToSCFPass(max_supported_rank));
@@ -193,8 +192,8 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
 
-  // Partial bufferization: Transforms inparticular HLO and Linalg operations to
-  // their corresponding LHLO operations and converts the function signature.
+  // Partial bufferization: Transforms in particular HLO and Linalg operations
+  // to their corresponding LHLO operations and converts the function signature.
   // Leaves shape operations untouched.
   //
   // TODO(pifon): Rename the pass to CreateHloLinalgBufferizePass or bufferize
@@ -233,7 +232,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
   if (failed(pm.run(module))) {
-    return tensorflow::errors::Internal("Lowering TF to loops failed.");
+    return absl::InternalError("Lowering HLO to loops failed.");
   }
   return OkStatus();
 }
@@ -302,7 +301,7 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
   // Map asserts to the tensorflow framework.
   pm.addPass(mlir::kernel_gen::tf_framework::CreateRewriteTFFrameworkAssert());
   if (failed(pm.run(module))) {
-    return tensorflow::errors::Internal("Lowering to GPU kernels failed.");
+    return absl::InternalError("Lowering to GPU kernels failed.");
   }
   return OkStatus();
 }
@@ -310,7 +309,7 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
 Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
                                      bool apply_cl_options) {
 #if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
-  return tensorflow::errors::Internal(
+  return absl::InternalError(
       "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
       " Did you specify either --config=rocm or --config=cuda ?");
 #endif
@@ -409,8 +408,8 @@ Status LowerHostSideToFinalForm(mlir::ModuleOp module, bool apply_cl_options) {
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
     mlir::MLIRContext& context, llvm::StringRef tf_code) {
   mlir::DialectRegistry registry;
-  mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::chlo::ChloDialect, mlir::mhlo::MhloDialect>();
+  registry.insert<mlir::complex::ComplexDialect, mlir::func::FuncDialect>();
   mlir::registerBuiltinDialectTranslation(registry);
   mlir::registerGPUDialectTranslation(registry);
   mlir::registerLLVMDialectTranslation(registry);
@@ -425,7 +424,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
   return module;
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForHloCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code,
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
@@ -446,15 +445,15 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
   if (jit_compile) {
     assert(!jit_i64_indexed_for_large_tensors &&
            "expect to have reported an error earlier");
-    TF_RETURN_IF_ERROR(LowerTFToJITInvocation(
+    TF_RETURN_IF_ERROR(LowerHloToJITInvocation(
         module.get(), tile_sizes, unroll_factors, max_supported_rank,
         enable_ftz, index_64bit,
         /*jit_i64_indexed_for_large_tensors=*/false, apply_cl_options));
   } else {
     TF_RETURN_IF_ERROR(
-        LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
-                       max_supported_rank, enable_ftz, index_64bit,
-                       jit_i64_indexed_for_large_tensors, apply_cl_options));
+        LowerHlotoLoops(module.get(), tile_sizes, unroll_factors,
+                        max_supported_rank, enable_ftz, index_64bit,
+                        jit_i64_indexed_for_large_tensors, apply_cl_options));
     TF_RETURN_IF_ERROR(
         LowerLoopsToGPU(module.get(), index_64bit, apply_cl_options));
     TF_RETURN_IF_ERROR(

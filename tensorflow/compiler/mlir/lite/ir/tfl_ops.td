@@ -2259,7 +2259,7 @@ def TFL_MeanOp : TFL_Op<"mean", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, I32, I64, QI8, QUI8, UI8, QI16]>:$input,
-    TFL_TensorOf<[I32, I64]>:$axis,
+    TFL_TensorOf<[I32]>:$axis,
     BoolAttr:$keep_dims
   );
 

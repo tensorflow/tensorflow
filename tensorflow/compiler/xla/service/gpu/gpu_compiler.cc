@@ -28,6 +28,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "llvm/AsmParser/Parser.h"
@@ -80,6 +82,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/dynamic_padder.h"
 #include "tensorflow/compiler/xla/service/eigh_expander.h"
+#include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/float_normalization.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
@@ -97,6 +100,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_async_collective_annotator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_cost_model_stats_collection.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_float_support.h"
@@ -107,6 +111,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_shape_verifier.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_fusion_stats.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_input_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
@@ -129,6 +134,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/topk_splitter.h"
 #include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation_deduplicator.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -648,7 +654,6 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     if (enable_all_pipelined ||
         debug_options.xla_gpu_enable_pipelined_all_reduce()) {
       CollectivePipeliner::Config config{
-          /*op=*/HloOpcode::kAllReduce,
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
@@ -656,13 +661,12 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*process_different_sized_ops=*/true,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kForward,
-          /*should_process=*/HloPredicateTrue};
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>};
       collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
     if (enable_all_pipelined ||
         debug_options.xla_gpu_enable_pipelined_all_gather()) {
       CollectivePipeliner::Config config{
-          /*op=*/HloOpcode::kAllGather,
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
@@ -670,13 +674,12 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*process_different_sized_ops=*/true,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kBackward,
-          /*should_process=*/HloPredicateTrue};
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllGather>};
       collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
     if (enable_all_pipelined ||
         debug_options.xla_gpu_enable_pipelined_reduce_scatter()) {
       CollectivePipeliner::Config config{
-          /*op=*/HloOpcode::kReduceScatter,
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
@@ -684,7 +687,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*process_different_sized_ops=*/true,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kForward,
-          /*should_process=*/HloPredicateTrue};
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kReduceScatter>};
       collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
 
@@ -775,11 +778,11 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
             LayoutAssignment::InstructionCanChangeLayout),
         /*debug_only=*/true);
 
+    GpuHloCostAnalysis::Options cost_analysis_options{
+        ShapeSizeBytesFunction(),
+        /*per_second_rates=*/{},
+        /*count_multiple_input_accesses=*/true};
     if (debug_options.xla_gpu_enable_priority_fusion()) {
-      GpuHloCostAnalysis::Options cost_analysis_options{
-          ShapeSizeBytesFunction(),
-          /*per_second_rates=*/{},
-          /*count_multiple_input_accesses=*/true};
       fusion.AddPass<GpuPriorityFusion>(gpu_device_info, cost_analysis_options);
     } else {
       fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false,
@@ -801,6 +804,13 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
                            /*only_fusion_computations=*/true);
     fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
+
+    if (debug_options.xla_gpu_collect_cost_model_stats()) {
+      HloPassPipeline post_fusion_analysis("post_fusion_analysis");
+      post_fusion_analysis.AddPass<GpuCostModelStatsCollection>(
+          gpu_device_info, cost_analysis_options);
+      TF_RETURN_IF_ERROR(post_fusion_analysis.Run(hlo_module).status());
+    }
   }
 
   {
@@ -1463,12 +1473,26 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   if (!options.is_autotuning_compilation) {
     VLOG(1) << "Starting to compile HLO module " << module->name();
   }
+
   XLA_SCOPED_LOGGING_TIMER_IF(
       absl::StrCat("GpuCompiler::RunBackend for ", module->name()),
       !options.is_autotuning_compilation);
   std::string slow_compilation_msg =
       absl::StrCat("Compiling module ", module->name());
   auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
+
+  if (options.is_autotuning_compilation) {
+    if (module->config()
+            .debug_options()
+            .xla_gpu_enable_persistent_temp_buffers()) {
+      LOG(WARNING) << "Doing autotuning compilations with "
+                      "xla_gpu_enable_persistent_temp_buffers wastes memory!";
+    }
+    if (module->config().debug_options().xla_embed_ir_in_executable()) {
+      LOG(WARNING) << "Doing autotuning compilations with "
+                      "xla_embed_ir_in_executable wastes memory!";
+    }
+  }
 
   TF_RET_CHECK(stream_exec != nullptr);
 
@@ -1532,44 +1556,63 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                             thunk_sequence.ToString());
   }
 
-  auto buffer_assignment_proto = std::make_unique<BufferAssignmentProto>(
-      compile_module_results.buffer_assignment->ToProto());
+  std::shared_ptr<const BufferAssignment> buffer_assignment;
+  std::unique_ptr<BufferAssignmentProto> buffer_assignment_proto;
+  std::function<std::string()> buffer_assignment_dumper = [] {
+    return std::string();
+  };
+  if (!options.is_autotuning_compilation) {
+    // Make it shared to be captured in the later lambda.
+    buffer_assignment = std::move(compile_module_results.buffer_assignment);
+    buffer_assignment_proto =
+        std::make_unique<BufferAssignmentProto>(buffer_assignment->ToProto());
+    buffer_assignment_dumper = [buffer_assignment] {
+      return buffer_assignment->ToVerboseString();
+    };
+  }
 
-  // Make it shared to be captured in the following lambda.
-  std::shared_ptr<const BufferAssignment> buffer_assignment(
-      std::move(compile_module_results.buffer_assignment));
-
-  GpuVersion gpu_version = GetGpuVersion(stream_exec);
   TF_ASSIGN_OR_RETURN(
       auto gpu_executable,
-      GpuExecutable::Create(
-          {std::move(backend_result.first), std::move(backend_result.second),
-           gpu_version, std::move(compile_module_results.executable),
-           compile_module_results.entry_func_attrs,
-           std::move(compile_module_results.constants),
-           std::move(compile_module_results.output_info),
-           compile_module_results.module_name,
-           compile_module_results.output_shape,
-           std::move(compile_module_results.allocations),
-           module->config()
-               .debug_options()
-               .xla_gpu_enable_persistent_temp_buffers(),
-           std::move(buffer_assignment_proto),
-           [buffer_assignment] { return buffer_assignment->ToVerboseString(); },
-           std::move(module),
-           /*enable_debug_info_manager=*/!options.is_autotuning_compilation}));
+      GpuExecutable::Create(GpuExecutable::Params{
+          /*asm_text=*/std::move(backend_result.first),
+          /*binary=*/std::move(backend_result.second),
+          /*gpu_version=*/GetGpuVersion(stream_exec),
+          /*executable=*/std::move(compile_module_results.executable),
+          /*entry_func_attrs=*/
+          std::move(compile_module_results.entry_func_attrs),
+          /*constants=*/std::move(compile_module_results.constants),
+          /*output_info=*/std::move(compile_module_results.output_info),
+          /*module_name=*/std::move(compile_module_results.module_name),
+          /*output_shape=*/std::move(compile_module_results.output_shape),
+          /*allocations=*/std::move(compile_module_results.allocations),
+          /*enable_persistent_temp_buffers=*/
+          module->config()
+              .debug_options()
+              .xla_gpu_enable_persistent_temp_buffers(),
+          /*debug_buffer_assignment=*/std::move(buffer_assignment_proto),
+          /*verbose_buffer_assignment_string_dumper=*/
+          std::move(buffer_assignment_dumper),
+          /*debug_module=*/options.is_autotuning_compilation
+              ? std::unique_ptr<HloModule>()
+              : std::move(module),
+          /*enable_debug_info_manager=*/!options.is_autotuning_compilation}));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
   }
 
-  // Dump computation proto state and buffer assignment for
-  // CompiledMemoryAnalysis.
-  auto hlo_proto = std::make_unique<HloProto>();
-  *hlo_proto->mutable_hlo_module() = gpu_executable->module().ToProto();
-  *hlo_proto->mutable_buffer_assignment() = buffer_assignment->ToProto();
-  gpu_executable->set_hlo_proto(std::move(hlo_proto));
-  gpu_executable->set_debug_info(buffer_assignment->GetStats().ToString());
+  IncrementCompiledProgramsCount();
+
+  if (!options.is_autotuning_compilation && gpu_executable->has_module()) {
+    // Dump computation proto state and buffer assignment for
+    // CompiledMemoryAnalysis.
+    auto hlo_proto = std::make_unique<HloProto>();
+    *hlo_proto->mutable_hlo_module() = gpu_executable->module().ToProto();
+    *hlo_proto->mutable_buffer_assignment() = buffer_assignment->ToProto();
+    gpu_executable->set_hlo_proto(std::move(hlo_proto));
+    gpu_executable->set_debug_info(buffer_assignment->GetStats().ToString());
+  }
+
   return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));
 }
 

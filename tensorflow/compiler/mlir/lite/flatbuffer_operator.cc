@@ -263,12 +263,8 @@ static mlir::Attribute BuildI64ArrayAttr(std::vector<int32_t> value,
   return builder.getI64ArrayAttr(typecast);
 }
 
-static mlir::Attribute BuildDenseElementAttr(std::vector<int64_t> value,
-                                             mlir::Builder builder) {
-  return builder.getI64VectorAttr(value);
-}
-
-static mlir::Attribute BuildDenseElementAttr(std::vector<bool> value,
+static mlir::Attribute BuildRankedTensorAttr(std::vector<int64_t> shape,
+                                             std::vector<bool> value,
                                              mlir::Builder builder) {
   // The implementation of getBoolVectorAttr is flawed, so we bypass it here
   std::vector<int8_t> extendVec;
@@ -276,10 +272,9 @@ static mlir::Attribute BuildDenseElementAttr(std::vector<bool> value,
   for (size_t i = 0; i < value.size(); ++i) {
     extendVec[i] = static_cast<int8_t>(value[i]);
   }
-  return mlir::DenseIntElementsAttr::get(
-      mlir::VectorType::get(static_cast<int64_t>(extendVec.size()),
-                            builder.getI1Type()),
-      extendVec);
+  mlir::RankedTensorType ty =
+      tensorflow::GetTypeFromTFTensorShape(shape, builder.getIntegerType(1));
+  return mlir::DenseIntElementsAttr::get(ty, extendVec);
 }
 
 static mlir::Attribute BuildRankedTensorAttr(std::vector<int64_t> shape,
@@ -396,16 +391,22 @@ void mlir::BuiltinOptions2ToAttributes(
   if (const auto* op = op_union.AsStablehloBroadcastInDimOptions()) {
     attributes.emplace_back(builder.getNamedAttr(
         "broadcast_dimensions",
-        BuildDenseElementAttr(op->broadcast_dimensions, builder)));
+        BuildRankedTensorAttr(
+            {static_cast<int64_t>(op->broadcast_dimensions.size())},
+            op->broadcast_dimensions, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloSliceOptions()) {
+    std::vector<int64_t> shape = {
+        static_cast<int64_t>(op->start_indices.size())};
     attributes.emplace_back(builder.getNamedAttr(
-        "start_indices", BuildDenseElementAttr(op->start_indices, builder)));
+        "start_indices",
+        BuildRankedTensorAttr(shape, op->start_indices, builder)));
     attributes.emplace_back(builder.getNamedAttr(
-        "limit_indices", BuildDenseElementAttr(op->limit_indices, builder)));
+        "limit_indices",
+        BuildRankedTensorAttr(shape, op->limit_indices, builder)));
     attributes.emplace_back(builder.getNamedAttr(
-        "strides", BuildDenseElementAttr(op->strides, builder)));
+        "strides", BuildRankedTensorAttr(shape, op->strides, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloConvolutionOptions()) {
@@ -440,7 +441,9 @@ void mlir::BuiltinOptions2ToAttributes(
     if (!(op->window_reversal.empty()))
       attributes.emplace_back(builder.getNamedAttr(
           "window_reversal",
-          BuildDenseElementAttr(op->window_reversal, builder)));
+          BuildRankedTensorAttr(
+              {static_cast<int64_t>(op->window_reversal.size())},
+              op->window_reversal, builder)));
     attributes.emplace_back(builder.getNamedAttr(
         "dimension_numbers",
         mlir::stablehlo::ConvDimensionNumbersAttr::get(
@@ -458,6 +461,41 @@ void mlir::BuiltinOptions2ToAttributes(
         "precision_config",
         BuildStablehlo_PrecisionConfigAttr(op->precision_config, builder)));
 
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloCustomCallOptions()) {
+    attributes.emplace_back(builder.getNamedAttr(
+        "call_target_name", BuildStrAttr(op->call_target_name, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "backend_config", BuildStrAttr(op->backend_config, builder)));
+    const flexbuffers::Map& computation_map =
+        flexbuffers::GetRoot(op->custom_attributes).AsMap();
+    std::vector<mlir::Attribute> symbol_vec;
+    symbol_vec.reserve(computation_map.size());
+    const auto& keys = computation_map.Keys();
+    for (size_t i = 0; i < keys.size(); ++i) {
+      const auto key = keys[i].AsKey();
+      const auto& value = computation_map[key];
+      if (value.IsBool()) {
+        auto attr = value.AsBool();
+        auto named_attr =
+            builder.getNamedAttr(key, BuildBoolAttr(attr, builder));
+        attributes.emplace_back(named_attr);
+      }
+      if (value.IsString()) {
+        auto attr = value.AsString();
+        auto named_attr =
+            builder.getNamedAttr(key, BuildStrAttr(attr.str(), builder));
+        attributes.emplace_back(named_attr);
+      }
+    }
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloReduceOptions()) {
+    attributes.emplace_back(builder.getNamedAttr(
+        "dimensions",
+        BuildRankedTensorAttr({static_cast<int64_t>(op->dimensions.size())},
+                              op->dimensions, builder)));
     return;
   }
 }

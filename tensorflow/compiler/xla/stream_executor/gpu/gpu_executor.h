@@ -214,6 +214,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status WaitForEvent(Stream* stream, Event* event) override;
 
+  tsl::Status WaitForEventOnExternalStream(std::intptr_t stream,
+                                           Event* event) override;
+
   Event::Status PollForEventStatus(Event* event) override;
 
   tsl::Status BlockHostUntilDone(Stream* stream) override;
@@ -240,15 +243,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   static tsl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
-  bool SupportsBlas() const override;
-
   blas::BlasSupport* CreateBlas() override;
 
-  bool SupportsFft() const override;
-
   fft::FftSupport* CreateFft() override;
-
-  bool SupportsDnn() const override;
 
   dnn::DnnSupport* CreateDnn() override;
 
