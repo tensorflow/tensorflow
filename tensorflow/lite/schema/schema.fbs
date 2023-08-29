@@ -235,8 +235,12 @@ table Tensor {
   // represented with -1.
   shape_signature:[int]; // Optional.
 
-  // If false, the rank or the number of tensor dimensions is unknown.
-  // If false, "shape" must be [].
+  // This field is added to distinguish between scalars and tensors of unknown
+  // ranks (both of which shape is []).
+  // For scalars (rank = 0), shape = [] and has_rank = true.
+  // For tensors with known rank (rank > 0) and shape, shape = [...] and
+  // has_rank = true.
+  // For tensors with unknown rank and shape, shape = [] and has_rank = false.
   has_rank: bool = false;
 
   // The nested Tensor types for VARIANT type. This is always empty for
