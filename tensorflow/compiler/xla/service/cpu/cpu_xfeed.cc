@@ -276,12 +276,12 @@ Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
 }
 
 Status ReadDynamicShapesOnCpu(
-    ShapedBuffer* device_buffer, Shape* device_shape,
+    const ShapedBuffer* device_buffer, Shape* device_shape,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
   TF_RET_CHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
-  TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachMutableElementWithStatus(
-      [&](const ShapeIndex& index, se::DeviceMemoryBase* buffer) {
+  TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
+      [&](const ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
@@ -292,7 +292,7 @@ Status ReadDynamicShapesOnCpu(
         if (device_sub_shape.is_static()) {
           return OkStatus();
         }
-        void* memory = buffer->opaque();
+        const void* memory = buffer.opaque();
 
         // Read the dynamic shape metadata from the device stream.
         Shape buffer_shape_static = ShapeUtil::MakeStaticShape(buffer_shape);
@@ -301,8 +301,9 @@ Status ReadDynamicShapesOnCpu(
         if (metadata_size == 0) {
           return InvalidArgument("Dynamic shape metadata size should not be 0");
         }
-        auto buffer_8 = static_cast<int8_t*>(memory);
-        auto metadata_buffer = reinterpret_cast<int32_t*>(buffer_8 + offset);
+        auto buffer_8 = static_cast<const int8_t*>(memory);
+        auto metadata_buffer =
+            reinterpret_cast<const int32_t*>(buffer_8 + offset);
 
         // Update shape size from metadata.
         for (int64_t i = 0; i < device_sub_shape.rank(); ++i) {

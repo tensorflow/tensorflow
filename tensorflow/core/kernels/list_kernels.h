@@ -691,6 +691,12 @@ class TensorListGather : public OpKernel {
     if (!tensor_list->element_shape.IsFullyDefined()) {
       for (int index = 0; index < indices.NumElements(); ++index) {
         const int i = indices.flat<int32>()(index);
+
+        OP_REQUIRES(c, 0 <= i && i < tensor_list->tensors().size(),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Trying to gather element ", i, " in a list with ",
+                        tensor_list->tensors().size(), " elements.")));
+
         const Tensor& t = tensor_list->tensors()[i];
         if (t.dtype() != DT_INVALID) {
           PartialTensorShape tmp = partial_element_shape;

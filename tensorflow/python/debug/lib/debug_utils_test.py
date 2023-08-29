@@ -23,7 +23,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import googletest
 
 
@@ -43,8 +43,8 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
       cls._b_init = constant_op.constant(
           cls._b_init_val, shape=[2, 1], name="b_init")
 
-      cls._a = variables.VariableV1(cls._a_init, name="a1")
-      cls._b = variables.VariableV1(cls._b_init, name="b")
+      cls._a = variable_v1.VariableV1(cls._a_init, name="a1")
+      cls._b = variable_v1.VariableV1(cls._b_init, name="b")
       cls._c = constant_op.constant(cls._c_val, shape=[2, 1], name="c")
 
       # Matrix product of a and b.

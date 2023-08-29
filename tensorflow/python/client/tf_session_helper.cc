@@ -15,26 +15,36 @@ limitations under the License.
 
 #include "tensorflow/python/client/tf_session_helper.h"
 
+#include <cstdint>
 #include <cstring>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/safe_ptr.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_buffer_internal.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/log_memory.h"
-#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/core/coding.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 #include "tensorflow/python/client/session_ref.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
 namespace tensorflow {
 
@@ -65,8 +75,8 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
                            TF_Buffer* run_outputs) {
   // 1. Convert the feed inputs to the appropriate form for TF_Run.
   if (!PyDict_Check(feed_dict)) {
-    Set_TF_Status_from_Status(out_status,
-                              errors::InvalidArgument(kFeedDictErrorMsg));
+    tsl::Set_TF_Status_from_Status(
+        out_status, absl::InvalidArgumentError(kFeedDictErrorMsg));
     return;
   }
 
@@ -83,8 +93,8 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
   while (PyDict_Next(feed_dict, &pos, &key, &value)) {
     char* key_string = PyBytes_AsString(key);
     if (!key_string) {
-      Set_TF_Status_from_Status(out_status,
-                                errors::InvalidArgument(kFeedDictErrorMsg));
+      tsl::Set_TF_Status_from_Status(
+          out_status, absl::InvalidArgumentError(kFeedDictErrorMsg));
       return;
     }
     input_names.push_back(key_string);
@@ -92,7 +102,7 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
     inputs_safe.emplace_back(make_safe(static_cast<TF_Tensor*>(nullptr)));
     s = NdarrayToTensor(nullptr /*ctx*/, value, &inputs_safe.back());
     if (!s.ok()) {
-      Set_TF_Status_from_Status(out_status, s);
+      tsl::Set_TF_Status_from_Status(out_status, s);
       return;
     }
     inputs_unsafe.push_back(inputs_safe.back().get());
@@ -145,7 +155,7 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
     PyObject* py_array;
     s = TF_TensorToPyArray(std::move(tf_outputs_safe[i]), &py_array);
     if (!s.ok()) {
-      Set_TF_Status_from_Status(out_status, s);
+      tsl::Set_TF_Status_from_Status(out_status, s);
       return;
     }
     py_outputs_safe.emplace_back(
@@ -179,15 +189,15 @@ void MakeCallableHelper(tensorflow::Session* session,
   if (callable_options != nullptr &&
       !callable_options_proto.ParseFromArray(callable_options->data,
                                              callable_options->length)) {
-    Set_TF_Status_from_Status(
+    tsl::Set_TF_Status_from_Status(
         out_status,
-        errors::InvalidArgument("Unparseable CallableOptions proto"));
+        absl::InvalidArgumentError("Unparseable CallableOptions proto"));
     return;
   }
   tensorflow::Session::CallableHandle handle;
   Status s = session->MakeCallable(callable_options_proto, &handle);
   if (!s.ok()) {
-    Set_TF_Status_from_Status(out_status, s);
+    tsl::Set_TF_Status_from_Status(out_status, s);
     return;
   }
   *out_handle = handle;
@@ -222,14 +232,15 @@ void RunCallableHelper(tensorflow::Session* session, int64_t handle,
     for (Py_ssize_t i = 0; i < len; ++i) {
       PyObject* elem = PySequence_Fast_GET_ITEM(feed_values, i);
       if (!elem) {
-        Set_TF_Status_from_Status(
-            out_status, errors::Internal("Could not get feed value ", i));
+        tsl::Set_TF_Status_from_Status(
+            out_status,
+            absl::InternalError(absl::StrCat("Could not get feed value ", i)));
         return;
       }
       Tensor t;
       s = NdarrayToTensor(elem, &t);
       if (!s.ok()) {
-        Set_TF_Status_from_Status(out_status, s);
+        tsl::Set_TF_Status_from_Status(out_status, s);
         return;
       }
       input_tensors.push_back(std::move(t));
@@ -246,7 +257,7 @@ void RunCallableHelper(tensorflow::Session* session, int64_t handle,
   Py_END_ALLOW_THREADS;
 
   if (!s.ok()) {
-    Set_TF_Status_from_Status(out_status, s);
+    tsl::Set_TF_Status_from_Status(out_status, s);
     return;
   }
 
@@ -254,7 +265,7 @@ void RunCallableHelper(tensorflow::Session* session, int64_t handle,
   if (run_metadata != nullptr) {
     s = MessageToBuffer(run_metadata_proto, run_metadata);
     if (!s.ok()) {
-      Set_TF_Status_from_Status(out_status, s);
+      tsl::Set_TF_Status_from_Status(out_status, s);
       return;
     }
   }
@@ -268,7 +279,7 @@ void RunCallableHelper(tensorflow::Session* session, int64_t handle,
     PyObject* py_array;
     s = TensorToNdarray(output, &py_array);
     if (!s.ok()) {
-      Set_TF_Status_from_Status(out_status, s);
+      tsl::Set_TF_Status_from_Status(out_status, s);
       return;
     }
     py_outputs_safe.push_back(
@@ -303,11 +314,13 @@ void TF_SessionRunCallable(TF_Session* session, int64_t handle,
 
 void TF_DeprecatedSessionReleaseCallable(TF_DeprecatedSession* session,
                                          int64_t handle, TF_Status* status) {
-  Set_TF_Status_from_Status(status, session->session->ReleaseCallable(handle));
+  tsl::Set_TF_Status_from_Status(status,
+                                 session->session->ReleaseCallable(handle));
 }
 void TF_SessionReleaseCallable(TF_Session* session, int64_t handle,
                                TF_Status* status) {
-  Set_TF_Status_from_Status(status, session->session->ReleaseCallable(handle));
+  tsl::Set_TF_Status_from_Status(status,
+                                 session->session->ReleaseCallable(handle));
 }
 
 // Wrapper for TF_PRunSetup that converts the arguments to appropriate types.
@@ -380,7 +393,7 @@ void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
     input_vals_safe.emplace_back(make_safe(static_cast<TF_Tensor*>(nullptr)));
     s = NdarrayToTensor(nullptr, ndarray, &input_vals_safe.back());
     if (!s.ok()) {
-      Set_TF_Status_from_Status(out_status, s);
+      tsl::Set_TF_Status_from_Status(out_status, s);
       return;
     }
     input_vals.push_back(input_vals_safe.back().get());
@@ -418,7 +431,7 @@ void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
     PyObject* py_array;
     s = TF_TensorToPyArray(std::move(output_vals_safe[i]), &py_array);
     if (!s.ok()) {
-      Set_TF_Status_from_Status(out_status, s);
+      tsl::Set_TF_Status_from_Status(out_status, s);
       return;
     }
     py_outputs_safe.emplace_back(
@@ -585,12 +598,12 @@ TF_Function* TF_GraphToFunction_wrapper(
     const NameVector& control_output_names, const TF_FunctionOptions* opts,
     const char* description, TF_Status* out_status) {
   if (!output_names.empty() && output_names.size() != outputs.size()) {
-    Set_TF_Status_from_Status(
+    tsl::Set_TF_Status_from_Status(
         out_status,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "output names must be either empty or equal in size to outputs. ",
             "output names size = ", output_names.size(),
-            " outputs size = ", outputs.size()));
+            " outputs size = ", outputs.size())));
     return nullptr;
   }
 
@@ -649,7 +662,8 @@ std::vector<TF_Output> TF_CreatePlaceholders(TF_Graph* graph, PyObject* dtypes,
   std::vector<TF_Output> outputs;
   dtypes = PySequence_Fast(dtypes, "dtypes must be a sequence");
   if (dtypes == nullptr) {
-    Set_TF_Status_from_Status(status, errors::Internal("dtypes is nullptr"));
+    tsl::Set_TF_Status_from_Status(status,
+                                   absl::InternalError("dtypes is nullptr"));
     return outputs;
   }
   Safe_PyObjectPtr dtypes_holder(make_safe(dtypes));
@@ -658,8 +672,8 @@ std::vector<TF_Output> TF_CreatePlaceholders(TF_Graph* graph, PyObject* dtypes,
   for (size_t i = 0; i < len; i++) {
     PyObject* dtype = PySequence_Fast_GET_ITEM(dtypes, i);
     if (!dtype) {
-      Set_TF_Status_from_Status(status,
-                                errors::Internal("Could not get dtype ", i));
+      tsl::Set_TF_Status_from_Status(
+          status, absl::InternalError(absl::StrCat("Could not get dtype ", i)));
       return outputs;
     }
 #if PY_MAJOR_VERSION >= 3
@@ -668,9 +682,9 @@ std::vector<TF_Output> TF_CreatePlaceholders(TF_Graph* graph, PyObject* dtypes,
     TF_DataType tf_datatype = static_cast<TF_DataType>(PyInt_AsLong(dtype));
 #endif
     outputs.push_back(TF_Output());
-    CreatePlaceholder(graph, status, strings::StrCat(prefix, i), tf_datatype,
+    CreatePlaceholder(graph, status, absl::StrCat(prefix, i), tf_datatype,
                       &outputs.back());
-    if (!status->status.ok()) break;
+    if (TF_GetCode(status) != TF_OK) break;
   }
   return outputs;
 }
@@ -709,7 +723,7 @@ PyObject* TF_TryEvaluateConstant_wrapper(TF_Graph* graph, TF_Output output,
   Safe_TF_TensorPtr safe_result_tensor(result_tensor);
   PyObject* out;
   Status s = TF_TensorToPyArray(std::move(safe_result_tensor), &out);
-  Set_TF_Status_from_Status(status, s);
+  tsl::Set_TF_Status_from_Status(status, s);
   if (!s.ok()) Py_RETURN_NONE;
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(out));
 }

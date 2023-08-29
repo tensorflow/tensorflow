@@ -13,15 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_GPU_PASSES
-#define TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_GPU_PASSES
+#ifndef MLIR_HLO_TRANSFORMS_GPU_PASSES
+#define MLIR_HLO_TRANSFORMS_GPU_PASSES
 
 include "mlir/Pass/PassBase.td"
-
-def GpuFusionRewritePass : Pass<"gpu-fusion-rewrite", "ModuleOp"> {
-  let summary = "Pass to rewrite lmhlo.fusion ops to gpu.launch_func.";
-  let constructor = "createGpuFusionRewritePass()";
-}
 
 def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
   let summary = "Pass to transform a gpu module to nvvm.";
@@ -35,4 +30,4 @@ def GpuKernelToROCDLPass : Pass<"gpu-kernel-to-rocdl", "gpu::GPUModuleOp"> {
   let constructor = "createGpuKernelToRocdlPass()";
 }
 
-#endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_GPU_PASSES
+#endif // MLIR_HLO_TRANSFORMS_GPU_PASSES

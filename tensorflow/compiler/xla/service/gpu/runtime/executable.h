@@ -28,10 +28,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/runtime/module_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/collectives.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/fused_attention.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
@@ -92,18 +94,19 @@ class GpuRuntimeExecutable {
  public:
   // Creates GpuRuntimeExecutable from the Xla Gpu Program.
   static StatusOr<std::unique_ptr<GpuRuntimeExecutable>> Create(
-      std::unique_ptr<GpuRuntimeProgram> program);
+      std::string module_name, std::unique_ptr<GpuRuntimeProgram> program);
 
   // Creates GpuRuntimeExecutable from the AOT compiled binary.
   static StatusOr<std::unique_ptr<GpuRuntimeExecutable>> Create(
-      absl::Span<const int64_t> buffer_sizes, runtime::Executable executable,
-      DebugOptions debug_options);
+      std::string module_name, absl::Span<const int64_t> buffer_sizes,
+      runtime::Executable executable, DebugOptions debug_options);
 
   // Executes entry function with the given buffer arguments.
   Status Execute(const ServiceExecutableRunOptions* run_options,
                  const std::string& asm_text,
                  const std::vector<uint8_t>& binary,
                  const BufferAllocations& buffer_allocations,
+                 NonAtomicallyUpgradeableRWLock& gpu_lock,
                  const BufferAllocation* temp_alloc = nullptr);
 
   // Returns object file behind the runtime executable. This object file can
@@ -113,16 +116,22 @@ class GpuRuntimeExecutable {
   // Returns MLIR module behind this executable if it is available.
   StatusOr<std::string_view> GetMlirModule() const;
 
+  std::string_view module_name() const { return module_name_; }
+
  private:
-  GpuRuntimeExecutable(std::vector<int64_t> buffer_sizes,
+  GpuRuntimeExecutable(std::string module_name,
+                       std::vector<int64_t> buffer_sizes,
                        std::unique_ptr<runtime::JitExecutable> jit_executable,
                        DebugOptions debug_options, ModulesState modules_state,
                        FfiModulesState ffi_modules_state);
 
-  GpuRuntimeExecutable(std::vector<int64_t> buffer_sizes,
+  GpuRuntimeExecutable(std::string module_name,
+                       std::vector<int64_t> buffer_sizes,
                        std::unique_ptr<runtime::Executable> aot_executable,
                        DebugOptions debug_options, ModulesState modules_state,
                        FfiModulesState ffi_modules_state);
+
+  std::string module_name_;
 
   // Depending on the state of `executable_` returns a reference to active
   // Xla runtime executable.
@@ -147,19 +156,27 @@ class GpuRuntimeExecutable {
   // Keep a cache for conv configs for all conv operations in the program.
   ConvRunners conv_runners_;
 
+  // Keep a cache for fused_dot_attention configs for all fused_dot_attention
+  // operations in the program.
+  FusedAttentionRunners fused_attention_runners_;
+
+  // Keep a cache for fused_dot_attention configs for all fused_dot_attention
+  // backward
+  // operations in the program.
+  FusedAttentionBackwardRunners fused_attention_backward_runners_;
+
   // Support for running collective operations.
   CollectivesSupport collectives_;
 
   // Keep a cache of fft plans for all FFT operations in the program.
   FftPlans fft_plans_;
 
-#if GOOGLE_CUDA
-  // Keep matmul execution plans (only if cuBLASLt is available).
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM  // Keep matmul execution plans.
   MatmulPlans cublas_lt_matmul_plans_;
-
-  // Keep captured and instantiated CUDA graphs instances.
+  // Keep captured and instantiated GPU graphs instances.
   GraphInstances graph_instances_;
-#endif  // GOOGLE_CUDA
+  CapturedFunctionExecutionCounts captured_function_counts_;
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   // Keep an executable state for all registered runtime modules.
   ModulesState modules_state_;

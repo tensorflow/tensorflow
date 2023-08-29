@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/eigh_expander.h"
 
+#include <algorithm>
+#include <limits>
 #include <memory>
+#include <numeric>
+#include <string>
+#include <tuple>
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
@@ -63,17 +68,6 @@ struct Eigh2x2 {
   XlaOp s;  // sine.
 };
 
-// sqrt(x**2 + y**2), calculated avoiding overflow.
-XlaOp Hypot(XlaOp x, XlaOp y) {
-  x = Abs(x);
-  y = Abs(y);
-  auto xy_min = Min(x, y);
-  auto xy_max = Max(x, y);
-  auto out = xy_max * Sqrt(ScalarLike(x, 1) + Square(xy_min / xy_max));
-  return Select(Eq(xy_min, xy_max), xy_min * ScalarLike(xy_min, std::sqrt(2.)),
-                out);
-}
-
 // Given an n-by-n symmetric A and integers p and q that satisfy 0 <= p < q < n,
 // a Jacobi rotation computes a rotation matrix G = [[c, s], [-s, c]], such that
 //   G_T * A[[p, q], [p, q]] * G
@@ -85,12 +79,16 @@ XlaOp Hypot(XlaOp x, XlaOp y) {
 // their rotations do not interfere and hence can be computed in parallel.
 //
 // def sym_schur2x2(w_tl, w_tr, w_br):
-//   off_diag = np.diag(w_tr)
-//   tau = (np.diag(w_br) - np.diag(w_tl)) / (2 * off_diag)
+//   a = np.diag(w_br)
+//   b = np.diag(w_tr)
+//   c = np.diag(w_tl)
+//   tau = (a - c) / (2 * b)
 //   t = np.where(tau >= 0, 1.0 / (tau + np.sqrt(1 + tau ** 2)),
 //                -1.0 / (-tau + np.sqrt(1 + tau ** 2)))
-//   pred = np.abs(off_diag) > 1e-6
-//   t = np.where(pred, t, 0.)
+//   fudge_factor = 0.1
+//   b_is_tiny = np.abs(b) <= (fudge_factor*eps*
+//     np.min(np.abs(a), np.abs(c)))
+//   t = np.where(b_is_tiny, 0., t)
 //   c = 1.0 / np.sqrt(1.0 + t ** 2)
 //   s = t * c
 //   rt1 = w_tl - t * w_tr
@@ -116,11 +114,15 @@ StatusOr<Eigh2x2> HermitianEigenDecomposition2x2(XlaOp w_tl, XlaOp w_tr,
     w_tr = abs_tr;
   }
 
-  auto tol = ScalarLike(w_tr, 1e-6);
   auto tau = (w_br - w_tl) / (two * w_tr);
   auto t = Sqrt(one + Square(tau));
   t = Reciprocal(tau + Select(Ge(tau, zero), t, Neg(t)));
-  t = Select(Gt(Abs(w_tr), tol), t, ZerosLike(t));
+
+  constexpr float kFudgeFactor = 0.1f;
+  auto tiny =
+      ScalarLike(w_tr, kFudgeFactor * std::numeric_limits<float>::epsilon());
+  auto off_diag_is_tiny = Le(Abs(w_tr), Mul(tiny, Min(Abs(w_tl), Abs(w_br))));
+  t = Select(off_diag_is_tiny, ZerosLike(t), t);
   auto c = Rsqrt(one + Square(t));
   auto s = t * c;
 

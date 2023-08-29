@@ -16,12 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_PJIT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PJIT_H_
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 
 namespace jax {
 
+// pybind11-index-annotation BEGIN
+// refs {
+//   module_path: "tensorflow/compiler/xla/python/xla.cc"
+//   module_arg {}
+// }
+// pybind11-index-annotation END
 void BuildPjitSubmodule(pybind11::module& m);
 
-}
+}  // namespace jax
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_PJIT_H_

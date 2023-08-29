@@ -60,6 +60,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   switch (indices->type) {
     case kTfLiteInt64:
     case kTfLiteInt32:
+    case kTfLiteInt16:
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
@@ -184,6 +185,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                      NumElements(params) > 0);
 
   switch (indices->type) {
+    case kTfLiteInt16:
+      return EvalGatherNd<int16_t>(context, params, indices, output);
     case kTfLiteInt32:
       return EvalGatherNd<int32_t>(context, params, indices, output);
     case kTfLiteInt64:

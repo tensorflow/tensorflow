@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_impl.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"
@@ -49,7 +49,7 @@ class BlockingValidatorRunner {
 
  private:
   int per_test_timeout_ms_ = 0;
-  std::string storage_path_;
+  const std::string storage_path_base_;
   std::unique_ptr<ValidatorRunnerImpl> validator_runner_impl_;
 };
 

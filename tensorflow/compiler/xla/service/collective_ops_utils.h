@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -42,6 +43,11 @@ std::optional<ReductionKind> MatchReductionInstruction(
 // Attempts to match computation to one of the possible cases in ReductionKind.
 std::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
+
+// Returns the reduction identity value for a certain ReductionKind and
+// PrimitiveType.
+std::optional<Literal> GetReductionIdentity(ReductionKind kind,
+                                            PrimitiveType type);
 
 // Figures out which IDs are participating in the collective subgroup.
 // An empty `groups` indicates that all [0, total_participant_count) IDs
@@ -117,6 +123,19 @@ GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
                               absl::Span<const ReplicaGroup> replica_groups,
                               CollectiveOpGroupMode group_mode);
 
+// Same as above, except that it returns the flattened id in the replica groups
+// instead of device id.
+StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+    const DeviceAssignment& device_assignment,
+    absl::Span<const ReplicaGroup> replica_groups,
+    CollectiveOpGroupMode group_mode);
+
+// Same as above, but take replica/partition count instead of device assignment.
+StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+    absl::Span<const ReplicaGroup> replica_groups,
+    CollectiveOpGroupMode replica_group_mode, int replica_count,
+    int partition_count);
+
 // Figures out which devices are participating in the collective subgroup.
 StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     GlobalDeviceId device_id, const DeviceAssignment& device_assignment,
@@ -129,7 +148,11 @@ bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
 
 // A custom call target that can be used to create a nop that can legally
 // replace a collective op.
-constexpr char kNopCustomCallTarget[] = "AllocateBuffer";
+inline constexpr absl::string_view kNopCustomCallTarget = "AllocateBuffer";
+// A custom call target that can be used to create a nop that can legally
+// replace a collective op and it returns a token.
+inline constexpr absl::string_view kNopReturnTokenCustomCallTarget =
+    "NopReturnToken";
 
 // Returns true if instruction is a collective op or a collective fusion.
 bool IsCollective(const HloInstruction* instruction);
@@ -224,7 +247,7 @@ void WaitAndLogIfStuck(tsl::BlockingCounter* counter, const DescFn& desc_fn) {
   LOG(ERROR) << "This thread has been waiting for " << timeout.count()
              << "ms for and may be stuck: " << desc_fn();
   counter->Wait();
-  LOG(ERROR) << "Thread is unstuck!  Warning above was a false-positive.  "
+  LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
                 "Perhaps the timeout is too short: "
              << desc_fn();
 }
@@ -271,6 +294,7 @@ struct AllReduceParticipantData : ParticipantData {
 
   std::string ToString() const override {
     std::vector<std::string> buffer_strs;
+    buffer_strs.reserve(buffers.size());
     for (const Buffer& buffer : buffers) {
       buffer_strs.push_back(
           absl::StrFormat("{element_count=%d}", buffer.element_count));
@@ -367,7 +391,7 @@ class Rendezvous {
       if (!participants_.empty() &&
           participants_.back().rendezvous_key != participant.rendezvous_key) {
         return InvalidArgument(
-            "Mismatch among all-reduce participants.  Expected same "
+            "Mismatch among all-reduce participants. Expected same "
             "replica-count, element-count, and rendezvous-key but were %s and "
             "%s",
             participants_.back().ToString(), participant.ToString());
@@ -396,6 +420,9 @@ class Rendezvous {
   std::shared_ptr<tsl::BlockingCounter> returned_blocking_counter_{
       std::make_shared<tsl::BlockingCounter>(key_.num_local_participants)};
 };
+
+constexpr char kSendRecvSourceTargetPairsAttr[] =
+    "_xla_send_recv_source_target_pairs";
 
 }  // end namespace xla
 

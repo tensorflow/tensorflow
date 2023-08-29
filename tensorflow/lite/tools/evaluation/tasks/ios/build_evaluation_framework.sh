@@ -17,7 +17,7 @@
 set -e
 
 WORKSPACE_ROOT=$(bazel info workspace 2> /dev/null)
-EVALUATION_DIR=third_party/tensorflow/lite/tools/evaluation/tasks
+EVALUATION_DIR=tensorflow/lite/tools/evaluation/tasks
 DEST_DIR="${EVALUATION_DIR}/ios/TFLiteEvaluation/TFLiteEvaluation/Frameworks"
 FRAMEWORK_TARGET=TensorFlowLiteInferenceDiffC_framework
 

@@ -560,6 +560,18 @@ TEST(SpecializeType, ForEachRejectsMalformedInput) {
   EXPECT_FALSE(SpecializeType(attrs, op, ft).ok());
 }
 
+TEST(SpecializeType, VarShouldHaveNoArgs) {
+  OpDef op;
+  FullTypeDef* t = op.add_output_arg()->mutable_experimental_full_type();
+  t->set_type_id(TFT_VAR);
+  t->add_args()->set_type_id(TFT_PRODUCT);
+  NodeDef ndef;
+  AttrSlice attrs(ndef);
+
+  FullTypeDef ft;
+  EXPECT_FALSE(SpecializeType(attrs, op, ft).ok());
+}
+
 TEST(SpecializeType, RemovesLegacyVariant) {
   OpDef op;
   FullTypeDef* t = op.add_output_arg()->mutable_experimental_full_type();

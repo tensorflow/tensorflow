@@ -18,6 +18,8 @@ limitations under the License.
 #include <atomic>
 #include <memory>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/cc/training/queue_runner.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -42,8 +44,8 @@ SingleMachine::SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus)
     : Cluster(timeout_s), expected_init_time_s_(0), closing_(false) {
   VLOG(1) << "Number of CPU cores: " << num_cpu_cores
           << " Number of GPUs: " << num_gpus;
-  thread_pool_.reset(new thread::ThreadPool(
-      Env::Default(), SanitizeThreadSuffix("single_machine"), 2));
+  thread_pool_ = std::make_unique<thread::ThreadPool>(
+      Env::Default(), SanitizeThreadSuffix("single_machine"), 2);
 
   (*options_.config.mutable_device_count())["CPU"] = 1;
   if (num_gpus > 0) {
@@ -74,7 +76,7 @@ Status SingleMachine::Provision() {
   // variables are global, and therefore we can't have more than 1 session alive
   // at a time. This check detects when more that one cluster is provisioned.
   if (already_provisioned) {
-    return errors::Unavailable(
+    return absl::UnavailableError(
         "Can't provision more than one single cluster at a time");
   }
 
@@ -89,17 +91,17 @@ Status SingleMachine::Provision() {
     } else if (dev.device_type() == "GPU") {
       DeviceNameUtils::ParsedName parsed;
       if (!DeviceNameUtils::ParseFullName(dev.name(), &parsed)) {
-        return errors::InvalidArgument(
-            strings::StrCat("Not able to parse GPU device name: ", dev.name()));
+        return absl::InvalidArgumentError(
+            absl::StrCat("Not able to parse GPU device name: ", dev.name()));
       }
       TfDeviceId tf_device_id(parsed.id);
       PlatformDeviceId platform_device_id;
       Status s =
           GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id);
       if (!s.ok()) {
-        return errors::Unavailable("Unknown TF GPU device with id ",
-                                   tf_device_id.value(), ": ",
-                                   s.error_message());
+        return absl::UnavailableError(
+            absl::StrCat("Unknown TF GPU device with id ", tf_device_id.value(),
+                         ": ", s.message()));
       }
       attr = GetLocalGPUInfo(platform_device_id);
     } else if (dev.device_type().find("XLA") == string::npos) {
@@ -216,7 +218,7 @@ Status SingleMachine::GetPeakMemoryUsage(
   // Cpu_allocator->TracksAllocationSizes() returns true doesn't always mean the
   // the AllocatorStats would be collected.
   if (!cpu_allocator_stats_enabled_) {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "Tracking allocation for CPU is not enabled.");
   }
 
@@ -228,7 +230,7 @@ Status SingleMachine::GetPeakMemoryUsage(
   for (Device* device : devices) {
     auto* allocator = device->GetAllocator(AllocatorAttributes());
     if (!allocator->TracksAllocationSizes()) {
-      return Status(error::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     "Tracking allocation is not enabled.");
     }
     absl::optional<AllocatorStats> stats = allocator->GetStats();
@@ -264,8 +266,8 @@ Status SingleMachine::RunWithTimeout(
       },
       timeout_s * 1000, thread_pool_.get());
   if (!executed_in_time) {
-    return errors::DeadlineExceeded("Failed to run the graph after ", timeout_s,
-                                    " seconds, aborting");
+    return absl::DeadlineExceededError(absl::StrCat(
+        "Failed to run the graph after ", timeout_s, " seconds, aborting"));
   } else if (run_metadata && status->ok()) {
     *run_metadata = *local_metadata;
   }
@@ -310,8 +312,9 @@ Status SingleMachine::CloseSession(bool use_timeout) {
   if (!executed_in_time) {
     // Let the caller know that we can't shutdown the session, and therefore
     // can't process any further.
-    return errors::Unavailable("Failed to close the previous session after ",
-                               timeout_s_, " seconds, aborting");
+    return absl::UnavailableError(
+        absl::StrCat("Failed to close the previous session after ", timeout_s_,
+                     " seconds, aborting"));
   }
 
   return OkStatus();
@@ -336,8 +339,8 @@ Status SingleMachine::ShutdownSession() {
   if (!notified) {
     // Let the caller know that we can't shutdown the session properly since
     // there are calls to Session::Run() still running.
-    return errors::Unavailable("The session is still running graphs after ",
-                               timeout_s_, " seconds");
+    return absl::UnavailableError(absl::StrCat(
+        "The session is still running graphs after ", timeout_s_, " seconds"));
   }
 
   return OkStatus();
@@ -358,17 +361,17 @@ Status SingleMachine::ResetSession() {
   LOG(INFO) << "Starting new session";
 
   // Create a new threadpool
-  thread_pool_.reset(new thread::ThreadPool(
-      Env::Default(), SanitizeThreadSuffix("single_machine"), 2));
+  thread_pool_ = std::make_unique<thread::ThreadPool>(
+      Env::Default(), SanitizeThreadSuffix("single_machine"), 2);
 
   session_.reset(NewSession(options_));
   if (!session_) {
-    return errors::Unknown("Failed to create session");
+    return absl::UnknownError("Failed to create session");
   }
-  coordinator_.reset(new Coordinator());
+  coordinator_ = std::make_unique<Coordinator>();
 
   // Build the DeviceSet.
-  device_set_.reset(new DeviceSet);
+  device_set_ = std::make_unique<DeviceSet>();
   const DeviceMgr* device_mgr;
   TF_RETURN_IF_ERROR(session_->LocalDeviceManager(&device_mgr));
   for (auto d : device_mgr->ListDevices()) {
@@ -445,7 +448,7 @@ Status SingleMachine::ClearAllocatorStats() const {
   // Cpu_allocator->TracksAllocationSizes() returns true doesn't always mean the
   // the AllocatorStats would be collected.
   if (!cpu_allocator_stats_enabled_) {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "Tracking allocation for CPU is not enabled.");
   }
 
@@ -456,12 +459,12 @@ Status SingleMachine::ClearAllocatorStats() const {
   for (Device* device : devices) {
     auto* allocator = device->GetAllocator(AllocatorAttributes());
     if (!allocator->TracksAllocationSizes()) {
-      return Status(error::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     "Tracking allocation is not enabled.");
     }
     if (!allocator->ClearStats()) {
       return Status(
-          error::INVALID_ARGUMENT,
+          absl::StatusCode::kInvalidArgument,
           absl::StrCat("Clearing allocation stats is not supported for ",
                        device->name()));
     }

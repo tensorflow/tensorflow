@@ -35,9 +35,8 @@ inline double GigaFlopsPerSecondPerCore(const OpMetrics& metrics) {
   return SafeDivide(metrics.flops(), PicoToNano(metrics.time_ps()));
 }
 
-// Return BW for memory_space.  If invert_memory_space is true, returns BW
-// for all other memory spaces except the specified memory_space.
-inline double GigaBytesPerSecondPerCore(
+// Return ByteAccessed for memory_space and operation_type.
+inline double BytesAccessedPerCore(
     const OpMetrics& metrics, uint64_t memory_space,
     OpMetrics::MemoryAccessed::OperationType operation_type) {
   uint64_t bytes = 0;
@@ -58,12 +57,18 @@ inline double GigaBytesPerSecondPerCore(
       }
     }
   }
+  return bytes;
+}
 
+inline double GigaBytesPerSecondPerCore(
+    const OpMetrics& metrics, uint64_t memory_space,
+    OpMetrics::MemoryAccessed::OperationType operation_type) {
   // bytes_accessed and time_ps are accumulated across all occurrences on all
   // cores.
   // time_ps is used instead of self_time_ps because bytes_accessed for an op
   // includes the bytes accessed by children (nested) ops.
-  return SafeDivide(bytes, PicoToNano(metrics.time_ps()));
+  return SafeDivide(BytesAccessedPerCore(metrics, memory_space, operation_type),
+                    PicoToNano(metrics.time_ps()));
 }
 
 inline double GibiBytesPerSecondPerCore(

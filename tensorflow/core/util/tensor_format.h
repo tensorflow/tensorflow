@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_TENSOR_FORMAT_H_
 
 #include <array>
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"

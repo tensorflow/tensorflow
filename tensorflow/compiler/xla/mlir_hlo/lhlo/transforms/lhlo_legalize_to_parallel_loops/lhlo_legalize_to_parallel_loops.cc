@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <optional>
+#include <tuple>
+#include <utility>
 
 #include "lhlo/IR/lhlo_ops.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -449,14 +452,12 @@ class ReduceWindowOpConverter
         loc, inputType.getElementType(), mappedIvs.inBounds,
         /*withElseRegion=*/true);
 
-    OpBuilder thenBuilder =
-        elemOrInit.getThenBodyBuilder(rewriter->getListener());
+    OpBuilder thenBuilder = elemOrInit.getThenBodyBuilder(rewriter);
     Value elem =
         thenBuilder.create<mlir::memref::LoadOp>(loc, input, mappedIvs.ivs);
     thenBuilder.create<scf::YieldOp>(loc, elem);
 
-    OpBuilder elseBuilder =
-        elemOrInit.getElseBodyBuilder(rewriter->getListener());
+    OpBuilder elseBuilder = elemOrInit.getElseBodyBuilder(rewriter);
     elseBuilder.create<scf::YieldOp>(loc, *windowLoop.getInitVals().begin());
 
     return rewriter->create<scf::ReduceOp>(loc,

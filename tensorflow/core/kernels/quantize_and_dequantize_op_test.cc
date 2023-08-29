@@ -30,11 +30,15 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
+
+using ::tensorflow::testing::StatusIs;
+using ::testing::MatchesRegex;
 
 class QuantizeAndDequantizeTest : public OpsTestBase {};
 
@@ -757,6 +761,30 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_range_given_V3) {
   EXPECT_TRUE(absl::StrContains(s.ToString(),
                                 "Invalid range: input_min 1 > input_max 0"))
       << s;
+}
+
+// Axis is invalid
+TEST_F(QuantizeAndDequantizeTest, Invalid_axis_given_V3) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantizeV3")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("range_given", false)
+          .Attr("axis", static_cast<int32_t>(-2147483648))
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {-0.5, 0, 0.3, 0.8});
+  AddInputFromArray<float>(TensorShape({}), {1.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
+  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
+
+  EXPECT_THAT(
+      RunOpKernel(),
+      StatusIs(
+          error::INVALID_ARGUMENT,
+          MatchesRegex("Axis requested is larger than input dimensions.*")));
 }
 
 #define BM_SIMPLE_QUAN_DEQUAN(DEVICE)                                    \

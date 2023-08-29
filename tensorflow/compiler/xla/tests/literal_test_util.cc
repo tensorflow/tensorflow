@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_comparison.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -66,7 +67,7 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
   if (s.ok()) {
     return ::testing::AssertionSuccess();
   }
-  return ::testing::AssertionFailure() << s.error_message();
+  return ::testing::AssertionFailure() << s.message();
 }
 
 }  // namespace

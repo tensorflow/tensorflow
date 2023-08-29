@@ -48,18 +48,6 @@ TfLiteTelemetryInterpreterSettingsGetSubgraphInfo(
   return settings->subgraph_infos.data();
 }
 
-size_t TfLiteTelemetrySubgraphInfoGetNumOpTypes(
-    TfLiteTelemetrySubgraphInfo* subgraph_info) {
-  if (subgraph_info == nullptr) return 0;
-  return subgraph_info->op_types.size();
-}
-
-const int32_t* TfLiteTelemetrySubgraphInfoGetOpTypes(
-    TfLiteTelemetrySubgraphInfo* subgraph_info) {
-  if (subgraph_info == nullptr) return nullptr;
-  return subgraph_info->op_types.data();
-}
-
 size_t TfLiteTelemetrySubgraphInfoGetNumQuantizations(
     TfLiteTelemetrySubgraphInfo* subgraph_info) {
   if (subgraph_info == nullptr) return 0;
@@ -72,16 +60,16 @@ const TfLiteQuantization* TfLiteTelemetrySubgraphInfoGetQuantizations(
   return subgraph_info->quantizations.data();
 }
 
-size_t TfLiteTelemetrySubgraphInfoGetNumCustomOpNames(
-    TfLiteTelemetrySubgraphInfo* subgraph_info) {
-  if (subgraph_info == nullptr) return 0;
-  return subgraph_info->custom_op_names.size();
+size_t TfLiteTelemetryGpuDelegateSettingsGetNumNodesDelegated(
+    const TfLiteTelemetryGpuDelegateSettings* settings) {
+  if (settings == nullptr) return 0;
+  return settings->num_nodes_delegated;
 }
 
-const char** TfLiteTelemetrySubgraphInfoGetCustomOpNames(
-    TfLiteTelemetrySubgraphInfo* subgraph_info) {
-  if (subgraph_info == nullptr) return nullptr;
-  return subgraph_info->custom_op_names.data();
+int TfLiteTelemetryGpuDelegateSettingsGetBackend(
+    const TfLiteTelemetryGpuDelegateSettings* settings) {
+  if (settings == nullptr) return 0;
+  return settings->backend;
 }
 
 }  // extern "C"

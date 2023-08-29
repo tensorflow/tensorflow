@@ -47,7 +47,7 @@ class CpuVectorizationTest
       const ::testing::TestParamInfo<VectorizationTestSpec>& info) {
     auto spec = info.param;
 
-    std::string opcode = HloOpcodeString(spec.opcode);
+    std::string opcode(HloOpcodeString(spec.opcode));
     opcode[0] = toupper(opcode[0]);
 
     std::string triple{spec.triple.data(), spec.triple.size()};

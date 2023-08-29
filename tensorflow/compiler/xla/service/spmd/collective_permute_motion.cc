@@ -172,8 +172,7 @@ StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
   // collective-permute after the loop to fix the missing iteration.
   absl::flat_hash_set<int64_t> unused_indices_after_loop =
       FindIndicesUnusedAfterLoop(loop);
-  const absl::flat_hash_set<HloInstruction*>& loop_consts =
-      FindLoopConsts(body);
+  const absl::flat_hash_set<HloInstruction*> loop_consts = FindLoopConsts(body);
   int64_t induction_var_idx = *maybe_induction_var_idx;
   std::vector<HloInstruction*> input_gtes(root->operand_count(), nullptr);
   absl::flat_hash_set<int64_t> multi_use_indices;
@@ -243,13 +242,13 @@ StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
       continue;
     }
     HloInstruction* input = input_gtes[cluster->root_tuple_index];
-    const std::vector<HloInstruction*> original_input_users = input->users();
     HloInstruction* cp = cluster->collective_permute;
     if (input == nullptr || cp->operand(0) == input) {
       VLOG(2) << "Skip " << loop->name() << " index " << i
               << " collective-permute already at top.";
       continue;
     }
+    const std::vector<HloInstruction*> original_input_users = input->users();
     absl::flat_hash_map<const HloInstruction*, HloInstruction*> replacement;
     replacement[cp->operand(0)] = input;
     for (auto it = cluster->reverse_order_instructions.rbegin();

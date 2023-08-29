@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -51,7 +52,7 @@ class JitCompilationListener : public XlaActivityListener {
       bool expect_persistent_cache_use) {
     for (const auto& activity : activity_history_) {
       if (activity.used_persistent_cache() != expect_persistent_cache_use) {
-        return errors::FailedPrecondition("Unexpected listener history.");
+        return absl::FailedPreconditionError("Unexpected listener history.");
       }
     }
     return OkStatus();

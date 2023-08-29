@@ -42,6 +42,10 @@ struct SimpleConfig {
       test-7,data-7
       )";
 
+  static const char* AccelerationTestConfig() {
+    return kAccelerationTestConfig;
+  }
+
   static SimpleConfig ParseConfigurationLine(const std::string& conf_line) {
     return {conf_line};
   }
@@ -186,6 +190,10 @@ TEST(GetAccelerationTestParam, SupportDenylist) {
 struct UnmatchedSimpleConfig {
  public:
   static constexpr const char* kAccelerationTestConfig = nullptr;
+
+  static const char* AccelerationTestConfig() {
+    return kAccelerationTestConfig;
+  }
 
   static UnmatchedSimpleConfig ParseConfigurationLine(
       const std::string& conf_line) {

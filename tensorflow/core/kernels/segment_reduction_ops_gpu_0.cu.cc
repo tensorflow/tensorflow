@@ -15,6 +15,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#define EIGEN_USE_GPU
+
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/segment_reduction_ops_gpu.cu.h"
 
@@ -61,7 +63,6 @@ namespace functor {
 #define DEFINE_SORTED_GPU_SPECS(T) DEFINE_SORTED_GPU_SPECS_INDEX(T, int32);
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SORTED_GPU_SPECS);
-TF_CALL_bfloat16(DEFINE_SORTED_GPU_SPECS);
 
 #define DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, Index)                         \
   template struct UnsortedSegmentFunctor<GPUDevice, T, Index,                  \
@@ -82,8 +83,6 @@ TF_CALL_bfloat16(DEFINE_SORTED_GPU_SPECS);
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_REAL_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SUM_GPU_SPECS);
-TF_CALL_bfloat16(DEFINE_REAL_GPU_SPECS);
-TF_CALL_bfloat16(DEFINE_SUM_GPU_SPECS);
 
 #undef DEFINE_SORTED_GPU_SPECS_INDEX
 #undef DEFINE_SORTED_GPU_SPECS
@@ -96,15 +95,19 @@ TF_CALL_bfloat16(DEFINE_SUM_GPU_SPECS);
   template struct SparseSegmentReductionFunctor<T, int32, int32>; \
   template struct SparseSegmentReductionFunctor<T, int32, int64_t>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR);
-TF_CALL_bfloat16(DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR);
 #undef DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR
 
 #define DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR(T)                           \
   template struct SparseSegmentGradFunctor<GPUDevice, T, int32, int32>; \
   template struct SparseSegmentGradFunctor<GPUDevice, T, int32, int64_t>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR);
-TF_CALL_bfloat16(DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR);
 #undef DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR
+
+#define DEFINE_SPARSE_SEGMENT_GRAD_V2_FUNCTOR(T)                          \
+  template struct SparseSegmentGradV2Functor<GPUDevice, T, int32, int32>; \
+  template struct SparseSegmentGradV2Functor<GPUDevice, T, int32, int64_t>;
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_GRAD_V2_FUNCTOR);
+#undef DEFINE_SPARSE_SEGMENT_GRAD_V2_FUNCTOR
 
 }  // namespace functor
 }  // namespace tensorflow

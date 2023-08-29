@@ -256,12 +256,9 @@ tsl::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
                              DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
                              DeviceMemoryBase d_amax,
                              blas::ProfileResult* profile_result) {
-  std::unique_ptr<gpu::GpuTimer, gpu::GpuTimerDeleter> timer;
-  if (profile_result != nullptr) {
-    timer.reset(new gpu::GpuTimer(parent_));
-    TF_RET_CHECK(timer->Init());
-    TF_RET_CHECK(timer->Start(gpu::AsGpuStream(stream)));
-  }
+  TF_ASSIGN_OR_RETURN(
+      std::optional<gpu::GpuTimer> timer,
+      gpu::GpuTimer::CreateIfNeeded(gpu::AsGpuStream(stream), profile_result));
 
   void* workspace = nullptr;
   if (algorithm.workspace_size > 0) {
@@ -354,10 +351,10 @@ tsl::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
         workspace, algorithm.workspace_size, gpu::AsGpuStreamValue(stream)));
   }
 
-  if (timer) {
-    TF_RET_CHECK(timer->Stop(gpu::AsGpuStream(stream)));
+  if (profile_result != nullptr) {
+    TF_ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
     profile_result->set_is_valid(true);
-    profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
+    profile_result->set_elapsed_time_in_ms(absl::ToDoubleMilliseconds(elapsed));
   }
   return tsl::OkStatus();
 }

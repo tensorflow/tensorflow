@@ -30,16 +30,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_options.h"
 #include "tensorflow/compiler/xla/stream_executor/event.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel_spec.h"
 #include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin.h"
-#include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
-#include "tensorflow/compiler/xla/stream_executor/timer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace stream_executor {
@@ -120,7 +117,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   tsl::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *pop_dst,
                                               const DeviceMemoryBase &pop_src,
                                               uint64_t size) override {
-    return tsl::Status{port::error::UNIMPLEMENTED, ""};
+    return tsl::Status{absl::StatusCode::kUnimplemented, ""};
   }
 
   bool HostCallback(Stream *stream,
@@ -133,11 +130,11 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   }
 
   tsl::Status RecordEvent(Stream *stream, Event *event) override {
-    return tsl::Status{port::error::UNIMPLEMENTED, "RecordEvent"};
+    return tsl::Status{absl::StatusCode::kUnimplemented, "RecordEvent"};
   }
 
   tsl::Status WaitForEvent(Stream *stream, Event *event) override {
-    return tsl::Status{port::error::UNIMPLEMENTED, "WaitForEvent"};
+    return tsl::Status{absl::StatusCode::kUnimplemented, "WaitForEvent"};
   }
 
   Event::Status PollForEventStatus(Event *event) override {
@@ -147,11 +144,6 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   bool AllocateStream(Stream *stream) override { return true; }
   void DeallocateStream(Stream *stream) override {}
   bool CreateStreamDependency(Stream *dependent, Stream *other) override;
-
-  bool AllocateTimer(Timer *timer) override { return true; }
-  void DeallocateTimer(Timer *timer) override {}
-  bool StartTimer(Stream *stream, Timer *timer) override;
-  bool StopTimer(Stream *stream, Timer *timer) override;
 
   tsl::Status BlockHostUntilDone(Stream *stream) override;
 
@@ -191,10 +183,6 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
       override {
     return std::unique_ptr<internal::StreamInterface>(
         new host::HostStream(/*thread_stack_size=*/0));
-  }
-
-  std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override {
-    return std::unique_ptr<internal::TimerInterface>(new host::HostTimer());
   }
 
  private:

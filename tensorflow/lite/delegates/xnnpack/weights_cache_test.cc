@@ -18,21 +18,35 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/core/model_builder.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/delegates/xnnpack/conv_2d_tester.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/mutable_op_resolver.h"
 
 namespace tflite {
 namespace xnnpack {
 
+class DummyOpResolver : public MutableOpResolver {
+ public:
+  DummyOpResolver() {
+    AddBuiltin(BuiltinOperator_CONV_2D, DummyRegistration(), 1, 3);
+  }
+
+ private:
+  static const TfLiteRegistration* DummyRegistration() {
+    static TfLiteRegistration r = {nullptr, nullptr, Prepare, Invoke};
+    return &r;
+  }
+  static TfLiteStatus Prepare(TfLiteContext*, TfLiteNode*) { return kTfLiteOk; }
+  static TfLiteStatus Invoke(TfLiteContext*, TfLiteNode*) { return kTfLiteOk; }
+};
+
 TEST(XNNPACK_WEIGHTS_CACHE, WithSize) {
   std::vector<char> buffer = Conv2DTester().CreateTfLiteModel();
   const Model* model = GetModel(buffer.data());
-  ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+  DummyOpResolver resolver;
 
   std::unique_ptr<Interpreter> interpreter;
   ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter));
@@ -63,7 +77,7 @@ TEST(XNNPACK_WEIGHTS_CACHE, WithSize) {
 TEST(XNNPACK_WEIGHTS_CACHE, InvokeBeforeFinalization) {
   std::vector<char> buffer = Conv2DTester().CreateTfLiteModel();
   const Model* model = GetModel(buffer.data());
-  ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+  DummyOpResolver resolver;
 
   std::unique_ptr<Interpreter> interpreter;
   ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter));
@@ -91,7 +105,7 @@ TEST(XNNPACK_WEIGHTS_CACHE, InvokeBeforeFinalization) {
 TEST(XNNPACK_WEIGHTS_CACHE, HardFinalization) {
   std::vector<char> buffer = Conv2DTester().CreateTfLiteModel();
   const Model* model = GetModel(buffer.data());
-  ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+  DummyOpResolver resolver;
 
   std::unique_ptr<Interpreter> interpreter1;
   ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter1));
@@ -129,7 +143,7 @@ TEST(XNNPACK_WEIGHTS_CACHE, HardFinalization) {
 TEST(XNNPACK_WEIGHTS_CACHE, SoftFinalization) {
   std::vector<char> buffer = Conv2DTester().CreateTfLiteModel();
   const Model* model = GetModel(buffer.data());
-  ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+  DummyOpResolver resolver;
 
   std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
                   decltype(&TfLiteXNNPackDelegateWeightsCacheDelete)>
@@ -170,7 +184,7 @@ class WeightsCacheTest : public testing::TestWithParam<size_t> {};
 TEST_P(WeightsCacheTest, SoftFinalizationMultithreaded) {
   std::vector<char> buffer = Conv2DTester().CreateTfLiteModel();
   const Model* model = GetModel(buffer.data());
-  ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+  DummyOpResolver resolver;
 
   std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
                   decltype(&TfLiteXNNPackDelegateWeightsCacheDelete)>

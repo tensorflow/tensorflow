@@ -13,24 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <iterator>
+#include <memory>
 #include <utility>
-#include <vector>
 
-#include "absl/algorithm/container.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
 
@@ -42,6 +52,14 @@ class PrepareLiftingPass
     : public PassWrapper<PrepareLiftingPass, OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareLiftingPass)
+
+  PrepareLiftingPass() = default;
+
+  explicit PrepareLiftingPass(OpSet op_set) { op_set_ = op_set; }
+
+  PrepareLiftingPass(const PrepareLiftingPass& other) {
+    op_set_ = other.op_set_;
+  }
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -60,6 +78,17 @@ class PrepareLiftingPass
   }
 
   void runOnOperation() override;
+
+ private:
+  Option<OpSet> op_set_{
+      *this, "target-opset", llvm::cl::init(OpSet::TF),
+      llvm::cl::desc("Choose target opset."),
+      llvm::cl::values(
+          clEnumValN(OpSet::TF, "TF",
+                     "Uses TF ops that mimic quantization behavior"),
+          clEnumValN(OpSet::XLA, "XLA", "Uses TF XLA ops"),
+          clEnumValN(OpSet::UNIFORM_QUANTIZED, "UNIFORM_QUANTIZED",
+                     "Uses TF Uniform Quantized ops"))};
 };
 
 // Check if given indices in `val1` has same number of elements as given
@@ -107,8 +136,12 @@ LogicalResult MatchSupportedAffineOp(Operation* op, Value& binding_output,
       is_supported_affine_op = data_format.getValue().equals("NHWC") ||
                                data_format.getValue().equals("NDHWC");
     }
-  } else if (llvm::isa<TF::MatMulOp, TF::BatchMatMulV2Op>(op)) {
+  } else if (llvm::isa<TF::BatchMatMulV2Op>(op)) {
     if (const auto adj_y = op->getAttrOfType<BoolAttr>("adj_y")) {
+      is_supported_affine_op = !adj_y.getValue();
+    }
+  } else if (llvm::isa<TF::MatMulOp>(op)) {
+    if (const auto adj_y = op->getAttrOfType<BoolAttr>("transpose_b")) {
       is_supported_affine_op = !adj_y.getValue();
     }
   }
@@ -132,7 +165,7 @@ Value MakeOneDimValueBroadcastable(OpBuilder& builder, Location loc,
   }
 
   int64_t num_elements = value_shape.getNumElements();
-  llvm::SmallVector<int64_t> new_shape;
+  SmallVector<int64_t> new_shape;
   for (auto idx : llvm::reverse(llvm::seq<int32_t>(0, rhs_shape.getRank()))) {
     const int64_t rhs_dim = rhs_shape.getDimSize(idx);
     if (num_elements % rhs_dim != 0) {
@@ -188,7 +221,7 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
   auto dq_op = value.getDefiningOp<quantfork::DequantizeCastOp>();
   if (!dq_op) {
     auto mul_op = builder.create<TF::MulOp>(loc, value, multiplier);
-    return ConstantFoldOpIfPossible(mul_op).front();
+    return mul_op.getResult();
   }
   auto q_op = dq_op.getArg().getDefiningOp<quantfork::QuantizeCastOp>();
   if (!q_op) return {};
@@ -248,38 +281,8 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
       q_op.getLoc(), new_value_type.clone(new_qtype), new_value);
   auto dequantize = builder.create<quantfork::DequantizeCastOp>(
       dq_op.getLoc(), new_value_type, quantize.getResult());
-  return ConstantFoldOpIfPossible(dequantize).front();
+  return dequantize.getResult();
 }
-
-// Copied from tensorflow/compiler/mlir/lite/transforms/prepare_tf.cc.
-// By removing identity ops, constant operands with dynamic shapes have static
-// shape information which is necessary for correct pattern matching in this
-// pass.
-struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
-  using OpRewritePattern<TF::IdentityOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::IdentityOp identity,
-                                PatternRewriter& rewriter) const override {
-    for (Operation* user : identity->getUsers()) {
-      // Replace the op with the input if output is only used by TF ops.
-      // Currently this is more on the conservative side since we need to ensure
-      // every consumer op to be a TF op before applying this pattern. We can
-      // consider to revisit this in the future if this turns out to be too
-      // restrictive.
-      if (user->getDialect()->getNamespace() != "tf") {
-        return failure();
-      }
-      // Identity ops of returning values might be helpful for some other
-      // compilers, so avoid removing these Identity ops.
-      if (user->hasTrait<OpTrait::IsTerminator>()) {
-        return failure();
-      }
-    }
-
-    rewriter.replaceOp(identity, identity.getInput());
-    return success();
-  }
-};
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/prepare_lifting.inc"
 
@@ -291,14 +294,26 @@ void PrepareLiftingPass::runOnOperation() {
   // with a constant operand to a preceding affine operation.
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
-  patterns.add<TF::ConvertTFEinsumOp, RemoveIdentity>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  patterns.add<RemoveIdentity, ConstantFoldQuantizableOperands>(ctx);
+  if (op_set_ != OpSet::XLA) {
+    // Convert Einsum into BatchMatMul for non-XLA opsets.
+    // For the uniform opset, it is requested to maintain the BatchMatmul logic.
+    // For the TF opset, since we need to test the effect we remain it as a
+    // future work.
+    patterns.add<TF::ConvertTFEinsumOp>(ctx);
+  }
+
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    func.emitError() << "quant-prepare-lifting failed.";
+    signalPassFailure();
+  }
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass() {
-  return std::make_unique<PrepareLiftingPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass(
+    const OpSet target_opset) {
+  return std::make_unique<PrepareLiftingPass>(target_opset);
 }
 
 static PassRegistration<PrepareLiftingPass> pass;

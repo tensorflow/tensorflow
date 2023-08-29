@@ -17,8 +17,11 @@ limitations under the License.
 #include <stdio.h>
 #include <string.h>
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/cc/ops/const_op.h"
@@ -119,8 +122,8 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
       root, dims_expander,
       Const(root.WithOpName("size"), {input_height, input_width}));
   // Subtract the mean and divide by the scale.
-  Div(root.WithOpName(output_name), Sub(root, resized, {input_mean}),
-      {input_std});
+  Div give_me_a_name(root.WithOpName(output_name),
+                     Sub(root, resized, {input_mean}), {input_std});
 
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensor.
@@ -190,7 +193,8 @@ Status GetTopDetections(const std::vector<Tensor>& outputs, int how_many_labels,
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
   string output_name = "top_k";
-  TopK(root.WithOpName(output_name), outputs[0], how_many_labels);
+  TopK give_me_a_name(root.WithOpName(output_name), outputs[0],
+                      how_many_labels);
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensors.
   tensorflow::GraphDef graph;

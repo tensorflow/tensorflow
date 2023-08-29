@@ -15,6 +15,8 @@ limitations under the License.
 
 // XLA-specific Ops for split.
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -59,22 +61,24 @@ class SplitOp : public XlaOpKernel {
         errors::InvalidArgument(
             "Number of ways to split should be > 0, but got ", num_split));
 
-    OP_REQUIRES(
-        ctx, input_shape.dim_size(split_dim) % num_split == 0,
-        errors::InvalidArgument(
-            "Number of ways to split should evenly divide the split "
-            "dimension, but got split_dim ",
-            split_dim_orig, " (size = ", input_shape.dim_size(split_dim), ") ",
-            "and num_split ", num_split));
-
     xla::XlaBuilder* builder = ctx->builder();
     xla::XlaOp input = ctx->Input(1);
     auto shape_or = builder->GetShape(input);
     OP_REQUIRES_OK(ctx, shape_or.status());
 
-    OP_REQUIRES(ctx, !shape_or.value().is_dynamic(),
-                errors::InvalidArgument(
-                    "Split op doesn't support bounded dynamic inputs"));
+    xla::Shape xla_shape = shape_or.value();
+    OP_REQUIRES(
+        ctx, !xla_shape.is_dynamic_dimension(split_dim),
+        errors::InvalidArgument(
+            "Split op doesn't support split for the dynamic dimension"));
+
+    OP_REQUIRES(
+        ctx, xla_shape.dimensions(split_dim) % num_split == 0,
+        errors::InvalidArgument(
+            "Number of ways to split should evenly divide the split "
+            "dimension, but got split_dim ",
+            split_dim_orig, " (size = ", input_shape.dim_size(split_dim), ") ",
+            "and num_split ", num_split));
 
     // All the slices are the same size: this is the size along the
     // split dimension.
@@ -171,12 +175,23 @@ class SplitVOp : public XlaOpKernel {
       }
     }
 
+    xla::XlaBuilder* builder = ctx->builder();
+    auto shape_or = builder->GetShape(input);
+    OP_REQUIRES_OK(ctx, shape_or.status());
+
+    // TODO(b/265880112): Support this using the SetDimensionSize op.
+    xla::Shape xla_shape = shape_or.value();
+    OP_REQUIRES(
+        ctx, !xla_shape.is_dynamic_dimension(split_dim),
+        errors::Unimplemented("SplitV op doesn't yet support dynamic split "
+                              "dimension."));
+
     OP_REQUIRES(
         ctx,
         (neg_one_dim == -1 &&
-         total_split_size == input_shape.dim_size(split_dim)) ||
+         total_split_size == xla_shape.dimensions(split_dim)) ||
             (neg_one_dim >= 0 &&
-             total_split_size <= input_shape.dim_size(split_dim)),
+             total_split_size <= xla_shape.dimensions(split_dim)),
         errors::InvalidArgument("Determined shape must either match "
                                 "input shape along split_dim exactly if "
                                 "fully specified, or be less than the size of "
@@ -184,18 +199,9 @@ class SplitVOp : public XlaOpKernel {
                                 "specified.  Got: ",
                                 total_split_size));
 
-    xla::XlaBuilder* builder = ctx->builder();
-    auto shape_or = builder->GetShape(input);
-    OP_REQUIRES_OK(ctx, shape_or.status());
-
     if (neg_one_dim >= 0) {
       split_sizes[neg_one_dim] =
           input_shape.dim_size(split_dim) - total_split_size;
-      // TODO(b/265880112): Support this using the SetDimensionSize op.
-      OP_REQUIRES(
-          ctx, !shape_or.value().is_dynamic(),
-          errors::Unimplemented("SplitV op doesn't yet support bounded "
-                                "dynamic inputs when size splits has -1"));
     }
 
     // The vectors we will use to define the slice. The entry for the

@@ -1,9 +1,18 @@
 # Description:
-# Implementation of custom numpy floats.
+#   Implementation of custom numpy floats.
+
+load("//tensorflow/tsl:tsl.bzl", "if_windows")
+load("//tensorflow/tsl:tsl.default.bzl", "tsl_pybind_extension")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_shared_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
+    ],
+    features = [
+        # For ml_dtypes.so (see b/259896740)
+        "windows_export_all_symbols",
     ],
     licenses = ["notice"],
 )
@@ -15,102 +24,55 @@ filegroup(
 
 filegroup(
     name = "basic_hdrs",
-    srcs = [
-        "numpy.h",
-    ],
+    srcs = ["numpy.h"],
 )
 
 cc_library(
-    name = "bfloat16_hdr",
-    hdrs = [
-        "bfloat16.h",
+    name = "ml_dtypes_lib",
+    srcs = ["ml_dtypes.cc"],
+    hdrs = ["ml_dtypes.h"],
+    # Requires data dependency in order to load py module from C++.
+    data = [
+        "@ml_dtypes",
     ],
     deps = [
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-    ],
-)
-
-cc_library(
-    name = "bfloat16_lib",
-    srcs = [
-        "bfloat16.cc",
-        "float8_e4m3b11.cc",
-    ],
-    hdrs = [
-        "bfloat16.h",
-        "float8_e4m3b11.h",
-    ],
-    deps = [
-        ":custom_float",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/python/lib/core:numpy",
-        "//third_party/eigen3",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "custom_float",
-    hdrs = [
-        "custom_float.h",
-    ],
-    deps = [
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/python/lib/core:numpy",
-        "//third_party/eigen3",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "float8_hdr",
-    hdrs = [
-        "float8.h",
-    ],
-    deps = [
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-    ],
-)
-
-cc_library(
-    name = "float8_lib",
-    srcs = [
-        "float8.cc",
-    ],
-    hdrs = [
-        "float8.h",
-    ],
-    deps = [
-        ":custom_float",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/python/lib/core:numpy",
-        "//third_party/eigen3",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "custom_casts_lib",
-    srcs = ["custom_casts.cc"],
-    hdrs = ["custom_casts.h"],
-    deps = [
-        ":bfloat16_lib",
-        ":float8_lib",
-        "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+        "@pybind11",
     ],
 )
 
-cc_library(
-    name = "custom_casts_hdr",
-    hdrs = [
-        "custom_casts.h",
+cc_shared_library(
+    name = "ml_dtypes.so",
+    roots = [":ml_dtypes_lib"],
+    # TODO(tlongeri): If this is not explicitly specified, dependent DLLs will expect "ml_dtypes.so"
+    # and we will generate "ml_dtypes.so.dll", for some reason
+    shared_lib_name = if_windows("ml_dtypes.so", None),
+    static_deps = [
+        # TODO(ddunleavy): If cc_shared_library is ever not a noop in g3, change
+        # this to be more specific.
+        "//:__subpackages__",
+        "@//:__subpackages__",
+        "@com_google_absl//:__subpackages__",
+        "@local_config_python//:__subpackages__",
+        "@pybind11//:__subpackages__",
+        "@nsync//:__subpackages__",
+    ],
+)
+
+tsl_pybind_extension(
+    name = "pywrap_ml_dtypes",
+    srcs = ["ml_dtypes_wrapper.cc"],
+    dynamic_deps = [":ml_dtypes.so"],
+    static_deps = [
+        "@//:__subpackages__",
+        "@pybind11//:__subpackages__",
+        "@local_config_python//:__subpackages__",
+    ],
+    deps = [
+        ":ml_dtypes_lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 
@@ -128,9 +90,7 @@ cc_library(
 cc_library(
     name = "core",
     deps = [
-        ":bfloat16_lib",
-        ":custom_casts_lib",
-        ":float8_lib",
+        ":ml_dtypes_lib",
         ":numpy",
     ],
 )

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/execution_engine.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -35,7 +36,6 @@ limitations under the License.
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/TargetSelect.h"
@@ -58,9 +58,11 @@ using llvm::Triple;
 using llvm::orc::DynamicLibrarySearchGenerator;
 using llvm::orc::ExecutionSession;
 using llvm::orc::ExecutorAddr;
+using llvm::orc::InPlaceTaskDispatcher;
 using llvm::orc::IRCompileLayer;
 using llvm::orc::JITTargetMachineBuilder;
 using llvm::orc::RTDyldObjectLinkingLayer;
+using llvm::orc::SelfExecutorProcessControl;
 using llvm::orc::SymbolMap;
 using llvm::orc::ThreadSafeModule;
 using llvm::orc::TMOwningSimpleCompiler;
@@ -99,17 +101,15 @@ static std::string GetExportedName(std::string_view name) {
   return StrFormat("__xla__%s", name);
 }
 
-// Converts exported function to an interface function that wraps all the
-// arguments of the original function into an i8** pointer to provide a function
-// with trivial ABI.
-static absl::Status SetUpExportedFunction(llvm::Module &module,
-                                          std::string_view function_name) {
+absl::Status ExportWithXlaRuntimeAbi(llvm::Module &module,
+                                     std::string_view original_name,
+                                     std::string_view exported_name) {
   llvm::IRBuilder<> builder(module.getContext());
 
   // Check that we have a function with a valid type.
-  llvm::Function *func = module.getFunction(function_name);
+  llvm::Function *func = module.getFunction(original_name);
   if (!func)
-    return InternalError("exported function not found: %s", function_name);
+    return InternalError("exported function not found: %s", original_name);
   if (!func->getReturnType()->isVoidTy())
     return InternalError("exported function must return void");
 
@@ -118,8 +118,8 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
       builder.getVoidTy(), builder.getInt8PtrTy()->getPointerTo(),
       /*isVarArg=*/false);
 
-  llvm::FunctionCallee xla_runtime_func = module.getOrInsertFunction(
-      GetExportedName(func->getName()), xla_runtime_type);
+  llvm::FunctionCallee xla_runtime_func =
+      module.getOrInsertFunction(exported_name, xla_runtime_type);
 
   llvm::Function *callee = cast<llvm::Function>(xla_runtime_func.getCallee());
   llvm::Value *packed_args = callee->arg_begin();
@@ -130,17 +130,10 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
   bb->insertInto(callee);
   builder.SetInsertPoint(bb);
 
-  // We collect all load instructions that load arguments from a single pointer,
-  // and duplicate them into the basic blocks where the value is used. We do it
-  // to avoid creating massive entry block with potentially tens of thousands of
-  // loads, which puts a lot of pressure on instruction scheduling.
-  //
-  // TODO(ezhulenev): Currently we do it only for loads with a single use, we
-  // should consider doing it for all loads with small number of uses.
-  llvm::SmallVector<std::pair<llvm::LoadInst *, llvm::LoadInst *>> args;
+  llvm::SmallVector<llvm::Value *> args;
   args.reserve(llvm::size(func->args()));
 
-  for (auto &indexed_arg : llvm::enumerate(func->args())) {
+  for (const auto &indexed_arg : llvm::enumerate(func->args())) {
     llvm::Type *art_ty = indexed_arg.value().getType();
 
     llvm::Value *arg_ptr_gep = builder.CreateConstGEP1_64(
@@ -149,13 +142,11 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
         builder.CreateLoad(builder.getPtrTy(), arg_ptr_gep);
     llvm::LoadInst *arg_load = builder.CreateLoad(art_ty, arg_ptr_load);
 
-    args.emplace_back(arg_ptr_load, arg_load);
+    args.emplace_back(arg_load);
   }
 
   // Call the implementation function with the extracted arguments.
-  llvm::SmallVector<llvm::Value *> args_values;
-  for (auto &[_, arg] : args) args_values.push_back(arg);
-  auto *call = builder.CreateCall(func, args_values);
+  auto *call = builder.CreateCall(func, args);
   builder.CreateRetVoid();
 
   // Make sure that we do not keep exported function in the binary if we do not
@@ -172,26 +163,6 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
   bool is_coro = func->isPresplitCoroutine();
   if (auto inlined = llvm::InlineFunction(*call, ifi); inlined.isSuccess()) {
     if (is_coro) callee->setPresplitCoroutine();
-  }
-
-  // Clean up loads from the packed argument pointer.
-  for (auto &[ptr_load, arg_load] : args) {
-    // Dead argument elimination after inlining.
-    if (arg_load->use_empty()) {
-      arg_load->eraseFromParent();
-      ptr_load->eraseFromParent();
-      continue;
-    }
-
-    // Move loads used only once into the entry block where they are used.
-    if (!arg_load->hasOneUser()) continue;
-
-    for (llvm::User *user : arg_load->users()) {
-      auto *inst = cast<llvm::Instruction>(user);
-      if (llvm::isa<llvm::PHINode>(inst)) continue;
-      arg_load->moveBefore(inst);
-      ptr_load->moveBefore(arg_load);
-    }
   }
 
   // Always keep the frame pointer inside jit-compiled modules, so that we can
@@ -247,6 +218,8 @@ std::unique_ptr<llvm::MemoryBuffer> ExecutionEngineObjectCache::stealObject(
 
 // -------------------------------------------------------------------------- //
 
+// llvm_ir::DumpToString() is not used here, because we don't want to add too
+// many dependencies to the runtime.
 std::string ToString(const llvm::Error &err) {
   std::string str;
   llvm::raw_string_ostream(str) << err;
@@ -272,10 +245,13 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
 
   // Set up exported functions interface functions in the LLVM module.
   for (std::string_view name : exported) {
-    if (auto status = SetUpExportedFunction(*module, name); !status.ok())
+    if (auto status =
+            ExportWithXlaRuntimeAbi(*module, name, GetExportedName(name));
+        !status.ok()) {
       return InternalError(
           "failed to set up exported function %s interface: %s", name,
           status.message());
+    }
   }
 
   // Run an optimization pipeline over the LLVM module (alway run with default
@@ -284,8 +260,8 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   // TODO(ezhulenev): We should have out own optimizing transformer pipelines
   // for different Xla backends, e.g. there is absolutely no need to run
   // SLV vectorizer for Xla Gpi host side executable.
-  auto transformer = options.make_optimizing_transformer(
-      llvm::CodeGenOpt::Default, /*sizeLevel=*/0, options.target_machine);
+  auto transformer =
+      options.make_optimizing_transformer(options.target_machine);
   if (auto err = transformer(module_ptr))
     return InternalError("failed to run optimization pipeline: %s",
                          ToString(err));
@@ -323,13 +299,32 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
                                                     obj_cache.get());
   };
 
+  // Use in-process executor process control with in-place task dispatcher.
+  auto executorProcessControl = SelfExecutorProcessControl::Create(
+      nullptr, std::make_unique<InPlaceTaskDispatcher>());
+
+  if (auto err = executorProcessControl.takeError())
+    return InternalError("failed to create executor process control: %s",
+                         ToString(err));
+
+  // TODO(b/286475799): Concurrent compilation leads to spurious memory
+  // corruptions and segfaults at run time, however nothing shows up in tsan
+  // or asan builds. This is a hack that for some unknown reason helps.
+  static auto *lljit_mu = new absl::Mutex();
+  std::optional<absl::MutexLock> lljit_lock(lljit_mu);
+
   // Construct the LLJIT with the given compiler and object linking layers.
   auto jit = llvm::orc::LLJITBuilder()
                  .setCompileFunctionCreator(compile_function_creator)
                  .setObjectLinkingLayerCreator(obj_layer_creator)
+                 .setExecutorProcessControl(std::move(*executorProcessControl))
+                 .setNumCompileThreads(0)  // disable multi-threading
                  .create();
+
   if (auto err = jit.takeError())
     return InternalError("failed to construct LLJIT: %s", ToString(err));
+
+  lljit_lock.reset();
 
   // Register input module with the LLJIT.
   ThreadSafeModule tsm(std::move(module), std::move(ctx));
@@ -338,13 +333,6 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
 
   llvm::orc::JITDylib &main_jd = (*jit)->getMainJITDylib();
   llvm::DataLayout data_layout = (*jit)->getDataLayout();
-
-  // Register symbols that are statically linked in the current process.
-  auto generator = DynamicLibrarySearchGenerator::GetForCurrentProcess(
-      data_layout.getGlobalPrefix());
-  if (auto err = generator.takeError())
-    return InternalError("failed to construct DyLib search generator");
-  main_jd.addGenerator(std::move(*generator));
 
   // Register user-provided symbols.
   if (options.symbols_binding) {

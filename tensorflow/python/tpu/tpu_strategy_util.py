@@ -18,10 +18,10 @@ import gc
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
-from tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver import TPUClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
-from tensorflow.python.eager.def_function import function
 from tensorflow.python.framework import device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -29,7 +29,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import topology
 from tensorflow.python.tpu import tpu
 from tensorflow.python.util import compat
-from tensorflow.python.util.tf_export import tf_export
 
 
 _INITIALIZED_TPU_SYSTEMS = {}
@@ -41,13 +40,19 @@ _tpu_worker_address = monitoring.StringGauge(
     "The worker address that the coordinator/client connects to.", "address")
 
 
-@tf_export("tpu.experimental.initialize_tpu_system")
-def initialize_tpu_system(cluster_resolver=None):
-  """Initialize the TPU devices.
+def initialize_tpu_system_impl(cluster_resolver, tpu_cluster_resolver_cls):
+  """Implementation for tpu.experimental.initialize_tpu_system.
+
+  Kept separate to avoid tpu_oss code duplication.
+
+  Initialize the TPU devices.
 
   Args:
     cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
         which provides information about the TPU cluster.
+    tpu_cluster_resolver_cls: a reference to
+        tf.distribute.cluster_resolver.TPUClusterResolver so that an instance
+        of it can be initialized if cluster_resolver is None.
   Returns:
     The tf.tpu.Topology object for the topology of the TPU cluster. If called
     inside tf.function, it returns the serialized topology object instead.
@@ -55,8 +60,17 @@ def initialize_tpu_system(cluster_resolver=None):
   Raises:
     RuntimeError: If running inside a tf.function.
     NotFoundError: If no TPU devices found in eager mode.
+    TypeError: If tpu_cluster_resolver_cls is
+        not tf.distribute.cluster_resolver.TPUClusterResolver.
   """
-
+  # check that tpu_cluster_resolver_cls is a
+  # tf.distribute.cluster_resolver.TPUClusterResolver
+  if tpu_cluster_resolver_cls is None or not issubclass(
+      tpu_cluster_resolver_cls, cluster_resolver_lib.ClusterResolver
+  ) or not hasattr(tpu_cluster_resolver_cls, "tpu_hardware_feature"):
+    raise TypeError(
+        "tpu_cluster_resolver_cls is not"
+        " tf.distribute.cluster_resolver.TPUClusterResolver.")
   # Deallocate all TPU buffers by clearing out eager context caches and
   # triggering garbage collection to avoid keeping invalid tpu buffer around
   # after reinitialized tpu system.
@@ -74,8 +88,8 @@ def initialize_tpu_system(cluster_resolver=None):
       if curr_device.job is not None:
         job = "{}/replica:0/task:0".format(curr_device.job)
 
-    cluster_resolver = TPUClusterResolver("")
-  assert isinstance(cluster_resolver, TPUClusterResolver)
+    cluster_resolver = tpu_cluster_resolver_cls("")
+  assert isinstance(cluster_resolver, tpu_cluster_resolver_cls)
 
   tpu_name = compat.as_text(cluster_resolver._tpu)  # pylint: disable=protected-access
   if tpu_name in _INITIALIZED_TPU_SYSTEMS:
@@ -97,7 +111,7 @@ def initialize_tpu_system(cluster_resolver=None):
     job = "{}/replica:0/task:0".format(cluster_resolver.get_job_name())
 
   if context.executing_eagerly():
-    @function
+    @def_function.function(autograph=False)
     def _tpu_init_fn():
       # In TF1, we usually close chips when compilation fails to clear the data
       # in infeed. In TF2, we don't need to do this because infeed is no longer
@@ -111,6 +125,15 @@ def initialize_tpu_system(cluster_resolver=None):
     # The TPU_SYSTEM device must match the device used in tpu.initialize_system
     # exactly, otherwise you can get errors if there are multiple TPU_SYSTEM
     # devices available.
+    run_eagerly = def_function.functions_run_eagerly()
+    if run_eagerly:
+      logging.warning(
+          "It looks like tf.function behavior was disabled, perhaps using"
+          " tf.config.run_functions_eagerly."
+          " tf.tpu.experimental.initialize_tpu_system requires tf.function to"
+          " work. This primitive will override the disable."
+      )
+      def_function.run_functions_eagerly(False)
     try:
       with ops.device(tpu._tpu_system_device_name(job)):  # pylint: disable=protected-access
         output = _tpu_init_fn()
@@ -120,7 +143,9 @@ def initialize_tpu_system(cluster_resolver=None):
           None, None,
           "TPUs not found in the cluster. Failed in initialization: "
           + str(e))
-
+    finally:
+      if run_eagerly is not None:
+        def_function.run_functions_eagerly(run_eagerly)
     # Clear out the eager context caches since the memory is invalid now.
     context.context()._initialize_logical_devices()  # pylint: disable=protected-access
 
@@ -168,9 +193,12 @@ def get_initialized_tpu_systems():
   return _INITIALIZED_TPU_SYSTEMS.copy()
 
 
-@tf_export("tpu.experimental.shutdown_tpu_system")
-def shutdown_tpu_system(cluster_resolver=None):
-  """Shuts down the TPU devices.
+def shutdown_tpu_system_impl(cluster_resolver, tpu_cluster_resolver_cls):
+  """Implementation for tpu.experimental.shutdown_tpu_system.
+
+  Kept separate to avoid tpu_oss code duplication.
+
+  Shuts down the TPU devices.
 
   This will clear all caches, even those that are maintained through sequential
   calls to tf.tpu.experimental.initialize_tpu_system, such as the compilation
@@ -179,11 +207,25 @@ def shutdown_tpu_system(cluster_resolver=None):
   Args:
     cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
         which provides information about the TPU cluster.
+    tpu_cluster_resolver_cls: a reference to
+        tf.distribute.cluster_resolver.TPUClusterResolver so that an instance
+        of it can be initialized if cluster_resolver is None.
 
   Raises:
     RuntimeError: If no TPU devices found for eager execution or if run in a
         tf.function.
+    TypeError: If tpu_cluster_resolver_cls is
+        not tf.distribute.cluster_resolver.TPUClusterResolver.
   """
+  # check that tpu_cluster_resolver_cls is a
+  # tf.distribute.cluster_resolver.TPUClusterResolver
+  if tpu_cluster_resolver_cls is None or not issubclass(
+      tpu_cluster_resolver_cls, cluster_resolver_lib.ClusterResolver
+  ) or not hasattr(tpu_cluster_resolver_cls, "tpu_hardware_feature"):
+    raise TypeError(
+        "tpu_cluster_resolver_cls is not"
+        " tf.distribute.cluster_resolver.TPUClusterResolver.")
+
   job = None
   if cluster_resolver is None:
     # If no cluster resolver is specified, and running eagerly, execute the init
@@ -193,8 +235,8 @@ def shutdown_tpu_system(cluster_resolver=None):
       if curr_device.job is not None:
         job = "{}/replica:0/task:0".format(curr_device.job)
 
-    cluster_resolver = TPUClusterResolver("")
-  assert isinstance(cluster_resolver, TPUClusterResolver)
+    cluster_resolver = tpu_cluster_resolver_cls("")
+  assert isinstance(cluster_resolver, tpu_cluster_resolver_cls)
 
   tpu_name = compat.as_text(cluster_resolver._tpu)  # pylint: disable=protected-access
   if tpu_name not in _INITIALIZED_TPU_SYSTEMS:
@@ -214,15 +256,28 @@ def shutdown_tpu_system(cluster_resolver=None):
       # avoid the output node match multiple devices error.
       job = "{}/replica:0/task:0".format(cluster_resolver.get_job_name())
 
-    @function
+    @def_function.function(autograph=False)
     def _tpu_shutdown_fn():
       tpu.shutdown_system(job=job)
 
     # The TPU_SYSTEM device must match the device used in tpu.shutdown_system
     # exactly, otherwise you can get errors if there are multiple TPU_SYSTEM
     # devices available.
-    with ops.device(tpu._tpu_system_device_name(job)):  # pylint: disable=protected-access
-      _tpu_shutdown_fn()
+    run_eagerly = def_function.functions_run_eagerly()
+    if run_eagerly:
+      logging.warning(
+          "It looks like tf.function behavior was disabled, perhaps using"
+          " tf.config.run_functions_eagerly."
+          " tf.tpu.experimental.shutdown_tpu_system requires tf.function to"
+          " work. This primitive will override the disable."
+      )
+      def_function.run_functions_eagerly(False)
+    try:
+      with ops.device(tpu._tpu_system_device_name(job)):  # pylint: disable=protected-access
+        _tpu_shutdown_fn()
+    finally:
+      if run_eagerly is not None:
+        def_function.run_functions_eagerly(run_eagerly)
 
     # Clear out the eager context caches since the memory is invalid now.
     logging.info("Clearing out eager caches")

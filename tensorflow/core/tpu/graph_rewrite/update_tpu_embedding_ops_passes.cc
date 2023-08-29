@@ -160,7 +160,7 @@ Status ComputeEnqueueTrainingStatus(
     bool send_exists =
         (found_grad_send_op.find(node.first) != found_grad_send_op.end());
     VLOG(1) << "Found call " << node.first
-        << (send_exists ? " with " : " without ") << " send op(s).";
+            << (send_exists ? " with " : " without ") << " send op(s).";
     // If we have found a send gradient op for that is in the same cluster as
     // the enqueue op, then this is a training call so set the output to true
     // for this
@@ -195,8 +195,8 @@ Status UpdateTPUEmbeddingModePass::GetEnqueueOpsFromGraph(
 
 // Update the graph for a specific enqueue op.
 Status UpdateTPUEmbeddingModePass::UpdateGraphEnqueueOp(bool training,
-                                                     Graph* graph,
-                                                     Node* enqueue) {
+                                                        Graph* graph,
+                                                        Node* enqueue) {
   // When using the layer, the mode override input is a SelectV2 op (unless this
   // pass has already run), which takes a training and eval op as input. We will
   // simply short circut the SelectV2 and take input from the correct op.

@@ -111,7 +111,7 @@ class AutoTrackable(base.Trackable):
     #   2. force side effects of creation of concrete functions, e.g. create
     #      variables on first run.
     for fn in functions.values():
-      if isinstance(fn, core_types.GenericFunction):
+      if isinstance(fn, def_function.Function):
         fn._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
 
     # Additional dependencies may have been generated during function tracing

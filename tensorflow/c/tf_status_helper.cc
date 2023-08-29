@@ -15,18 +15,35 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status_helper.h"
 
-#include "tensorflow/c/tf_status_internal.h"
-#include "tensorflow/core/platform/errors.h"
+#include <string>
+
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/tsl/c/tsl_status_helper.h"
 
 namespace tsl {
 
 void Set_TF_Status_from_Status(TF_Status* tf_status, const Status& status) {
-  Set_TSL_Status_from_Status(tf_status, status);
+  TF_SetStatus(tf_status, TSLCodeFromStatusCode(status.code()),
+               tsl::NullTerminatedMessage(status));
+  status.ForEachPayload(
+      [tf_status](absl::string_view key, const absl::Cord& value) {
+        std::string key_str(key);
+        std::string value_str(value);
+        TF_SetPayload(tf_status, key_str.c_str(), value_str.c_str());
+      });
 }
 
 Status StatusFromTF_Status(const TF_Status* tf_status) {
-  return StatusFromTSL_Status(tf_status);
+  Status status(StatusCodeFromTSLCode(TF_GetCode(tf_status)),
+                TF_Message(tf_status));
+  TF_ForEachPayload(
+      tf_status,
+      [](const char* key, const char* value, void* capture) {
+        Status* status = static_cast<Status*>(capture);
+        status->SetPayload(key, absl::Cord(absl::string_view(value)));
+      },
+      &status);
+  return status;
 }
 
 }  // namespace tsl

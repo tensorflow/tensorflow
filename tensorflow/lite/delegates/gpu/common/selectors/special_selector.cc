@@ -60,7 +60,8 @@ absl::Status GPUSubgraphFromGraph(
   if (TryFusedPointwiseConv(graph, first_node_id, precision, tensor_descriptors,
                             consumed_nodes, gpu_subgraph)
           .ok()) {
-    gpu_subgraph->operations[0].name = "slice_mul_mean_concat";
+    // TODO(b/278745183) Add tests for slice_mul_reduce_concat
+    gpu_subgraph->operations[0].name = "slice_mul_reduce_concat";
     return absl::OkStatus();
   }
   if (TryMeanStdDevNormalization(gpu_info, precision, graph, first_node_id,

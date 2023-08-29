@@ -42,9 +42,37 @@ using tensorflow::KeyValueEntry;
 using ::testing::_;
 using ::testing::DoAll;
 using ::testing::InvokeArgument;
+using ::testing::Pointee;
 using ::testing::SetArgPointee;
 using ::testing::UnorderedPointwise;
 using ::testing::WithArgs;
+
+// TODO(b/229726259) Switch to OSS version after it's available.
+// Simple implementation of a proto matcher comparing string representations.
+class ProtoStringMatcher {
+ public:
+  explicit ProtoStringMatcher(const tsl::protobuf::Message& expected)
+      : expected_(expected.DebugString()) {}
+
+  template <typename Message>
+  bool MatchAndExplain(const Message& p,
+                       ::testing::MatchResultListener*) const {
+    return p.DebugString() == expected_;
+  }
+
+  void DescribeTo(::std::ostream* os) const { *os << expected_; }
+  void DescribeNegationTo(::std::ostream* os) const {
+    *os << "not equal to expected message: " << expected_;
+  }
+
+ private:
+  const std::string expected_;
+};
+
+inline ::testing::PolymorphicMatcher<ProtoStringMatcher> EqualsProto(
+    const tsl::protobuf::Message& x) {
+  return ::testing::MakePolymorphicMatcher(ProtoStringMatcher(x));
+}
 
 MATCHER(KvEq, "simple KeyValueEntry matcher") {
   const KeyValueEntry& kv0 = std::get<0>(arg);
@@ -62,33 +90,52 @@ KeyValueEntry CreateKv(const std::string& key, const std::string& value) {
 class TestCoordinationClient : public CoordinationClient {
  public:
   TestCoordinationClient() = default;
-  // NOLINTBEGIN (MOCK_METHOD macro fails in Windows build, so use deprecated
-  // macro instead)
-  MOCK_METHOD4(GetKeyValueAsync,
-               void(CallOptions* call_opts, const GetKeyValueRequest*,
-                    GetKeyValueResponse*, StatusCallback));
-  MOCK_METHOD3(TryGetKeyValueAsync,
-               void(const TryGetKeyValueRequest*, TryGetKeyValueResponse*,
-                    StatusCallback));
-  MOCK_METHOD3(GetKeyValueDirAsync,
-               void(const GetKeyValueDirRequest*, GetKeyValueDirResponse*,
-                    StatusCallback));
-  MOCK_METHOD4(RegisterTaskAsync, void(CallOptions*, const RegisterTaskRequest*,
-                                       RegisterTaskResponse*, StatusCallback));
-  MOCK_METHOD4(ShutdownTaskAsync, void(CallOptions*, const ShutdownTaskRequest*,
-                                       ShutdownTaskResponse*, StatusCallback));
-  MOCK_METHOD3(ResetTaskAsync, void(const ResetTaskRequest*, ResetTaskResponse*,
-                                    StatusCallback));
-  MOCK_METHOD3(ReportErrorToServiceAsync,
-               void(const ReportErrorToServiceRequest*,
-                    ReportErrorToServiceResponse*, StatusCallback));
-  MOCK_METHOD3(BarrierAsync,
-               void(const BarrierRequest*, BarrierResponse*, StatusCallback));
-  MOCK_METHOD3(GetTaskStateAsync, void(const GetTaskStateRequest*,
-                                       GetTaskStateResponse*, StatusCallback));
-  MOCK_METHOD4(HeartbeatAsync, void(CallOptions*, const HeartbeatRequest*,
-                                    HeartbeatResponse*, StatusCallback));
-  // NOLINTEND
+  MOCK_METHOD(void, GetKeyValueAsync,
+              (CallOptions * call_opts, const GetKeyValueRequest*,
+               GetKeyValueResponse*, StatusCallback),
+              (override));
+  MOCK_METHOD(void, TryGetKeyValueAsync,
+              (const TryGetKeyValueRequest*, TryGetKeyValueResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, GetKeyValueDirAsync,
+              (const GetKeyValueDirRequest*, GetKeyValueDirResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, InsertKeyValueAsync,
+              (const InsertKeyValueRequest*, InsertKeyValueResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, DeleteKeyValueAsync,
+              (const DeleteKeyValueRequest*, DeleteKeyValueResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, RegisterTaskAsync,
+              (CallOptions*, const RegisterTaskRequest*, RegisterTaskResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, ShutdownTaskAsync,
+              (CallOptions*, const ShutdownTaskRequest*, ShutdownTaskResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, ResetTaskAsync,
+              (const ResetTaskRequest*, ResetTaskResponse*, StatusCallback),
+              (override));
+  MOCK_METHOD(void, ReportErrorToServiceAsync,
+              (const ReportErrorToServiceRequest*,
+               ReportErrorToServiceResponse*, StatusCallback),
+              (override));
+  MOCK_METHOD(void, BarrierAsync,
+              (const BarrierRequest*, BarrierResponse*, StatusCallback),
+              (override));
+  MOCK_METHOD(void, GetTaskStateAsync,
+              (const GetTaskStateRequest*, GetTaskStateResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, HeartbeatAsync,
+              (CallOptions*, const HeartbeatRequest*, HeartbeatResponse*,
+               StatusCallback),
+              (override));
 
 #define UNIMPLEMENTED(method)                                         \
   void method##Async(const method##Request* request,                  \
@@ -98,8 +145,6 @@ class TestCoordinationClient : public CoordinationClient {
   }
 
   UNIMPLEMENTED(WaitForAllTasks);
-  UNIMPLEMENTED(InsertKeyValue);
-  UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
   void ReportErrorToTaskAsync(CallOptions* call_opts,
@@ -343,6 +388,78 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValueDir_Simple_Success) {
 
   TF_ASSERT_OK(result.status());
   EXPECT_THAT(*result, UnorderedPointwise(KvEq(), test_values));
+}
+
+TEST_F(CoordinationServiceAgentTest,
+       InsertKeyValue_EarlyNullCharacter_Success) {
+  // Note: this API is passing C-strings, but users might pass a string with
+  // a null character in the middle due to their specific serialization /
+  // encoding mechanism (e.g. protobuf). This test makes sure the full C-string
+  // (as specified by the user) gets passed in regardless of the early null
+  // character.
+  std::string test_key = "test_x_key";
+  test_key[5] = '\0';  // Replace x with null character '\0'.
+  std::string test_value = "test_x_value";
+  test_value[5] = '\0';
+  InsertKeyValueRequest expected_input;
+  expected_input.mutable_kv()->set_key(test_key);
+  expected_input.mutable_kv()->set_value(test_value);
+
+  EXPECT_CALL(*GetClient(),
+              InsertKeyValueAsync(Pointee(EqualsProto(expected_input)), _, _))
+      .WillOnce(InvokeArgument<2>(OkStatus()));
+  InitializeAgent();
+
+  TF_ASSERT_OK(agent_->InsertKeyValue(test_key.c_str(), test_key.size(),
+                                      test_value.c_str(), test_value.size()));
+}
+
+TEST_F(CoordinationServiceAgentTest, GetKeyValue_EarlyNullCharacter_Success) {
+  // Note: this API is passing C-strings, but users might pass a string with
+  // a null character in the middle due to their specific serialization /
+  // encoding mechanism (e.g. protobuf). This test makes sure the full cstring
+  // (as specified by the user) gets passed in regardless of the early null
+  // character.
+  std::string test_key = "test_x_key";
+  test_key[5] = '\0';  // Replace x with null character '\0'.
+  const std::string test_value = "test_value";
+  GetKeyValueRequest expected_input;
+  expected_input.set_key(test_key);
+
+  // Mock server response: set key-value pair and invoke done callback.
+  GetKeyValueResponse mocked_response;
+  mocked_response.mutable_kv()->set_key(test_key);
+  mocked_response.mutable_kv()->set_value(test_value);
+  EXPECT_CALL(*GetClient(),
+              GetKeyValueAsync(_, Pointee(EqualsProto(expected_input)), _, _))
+      .WillOnce(DoAll(SetArgPointee<2>(mocked_response),
+                      InvokeArgument<3>(OkStatus())));
+  InitializeAgent();
+
+  auto result = agent_->GetKeyValue(test_key.data(), test_key.size());
+  TF_ASSERT_OK(result.status());
+  EXPECT_EQ(*result, test_value);
+}
+
+TEST_F(CoordinationServiceAgentTest,
+       DeleteKeyValue_EarlyNullCharacter_Success) {
+  // Note: this API is passing C-strings, but users might pass a string with
+  // a null character in the middle due to their specific serialization /
+  // encoding mechanism (e.g. protobuf). This test makes sure the full cstring
+  // (as specified by the user) gets passed in regardless of the early null
+  // character.
+  std::string test_key = "test_x_key";
+  test_key[5] = '\0';  // Replace x with null character '\0'.
+  DeleteKeyValueRequest expected_input;
+  expected_input.set_key(test_key);
+  expected_input.set_is_directory(true);  // This is default.
+
+  EXPECT_CALL(*GetClient(),
+              DeleteKeyValueAsync(Pointee(EqualsProto(expected_input)), _, _))
+      .WillOnce(InvokeArgument<2>(OkStatus()));
+  InitializeAgent();
+
+  TF_ASSERT_OK(agent_->DeleteKeyValue(test_key.c_str(), test_key.size()));
 }
 
 TEST_F(CoordinationServiceAgentTest, ShutdownInErrorShouldReturnError) {

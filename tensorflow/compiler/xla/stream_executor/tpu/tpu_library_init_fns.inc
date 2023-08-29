@@ -1,4 +1,5 @@
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_init_fns.inc"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 
 namespace {
 
@@ -36,12 +37,18 @@ tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(ops_api_fn, TpuCompile_XrtCompileAndBuild);
 
   TFTPU_SET_FN(ops_api_fn, TpuExecutable_LoadProgramAndEnqueueToStream);
+  TFTPU_SET_FN(ops_api_fn, TpuExecutable_CreateOpaqueTransferManager);
+  TFTPU_SET_FN(ops_api_fn, TpuExecutable_FreeOpaqueTransferManager);
+
   TFTPU_SET_FN(ops_api_fn, HardwareLayout_HostShapeToDeviceShape);
   TFTPU_SET_FN(ops_api_fn, HardwareLayout_ShapeSize);
   TFTPU_SET_FN(ops_api_fn, HardwareLayout_ShapeSizeCompact);
   TFTPU_SET_FN(ops_api_fn, HardwareLayout_ShapeSizeCompactRaw);
 
   TFTPU_SET_FN(ops_api_fn, TpuExecute_RuntimeInputToPaddedData);
+
+  TFTPU_SET_FN(ops_api_fn, TpuExecute_GetTpuEmbeddingMemoryAllocations);
+  TFTPU_SET_FN(ops_api_fn, TpuExecute_FreeTpuEmbeddingMemoryAllocations);
 
   TFTPU_SET_FN(ops_api_fn, TpuProgram_New);
   TFTPU_SET_FN(ops_api_fn, TpuProgram_Free);
@@ -77,12 +84,7 @@ tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(ops_api_fn, TpuCompile_CreateCompilationCacheKey);
   TFTPU_SET_FN(ops_api_fn, TpuCompile_DestroyCompilationCacheKey);
   TFTPU_SET_FN(ops_api_fn, TpuCompile_CreateGuaranteedConstFingerprint);
-
-  TFTPU_SET_FN(ops_api_fn, TpuProfiler_Create);
-  TFTPU_SET_FN(ops_api_fn, TpuProfiler_Destroy);
-  TFTPU_SET_FN(ops_api_fn, TpuProfiler_Start);
-  TFTPU_SET_FN(ops_api_fn, TpuProfiler_Stop);
-  TFTPU_SET_FN(ops_api_fn, TpuProfiler_CollectData);
+  TFTPU_SET_FN(ops_api_fn, TpuUtil_GetTopologyPtr);
 
   TFTPU_SET_FN(ops_api_fn, TfTpu_InitializeTpuModelServer);
 
@@ -109,6 +111,7 @@ tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
                TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation);
   TFTPU_SET_FN(ops_api_fn,
                TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_DedupDataTupleMaskComputation);
 
   return tsl::OkStatus();
 }

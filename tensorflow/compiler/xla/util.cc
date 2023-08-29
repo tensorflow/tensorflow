@@ -112,14 +112,12 @@ ScopedLoggingTimer::~ScopedLoggingTimer() { StopAndLog(); }
 
 Status AddStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(),
-                absl::StrCat(context, ": ", prior.error_message())};
+  return Status{prior.code(), absl::StrCat(context, ": ", prior.message())};
 }
 
 Status AppendStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(),
-                absl::StrCat(prior.error_message(), ": ", context)};
+  return Status{prior.code(), absl::StrCat(prior.message(), ": ", context)};
 }
 
 std::string Reindent(absl::string_view original,
@@ -136,6 +134,10 @@ template <typename FloatT>
 static void RoundTripNanPayload(FloatT value, std::string* result) {
   static_assert(!std::is_same<FloatT, tsl::float8_e4m3fn>::value,
                 "RoundTripNanPayload does not support E4M3");
+  static_assert(!std::is_same<FloatT, tsl::float8_e4m3fnuz>::value,
+                "RoundTripNanPayload does not support E4M3FNUZ");
+  static_assert(!std::is_same<FloatT, tsl::float8_e5m2fnuz>::value,
+                "RoundTripNanPayload does not support E5M2FNUZ");
   const int kPayloadBits = NanPayloadBits<FloatT>();
   if (Eigen::numext::isnan(value) && kPayloadBits > 0) {
     auto rep = absl::bit_cast<
@@ -162,7 +164,22 @@ std::string RoundTripFpToString(tsl::float8_e5m2 value) {
   return result;
 }
 
+std::string RoundTripFpToString(tsl::float8_e4m3fnuz value) {
+  std::string result = GenericRoundTripFpToString(value);
+  return result;
+}
+
+std::string RoundTripFpToString(tsl::float8_e5m2fnuz value) {
+  std::string result = GenericRoundTripFpToString(value);
+  return result;
+}
+
 std::string RoundTripFpToString(tsl::float8_e4m3fn value) {
+  std::string result = GenericRoundTripFpToString(value);
+  return result;
+}
+
+std::string RoundTripFpToString(tsl::float8_e4m3b11 value) {
   std::string result = GenericRoundTripFpToString(value);
   return result;
 }
@@ -388,7 +405,7 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
       }
     } else if (any_present) {
       // Try to find if there is a to dimension that is like (from) [2,32] ->
-      // (to) [4,4,4] to detect that from dimensoin 1 can be partially mapped
+      // (to) [4,4,4] to detect that from dimension 1 can be partially mapped
       // into dimension 1 and 2 of the to sizes with a partial size of 2.
       if (common_factors[i].first + 2 == common_factors[i + 1].first &&
           absl::c_linear_search(from_dimensions, common_factors[i].first + 1)) {
@@ -429,6 +446,11 @@ std::string SanitizeFileName(std::string file_name) {
     }
   }
   return file_name;
+}
+
+bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t> seq) {
+  return *absl::c_max_element(seq) - *absl::c_min_element(seq) ==
+         seq.size() - 1;
 }
 
 // Utility function to split a double-precision float (F64) into a pair of F32s.

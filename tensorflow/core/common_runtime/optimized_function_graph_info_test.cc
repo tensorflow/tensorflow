@@ -84,24 +84,28 @@ constexpr absl::string_view kLibraryPb =
            }
          })pb";
 
-TEST(OptimizedFunctionGraphUtilsTest, ToProtoProducesCorrectResult) {
-  // Create a simple graph with one trivial node.
+// Creates a simple graph with one trivial node.
+StatusOr<OptimizedFunctionGraphInfo> CreateSimpleOptimizedFunctionGraphInfo() {
   NodeDef node_def;
-  TF_ASSERT_OK(NodeDefBuilder("A", "OneOutput").Finalize(&node_def));
+  TF_RETURN_IF_ERROR(NodeDefBuilder("A", "OneOutput").Finalize(&node_def));
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
   Status status;
   graph->AddNode(node_def, &status);
-  TF_ASSERT_OK(status);
+  TF_RETURN_IF_ERROR(status);
 
   // Create a simple library with one function.
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
-  TF_ASSERT_OK(lib_def.AddFunctionDef(test::function::NonZero()));
+  TF_RETURN_IF_ERROR(lib_def.AddFunctionDef(test::function::NonZero()));
 
   // Construct an OptimizedFunctionGraphInfo.
-  OptimizedFunctionGraphInfo test_info{
-      std::string(kFunctionName), std::move(graph),
-      std::move(lib_def),         {{"A", "B"}},
-      {DT_FLOAT, DT_DOUBLE},      1};
+  return OptimizedFunctionGraphInfo(
+      std::string(kFunctionName), std::move(graph), std::move(lib_def),
+      {{"A", "B"}}, {DT_FLOAT, DT_DOUBLE}, 1, 5, OptimizedFunctionGraph::JIT);
+}
+
+TEST(OptimizedFunctionGraphUtilsTest, ToProtoProducesCorrectResult) {
+  TF_ASSERT_OK_AND_ASSIGN(OptimizedFunctionGraphInfo test_info,
+                          CreateSimpleOptimizedFunctionGraphInfo());
 
   const OptimizedFunctionGraph test_result =
       OptimizedFunctionGraphInfo::ToProto(test_info);
@@ -114,6 +118,8 @@ TEST(OptimizedFunctionGraphUtilsTest, ToProtoProducesCorrectResult) {
                     ret_types: DT_FLOAT
                     ret_types: DT_DOUBLE
                     num_return_nodes: 1
+                    source: JIT
+                    optimization_time_usecs: 5
                   )pb",
                   kLibraryPb))));
 }
@@ -148,6 +154,8 @@ TEST(OptimizedFunctionGraphUtilsTest, FromProtoProducesCorrectResult) {
             ret_types: DT_DOUBLE
             ret_types: DT_BOOL
             num_return_nodes: 2
+            optimization_time_usecs: 15
+            source: 1
           )pb",
           kLibraryPb),
       &proto);
@@ -173,6 +181,31 @@ TEST(OptimizedFunctionGraphUtilsTest, FromProtoProducesCorrectResult) {
   EXPECT_THAT(test_result->node_name_to_control_ret,
               UnorderedElementsAre(Pair("B", "A")));
   EXPECT_EQ(test_result->num_return_nodes, 2);
+  EXPECT_EQ(test_result->optimization_duration_usecs, 15);
+  EXPECT_EQ(test_result->optimization_source, OptimizedFunctionGraph::AOT);
+}
+
+TEST(OptimizedFunctionGraphUtilsTest, MoveTest) {
+  TF_ASSERT_OK_AND_ASSIGN(OptimizedFunctionGraphInfo test_info,
+                          CreateSimpleOptimizedFunctionGraphInfo());
+
+  OptimizedFunctionGraphInfo moved_result = std::move(test_info);
+
+  // Compare graph.
+  GraphDef moved_result_graph_def;
+  moved_result.function_graph->ToGraphDef(&moved_result_graph_def);
+  EXPECT_EQ(moved_result.name, kFunctionName);
+  EXPECT_THAT(
+      moved_result_graph_def,
+      Partially(EqualsProto(R"pb(node { name: 'A' op: 'OneOutput' })pb")));
+  // The function should be found in result's lib_def.
+  EXPECT_NE(moved_result.lib_def.Find("NonZero"), nullptr);
+  EXPECT_THAT(moved_result.ret_types, ElementsAre(DT_FLOAT, DT_DOUBLE));
+  EXPECT_THAT(moved_result.node_name_to_control_ret,
+              UnorderedElementsAre(Pair("A", "B")));
+  EXPECT_EQ(moved_result.num_return_nodes, 1);
+  EXPECT_EQ(moved_result.optimization_duration_usecs, 5);
+  EXPECT_EQ(moved_result.optimization_source, OptimizedFunctionGraph::JIT);
 }
 
 }  // namespace

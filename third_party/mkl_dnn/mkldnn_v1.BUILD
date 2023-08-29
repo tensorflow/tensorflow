@@ -2,7 +2,7 @@ load("@org_tensorflow//tensorflow/tsl:tsl.bzl", "tf_openmp_copts")
 load("@org_tensorflow//third_party/mkl:build_defs.bzl", "if_mkl")
 load("@org_tensorflow//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
 load("@org_tensorflow//third_party/mkl:build_defs.bzl", "if_mkl_ml")
-load("@org_tensorflow//third_party:common.bzl", "template_rule")
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 
 exports_files(["LICENSE"])
 
@@ -15,6 +15,7 @@ _CMAKE_COMMON_LIST = {
     "#cmakedefine DNNL_SYCL_HIP": "#undef DNNL_SYCL_HIP",
     "#cmakedefine DNNL_ENABLE_STACK_CHECKER": "#undef DNNL_ENABLE_STACK_CHECKER",
     "#cmakedefine DNNL_EXPERIMENTAL": "#undef DNNL_EXPERIMENTAL",
+    "#cmakedefine ONEDNN_BUILD_GRAPH": "#undef ONEDNN_BUILD_GRAPH",
     "#cmakedefine01 BUILD_TRAINING": "#define BUILD_TRAINING 1",
     "#cmakedefine01 BUILD_INFERENCE": "#define BUILD_INFERENCE 0",
     "#cmakedefine01 BUILD_PRIMITIVE_ALL": "#define BUILD_PRIMITIVE_ALL 1",
@@ -65,14 +66,14 @@ _DNNL_RUNTIME_THREADPOOL = {
 
 _DNNL_RUNTIME_THREADPOOL.update(_CMAKE_COMMON_LIST)
 
-template_rule(
+expand_template(
     name = "dnnl_config_h",
-    src = "include/oneapi/dnnl/dnnl_config.h.in",
     out = "include/oneapi/dnnl/dnnl_config.h",
     substitutions = select({
         "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_openmp": _DNNL_RUNTIME_OMP,
         "//conditions:default": _DNNL_RUNTIME_THREADPOOL,
     }),
+    template = "include/oneapi/dnnl/dnnl_config.h.in",
 )
 
 # Create the file dnnl_version.h with DNNL version numbers.
@@ -82,16 +83,16 @@ template_rule(
 # set to "version_major.version_minor.version_patch". The git hash version can
 # be set to NA.
 # TODO(agramesh1): Automatically get the version numbers from CMakeLists.txt.
-template_rule(
+expand_template(
     name = "dnnl_version_h",
-    src = "include/oneapi/dnnl/dnnl_version.h.in",
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
-        "@DNNL_VERSION_MAJOR@": "2",
-        "@DNNL_VERSION_MINOR@": "7",
+        "@DNNL_VERSION_MAJOR@": "3",
+        "@DNNL_VERSION_MINOR@": "2",
         "@DNNL_VERSION_PATCH@": "1",
         "@DNNL_VERSION_HASH@": "N/A",
     },
+    template = "include/oneapi/dnnl/dnnl_version.h.in",
 )
 
 _COPTS_LIST = select({
@@ -101,6 +102,7 @@ _COPTS_LIST = select({
     "-UUSE_MKL",
     "-UUSE_CBLAS",
     "-DDNNL_ENABLE_MAX_CPU_ISA",
+    "-DDNNL_ENABLE_ITT_TASKS",
 ] + tf_openmp_copts()
 
 _INCLUDES_LIST = [
@@ -155,6 +157,7 @@ cc_library(
         ],
         exclude = [
             "src/cpu/aarch64/**",
+            "src/cpu/rv64/**",
             "src/cpu/x64/gemm/**/*_kern_autogen.cpp",
         ],
     ),

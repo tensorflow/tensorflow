@@ -42,6 +42,15 @@ class EagerClient : public core::RefCounted {
 
 #undef CLIENT_METHOD
 
+#define CLIENT_METHOD_WITH_TIMEOUT(method)                                    \
+  virtual void method##Async(const method##Request* request,                  \
+                             method##Response* response, StatusCallback done, \
+                             int64_t init_timeout_in_ms) = 0;
+
+  CLIENT_METHOD_WITH_TIMEOUT(CreateContext);
+
+#undef CLIENT_METHOD_WITH_TIMEOUT
+
 #define CLIENT_CANCELABLE_METHOD(method)                      \
   virtual void method##Async(                                 \
       CallOptions* call_opts, const method##Request* request, \

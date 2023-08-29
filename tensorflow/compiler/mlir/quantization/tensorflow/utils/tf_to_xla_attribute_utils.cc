@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/lite/kernels/padding.h"
@@ -128,7 +129,7 @@ Value PadForDynamicShapedInputSamePadding(
 
   padding = CreateConstValue<int32_t>(
       builder, loc, /*shape=*/{num_dims - 2, 2},
-      /*values=*/llvm::SmallVector<int32_t>(2 * (num_dims - 2), 0));
+      /*values=*/SmallVector<int32_t>(2 * (num_dims - 2), 0));
   Value zero = CreateScalarConstValue(builder, loc, 0);
   Value temp_padding_rank1 = builder.create<TF::ConcatOp>(
       loc, RankedTensorType::get({2 * num_dims}, builder.getI32Type()), zero,
@@ -203,13 +204,13 @@ Value CalculatePaddingAndPadIfNeeded(OpBuilder &builder, Location loc,
       absl::c_all_of(padding_values, [](int v) { return v == 0; })) {
     padding = CreateConstValue<int32_t>(
         builder, loc, {num_dims - 2, 2},
-        llvm::SmallVector<int32_t>(padding_values.begin() + 2,
-                                   padding_values.end() - 2));
+        SmallVector<int32_t>(padding_values.begin() + 2,
+                             padding_values.end() - 2));
     return input;
   }
-  padding = CreateConstValue<int32_t>(
-      builder, loc, {num_dims - 2, 2},
-      llvm::SmallVector<int32_t>(2 * (num_dims - 2), 0));
+  padding =
+      CreateConstValue<int32_t>(builder, loc, {num_dims - 2, 2},
+                                SmallVector<int32_t>(2 * (num_dims - 2), 0));
 
   Value temp_padding =
       CreateConstValue<int32_t>(builder, loc, {num_dims, 2}, padding_values);
@@ -254,7 +255,7 @@ Value PackOperand(OpBuilder &builder, Location loc, Value value, int pack_dim) {
   // It is guaranteed that packed_shape[pack_dim] is known.
   if (packed_shape[pack_dim] % 2 != 0) {
     packed_shape[pack_dim] += 1;
-    llvm::SmallVector<int32_t> padding(rank * 2, 0);
+    SmallVector<int32_t> padding(rank * 2, 0);
     padding[pack_dim * 2 + 1] = 1;
     Value padding_value =
         CreateConstValue<int32_t>(builder, loc, {rank, 2}, padding);
@@ -262,14 +263,14 @@ Value PackOperand(OpBuilder &builder, Location loc, Value value, int pack_dim) {
         loc, RankedTensorType::get(packed_shape, builder.getI8Type()), value,
         padding_value, CreateScalarConstValue<int8_t>(builder, loc, 0));
 
-    llvm::SmallVector<int64_t> shape_add(rank, 0);
+    SmallVector<int64_t> shape_add(rank, 0);
     shape_add[pack_dim] = 1;
     shape_value = builder.create<TF::AddOp>(
         loc, shape_type, shape_value,
         CreateConstValue<int64_t>(builder, loc, {rank}, shape_add));
   }
   packed_shape[pack_dim] /= 2;
-  llvm::SmallVector<int64_t> divisor(rank, 1);
+  SmallVector<int64_t> divisor(rank, 1);
   divisor[pack_dim] = 2;
 
   RankedTensorType packed_output_type =
@@ -279,7 +280,7 @@ Value PackOperand(OpBuilder &builder, Location loc, Value value, int pack_dim) {
       CreateConstValue<int64_t>(builder, loc, {rank}, divisor));
 
   Value packed_low_begin_value = CreateConstValue<int64_t>(
-      builder, loc, {rank}, llvm::SmallVector<int64_t>(rank, 0));
+      builder, loc, {rank}, SmallVector<int64_t>(rank, 0));
   Value packed_low_value =
       builder.create<TF::SliceOp>(loc, packed_output_type, value,
                                   packed_low_begin_value, packed_shape_value);
@@ -287,7 +288,7 @@ Value PackOperand(OpBuilder &builder, Location loc, Value value, int pack_dim) {
       loc, packed_output_type, packed_low_value,
       CreateScalarConstValue<int8_t>(builder, loc, 0x0F));
 
-  llvm::SmallVector<int64_t> packed_high_begin(rank, 0);
+  SmallVector<int64_t> packed_high_begin(rank, 0);
   packed_high_begin[pack_dim] = packed_shape[pack_dim];
   Value packed_high_begin_value =
       CreateConstValue<int64_t>(builder, loc, {rank}, packed_high_begin);

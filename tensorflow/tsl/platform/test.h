@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_TSL_PLATFORM_TEST_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>  // IWYU pragma: export
@@ -84,6 +85,13 @@ int RandomSeed();
 // Returns an unused port number, for use in multi-process testing.
 // NOTE: This function is not thread-safe.
 int PickUnusedPortOrDie();
+
+// Constant which is false internally and true in open source.
+#ifdef PLATFORM_GOOGLE
+inline constexpr bool kIsOpenSource = false;
+#else
+inline constexpr bool kIsOpenSource = true;
+#endif  // PLATFORM_GOOGLE
 
 }  // namespace testing
 }  // namespace tsl

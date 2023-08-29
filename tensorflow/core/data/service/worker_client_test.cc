@@ -103,8 +103,10 @@ class WorkerClientTest : public ::testing::Test {
 
   StatusOr<std::unique_ptr<DataServiceWorkerClient>> GetWorkerClient(
       const std::string& data_transfer_protocol) {
-    return CreateDataServiceWorkerClient(
-        GetWorkerAddress(), /*protocol=*/kProtocol, data_transfer_protocol);
+    DataTransferServerInfo info;
+    info.set_address(GetWorkerAddress());
+    info.set_protocol(data_transfer_protocol);
+    return CreateDataServiceWorkerClient(kProtocol, info);
   }
 
   StatusOr<GetElementResult> GetElement(DataServiceWorkerClient& client,

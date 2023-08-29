@@ -85,7 +85,7 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
       GetTensorShape(input_x).FlatSize() == 1 &&
       GetTensorShape(input_y).FlatSize() == 1 &&
       GetTensorShape(output).FlatSize() == 1) {
-    return kTfLiteOk;
+    return context->ResizeTensor(context, output, output->dims);
   }
 
   bool same_shape = HaveSameShapes(input_condition, input_x) &&
@@ -161,6 +161,9 @@ TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
       break;                                                                 \
     case kTfLiteInt8:                                                        \
       TF_LITE_SELECT(int8_t, op);                                            \
+      break;                                                                 \
+    case kTfLiteUInt32:                                                      \
+      TF_LITE_SELECT(uint32_t, op);                                          \
       break;                                                                 \
     case kTfLiteInt16:                                                       \
       TF_LITE_SELECT(int16_t, op);                                           \

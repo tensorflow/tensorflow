@@ -112,14 +112,15 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
     int64_t out_planes = 0, out_rows = 0, out_cols = 0;
     int64_t pad_planes = 0, pad_rows = 0, pad_cols = 0;
     OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(in_planes, ksize_planes, stride_planes,
+                   GetWindowedOutputSize(in_planes, ksize_planes,
+                                         /*dilation_rate=*/1, stride_planes,
                                          padding_, &out_planes, &pad_planes));
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(in_rows, ksize_rows, stride_rows,
-                                         padding_, &out_rows, &pad_rows));
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(in_cols, ksize_cols, stride_cols,
-                                         padding_, &out_cols, &pad_cols));
+    OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                                in_rows, ksize_rows, /*dilation_rate=*/1,
+                                stride_rows, padding_, &out_rows, &pad_rows));
+    OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                                in_cols, ksize_cols, /*dilation_rate=*/1,
+                                stride_cols, padding_, &out_cols, &pad_cols));
 
     const std::vector<int64_t> out_sizes = {
         batch, out_planes, out_rows, out_cols,
@@ -180,7 +181,6 @@ namespace functor {
 // clang-format on
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
-TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 
 #undef DECLARE_GPU_SPEC
 
@@ -193,7 +193,6 @@ TF_CALL_bfloat16(DECLARE_GPU_SPEC);
       ExtractVolumePatchesOp<GPUDevice, T>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);
-TF_CALL_bfloat16(REGISTER);
 
 #undef REGISTER
 

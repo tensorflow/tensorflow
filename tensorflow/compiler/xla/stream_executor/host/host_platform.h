@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/stream_executor/executor_cache.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
@@ -54,9 +53,6 @@ class HostPlatform : public Platform {
       int ordinal) const override;
 
   tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
-
-  tsl::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
-      int ordinal, const PluginConfig& config) override;
 
   tsl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;

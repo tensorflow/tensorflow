@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -67,7 +68,7 @@ TfLiteQuantization GetQuantizationFromLegacy(
   TfLiteQuantization quantization;
   quantization.type = kTfLiteAffineQuantization;
   auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   affine_quantization->scale = TfLiteFloatArrayCreate(1);
   affine_quantization->zero_point = TfLiteIntArrayCreate(1);
   affine_quantization->scale->data[0] = legacy_quantization.scale;
@@ -271,7 +272,7 @@ TfLiteStatus Interpreter::SetTensorParametersReadWrite(
 }
 
 TfLiteStatus Interpreter::SetTensorParametersReadOnly(
-    int tensor_index, TfLiteType type, const char* name, const size_t rank,
+    int tensor_index, TfLiteType type, const char* name, size_t rank,
     const int* dims, TfLiteQuantizationParams quantization, const char* buffer,
     size_t bytes, const Allocation* allocation) {
   TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
@@ -281,9 +282,9 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
 }
 
 TfLiteStatus Interpreter::SetTensorParametersReadWrite(
-    int tensor_index, TfLiteType type, const char* name, const size_t rank,
+    int tensor_index, TfLiteType type, const char* name, size_t rank,
     const int* dims, TfLiteQuantizationParams quantization, bool is_variable,
-    const size_t rank_dims_signature, const int* dims_signature) {
+    size_t rank_dims_signature, const int* dims_signature) {
   TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
   return primary_subgraph().SetTensorParametersReadWrite(
       tensor_index, type, name, rank, dims, new_quantization, is_variable,
@@ -393,7 +394,11 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegateImpl(
     TfLiteDelegate* delegate) {
   TfLiteStatus status = kTfLiteOk;
   for (auto& subgraph : subgraphs_) {
-    if (IsValidationSubgraph(subgraph->GetName().c_str())) {
+    if (IsValidationSubgraph(subgraph->GetName().c_str()) ||
+        subgraph->IsDelegationSkippable()) {
+      TFLITE_LOG(TFLITE_LOG_INFO,
+                 "Skipping calling ModifyGraphWithDelegate on Subgraph %i: %s",
+                 subgraph->GetSubgraphIndex(), subgraph->GetName().c_str());
       continue;
     }
     status = subgraph->ModifyGraphWithDelegate(delegate);

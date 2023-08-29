@@ -36,7 +36,7 @@ struct PassConfig {
         trim_functions_allowlist({}),
         quant_specs(std::move(specs)),
         form_clusters(false),
-        unfold_batch_matmul(true),
+        unfold_batch_matmul(false),
         shape_inference(true),
         runtime_verification(true),
         enable_tflite_variables(false),
@@ -46,7 +46,8 @@ struct PassConfig {
         enable_hlo_to_tf_conversion(false),
         enable_dynamic_update_slice(false),
         preserve_assert_op(false),
-        enable_stablehlo_conversion(false) {}
+        enable_stablehlo_conversion(false),
+        legalize_custom_tensor_list_ops(false) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -61,8 +62,8 @@ struct PassConfig {
   // If `form_clusters` is true , clusters are formed by grouping consecutive
   // ops of the same device, under a `tf_device.launch` op.
   bool form_clusters;
-  // if `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
-  // of tfl.fully_connected ops.
+  // If `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
+  // of tfl.fully_connected ops. Default value is false.
   bool unfold_batch_matmul;
   // Whether to outline WhileOp at the end of the pipeline.
   bool outline_tf_while = false;
@@ -83,7 +84,9 @@ struct PassConfig {
   // Whether to run the `GuaranteeAllFuncsOneUsePass` to ensure each function
   // has a single use.
   bool guarantee_all_funcs_one_use;
-  // Whether to enable the hlo to tf conversion.
+  // Whether to enable the hlo/stablehlo to tf conversion. This also supports
+  // the case where a saved model contains both TF module and serialized
+  // StableHLO module.
   bool enable_hlo_to_tf_conversion;
   // Whether to enable to use DynamicUpdateSlice op.
   bool enable_dynamic_update_slice;
@@ -91,6 +94,9 @@ struct PassConfig {
   bool preserve_assert_op;
   // Whether to enable TF->stablehlo passes.
   bool enable_stablehlo_conversion;
+  // Whether to convert `tf.TensorList*` to `tfl.custom_op` if they can all
+  // be supported.
+  bool legalize_custom_tensor_list_ops;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -116,7 +122,9 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << "\nenable_hlo_to_tf_conversion: "
             << pass_config.enable_hlo_to_tf_conversion
             << "\nenable_stablehlo_conversion: "
-            << pass_config.enable_stablehlo_conversion << "\n";
+            << pass_config.enable_stablehlo_conversion
+            << "\nlegalize_custom_tensor_list_ops: "
+            << pass_config.legalize_custom_tensor_list_ops << "\n";
 }
 
 }  // namespace TFL

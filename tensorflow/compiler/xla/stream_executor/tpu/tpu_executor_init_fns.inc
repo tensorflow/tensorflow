@@ -10,7 +10,6 @@ tsl::Status SetExecutorStructFn(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(executor_fn, TpuPlatform_GetExecutor);
   TFTPU_SET_FN(executor_fn, TpuPlatform_Id);
   TFTPU_SET_FN(executor_fn, TpuPlatform_VisibleDeviceCount);
-  TFTPU_SET_FN(executor_fn, TpuPlatform_TpuMemoryLimit);
   TFTPU_SET_FN(executor_fn, TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy);
   TFTPU_SET_FN(executor_fn, TpuPlatform_GetTopologyPtr);
   TFTPU_SET_FN(executor_fn, TpuPlatform_GetHostLocation);
@@ -33,21 +32,13 @@ tsl::Status SetExecutorStructFn(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(executor_fn, TpuExecutor_PollForEventStatus);
   TFTPU_SET_FN(executor_fn, TpuExecutor_RecordEvent);
   TFTPU_SET_FN(executor_fn, TpuExecutor_WaitForEvent);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_AllocateTimer);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_DeallocateTimer);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_StartTimer);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_StopTimer);
   TFTPU_SET_FN(executor_fn, TpuExecutor_SynchronousMemcpyToHost);
   TFTPU_SET_FN(executor_fn, TpuExecutor_SynchronousMemcpyFromHost);
   TFTPU_SET_FN(executor_fn, TpuExecutor_MemcpyToHost);
   TFTPU_SET_FN(executor_fn, TpuExecutor_MemcpyFromHost);
   TFTPU_SET_FN(executor_fn, TpuExecutor_EnqueueInfeed);
   TFTPU_SET_FN(executor_fn, TpuExecutor_DequeueOutfeed);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_WaitForInfeedReady);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_WaitForOutfeedReady);
   TFTPU_SET_FN(executor_fn, TpuExecutor_BlockHostUntilDone);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_BlockUntilDoneOrFailed);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_SyncAndForgetFailedStreams);
   TFTPU_SET_FN(executor_fn, TpuExecutor_SynchronizeAllActivity);
   TFTPU_SET_FN(executor_fn, TpuExecutor_UnloadAllPrograms);
   TFTPU_SET_FN(executor_fn, TpuExecutor_EnqueueCompactionOnStreamForHbm);
@@ -63,11 +54,6 @@ tsl::Status SetExecutorStructFn(void* library_handle) {  // TENSORFLOW_STATUS_OK
 
   TFTPU_SET_FN(executor_fn, TpuEvent_New);
   TFTPU_SET_FN(executor_fn, TpuEvent_Free);
-
-  TFTPU_SET_FN(executor_fn, TpuTimer_New);
-  TFTPU_SET_FN(executor_fn, TpuTimer_Free);
-  TFTPU_SET_FN(executor_fn, TpuTimer_Nanoseconds);
-  TFTPU_SET_FN(executor_fn, TpuTimer_Microseconds);
 
   TFTPU_SET_FN(executor_fn, TpuStatus_New);
   TFTPU_SET_FN(executor_fn, TpuStatus_Create);

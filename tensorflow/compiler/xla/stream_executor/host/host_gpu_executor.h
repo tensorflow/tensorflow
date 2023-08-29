@@ -24,19 +24,16 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
 namespace host {
 
 // An implementation of StreamExecutor that does no communication or interaction
 // with a device, but DOES perform memory operations backed by the host.
-// Plugin routines (RNG, BLAS) are also supported and functional.
+// Plugin routines (BLAS) are also supported and functional.
 // Kernel invocations will fail, but host callbacks may be enqueued on this
 // executor and its associated stream, and should follow standard ordering
 // semantics.
@@ -119,15 +116,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
   void DeallocateStream(Stream* stream) override;
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;
 
-  // No special initialization is necessary for host timers.
-  bool AllocateTimer(Timer* timer) override { return true; }
-
-  void DeallocateTimer(Timer* timer) override {}
-
-  bool StartTimer(Stream* stream, Timer* timer) override;
-
-  bool StopTimer(Stream* stream, Timer* timer) override;
-
   tsl::Status BlockHostUntilDone(Stream* stream) override;
 
   int PlatformDeviceCount() override { return 1; }
@@ -150,17 +138,11 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return true;
   }
 
-  bool SupportsBlas() const override;
   blas::BlasSupport* CreateBlas() override;
 
-  bool SupportsDnn() const override { return false; }
   dnn::DnnSupport* CreateDnn() override { return nullptr; }
 
-  bool SupportsFft() const override;
   fft::FftSupport* CreateFft() override;
-
-  bool SupportsRng() const override;
-  rng::RngSupport* CreateRng() override;
 
   std::unique_ptr<internal::EventInterface> CreateEventImplementation()
       override;
@@ -171,10 +153,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
   }
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
-
-  std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override {
-    return std::unique_ptr<internal::TimerInterface>(new HostTimer());
-  }
 
   void* GpuContextHack() override { return nullptr; }
 

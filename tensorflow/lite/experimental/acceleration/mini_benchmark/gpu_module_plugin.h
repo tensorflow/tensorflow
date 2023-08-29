@@ -22,9 +22,9 @@ limitations under the License.
 #include <string>
 
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
-#include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/c/delegate_plugin.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/core/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 
 namespace tflite {

@@ -1,6 +1,8 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings", "tflite_self_contained_libs_test_suite")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite")
+load("//tensorflow/lite/core:special_rules.bzl", "macros_visibility_allowlist")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -18,51 +20,10 @@ exports_files(
     ],
 )
 
-cc_library(
-    name = "headers",
-    hdrs = [
-        "interpreter.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
-    deps = [
-        ":subgraph",
-        "//tensorflow/lite:allocation",
-        "//tensorflow/lite:external_cpu_backend_context",
-        "//tensorflow/lite:interpreter_options_header",
-        "//tensorflow/lite:signature_runner",
-        "//tensorflow/lite:stderr_reporter",
-        "//tensorflow/lite:string",
-        "//tensorflow/lite:type_to_tflitetype",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/core/api:error_reporter",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/experimental/remat:metadata_util",
-        "//tensorflow/lite/experimental/resource",
-        "//tensorflow/lite/internal:signature_def",
-        "//tensorflow/lite/profiling:root_profiler",
-        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
-    ],
-)
-
-# This target is only for use by the 'tflite_custom_c_library' build macro
-# and should not be used anywhere other than in the implementation of that build macro.
-# 'tflite_custom_c_library' requires target to be public, that's why we duplicated :headers target
-# to be used only by 'tflite_custom_c_library'.
-# Making :headers public could cause some problems because it is widely used inside the TF Lite
-# code base, that might lead others outside the TF Lite code base to copy that dependency and use
-# it and subsequently depend on it, which would be bad. Using a separate :private_headers target
-# ensures that the only use of the unwantedly-"public" target is inside the
-# 'tflite_custom_c_library' itself, where it is less likely to get copied into third party code.
-alias(
-    name = "private_headers",
-    actual = ":headers",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//visibility:public",
-    ],
+bzl_library(
+    name = "special_rules_bzl",
+    srcs = ["special_rules.bzl"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )
 
 # The public target for the C++ API excluding experimental APIs.
@@ -94,14 +55,15 @@ cc_library(
         "//tensorflow/lite:macros",
         "//tensorflow/lite:memory_planner",
         "//tensorflow/lite:mutable_op_resolver",
-        "//tensorflow/lite:signature_runner",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:signature_runner",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/experimental/resource",
@@ -124,6 +86,7 @@ cc_library(
 alias(
     name = "framework",
     actual = "framework_experimental",
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
 )
 
@@ -165,14 +128,15 @@ cc_library(
         "//tensorflow/lite:memory_planner",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:optional_debug_tools",
-        "//tensorflow/lite:signature_runner",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:signature_runner",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/experimental/resource",
@@ -188,8 +152,7 @@ cc_library(
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
 )
 
-# TODO(b/242310498): move interpreter.cc, logger.cc and signature_runner.h from
-# tensorflow/lite/ to here.
+# TODO(b/242310498): move logger.cc from tensorflow/lite/ to here.
 cc_library(
     name = "cc_api_stable",
     srcs = [
@@ -219,7 +182,6 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:shared_library",
-        "//tensorflow/lite:signature_runner",
         "//tensorflow/lite:simple_memory_arena",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite:string",
@@ -228,8 +190,10 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:signature_runner",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates:telemetry",
@@ -260,7 +224,7 @@ alias(
     name = "cc_api",
     actual = "cc_api_experimental",
     visibility = [
-        "//tensorflow/lite/core/shims:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
         "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/kernels:__subpackages__",
     ],
@@ -280,6 +244,7 @@ cc_library(
         "interpreter_builder.h",
         "model.h",
         "model_builder.h",
+        "signature_runner.h",
         "subgraph.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -298,14 +263,15 @@ cc_library(
         "//tensorflow/lite:memory_planner",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:mutable_op_resolver",
-        "//tensorflow/lite:signature_runner",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:signature_runner",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/remat:metadata_util",
@@ -331,6 +297,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     visibility = internal_visibility_allowlist(),
     deps = [
+        ":macros",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:stderr_reporter",
@@ -343,6 +310,42 @@ cc_library(
         "@flatbuffers",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "signature_runner",
+    srcs = ["signature_runner.cc"],
+    hdrs = ["signature_runner.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+        "//tensorflow/lite/c:__subpackages__",
+        "//tensorflow/lite/core:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/internal:signature_def",
+    ],
+)
+
+# Test signature runner.
+cc_test(
+    name = "signature_runner_test",
+    size = "small",
+    srcs = ["signature_runner_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/multi_signatures.bin",
+    ],
+    deps = [
+        ":framework",
+        ":signature_runner",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 # Test model framework.
@@ -377,11 +380,10 @@ cc_test(
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -402,6 +404,26 @@ cc_library(
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:op_resolver",
     ],
+)
+
+# Defines CreateOpResolver with all builtin ops.
+cc_library(
+    name = "create_op_resolver_with_builtin_ops",
+    srcs = ["create_op_resolver_with_builtin_ops.cc"],
+    hdrs = ["create_op_resolver.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite:op_resolver",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+    ],
+    # Some targets only have an implicit dependency on CreateOpResolver.
+    # This avoids warnings about backwards references when linking.
+    alwayslink = True,
 )
 
 # This target is only for use by the "tflite_custom_c_library" and "tflite_custom_cc_library" build
@@ -428,8 +450,8 @@ cc_library(
     hdrs = ["macros.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//visibility:private",
-    ],
+        "//tensorflow/lite:__subpackages__",
+    ] + macros_visibility_allowlist(),
 )
 
 cc_library(
@@ -443,6 +465,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
+        "//platforms/darwinn/tflite:__subpackages__",
         "//tensorflow/lite:__subpackages__",
         "//tensorflow/lite/core:__subpackages__",
         "//tensorflow/lite/kernels:__subpackages__",
@@ -456,13 +479,14 @@ cc_library(
         "//tensorflow/lite:memory_planner",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
-        "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/remat:metadata_util",
+        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/profiling:root_profiler",
+        "//tensorflow/lite/profiling/telemetry",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
         "//tensorflow/lite:tflite_use_simple_memory_planner": [
@@ -488,9 +512,10 @@ cc_test(
         "subgraph_test.cc",
     ],
     deps = [
-        ":headers",
+        ":framework_stable",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/kernels:builtin_ops",  # build_cleaner: keep
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],

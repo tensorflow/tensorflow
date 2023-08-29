@@ -31,8 +31,7 @@ Status AwaitBuffersReady(ifrt::Array* ifrt_array) {
   Status s = ifrt_array->GetReadyFuture().Await();
   if (!s.ok()) {
     // Fix up error string because some clients rely on it.
-    if (s.error_message() ==
-        "GetReadyFuture() called on deleted or donated buffer") {
+    if (s.message() == "GetReadyFuture() called on deleted or donated buffer") {
       s = InvalidArgument(
           "BlockHostUntilReady() called on deleted or donated buffer");
     }

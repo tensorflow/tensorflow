@@ -184,7 +184,7 @@ TEST(FunctionUtilsTest, AddNodeToFunctionDef) {
     def fn2():
       return control_flow_ops.Assert(False, ["Wrong branch!!!"])
 
-    return control_flow_ops.cond(pred, fn1, fn2)
+    return cond.cond(pred, fn1, fn2)
 
   r = test_function()
 */

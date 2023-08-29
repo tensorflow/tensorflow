@@ -35,6 +35,10 @@ namespace TF {
 // compilation device type.
 inline constexpr llvm::StringRef kCompileDeviceTypeAttr =
     "_xla_compile_device_type";
+// The attribute value speicifes the preferred outlined function name in
+// ClusterOutliningPass.
+inline constexpr llvm::StringRef kClusterOutlinedFunctionNameAttr =
+    "_cluster_outlined_function_name";
 // Marks a node for replication. The attribute value indicates the replication
 // metadata op.
 inline constexpr llvm::StringRef kReplicationInfoAttr = "_replication_info";
@@ -43,12 +47,20 @@ inline constexpr llvm::StringRef kReplicationInfoAttr = "_replication_info";
 inline constexpr llvm::StringRef kTpuReplicateAttr = "_tpu_replicate";
 // Device types.
 inline constexpr llvm::StringRef kTpuDevice = "TPU";
+// _xla_outside_compilation
+inline constexpr llvm::StringRef kXlaOutsideCompilationAttr =
+    "_xla_outside_compilation";
+// device attr
+inline constexpr llvm::StringRef kDeviceAttr = "device";
 // Function attribute to signal that a function should be skipped from TPU
 // island outlining. The attribute is set in
 // `TpuV1BridgeExecutorIslandCoarsening` and removed in the subsequent
 // `TPUBridgeExecutorIslandOutlining` pass.
 inline constexpr llvm::StringRef kSkipIslandOutlining =
     "_skip_island_outlining";
+// Function attribute to signal which argument contains bounded dynamic
+// dimension.
+inline constexpr llvm::StringRef kDynamicArgIndexAttr = "_dynamic_arg_index";
 
 // This string attribute encodes parallel execution groups and their associated
 // branches. It has the following format:

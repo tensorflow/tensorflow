@@ -22,6 +22,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
@@ -29,9 +30,9 @@ limitations under the License.
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
@@ -83,7 +84,8 @@ using python_utils::PyDecrefDeleter;
 
 std::unique_ptr<Interpreter> CreateInterpreter(
     const InterpreterWrapper::Model* model,
-    const tflite::MutableOpResolver& resolver, bool preserve_all_tensors) {
+    const tflite::MutableOpResolver& resolver, bool preserve_all_tensors,
+    bool disable_delegate_clustering) {
   if (!model) {
     return nullptr;
   }
@@ -93,6 +95,7 @@ std::unique_ptr<Interpreter> CreateInterpreter(
   std::unique_ptr<Interpreter> interpreter;
   InterpreterOptions options;
   options.SetPreserveAllTensors(preserve_all_tensors);
+  options.SetDisableDelegateClustering(disable_delegate_clustering);
   InterpreterBuilder builder(*model, resolver, &options);
   if (builder(&interpreter) != kTfLiteOk) {
     return nullptr;
@@ -196,7 +199,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     std::unique_ptr<PythonErrorReporter> error_reporter,
     const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-    std::string* error_msg, bool preserve_all_tensors) {
+    std::string* error_msg, bool preserve_all_tensors,
+    bool disable_delegate_clustering) {
   if (!model) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -229,7 +233,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     registerer(reinterpret_cast<uintptr_t>(resolver.get()));
   }
   auto interpreter =
-      CreateInterpreter(model.get(), *resolver, preserve_all_tensors);
+      CreateInterpreter(model.get(), *resolver, preserve_all_tensors,
+                        disable_delegate_clustering);
   if (!interpreter) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -251,7 +256,7 @@ InterpreterWrapper::InterpreterWrapper(
       resolver_(std::move(resolver)),
       interpreter_(std::move(interpreter)) {}
 
-InterpreterWrapper::~InterpreterWrapper() {}
+InterpreterWrapper::~InterpreterWrapper() = default;
 
 // LINT.IfChange
 static constexpr int kUndeterminedSubgraphIndex = -1;
@@ -800,30 +805,32 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     const char* model_path, int op_resolver_id,
     const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-    std::string* error_msg, bool preserve_all_tensors) {
+    std::string* error_msg, bool preserve_all_tensors,
+    bool disable_delegate_clustering) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
   std::unique_ptr<InterpreterWrapper::Model> model =
       Model::BuildFromFile(model_path, error_reporter.get());
-  return CreateInterpreterWrapper(std::move(model), op_resolver_id,
-                                  std::move(error_reporter),
-                                  registerers_by_name, registerers_by_func,
-                                  error_msg, preserve_all_tensors);
+  return CreateInterpreterWrapper(
+      std::move(model), op_resolver_id, std::move(error_reporter),
+      registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
+      disable_delegate_clustering);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     const char* model_path, int op_resolver_id,
     const std::vector<std::string>& registerers, std::string* error_msg,
-    bool preserve_all_tensors) {
-  return CreateWrapperCPPFromFile(model_path, op_resolver_id, registerers,
-                                  {} /*registerers_by_func*/, error_msg,
-                                  preserve_all_tensors);
+    bool preserve_all_tensors, bool disable_delegate_clustering) {
+  return CreateWrapperCPPFromFile(
+      model_path, op_resolver_id, registerers, {} /*registerers_by_func*/,
+      error_msg, preserve_all_tensors, disable_delegate_clustering);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     PyObject* data, int op_resolver_id,
     const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-    std::string* error_msg, bool preserve_all_tensors) {
+    std::string* error_msg, bool preserve_all_tensors,
+    bool disable_delegate_clustering) {
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
@@ -833,18 +840,19 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
   }
   std::unique_ptr<InterpreterWrapper::Model> model =
       Model::BuildFromBuffer(buf, length, error_reporter.get());
-  return CreateInterpreterWrapper(std::move(model), op_resolver_id,
-                                  std::move(error_reporter),
-                                  registerers_by_name, registerers_by_func,
-                                  error_msg, preserve_all_tensors);
+  return CreateInterpreterWrapper(
+      std::move(model), op_resolver_id, std::move(error_reporter),
+      registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
+      disable_delegate_clustering);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     PyObject* data, int op_resolver_id,
     const std::vector<std::string>& registerers, std::string* error_msg,
-    bool preserve_all_tensors) {
+    bool preserve_all_tensors, bool disable_delegate_clustering) {
   return CreateWrapperCPPFromBuffer(data, op_resolver_id, registerers, {},
-                                    error_msg, preserve_all_tensors);
+                                    error_msg, preserve_all_tensors,
+                                    disable_delegate_clustering);
 }
 
 PyObject* InterpreterWrapper::ResetVariableTensors() {

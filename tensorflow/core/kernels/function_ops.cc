@@ -343,7 +343,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   OpInputList arguments;
   OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
 
-  FunctionLibraryRuntime::Options opts(ctx->step_id());
+  FunctionLibraryRuntime::Options opts;
   opts.runner = nullptr;  // Use default runner at remote device.
   opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
   opts.source_device = source_device;

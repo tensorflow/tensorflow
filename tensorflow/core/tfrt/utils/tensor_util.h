@@ -19,13 +19,13 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor.h"  // from @tf_runtime
 
 namespace tfrt {
 
 // Converts a tfrt::Tensor to tensorflow::Tensor.
-llvm::Expected<tensorflow::Tensor> TFRTTensorToTFTensor(const Tensor& tensor,
-                                                        HostContext* host);
+llvm::Expected<tensorflow::Tensor> TFRTTensorToTFTensor(const Tensor& tensor);
 
 // Converts a tensorflow::Tensor to tfrt::TensorHandle.
 AsyncValueRef<TensorHandle> TFTensorToTFRTTensorHandle(
@@ -38,6 +38,10 @@ tensorflow::StatusOr<TensorHandle> CreateTensorHandleFromTFTensor(
 // Creates a tensorflow tensor using the shape and data in a TFRT tensorhandle.
 tensorflow::StatusOr<tensorflow::Tensor> CreateTFTensorFromTensorHandle(
     const TensorHandle& tensor_handle);
+
+// Converts a tensorflow::Tensor to tfrt::DenseHostTensor.
+// TODO(tfrt-devs): consider generalize to TFTensorToTFRTTensor
+Expected<DenseHostTensor> ConvertTfTensorToDHT(tensorflow::Tensor tf_tensor);
 
 }  // namespace tfrt
 

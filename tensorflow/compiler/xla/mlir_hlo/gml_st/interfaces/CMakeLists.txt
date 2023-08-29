@@ -1,4 +1,3 @@
-#
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,12 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-
-set(LLVM_TARGET_DEFINITIONS tiling_interface.td)
-mlir_tablegen(tiling_interface.h.inc -gen-op-interface-decls)
-mlir_tablegen(tiling_interface.cc.inc -gen-op-interface-defs)
-add_public_tablegen_target(MLIRGmlStTilingInterfaceIncGen)
 
 include_directories(BEFORE
     ${CMAKE_CURRENT_BINARY_DIR}
@@ -27,36 +20,6 @@ set(LLVM_OPTIONAL_SOURCES
   bufferizable_op_interface_impl.cc
 )
 
-add_mlir_library(GmlStTilingInterface
-  tiling_interface.cc
-
-  LINK_LIBS PUBLIC
-  MLIRIR
-  MLIRSupport
-
-  DEPENDS
-  MLIRGmlStTilingInterfaceIncGen
-)
-
-add_mlir_library(GmlStTilingInterfaceImpl
-  tiling_interface_impl.cc
-
-  LINK_LIBS PUBLIC
-  GmlStDialect
-  GmlStTilingInterface
-  MLIRArithDialect
-  MLIRAffineDialect
-  MLIRDestinationStyleOpInterface
-  MLIRLinalgDialect
-  MLIRLinalgTransforms
-  MLIRLinalgUtils
-  MLIRTensorDialect
-  MLIRTensorUtils
-  MLIRIR
-  MLIRSupport
-  THLODialect
-)
-
 add_mlir_library(GmlStBufferizableOpInterface
   bufferizable_op_interface_impl.cc
 
@@ -64,8 +27,7 @@ add_mlir_library(GmlStBufferizableOpInterface
   GmlStDialect
   MLIRBufferizationDialect
   MLIRBufferizationTransforms
-  MLIRDestinationStyleOpInterface
+  MLIRDialectUtils
   MLIRIR
   MLIRSupport
 )
-

@@ -1,11 +1,12 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         "//tensorflow/tsl:internal",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -33,15 +34,15 @@ cc_library(
     srcs = ["grpc_coordination_service_impl.cc"],
     hdrs = ["grpc_coordination_service_impl.h"],
     deps = [
-        "//tensorflow/tsl/platform:thread_annotations",
-        "//tensorflow/tsl/platform:mutex",
-        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
         "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
-        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/tsl/distributed_runtime/rpc:grpc_call",
         "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
-        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/protobuf:coordination_service_cc_grpc_proto",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
     ] + tsl_grpc_cc_dependencies(),
 )

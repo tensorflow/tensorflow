@@ -28,6 +28,14 @@ limitations under the License.
 #include "tensorflow/tsl/platform/setround.h"
 #include "tensorflow/tsl/platform/tracing.h"
 
+#ifdef TENSORFLOW_THREADSCALING_EXPERIMENTAL
+ABSL_FLAG(float, tensorflow_num_threads_scale_factor, 1.0,
+          "Allows to scale all Tensorflow ThreadPools. Total number of threads "
+          "in a given ThreadPool equals to num_threads * "
+          "tensorflow_num_threads_scale_factor. Default scale factor of 1 is a "
+          "no-op.");
+#endif  // TENSORFLOW_THREADSCALING_EXPERIMENTAL
+
 namespace tsl {
 
 namespace thread {
@@ -98,6 +106,13 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
                        const string& name, int num_threads,
                        bool low_latency_hint, Eigen::Allocator* allocator) {
   CHECK_GE(num_threads, 1);
+
+#ifdef TENSORFLOW_THREADSCALING_EXPERIMENTAL
+  CHECK_GT(absl::GetFlag(FLAGS_tensorflow_num_threads_scale_factor), 0);
+  num_threads *= absl::GetFlag(FLAGS_tensorflow_num_threads_scale_factor);
+  if (num_threads < 1) num_threads = 1;
+#endif  // TENSORFLOW_THREADSCALING_EXPERIMENTAL
+
   eigen_threadpool_.reset(new Eigen::ThreadPoolTempl<EigenEnvironment>(
       num_threads, low_latency_hint,
       EigenEnvironment(env, thread_options, "tf_" + name)));

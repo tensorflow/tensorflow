@@ -23,8 +23,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -116,20 +117,19 @@ tsl::StatusOr<StreamExecutor*> CudaPlatform::FirstExecutorForBus(
   }
 
   return tsl::Status(
-      port::error::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       absl::StrFormat("Executor for bus %d not found.", bus_ordinal));
 }
 
 Platform::Id CudaPlatform::id() const { return cuda::kCudaPlatformId; }
 
 int CudaPlatform::VisibleDeviceCount() const {
-  // Throw away the result - it logs internally, and this [containing] function
-  // isn't in the path of user control. It's safe to call this > 1x.
-  if (!gpu::GpuDriver::Init().ok()) {
-    return -1;
-  }
-
-  return GpuDriver::GetDeviceCount();
+  // Initialized in a thread-safe manner the first time this is run.
+  static const int num_devices = [] {
+    if (!GpuDriver::Init().ok()) return -1;
+    return GpuDriver::GetDeviceCount();
+  }();
+  return num_devices;
 }
 
 const std::string& CudaPlatform::Name() const { return name_; }
@@ -143,15 +143,6 @@ tsl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
   config.plugin_config = PluginConfig();
-  config.device_options = GetDeviceOptionsFromEnv();
-  return GetExecutor(config);
-}
-
-tsl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDeviceWithPluginConfig(
-    int device_ordinal, const PluginConfig& plugin_config) {
-  StreamExecutorConfig config;
-  config.ordinal = device_ordinal;
-  config.plugin_config = plugin_config;
   config.device_options = GetDeviceOptionsFromEnv();
   return GetExecutor(config);
 }
@@ -176,7 +167,7 @@ CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
     return tsl::Status(
-        port::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat(
             "failed initializing StreamExecutor for CUDA device ordinal %d: %s",
             config.ordinal, init_status.ToString()));

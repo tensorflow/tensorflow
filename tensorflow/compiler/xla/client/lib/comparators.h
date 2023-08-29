@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_COMPARATORS_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_COMPARATORS_H_
 
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -49,7 +51,7 @@ XlaComputation CreateScalarComparisonComputation(
     const std::string& name, const std::vector<PrimitiveType>& operand_types,
     const std::vector<
         std::optional<XlaOp (*)(XlaOp, XlaOp, absl::Span<const int64_t>)>>&
-        comparators,
+        generators,
     XlaBuilder* builder);
 
 }  // namespace xla

@@ -96,7 +96,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // If we know the contents of the 'axis' tensor, resize all outputs.
   // Otherwise, wait until Eval().
-  if (IsConstantTensor(op_context.axis)) {
+  if (IsConstantOrPersistentTensor(op_context.axis)) {
     return ResizeOutputTensors(context, node, op_context.axis, op_context.input,
                                op_context.params->num_splits);
   } else {

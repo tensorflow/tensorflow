@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_DEADNESS_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_JIT_DEADNESS_ANALYSIS_H_
 
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {

@@ -13,8 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <atomic>
+#include <functional>
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 #define EIGEN_USE_THREADS
+
+#include <optional>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
@@ -30,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_util.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 
 namespace tfrt {
@@ -656,7 +664,7 @@ class RunHandler::Impl {
  public:
   explicit Impl(RunHandlerPool::Impl* pool_impl);
 
-  ~Impl() {}
+  ~Impl() = default;
 
   // Stores now time (in microseconds) since unix epoch when the handler is
   // requested via RunHandlerPool::Get().
@@ -771,12 +779,10 @@ class RunHandlerPool::Impl {
   std::unique_ptr<RunHandler> Get(int64_t step_id, int64_t timeout_in_ms,
                                   const RunHandlerOptions& options)
       TF_LOCKS_EXCLUDED(mu_) {
-    thread_local std::unique_ptr<
-        Eigen::MaxSizeVector<internal::ThreadWorkSource*>>
-        thread_work_sources =
-            std::unique_ptr<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
-                new Eigen::MaxSizeVector<internal::ThreadWorkSource*>(
-                    max_handlers_));
+    thread_local auto thread_work_sources =
+        std::make_unique<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
+
+            max_handlers_);
     uint64_t version;
     int num_active_requests;
     RunHandler::Impl* handler_impl;
@@ -823,7 +829,7 @@ class RunHandlerPool::Impl {
       version = ++version_;
     }
     RecomputePoolStats(num_active_requests, version, *thread_work_sources);
-    return tensorflow::WrapUnique<RunHandler>(new RunHandler(handler_impl));
+    return std::unique_ptr<RunHandler>(new RunHandler(handler_impl));
   }
 
   void ReleaseHandler(RunHandler::Impl* handler) TF_LOCKS_EXCLUDED(mu_) {
@@ -1022,7 +1028,7 @@ int RunHandler::Impl::RunHandlerEigenThreadPool::CurrentThreadId() const {
 
 RunHandlerPool::RunHandlerPool(Options options) : impl_(new Impl(options)) {}
 
-RunHandlerPool::~RunHandlerPool() {}
+RunHandlerPool::~RunHandlerPool() = default;
 
 std::unique_ptr<RunHandler> RunHandlerPool::Get(
     int64_t step_id, int64_t timeout_in_ms, const RunHandlerOptions& options) {
@@ -1068,7 +1074,7 @@ void RunHandlerWorkQueue::AddTask(TaskFunction work) {
       run_handler_->step_id(), "inter", std::move(work)));
 }
 
-Optional<TaskFunction> RunHandlerWorkQueue::AddBlockingTask(
+std::optional<TaskFunction> RunHandlerWorkQueue::AddBlockingTask(
     TaskFunction work, bool allow_queuing) {
   LOG_EVERY_N_SEC(ERROR, 10)
       << "RunHandlerWorkQueue::AddBlockingTask() is not supposed to be called.";

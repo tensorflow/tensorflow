@@ -39,4 +39,11 @@ op 	 {
     name: "tuple_mask"
     type: "string"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }

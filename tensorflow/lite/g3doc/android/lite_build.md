@@ -44,10 +44,10 @@ by Google from time to time).*
 <!-- mdformat off(devsite fails if there are line-breaks in templates) -->
 {% dynamic if 'tflite-android-tos' in user.acknowledged_walls and request.tld != 'cn' %}
 You can download the Docker file
-<a href="https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/tools/dockerfiles/tflite-android.Dockerfile">here</a>
+<a href="https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/lite/tools/tflite-android.Dockerfile">here</a>
 {% dynamic else %} You must acknowledge the terms of service to download the
 file.
-<a class="button button-blue devsite-acknowledgement-link" data-globally-unique-wall-id="tflite-android-tos">Acknowledge</a>
+<button class="button-blue devsite-acknowledgement-link" data-globally-unique-wall-id="tflite-android-tos">Acknowledge</button>
 {% dynamic endif %}
 <!-- mdformat on -->
 
@@ -122,10 +122,10 @@ prompt. Successful configuration should yield entries similar to the following
 in the `.tf_configure.bazelrc` file in the root folder:
 
 ```shell
-build --action_env ANDROID_NDK_HOME="/usr/local/android/android-ndk-r25b"
-build --action_env ANDROID_NDK_API_LEVEL="25"
-build --action_env ANDROID_BUILD_TOOLS_VERSION="28.0.3"
-build --action_env ANDROID_SDK_API_LEVEL="23"
+build --action_env ANDROID_NDK_HOME="/usr/local/android/android-ndk-r21e"
+build --action_env ANDROID_NDK_API_LEVEL="26"
+build --action_env ANDROID_BUILD_TOOLS_VERSION="30.0.3"
+build --action_env ANDROID_SDK_API_LEVEL="30"
 build --action_env ANDROID_SDK_HOME="/usr/local/android/android-sdk-linux"
 ```
 
@@ -137,6 +137,8 @@ the root checkout directory as follows:
 ```sh
 bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+  --define=android_dexmerger_tool=d8_dexmerger \
+  --define=android_incremental_dexing_tool=d8_dexbuilder \
   //tensorflow/lite/java:tensorflow-lite
 ```
 

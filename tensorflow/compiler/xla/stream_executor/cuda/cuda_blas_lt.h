@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -238,6 +239,12 @@ class BlasLt {
 BlasLt* GetBlasLt(Stream* stream);
 
 }  // namespace cuda
+
+namespace gpu {
+using BlasLt = ::stream_executor::cuda::BlasLt;
+inline BlasLt* GetBlasLt(Stream* stream) { return cuda::GetBlasLt(stream); }
+}  // namespace gpu
+
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_LT_H_

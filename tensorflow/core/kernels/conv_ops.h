@@ -41,6 +41,16 @@ struct LaunchConv2DOp {
                   TensorFormat data_format);
 };
 
+template <typename Device, typename T>
+struct LaunchConvOp {
+  void operator()(OpKernelContext* context, bool cudnn_use_autotune,
+                  const Tensor& input, const Tensor& filter,
+                  const std::vector<int64>& dilations,
+                  const std::vector<int64>& strides, Padding padding,
+                  const std::vector<int64_t>& explicit_paddings,
+                  TensorFormat data_format, Tensor* output);
+};
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
 struct LaunchConv2DOp<Eigen::GpuDevice, T> {
@@ -50,6 +60,16 @@ struct LaunchConv2DOp<Eigen::GpuDevice, T> {
                   const Padding& padding,
                   const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format);
+};
+
+template <typename T>
+struct LaunchConvOp<Eigen::GpuDevice, T> {
+  void operator()(OpKernelContext* context, bool cudnn_use_autotune,
+                  const Tensor& input, const Tensor& filter,
+                  const std::vector<int64>& dilations,
+                  const std::vector<int64>& strides, const Padding padding,
+                  const std::vector<int64_t>& explicit_paddings,
+                  TensorFormat data_format, Tensor* output);
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

@@ -20,72 +20,82 @@ limitations under the License.
 
 namespace tsl {
 
-void Set_TSL_Status_from_Status(TSL_Status* tsl_status, const Status& status) {
-  tensorflow::error::Code code = status.code();
-  const char* message(status.error_message().c_str());
-
+TSL_Code TSLCodeFromStatusCode(absl::StatusCode code) {
   switch (code) {
-    case tensorflow::error::OK:
-      assert(TSL_GetCode(tsl_status) == TSL_OK);
-      break;
-    case tensorflow::error::CANCELLED:
-      TSL_SetStatus(tsl_status, TSL_CANCELLED, message);
-      break;
-    case tensorflow::error::UNKNOWN:
-      TSL_SetStatus(tsl_status, TSL_UNKNOWN, message);
-      break;
-    case tensorflow::error::INVALID_ARGUMENT:
-      TSL_SetStatus(tsl_status, TSL_INVALID_ARGUMENT, message);
-      break;
-    case tensorflow::error::DEADLINE_EXCEEDED:
-      TSL_SetStatus(tsl_status, TSL_DEADLINE_EXCEEDED, message);
-      break;
-    case tensorflow::error::NOT_FOUND:
-      TSL_SetStatus(tsl_status, TSL_NOT_FOUND, message);
-      break;
-    case tensorflow::error::ALREADY_EXISTS:
-      TSL_SetStatus(tsl_status, TSL_ALREADY_EXISTS, message);
-      break;
-    case tensorflow::error::PERMISSION_DENIED:
-      TSL_SetStatus(tsl_status, TSL_PERMISSION_DENIED, message);
-      break;
-    case tensorflow::error::UNAUTHENTICATED:
-      TSL_SetStatus(tsl_status, TSL_UNAUTHENTICATED, message);
-      break;
-    case tensorflow::error::RESOURCE_EXHAUSTED:
-      TSL_SetStatus(tsl_status, TSL_RESOURCE_EXHAUSTED, message);
-      break;
-    case tensorflow::error::FAILED_PRECONDITION:
-      TSL_SetStatus(tsl_status, TSL_FAILED_PRECONDITION, message);
-      break;
-    case tensorflow::error::ABORTED:
-      TSL_SetStatus(tsl_status, TSL_ABORTED, message);
-      break;
-    case tensorflow::error::OUT_OF_RANGE:
-      TSL_SetStatus(tsl_status, TSL_OUT_OF_RANGE, message);
-      break;
-    case tensorflow::error::UNIMPLEMENTED:
-      TSL_SetStatus(tsl_status, TSL_UNIMPLEMENTED, message);
-      break;
-    case tensorflow::error::INTERNAL:
-      TSL_SetStatus(tsl_status, TSL_INTERNAL, message);
-      break;
-    case tensorflow::error::UNAVAILABLE:
-      TSL_SetStatus(tsl_status, TSL_UNAVAILABLE, message);
-      break;
-    case tensorflow::error::DATA_LOSS:
-      TSL_SetStatus(tsl_status, TSL_DATA_LOSS, message);
-      break;
+    case absl::StatusCode::kOk:
+      return TSL_OK;
+    case absl::StatusCode::kCancelled:
+      return TSL_CANCELLED;
+    case absl::StatusCode::kInvalidArgument:
+      return TSL_INVALID_ARGUMENT;
+    case absl::StatusCode::kDeadlineExceeded:
+      return TSL_DEADLINE_EXCEEDED;
+    case absl::StatusCode::kNotFound:
+      return TSL_NOT_FOUND;
+    case absl::StatusCode::kAlreadyExists:
+      return TSL_ALREADY_EXISTS;
+    case absl::StatusCode::kPermissionDenied:
+      return TSL_PERMISSION_DENIED;
+    case absl::StatusCode::kUnauthenticated:
+      return TSL_UNAUTHENTICATED;
+    case absl::StatusCode::kResourceExhausted:
+      return TSL_RESOURCE_EXHAUSTED;
+    case absl::StatusCode::kFailedPrecondition:
+      return TSL_FAILED_PRECONDITION;
+    case absl::StatusCode::kAborted:
+      return TSL_ABORTED;
+    case absl::StatusCode::kOutOfRange:
+      return TSL_OUT_OF_RANGE;
+    case absl::StatusCode::kUnimplemented:
+      return TSL_UNIMPLEMENTED;
+    case absl::StatusCode::kInternal:
+      return TSL_INTERNAL;
+    case absl::StatusCode::kUnavailable:
+      return TSL_UNAVAILABLE;
+    case absl::StatusCode::kDataLoss:
+      return TSL_DATA_LOSS;
     default:
-      assert(0);
-      break;
+      return TSL_UNKNOWN;
   }
-
-  errors::CopyPayloads(status, tsl_status->status);
 }
 
-Status StatusFromTSL_Status(const TSL_Status* tsl_status) {
-  return tsl_status->status;
+absl::StatusCode StatusCodeFromTSLCode(TSL_Code code) {
+  switch (code) {
+    case TSL_OK:
+      return absl::StatusCode::kOk;
+    case TSL_CANCELLED:
+      return absl::StatusCode::kCancelled;
+    case TSL_INVALID_ARGUMENT:
+      return absl::StatusCode::kInvalidArgument;
+    case TSL_DEADLINE_EXCEEDED:
+      return absl::StatusCode::kDeadlineExceeded;
+    case TSL_NOT_FOUND:
+      return absl::StatusCode::kNotFound;
+    case TSL_ALREADY_EXISTS:
+      return absl::StatusCode::kAlreadyExists;
+    case TSL_PERMISSION_DENIED:
+      return absl::StatusCode::kPermissionDenied;
+    case TSL_UNAUTHENTICATED:
+      return absl::StatusCode::kUnauthenticated;
+    case TSL_RESOURCE_EXHAUSTED:
+      return absl::StatusCode::kResourceExhausted;
+    case TSL_FAILED_PRECONDITION:
+      return absl::StatusCode::kFailedPrecondition;
+    case TSL_ABORTED:
+      return absl::StatusCode::kAborted;
+    case TSL_OUT_OF_RANGE:
+      return absl::StatusCode::kOutOfRange;
+    case TSL_UNIMPLEMENTED:
+      return absl::StatusCode::kUnimplemented;
+    case TSL_INTERNAL:
+      return absl::StatusCode::kInternal;
+    case TSL_UNAVAILABLE:
+      return absl::StatusCode::kUnavailable;
+    case TSL_DATA_LOSS:
+      return absl::StatusCode::kDataLoss;
+    default:
+      return absl::StatusCode::kUnknown;
+  }
 }
 
 }  // namespace tsl

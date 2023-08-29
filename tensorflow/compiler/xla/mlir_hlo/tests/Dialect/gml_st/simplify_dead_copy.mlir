@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --split-input-file --simplify-dead-copy | FileCheck %s
+// RUN: mlir-hlo-opt %s --split-input-file --naive-copy-removal | FileCheck %s
 
 func.func @target_is_alloc(%arg0: memref<8x8xf32>) -> memref<8x8xf32> {
   %c4 = arith.constant 4 : index
@@ -183,7 +183,7 @@ func.func @target_is_alloc_with_loads_stores(%arg0: memref<8x8xf32>)
     backend_config = "",
     call_target_name = "foo",
     has_side_effect = false,
-    operand_segment_sizes = array<i32: 1, 1>
+    operandSegmentSizes = array<i32: 1, 1>
   } : (memref<8x8xf32>, memref<8x8xf32>) -> ()
 
   return %arg0 : memref<8x8xf32>

@@ -98,11 +98,14 @@ class RaggedRangeOp : public OpKernel {
                                     std::numeric_limits<int64_t>::max()));
         size = static_cast<SPLITS_TYPE>(size_auto);
       }
+      OP_REQUIRES(context, size >= 0, InvalidArgument("Requires size >= 0"));
+      OP_REQUIRES(
+          context,
+          size <=
+              std::numeric_limits<SPLITS_TYPE>::max() - rt_nested_splits(row),
+          InvalidArgument("The total range size overflowed. Consider using "
+                          "int64 instead of int32 for row_splits_dtype."));
       rt_nested_splits(row + 1) = rt_nested_splits(row) + size;
-      OP_REQUIRES(context, rt_nested_splits(row + 1) >= 0,
-                  InvalidArgument(
-                      "The total range size overflowed. Consider using int64 "
-                      "instead of int32 for row_splits_dtype."));
     }
     SPLITS_TYPE nvals = rt_nested_splits(nrows);
 

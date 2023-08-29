@@ -58,6 +58,20 @@ FunctionDef FindDevice() {
       {{{"device_name"}, "FindDeviceOp", {}, {}}});
 }
 
+FunctionDef FindDeviceWithUuid() {
+  return FDH::Define(
+      // Name
+      "FindDevice_1234",
+      // Args
+      {},
+      // Return values
+      {"device_name: string"},
+      // Attr def
+      {},
+      // Nodes
+      {{{"device_name"}, "FindDeviceOp", {}, {}}});
+}
+
 void BlockingOpState::AwaitState(int awaiting_state) {
   mutex_lock ml(mu_);
   while (state_ != awaiting_state) {

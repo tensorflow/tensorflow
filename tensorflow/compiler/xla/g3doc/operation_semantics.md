@@ -44,6 +44,7 @@ channel_id)` </b>
 | `operand`        | `XlaOp`              | Array to concatenate across |
 :                  :                      : replicas.                   :
 | `all_gather_dim` | `int64`              | Concatenation dimension.    |
+| `shard_count`    | `int64`              | Size of each replica group. |
 | `replica_groups` | vector of vectors of | Groups between which the    |
 :                  : `int64`              : concatenation is performed. :
 | `channel_id`     | optional `int64`     | Optional channel ID for     |
@@ -183,9 +184,9 @@ AllToAll(x, /*split_dimension=*/1, /*concat_dimension=*/0, /*split_count=*/4);
 </div>
 
 In this example, there are 4 cores participating the Alltoall. On each core, the
-operand is split into 4 parts along dimension 0, so each part has shape
+operand is split into 4 parts along dimension 1, so each part has shape
 f32[4,4]. The 4 parts are scattered to all cores. Then each core concatenates
-the received parts along dimension 1, in the order or core 0-4. So the output on
+the received parts along dimension 0, in the order or core 0-4. So the output on
 each core has shape f32[16,4].
 
 ## BatchNormGrad
@@ -1270,7 +1271,8 @@ A set of element-wise binary arithmetic operations is supported.
 
 Where `Op` is one of `Add` (addition), `Sub` (subtraction), `Mul`
 (multiplication), `Div` (division), `Rem` (remainder), `Max` (maximum), `Min`
-(minimum), `LogicalAnd` (logical AND), or `LogicalOr` (logical OR).
+(minimum), `LogicalAnd` (logical AND), or `LogicalOr` (logical OR), or
+`LogicalXor` (logical XOR).
 
 Arguments | Type    | Semantics
 --------- | ------- | ----------------------------------------
@@ -1357,7 +1359,14 @@ XlaBuilder supports these element-wise unary functions:
 
 <b>`Abs(operand)`</b> Element-wise abs `x -> |x|`.
 
+<b>`Atan2(operand)`</b> Element-wise arctangent of $X_i$, $Y_i$ - the angle
+measure in radians between the x-axis and a ray from the origin to a point (x,
+y) `x,y -> atan2(x,y)`.
+
 <b>`Ceil(operand)`</b> Element-wise ceil `x -> ⌈x⌉`.
+
+<b>`Clz(operand)`</b> Element-wise counting of the number of leading zeros `x ->
+clz(x)`.
 
 <b>`Cos(operand)`</b> Element-wise cosine `x -> cos(x)`.
 
@@ -1374,6 +1383,9 @@ of `PRED` values with the same shape as the input, where each element is `true`
 if and only if the corresponding input element is finite.
 
 <b>`Log(operand)`</b> Element-wise natural logarithm `x -> ln(x)`.
+
+<b>`Log1p(operand)`</b> Element-wise natural logarithm of a number plus one `x
+-> ln(x + 1)`
 
 <b>`LogicalNot(operand)`</b> Element-wise logical not `x -> !(x)`.
 
@@ -1400,6 +1412,8 @@ using the comparison operator of the element type of `operand`.
 <b>`Sqrt(operand)`</b> Element-wise square root operation `x -> sqrt(x)`.
 
 <b>`Cbrt(operand)`</b> Element-wise cubic root operation `x -> cbrt(x)`.
+
+<b>`Tan(operand)`</b> Element-wise tangent `x -> tan(x)`.
 
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 
@@ -2947,6 +2961,36 @@ there are elements which are considered to be equal by the comparator, the
 relative order of the equal values is preserved. Two elements `e1` and `e2` are
 equal if and only if `comparator(e1, e2) = comparator(e2, e1) = false`. By
 default, `is_stable` is set to false.
+
+## Top-K
+
+See also the `jax.lax.top_k` operation.
+
+<b>`TopK(operand)`</b>
+
+Arguments    | Type             | Semantics
+------------ | ---------------- | ---------------------------------------------
+`operand`    | `XlaOp`          | N-dimensional array
+`k`          | `int64`          | Integer specifying the number of top entries.
+`comparator` | `XlaComputation` | The comparator computation to use.
+
+Returns top `k` values and their indices as a tuple, along the last dimension of
+the operand using the given `comparator` (for usual topk behavior, it should be
+strict-greater-than operation).
+
+For example, given strict `>` operator, `k=1` and the following operand of shape
+`f32[2,3]`:
+
+```
+[[0.1, 0.3, 0.1], [0.7, 0.2, -0.1]]
+```
+
+The TopK application returns the following tuple of shape `(f32[2,1],
+s32[2,1])`:
+
+```
+([[0.3], [0.7]], [[1], [0]])
+```
 
 ## Transpose
 

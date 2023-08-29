@@ -22,55 +22,11 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_multirun_stats_recorder.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 
 namespace tflite {
 namespace benchmark {
-
-class MultiRunStatsRecorder : public BenchmarkListener {
- public:
-  // BenchmarkListener::OnBenchmarkStart is invoked after each run's
-  // BenchmarkModel::Init. However, some run could fail during Init, e.g.
-  // delegate fails to be created etc. To still record such run, we will call
-  // the following function right before a run starts.
-  void MarkBenchmarkStart(const BenchmarkParams& params) {
-    results_.emplace_back(EachRunResult());
-    auto& current = results_.back();
-    current.completed = false;
-    current.params = std::make_unique<BenchmarkParams>();
-    current.params->Merge(params, true /* overwrite*/);
-  }
-
-  void OnBenchmarkEnd(const BenchmarkResults& results) final {
-    auto& current = results_.back();
-    current.completed = true;
-    current.metrics = results;
-  }
-
-  virtual void OutputStats();
-
- protected:
-  struct EachRunResult {
-    bool completed = false;
-    std::unique_ptr<BenchmarkParams> params;
-    BenchmarkResults metrics;
-  };
-  std::vector<EachRunResult> results_;
-
-  // Use this to order the runs by the average inference time in increasing
-  // order (i.e. the fastest run ranks first.). If the run didn't complete,
-  // we consider it to be slowest.
-  struct EachRunStatsEntryComparator {
-    bool operator()(const EachRunResult& i, const EachRunResult& j) {
-      if (!i.completed) return false;
-      if (!j.completed) return true;
-      return i.metrics.inference_time_us().avg() <
-             j.metrics.inference_time_us().avg();
-    }
-  };
-
-  virtual std::string PerfOptionName(const BenchmarkParams& params) const;
-};
 
 // Benchmarks all performance options on a model by repeatedly invoking the
 // single-performance-option run on a passed-in 'BenchmarkModel' object.
@@ -82,7 +38,7 @@ class BenchmarkPerformanceOptions {
       std::unique_ptr<MultiRunStatsRecorder> all_run_stats =
           std::make_unique<MultiRunStatsRecorder>());
 
-  virtual ~BenchmarkPerformanceOptions() {}
+  virtual ~BenchmarkPerformanceOptions() = default;
 
   // Just run the benchmark just w/ default parameter values.
   TfLiteStatus Run();

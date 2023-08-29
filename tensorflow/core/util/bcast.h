@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_BCAST_H_
 
 #include <algorithm>
+#include <vector>
 
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -78,10 +79,9 @@ class BCastList {
   // If return_flattened_batch_indices is true, the implementation will compute
   // for each output member of the flattened output, which batch indices of
   // each input correspond to it. This is disabled by default.
-  explicit BCastList(const Vec (&x)[N],
-                     const bool fewer_dims_optimization = true,
-                     const bool return_flattened_batch_indices = false);
-  ~BCastList() {}
+  explicit BCastList(const Vec (&x)[N], bool fewer_dims_optimization = true,
+                     bool return_flattened_batch_indices = false);
+  ~BCastList() = default;
 
   // Returns true iff two operands are compatible according to the
   // broadcasting rule.
@@ -96,7 +96,7 @@ class BCastList {
   const Vec& result_shape() const { return result_; }
   const Vec& output_shape() const { return output_; }
   const Vec& grad_reduce_idx(int i) const { return grad_reduce_idx_[i]; }
-  const int64_t output_batch_size() const { return output_batch_size_; }
+  int64_t output_batch_size() const { return output_batch_size_; }
 
   // Returns the mapping from the flattened output batch indices to x's
   // flattened batch indices. The result is a vector of length
@@ -366,7 +366,7 @@ class BCast : public BCastList<2> {
       : BCastList<2>({x, y}, fewer_dims_optimization,
                      return_flattened_batch_indices) {}
 
-  ~BCast() {}
+  ~BCast() = default;
 
   // If and only if IsValid(), the following fields can be used in
   // implementing a broadcasted binary tensor operation according to

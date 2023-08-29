@@ -22,6 +22,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <optional>
+#include <tuple>
 #include <unordered_set>
 
 #include "lhlo/utils/lhlo_utils.h"
@@ -39,10 +40,10 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
@@ -117,61 +118,10 @@ LogicalResult AbsOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// AllToAllOp
-//===----------------------------------------------------------------------===//
-
-// TODO(jurahul): Add verification for output shape.
-LogicalResult AllGatherOp::verify() {
-  AllGatherOp op = *this;
-  return mlir::hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
-                                        /*allGroupsMustHaveSameSize=*/true,
-                                        op.getUseGlobalDeviceIds(),
-                                        /*expectedGroupSize=*/std::nullopt);
-}
-
-// TODO(jurahul): Add verification for output shape.
-LogicalResult AllToAllOp::verify() {
-  AllToAllOp op = *this;
-  return mlir::hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
-                                        /*allGroupsMustHaveSameSize=*/true,
-                                        /*useGlobalDeviceIds=*/false,
-                                        /*expectedGroupSize=*/std::nullopt);
-}
-
-//===----------------------------------------------------------------------===//
-// AllReduceOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult AllReduceOp::verify() {
-  AllReduceOp op = *this;
-  return verifyAllReduce(op);
-}
-
-//===----------------------------------------------------------------------===//
-// ReduceScatterOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ReduceScatterOp::verify() {
-  ReduceScatterOp op = *this;
-  if (failed(hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
-                                      /*allGroupsMustHaveSameSize=*/true,
-                                      op.getUseGlobalDeviceIds(),
-                                      /*expectedGroupSize=*/std::nullopt)))
-    return failure();
-  if (failed(mlir::hlo::verifyReduceScatter(
-          op, /*operandTypes=*/op.getInputs().getTypes(),
-          /*resultTypes=*/op.getOutputs().getTypes(),
-          /*scatterDimension=*/op.getScatterDimension())))
-    return failure();
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // CaseOp
 //===----------------------------------------------------------------------===//
 
 void CaseOp::getSuccessorRegions(std::optional<unsigned> index,
-                                 ArrayRef<Attribute> /*operands*/,
                                  SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the CaseOp, branch to all other branches.
   if (!index.has_value()) {
@@ -181,16 +131,6 @@ void CaseOp::getSuccessorRegions(std::optional<unsigned> index,
   // If the predecessor is one of the branches, branch back to the parent
   // operation.
   regions.push_back(RegionSuccessor());
-}
-
-//===----------------------------------------------------------------------===//
-// CollectivePermuteOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult CollectivePermuteOp::verify() {
-  CollectivePermuteOp op = *this;
-  return mlir::hlo::verifyCollectivePermuteSourceTargetPairs(
-      op, op.getSourceTargetPairs());
 }
 
 //===----------------------------------------------------------------------===//
@@ -409,7 +349,6 @@ LogicalResult ReduceWindowOp::verify() {
 //===----------------------------------------------------------------------===//
 
 void WhileOp::getSuccessorRegions(std::optional<unsigned> index,
-                                  ArrayRef<Attribute> /*operands*/,
                                   SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the WhileOp or the body region, branch into the
   // cond region.
@@ -449,7 +388,6 @@ void FusionOp::build(OpBuilder& builder, OperationState& result,
 }
 
 void FusionOp::getSuccessorRegions(std::optional<unsigned> index,
-                                   ArrayRef<Attribute> /*operands*/,
                                    SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the fusion region, jump back to the parent op.
   if (index.has_value()) {

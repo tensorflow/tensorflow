@@ -19,7 +19,9 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <type_traits>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 
@@ -69,6 +71,8 @@ class StateVector {
     // retried.
     template <typename F>
     absl::StatusOr<T*> GetOrCreate(size_t id, F&& create);
+
+    absl::StatusOr<T*> Get(size_t id);
 
     // Returns a state constructed from this snapshot for a given id.
     State<T> state(size_t id) { return State<T>(id, this); }
@@ -174,6 +178,23 @@ absl::StatusOr<T*> StateVector<T>::Snapshot::GetOrCreate(size_t id,
   owning_state_.vector_snapshot_ = std::move(new_snapshot);
 
   return state[id].get();
+}
+
+template <typename T>
+absl::StatusOr<T*> StateVector<T>::Snapshot::Get(size_t id) {
+  // If snapshot already contains the entry, just return it.
+  std::vector<T*>& snapshot = *maybe_obsolete_snapshot_;
+  if (id < snapshot.size() && snapshot[id]) return snapshot[id];
+
+  // Otherwise go through the slow synchronized code path.
+  absl::MutexLock lock(&owning_state_.mu_);
+
+  // Check if value is present in the state vector, and was not captured in
+  // the snapshot that we have.
+  std::vector<std::unique_ptr<T>>& state = owning_state_.vector_;
+  if (id < state.size() && state[id].get()) return state[id].get();
+
+  return absl::InternalError("Value not found in state vector");
 }
 
 }  // namespace runtime

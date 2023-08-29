@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_event.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -26,7 +25,7 @@ Event::Status GpuEvent::PollForStatus() {
       GpuDriver::QueryEvent(parent_->gpu_context(), gpu_event_);
   if (!status.ok()) {
     LOG(ERROR) << "Error polling for event status: "
-               << status.status().error_message();
+               << status.status().message();
     return Event::Status::kError;
   }
 

@@ -16,7 +16,6 @@
 import copy
 import os
 import re
-import sre_constants
 import traceback
 
 import numpy as np
@@ -402,7 +401,7 @@ def regex_find(orig_screen_output, regex, font_attr):
 
   try:
     re_prog = re.compile(regex)
-  except sre_constants.error:
+  except re.error:
     raise ValueError("Invalid regular expression: \"%s\"" % regex)
 
   regex_match_lines = []

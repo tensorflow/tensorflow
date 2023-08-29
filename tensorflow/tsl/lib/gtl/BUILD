@@ -1,3 +1,4 @@
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
@@ -10,7 +11,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
         # tensorflow/core/lib/strings:proto_serialization uses on gtl:inlined_vector
@@ -30,7 +31,7 @@ package(
         "//tensorflow/core/lib/gtl:__subpackages__",
         "//tensorflow/tsl/distributed_runtime/rpc:__pkg__",
         "//tensorflow/tsl/profiler/utils:__pkg__",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -115,10 +116,10 @@ filegroup(
         "inlined_vector.h",
         "iterator_range.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/gtl:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -127,30 +128,30 @@ filegroup(
         "int_type.h",
         "map_util.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/gtl:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
     name = "legacy_lib_test_internal_headers",
     srcs = [
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/gtl:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
     name = "legacy_android_gif_internal_headers",
     srcs = [
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/gtl:__pkg__",
-    ],
+    ]),
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.
@@ -161,11 +162,11 @@ filegroup(
         "flatrep.h",
         "inlined_vector.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/gtl:__pkg__",
         "//tensorflow/tsl:__subpackages__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -177,10 +178,10 @@ filegroup(
         "map_util.h",
         "//tensorflow/tsl/lib/gtl/subtle:map_traits",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/gtl:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -196,10 +197,10 @@ filegroup(
         "map_util.h",
         "//tensorflow/tsl/lib/gtl/subtle:map_traits",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/gtl:__pkg__",
-    ],
+    ]),
 )
 
 tsl_cc_test(

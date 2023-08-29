@@ -48,7 +48,11 @@ using dnnl::stream;
 
 namespace tensorflow {
 
+#ifndef ENABLE_ONEDNN_V3
+// Op descriptor is no longer supported in oneDNN v3.x. Instead, primitive
+// descriptor will directly accept primitive parameters during creation.
 using ConvFwdDesc = dnnl::convolution_forward::desc;
+#endif  // !ENABLE_ONEDNN_V3
 using ConvFwdPd = dnnl::convolution_forward::primitive_desc;
 
 class MklDnnConvUtil {
@@ -442,11 +446,11 @@ class MklDnnConvUtil {
         padding_type = padding_;
       }
       OP_REQUIRES_OK(context_,
-                     GetWindowedOutputSizeVerboseV2(
+                     GetWindowedOutputSizeVerbose(
                          input_rows, filter_rows, dilation_rows, stride_rows,
                          padding_type, &out_rows, &pad_top, &pad_bottom));
       OP_REQUIRES_OK(context_,
-                     GetWindowedOutputSizeVerboseV2(
+                     GetWindowedOutputSizeVerbose(
                          input_cols, filter_cols, dilation_cols, stride_cols,
                          padding_type, &out_cols, &pad_left, &pad_right));
     } else {
@@ -462,16 +466,16 @@ class MklDnnConvUtil {
       } else {
         padding_type = padding_;
       }
-      OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerboseV2(
+      OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerbose(
                                    input_planes, filter_planes, dilation_planes,
                                    stride_planes, padding_type, &out_planes,
                                    &pad_front, &pad_back));
       OP_REQUIRES_OK(context_,
-                     GetWindowedOutputSizeVerboseV2(
+                     GetWindowedOutputSizeVerbose(
                          input_rows, filter_rows, dilation_rows, stride_rows,
                          padding_type, &out_rows, &pad_top, &pad_bottom));
       OP_REQUIRES_OK(context_,
-                     GetWindowedOutputSizeVerboseV2(
+                     GetWindowedOutputSizeVerbose(
                          input_cols, filter_cols, dilation_cols, stride_cols,
                          padding_type, &out_cols, &pad_left, &pad_right));
     }
@@ -564,11 +568,17 @@ class MklDnnConvUtil {
       OP_REQUIRES(context_, input_tf_shape.dims() == 4,
                   errors::InvalidArgument("input must be 4-dimensional",
                                           input_tf_shape.DebugString()));
+      OP_REQUIRES(context_, filter_tf_shape.dims() == 4,
+                  errors::InvalidArgument("filter must be 4-dimensional",
+                                          filter_tf_shape.DebugString()));
     } else {
       // Conv3D
       OP_REQUIRES(context_, input_tf_shape.dims() == 5,
                   errors::InvalidArgument("input must be 5-dimensional",
                                           input_tf_shape.DebugString()));
+      OP_REQUIRES(context_, filter_tf_shape.dims() == 5,
+                  errors::InvalidArgument("filter must be 5-dimensional",
+                                          filter_tf_shape.DebugString()));
     }
 
     GetOutputAndPadSizeInMklOrder(input_tf_shape, filter_tf_shape, strides,

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -49,7 +50,7 @@ class LocalExecutable {
   // Run the compiled computation with the given arguments and options and
   // return the result.
   StatusOr<ScopedShapedBuffer> Run(
-      const absl::Span<const ShapedBuffer* const> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       ExecutableRunOptions run_options);
 
   // Similar to Run(), but allows for donating argument buffers to the
@@ -60,7 +61,7 @@ class LocalExecutable {
   // Similar to Run(), but need not block the host waiting for the computation
   // to complete before returning.
   StatusOr<ScopedShapedBuffer> RunAsync(
-      const absl::Span<const ShapedBuffer* const> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       ExecutableRunOptions run_options);
 
   // Similar to RunAsync(), but allows for donating argument buffers to the
@@ -91,7 +92,7 @@ class LocalExecutable {
   StatusOr<Literal> LiteralFromShapedBuffer(const ShapedBuffer& shaped_buffer);
 
   StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>> RunHelper(
-      const absl::Span<const Shape* const> argument_shapes,
+      absl::Span<const Shape* const> argument_shapes,
       ExecutableRunOptions run_options);
 
   // The ordinal of the device which this executable was compiled for. The
@@ -143,7 +144,7 @@ class LocalClient : public Client {
   // environment variable.
   StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> Compile(
       const XlaComputation& computation,
-      const absl::Span<const Shape* const> argument_layouts,
+      absl::Span<const Shape* const> argument_layouts,
       const ExecutableBuildOptions& options);
 
   // Same as Compile() above, but return AotCompilationResult objects (instead
@@ -151,7 +152,7 @@ class LocalClient : public Client {
   // LocalExecutable(s) using the Load() method below.
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(const XlaComputation& computation,
-                     const absl::Span<const Shape* const> argument_layouts,
+                     absl::Span<const Shape* const> argument_layouts,
                      const ExecutableBuildOptions& options);
 
   // Return a LocalExecutable object loaded from a serialized

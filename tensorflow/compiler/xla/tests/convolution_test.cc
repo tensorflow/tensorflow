@@ -1481,8 +1481,7 @@ class ConvolveWithAndWithoutCanonicalization
     : public ConvolutionTest,
       public ::testing::WithParamInterface<bool> {};
 
-XLA_TEST_P(ConvolveWithAndWithoutCanonicalization,
-           DISABLED_ON_GPU(Convolve2D_NoSpatialDims)) {
+XLA_TEST_P(ConvolveWithAndWithoutCanonicalization, Convolve2D_NoSpatialDims) {
   if (GetParam()) {
     execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
         "convolution-canonicalization");

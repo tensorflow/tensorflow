@@ -16,6 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/plugin_c_api.h"
 
+namespace {
+PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args) {
+  return nullptr;
+}
+}  // namespace
 const TFNPD_Api example_plugin_api = {
     /*struct_size=*/TFNPD_Api_STRUCT_SIZE,
     /*priv=*/nullptr,
@@ -26,6 +31,16 @@ const TFNPD_Api* GetExamplePluginApi() { return &example_plugin_api; }
 const PJRT_Api example_pjrt_api = {
     /*struct_size=*/PJRT_Api_STRUCT_SIZE,
     /*priv=*/nullptr,
+    /*pjrt_api_version=*/
+    PJRT_Api_Version{/*struct_size=*/PJRT_Api_Version_STRUCT_SIZE,
+                     /*priv=*/nullptr,
+                     /*major_version=*/PJRT_API_MAJOR,
+                     /*minor_version=*/PJRT_API_MINOR},
+    /*PJRT_Error_Destroy=*/nullptr,
+    /*PJRT_Error_Message=*/nullptr,
+    /*PJRT_Error_GetCode=*/nullptr,
+
+    /*PJRT_Plugin_Initialize=*/PJRT_Plugin_Initialize_NoOp,
 };
 
 extern "C" {

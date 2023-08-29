@@ -693,6 +693,15 @@ class WeightedMomentsTest(MomentsTest):
       self.assertAllCloseAccordingToType(expected_mean, mean_v)
       self.assertAllCloseAccordingToType(expected_variance, var_v)
 
+  def testAllZeroMasks(self):
+    x = np.random.normal(size=[8, 3, 4]).astype(np.float32)
+    weights = np.zeros(shape=[8, 3, 1]).astype(np.float32)
+    axes = (0, 1)
+
+    mean, var = nn_impl.weighted_moments(
+        x, axes, weights, keep_dims=False)
+    self.assertAllClose(mean, np.zeros(shape=[4]))
+    self.assertAllClose(var, np.zeros(shape=[4]))
 
 if __name__ == "__main__":
   test.main()

@@ -42,7 +42,6 @@ def RuntimeFallback_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::tfd";
-  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 //===----------------------------------------------------------------------===//

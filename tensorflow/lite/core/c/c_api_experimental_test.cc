@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/c_api_experimental.h"
 
-#include <string.h>
-
+#include <array>
+#include <cmath>
+#include <cstring>
 #include <memory>
 #include <vector>
 
@@ -24,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/c_api.h"
+#include "tensorflow/lite/core/c/c_api_opaque.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/testing/util.h"
@@ -34,7 +36,7 @@ using tflite::delegates::test_utils::TestDelegate;
 
 namespace {
 
-const TfLiteRegistration* GetDummyRegistration() {
+const TfLiteRegistration* GetNoOpRegistration() {
   static const TfLiteRegistration registration = {
       /*init=*/nullptr,
       /*free=*/nullptr,
@@ -43,14 +45,25 @@ const TfLiteRegistration* GetDummyRegistration() {
   return &registration;
 }
 
+const TfLiteRegistrationExternal* GetNoOpRegistrationExternal() {
+  static TfLiteRegistrationExternal* registration =
+      TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "NoOp", 1);
+  TfLiteRegistrationExternalSetInvoke(
+      registration,
+      /*invoke=*/[](TfLiteOpaqueContext*, TfLiteOpaqueNode*) {
+        return kTfLiteOk;
+      });
+  return registration;
+}
+
 TEST(CApiExperimentalTest, Smoke) {
   TfLiteModel* model =
-      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   TfLiteInterpreterOptionsAddBuiltinOp(options, kTfLiteBuiltinAdd,
-                                       GetDummyRegistration(), 1, 1);
+                                       GetNoOpRegistration(), 1, 1);
   TfLiteInterpreterOptionsSetUseNNAPI(options, true);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
@@ -67,12 +80,12 @@ TEST(CApiExperimentalTest, Smoke) {
 // Test using TfLiteInterpreterCreateWithSelectedOps.
 TEST(CApiExperimentalTest, SelectedBuiltins) {
   TfLiteModel* model =
-      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   TfLiteInterpreterOptionsAddBuiltinOp(options, kTfLiteBuiltinAdd,
-                                       GetDummyRegistration(), 1, 1);
+                                       GetNoOpRegistration(), 1, 1);
 
   TfLiteInterpreter* interpreter =
       TfLiteInterpreterCreateWithSelectedOps(model, options);
@@ -90,7 +103,7 @@ TEST(CApiExperimentalTest, SelectedBuiltins) {
 // we do NOT get the standard builtin operators by default.
 TEST(CApiExperimentalTest, MissingBuiltin) {
   TfLiteModel* model =
-      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   // Install a custom error reporter into the interpreter by way of options.
@@ -131,7 +144,7 @@ const TfLiteRegistration* MyFindBuiltinOp(void* user_data,
   OpResolverData* my_data = static_cast<OpResolverData*>(user_data);
   if (op == kTfLiteBuiltinAdd && version == 1) {
     my_data->called_for_add = true;
-    return GetDummyRegistration();
+    return GetNoOpRegistration();
   }
   return nullptr;
 }
@@ -139,7 +152,7 @@ const TfLiteRegistration* MyFindBuiltinOp(void* user_data,
 const TfLiteRegistration* MyFindCustomOp(void*, const char* custom_op,
                                          int version) {
   if (absl::string_view(custom_op) == "foo" && version == 1) {
-    return GetDummyRegistration();
+    return GetNoOpRegistration();
   }
   return nullptr;
 }
@@ -147,7 +160,7 @@ const TfLiteRegistration* MyFindCustomOp(void*, const char* custom_op,
 // Test using TfLiteInterpreterCreateWithSelectedOps.
 TEST(CApiExperimentalTest, SetOpResolver) {
   TfLiteModel* model =
-      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -164,6 +177,275 @@ TEST(CApiExperimentalTest, SetOpResolver) {
   EXPECT_EQ(TfLiteInterpreterResetVariableTensors(interpreter), kTfLiteOk);
   EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
   EXPECT_TRUE(my_data.called_for_add);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
+const TfLiteRegistrationExternal* MyFindBuiltinOpExternal(void* user_data,
+                                                          int op, int version) {
+  OpResolverData* my_data = static_cast<OpResolverData*>(user_data);
+  if (op == kTfLiteBuiltinAdd && version == 1) {
+    my_data->called_for_add = true;
+    return GetNoOpRegistrationExternal();
+  }
+  return nullptr;
+}
+
+const TfLiteRegistrationExternal* MyFindCustomOpExternal(void*,
+                                                         const char* custom_op,
+                                                         int version) {
+  if (absl::string_view(custom_op) == "foo" && version == 1) {
+    return GetNoOpRegistrationExternal();
+  }
+  return nullptr;
+}
+
+TfLiteStatus SinhPrepareOpaque(TfLiteOpaqueContext*, TfLiteOpaqueNode*) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus SinhEvalOpaque(TfLiteOpaqueContext* context,
+                            TfLiteOpaqueNode* node) {
+  EXPECT_EQ(1, TfLiteOpaqueNodeNumberOfInputs(node));
+  const TfLiteOpaqueTensor* input = TfLiteOpaqueNodeGetInput(context, node, 0);
+  size_t input_bytes = TfLiteOpaqueTensorByteSize(input);
+  const void* data_ptr = TfLiteOpaqueTensorData(input);
+  float input_value;
+  std::memcpy(&input_value, data_ptr, input_bytes);
+
+  EXPECT_EQ(1, TfLiteOpaqueNodeNumberOfOutputs(node));
+  TfLiteOpaqueTensor* output = TfLiteOpaqueNodeGetOutput(context, node, 0);
+  float output_value = std::sinh(input_value);
+  TfLiteOpaqueTensorCopyFromBuffer(output, &output_value, sizeof(output_value));
+  return kTfLiteOk;
+}
+
+TfLiteStatus SinhPrepare(TfLiteContext*, TfLiteNode*) { return kTfLiteOk; }
+
+TfLiteStatus SinhEval(TfLiteContext* context, TfLiteNode* node) {
+  EXPECT_EQ(1, node->inputs->size);
+  const TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
+  size_t input_bytes = TfLiteTensorByteSize(input);
+  const void* data_ptr = TfLiteTensorData(input);
+  float input_value;
+  std::memcpy(&input_value, data_ptr, input_bytes);
+
+  EXPECT_EQ(1, node->outputs->size);
+  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  float output_value = std::sinh(input_value);
+  TfLiteTensorCopyFromBuffer(output, &output_value, sizeof(output_value));
+  return kTfLiteOk;
+}
+
+const TfLiteRegistrationExternal* SinhFindCustomOpExternal(
+    void*, const char* custom_op, int version) {
+  if (absl::string_view(custom_op) == "Sinh" && version == 1) {
+    static TfLiteRegistrationExternal* registration = []() {
+      TfLiteRegistrationExternal* reg =
+          TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "Sinh", 1);
+      TfLiteRegistrationExternalSetPrepare(reg, &SinhPrepareOpaque);
+      TfLiteRegistrationExternalSetInvoke(reg, &SinhEvalOpaque);
+      return reg;
+    }();
+    return registration;
+  }
+  return nullptr;
+}
+
+const TfLiteRegistration* SinhFindCustomOp(void*, const char* custom_op,
+                                           int version) {
+  if (absl::string_view(custom_op) == "Sinh" && version == 1) {
+    static const TfLiteRegistration registration{/*init=*/nullptr,
+                                                 /*free=*/nullptr,
+                                                 /*prepare=*/SinhPrepare,
+                                                 /*invoke=*/SinhEval};
+    return &registration;
+  }
+  return nullptr;
+}
+
+// Test using TfLiteInterpreterOptionsSetOpResolverExternal and
+// TfLiteInterpreterCreateWithSelectedOps.
+TEST(CApiExperimentalTest, SetOpResolverExternal) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+
+  OpResolverData my_data;
+  TfLiteInterpreterOptionsSetOpResolverExternal(
+      options, MyFindBuiltinOpExternal, MyFindCustomOpExternal, &my_data);
+  EXPECT_FALSE(my_data.called_for_add);
+
+  TfLiteInterpreter* interpreter =
+      TfLiteInterpreterCreateWithSelectedOps(model, options);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterResetVariableTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+  EXPECT_TRUE(my_data.called_for_add);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
+// Test using TfLiteInterpreterOptionsSetOpResolverExternalWithFallback and
+// TfLiteInterpreterCreateWithSelectedOps, for a builtin op, for the normal
+// case where the op is found with the primary op resolver callback that returns
+// a TfLiteRegistrationExternal pointer.
+TEST(CApiExperimentalTest,
+     SetOpResolverExternalWithFallback_BuiltinOp_NormalCase) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+
+  OpResolverData my_data;
+  TfLiteInterpreterOptionsSetOpResolverExternalWithFallback(
+      options, MyFindBuiltinOpExternal, MyFindCustomOpExternal,
+      [](void* user_data, TfLiteBuiltinOperator op,
+         int version) -> const TfLiteRegistration* { return nullptr; },
+      [](void* user_data, const char* custom_op,
+         int version) -> const TfLiteRegistration* { return nullptr; },
+      &my_data);
+  EXPECT_FALSE(my_data.called_for_add);
+
+  TfLiteInterpreter* interpreter =
+      TfLiteInterpreterCreateWithSelectedOps(model, options);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterResetVariableTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+  EXPECT_TRUE(my_data.called_for_add);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
+// Test using TfLiteInterpreterOptionsSetOpResolverExternalWithFallback and
+// TfLiteInterpreterCreateWithSelectedOps, for a builtin op, for the fallback
+// case where the op is found with the secondary op resolver callback that
+// returns a TfLiteRegistration pointer.
+TEST(CApiExperimentalTest,
+     SetOpResolverExternalWithFallback_BuiltinOp_FallbackCase) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+
+  OpResolverData my_data;
+  TfLiteInterpreterOptionsSetOpResolverExternalWithFallback(
+      options,
+      [](void* user_data, int op,
+         int version) -> const TfLiteRegistrationExternal* { return nullptr; },
+      [](void* user_data, const char* custom_op,
+         int version) -> const TfLiteRegistrationExternal* { return nullptr; },
+      MyFindBuiltinOp, MyFindCustomOp, &my_data);
+  EXPECT_FALSE(my_data.called_for_add);
+
+  TfLiteInterpreter* interpreter =
+      TfLiteInterpreterCreateWithSelectedOps(model, options);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterResetVariableTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+  EXPECT_TRUE(my_data.called_for_add);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
+// Test using TfLiteInterpreterOptionsSetOpResolverExternalWithFallback and
+// TfLiteInterpreterCreateWithSelectedOps, for a custom op, for the normal
+// case where the op is found with the primary op resolver callback that returns
+// a TfLiteRegistrationExternal pointer.
+TEST(CApiExperimentalTest,
+     SetOpResolverExternalWithFallback_CustomOp_NormalCase) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/custom_sinh.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+
+  OpResolverData my_data;
+  TfLiteInterpreterOptionsSetOpResolverExternalWithFallback(
+      options, MyFindBuiltinOpExternal, SinhFindCustomOpExternal,
+      [](void* user_data, TfLiteBuiltinOperator op,
+         int version) -> const TfLiteRegistration* { return nullptr; },
+      [](void* user_data, const char* custom_op,
+         int version) -> const TfLiteRegistration* { return nullptr; },
+      &my_data);
+  EXPECT_FALSE(my_data.called_for_add);
+
+  TfLiteInterpreter* interpreter =
+      TfLiteInterpreterCreateWithSelectedOps(model, options);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+
+  TfLiteTensor* input_tensor = TfLiteInterpreterGetInputTensor(interpreter, 0);
+  const float input_value = 1.0f;
+  TfLiteTensorCopyFromBuffer(input_tensor, &input_value, sizeof(float));
+
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+
+  const TfLiteTensor* output_tensor =
+      TfLiteInterpreterGetOutputTensor(interpreter, 0);
+  float output_value;
+  TfLiteTensorCopyToBuffer(output_tensor, &output_value, sizeof(float));
+  EXPECT_EQ(output_value, std::sinh(input_value));
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
+// Test using TfLiteInterpreterOptionsSetOpResolverExternalWithFallback and
+// TfLiteInterpreterCreateWithSelectedOps, for a custom op, for the fallback
+// case where the op is found with the secondary op resolver callback that
+// returns a TfLiteRegistration pointer.
+TEST(CApiExperimentalTest,
+     SetOpResolverExternalWithFallback_CustomOp_FallbackCase) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/custom_sinh.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+
+  OpResolverData my_data;
+  TfLiteInterpreterOptionsSetOpResolverExternalWithFallback(
+      options,
+      [](void* user_data, int op,
+         int version) -> const TfLiteRegistrationExternal* { return nullptr; },
+      [](void* user_data, const char* custom_op,
+         int version) -> const TfLiteRegistrationExternal* { return nullptr; },
+      MyFindBuiltinOp, SinhFindCustomOp, &my_data);
+  EXPECT_FALSE(my_data.called_for_add);
+
+  TfLiteInterpreter* interpreter =
+      TfLiteInterpreterCreateWithSelectedOps(model, options);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+
+  TfLiteTensor* input_tensor = TfLiteInterpreterGetInputTensor(interpreter, 0);
+  const float input_value = 1.0f;
+  TfLiteTensorCopyFromBuffer(input_tensor, &input_value, sizeof(float));
+
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+  EXPECT_FALSE(my_data.called_for_add);
+
+  const TfLiteTensor* output_tensor =
+      TfLiteInterpreterGetOutputTensor(interpreter, 0);
+  float output_value;
+  TfLiteTensorCopyToBuffer(output_tensor, &output_value, sizeof(float));
+  EXPECT_EQ(output_value, std::sinh(input_value));
 
   TfLiteInterpreterDelete(interpreter);
   TfLiteInterpreterOptionsDelete(options);
@@ -200,7 +482,7 @@ void CheckExecution(TfLiteInterpreterOptions* options,
                     TfLiteStatus expected_first_result,
                     TfLiteStatus expected_subsequent_results) {
   TfLiteModel* model =
-      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);

@@ -74,7 +74,7 @@ class KernelSpecs {
   using Signature = llvm::SmallVector<quant::AnyQuantizedType, 4>;
 
   // Returns the kernel specification for the kernel signature.
-  Optional<KernelSpec> Find(const Signature& signature) const {
+  std::optional<KernelSpec> Find(const Signature& signature) const {
     auto spec_it = all_signatures_.find(signature);
     if (spec_it != all_signatures_.end()) {
       return spec_it->second;
@@ -135,7 +135,7 @@ class DeviceTarget {
   explicit DeviceTarget(MLIRContext* ctx);
 
   // Retrieves the kernel spec for the quant region op.
-  Optional<KernelSpec> GetKernelSpec(
+  std::optional<KernelSpec> GetKernelSpec(
       llvm::StringRef kernel, const KernelSpecs::Signature& signature) const;
 
   // Retrieves the scale decomposition function for the quant region op.

@@ -13,19 +13,30 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 
 #include <unordered_map>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/stack_frame.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/status_to_from_proto.h"
 #include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/protobuf/status.pb.h"
 
 namespace tsl {
+namespace {
+
+using ::testing::IsEmpty;
+using ::tsl::testing::IsOk;
+using ::tsl::testing::StatusIs;
 
 TEST(ToStringTest, PayloadsArePrinted) {
   Status status = errors::Aborted("Aborted Error Message");
-  status.SetPayload("payload_key",
-                    absl::StrFormat("payload_value %c%c%c", 1, 2, 3));
+  status.SetPayload("payload_key", absl::Cord(absl::StrFormat(
+                                       "payload_value %c%c%c", 1, 2, 3)));
 
   EXPECT_EQ(status.ToString(),
             "ABORTED: Aborted Error Message [payload_key='payload_value "
@@ -34,15 +45,30 @@ TEST(ToStringTest, PayloadsArePrinted) {
 
 TEST(ToStringTest, MatchesAbslStatus) {
   Status status = errors::Aborted("Aborted Error Message");
-  status.SetPayload("payload_key",
-                    absl::StrFormat("payload_value %c%c%c", 1, 2, 3));
+  status.SetPayload("payload_key", absl::Cord(absl::StrFormat(
+                                       "payload_value %c%c%c", 1, 2, 3)));
 
   absl::Status absl_status =
-      absl::Status(absl::StatusCode::kAborted, status.error_message());
+      absl::Status(absl::StatusCode::kAborted, status.message());
   absl_status.SetPayload("payload_key", absl::Cord(absl::StrFormat(
                                             "payload_value %c%c%c", 1, 2, 3)));
 
   EXPECT_EQ(status.ToString(), absl_status.ToString());
+}
+
+TEST(StackTrace, SerializeAndDeserializeCorrectly) {
+  Status status = errors::Aborted("Aborted Error Message");
+  std::vector<StackFrame> stack_trace;
+  stack_trace.push_back(StackFrame("filename_1", 33, "func_name_1"));
+  stack_trace.push_back(StackFrame("filename_2", 66, "func_name_2"));
+  errors::SetStackTrace(status, stack_trace);
+
+  std::vector<StackFrame> deserialized = errors::GetStackTrace(status);
+
+  EXPECT_EQ(stack_trace.size(), deserialized.size());
+  for (size_t i = 0; i < stack_trace.size(); ++i) {
+    EXPECT_EQ(stack_trace[i], deserialized[i]);
+  }
 }
 
 TEST(StatusGroupTest, DeterministicOrderWithoutPayloads) {
@@ -69,11 +95,11 @@ TEST(StatusGroupTest, DeterministicOrderWithoutPayloads) {
 
 TEST(StatusGroupTest, DeterministicOrderWithPayloads) {
   Status status_a = errors::Aborted("Status A");
-  status_a.SetPayload("payload_key", "payload_value_a");
+  status_a.SetPayload("payload_key", absl::Cord("payload_value_a"));
   Status status_b = errors::Aborted("Status B");
-  status_b.SetPayload("payload_key", "payload_value_b");
+  status_b.SetPayload("payload_key", absl::Cord("payload_value_b"));
   Status status_c = errors::Aborted("Status C");
-  status_c.SetPayload("payload_key", "payload_value_c");
+  status_c.SetPayload("payload_key", absl::Cord("payload_value_c"));
 
   Status combined =
       StatusGroup({status_a, status_b, status_c}).as_summary_status();
@@ -102,15 +128,18 @@ TEST(StatusGroupTest, DeterministicOrderWithPayloads) {
 
 TEST(StatusGroupTest, PayloadsMergedProperly) {
   Status status_a = errors::Aborted("Status A");
-  status_a.SetPayload("payload_key_a", std::string("payload_value_a"));
+  status_a.SetPayload("payload_key_a",
+                      absl::Cord(std::string("payload_value_a")));
   Status status_b = errors::Aborted("Status B");
-  status_b.SetPayload("payload_key_b", std::string("payload_value_b"));
+  status_b.SetPayload("payload_key_b",
+                      absl::Cord(std::string("payload_value_b")));
   Status status_c = errors::Aborted("Status C");
-  status_c.SetPayload("payload_key_c", std::string("payload_value_c"));
+  status_c.SetPayload("payload_key_c",
+                      absl::Cord(std::string("payload_value_c")));
   Status derived_status_c =
       StatusGroup::MakeDerived(errors::Aborted("Status C"));
-  derived_status_c.SetPayload("payload_key_c",
-                              std::string("derived_payload_value_c"));
+  derived_status_c.SetPayload(
+      "payload_key_c", absl::Cord(std::string("derived_payload_value_c")));
 
   StatusGroup status_group({status_a, status_b, status_c, derived_status_c});
   EXPECT_THAT(status_group.GetPayloads(), ::testing::SizeIs(3));
@@ -122,14 +151,14 @@ TEST(StatusGroupTest, PayloadsMergedProperly) {
 }
 
 TEST(Status, ErrorStatusForEachPayloadIteratesOverAll) {
-  Status s(error::INTERNAL, "Error message");
-  s.SetPayload("key1", "value1");
-  s.SetPayload("key2", "value2");
-  s.SetPayload("key3", "value3");
+  Status s(absl::StatusCode::kInternal, "Error message");
+  s.SetPayload("key1", absl::Cord("value1"));
+  s.SetPayload("key2", absl::Cord("value2"));
+  s.SetPayload("key3", absl::Cord("value3"));
 
-  std::unordered_map<std::string, std::string> payloads;
-  s.ForEachPayload([&payloads](StringPiece key, StringPiece value) {
-    payloads[std::string(key)] = std::string(value);
+  std::unordered_map<std::string, absl::Cord> payloads;
+  s.ForEachPayload([&payloads](StringPiece key, const absl::Cord& value) {
+    payloads[std::string(key)] = value;
   });
 
   EXPECT_EQ(payloads.size(), 3);
@@ -140,16 +169,54 @@ TEST(Status, ErrorStatusForEachPayloadIteratesOverAll) {
 
 TEST(Status, OkStatusForEachPayloadNoIteration) {
   Status s = OkStatus();
-  s.SetPayload("key1", "value1");
-  s.SetPayload("key2", "value2");
-  s.SetPayload("key3", "value3");
+  s.SetPayload("key1", absl::Cord("value1"));
+  s.SetPayload("key2", absl::Cord("value2"));
+  s.SetPayload("key3", absl::Cord("value3"));
 
-  std::unordered_map<std::string, std::string> payloads;
-  s.ForEachPayload([&payloads](StringPiece key, StringPiece value) {
-    payloads[std::string(key)] = std::string(value);
+  std::unordered_map<std::string, absl::Cord> payloads;
+  s.ForEachPayload([&payloads](StringPiece key, const absl::Cord& value) {
+    payloads[std::string(key)] = value;
   });
 
   EXPECT_EQ(payloads.size(), 0);
 }
 
+TEST(Status, SaveOKStatusToProto) {
+  tensorflow::StatusProto status_proto = StatusToProto(OkStatus());
+  EXPECT_EQ(status_proto.code(), error::OK);
+  EXPECT_THAT(status_proto.message(), IsEmpty());
+}
+
+TEST(Status, SaveErrorStatusToProto) {
+  tensorflow::StatusProto status_proto =
+      StatusToProto(errors::NotFound("Not found"));
+  EXPECT_EQ(status_proto.code(), error::NOT_FOUND);
+  EXPECT_EQ(status_proto.message(), "Not found");
+}
+
+TEST(Status, SaveEmptyStatusToProto) {
+  tensorflow::StatusProto status_proto = StatusToProto(Status());
+  EXPECT_EQ(status_proto.code(), error::OK);
+  EXPECT_THAT(status_proto.message(), IsEmpty());
+}
+
+TEST(Status, MakeOKStatusFromProto) {
+  tensorflow::StatusProto status_proto;
+  status_proto.set_code(error::OK);
+  EXPECT_THAT(StatusFromProto(status_proto), IsOk());
+}
+
+TEST(Status, MakeErrorStatusFromProto) {
+  tensorflow::StatusProto status_proto;
+  status_proto.set_code(error::INVALID_ARGUMENT);
+  status_proto.set_message("Invalid argument");
+  EXPECT_THAT(StatusFromProto(status_proto),
+              StatusIs(error::INVALID_ARGUMENT, "Invalid argument"));
+}
+
+TEST(Status, MakeStatusFromEmptyProto) {
+  EXPECT_THAT(StatusFromProto(tensorflow::StatusProto()), IsOk());
+}
+
+}  // namespace
 }  // namespace tsl

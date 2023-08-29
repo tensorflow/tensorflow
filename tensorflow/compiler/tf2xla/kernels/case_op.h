@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_CASE_OP_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"

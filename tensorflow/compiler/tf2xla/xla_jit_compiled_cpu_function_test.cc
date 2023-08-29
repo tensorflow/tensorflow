@@ -301,11 +301,6 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
       return nullptr;
     }
 
-    tsl::StatusOr<se::StreamExecutor*> ExecutorForDeviceWithPluginConfig(
-        int ordinal, const se::PluginConfig& config) override {
-      return nullptr;
-    }
-
     tsl::StatusOr<se::StreamExecutor*> GetExecutor(
         const se::StreamExecutorConfig& config) override {
       return nullptr;
@@ -331,7 +326,7 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
     return std::unique_ptr<xla::Compiler>(nullptr);
   });
 
-  EXPECT_THAT(xla::PlatformUtil::GetDefaultPlatform().status().error_message(),
+  EXPECT_THAT(xla::PlatformUtil::GetDefaultPlatform().status().message(),
               HasSubstr("FakePlatform"));
 
   GraphDef graph_def = SumGraph();

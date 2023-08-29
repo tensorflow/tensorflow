@@ -101,6 +101,7 @@ class AsyncTokenType : public llvm::RTTIExtends<AsyncTokenType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
 
+  absl::StatusOr<ArgumentAbi> AsArgument() const final;
   absl::StatusOr<ResultAbi> AsResult() const final;
 
   std::string ToString() const final;
@@ -119,6 +120,7 @@ class AsyncValueType : public llvm::RTTIExtends<AsyncValueType, Type> {
 
   const Type& value_type() const { return *value_type_; }
 
+  absl::StatusOr<ArgumentAbi> AsArgument() const final;
   absl::StatusOr<ResultAbi> AsResult() const final;
 
   std::string ToString() const final;

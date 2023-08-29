@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <limits>
+#include <vector>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -131,8 +133,8 @@ REGISTER_OP("BatchMatMulV2")
     .Input("y: T")
     .Output("output: T")
     .Attr(
-        "T: {bfloat16, half, float, double, int16, int32, int64, complex64, "
-        "complex128}")
+        "T: {bfloat16, half, float, double, int16, int32, int64, uint8, "
+        "uint16, uint32, uint64, complex64, complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulV2Shape);
@@ -576,7 +578,6 @@ REGISTER_OP("Maximum")
         "int32, uint32, int64, uint64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
-// Note: This op is not commutative w.r.t. to all its inputs.
 REGISTER_OP("_MklMaximum")
     .Input("x: T")
     .Input("y: T")
@@ -950,8 +951,8 @@ REGISTER_OP("MatMul")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
     .Attr(
-        "T: {bfloat16, half, float, double, int32, int64, complex64, "
-        "complex128}")
+        "T: {bfloat16, half, float, double, int32, int64, uint8, "
+        "uint16, uint32, uint64, complex64, complex128}")
     .SetShapeFn(shape_inference::MatMulShape);
 
 #ifdef INTEL_MKL
@@ -1192,7 +1193,8 @@ Status SparseSegmentReductionShapeFn(InferenceContext* c) {
   return OkStatus();
 }
 
-Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
+Status SparseSegmentReductionGradShapeFnImpl(InferenceContext* c,
+                                             bool outputs_unique_indices) {
   ShapeHandle data_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
 
@@ -1209,7 +1211,9 @@ Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
   ShapeHandle subshape;
   TF_RETURN_IF_ERROR(c->Subshape(data_shape, 1, &subshape));
 
-  const Tensor* dim0 = c->input_tensor(3);
+  // For the V2 version of the op, dim0 is the number of unique indices, which
+  // is always unknown at inference time.
+  const Tensor* dim0 = outputs_unique_indices ? nullptr : c->input_tensor(3);
   ShapeHandle dim0_shape;
   if (dim0 == nullptr) {
     // We don't have the value at inference time, so the output
@@ -1227,7 +1231,21 @@ Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->Concatenate(dim0_shape, subshape, &out));
   c->set_output(0, out);
+  if (outputs_unique_indices) {
+    c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+  }
   return OkStatus();
+}
+
+Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
+  return SparseSegmentReductionGradShapeFnImpl(
+      c,
+      /*outputs_unique_indices=*/false);
+}
+
+Status SparseSegmentReductionGradV2ShapeFn(InferenceContext* c) {
+  return SparseSegmentReductionGradShapeFnImpl(c,
+                                               /*outputs_unique_indices=*/true);
 }
 
 Status SparseSegmentReductionWithNumSegmentsShapeFn(InferenceContext* c) {
@@ -1278,7 +1296,7 @@ REGISTER_OP("SegmentSum")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
 
-// TODO(hinsu): Introduce Segment{Prod,Min,Max}V2 ops, similarly.
+// TODO(hinsu): Introduce Segment{Min,Max}V2 ops, similarly.
 REGISTER_OP("SegmentSumV2")
     .Input("data: T")
     .Input("segment_ids: Tindices")
@@ -1305,6 +1323,16 @@ REGISTER_OP("SegmentProd")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
 
+REGISTER_OP("SegmentProdV2")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
+
 REGISTER_OP("SegmentMin")
     .Input("data: T")
     .Input("segment_ids: Tindices")
@@ -1312,6 +1340,16 @@ REGISTER_OP("SegmentMin")
     .Attr("T: realnumbertype")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
+
+REGISTER_OP("SegmentMinV2")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("SegmentMax")
     .Input("data: T")
@@ -1321,13 +1359,23 @@ REGISTER_OP("SegmentMax")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
 
+REGISTER_OP("SegmentMaxV2")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
+
 REGISTER_OP("UnsortedSegmentSum")
     .Input("data: T")
     .Input("segment_ids: Tindices")
     .Input("num_segments: Tnumsegments")
     .Output("output: T")
     .Attr("T: numbertype")
-    .Attr("Tindices: {int32,int64}")
+    .Attr("Tindices: {int16,int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
@@ -1394,6 +1442,20 @@ REGISTER_OP("SparseSegmentSumGrad")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn);
 
+// V2 returns a sparse gradient instead of dense. Its (sparse) output dim0 is
+// equal to the number of unique indices.
+REGISTER_OP("SparseSegmentSumGradV2")
+    .Input("grad: T")
+    .Input("indices: Tidx")
+    .Input("segment_ids: Tsegmentids")
+    .Input("dense_output_dim0: int32")
+    .Output("output: T")
+    .Output("sorted_unique_indices: Tidx")
+    .Attr("T: {bfloat16, half, float, double}")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
+    .SetShapeFn(SparseSegmentReductionGradV2ShapeFn);
+
 REGISTER_OP("SparseSegmentMean")
     .Input("data: T")
     .Input("indices: Tidx")
@@ -1427,6 +1489,18 @@ REGISTER_OP("SparseSegmentMeanGrad")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn);
 
+REGISTER_OP("SparseSegmentMeanGradV2")
+    .Input("grad: T")
+    .Input("indices: Tidx")
+    .Input("segment_ids: Tsegmentids")
+    .Input("dense_output_dim0: int32")
+    .Output("output: T")
+    .Output("sorted_unique_indices: Tidx")
+    .Attr("T: {bfloat16, half, float, double}")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
+    .SetShapeFn(SparseSegmentReductionGradV2ShapeFn);
+
 REGISTER_OP("SparseSegmentSqrtN")
     .Input("data: T")
     .Input("indices: Tidx")
@@ -1459,6 +1533,18 @@ REGISTER_OP("SparseSegmentSqrtNGrad")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn);
+
+REGISTER_OP("SparseSegmentSqrtNGradV2")
+    .Input("grad: T")
+    .Input("indices: Tidx")
+    .Input("segment_ids: Tsegmentids")
+    .Input("dense_output_dim0: int32")
+    .Output("output: T")
+    .Output("sorted_unique_indices: Tidx")
+    .Attr("T: {bfloat16, half, float, double}")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
+    .SetShapeFn(SparseSegmentReductionGradV2ShapeFn);
 
 REGISTER_OP("All")
     .Input("input: bool")
@@ -1757,8 +1843,10 @@ REGISTER_OP("DenseBincount")
 
       const Tensor* size_tensor = c->input_tensor(1);
       if (size_tensor == nullptr) {
-        // Return unknown shape if size is not known.
-        c->set_output(0, c->UnknownShape());
+        // Return "vector of unknown size", "matrix of unknown size" or
+        // "unknown shape" if size is unknown, based on whether the rank of the
+        // input is 1, 2 or unknown respectively.
+        c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
         return OkStatus();
       }
       if (size_tensor->dims() != 0) {

@@ -58,6 +58,8 @@ class GpuLayoutAssignment : public LayoutAssignment {
   Status SetDotLayout(const HloInstruction* instruction,
                       LayoutConstraints* constraints);
 
+  bool PropagateReductionLayoutToOperand(const HloInstruction* user) override;
+
   se::StreamExecutor* stream_executor_;
 };
 

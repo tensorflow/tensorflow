@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
@@ -42,6 +43,7 @@ from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import _pywrap_utils
@@ -49,16 +51,8 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util import variable_utils
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
-
-# Note that we need to lazy load the following two modules to avoid creating
-# circular dependencies.
-# TODO(b/119775953): fix the circular dependencies.
-pfor_ops = LazyLoader(
-    "pfor_ops", globals(),
-    "tensorflow.python.ops.parallel_for.control_flow_ops")
 
 _op_attr_type_cache = {}
 
@@ -412,7 +406,7 @@ def gradients_function(f, params=None):
 
 
 def _ensure_unique_tensor_objects(parameter_positions, args):
-  """Make each of the parameter_positions in args a unique ops.Tensor object.
+  """Make each of the parameter_positions in args a unique tensor_lib.Tensor object.
 
   Ensure that each parameter is treated independently.
   For example:
@@ -601,18 +595,18 @@ def _aggregate_grads(gradients):
 
   if len(gradients) == 1:
     return gradients[0]
-  if all(isinstance(g, ops.Tensor) for g in gradients):
+  if all(isinstance(g, tensor_lib.Tensor) for g in gradients):
     return gen_math_ops.add_n(gradients)
   else:
     assert all(
-        isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices))
+        isinstance(g, (tensor_lib.Tensor, indexed_slices.IndexedSlices))
         for g in gradients)
     return backprop_util.AggregateIndexedSlicesGradients(gradients)
 
 
 def _num_elements(grad):
   """The number of elements in the `grad` tensor."""
-  if isinstance(grad, ops.Tensor):
+  if isinstance(grad, tensor_lib.Tensor):
     shape_tuple = grad._shape_tuple()  # pylint: disable=protected-access
   elif isinstance(grad, indexed_slices.IndexedSlices):
     shape_tuple = grad.values._shape_tuple()  # pylint: disable=protected-access
@@ -1029,11 +1023,12 @@ class GradientTape:
                       " of Tensors, Variables or CompositeTensors to be "
                       "differentiated, but received None.")
 
-    flat_targets = []
-    for t in nest.flatten(target):
-      flat_targets.append(_handle_or_self(t))
     flat_targets = composite_tensor_gradient.get_flat_tensors_for_gradients(
-        flat_targets)
+        nest.flatten(target))
+    # TODO(b/246997907): Remove this once
+    # ResourceVariableGradient.get_gradient_components returns the handle.
+    flat_targets = nest.map_structure(_handle_or_self, flat_targets)
+
     for t in flat_targets:
       if not backprop_util.IsTrainable(t):
         logging.vlog(

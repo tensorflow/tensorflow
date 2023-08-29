@@ -99,11 +99,17 @@ defvar MHLO_PredOrIntTensor = HLO_PredOrIntTensor;
 // Any floating-point or complex tensor types
 defvar MHLO_FpOrComplexTensor = HLO_FpOrComplexTensor;
 
-// Any int, floating-point or complex tensor types
-defvar MHLO_IntFpOrComplexTensor = HLO_IntFpOrComplexTensor;
+// Any floating-point, complex or quantized tensor types
+defvar MHLO_FpComplexOrQuantizedIntTensor = HLO_FpComplexOrQuantizedIntTensor;
+
+// Any int, floating-point, complex or quantized tensor types
+defvar MHLO_IntFpOrComplexOrQuantizedIntTensor = HLO_IntFpOrComplexOrQuantizedIntTensor;
 
 // Any pred, int or floating-point tensor types
 defvar MHLO_PredIntOrFpTensor = HLO_PredIntOrFpTensor;
+
+// Any pred, int, floating-point or quantized tensor types
+defvar MHLO_PredIntFpOrQuantizedTensor = HLO_PredIntFpOrQuantizedTensor;
 
 //===----------------------------------------------------------------------===//
 // MHLO static shape type definitions.

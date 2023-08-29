@@ -15,17 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/mul.h"
 
-#include <algorithm>
-#include <any>
-#include <cstdint>
-#include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -37,38 +32,48 @@ namespace gl {
 
 namespace {
 
-bool IsApplyMaskSupported(const NodeShader::GenerationContext& ctx) {
-  if (ctx.input_shapes.size() != 2) return false;
-
-  // [H, W, C] x [H, W, 0][0]
-  if (ctx.input_shapes[0][1] == ctx.input_shapes[1][1] &&
-      ctx.input_shapes[0][2] == ctx.input_shapes[1][2] &&
-      ctx.input_shapes[1][3] == 1) {
-    return true;
+// Returns the coordinate to iterate over the second runtime tensor.
+absl::Status GetCoordinate(const NodeShader::GenerationContext& ctx, int dim,
+                           const std::string& default_coord,
+                           std::string* coord) {
+  std::string result;
+  if (ctx.input_shapes[1][dim] == 1 && ctx.input_shapes[0][dim] != 1) {
+    result = "0";
+  } else if (ctx.input_shapes[0][dim] == ctx.input_shapes[1][dim]) {
+    result = default_coord;
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Second runtime tensor dimension ", dim,
+                     " must either match "
+                     "first tensor's dimensions or be 1."));
   }
-
-  // [H, W, C] x [H, W, C]
-  if (ctx.input_shapes[0] == ctx.input_shapes[1]) return true;
-
-  // [H, W, C] x [0, 0, C]
-  return ctx.input_shapes[1][1] == 1 && ctx.input_shapes[1][2] == 1 &&
-         ctx.input_shapes[0][3] == ctx.input_shapes[1][3];
+  *coord = result;
+  return absl::OkStatus();
 }
 
-absl::Status GenerateApplyMaskCode(const NodeShader::GenerationContext& ctx,
-                                   GeneratedCode* generated_code) {
-  std::string source = "value_0 = $input_data_0[gid.x, gid.y, gid.z]$ * ";
-  if (ctx.input_shapes[1][3] == 1) {
-    // [H, W, C] x [H, W, 0][0]
-    absl::StrAppend(&source, "$input_data_1[gid.x, gid.y, 0]$.x;");
-  } else if (ctx.input_shapes[0][1] == ctx.input_shapes[1][1] &&
-             ctx.input_shapes[0][2] == ctx.input_shapes[1][2]) {
-    // [H, W, C] x [H, W, C]
-    absl::StrAppend(&source, "$input_data_1[gid.x, gid.y, gid.z]$;");
-  } else {
-    // [H, W, C] x [0, 0, C]
-    absl::StrAppend(&source, "$input_data_1[0, 0, gid.z]$;");
+absl::Status GenerateMultiplyRuntimeTensorCode(
+    const NodeShader::GenerationContext& ctx, GeneratedCode* generated_code) {
+  std::string x_coord, y_coord, z_coord;
+  RETURN_IF_ERROR(
+      GetCoordinate(ctx, /*dim=*/2, /*default_coord=*/"gid.x", &x_coord));
+  RETURN_IF_ERROR(
+      GetCoordinate(ctx, /*dim=*/1, /*default_coord=*/"gid.y", &y_coord));
+  RETURN_IF_ERROR(
+      GetCoordinate(ctx, /*dim=*/3, /*default_coord=*/"gid.z", &z_coord));
+
+  std::string source =
+      absl::StrCat("vec4 input1_value = $input_data_1[", x_coord, ", ", y_coord,
+                   ", ", z_coord, "]$;");
+  // Single channel mask support. Without this duplication, the rest of channels
+  // will be zeros, which will make the mul operation produce incorrect result.
+  if (ctx.input_shapes[1][3] == 1 && ctx.input_shapes[0][3] != 1) {
+    absl::StrAppend(
+        &source,
+        "\ninput1_value = vec4(input1_value.x, input1_value.x, input1_value.x, "
+        "input1_value.x);\n");
   }
+  absl::StrAppend(
+      &source, "value_0 = $input_data_0[gid.x, gid.y, gid.z]$ * input1_value;");
 
   *generated_code = {
       /*parameters=*/{},
@@ -83,7 +88,7 @@ absl::Status GenerateApplyMaskCode(const NodeShader::GenerationContext& ctx,
   return absl::OkStatus();
 }
 
-absl::Status GenerateMultiplyScalarCode(
+absl::Status GenerateMultiplyConstantTensorCode(
     const NodeShader::GenerationContext& ctx, GeneratedCode* generated_code) {
   const auto& attr = std::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
 
@@ -123,6 +128,26 @@ absl::Status GenerateMultiplyScalarCode(
   }
 
   if (std::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(attr.param)) {
+    bool single_channel_mask =
+        std::get<Tensor<HWC, DataType::FLOAT32>>(attr.param).shape.c == 1;
+    std::string source;
+    if (single_channel_mask) {
+      source = "vec4 const_val = $hwc_buffer[gid.x, gid.y, 0]$;";
+      // Single channel mask support. Without this duplication, the rest of
+      // channels will be zeros, which will make the mul operation produce
+      // incorrect result.
+      if (ctx.input_shapes[0][3] != 1) {
+        absl::StrAppend(
+            &source,
+            "\nconst_val = vec4(const_val.x, const_val.x, const_val.x, "
+            "const_val.x);\n");
+      }
+    } else {
+      source = "vec4 const_val = $hwc_buffer[gid.x, gid.y, gid.z]$;";
+    }
+
+    absl::StrAppend(&source, "value_0 *= const_val;");
+
     *generated_code = {
         /*parameters=*/{},
         /*objects=*/
@@ -140,7 +165,8 @@ absl::Status GenerateMultiplyScalarCode(
               static_cast<int>(ctx.input_shapes[0][1]),
               DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
         /*workgroup=*/uint3(),
-        /*source_code=*/"value_0 *= $hwc_buffer[gid.x, gid.y, gid.z]$;",
+        /*source_code=*/
+        std::move(source),
         /*input=*/IOStructure::AUTO,
         /*output=*/IOStructure::AUTO,
     };
@@ -154,10 +180,10 @@ class Multiply : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    if (IsApplyMaskSupported(ctx)) {
-      return GenerateApplyMaskCode(ctx, generated_code);
+    if (ctx.input_shapes.size() == 2) {
+      return GenerateMultiplyRuntimeTensorCode(ctx, generated_code);
     } else {
-      return GenerateMultiplyScalarCode(ctx, generated_code);
+      return GenerateMultiplyConstantTensorCode(ctx, generated_code);
     }
   }
 };

@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/approx_topk_shape.h"
 
 #include <algorithm>
+#include <cmath>
+#include <utility>
 
 #include "tensorflow/compiler/xla/util.h"
 

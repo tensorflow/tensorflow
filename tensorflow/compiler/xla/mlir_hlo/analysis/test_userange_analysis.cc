@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "analysis/userange_analysis.h"
 #include "lhlo/IR/lhlo_ops.h"
 #include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"

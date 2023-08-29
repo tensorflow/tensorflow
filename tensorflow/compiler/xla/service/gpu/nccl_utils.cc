@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/rendezvous.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -41,14 +42,6 @@ namespace gpu {
 bool IsGlobalNcclConfig() {
   static const bool global_nccl_config = std::getenv("NCCL_COMM_ID") != nullptr;
   return global_nccl_config;
-}
-
-bool IsNcclLaunchModeParallel() {
-  static const bool is_launch_mode_parallel = []() {
-    const char* launch_mode = std::getenv("NCCL_LAUNCH_MODE");
-    return launch_mode && std::string_view(launch_mode) == "PARALLEL";
-  }();
-  return is_launch_mode_parallel;
 }
 
 Status ToStatus(ncclResult_t s, const char* file, int64_t line,
@@ -80,6 +73,8 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type,
                                         Thunk::Kind reduction_op) {
   switch (element_type) {
     case S8:
+    case F8E5M2:
+    case F8E4M3FN:
       return ncclInt8;
     case PRED:
     case U8:
@@ -113,7 +108,7 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type,
       // For collectives that just move data around, we can use ncclFloat16 for
       // 16-bit integer data types.
       return ncclFloat16;
-#if defined(__CUDA_BF16_TYPES_EXIST__)
+#if defined(__CUDA_BF16_TYPES_EXIST__) || TENSORFLOW_USE_ROCM
     case BF16:
       return ncclBfloat16;
 #endif
@@ -157,8 +152,25 @@ using NcclClique = Lockable<NcclCliqueState>;
 std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
     RunId run_id, OpId op_id, NcclCliqueKey clique_key,
     const NcclUniqueIdCallback& unique_id_callback,
-    size_t num_local_participants) {
+    size_t num_local_participants, bool may_skip_rendezvous) {
   static auto& cliques = *new ThreadSafeMap<NcclCliqueKey, NcclClique>;
+
+  VLOG(2) << "AcquireNcclClique Rendezvous key (clique_key:"
+          << clique_key.ToString() << ", run" << run_id.ToString() << ", op"
+          << op_id.value() << ")";
+
+  // RendezvousSingle should only be used to guard nccl communicator
+  // initialization. Return the clique state when we are done with such
+  // initialization.
+  //
+  // TODO(bixia): enable this unconditionally after fixing a deadlock issue.
+  if (may_skip_rendezvous) {
+    // Destruct clique if it hasn't been notified.
+    NcclClique::Lock clique = cliques[clique_key].Acquire();
+    if (clique->ready.HasBeenNotified() && clique->run_id == run_id.ToInt()) {
+      return std::make_shared<StatusOr<NcclClique::Lock>>(std::move(clique));
+    }
+  }
 
   auto rendezvous_key = std::make_tuple(run_id, op_id, std::move(clique_key));
 
@@ -235,19 +247,22 @@ StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
       << "If non-local devices are taking part of a collective API on "
          "GPU, the nccl_unique_id_callback must be provided by the client.";
 
-  static NcclUniqueIdCallback local_callback(LocalNcclUniqueIdCallback);
-  return &local_callback;
+  static auto* local_callback =
+      new NcclUniqueIdCallback(LocalNcclUniqueIdCallback);
+  return local_callback;
 }
 
 StatusOr<NcclComm::Lock> AcquireNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int rank) {
+    const NcclUniqueIdCallback& unique_id_callback, int rank,
+    int64_t stream_id) {
   // Ensure that this group of threads have exclusive access to the clique to
   // prevent threads from different groups locking communicators in the clique.
-  NcclCliqueKey clique_key(std::move(participants));
+  NcclCliqueKey clique_key(std::move(participants), stream_id);
   std::shared_ptr<StatusOr<NcclClique::Lock>> clique = AcquireNcclClique(
-      run_id, op_id, clique_key, unique_id_callback, num_local_participants);
+      run_id, op_id, clique_key, unique_id_callback, num_local_participants,
+      stream_id == GetStreamId(true, kAsyncStreamP2P));
 
   if (!clique->ok()) return clique->status();
 

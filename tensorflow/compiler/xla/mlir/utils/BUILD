@@ -1,4 +1,4 @@
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -13,7 +13,7 @@ cc_library(
     name = "error_util",
     srcs = ["error_util.cc"],
     hdrs = ["error_util.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/status",

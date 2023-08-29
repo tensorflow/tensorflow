@@ -137,6 +137,8 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "Tmlp",
         "TmlpV2",
         "TmlpV3",
+        "Pmlp",
+        "FastUnsortedSegmentMax",
     };
 #if TENSORFLOW_USE_ROCM
     if (true) {
@@ -377,6 +379,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "DepthwiseConv2dNativeBackpropFilter",
                                      "DepthwiseConv2dNativeBackpropInput",
                                      "MatMul",
+                                     "FusedPadConv2D",
                                      "BatchMatMul",
                                      "BatchMatMulV2",
                                      "Einsum"};
@@ -432,7 +435,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "Sqrt",
                                      "Square",
                                      "SquaredDifference",
-                                     "Sum"
+                                     "Sum",
                                      "Tanh",
                                      "TanhGrad"};
     UpdateList("INFERLIST", &list);

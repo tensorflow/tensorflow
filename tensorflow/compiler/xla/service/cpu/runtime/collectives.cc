@@ -237,14 +237,16 @@ namespace {
 struct XlaTupleAllToAll {
   absl::Status operator()(const ExecutableRunOptions* run_options,
                           CustomCall::RemainingArgs buffers,
-                          CustomCall::TensorRef<int64_t> replica_groups) const;
+                          CustomCall::TensorRef<int64_t> replica_groups,
+                          int32_t channel_id_present, int64_t op_id) const;
   static XlaTupleAllToAll Handler() { return XlaTupleAllToAll(); }
 };
 }  // namespace
 
 absl::Status XlaTupleAllToAll::operator()(
     const ExecutableRunOptions* run_options, CustomCall::RemainingArgs buffers,
-    CustomCall::TensorRef<int64_t> replica_groups) const {
+    CustomCall::TensorRef<int64_t> replica_groups, int32_t channel_id_present,
+    int64_t op_id) const {
   if (replica_groups.shape.size() != 2) {
     return absl::InvalidArgumentError("replica_groups must be a 2d tensor.");
   }
@@ -273,11 +275,11 @@ absl::Status XlaTupleAllToAll::operator()(
   size_t buffer_size = ShapeUtil::ByteSizeOfElements(
       ShapeUtil::MakeShape(first_input.dtype, first_input.sizes));
 
-  __xla_cpu_runtime_AllToAll(run_options, 0, 0, replica_groups_str.c_str(),
-                             static_cast<int32_t>(replica_groups_str.size()),
-                             static_cast<int32_t>(num_buffers),
-                             static_cast<int64_t>(buffer_size),
-                             input_buffers.data(), output_buffers.data());
+  __xla_cpu_runtime_AllToAll(
+      run_options, channel_id_present, op_id, replica_groups_str.c_str(),
+      static_cast<int32_t>(replica_groups_str.size()),
+      static_cast<int32_t>(num_buffers), static_cast<int64_t>(buffer_size),
+      input_buffers.data(), output_buffers.data());
 
   return absl::OkStatus();
 }
@@ -289,6 +291,8 @@ static bool TupleAllToAll(xla::runtime::ExecutionContext* ctx, void** args,
           .UserData<const ExecutableRunOptions*>()
           .RemainingArgs()
           .Attr<CustomCall::TensorRef<int64_t>>("replica_groups")
+          .Attr<int32_t>("channel_id_present")
+          .Attr<int64_t>("op_id")
           .To<RuntimeChecks()>(XlaTupleAllToAll::Handler())
           .release();
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));

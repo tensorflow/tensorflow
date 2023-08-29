@@ -14,16 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <optional>
-#include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -55,7 +51,9 @@ TEST_F(GpuFusionTest, FusedReshape) {
 ; CHECK-LABEL: @fusion
 ; CHECK: fadd
 ; CHECK: }
-      )");
+      )",
+                     /*match_optimized_ir=*/false,
+                     /*run_optimization_passes=*/false);
 }
 
 // Check that we limit the number of operands to fusions we create.
@@ -81,7 +79,10 @@ TEST_F(GpuFusionTest, FusedBiggerThenThresholdButDoNotChangeTheFusionl) {
   b.AddInstruction(
       HloInstruction::CreateConcatenate(concat_shape, slice_params, 1));
   module->AddEntryComputation(b.Build());
-  EXPECT_TRUE(GpuInstructionFusion(false).Run(module.get()).value());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/false,
+                                   TestGpuDeviceInfo::RTXA6000DeviceInfo())
+                  .Run(module.get())
+                  .value());
   EXPECT_TRUE(module->entry_computation()->root_instruction()->opcode() ==
               HloOpcode::kFusion);
   for (HloInstruction* instr : module->entry_computation()->instructions()) {
@@ -93,8 +94,11 @@ class TransposeFusionTest : public GpuFusionTest {
  public:
   void CheckGpuFusion(absl::string_view hlo,
                       std::optional<absl::string_view> expected) {
-    RunAndFilecheckHloRewrite(hlo, GpuInstructionFusion{/*may_duplicate=*/true},
-                              expected);
+    RunAndFilecheckHloRewrite(
+        hlo,
+        GpuInstructionFusion{/*may_duplicate=*/true,
+                             TestGpuDeviceInfo::RTXA6000DeviceInfo()},
+        expected);
   }
 };
 

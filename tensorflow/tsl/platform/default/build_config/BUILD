@@ -2,9 +2,9 @@
 # Platform-specific build configurations.
 
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/tsl:tsl.bzl", "tsl_copts")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility", "tsl_copts")
 
-package(default_visibility = ["//tensorflow/tsl:internal"])
+package(default_visibility = set_external_visibility(["//tensorflow/tsl:internal"]))
 
 licenses(["notice"])  # Apache 2.0
 

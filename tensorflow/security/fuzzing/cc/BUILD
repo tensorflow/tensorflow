@@ -19,7 +19,7 @@ tf_cc_fuzz_test(
     srcs = ["status_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
-        ":fuzz_helpers",
+        ":fuzz_domains",
         "//tensorflow/core/platform:status",
     ],
 )
@@ -63,7 +63,7 @@ tf_cc_fuzz_test(
     deps = [
         ":checkpoint_reader_fuzz_input_proto_cc",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -118,16 +118,18 @@ tf_cc_fuzz_test(
     srcs = ["status_group_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
-        ":fuzz_helpers",
+        ":fuzz_domains",
         "//tensorflow/core/platform:status",
     ],
 )
 
 cc_library(
-    name = "fuzz_helpers",
-    hdrs = ["fuzz_helpers.h"],
+    name = "fuzz_domains",
+    testonly = True,
+    hdrs = ["fuzz_domains.h"],
     deps = [
         "//tensorflow/core/platform:status",
+        "@com_google_fuzztest//fuzztest",
     ],
 )
 
@@ -207,5 +209,31 @@ cc_library(
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/platform:status",
         "@com_google_fuzztest//fuzztest",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "end_to_end_fuzz",
+    srcs = ["end_to_end_fuzz.cc"],
+    deps = [
+        "//tensorflow/cc/saved_model:constants",
+        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/cc/saved_model:tag_constants",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/security/fuzzing/cc/core/framework:datatype_domains",
+        "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
+        "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "text_literal_reader_fuzz",
+    srcs = ["text_literal_reader_fuzz.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:text_literal_reader",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/tsl/platform:env",
     ],
 )

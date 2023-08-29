@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/topk_rewriter.h"
 #include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -51,7 +52,7 @@ namespace {
 // Handles custom_call ops during evaluation by routing them through the global
 // CPU registry used by other CPU-based backends.
 StatusOr<Literal> HandleEvaluatorCustomCall(
-    HloInstruction* custom_call, absl::Span<const Literal*> operands) {
+    const HloInstruction* custom_call, absl::Span<const Literal*> operands) {
   // Find the target C function in the global registry.
   auto* registry = CustomCallTargetRegistry::Global();
   void* target_fn = registry->Lookup(custom_call->custom_call_target(), "Host");
@@ -81,6 +82,7 @@ StatusOr<Literal> HandleEvaluatorCustomCall(
 Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("Interpreter");
 
+  pipeline.AddPass<TopkDecomposer>();
   pipeline.AddPass<DynamicIndexSplitter>();
   pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<QrExpander>();

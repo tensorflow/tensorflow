@@ -512,6 +512,46 @@ TokKind HloLexer::LexString() {
   return TokKind::kError;
 }
 
+TokKind HloLexer::LexJsonDict() {
+  // We require that you've already lexed the open curly brace.
+  if (GetKind() != TokKind::kLbrace) return TokKind::kError;
+
+  absl::string_view orig = StringViewFromPointers(token_state_.token_start,
+                                                  buf_.data() + buf_.size());
+  absl::string_view str = orig;
+
+  int64_t object_depth = 0;
+  if (str.empty()) return TokKind::kError;
+
+  if (str.front() != '{') return TokKind::kError;
+  ++object_depth;
+  str = str.substr(1);
+
+  while (!str.empty()) {
+    if (object_depth == 0) break;
+
+    if (str.front() == '"') {
+      static LazyRE2 string_pattern = {R"("([^"\\]|\\.)*")"};
+      if (!RE2::Consume(&str, *string_pattern)) {
+        return TokKind::kError;
+      }
+      continue;
+    }
+
+    if (str.front() == '{') ++object_depth;
+    if (str.front() == '}') --object_depth;
+    str = str.substr(1);
+  }
+  if (object_depth != 0) {
+    return TokKind::kError;
+  }
+  current_ptr_ = str.data();
+  token_state_.current_kind = TokKind::kString;
+  token_state_.str_val =
+      std::string(orig.substr(0, orig.length() - str.length()));
+  return TokKind::kString;
+}
+
 std::string TokKindToString(TokKind kind) {
   switch (kind) {
     case TokKind::kEof:
@@ -593,6 +633,13 @@ std::string TokKindToString(TokKind kind) {
     case TokKind::kDots:
       return "kDots";
   }
+}
+
+bool LexesAsJsonDict(absl::string_view str) {
+  HloLexer lexer(str);
+  return lexer.Lex() == TokKind::kLbrace &&
+         lexer.LexJsonDict() == TokKind::kString &&
+         lexer.Lex() == TokKind::kEof;
 }
 
 }  // namespace xla

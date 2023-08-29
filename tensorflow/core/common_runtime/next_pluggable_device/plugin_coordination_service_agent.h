@@ -18,13 +18,10 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 
-namespace tsl {
-class Status;
-}  // namespace tsl
 namespace tensorflow {
-using tsl::Status;
 
 class PluginCoordinationServiceAgent {
  public:

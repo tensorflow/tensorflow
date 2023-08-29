@@ -6,7 +6,6 @@ package(
     default_visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/lite:__subpackages__",
-        "//tensorflow/lite/python:__subpackages__",
         "//tensorflow/lite/toco/python:__subpackages__",
     ],
     licenses = ["notice"],
@@ -47,9 +46,9 @@ tf_cc_test(
         ":error_collector_inst",
         ":types_util",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

@@ -16,8 +16,10 @@
 """Utility functions for reading/writing graphs."""
 import os
 import os.path
+import sys
 
 from google.protobuf import text_format
+from tensorflow.python.framework import byte_swap_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.tf_export import tf_export
@@ -57,6 +59,16 @@ def write_graph(graph_or_graph_def, logdir, name, as_text=True):
     graph_def = graph_or_graph_def.as_graph_def()
   else:
     graph_def = graph_or_graph_def
+
+  if sys.byteorder == 'big':
+    if hasattr(graph_def, 'node'):
+      byte_swap_tensor.swap_tensor_content_in_graph_node(
+          graph_def, 'big', 'little'
+      )
+    else:
+      byte_swap_tensor.swap_tensor_content_in_graph_function(
+          graph_def, 'big', 'little'
+      )
 
   # gcs does not have the concept of directory at the moment.
   if not logdir.startswith('gs:'):

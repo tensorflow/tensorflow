@@ -32,7 +32,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
@@ -140,7 +140,7 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     def scan_fn(ta, x):
       updated = ta.write(ta.size(), x)
-      next_iter = control_flow_ops.cond(
+      next_iter = cond.cond(
           math_ops.equal(x % 3, 0), empty, lambda: updated)
       return (next_iter, updated.stack())
 
@@ -176,7 +176,7 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
       updated = ta.write(ta.size(), x)
       # Here, capture empty_ta from outside the function.  However, it may be
       # either a TF1-style TensorArray or an Eager-style TensorArray.
-      next_iter = control_flow_ops.cond(
+      next_iter = cond.cond(
           math_ops.equal(x % 3, 0), lambda: empty_ta, lambda: updated)
       return (next_iter, updated.stack())
 

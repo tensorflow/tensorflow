@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <limits>
 #include <string>
+#include <tuple>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/lib/approx_topk_shape.h"

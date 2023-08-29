@@ -106,8 +106,8 @@ message GPUOptions {
       // Per "virtual" device memory limit, in MB. The number of elements in
       // the list is the number of virtual devices to create on the
       // corresponding visible GPU (see "virtual_devices" below).
-      // If empty, it will create single virtual device taking all available
-      // memory from the device.
+      // If empty and `num_virtual_devices_per_gpu` is not set, it will create
+      // single virtual device taking all available memory from the device.
       //
       // For the concept of "visible" and "virtual" GPU, see the comments for
       // "visible_device_list" above for more information.
@@ -171,6 +171,12 @@ message GPUOptions {
     //    different settings in different sessions within same process will
     //    result in undefined behavior.
     repeated VirtualDevices virtual_devices = 1;
+
+    // The number of virtual devices to create on each visible GPU. The
+    // available memory will be split equally among all virtual devices. If the
+    // field `memory_limit_mb` in `VirtualDevices` is not empty, this field will
+    // be ignored.
+    int32 num_virtual_devices_per_gpu = 15;
 
     // If true, uses CUDA unified memory for memory allocations. If
     // per_process_gpu_memory_fraction option is greater than 1.0, then unified
@@ -629,18 +635,9 @@ message ConfigProto {
       MLIR_BRIDGE_ROLLOUT_ENABLED = 1;
       // Disabling the MLIR bridge disables it for all graphs in this session.
       MLIR_BRIDGE_ROLLOUT_DISABLED = 2;
-      // Enable the MLIR bridge on a per graph basis based on an analysis of
-      // the features used in the graph. If the features used by the graph are
-      // supported by the MLIR bridge, the MLIR bridge will be used to run the
-      // graph.
-      MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED = 3;
-      // Enable the MLIR bridge in a fallback mode on a per graph basis based
-      // on an analysis of the features used in the graph.
-      // Running the MLIR bridge in the fallback mode means that it is
-      // executed and it commits all the changes to the TF graph in case
-      // of success. And it does not in case of failures and let the old bridge
-      // to process the TF graph.
-      MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED = 4;
+      reserved 3, 4;
+      reserved "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED",
+          "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED";
     }
     // Whether to enable the MLIR-based TF->XLA bridge.
     MlirBridgeRollout mlir_bridge_rollout = 17;
@@ -700,7 +697,9 @@ message ConfigProto {
     // aims to negate its value.
     bool disable_optimize_for_static_graph = 24;
 
-    // Next: 25
+    reserved 25;
+
+    // Next: 26
   }
 
   Experimental experimental = 16;

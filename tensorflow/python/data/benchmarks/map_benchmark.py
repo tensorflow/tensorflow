@@ -20,10 +20,10 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import map_op
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import while_loop
 
 
 class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
@@ -114,7 +114,7 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
       def body(i, x):
         return math_ops.add(i, 1), x
 
-      return control_flow_ops.while_loop(math_ops.less, body, [i, x])
+      return while_loop.while_loop(math_ops.less, body, [i, x])
 
     num_elements = 1
     dataset = dataset.map(fn)

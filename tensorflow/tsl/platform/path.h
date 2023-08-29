@@ -66,6 +66,10 @@ tsl::StringPiece Basename(tsl::StringPiece path);
 // there is no "." in the basename, the result is empty.
 tsl::StringPiece Extension(tsl::StringPiece path);
 
+// Returns the part of the basename of path before the final ".".  If
+// there is no "." in the basename, the result is empty.
+tsl::StringPiece BasenamePrefix(tsl::StringPiece path);
+
 // Returns the largest common subpath of `paths`.
 //
 // For example, for "/alpha/beta/gamma" and "/alpha/beta/ga" returns

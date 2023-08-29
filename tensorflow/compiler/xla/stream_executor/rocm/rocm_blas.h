@@ -23,11 +23,19 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "rocm/rocm_config.h"
+#if TF_ROCM_VERSION >= 50600
+#include "rocm/include/rocblas/rocblas.h"
+#else
 #include "rocm/include/rocblas.h"
+#endif
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/temporary_device_memory.h"
+#if TF_HIPBLASLT
+#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
+#endif
 
 namespace stream_executor {
 
@@ -88,6 +96,9 @@ class ROCMBlas : public blas::BlasSupport {
   ~ROCMBlas() override;
 
   TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES
+#if TF_HIPBLASLT
+  rocm::BlasLt &blas_lt() { return blas_lt_; }
+#endif
 
  private:
   // Tells rocBLAS to enqueue the BLAS operation onto a particular Stream.
@@ -176,26 +187,6 @@ class ROCMBlas : public blas::BlasSupport {
       DeviceMemorySlice<T> c_ptrs_to_wrappers, int ldc, int batch_count,
       ScratchAllocator *scratch_allocator);
 
-  // Helper function for implementing DoBlasGemmWithProfiling.
-  template <typename T, typename ParamType>
-  bool DoBlasGemmWithProfilingImpl(Stream *stream, blas::Transpose transa,
-                                   blas::Transpose transb, uint64_t m,
-                                   uint64_t n, uint64 k, const ParamType &alpha,
-                                   const DeviceMemory<T> &a, int lda,
-                                   const DeviceMemory<T> &b, int ldb,
-                                   const ParamType &beta, DeviceMemory<T> *c,
-                                   int ldc,
-                                   blas::ProfileResult *output_profile_result);
-
-  // Helper function for implementing DoBlasGemvWithProfiling.
-  template <typename T>
-  bool DoBlasGemvWithProfilingImpl(Stream *stream, blas::Transpose trans,
-                                   uint64_t m, uint64 n, const T &alpha,
-                                   const DeviceMemory<T> &a, int lda,
-                                   const DeviceMemory<T> &x, int incx,
-                                   const T &beta, DeviceMemory<T> *y, int incy,
-                                   blas::ProfileResult *output_profile_result);
-
   // mutex that guards the rocBLAS handle for this device.
   absl::Mutex mu_;
 
@@ -205,6 +196,10 @@ class ROCMBlas : public blas::BlasSupport {
 
   // rocBLAS library handle on the device.
   rocblas_handle blas_ ABSL_GUARDED_BY(mu_);
+
+#if TF_HIPBLASLT
+  rocm::BlasLt blas_lt_;
+#endif
 
   SE_DISALLOW_COPY_AND_ASSIGN(ROCMBlas);
 };

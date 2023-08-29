@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -63,10 +64,17 @@ int64_t StandaloneTaskIterator::Cardinality() const {
   return dataset_->Get()->Cardinality();
 }
 
-StatusOr<Tensor> StandaloneTaskIterator::Save() { return iterator_->Save(); }
+StatusOr<std::vector<Tensor>> StandaloneTaskIterator::Save() {
+  return iterator_->Save();
+}
 
-Status StandaloneTaskIterator::Restore(const Tensor& saved_iterator) {
+Status StandaloneTaskIterator::Restore(
+    const std::vector<Tensor>& saved_iterator) {
   return iterator_->Restore(saved_iterator);
+}
+
+std::optional<double> StandaloneTaskIterator::GetProcessingTimeNsec() const {
+  return iterator_->GetProcessingTimeNsec();
 }
 
 Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
@@ -160,6 +168,12 @@ void FirstComeFirstServedTaskRunner::Cancel() {
   buffer_.Cancel(errors::Cancelled("tf.data service FCFS task is cancelled."));
 }
 
+std::optional<double> FirstComeFirstServedTaskRunner::GetProcessingTimeNsec()
+    TF_LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
+  return iterator_->GetProcessingTimeNsec();
+}
+
 CachingTaskRunner::CachingTaskRunner(std::unique_ptr<TaskIterator> iterator,
                                      size_t max_cache_size_bytes)
     : fcfs_task_runner_(std::move(iterator)),
@@ -207,6 +221,10 @@ void CachingTaskRunner::Cancel() {
         "tf.data service cross-trainer cache task is cancelled."));
   }
   fcfs_task_runner_.Cancel();
+}
+
+std::optional<double> CachingTaskRunner::GetProcessingTimeNsec() {
+  return fcfs_task_runner_.GetProcessingTimeNsec();
 }
 
 RoundRobinTaskRunner::RoundRobinTaskRunner(
@@ -343,6 +361,10 @@ void RoundRobinTaskRunner::Cancel() {
   new_round_cv_.notify_all();
 }
 
+std::optional<double> RoundRobinTaskRunner::GetProcessingTimeNsec() {
+  return prefetch_thread_.GetProcessingTimeNsec();
+}
+
 PrefetchThread::PrefetchThread(std::unique_ptr<TaskIterator> iterator,
                                int64_t round_size)
     : iterator_(std::move(iterator)), round_size_(round_size) {
@@ -423,6 +445,10 @@ Status PrefetchThread::FillBuffer(int64_t wait_us,
 Status PrefetchThread::GetStatus() {
   mutex_lock l(mu_);
   return status_;
+}
+
+std::optional<double> PrefetchThread::GetProcessingTimeNsec() const {
+  return iterator_->GetProcessingTimeNsec();
 }
 }  // namespace data
 }  // namespace tensorflow

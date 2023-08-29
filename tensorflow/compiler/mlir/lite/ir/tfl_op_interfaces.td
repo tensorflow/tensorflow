@@ -38,6 +38,7 @@ def TFL_Dialect : Dialect {
 
   let useDefaultAttributePrinterParser = 1;
   let useDefaultTypePrinterParser = 1;
+  let usePropertiesForAttributes = 0;
 
   let extraClassDeclaration = [{
     ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,
@@ -50,7 +51,6 @@ def TFL_Dialect : Dialect {
     Operation *materializeConstant(OpBuilder &builder, Attribute value,
                                    Type type, Location loc) override;
   }];
-  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 //===----------------------------------------------------------------------===//

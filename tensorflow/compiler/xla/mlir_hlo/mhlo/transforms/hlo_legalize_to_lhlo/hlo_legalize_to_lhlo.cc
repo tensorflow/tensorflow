@@ -16,6 +16,8 @@ limitations under the License.
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
 #include <algorithm>
+#include <array>
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -36,10 +38,10 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
@@ -61,10 +63,7 @@ using BaseOpConversion = OpConversionPattern<T>;
 Value insertDynamicAlloc(Location loc, Value result, Value shapeOperand,
                          ConversionPatternRewriter* rewriter) {
   auto resultType = result.getType().dyn_cast<RankedTensorType>();
-  if (!resultType) {
-    result.getDefiningOp()->emitOpError()
-        << "tensor to buffer conversion expects ranked results";
-  }
+  assert(resultType);
   auto memrefType =
       MemRefType::get(resultType.getShape(), resultType.getElementType());
 
@@ -89,10 +88,7 @@ Value insertDynamicAlloc(Location loc, Value result, Value shapeOperand,
 Value insertAlloc(Location loc, OpResult result,
                   ConversionPatternRewriter* rewriter) {
   auto resultType = result.getType().dyn_cast<RankedTensorType>();
-  if (!resultType || !resultType.hasStaticShape()) {
-    result.getDefiningOp()->emitOpError()
-        << "tensor to buffer conversion expects statically shaped results";
-  }
+  assert(resultType && resultType.hasStaticShape());
   auto memrefType =
       MemRefType::get(resultType.getShape(), resultType.getElementType());
   OpBuilder::InsertionGuard guard(*rewriter);
@@ -565,6 +561,7 @@ void populateHloToLhloConversionPattern(
       HloToLhloOpConverter<mhlo::SliceOp>,
       HloToLhloOpConverter<mhlo::SqrtOp>,
       HloToLhloOpConverter<mhlo::SubtractOp>,
+      HloToLhloOpConverter<mhlo::TanOp>,
       HloToLhloOpConverter<mhlo::TanhOp>,
       HloToLhloOpConverter<mhlo::TransposeOp>,
       HloToLhloOpConverter<mhlo::XorOp>,

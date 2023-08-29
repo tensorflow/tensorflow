@@ -41,12 +41,14 @@ class DType {
     kPred = 1,
 
     // Signed integral values of fixed width.
+    kS4 = 21,
     kS8 = 2,
     kS16 = 3,
     kS32 = 4,
     kS64 = 5,
 
     // Unsigned integral values of fixed width.
+    kU4 = 22,
     kU8 = 6,
     kU16 = 7,
     kU32 = 8,
@@ -71,12 +73,17 @@ class DType {
     kToken = 17,
 
     kF8E4M3FN = 19,
+    kF8E4M3B11FNUZ = 23,
+    kF8E4M3FNUZ = 24,
     kF8E5M2 = 20,
+    kF8E5M2FNUZ = 25,
 
-    // Next = 21
+    // Next = 26
 
-    // String is not support in XLA. DType.Kind needs to match xla.PrimitiveType
-    // enum, so choose a large enum to avoid collision.
+    // Variable-length string represented as raw bytes, as in `bytes` in Python,
+    // i.e., no encoding enforcement. String is not support in XLA. DType.Kind
+    // needs to match xla.PrimitiveType enum, so choose a large enum to avoid
+    // collision.
     kString = 99,
   };
 
@@ -91,9 +98,14 @@ class DType {
   bool operator==(const DType& other) const { return kind_ == other.kind_; }
   bool operator!=(const DType& other) const { return kind_ != other.kind_; }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const DType& value) {
+    return H::combine(std::move(h), value.kind());
+  }
+
   // Returns the byte size of a single element of this DType. Returns
-  // std::nullopt if there is no fixed size or not aligned to a byte boundary
-  // (such as kPred).
+  // std::nullopt if not aligned to a byte boundary or there is no fixed size
+  // (such as kString).
   std::optional<int> byte_size() const;
 
   // Returns the bit size of a single element of this DType. Returns

@@ -232,7 +232,7 @@ void ThreadPoolDevice::LogOutputs(OpKernel* op_kernel,
                                   OpKernelContext* context) {
   if (!context->status().ok()) {
     LOG(INFO) << op_kernel->name()
-              << " failed: " << context->status().error_message();
+              << " failed: " << context->status().message();
     return;
   }
 

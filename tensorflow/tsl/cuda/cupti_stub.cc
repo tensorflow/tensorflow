@@ -56,4 +56,14 @@ CUptiResult GetSymbolNotFoundError() { return CUPTI_ERROR_UNKNOWN; }
 //
 // Calling a function that is not yet available in the loaded CUPTI version will
 // return CUPTI_ERROR_UNKNOWN.
+#if CUDA_VERSION < 10010
 #include "tensorflow/tsl/cuda/cupti_10_0.inc"
+#elif CUDA_VERSION < 10020
+#include "tensorflow/tsl/cuda/cupti_10_1.inc"
+#elif CUDA_VERSION < 11000
+#include "tensorflow/tsl/cuda/cupti_10_2.inc"
+#elif CUDA_VERSION < 12000
+#include "tensorflow/tsl/cuda/cupti_11_0.inc"
+#else
+#include "tensorflow/tsl/cuda/cupti_12_0.inc"
+#endif

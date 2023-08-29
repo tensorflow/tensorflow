@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/tsl/platform/platform.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -51,6 +52,27 @@ TEST(TraceMeEncodeTest, TemporaryStringTest) {
                                      absl::StrCat("World:", 2020)}}),
             "Hello#context=World:2020#");
 }
+#endif
+
+// This can be removed when the absl version has been updated to include
+// AbslStringify for open source builds.
+#if defined(PLATFORM_GOOGLE)
+
+struct Point {
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Point& p) {
+    absl::Format(&sink, "(%d, %d)", p.x, p.y);
+  }
+
+  int x;
+  int y;
+};
+
+TEST(TraceMeEncodeTest, AbslStringifyTest) {
+  EXPECT_EQ(TraceMeEncode("Plot", {{"point", Point{10, 20}}}),
+            "Plot#point=(10, 20)#");
+}
+
 #endif
 
 TEST(TraceMeEncodeTest, NoNameTest) {

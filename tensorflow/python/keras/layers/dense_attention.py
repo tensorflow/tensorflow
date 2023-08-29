@@ -19,7 +19,7 @@ Attention is formed by three tensors: Query, Key and Value.
 """
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine.base_layer import Layer
@@ -28,7 +28,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.util.tf_export import keras_export
 
 
 class BaseDenseAttention(Layer):
@@ -183,7 +182,7 @@ class BaseDenseAttention(Layer):
       q_mask = mask[0]
       if q_mask is None:
         return None
-      return ops.convert_to_tensor_v2_with_dispatch(q_mask)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(q_mask)
     return None
 
   def _validate_call_args(self, inputs, mask):
@@ -217,7 +216,6 @@ class BaseDenseAttention(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.Attention')
 class Attention(BaseDenseAttention):
   """Dot-product attention layer, a.k.a. Luong-style attention.
 
@@ -355,7 +353,6 @@ class Attention(BaseDenseAttention):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.AdditiveAttention')
 class AdditiveAttention(BaseDenseAttention):
   """Additive attention layer, a.k.a. Bahdanau-style attention.
 

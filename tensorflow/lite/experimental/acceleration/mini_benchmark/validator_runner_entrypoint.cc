@@ -30,9 +30,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/file_lock.h"
@@ -48,7 +47,7 @@ namespace {
 
 using flatbuffers::Offset;
 
-Validator::Status RunValidator(absl::string_view model_path,
+Validator::Status RunValidator(const std::string& model_path,
                                const std::string& delegate_so_path,
                                const TFLiteSettingsT& tflite_settings,
                                Validator::Results& results) {
@@ -145,12 +144,15 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
         &fbb,
         CreateBenchmarkEvent(
             fbb, CreateTFLiteSettings(fbb, &tflite_settings),
-            BenchmarkEventType_RECOVERED_ERROR, /* result */ 0,
-            CreateBenchmarkError(
-                fbb, BenchmarkStage_INITIALIZATION,
-                kMinibenchmarkUnableToSetCpuAffinity, /*signal=*/0,
-                /*error_code=*/0,
-                /*mini_benchmark_error_code=*/set_big_core_affinity_errno),
+            BenchmarkEventType_RECOVERED_ERROR, /* result = */ 0,
+            // There is no dedicated field for the errno, so we pass it as
+            // exit_code instead.
+            CreateBenchmarkError(fbb, BenchmarkStage_INITIALIZATION,
+                                 /* exit_code = */ set_big_core_affinity_errno,
+                                 /* signal = */ 0,
+                                 /* error_code = */ 0,
+                                 /* mini_benchmark_error_code = */
+                                 kMinibenchmarkUnableToSetCpuAffinity),
             Validator::BootTimeMicros(), Validator::WallTimeMicros()));
   }
 
@@ -205,7 +207,9 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
       &fbb, CreateBenchmarkEvent(
                 fbb, CreateTFLiteSettings(fbb, &tflite_settings),
                 BenchmarkEventType_ERROR, /* result */ 0,
-                CreateBenchmarkError(fbb, run_status.stage, run_status.status),
+                CreateBenchmarkError(fbb, run_status.stage, /* exit_code */ 0,
+                                     /* signal */ 0, /* error_code */ 0,
+                                     run_status.status),
                 Validator::BootTimeMicros(), Validator::WallTimeMicros()));
 }
 

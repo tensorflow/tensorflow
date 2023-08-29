@@ -24,8 +24,8 @@ limitations under the License.
 
 #include "hexagon/hexagon_nn_ops.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_implementation.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_nn/hexagon_nn.h"
 
@@ -51,7 +51,7 @@ struct OpNode {
 class GraphBuilder;
 
 // Represents a single Op in the TFLite graph.
-// For each op in TFLite there should be an OpBuidler, this builder is
+// For each op in TFLite there should be an OpBuilder, this builder is
 // responsible for constructing equivalent node(s) in the hexagon graph. A
 // single builder can create one or more ops in the hexagon graph. When adding
 // new op* users should inherit from this class and implement

@@ -335,7 +335,7 @@ func.func @custom_call(%arg0: !rt.execution_context, %arg1 : f32) {
   // CHECK-DAG: %[[ARGS:.*]] = llvm.alloca {{.*}} x !llvm.array<3 x ptr>
 
   // CHECK-DAG: %[[N_ARGS:.*]] = llvm.mlir.addressof @__rt_num_args
-  // CHECK-DAG: llvm.store %[[ARG]], %[[MEM]]
+  // CHECK-DAG: llvm.store volatile %[[ARG]], %[[MEM]]
 
   // CHECK: %[[ARGS_TYPES:.*]] = llvm.mlir.addressof @__rt_args_type_table
   // CHECK: llvm.insertvalue %[[ARGS_TYPES]], {{.*}}[1] : !llvm.array<3 x ptr>
@@ -460,7 +460,7 @@ func.func @opaque_arg(%ctx: !rt.execution_context, %arg: !rt.opaque) {
 func.func @opaque_custom_call_arg(%ctx: !rt.execution_context,
                                   %arg: !rt.opaque) {
   // CHECK: %[[ALLOCA:.*]] = llvm.alloca {{.*}} x !llvm.ptr
-  // CHECK: llvm.store %[[ARG1]], %[[ALLOCA]] : !llvm.ptr
+  // CHECK: llvm.store volatile %[[ARG1]], %[[ALLOCA]] : !llvm.ptr
   // CHECK: call @target
   %status = rt.call %ctx["target"] (%arg) : (!rt.opaque) -> ()
   return
@@ -503,10 +503,9 @@ func.func @custom_call_unit_attr(%ctx: !rt.execution_context) {
 
 // CHECK: call @f32_reduce
 
-// CHECK: %[[DESC:.*]] = llvm.mlir.undef : !llvm.struct<(ptr<f32>, ptr<f32>, i64, array<2 x i64>, array<2 x i64>)>
+// CHECK: %[[DESC:.*]] = llvm.mlir.undef : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
 // CHECK: %[[DATA_GEP:.*]] = llvm.getelementptr %[[MEMREF_ALLOCA]]
-// CHECK: %[[DATA_PTR:.*]] = llvm.load %[[DATA_GEP]]
-// CHECK: %[[DATA:.*]] = llvm.bitcast %[[DATA_PTR]] : !llvm.ptr to !llvm.ptr<f32>
+// CHECK: %[[DATA:.*]] = llvm.load %[[DATA_GEP]]
 
 // CHECK: llvm.insertvalue %[[DATA]], {{.*}}[0]
 // CHECK: llvm.insertvalue %[[DATA]], {{.*}}[1]
@@ -628,7 +627,7 @@ func.func @custom_call(%arg0: !rt.execution_context, %arg1: f32) {
   // CHECK-NOT: llvm.alloca
 
   // llvm.intr.lifetime.start -1, %[[ARG_ALLOCA]] : !llvm.ptr
-  // CHECK: llvm.store %[[ARG]], %[[ARG_ALLOCA]] : f32, !llvm.ptr
+  // CHECK: llvm.store volatile %[[ARG]], %[[ARG_ALLOCA]] : f32, !llvm.ptr
   // llvm.intr.lifetime.start -1, %[[ARGS]] : !llvm.ptr
   // CHECK: llvm.store {{.*}}, %[[ARGS]]
   // CHECK: call @target
@@ -637,7 +636,7 @@ func.func @custom_call(%arg0: !rt.execution_context, %arg1: f32) {
   // llvm.intr.lifetime.end -1, %[[ARG_ALLOCA]] : !llvm.ptr
 
   // llvm.intr.lifetime.start -1, %[[ARG_ALLOCA]] : !llvm.ptr
-  // CHECK: llvm.store %[[ARG]], %[[ARG_ALLOCA]] : f32, !llvm.ptr
+  // CHECK: llvm.store volatile %[[ARG]], %[[ARG_ALLOCA]] : f32, !llvm.ptr
   // llvm.intr.lifetime.start -1, %[[ARGS]] : !llvm.ptr
   // CHECK: llvm.store {{.*}}, %[[ARGS]]
   // CHECK: call @target

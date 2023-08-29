@@ -72,6 +72,16 @@ stream_executor::Stream* ExecutableRunOptions::host_to_device_stream() const {
   return host_to_device_stream_;
 }
 
+ExecutableRunOptions& ExecutableRunOptions::set_device_to_host_stream(
+    stream_executor::Stream* stream) {
+  device_to_host_stream_ = stream;
+  return *this;
+}
+
+stream_executor::Stream* ExecutableRunOptions::device_to_host_stream() const {
+  return device_to_host_stream_;
+}
+
 ExecutableRunOptions& ExecutableRunOptions::set_intra_op_thread_pool(
     const Eigen::ThreadPoolDevice* intra_op_thread_pool) {
   intra_op_thread_pool_ = intra_op_thread_pool;

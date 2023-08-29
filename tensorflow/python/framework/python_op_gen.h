@@ -41,8 +41,7 @@ namespace tensorflow {
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const OpRegOffsets& op_reg_offsets,
                     absl::Span<const string> hidden_ops,
-                    absl::Span<const string> source_file_list,
-                    const std::unordered_set<string>& type_annotate_ops);
+                    absl::Span<const string> source_file_list);
 
 // Prints the output of GetPrintOps to stdout.
 // hidden_ops should be a list of Op names that should get a leading _
@@ -52,8 +51,7 @@ string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const OpRegOffsets& op_reg_offsets,
                     absl::Span<const string> hidden_ops,
-                    absl::Span<const string> source_file_list,
-                    const std::unordered_set<string>& type_annotate_ops);
+                    absl::Span<const string> source_file_list);
 
 // Get the python wrappers for a list of ops in a OpList.
 // `op_list_buf` should be a pointer to a buffer containing

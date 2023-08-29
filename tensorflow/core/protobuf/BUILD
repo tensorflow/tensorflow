@@ -32,11 +32,11 @@ COMMON_PROTO_SRCS = [
     "debug.proto",
     "device_filters.proto",
     "device_properties.proto",
-    "graph_debug_info.proto",
     "queue_runner.proto",
     "rewriter_config.proto",
     "tensor_bundle.proto",
     "saver.proto",
+    "status.proto",
     "verifier_config.proto",
 ]
 
@@ -52,7 +52,6 @@ COMMON_PROTO_SRCS = [
     for proto_name in [
         "config",
         "device_properties",
-        "graph_debug_info",
         "meta_graph",
         "saved_model",
         "tensorflow_server",
@@ -63,8 +62,8 @@ tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/tsl/protobuf:autotuning_proto"],
-    exports = ["//tensorflow/tsl/protobuf:autotuning_proto"],
+    protodeps = ["//tensorflow/compiler/xla:autotuning_proto"],
+    exports = ["//tensorflow/compiler/xla:autotuning_proto"],
 )
 
 tf_proto_library(
@@ -214,11 +213,13 @@ tf_proto_library(
         "//tensorflow/tsl/protobuf:bfc_memory_map_proto",
         "//tensorflow/tsl/protobuf:coordination_config_proto",
         "//tensorflow/tsl/protobuf:rpc_options_proto",
+        "//tensorflow/tsl/protobuf:status_proto",
     ],
     tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
     exports = [
         "//tensorflow/tsl/protobuf:bfc_memory_map_proto",
         "//tensorflow/tsl/protobuf:rpc_options_proto",
+        "//tensorflow/tsl/protobuf:status_proto",
     ],
 )
 

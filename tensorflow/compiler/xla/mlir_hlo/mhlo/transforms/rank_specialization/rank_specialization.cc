@@ -14,10 +14,13 @@ limitations under the License.
 
 ==============================================================================*/
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <tuple>
 #include <utility>
 
 #include "llvm/ADT/EquivalenceClasses.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -25,15 +28,16 @@ limitations under the License.
 #include "mhlo/transforms/passes.h"
 #include "mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Block.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
@@ -461,7 +465,7 @@ Value materializeScalarRankSpecializationCase(
   }
 
   auto ifOp = b.create<scf::IfOp>(
-      loc, op->getResultTypes(), allOthersAreScalar,
+      loc, allOthersAreScalar,
       [&](OpBuilder &b, Location loc) {
         // Compute flat non-scalar shape.
         SmallVector<Value, 4> nonScalarShapes;
@@ -532,7 +536,7 @@ Value materializeEqualShapesRankSpecializationCase(
   }
 
   auto ifOp = b.create<scf::IfOp>(
-      loc, op->getResultTypes(), allShapesEqOrScalar,
+      loc, allShapesEqOrScalar,
       [&](OpBuilder &b, Location loc) {
         // Flatten non-scalar operands.
         Value flatShape = materializeFlatShape(b, loc, nonScalarShapes);
@@ -924,8 +928,9 @@ struct RankSpecializationToSCFPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect, chlo::ChloDialect, func::FuncDialect,
-                    shape::ShapeDialect, scf::SCFDialect>();
+    registry
+        .insert<mhlo::MhloDialect, chlo::ChloDialect, func::FuncDialect,
+                shape::ShapeDialect, scf::SCFDialect, cf::ControlFlowDialect>();
   }
 
   void runOnOperation() override {

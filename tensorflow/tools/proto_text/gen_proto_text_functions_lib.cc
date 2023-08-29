@@ -36,7 +36,7 @@ namespace {
 template <typename... Args>
 string StrCat(const Args&... args) {
   std::ostringstream s;
-  std::vector<int>{((s << args), 0)...};
+  std::vector<int> give_me_a_name{((s << args), 0)...};
   return s.str();
 }
 
@@ -250,7 +250,14 @@ string GetHeaderGuard(const FileDescriptor& fd, bool impl) {
 void Generator::AppendFieldValueAppend(const FieldDescriptor& field,
                                        const bool omit_default,
                                        const string& field_expr) {
+  // This does not emit code with proper presence semantics (e.g. it doesn't
+  // check 'has' fields on non-messages).
+  CHECK(!field.has_presence() || field.containing_oneof() != nullptr ||
+        field.cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE)
+      << field.file()->name();
+
   SetOutput(&cc_);
+
   switch (field.cpp_type()) {
     case FieldDescriptor::CPPTYPE_INT32:
     case FieldDescriptor::CPPTYPE_INT64:
@@ -761,10 +768,6 @@ void GetAllFileDescriptorsFromFile(const FileDescriptor* fd,
 }
 
 void Generator::Generate(const FileDescriptor& fd) {
-  // This does not emit code with proper proto2 semantics (e.g. it doesn't check
-  // 'has' fields on non-messages), so check that only proto3 is passed.
-  CHECK_EQ(fd.syntax(), FileDescriptor::SYNTAX_PROTO3) << fd.name();
-
   const string package = fd.package();
   std::set<const FileDescriptor*> all_fd;
   std::set<const Descriptor*> all_d;

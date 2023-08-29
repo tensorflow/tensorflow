@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
 
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
@@ -223,9 +227,9 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
 
     std::vector<int64_t> original_dimensions;
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
-    return ElementsAttr(
-        SplatElementsAttr::get(single_attr.getType().clone(original_dimensions),
-                               single_attr.getValues<Attribute>()[0]));
+    return ElementsAttr(SplatElementsAttr::get(
+        single_attr.getShapedType().clone(original_dimensions),
+        single_attr.getValues<Attribute>()[0]));
   }
 
   Tensor t;
@@ -263,7 +267,7 @@ PartialTensorShape ConvertTypeToTensorShape(const Type& type) {
 
 ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type) {
   if (type.isa<UnrankedTensorType>()) {
-    return ShapeAttr::get(type.getContext(), llvm::None);
+    return ShapeAttr::get(type.getContext(), std::nullopt);
   }
 
   if (auto tensor_type = type.dyn_cast<RankedTensorType>()) {
@@ -280,7 +284,7 @@ ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type) {
 // Converts the tensor shape proto into an MLIR shape attribute.
 tensorflow::StatusOr<ShapeAttr> ConvertTensorShapeProto(
     const TensorShapeProto& shape, MLIRContext* context) {
-  if (shape.unknown_rank()) return ShapeAttr::get(context, llvm::None);
+  if (shape.unknown_rank()) return ShapeAttr::get(context, std::nullopt);
 
   SmallVector<int64_t, 4> dims;
   dims.reserve(shape.dim_size());
@@ -426,7 +430,7 @@ void ConvertFloat8ElementsAttr(const DenseElementsAttr attr,
 }
 
 Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
-  auto type = attr.getType();
+  auto type = attr.getShapedType();
   auto shape = type.getShape();
   tensorflow::DataType output_dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(type, &output_dtype));

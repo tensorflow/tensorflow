@@ -359,6 +359,10 @@ HloInstruction* BroadcastZeros(HloComputation* computation,
                                PrimitiveType element_type,
                                absl::Span<const int64_t> broadcast_dimensions);
 
+// Same as above, but allows to specify the broadcast shape.
+HloInstruction* BroadcastZeros(HloComputation* computation,
+                               const Shape& broadcast_shape);
+
 // Same as above, but fill the tensor with ones.
 HloInstruction* BroadcastOnes(HloComputation* computation,
                               PrimitiveType element_type,

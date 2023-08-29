@@ -263,8 +263,7 @@ class GraphOptimizerStagePipeline {
         if (!stage_status.ok()) {
           VLOG(2) << "Failed to run optimizer " << stage->optimizer_name()
                   << ", stage " << stage->stage_name() << " node "
-                  << node->name()
-                  << ". Error: " << stage_status.error_message();
+                  << node->name() << ". Error: " << stage_status.message();
         }
         if (break_predicate_(*result)) return true;
       }
@@ -295,6 +294,7 @@ class GraphOptimizerStagePipeline {
 
   std::vector<string> StageNames() {
     std::vector<string> names;
+    names.reserve(stages_.size());
     for (const auto& stage : stages_) {
       names.push_back(stage->stage_name());
     }

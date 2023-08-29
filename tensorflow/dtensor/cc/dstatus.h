@@ -38,7 +38,7 @@ inline Status WithContext(const Status& ds, absl::string_view file,
   if (ds.ok()) {
     return ds;
   }
-  return Status(ds.code(), absl::StrCat(ds.error_message(), "\n", file, ":",
+  return Status(ds.code(), absl::StrCat(ds.message(), "\n", file, ":",
                                         line_number, " :: ", context));
 }
 
@@ -50,7 +50,7 @@ inline StatusOr<T> WithContext(StatusOr<T>&& ds, absl::string_view file,
     return ds;
   }
   return Status(ds.status().code(),
-                absl::StrCat(ds.status().error_message(), "\n", file, ":",
+                absl::StrCat(ds.status().message(), "\n", file, ":",
                              line_number, " :: ", context));
 }
 

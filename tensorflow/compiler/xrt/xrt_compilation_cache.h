@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XRT_XRT_COMPILATION_CACHE_H_
 #define TENSORFLOW_COMPILER_XRT_XRT_COMPILATION_CACHE_H_
 
+#include <functional>
+#include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -227,7 +231,7 @@ class XRTCompilationCache : public ResourceBase {
   std::unordered_map<string, CompiledSubgraph*> cache_ TF_GUARDED_BY(mu_);
   // All the executable entries that can be looked up in the cache indexed by
   // uid.
-  std::unordered_map<int64_t, CompiledSubgraph*> entries_by_uid_
+  absl::flat_hash_map<int64_t, CompiledSubgraph*> entries_by_uid_
       TF_GUARDED_BY(mu_);
   // Map from last_use to entry, used to mark entries for eviction in LRU
   // order. If an entry's last_use counter is not present as a key in

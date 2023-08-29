@@ -19,14 +19,14 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
 namespace tensorflow {
 namespace quantization {
-namespace internal {
 
 // Names of the TensorFlow Quantization steps. These names are used primarily
 // for debugging.
@@ -46,28 +46,31 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
-    absl::string_view quant_opts_serialized);
+    const QuantizationOptions& quantization_options,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
 
 // Apply post-training dynamic range quantization to the model.
 absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
-    absl::string_view quant_opts_serialized);
+    const QuantizationOptions& quantization_options,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     absl::string_view saved_model_path,
-    const std::vector<std::string>& exported_names,
+    const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
-    absl::string_view quant_opts_serialized);
+    const QuantizationOptions& quantization_options,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
-    absl::string_view quant_opts_serialized);
+    const QuantizationOptions& quantization_options,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
 
-}  // namespace internal
 }  // namespace quantization
 }  // namespace tensorflow
 

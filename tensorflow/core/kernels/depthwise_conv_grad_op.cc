@@ -121,12 +121,14 @@ typedef Eigen::GpuDevice GPUDevice;
     GetExplicitPaddingForDim(explicit_paddings_, data_format_, 'W', &pad_left, \
                              &pad_right);                                      \
   }                                                                            \
-  OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(                        \
-                              input_rows, filter_rows, stride_, padding_,      \
-                              &out_rows, &pad_top, &pad_bottom));              \
-  OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(                        \
-                              input_cols, filter_cols, stride_, padding_,      \
-                              &out_cols, &pad_left, &pad_right));              \
+  OP_REQUIRES_OK(context,                                                      \
+                 GetWindowedOutputSizeVerbose(                                 \
+                     input_rows, filter_rows, /*dilation_rate=*/1, stride_,    \
+                     padding_, &out_rows, &pad_top, &pad_bottom));             \
+  OP_REQUIRES_OK(context,                                                      \
+                 GetWindowedOutputSizeVerbose(                                 \
+                     input_cols, filter_cols, /*dilation_rate=*/1, stride_,    \
+                     padding_, &out_cols, &pad_left, &pad_right));             \
   OP_REQUIRES(                                                                 \
       context, output_rows == out_rows,                                        \
       errors::InvalidArgument(                                                 \
@@ -1032,7 +1034,7 @@ static void DepthwiseConvBackpropFilterReference(const DepthwiseArgs& args,
   }
 }
 
-// Extern template instantiated in conv_grad_filter_ops.cc.
+// Extern template instantiated in conv_grad_ops.cc.
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, bfloat16>;
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, float>;
@@ -1040,7 +1042,7 @@ extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, double>;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-// Extern template instantiated in conv_grad_filter_ops.cc.
+// Extern template instantiated in conv_grad_ops.cc.
 extern template struct LaunchConv2DBackpropFilterOp<GPUDevice, Eigen::bfloat16>;
 extern template struct LaunchConv2DBackpropFilterOp<GPUDevice, Eigen::half>;
 extern template struct LaunchConv2DBackpropFilterOp<GPUDevice, float>;

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -32,18 +33,22 @@ class GemmThunk : public Thunk {
   GemmThunk(ThunkInfo thunk_info, GemmConfig config,
             const BufferAllocation::Slice& lhs_buffer,
             const BufferAllocation::Slice& rhs_buffer,
-            const BufferAllocation::Slice& output_buffer);
+            const BufferAllocation::Slice& output_buffer, bool deterministic);
 
   GemmThunk(const GemmThunk&) = delete;
   GemmThunk& operator=(const GemmThunk&) = delete;
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
+  Status Initialize(const GpuExecutable& executable,
+                    se::StreamExecutor* executor) override;
 
  private:
   const GemmConfig config_;
   const BufferAllocation::Slice lhs_buffer_;
   const BufferAllocation::Slice rhs_buffer_;
   const BufferAllocation::Slice output_buffer_;
+  // Whether to run deterministically.
+  const bool deterministic_;
 };
 
 }  // namespace gpu

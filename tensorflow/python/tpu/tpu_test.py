@@ -31,6 +31,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_feed
+from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
 
@@ -42,7 +43,8 @@ class TPUContextTest(test.TestCase):
     with ops.Graph().as_default():
       z1 = array_ops.identity(1)
       pivot = control_flow_ops.no_op()
-      context = tpu.TPUReplicateContext(b"context", 1, pivot=pivot)
+      context = tpu_replication.TPUReplicateContext(
+          b"context", 1, pivot=pivot)
       context.Enter()
       z2 = array_ops.identity(1)
       context.Exit()
@@ -58,7 +60,8 @@ class TPUContextTest(test.TestCase):
       @def_function.function
       def f():
         pivot = control_flow_ops.no_op()
-        context = tpu.TPUReplicateContext(b"context", 1, pivot=pivot)
+        context = tpu_replication.TPUReplicateContext(
+            b"context", 1, pivot=pivot)
         context.Enter()
         array_ops.identity(z)  # Capture z.
         z1 = array_ops.zeros([3, 2], name="a")
@@ -134,7 +137,7 @@ class TPUGraphPruneTest(test.TestCase):
 
       for node in graph_def.node:
         # Attach a TPU_REPLICATE_ATTR to each node.
-        node.attr[tpu._TPU_REPLICATE_ATTR].s = b"0"
+        node.attr[tpu_replication._TPU_REPLICATE_ATTR].s = b"0"
         # Rewire placeholder "a" and variable "y" leaving them unconnected.
         for (input_index, node_input) in enumerate(node.input):
           if node_input == "b":
@@ -149,22 +152,22 @@ class TPUGraphPruneTest(test.TestCase):
 
       # Verify that ops "a" and "x" still have TPU_REPLICATE_ATTR.
       a = graph.get_operation_by_name("import/a").get_attr(
-          tpu._TPU_REPLICATE_ATTR)
+          tpu_replication._TPU_REPLICATE_ATTR)
       self.assertEqual(b"0", a)
       x = graph.get_operation_by_name("import/x").get_attr(
-          tpu._TPU_REPLICATE_ATTR)
+          tpu_replication._TPU_REPLICATE_ATTR)
       self.assertEqual(b"0", x)
       # Verify that ops "b" and "y" have TPU_REPLICATE_ATTR removed.
       with self.assertRaisesRegex(
           ValueError,
           "Operation \'import/b\' has no attr named \'_tpu_replicate\'"):
         graph.get_operation_by_name("import/b").get_attr(
-            tpu._TPU_REPLICATE_ATTR)
+            tpu_replication._TPU_REPLICATE_ATTR)
       with self.assertRaisesRegex(
           ValueError,
           "Operation \'import/y\' has no attr named \'_tpu_replicate\'"):
         graph.get_operation_by_name("import/y").get_attr(
-            tpu._TPU_REPLICATE_ATTR)
+            tpu_replication._TPU_REPLICATE_ATTR)
 
 
 class TPUOpsTest(test.TestCase):

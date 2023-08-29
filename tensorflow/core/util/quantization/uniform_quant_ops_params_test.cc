@@ -17,7 +17,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/util/quantization/uniform_quant_ops_attr.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
@@ -160,6 +161,24 @@ TEST(UniformQuantizedConvolutionParamsTest, CalculateOutputShapeSetAttr) {
   auto shape_or = params.CalculateOutputShape(lhs_shape, rhs_shape);
   TF_ASSERT_OK(shape_or.status());
   EXPECT_TRUE(shape_or.value().IsSameSize({2, 3, 3, 2}));
+}
+
+TEST(UniformQuantizedConvolutionParamsTest, CalculateSameOptionPadding) {
+  UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
+  UniformQuantizedConvolutionParams params(/*window_strides=*/{},
+                                           /*lhs_dilation=*/{},
+                                           /*rhs_dilation=*/{},
+                                           dimension_numbers,
+                                           /*feature_group_count=*/1,
+                                           /*batch_group_count=*/1,
+                                           /*padding=*/"SAME");
+
+  const TensorShape lhs_shape({2, 2, 3, 4});
+  const TensorShape rhs_shape({3, 2, 4, 3});
+  TF_ASSERT_OK(
+      params.ValidateOrFillParamsAndValidateShape(lhs_shape, rhs_shape));
+
+  EXPECT_THAT(params.padding_list(), ElementsAreArray({1, 2, 1, 1}));
 }
 
 }  // namespace

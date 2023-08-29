@@ -65,7 +65,7 @@ Status FindIfThenAndElse(const GraphDef& graph, string* op_name,
 // Graph:
 // x = array_ops.placeholder(dtypes.int32)
 // y = array_ops.placeholder(dtypes.int32)
-// z = control_flow_ops.cond(
+// z = cond.cond(
 //     math_ops.less(y, x), lambda: math_ops.multiply(y, 17),
 //     lambda: math_ops.add(x, 23))
 //

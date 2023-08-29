@@ -519,7 +519,7 @@ TEST_F(ParallelInterleaveDatasetOpTest, InvalidArguments) {
       InvalidPrefetchInputElementsParams()};
   for (auto& dataset_params : invalid_params) {
     EXPECT_EQ(Initialize(dataset_params).code(),
-              tensorflow::error::INVALID_ARGUMENT);
+              absl::StatusCode::kInvalidArgument);
   }
 }
 

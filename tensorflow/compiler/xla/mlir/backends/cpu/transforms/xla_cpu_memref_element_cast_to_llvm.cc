@@ -49,7 +49,7 @@ struct MemRefElementCastOpLowering
       ConversionPatternRewriter &rewriter) const override {
     auto target_memref_ty = cast_op.getDst().getType().cast<MemRefType>();
 
-    LLVMTypeConverter type_converter = *getTypeConverter();
+    const LLVMTypeConverter &type_converter = *getTypeConverter();
     auto target_desc_ty = type_converter.convertType(target_memref_ty)
                               .dyn_cast_or_null<LLVM::LLVMStructType>();
     if (!target_desc_ty) {
@@ -63,16 +63,6 @@ struct MemRefElementCastOpLowering
     SmallVector<Value> desc_fields;
     MemRefDescriptor::unpack(rewriter, loc, adaptor.getSrc(),
                              src_type.cast<MemRefType>(), desc_fields);
-
-    // Bitcast allocated and aligned pointers.
-    auto dst_elem_ty =
-        typeConverter->convertType(cast_op.getType().getElementType());
-    auto dst_elem_ptr_ty = LLVM::LLVMPointerType::get(
-        dst_elem_ty, cast_op.getType().getMemorySpaceAsInt());
-    desc_fields[0] =
-        rewriter.create<LLVM::BitcastOp>(loc, dst_elem_ptr_ty, desc_fields[0]);
-    desc_fields[1] =
-        rewriter.create<LLVM::BitcastOp>(loc, dst_elem_ptr_ty, desc_fields[1]);
 
     // Create descriptor.
     auto dst_desc = MemRefDescriptor::pack(rewriter, loc, type_converter,

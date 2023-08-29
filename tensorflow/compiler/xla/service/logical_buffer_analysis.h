@@ -78,6 +78,10 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   absl::flat_hash_map<std::pair<const HloInstruction*, const ShapeIndex>,
                       LogicalBuffer*>
       output_buffers_;
+  // Whether to alias buffers defined by dataflow relations. This aliasing
+  // relation should not be recognized if copies can be inserted to break up
+  // the dataflow relation-induced aliasing.
+  const bool alias_buffer_across_dataflow_ = false;
 };
 
 }  // namespace xla

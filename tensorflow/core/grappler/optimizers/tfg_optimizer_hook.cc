@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/Threading.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -40,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/ir/tf_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/util/dump_graph.h"
 using tensorflow::Status;
 using tensorflow::errors::InvalidArgument;
@@ -132,7 +133,7 @@ Status TFGGrapplerOptimizer::Optimize(
     // Import errors are not fatal. Log the error here and return `Aborted` so
     // the meta optimizer knows to swallow the error.
     LOG(ERROR) << name() << " failed: " << status.ToString();
-    return tensorflow::errors::Aborted(status.error_message());
+    return absl::AbortedError(status.message());
   }
   metrics.ReportAndStop();
 
@@ -145,7 +146,7 @@ Status TFGGrapplerOptimizer::Optimize(
   // bypass the problem. Find a better way to collect the pipeline failure
   // message here.
   if (failed(impl_->RunPipeline(module))) {
-    return InvalidArgument("MLIR Graph Optimizer failed: ");
+    return absl::InvalidArgumentError("MLIR Graph Optimizer failed: ");
   }
 
   // Export the TFG module to GraphDef.

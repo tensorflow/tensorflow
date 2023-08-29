@@ -78,7 +78,7 @@ class ParallelConcatUpdate : public OpKernel {
     OP_REQUIRES(
         ctx, value.dim_size(0) > loc_,
         errors::InvalidArgument("0th dimension of value = ", value.dim_size(0),
-                                " is less than loc_=", loc_));
+                                " must be greater than loc_ = ", loc_));
 
     auto update = ctx->input(1);
 
@@ -174,7 +174,6 @@ typedef Eigen::GpuDevice GPUDevice;
                               .TypeConstraint<type>("dtype"), \
                           ParallelConcatStart<GPUDevice, type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_PARALLEL_CONCAT_START);
-TF_CALL_bfloat16(REGISTER_PARALLEL_CONCAT_START);
 #undef REGISTER_PARALLEL_CONCAT_START
 
 #define REGISTER_PARALLEL_CONCAT(type)                                     \
@@ -182,7 +181,6 @@ TF_CALL_bfloat16(REGISTER_PARALLEL_CONCAT_START);
       Name("ParallelConcat").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       FailureKernel);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_PARALLEL_CONCAT);
-TF_CALL_bfloat16(REGISTER_PARALLEL_CONCAT);
 #undef REGISTER_PARALLEL_CONCAT
 
 #define REGISTER(type)                                    \
@@ -191,7 +189,6 @@ TF_CALL_bfloat16(REGISTER_PARALLEL_CONCAT);
                               .TypeConstraint<type>("T"), \
                           ParallelConcatUpdate<GPUDevice>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);
-TF_CALL_bfloat16(REGISTER);
 #undef REGISTER
 
 // Register versions that operate on int32 data on the CPU even though the op
@@ -433,21 +430,16 @@ REGISTER_KERNEL_BUILDER(Name("DeepCopy").Device(DEVICE_CPU), CopyOp<CPUDevice>);
                               .TypeConstraint<type>("dtype"), \
                           EmptyOp<dev##Device, type>)
 
-REGISTER_EMPTY(float, CPU)
-REGISTER_EMPTY(bfloat16, CPU)
-REGISTER_EMPTY(double, CPU)
-REGISTER_EMPTY(Eigen::half, CPU)
-REGISTER_EMPTY(tstring, CPU)
-REGISTER_EMPTY(int32, CPU)
-REGISTER_EMPTY(int64_t, CPU)
-REGISTER_EMPTY(bool, CPU)
-REGISTER_EMPTY(uint8, CPU)
+#define REGISTER(TYPE) REGISTER_EMPTY(TYPE, CPU);
+TF_CALL_POD_STRING_TYPES(REGISTER);
+#undef REGISTER
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 typedef Eigen::GpuDevice GPUDevice;
 
 #define REGISTER(TYPE)                                                    \
+  REGISTER_EMPTY(TYPE, GPU);                                              \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("InplaceUpdate").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
       InplaceOp<GPUDevice, functor::I_UPDATE>);                           \
@@ -464,18 +456,14 @@ typedef Eigen::GpuDevice GPUDevice;
 REGISTER_KERNEL_BUILDER(
     Name("InplaceUpdate").Device(DEVICE_GPU).TypeConstraint<bool>("T"),
     InplaceOp<GPUDevice, functor::I_UPDATE>);
-REGISTER(float);
-REGISTER(double);
-REGISTER(Eigen::half);
-REGISTER(Eigen::bfloat16);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER);
+REGISTER(int8_t);
+REGISTER(uint8_t);
 REGISTER(int64_t);
+REGISTER(uint64_t);
 
-REGISTER_EMPTY(float, GPU);
-REGISTER_EMPTY(double, GPU);
-REGISTER_EMPTY(Eigen::half, GPU);
-REGISTER_EMPTY(Eigen::bfloat16, GPU);
-REGISTER_EMPTY(int64_t, GPU);
 REGISTER_EMPTY(int32, GPU);
+#undef REGISTER
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

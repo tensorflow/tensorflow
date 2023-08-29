@@ -19,6 +19,7 @@ from tensorflow.python.data.ops import directed_interleave_op
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.types import data as data_types
 
 
 def _choose_from_datasets(  # pylint: disable=unused-private-name
@@ -28,7 +29,7 @@ def _choose_from_datasets(  # pylint: disable=unused-private-name
 
   if not datasets:
     raise ValueError("Invalid `datasets`. `datasets` should not be empty.")
-  if not isinstance(choice_dataset, dataset_ops.DatasetV2):
+  if not isinstance(choice_dataset, data_types.DatasetV2):
     raise TypeError(
         "Invalid `choice_dataset`. `choice_dataset` should be a "
         f"`tf.data.Dataset` but is {type(choice_dataset)}."

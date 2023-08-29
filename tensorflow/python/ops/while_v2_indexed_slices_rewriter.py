@@ -18,7 +18,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import indexed_slices
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -96,7 +97,7 @@ def _rewrite_output_as_tensor(body_grad_graph, grad_output_slices):
     grad_output_slices: IndexedSlices output of body_grad_graph.
   """
   with body_grad_graph.as_default():
-    new_output = ops.convert_to_tensor_v2(grad_output_slices)
+    new_output = tensor_conversion.convert_to_tensor_v2(grad_output_slices)
 
   idx = _get_tensor_index_in_iterable(body_grad_graph.structured_outputs,
                                       grad_output_slices)
@@ -175,7 +176,7 @@ def _create_grad_indexed_slices_init(grad_output_slices, forward_input):
     Zeros IndexedSlices, created in current Graph.
   """
   assert isinstance(grad_output_slices, indexed_slices.IndexedSlices)
-  assert isinstance(forward_input, ops.Tensor)
+  assert isinstance(forward_input, tensor.Tensor)
   values_out = grad_output_slices.values
   indices_out = grad_output_slices.indices
 

@@ -108,7 +108,7 @@ TfLiteStatus QuantizeWeights(
       serialized_model, &context, UnknownLoc::get(&context));
 
   // Apply quantization passes.
-  PassManager pm(module->getContext(), OpPassManager::Nesting::Implicit);
+  PassManager pm((*module)->getName(), OpPassManager::Nesting::Implicit);
   quant::QuantizationSpecs quant_specs;
   quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.weight_quantization = true;
@@ -147,7 +147,7 @@ TfLiteStatus QuantizeWeights(
   tensorflow::AddDynamicRangeQuantizationPasses(quant_specs, pm);
 
   if (failed(pm.run(module.get()))) {
-    absl::string_view err = statusHandler.ConsumeStatus().error_message();
+    absl::string_view err = statusHandler.ConsumeStatus().message();
     error_reporter->Report("Failed to quantize: %s", err);
     return kTfLiteError;
   }

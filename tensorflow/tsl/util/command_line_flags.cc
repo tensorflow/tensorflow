@@ -93,10 +93,10 @@ bool ParseBoolFlag(StringPiece arg, StringPiece flag,
       return true;
     }
 
-    if (arg == "=true") {
+    if (absl::EqualsIgnoreCase(arg, "=true")) {
       *value_parsing_ok = hook(true);
       return true;
-    } else if (arg == "=false") {
+    } else if (absl::EqualsIgnoreCase(arg, "=false")) {
       *value_parsing_ok = hook(false);
       return true;
     } else {

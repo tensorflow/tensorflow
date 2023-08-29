@@ -97,7 +97,7 @@ func.func @ignore_embedding_ops() -> () {
     // CHECK: "tf.SendTPUEmbeddingGradients"
     // CHECK-NOT: _xla_outside_compilation
     %2:2 = "tf.RecvTPUEmbeddingActivations"() {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D"} : () -> (tensor<2x2xf32>, tensor<4x4xf32>)
-    "tf.SendTPUEmbeddingGradients"(%2#0, %2#1) {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D", operand_segment_sizes = array<i32: 2, 0>} : (tensor<2x2xf32>, tensor<4x4xf32>) -> ()
+    "tf.SendTPUEmbeddingGradients"(%2#0, %2#1) {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D", operandSegmentSizes = array<i32: 2, 0>} : (tensor<2x2xf32>, tensor<4x4xf32>) -> ()
     tf_device.return
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
   func.return
@@ -567,3 +567,31 @@ func.func @set_bound(%arg0: tensor<i32>) -> tensor<i32> {
   func.return %bounded : tensor<i32>
 }
 
+
+// CHECK-LABEL: func @unsupported_op_cpu_cluster
+func.func @unsupported_op_cpu_cluster() -> tensor<i32> {
+  %0 = "tf_device.cluster"() ({
+    // CHECK: "tf.UnsupportedOp"
+    // CHECK-SAME: _xla_outside_compilation
+    // CHECK: "tf.Identity"
+    // CHECK-NOT: _xla_outside_compilation
+    %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %2 : tensor<i32>
+  }) {allow_soft_placement = true, _xla_compile_device_type = "CPU"} : () -> tensor<i32>
+  func.return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @unsupported_op_gpu_cluster
+func.func @unsupported_op_gpu_cluster() -> tensor<i32> {
+  %0 = "tf_device.cluster"() ({
+    // CHECK: "tf.UnsupportedOp"
+    // CHECK-SAME: _xla_outside_compilation
+    // CHECK: "tf.Identity"
+    // CHECK-NOT: _xla_outside_compilation
+    %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %2 : tensor<i32>
+  }) {allow_soft_placement = true, _xla_compile_device_type = "GPU"} : () -> tensor<i32>
+  func.return %0 : tensor<i32>
+}

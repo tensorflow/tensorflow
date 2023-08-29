@@ -113,8 +113,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t CardinalityInternal() const override {
-    int64_t n = input_->Cardinality();
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t n = input_->Cardinality(options);
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -248,7 +248,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(kExhausted), static_cast<int64_t>(!input_impl_)));
+          prefix(), kExhausted, static_cast<int64_t>(!input_impl_)));
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
@@ -260,7 +260,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       int64_t input_exhausted;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kExhausted), &input_exhausted));
+          reader->ReadScalar(prefix(), kExhausted, &input_exhausted));
       if (static_cast<bool>(input_exhausted)) {
         input_impl_.reset();
       } else {
@@ -297,9 +297,10 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
 
         for (int dim = 0; dim < padded_shape.dims(); ++dim) {
           if (padded_shape.dim_size(dim) == -1) {
-            batch_component_shape.AddDim(0);
+            TF_RETURN_IF_ERROR(batch_component_shape.AddDimWithStatus(0));
           } else {
-            batch_component_shape.AddDim(padded_shape.dim_size(dim));
+            TF_RETURN_IF_ERROR(batch_component_shape.AddDimWithStatus(
+                padded_shape.dim_size(dim)));
           }
         }
 
@@ -348,7 +349,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         // element in the batch.
         TensorShape component_shape({});
         for (int i = 1; i < batch_component_shape.dims(); ++i) {
-          component_shape.AddDim(batch_component_shape.dim_size(i));
+          TF_RETURN_IF_ERROR(component_shape.AddDimWithStatus(
+              batch_component_shape.dim_size(i)));
         }
         auto copy_element_fn = [component_index, &batch_elements,
                                 &batch_component, &component_shape](int index) {

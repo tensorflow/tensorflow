@@ -16,19 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MEMORY_SCHEDULER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MEMORY_SCHEDULER_H_
 
-#include <vector>
-
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 
@@ -142,8 +138,8 @@ class HloMemoryScheduler : public HloModulePass {
   // size_function is the function returning the number of bytes required for a
   // LogicalBuffer. algorithm is the memory scheduling algorithm to use. If not
   // specified, then DefaultMemoryScheduler is used.
-  HloMemoryScheduler(const LogicalBuffer::SizeFunction& size_function,
-                     const ModuleSchedulerAlgorithm& algorithm = {});
+  explicit HloMemoryScheduler(const LogicalBuffer::SizeFunction& size_function,
+                              const ModuleSchedulerAlgorithm& algorithm = {});
 
   ~HloMemoryScheduler() override = default;
 

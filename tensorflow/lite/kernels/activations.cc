@@ -595,14 +595,14 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
     // insignificant. Use a symmetric output range of [-1.0; 1.0] and double as
     // FloatT for backward compatibility.
     data->params.exp_lut = data->exp_lut;
-    LUTPopulate<int16_t, double>(
+    LUTPopulate<int16_t>(
         10.0 / range, std::numeric_limits<int16_t>::max(), 2.0 / range, 0,
         [](double value) { return std::exp(value); }, data->params.exp_lut);
 
     // Input is in the [0; 1] range and use a symmetric output range of
     // [-1.0; 1.0] and double as FloatT for backward compatibility.
     data->params.one_over_one_plus_x_lut = data->one_over_one_plus_x_lut;
-    LUTPopulate<int16_t, double>(
+    LUTPopulate<int16_t>(
         1.0 / range, std::numeric_limits<int16_t>::min(), 2.0 / range, 0,
         [](double value) { return 1.0 / (1.0 + value); },
         data->params.one_over_one_plus_x_lut);
@@ -1687,17 +1687,33 @@ TfLiteRegistration* Register_LOGISTIC() {
 
 TfLiteRegistration* Register_SOFTMAX_REF() {
   static TfLiteRegistration r = {
-      activations::SoftmaxInit, activations::SoftmaxFree,
+      activations::SoftmaxInit,
+      activations::SoftmaxFree,
       activations::SoftmaxPrepare<activations::kReference>,
-      activations::SoftmaxEval<activations::kReference>};
+      activations::SoftmaxEval<activations::kReference>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared};
   return &r;
 }
 
 TfLiteRegistration* Register_SOFTMAX() {
   static TfLiteRegistration r = {
-      activations::SoftmaxInit, activations::SoftmaxFree,
+      activations::SoftmaxInit,
+      activations::SoftmaxFree,
       activations::SoftmaxPrepare<activations::kGenericOptimized>,
-      activations::SoftmaxEval<activations::kGenericOptimized>};
+      activations::SoftmaxEval<activations::kGenericOptimized>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared};
   return &r;
 }
 

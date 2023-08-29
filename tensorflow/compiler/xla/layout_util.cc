@@ -15,24 +15,32 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 
-#include <stddef.h>
-
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <numeric>
 #include <optional>
-#include <random>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace {
@@ -59,8 +67,8 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
     absl::Span<const DimLevelType> dim_level_types,
     absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
     absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
-    PrimitiveType pointer_primitive_type, int64_t memory_space,
-    std::optional<Shape> physical_shape,
+    PrimitiveType pointer_primitive_type, int64_t element_size_in_bits,
+    int64_t memory_space, std::optional<Shape> physical_shape,
     int64_t dynamic_shape_metadata_prefix_bytes) {
   Layout layout;
   for (int64_t dimension_number : minor_to_major) {
@@ -88,6 +96,7 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
   }
   layout.set_index_primitive_type(index_primitive_type);
   layout.set_pointer_primitive_type(pointer_primitive_type);
+  layout.set_element_size_in_bits(element_size_in_bits);
   layout.set_memory_space(memory_space);
   if (physical_shape != std::nullopt) {
     *layout.mutable_physical_shape() = *std::move(physical_shape);
@@ -491,34 +500,19 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   return LayoutUtil::HasLayout(program_shape.result());
 }
 
+/* static */ bool LayoutUtil::HasCustomElementSizeInBits(const Shape& shape) {
+  if (shape.IsTuple()) {
+    return absl::c_any_of(shape.tuple_shapes(),
+                          LayoutUtil::HasCustomElementSizeInBits);
+  } else if (!shape.IsArray()) {
+    // Opaque or token types have no custom element size in bits.
+    return false;
+  }
+  return shape.has_layout() && shape.layout().element_size_in_bits() != 0;
+}
+
 /* static */ bool LayoutUtil::Equal(const Layout& lhs, const Layout& rhs) {
   return lhs == rhs;
-}
-
-/* static */ absl::Span<const int64_t> LayoutUtil::MinorToMajor(
-    const Shape& shape) {
-  CHECK(shape.IsArray());
-  return shape.layout().minor_to_major();
-}
-
-/* static */ absl::Span<const int64_t> LayoutUtil::MinorToMajor(
-    const Layout& layout) {
-  return layout.minor_to_major();
-}
-
-/* static */ int64_t LayoutUtil::Major(const Layout& layout,
-                                       int64_t physical_dimension_number) {
-  CHECK_LE(0, physical_dimension_number);
-  CHECK_LT(physical_dimension_number, layout.minor_to_major_size());
-  return Minor(layout,
-               layout.minor_to_major_size() - 1 - physical_dimension_number);
-}
-
-/* static */ int64_t LayoutUtil::Minor(const Layout& layout,
-                                       int64_t physical_dimension_number) {
-  CHECK_LE(0, physical_dimension_number);
-  CHECK_LT(physical_dimension_number, layout.minor_to_major_size());
-  return layout.minor_to_major(physical_dimension_number);
 }
 
 /* static */ std::vector<int64_t> LayoutUtil::MakeLogicalToPhysical(
@@ -530,6 +524,11 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     logical_to_physical[logical] = physical;
   }
   return logical_to_physical;
+}
+
+/* static */ void LayoutUtil::PrintHumanString(Printer* printer,
+                                               const Layout& layout) {
+  layout.Print(printer);
 }
 
 /* static */ std::string LayoutUtil::HumanString(const Layout& layout) {
@@ -721,10 +720,25 @@ bool LayoutUtil::ValidateDimLevel(DimLevelType dim_level_type, bool dim_unique,
       return dim_unique && dim_ordered;
     case DIM_COMPRESSED:
     case DIM_SINGLETON:
+    case DIM_COMPRESSED_WITH_HI:
       return true;
     default:
       return false;
   }
+}
+
+/*static*/ bool LayoutUtil::ByteStridesIsMajorToMinor(
+    absl::Span<const int64_t> byte_strides, absl::Span<const int64_t> dims,
+    PrimitiveType element_type) {
+  CHECK_EQ(dims.size(), byte_strides.size());
+  int64_t stride = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+  for (int i = dims.size() - 1; i >= 0; --i) {
+    if (byte_strides[i] != stride) {
+      return false;
+    }
+    stride *= dims[i];
+  }
+  return true;
 }
 
 }  // namespace xla

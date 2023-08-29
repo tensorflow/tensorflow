@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/lu_decomposition.h"
 
+#include <algorithm>
 #include <vector>
 
 #include "tensorflow/compiler/xla/shape_util.h"

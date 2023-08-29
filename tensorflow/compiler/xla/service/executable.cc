@@ -182,31 +182,15 @@ StatusOr<ExecutionOutput> Executable::ExecuteOnStreamWrapper(
 
 struct ExecuteAsyncOnStreamWrapperState {
   ExecutionProfile* profile;
-  std::shared_ptr<se::Timer> timer;
-  std::shared_ptr<HloExecutionProfile> profile_ptr;
 };
 
 static ExecuteAsyncOnStreamWrapperState ExecuteWrapperBeforeExecution(
     const Executable& executable,
     const ServiceExecutableRunOptions* run_options) {
   ExecuteAsyncOnStreamWrapperState state;
-  se::Stream* stream = run_options->stream();
   state.profile = run_options->run_options().execution_profile();
-  if (state.profile != nullptr) {
-    state.timer = std::make_shared<se::Timer>(stream->parent());
-    stream->InitTimer(state.timer.get()).ThenStartTimer(state.timer.get());
-  }
 
   VLOG(1) << "enqueueing executable on stream...";
-  // If the profiling flag isn't enabled, we pass nullptr as the profile to
-  // indicate profiling is not requested.
-  state.profile_ptr =
-      executable.module_config().debug_options().xla_hlo_profile() &&
-              executable.hlo_profiling_enabled()
-          ? std::make_shared<HloExecutionProfile>(
-                &executable.hlo_profile_printer_data(),
-                &executable.hlo_profile_index_map())
-          : nullptr;
   return state;
 }
 
@@ -215,9 +199,6 @@ Status ExecuteWrapperAfterExecution(
     Status return_status, se::Stream* stream) {
   if (!return_status.ok()) {
     if (state.profile != nullptr) {
-      // Ensure the ThenStartTimer call has completed before we destroy timer.
-      // We already have a failure status to return, so just log this if it
-      // fails.
       Status status = stream->BlockHostUntilDone();
       if (!status.ok()) {
         LOG(ERROR) << "Failed to BlockHostUntilDone: " << status;
@@ -227,9 +208,6 @@ Status ExecuteWrapperAfterExecution(
   }
 
   if (state.profile != nullptr) {
-    VLOG(1) << "enqueueing 'stop timer' and profiling callback...";
-    stream->ThenStopTimer(state.timer.get());
-
     // We block instead of using an async callback because reading the timer
     // value may call back into the driver on GPU, which is not allowed.
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
@@ -237,9 +215,6 @@ Status ExecuteWrapperAfterExecution(
     const int64_t executable_size_in_bytes =
         executable->SizeOfGeneratedCodeInBytes();
     // Merge in run-time profile information from execution_profile.
-
-    // Overall execution time (in nanoseconds) from the executor timer.
-    state.profile->set_compute_and_transfer_time_ns(state.timer->Nanoseconds());
 
     // TODO(b/28447609): The value in compute_and_transfer_time_ns is actually
     // the compute time without the transfer time, so this way we get the
@@ -255,23 +230,6 @@ Status ExecuteWrapperAfterExecution(
     }
   }
 
-  if (executable->module_config().debug_options().xla_hlo_profile() &&
-      state.profile_ptr != nullptr) {
-    DumpToFileInDir(executable->module(), /*file_prefix=*/"",
-                    /*file_suffix=*/"hlo_execution_profile_data",
-                    state.profile_ptr->ToProto().SerializeAsString());
-  }
-
-  if (state.profile_ptr != nullptr) {
-    const se::DeviceDescription* device_description =
-        &stream->parent()->GetDeviceDescription();
-    std::shared_ptr<HloExecutionProfile> profile = state.profile_ptr;
-    stream->ThenDoHostCallback([profile, device_description]() {
-      XLA_LOG_LINES(tsl::INFO,
-                    profile->ToString(device_description->clock_rate_ghz()));
-    });
-  }
-
   return return_status;
 }
 
@@ -280,7 +238,7 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStreamWrapper(
     absl::Span<const ShapedBuffer* const> arguments) {
   auto state = ExecuteWrapperBeforeExecution(*this, run_options);
   StatusOr<ScopedShapedBuffer> return_value =
-      ExecuteAsyncOnStream(run_options, arguments, state.profile_ptr.get());
+      ExecuteAsyncOnStream(run_options, arguments, nullptr);
   TF_RETURN_IF_ERROR(ExecuteWrapperAfterExecution(
       this, state, return_value.status(), run_options->stream()));
   return return_value;
@@ -290,8 +248,8 @@ StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStreamWrapper(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments) {
   auto state = ExecuteWrapperBeforeExecution(*this, run_options);
-  StatusOr<ExecutionOutput> return_value = ExecuteAsyncOnStream(
-      run_options, std::move(arguments), state.profile_ptr.get());
+  StatusOr<ExecutionOutput> return_value =
+      ExecuteAsyncOnStream(run_options, std::move(arguments), nullptr);
   TF_RETURN_IF_ERROR(ExecuteWrapperAfterExecution(
       this, state, return_value.status(), run_options->stream()));
   return return_value;

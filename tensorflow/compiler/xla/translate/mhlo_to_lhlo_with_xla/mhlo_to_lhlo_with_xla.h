@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_LHLO_WITH_XLA_MHLO_TO_LHLO_WITH_XLA_H_
 #define TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_LHLO_WITH_XLA_MHLO_TO_LHLO_WITH_XLA_H_
 
+#include <functional>
+#include <memory>
+#include <optional>
+#include <utility>
+
 #include "absl/types/optional.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -55,6 +60,11 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   GetScatterDimensionNumbers(const xla::HloInstruction* instr,
                              mlir::MLIRContext* context);
 
+  absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>
+  ConsumeLhloToHloMap() {
+    return std::move(lhlo_to_hlo_);
+  }
+
  private:
   tsl::StatusOr<lmhlo::SortOp> EmitSortOp(const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo::FusionOp> EmitFusionOp(const xla::HloInstruction* instr);
@@ -64,7 +74,6 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloInstruction* instr);
 
   tsl::StatusOr<Operation*> EmitCustomCallOp(const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::FusionOp> EmitSoftmax(const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::CholeskyOp> EmitCholesky(
       const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<Operation*> EmitGemm(
@@ -75,9 +84,14 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<Operation*> EmitDnnConvolution(
       const xla::HloCustomCallInstruction* custom_call);
+  tsl::StatusOr<Operation*> EmitDnnConvolutionReorderVectorized(
+      const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<Operation*> EmitDnnBatchNorm(
       const xla::HloCustomCallInstruction* custom_call);
-
+  xla::StatusOr<Operation*> EmitDnnfMHA(
+      const xla::HloCustomCallInstruction* custom_call);
+  xla::StatusOr<Operation*> EmitDnnfMHABackward(
+      const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<memref::GetGlobalOp> EmitConstant(
       const xla::HloInstruction* instr);
 
@@ -85,19 +99,28 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   tsl::StatusOr<lmhlo::OutfeedOp> EmitOutfeedOp(
       const xla::HloInstruction* instr);
 
-  tsl::StatusOr<lmhlo::AllToAllOp> EmitAllToAllOp(
+  template <typename OpT>
+  tsl::StatusOr<OpT> EmitDoneOp(const xla::HloInstruction* instr);
+
+  tsl::StatusOr<lmhlo_gpu::AllToAllStartOp> EmitAllToAllStartOp(
       const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::AllGatherOp> EmitAllGatherOp(
+  tsl::StatusOr<lmhlo_gpu::AllToAllDoneOp> EmitAllToAllDoneOp(
       const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(
+  tsl::StatusOr<lmhlo_gpu::AllGatherStartOp> EmitAllGatherStartOp(
+      const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo_gpu::AllGatherDoneOp> EmitAllGatherDoneOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::AllReduceStartOp> EmitAllReduceStartOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::AllReduceDoneOp> EmitAllReduceDoneOp(
       const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::ReduceScatterOp> EmitReduceScatterOp(
+  tsl::StatusOr<mlir::Operation*> EmitAsyncStartOp(
       const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::CollectivePermuteOp> EmitCollectivePermuteOp(
+  tsl::StatusOr<mlir::Operation*> EmitAsyncDoneOp(
+      const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo_gpu::ReduceScatterStartOp> EmitReduceScatterStartOp(
+      const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo_gpu::ReduceScatterDoneOp> EmitReduceScatterDoneOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::CollectivePermuteStartOp>
   EmitCollectivePermuteStartOp(const xla::HloInstruction* instr);
@@ -162,13 +185,6 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   template <typename OpType>
   OpType CreateOpWithoutAttrs(const xla::HloInstruction* instr,
                               ValueRange operands);
-
-  tsl::StatusOr<mlir::Operation*> CreateOpInFusion(
-      const xla::HloInstruction* instr, ValueRange buffer_operands,
-      size_t num_arguments, size_t num_results);
-
-  tsl::StatusOr<mlir::Operation*> CreateOpInFusion(
-      const xla::HloInstruction* instr);
 
   template <typename T>
   DenseIntElementsAttr GetI64DenseElementsAttr(const T& container) {
@@ -242,6 +258,15 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // allocations (see below).
   llvm::DenseMap<const xla::BufferAllocation*, Value> allocations_;
 
+  // This map provides access to MLIR buffers constructed from memref arguments
+  // (allocations) using memref.view operation at the given offset (defined by
+  // slice) and result type (defined by shape). By using this cache we guarantee
+  // that we have a unique memref.view operation corresponding to each
+  // allocation slice.
+  absl::flat_hash_map<std::pair<xla::BufferAllocation::Slice, xla::Shape>,
+                      Value>
+      allocation_slices_;
+
   // This map provides access to MLIR buffers for each HLO instruction, keyed
   // instruction identity. A slice is contained in a BufferAllocation, and has
   // an offset and a size.
@@ -255,11 +280,11 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // An MLIR buffer is either an input parameter, or a ViewOp in the case
   // where the slice is only part of its allocation.
   //
-  // `slices_` is populated lazily in the `GetOrCreateView()` helper as we
+  // `instr_slices_` is populated lazily in the `GetOrCreateView()` helper as we
   // process every instruction.
   absl::flat_hash_map<std::pair<const xla::HloInstruction*, xla::ShapeIndex>,
                       Value>
-      slices_;
+      instr_slices_;
 
   // The BufferAssignment computed by XLA ahead of time.
   const xla::BufferAssignment& assignment_;
@@ -284,22 +309,28 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // Map ops returning tokens to their output (async collectives start ops, and
   // point-to-point communication ops), to connect the correct done op.
   absl::flat_hash_map<const xla::HloInstruction*, mlir::Value> ret_tokens_;
+
+  // Maps each LHLO op created directly by this emitter to the corresponding HLO
+  // instruction.
+  // Note: this does not contain ops that are inside the bodies of fusions.
+  absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>
+      lhlo_to_hlo_;
 };
 
 // Populate the MLIR `module` with the computation from the `hlo_module` using
 // the provided buffer `assignment`. The returned `Status` indicates success
 // or failure in the conversion.
-tsl::Status HloToLhloModule(const xla::BufferAssignment& assignment,
-                            const xla::HloModule& hlo_module, ModuleOp module);
+// `lhlo_to_hlo_map`, if non-null, is populated with a mapping from generated
+// top-level MLIR operations to the original HLO instructions. "top-level" means
+// that ops inside the bodies of fusions are not included (but all fusions are).
+tsl::Status HloToLhloModule(
+    const xla::BufferAssignment& assignment, const xla::HloModule& hlo_module,
+    ModuleOp module,
+    absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>*
+        lhlo_to_hlo_map = nullptr);
 
-tsl::Status OptimizeAndConvertHloToLmhlo(
-    std::unique_ptr<xla::HloModule> hlo_module, ModuleOp module,
-    StringRef platform_name, bool optimize_xla_hlo);
 OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(
-    llvm::StringRef input, MLIRContext* context, bool optimize_xla_hlo);
-
-// This register the MLIR pass with the command line.
-void RegisterMhloToLhloWithXlaPass();
+    llvm::StringRef input, MLIRContext* context);
 
 }  // namespace mlir
 

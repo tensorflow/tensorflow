@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/tsl/platform/test.h"
 
 // Tests the Reduce HLO in ways that can't be done using the ComputationBuilder
@@ -73,6 +74,10 @@ ENTRY reduce.1 {
 };
 
 XLA_TEST_P(ReduceWithLayoutTest, Reduce) {
+  if (IsMlirLoweringEnabled()) {
+    GTEST_SKIP() << "Explicit layouts not supported by MLIR";
+  }
+
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, GetParsedModule());
   HloInstruction* reduce_instruction =
       module->entry_computation()->root_instruction()->mutable_operand(0);

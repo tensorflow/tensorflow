@@ -16,8 +16,16 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc
 #define EIGEN_USE_THREADS
 
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) &&                       \
+    (!defined(TARGET_OS_IOS) || !TARGET_OS_IOS)
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
+
 #include "tensorflow/core/kernels/reverse_op.h"
+
 #include <memory>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -346,7 +354,6 @@ namespace functor {
 
 TF_CALL_uint8(DECLARE_GPU_SPEC);
 TF_CALL_int8(DECLARE_GPU_SPEC);
-TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPEC_DIM
@@ -373,7 +380,6 @@ TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
                           ReverseV2Op<GPUDevice, T, int64>)
 TF_CALL_uint8(REGISTER_GPU_KERNELS);
 TF_CALL_int8(REGISTER_GPU_KERNELS);
-TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNEL
 
@@ -404,5 +410,39 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                             .HostMemory("output"),
                         ReverseV2Op<CPUDevice, int32, int64>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+#define REGISTER_DEFAULT_KERNELS(T)                          \
+  REGISTER_KERNEL_BUILDER(Name("Reverse")                    \
+                              .Device(DEVICE_DEFAULT)        \
+                              .TypeConstraint<T>("T")        \
+                              .HostMemory("tensor")          \
+                              .HostMemory("dims")            \
+                              .HostMemory("output"),         \
+                          ReverseOp<CPUDevice, T>)           \
+  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                  \
+                              .Device(DEVICE_DEFAULT)        \
+                              .TypeConstraint<T>("T")        \
+                              .TypeConstraint<int32>("Tidx") \
+                              .HostMemory("tensor")          \
+                              .HostMemory("axis")            \
+                              .HostMemory("output"),         \
+                          ReverseV2Op<CPUDevice, T, int32>)  \
+  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                  \
+                              .Device(DEVICE_DEFAULT)        \
+                              .TypeConstraint<T>("T")        \
+                              .TypeConstraint<int64>("Tidx") \
+                              .HostMemory("tensor")          \
+                              .HostMemory("axis")            \
+                              .HostMemory("output"),         \
+                          ReverseV2Op<CPUDevice, T, int64>)
+TF_CALL_uint8(REGISTER_DEFAULT_KERNELS);
+TF_CALL_int8(REGISTER_DEFAULT_KERNELS);
+TF_CALL_int16(REGISTER_DEFAULT_KERNELS);
+TF_CALL_uint32(REGISTER_DEFAULT_KERNELS);
+TF_CALL_int32(REGISTER_DEFAULT_KERNELS);
+TF_CALL_GPU_ALL_TYPES(REGISTER_DEFAULT_KERNELS);
+#undef REGISTER_DEFAULT_KERNELS
+#endif
 
 }  // namespace tensorflow

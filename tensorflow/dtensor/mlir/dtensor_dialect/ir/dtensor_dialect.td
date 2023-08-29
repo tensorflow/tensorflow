@@ -52,7 +52,8 @@ void registerAttributes();
 
 public:
   }];
-  let useFoldAPI = kEmitFoldAdaptorFolder;
+
+  let usePropertiesForAttributes = 0;
 }
 
 //===----------------------------------------------------------------------===//
