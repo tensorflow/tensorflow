@@ -15,11 +15,11 @@
 """Utilities used to capture Python idioms."""
 
 
-def ld(v):
+def ld(var):
   """Load variable operator."""
-  if isinstance(v, Undefined):
-    return v.read()
-  return v
+  if isinstance(var, Undefined):
+    return var.read()
+  return var
 
 
 def ldu(load_v, name):
