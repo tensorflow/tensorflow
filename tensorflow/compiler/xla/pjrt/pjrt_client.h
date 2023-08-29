@@ -177,6 +177,16 @@ class PjRtDevice {
   // Returns the default memory space attached to this device.
   virtual StatusOr<PjRtMemorySpace*> default_memory_space() const = 0;
 
+  // Returns a platform-specific stream handle that should be used to track when
+  // an externally-managed buffer is ready to use on this device. This is
+  // intended to support dlpack on GPU and is not expected to be implemented for
+  // all hardware platforms.
+  virtual StatusOr<std::intptr_t> GetStreamForExternalReadyEvents() const {
+    return Unimplemented(
+        "PjRtDevice::GetStreamForExternalReadyEvents only implemented for "
+        "GPU");
+  }
+
   // Experimental: Poisons the earliest execution on this device with given
   // launch_id if it's not finished yet, i.e. makes its output buffers error.
   //
@@ -772,7 +782,7 @@ class PjRtClient {
   //
   // `stream`, if specified, is a platform-specific stream handle that should
   // contain the work or events needed to materialize the on-device
-  // buffer. CreateViewOfDeviceBuffer will add a wait to `stream` that
+  // buffer. CreateViewOfDeviceBuffer will append an event to `stream` that
   // indicates when the returned buffer is ready to use. This is intended to
   // support dlpack on GPU and is not expected to be supported on all hardware
   // platforms.
@@ -959,7 +969,7 @@ class PjRtBuffer {
     // and is not expected to be implemented for all hardware platforms.
     virtual Status WaitUntilBufferReadyOnStream(std::intptr_t stream) {
       return Unimplemented(
-          "WaitUntilBufferReadyOnExternalStream is only implemented for GPU.");
+          "WaitUntilBufferReadyOnStream is only implemented for GPU.");
     }
 
    protected:
