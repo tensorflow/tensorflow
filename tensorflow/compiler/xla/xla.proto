@@ -609,8 +609,10 @@ message DebugOptions {
   bool xla_gpu_single_wave_autotuning = 242;
   // Whether reduction epilogue fusion is enabled in fusion passes.
   bool xla_gpu_enable_reduction_epilogue_fusion = 243;
+  // Allow early return when acquiring NCCL cliques.
+  bool xla_gpu_enable_nccl_clique_optimization = 244;
 
-  // Next id: 244
+  // Next id: 245
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
