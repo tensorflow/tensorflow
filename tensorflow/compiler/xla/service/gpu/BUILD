@@ -2399,6 +2399,55 @@ cc_library(
 )
 
 cc_library(
+    name = "fusion_pipeline",
+    srcs = ["fusion_pipeline.cc"],
+    hdrs = ["fusion_pipeline.h"],
+    deps = [
+        ":fusion_merger",
+        ":gpu_device_info",
+        ":gpu_hlo_cost_analysis",
+        ":gpu_shape_verifier",
+        ":horizontal_input_fusion",
+        ":horizontal_loop_fusion",
+        ":instruction_fusion",
+        ":multi_output_fusion",
+        ":priority_fusion",
+        ":variadic_op_splitter",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/compiler/xla/service:hlo_cse",
+        "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:layout_assignment",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+    ],
+)
+
+cc_library(
+    name = "prepare_hlo_for_ir_emitting_pipeline",
+    srcs = ["prepare_hlo_for_ir_emitting_pipeline.cc"],
+    hdrs = ["prepare_hlo_for_ir_emitting_pipeline.h"],
+    deps = [
+        ":alias_passthrough_params",
+        ":copy_fusion",
+        ":gpu_sanitize_constant_names",
+        ":gpu_shape_verifier",
+        ":horizontal_loop_fusion",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:copy_insertion",
+        "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
+        "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:layout_assignment",
+        "//tensorflow/compiler/xla/service:loop_schedule_linearizer",
+    ],
+)
+
+cc_library(
     name = "gpu_compiler",
     srcs = if_gpu_is_configured([
         "gpu_compiler.cc",
@@ -2586,7 +2635,11 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:traceme",
-    ]) + ["//tensorflow/tsl/lib/monitoring:counter"],
+    ]) + [
+        ":fusion_pipeline",
+        ":prepare_hlo_for_ir_emitting_pipeline",
+        "//tensorflow/tsl/lib/monitoring:counter",
+    ],
 )
 
 xla_cc_test(
