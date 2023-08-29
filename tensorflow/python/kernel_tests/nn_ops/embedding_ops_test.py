@@ -965,6 +965,7 @@ class EmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
         np_type = "f" if dtype == dtypes.float32 else "d"
         x = np.random.uniform(size=x_shape).astype(np_type) + 1
         x = resource_variable_ops.ResourceVariable(x)
+        self.evaluate(variables.global_variables_initializer())
 
         def forward(x_):
           y_ = embedding_ops.embedding_lookup_sparse(
