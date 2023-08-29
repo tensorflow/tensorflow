@@ -1575,6 +1575,88 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       return BuildStablehloOperatorwithoutOptions(
           inst, operands, results, tflite::BuiltinOperator_STABLEHLO_TANH);
     }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ConvertOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_CONVERT);
+    }
+    if (auto shlo_op =
+            llvm::dyn_cast<mlir::stablehlo::DynamicUpdateSliceOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results,
+          tflite::BuiltinOperator_STABLEHLO_DYNAMIC_UPDATE_SLICE);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::IotaOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_IOTA);
+
+      auto iota_option = tflite::CreateStablehloIotaOptions(
+          builder_, shlo_op.getIotaDimension());
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloIotaOptions, iota_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::DynamicSliceOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index = GetOpcodeIndex(
+          op_name, tflite::BuiltinOperator_STABLEHLO_DYNAMIC_SLICE);
+
+      auto slice_sizes = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getSliceSizes()));
+
+      auto dynamic_slice_option =
+          tflite::CreateStablehloDynamicSliceOptions(builder_, slice_sizes);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloDynamicSliceOptions,
+          dynamic_slice_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::CompareOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_COMPARE);
+
+      auto compare_option = tflite::CreateStablehloCompareOptions(
+          builder_,
+          static_cast<tflite::StablehloComparisonDirection>(
+              shlo_op.getComparisonDirectionAttr().getValue()),
+          static_cast<tflite::StablehloComparisonType>(
+              shlo_op.getCompareTypeAttr().getValue()));
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloCompareOptions,
+          compare_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::PadOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_PAD);
+
+      auto edge_padding_low = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getEdgePaddingLowAttr()));
+      auto edge_padding_high = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getEdgePaddingHighAttr()));
+      auto interior_padding = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getInteriorPaddingAttr()));
+
+      auto pad_option = tflite::CreateStablehloPadOptions(
+          builder_, edge_padding_low, edge_padding_high, interior_padding);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloPadOptions, pad_option.Union());
+    }
     if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ConcatenateOp>(inst)) {
       std::string op_name = inst->getName().getStringRef().str();
       uint32_t opcode_index = GetOpcodeIndex(

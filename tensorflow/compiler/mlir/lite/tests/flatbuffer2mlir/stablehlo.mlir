@@ -287,3 +287,65 @@ func.func @tanh(%arg0: tensor<1x1x1x96xf32>) -> tensor<1x1x1x96xf32> {
 //CHECK-NEXT: %0 = stablehlo.tanh %arg0 : tensor<1x1x1x96xf32>
 //CHECK-NEXT: return %0 : tensor<1x1x1x96xf32>
 //CHECK-NEXT:}
+
+func.func @iota() -> tensor<3x4xf32> {
+ %0 = stablehlo.iota dim = 0 : tensor<3x4xf32>
+ return %0 : tensor<3x4xf32>
+}
+
+//CHECK:func.func private @iota() -> tensor<3x4xf32> {
+//CHECK-NEXT: %0 = stablehlo.iota dim = 0 : tensor<3x4xf32>
+//CHECK-NEXT: return %0 : tensor<3x4xf32>
+//CHECK-NEXT:}
+
+func.func @compare(%arg0: tensor<i64>, %arg1: tensor<i64>) -> tensor<i1> {
+ %0 = stablehlo.compare EQ, %arg0, %arg1, SIGNED : (tensor<i64>, tensor<i64>) -> tensor<i1>
+ func.return %0 : tensor<i1>
+}
+
+//CHECK:func.func private @compare(%arg0: tensor<i64>, %arg1: tensor<i64>) -> tensor<i1> {
+//CHECK-NEXT: %0 = stablehlo.compare EQ, %arg0, %arg1, SIGNED : (tensor<i64>, tensor<i64>) -> tensor<i1>
+//CHECK-NEXT: return %0 : tensor<i1>
+//CHECK-NEXT:}
+
+func.func @dynamic_update_slice(%arg0: tensor<4x4xi64>, %arg1: tensor<2x3xi64>, %arg2: tensor<i64>, %arg3: tensor<i64>) -> tensor<4x4xi64> {
+  %0 = stablehlo.dynamic_update_slice %arg0, %arg1, %arg2, %arg3 : (tensor<4x4xi64>, tensor<2x3xi64>, tensor<i64>, tensor<i64>) -> tensor<4x4xi64>
+  return %0 : tensor<4x4xi64>
+}
+
+//CHECK:func.func private @dynamic_update_slice(%arg0: tensor<4x4xi64>, %arg1: tensor<2x3xi64>, %arg2: tensor<i64>, %arg3: tensor<i64>) -> tensor<4x4xi64> {
+//CHECK-NEXT: %0 = stablehlo.dynamic_update_slice %arg0, %arg1, %arg2, %arg3 : (tensor<4x4xi64>, tensor<2x3xi64>, tensor<i64>, tensor<i64>) -> tensor<4x4xi64>
+//CHECK-NEXT: return %0 : tensor<4x4xi64>
+//CHECK-NEXT:}
+
+func.func @dyanmic_slice(%arg0: tensor<3x3xi64>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<3x3xi64> {
+  %0 = "stablehlo.dynamic_slice"(%arg0, %arg1, %arg2) {
+    slice_sizes = dense<[3, 3]> : tensor<2xi64>
+  } : (tensor<3x3xi64>, tensor<i64>, tensor<i64>) -> tensor<3x3xi64>
+  return %0 : tensor<3x3xi64>
+}
+
+//CHECK:func.func private @dyanmic_slice(%arg0: tensor<3x3xi64>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<3x3xi64> {
+//CHECK-NEXT: %0 = stablehlo.dynamic_slice %arg0, %arg1, %arg2, sizes = [3, 3] : (tensor<3x3xi64>, tensor<i64>, tensor<i64>) -> tensor<3x3xi64> 
+//CHECK-NEXT: return %0 : tensor<3x3xi64>
+//CHECK-NEXT:}
+
+func.func @pad(%arg0: tensor<1x160x1xf32>, %arg1: tensor<f32>) -> tensor<1x161x1xf32> {
+  %0 = stablehlo.pad %arg0, %arg1, low = [0, 1, 0], high = [0, 0, 0], interior = [0, 0, 0] : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x161x1xf32>
+  return %0 : tensor<1x161x1xf32>
+}
+
+//CHECK:func.func private @pad(%arg0: tensor<1x160x1xf32>, %arg1: tensor<f32>) -> tensor<1x161x1xf32> {
+//CHECK-NEXT: %0 = stablehlo.pad %arg0, %arg1, low = [0, 1, 0], high = [0, 0, 0], interior = [0, 0, 0] : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x161x1xf32>
+//CHECK-NEXT: return %0 : tensor<1x161x1xf32>
+//CHECK-NEXT:}
+
+func.func @convert(%arg0: tensor<2xf64>) -> tensor<2xf32> {
+  %0 = stablehlo.convert %arg0 : (tensor<2xf64>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+//CHECK:func.func private @convert(%arg0: tensor<2xf64>) -> tensor<2xf32> {
+//CHECK-NEXT: %0 = stablehlo.convert %arg0 : (tensor<2xf64>) -> tensor<2xf32>
+//CHECK-NEXT: return %0 : tensor<2xf32>
+//CHECK-NEXT:}

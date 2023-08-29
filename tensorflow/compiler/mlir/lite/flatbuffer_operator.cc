@@ -491,6 +491,47 @@ void mlir::BuiltinOptions2ToAttributes(
     }
     return;
   }
+  if (const auto* op = op_union.AsStablehloPadOptions()) {
+    std::vector<int64_t> shape = {
+        static_cast<int64_t>(op->edge_padding_low.size())};
+    attributes.emplace_back(builder.getNamedAttr(
+        "edge_padding_low",
+        BuildRankedTensorAttr(shape, op->edge_padding_low, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "edge_padding_high",
+        BuildRankedTensorAttr(shape, op->edge_padding_high, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "interior_padding",
+        BuildRankedTensorAttr(shape, op->interior_padding, builder)));
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloDynamicSliceOptions()) {
+    attributes.emplace_back(builder.getNamedAttr(
+        "slice_sizes",
+        BuildRankedTensorAttr({static_cast<int64_t>(op->slice_sizes.size())},
+                              op->slice_sizes, builder)));
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloCompareOptions()) {
+    attributes.emplace_back(builder.getNamedAttr(
+        "comparison_direction",
+        mlir::stablehlo::ComparisonDirectionAttr::get(
+            builder.getContext(), mlir::stablehlo::symbolizeComparisonDirection(
+                                      op->comparison_direction)
+                                      .value())));
+    attributes.emplace_back(builder.getNamedAttr(
+        "compare_type",
+        mlir::stablehlo::ComparisonTypeAttr::get(
+            builder.getContext(),
+            mlir::stablehlo::symbolizeComparisonType(op->compare_type)
+                .value())));
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloIotaOptions()) {
+    attributes.emplace_back(builder.getNamedAttr(
+        "iota_dimension", BuildI64Attr(op->iota_dimension, builder)));
+    return;
+  }
   if (const auto* op = op_union.AsStablehloReduceOptions()) {
     attributes.emplace_back(builder.getNamedAttr(
         "dimensions",
