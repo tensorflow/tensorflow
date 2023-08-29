@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <complex>
+#include <cstdint>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -106,6 +107,21 @@ void copyCastToFloat16(const Eigen::half* in, Eigen::half* out,
   std::transform(in, in + num_elements, out, [](Eigen::half a) { return a; });
 }
 
+TfLiteStatus castInt4ToFloat(TfLiteContext* context, const TfLiteTensor* in,
+                             TfLiteTensor* out, int num_elements) {
+  const int8_t* in_data = (const int8_t*)in->data.data;
+  float* out_data = (float*)out->data.data;
+  for (int i = 0; i < num_elements / 2; ++i) {
+    int8_t byte = in_data[i];
+    // Shift left first so that sign is properly extended when shifted right
+    int8_t lower = static_cast<int8_t>(byte << 4) >> 4;
+    int8_t higher = byte >> 4;
+    out_data[2 * i] = (float)lower;
+    out_data[2 * i + 1] = (float)higher;
+  }
+  return kTfLiteOk;
+}
+
 template <typename FromT>
 TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
                           TfLiteTensor* out, int num_elements) {
@@ -193,6 +209,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return copyToTensor(
           context, reinterpret_cast<std::complex<float>*>(input->data.c64),
           output, num_elements);
+    case kTfLiteInt4:
+      if (output->type != kTfLiteFloat32) {
+        TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
+      }
+      return castInt4ToFloat(context, input, output, num_elements);
     default:
       // Unsupported type.
       TF_LITE_UNSUPPORTED_TYPE(context, input->type, "Cast");

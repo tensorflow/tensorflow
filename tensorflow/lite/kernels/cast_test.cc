@@ -19,7 +19,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -38,6 +40,10 @@ class CastOpModel : public SingleOpModel {
     BuildInterpreter({GetShape(input_)});
   }
 
+  void Set4BitInput(absl::Span<const int8_t> f) {
+    PopulateTensor4bit(input_, 0, f.data(), f.data() + f.size());
+  }
+
   int input() const { return input_; }
   int output() const { return output_; }
 
@@ -45,6 +51,14 @@ class CastOpModel : public SingleOpModel {
   int input_;
   int output_;
 };
+
+TEST(CastOpModel, CastInt4ToFloat) {
+  CastOpModel m({TensorType_INT4, {2, 3}}, {TensorType_FLOAT32, {2, 3}});
+  m.Set4BitInput({1, 2, 3, 4, 5, 6});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray({1.f, 2.f, 3.f, 4.f, 5.f, 6.f}));
+}
 
 TEST(CastOpModel, CastInt16ToFloat) {
   CastOpModel m({TensorType_INT16, {2, 3}}, {TensorType_FLOAT32, {2, 3}});
