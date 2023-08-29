@@ -167,6 +167,24 @@ double ClusterEnvironment::CollectivePermuteCost(
   return max_cost;
 }
 
+// Overestimate the cost of replicating a tensor by decomposing the resharding
+// operation as an all-gather on all mesh dimensions.
+double ClusterEnvironment::OverestimateReplicationCost(
+    const Shape& shape, const HloSharding& src_spec) const {
+  if (src_spec.IsTileMaximal() || src_spec.IsManual()) {
+    // TODO(b/238210866) Do not use kInfinityCost.
+    return kInfinityCost;
+  }
+  int64_t bytes_moved = GetBytes(shape) / src_spec.NumTiles();
+  double cost = 0.0;
+  for (size_t i = 0; i < device_mesh_.num_dimensions(); ++i) {
+    auto this_cost = this->AllGatherCost(bytes_moved, i);
+    cost += this_cost;
+    bytes_moved *= device_mesh_.dimensions()[i];
+  }
+  return cost;
+}
+
 double ClusterEnvironment::TryCollectivePermuteForResharding(
     const Shape& shape, const HloSharding& src_spec,
     const HloSharding& dst_spec) const {
@@ -191,14 +209,21 @@ double ClusterEnvironment::TryCollectivePermuteForResharding(
       // ReshardWithCollectivePermute.
       return reshard_with_collective_permute();
     }
-    // TODO(pratikf) Implement this case as well.
-    return kInfinityCost;
   }
-  return kInfinityCost;
+  // We currently do not handle these cases. These cases previously returned an
+  // infinite resharding cost. Instead, we now overestimate the actual
+  // resharding cost by decomposing the resharding operation, say from sharding
+  // s1 to sharding 2, into two steps:
+  // 1. Replicate the tensor,
+  // 2. Use dynamic-slice to extract the portion of the tensor as per sharding
+  // s2.
+  // Since we only estimate communication costs here, we only need to consider
+  // the cost of step 1, ie. replicating the tensor starting from sharding
+  // s2. We estimate this cost by invoking OverestimateReplicationCost.
+  return OverestimateReplicationCost(shape, src_spec);
 }
 
 // The communication cost of resharding a tensor from src to dst
-// TODO(b/238210866) Do not use kInfinityCost.
 double ClusterEnvironment::ReshardingCost(const Shape& shape,
                                           const HloSharding& src_spec,
                                           const HloSharding& dst_spec) const {

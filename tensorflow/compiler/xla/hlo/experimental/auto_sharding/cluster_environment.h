@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver_option.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/profiling_result.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 
 namespace xla {
 namespace spmd {
@@ -128,6 +129,11 @@ class ClusterEnvironment {
 
   double DotCost(const Shape& lhs_shape, const Shape& rhs_shape,
                  const DotDimensionNumbers& dot_dnums) const;
+
+  // This function attempts to overestimate the cost of replicating a tensor of
+  // shape `shape` sharded according to `src_spec`.
+  double OverestimateReplicationCost(const Shape& shape,
+                                     const HloSharding& src_spec) const;
 
   double ReshardingCost(const Shape& shape, const HloSharding& src_spec,
                         const HloSharding& dst_spec) const;
