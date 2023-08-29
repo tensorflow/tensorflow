@@ -127,6 +127,8 @@ class UnpackOp : public OpKernel {
       UnpackOp<CPUDevice, type>)
 
 TF_CALL_ALL_TYPES(REGISTER_UNPACK);
+TF_CALL_float8_e5m2(REGISTER_UNPACK);
+TF_CALL_float8_e4m3fn(REGISTER_UNPACK);
 
 #undef REGISTER_UNPACK
 

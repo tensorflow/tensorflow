@@ -126,6 +126,8 @@ Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
     output->flat<type>() = t->flat<type>(); \
     break;
       TF_CALL_ALL_TYPES(HANDLER);
+      TF_CALL_float8_e5m2(HANDLER);
+      TF_CALL_float8_e4m3fn(HANDLER);
 #undef HANDLER
       default:
         return errors::Internal("Unsupported dtype", t->dtype());
@@ -553,6 +555,8 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
+TF_CALL_float8_e5m2(REGISTER_KERNELS);
+TF_CALL_float8_e4m3fn(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -565,6 +569,8 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
+TF_CALL_float8_e5m2(REGISTER_GPU_KERNELS);
+TF_CALL_float8_e4m3fn(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

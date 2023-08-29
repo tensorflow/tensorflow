@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -65,7 +66,8 @@ class UnstackOpTest(test.TestCase):
       for axis in range(-rank, rank):
         for dtype in [
             np.bool_, np.float16, np.float32, np.float64, np.uint8, np.int32,
-            np.int64
+            np.int64, dtypes.float8_e5m2.as_numpy_dtype,
+            dtypes.float8_e4m3fn.as_numpy_dtype,
         ]:
           data = self.randn(shape, dtype)
           # Convert data to a single tensorflow tensor

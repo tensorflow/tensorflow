@@ -42,6 +42,8 @@ void Split<Eigen::ThreadPoolDevice, T, NDims>::operator()(
   template struct Split<Eigen::ThreadPoolDevice, T, 3>;
 
 TF_CALL_ALL_TYPES(DEFINE_CPU_KERNELS)
+TF_CALL_float8_e5m2(DEFINE_CPU_KERNELS)
+TF_CALL_float8_e4m3fn(DEFINE_CPU_KERNELS)
 DEFINE_CPU_KERNELS(quint8)
 
 

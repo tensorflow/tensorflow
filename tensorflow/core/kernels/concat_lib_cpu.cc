@@ -111,6 +111,8 @@ void ConcatCPU(
       const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&, \
       typename TTypes<T, 2>::Matrix* output);
 TF_CALL_ALL_TYPES(REGISTER)
+TF_CALL_float8_e5m2(REGISTER)
+TF_CALL_float8_e4m3fn(REGISTER)
 REGISTER(quint8)
 REGISTER(qint8)
 REGISTER(quint16)

@@ -216,6 +216,8 @@ Status ConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                           ConjugateTransposeCpuOp);
 
 TF_CALL_ALL_TYPES(REGISTER)
+TF_CALL_float8_e5m2(REGISTER)
+TF_CALL_float8_e4m3fn(REGISTER)
 #undef REGISTER
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -246,6 +248,8 @@ Status ConjugateTransposeGpuOp::DoTranspose(OpKernelContext* ctx,
                               .HostMemory("perm"),    \
                           ConjugateTransposeGpuOp);
 TF_CALL_POD_TYPES(REGISTER);
+TF_CALL_float8_e5m2(REGISTER);
+TF_CALL_float8_e4m3fn(REGISTER);
 #undef REGISTER
 #endif
 
