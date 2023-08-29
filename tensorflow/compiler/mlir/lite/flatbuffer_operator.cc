@@ -539,6 +539,62 @@ void mlir::BuiltinOptions2ToAttributes(
                               op->dimensions, builder)));
     return;
   }
+  if (const auto* op = op_union.AsStablehloReduceWindowOptions()) {
+    if (!op->window_dimensions.empty()) {
+      attributes.emplace_back(builder.getNamedAttr(
+          "window_dimensions",
+          BuildRankedTensorAttr(
+              {static_cast<int64_t>(op->window_dimensions.size())},
+              op->window_dimensions, builder)));
+    }
+    if (!op->window_strides.empty()) {
+      attributes.emplace_back(builder.getNamedAttr(
+          "window_strides",
+          BuildRankedTensorAttr(
+              {static_cast<int64_t>(op->window_strides.size())},
+              op->window_strides, builder)));
+    }
+    if (!op->base_dilations.empty()) {
+      attributes.emplace_back(builder.getNamedAttr(
+          "base_dilations",
+          BuildRankedTensorAttr(
+              {static_cast<int64_t>(op->base_dilations.size())},
+              op->base_dilations, builder)));
+    }
+    if (!op->window_dilations.empty()) {
+      attributes.emplace_back(builder.getNamedAttr(
+          "window_dilations",
+          BuildRankedTensorAttr(
+              {static_cast<int64_t>(op->window_dilations.size())},
+              op->window_dilations, builder)));
+    }
+    if (!op->padding.empty()) {
+      attributes.emplace_back(builder.getNamedAttr(
+          "padding", BuildRankedTensorAttr(
+                         {static_cast<int64_t>(op->padding.size()) / 2, 2},
+                         op->padding, builder)));
+    }
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloDotGeneralOptions()) {
+    attributes.emplace_back(builder.getNamedAttr(
+        "dot_dimension_numbers",
+        mlir::stablehlo::DotDimensionNumbersAttr::get(
+            builder.getContext(), op->lhs_batching_dimensions,
+            op->rhs_batching_dimensions, op->lhs_contracting_dimensions,
+            op->rhs_contracting_dimensions)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "precision_config",
+        BuildStablehlo_PrecisionConfigAttr(op->precision_config, builder)));
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloSortOptions()) {
+    attributes.emplace_back(builder.getNamedAttr(
+        "dimension", BuildI64Attr(op->dimension, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "is_stable", BuildBoolAttr(op->is_stable, builder)));
+    return;
+  }
 }
 
 // Pull in FlatBuffer writers for TFLite generated using TableGen

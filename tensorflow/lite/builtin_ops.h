@@ -224,6 +224,10 @@ typedef enum {
   kTfLiteBuiltinStablehloDynamicUpdateSlice = 194,
   kTfLiteBuiltinStablehloPad = 195,
   kTfLiteBuiltinStablehloIota = 196,
+  kTfLiteBuiltinStablehloDotGeneral = 197,
+  kTfLiteBuiltinStablehloReduceWindow = 198,
+  kTfLiteBuiltinStablehloSort = 199,
+  kTfLiteBuiltinStablehloWhile = 200,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

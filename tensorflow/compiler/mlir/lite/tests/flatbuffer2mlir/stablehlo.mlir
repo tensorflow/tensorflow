@@ -349,3 +349,79 @@ func.func @convert(%arg0: tensor<2xf64>) -> tensor<2xf32> {
 //CHECK-NEXT: %0 = stablehlo.convert %arg0 : (tensor<2xf64>) -> tensor<2xf32>
 //CHECK-NEXT: return %0 : tensor<2xf32>
 //CHECK-NEXT:}
+
+func.func @reduce_window(%arg0: tensor<1x160x1xf32>, %arg1: tensor<f32>) -> tensor<1x160x1xf32> {
+  %0 = "stablehlo.reduce_window"(%arg0, %arg1) ({
+    ^bb0(%arg23: tensor<f32>, %arg24: tensor<f32>):
+      %1112 = stablehlo.add %arg23, %arg24 : tensor<f32>
+      stablehlo.return %1112 : tensor<f32>
+    }) {padding = dense<[[0, 0], [159, 0], [0, 0]]> : tensor<3x2xi64>, window_dimensions = dense<[1, 160, 1]> : tensor<3xi64>, window_strides = dense<1> : tensor<3xi64>} : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x160x1xf32>
+  return %0 : tensor<1x160x1xf32>
+}
+
+//CHECK:func.func private @reduce_window(%arg0: tensor<1x160x1xf32>, %arg1: tensor<f32>) -> tensor<1x160x1xf32> {
+//CHECK-NEXT: %0 = "stablehlo.reduce_window"(%arg0, %arg1) ({
+//CHECK-NEXT:  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+//CHECK-NEXT:   %1 = stablehlo.add %arg2, %arg3 : tensor<f32>
+//CHECK-NEXT:   stablehlo.return %1 : tensor<f32>
+//CHECK-NEXT{LITERAL}:  }) {padding = dense<[[0, 0], [159, 0], [0, 0]]> : tensor<3x2xi64>, window_dimensions = dense<[1, 160, 1]> : tensor<3xi64>, window_strides = dense<1> : tensor<3xi64>} : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x160x1xf32>
+//CHECK-NEXT: return %0 : tensor<1x160x1xf32>
+//CHECK-NEXT:}
+
+func.func @dot_general(%arg0: tensor<1x1x167xf32>, %arg1: tensor<167x64xf32>) -> tensor<1x1x64xf32> {
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [2] x [0], precision = [DEFAULT, DEFAULT] : (tensor<1x1x167xf32>, tensor<167x64xf32>) -> tensor<1x1x64xf32>
+  return %0 : tensor<1x1x64xf32>
+}
+
+//CHECK:func.func private @dot_general(%arg0: tensor<1x1x167xf32>, %arg1: tensor<167x64xf32>) -> tensor<1x1x64xf32> {
+//CHECK-NEXT: %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [2] x [0], precision = [DEFAULT, DEFAULT] : (tensor<1x1x167xf32>, tensor<167x64xf32>) -> tensor<1x1x64xf32>
+//CHECK-NEXT: return %0 : tensor<1x1x64xf32>
+//CHECK-NEXT:}
+
+func.func @sort(%arg0: tensor<448xf32>, %arg1: tensor<448xi32>) -> tensor<448xf32> {
+  %0, %1 = "stablehlo.sort"(%arg0, %arg1) ({
+    ^bb0(%arg23: tensor<f32>, %arg24: tensor<f32>, %arg25: tensor<i32>, %arg26: tensor<i32>):
+      %1112 = stablehlo.compare  GT, %arg23, %arg24,  TOTALORDER : (tensor<f32>, tensor<f32>) -> tensor<i1>
+      stablehlo.return %1112 : tensor<i1>
+    }) {dimension = 0 : i64, is_stable = true} : (tensor<448xf32>, tensor<448xi32>) -> (tensor<448xf32>, tensor<448xi32>)
+  return %0 : tensor<448xf32>
+}
+
+//CHECK:func.func private @sort(%arg0: tensor<448xf32>, %arg1: tensor<448xi32>) -> tensor<448xf32> {
+//CHECK-NEXT: %0:2 = "stablehlo.sort"(%arg0, %arg1) ({
+//CHECK-NEXT:  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>, %arg4: tensor<i32>, %arg5: tensor<i32>):
+//CHECK-NEXT:   %1 = stablehlo.compare  GT, %arg2, %arg3,  TOTALORDER : (tensor<f32>, tensor<f32>) -> tensor<i1>
+//CHECK-NEXT:   stablehlo.return %1 : tensor<i1>
+//CHECK-NEXT:  }) {dimension = 0 : i64, is_stable = true} : (tensor<448xf32>, tensor<448xi32>) -> (tensor<448xf32>, tensor<448xi32>)
+//CHECK-NEXT: return %0#0 : tensor<448xf32>
+//CHECK-NEXT:}
+
+
+func.func @while(%init_i: tensor<i64>, %init_sum: tensor<i64>) -> tensor<i64>{
+  %0, %1 = "stablehlo.while"(%init_i, %init_sum) ({
+    ^bb0(%arg0: tensor<i64>, %arg1: tensor<i64>):
+      %cond = "stablehlo.compare"(%arg0, %arg1) {
+        comparison_direction = #stablehlo<comparison_direction LT>
+      } : (tensor<i64>, tensor<i64>) -> tensor<i1>
+      stablehlo.return %cond : tensor<i1>
+    }, {
+    ^bb0(%arg0: tensor<i64>, %arg1: tensor<i64>):
+      %new_sum = stablehlo.add %arg1, %arg1 : tensor<i64>
+      %new_i = stablehlo.add %arg0, %arg1 : tensor<i64>
+      stablehlo.return %new_i, %new_sum : tensor<i64>, tensor<i64>
+  }) : (tensor<i64>, tensor<i64>) -> (tensor<i64>, tensor<i64>)
+  return %0 : tensor<i64>
+}
+
+//CHECK:func.func private @while(%arg0: tensor<i64>, %arg1: tensor<i64>) -> tensor<i64> {
+//CHECK-NEXT: %0:2 = stablehlo.while(%iterArg = %arg0, %iterArg_0 = %arg1) : tensor<i64>, tensor<i64>
+//CHECK-NEXT:  cond {
+//CHECK-NEXT:   %1 = stablehlo.compare LT, %iterArg, %iterArg_0, NOTYPE : (tensor<i64>, tensor<i64>) -> tensor<i1>
+//CHECK-NEXT:   stablehlo.return %1 : tensor<i1>
+//CHECK-NEXT:  } do {
+//CHECK-NEXT:   %1 = stablehlo.add %iterArg_0, %iterArg_0 : tensor<i64>
+//CHECK-NEXT:   %2 = stablehlo.add %iterArg, %iterArg_0 : tensor<i64>
+//CHECK-NEXT:   stablehlo.return %2, %1 : tensor<i64>, tensor<i64>
+//CHECK-NEXT: }
+//CHECK-NEXT: return %0#0 : tensor<i64>
+//CHECK-NEXT:}

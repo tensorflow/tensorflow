@@ -859,7 +859,7 @@ ConvertSubgraphIdxsToFunctionAttrs(tflite::BuiltinOptionsUnion options,
   return llvm::SmallVector<mlir::NamedAttribute, 4>{};
 }
 
-Status ConvertSubgraphIdxToReduceRegion(
+Status ConvertSubgraphIdxToStablehloRegion(
     const tflite::OperatorT& op, const std::vector<std::string>& func_names,
     Builder builder, OperationState& op_state) {
   if (auto* opts = op.builtin_options_2.AsStablehloReduceOptions()) {
@@ -872,6 +872,53 @@ Status ConvertSubgraphIdxToReduceRegion(
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
 
     op_state.addAttribute("body", body_attr);
+
+    return ::tensorflow::OkStatus();
+  }
+  if (auto* opts = op.builtin_options_2.AsStablehloReduceWindowOptions()) {
+    int32_t body_idx = opts->body_subgraph_index;
+    if (body_idx >= func_names.size()) {
+      return absl::AbortedError("subgraph with index not found: " +
+                                std::to_string(body_idx));
+    }
+    auto body_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
+
+    op_state.addAttribute("body", body_attr);
+
+    return ::tensorflow::OkStatus();
+  }
+  if (auto* opts = op.builtin_options_2.AsStablehloSortOptions()) {
+    int32_t comparator_idx = opts->comparator_subgraph_index;
+    if (comparator_idx >= func_names.size()) {
+      return absl::AbortedError("subgraph with index not found: " +
+                                std::to_string(comparator_idx));
+    }
+    auto comparator_attr = mlir::SymbolRefAttr::get(
+        builder.getContext(), func_names.at(comparator_idx));
+
+    op_state.addAttribute("comparator", comparator_attr);
+
+    return ::tensorflow::OkStatus();
+  }
+  if (auto* opts = op.builtin_options_2.AsStablehloWhileOptions()) {
+    int32_t body_idx = opts->body_subgraph_index;
+    int32_t cond_idx = opts->cond_subgraph_index;
+    if (body_idx >= func_names.size()) {
+      return absl::AbortedError("subgraph with index not found: " +
+                                std::to_string(body_idx));
+    }
+    if (cond_idx >= func_names.size()) {
+      return absl::AbortedError("subgraph with index not found: " +
+                                std::to_string(cond_idx));
+    }
+    auto body_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
+    auto cond_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(cond_idx));
+
+    op_state.addAttribute("body", body_attr);
+    op_state.addAttribute("cond", cond_attr);
 
     return ::tensorflow::OkStatus();
   }
@@ -1028,7 +1075,12 @@ StatusOr<Operation*> ConvertOp(
       }
     }
   }
-  if (op_name == "stablehlo.reduce") {
+  if (op_name == "stablehlo.reduce" || op_name == "stablehlo.reduce_window" ||
+      op_name == "stablehlo.sort") {
+    op_state.addRegion();
+  }
+  if (op_name == "stablehlo.while") {
+    op_state.addRegion();
     op_state.addRegion();
   }
 
@@ -1068,7 +1120,7 @@ StatusOr<Operation*> ConvertOp(
   op_state.addAttributes(function_ref_attrs);
   // Handle conversion from subgraph to regions in StableHLO ops.
   auto status =
-      ConvertSubgraphIdxToReduceRegion(op, func_names, builder, op_state);
+      ConvertSubgraphIdxToStablehloRegion(op, func_names, builder, op_state);
   if (!status.ok()) {
     return emitError(loc, status.ToString()), status;
   }
@@ -1715,7 +1767,39 @@ void AddRegionsForStableHLOOp(mlir::ModuleOp module) {
         reduce_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
     InlineStablehloOpRegion(reduce_op.getBody(), body);
     reduce_op->removeAttr("body");
+    to_delete_funcs.push_back(body);
   });
+  module.walk([&](mlir::stablehlo::ReduceWindowOp reduce_window_op) {
+    auto body = symbol_table.lookup<mlir::func::FuncOp>(
+        reduce_window_op->getAttr("body")
+            .cast<mlir::FlatSymbolRefAttr>()
+            .getValue());
+    InlineStablehloOpRegion(reduce_window_op.getBody(), body);
+    reduce_window_op->removeAttr("body");
+    to_delete_funcs.push_back(body);
+  });
+  module.walk([&](mlir::stablehlo::SortOp sort_op) {
+    auto comparator = symbol_table.lookup<mlir::func::FuncOp>(
+        sort_op->getAttr("comparator")
+            .cast<mlir::FlatSymbolRefAttr>()
+            .getValue());
+    InlineStablehloOpRegion(sort_op.getComparator(), comparator);
+    sort_op->removeAttr("comparator");
+    to_delete_funcs.push_back(comparator);
+  });
+  module.walk([&](mlir::stablehlo::WhileOp while_op) {
+    auto cond = symbol_table.lookup<mlir::func::FuncOp>(
+        while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
+    InlineStablehloOpRegion(while_op.getCond(), cond);
+    while_op->removeAttr("cond");
+    auto body = symbol_table.lookup<mlir::func::FuncOp>(
+        while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
+    InlineStablehloOpRegion(while_op.getBody(), body);
+    while_op->removeAttr("body");
+    to_delete_funcs.push_back(body);
+    to_delete_funcs.push_back(cond);
+  });
+
   for (auto& func : to_delete_funcs) {
     func.erase();
   }

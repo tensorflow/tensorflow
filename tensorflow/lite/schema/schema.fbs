@@ -461,7 +461,10 @@ enum BuiltinOperator : int32 {
   STABLEHLO_DYNAMIC_UPDATE_SLICE = 194, // WARNING: No runtime support
   STABLEHLO_PAD = 195, // WARNING: No runtime support
   STABLEHLO_IOTA = 196, // WARNING: No runtime support
-
+  STABLEHLO_DOT_GENERAL = 197, // WARNING: No runtime support
+  STABLEHLO_REDUCE_WINDOW = 198, // WARNING: No runtime support
+  STABLEHLO_SORT = 199, // WARNING: No runtime support
+  STABLEHLO_WHILE = 200, // WARNING: No runtime support
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -610,12 +613,44 @@ union BuiltinOptions2{
   StablehloDynamicSliceOptions,
   StablehloPadOptions,
   StablehloIotaOptions,
+  StablehloDotGeneralOptions,
+  StablehloReduceWindowOptions,
+  StablehloSortOptions,
+  StablehloWhileOptions,
 }
 
 enum StablehloPrecisionConfig : uint {
   DEFAULT,
   HIGH,
   HIGHEST,
+}
+
+table StablehloDotGeneralOptions{
+  lhs_batching_dimensions : [long];
+  rhs_batching_dimensions : [long];
+  lhs_contracting_dimensions : [long];
+  rhs_contracting_dimensions : [long];
+  precision_config : [StablehloPrecisionConfig];
+}
+
+table StablehloReduceWindowOptions{
+  window_dimensions : [long];
+  window_strides : [long];
+  base_dilations : [long];
+  window_dilations : [long];
+  padding : [long];
+  body_subgraph_index : int;
+}
+
+table StablehloWhileOptions{
+  cond_subgraph_index : int;
+  body_subgraph_index : int;
+}
+
+table StablehloSortOptions{
+  dimension : long;
+  is_stable : bool;
+  comparator_subgraph_index : int;
 }
 
 table StablehloConcatenateOptions {
