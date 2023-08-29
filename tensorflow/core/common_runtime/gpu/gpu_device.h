@@ -229,7 +229,7 @@ class BaseGPUDevice : public LocalDevice {
   int32 pending_cap_ = 0;
   bool timestamped_allocator_ = false;
   NodeFileWriter* node_file_writer_ = nullptr;  // not owned
-  const GPUOptions::StreamMergeOptions stream_merge_options_;
+  const GPUOptions::Experimental::StreamMergeOptions stream_merge_options_;
 
   // Initialize scratch buffers used by Eigen.
   Status InitScratchBuffers();
