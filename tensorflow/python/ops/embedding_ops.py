@@ -1023,7 +1023,7 @@ def embedding_lookup_sparse_impl(
       params[0].device == segment_ids.device and
       max_norm is None and (
           allow_fast_lookup or
-          (ignore_weights and compat.forward_compatible(2023, 9, 18)))):
+          (ignore_weights and compat.forward_compatible(2023, 9, 26)))):
     idx = ids
     embeddings = params[0]
     if isinstance(embeddings, resource_variable_ops.BaseResourceVariable):

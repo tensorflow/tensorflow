@@ -1715,7 +1715,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   def _benchmark_embedding_lookup_sparse_with_gradient(
           self, params, batch_size, max_val_per_entry, device):
     def func(sp_ids):
-      with forward_compat.forward_compatibility_horizon(2023, 9, 18):
+      with forward_compat.forward_compatibility_horizon(2023, 9, 26):
         with gradients.GradientTape() as g:
           y = embedding_ops.embedding_lookup_sparse(params, sp_ids, None)
         params_grad = g.gradient(y, params)

@@ -960,7 +960,7 @@ class EmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
             [dtypes.float32, dtypes.float64],
             [True, False]):
       with self.test_session(), \
-           forward_compat.forward_compatibility_horizon(2023, 9, 18):
+           forward_compat.forward_compatibility_horizon(2023, 9, 26):
         x_shape = [vocab_size] + param_shape
         np_type = "f" if dtype == dtypes.float32 else "d"
         x = np.random.uniform(size=x_shape).astype(np_type) + 1
