@@ -279,8 +279,6 @@ PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
 PJRT_Error* PJRT_Buffer_DynamicDimensionIndices(
     PJRT_Buffer_DynamicDimensionIndices_Args* args);
 PJRT_Error* PJRT_Buffer_GetMemoryLayout(PJRT_Buffer_GetMemoryLayout_Args* args);
-PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
-    PJRT_Buffer_OnDeviceTrimmedShape_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
     PJRT_Buffer_OnDeviceSizeInBytes_Args* args);
 PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args);
@@ -486,8 +484,6 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_Buffer_DynamicDimensionIndices,
       /*PJRT_Buffer_GetMemoryLayout=*/
       pjrt::PJRT_Buffer_GetMemoryLayout,
-      /*PJRT_Buffer_OnDeviceTrimmedShape=*/
-      pjrt::PJRT_Buffer_OnDeviceTrimmedShape,
       /*PJRT_Buffer_OnDeviceSizeInBytes=*/
       pjrt::PJRT_Buffer_OnDeviceSizeInBytes,
       /*PJRT_Buffer_Device=*/pjrt::PJRT_Buffer_Device,

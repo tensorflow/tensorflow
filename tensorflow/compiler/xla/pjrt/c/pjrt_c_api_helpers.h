@@ -221,6 +221,12 @@ xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
 xla::StatusOr<xla::Layout> ConvertToLayout(
     const PJRT_Buffer_MemoryLayout_Tiled& c_tiled);
 
+PJRT_Buffer_Type GetElementType(const PJRT_Api* api, PJRT_Buffer* buffer);
+absl::Span<const int64_t> GetDimensions(const PJRT_Api* api,
+                                        PJRT_Buffer* buffer);
+PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
+                                         PJRT_Buffer* buffer);
+
 }  // namespace pjrt
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_HELPERS_H_
