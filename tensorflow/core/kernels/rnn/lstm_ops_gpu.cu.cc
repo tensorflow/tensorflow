@@ -267,19 +267,21 @@ void LSTMBlockCellFpropWithCUDA(
                    Eigen::divup(cell_size, static_cast<int>(block_dim_2d.y)));
 
   if (use_peephole) {
-    TF_CHECK_OK(GpuLaunchKernel(
-        lstm_gates<T, true, gate_layout>, grid_dim_2d, block_dim_2d, 0,
-        cu_stream, gates.data(), b.data(), cs_prev.data(), wci.data(),
-        wcf.data(), wco.data(), o.data(), h.data(), ci.data(), cs.data(),
-        co.data(), i.data(), f.data(), forget_bias, cell_clip, batch_size,
-        cell_size));
+    OP_REQUIRES_OK(
+        ctx, GpuLaunchKernel(lstm_gates<T, true, gate_layout>, grid_dim_2d,
+                             block_dim_2d, 0, cu_stream, gates.data(), b.data(),
+                             cs_prev.data(), wci.data(), wcf.data(), wco.data(),
+                             o.data(), h.data(), ci.data(), cs.data(),
+                             co.data(), i.data(), f.data(), forget_bias,
+                             cell_clip, batch_size, cell_size));
   } else {
-    TF_CHECK_OK(GpuLaunchKernel(
-        lstm_gates<T, false, gate_layout>, grid_dim_2d, block_dim_2d, 0,
-        cu_stream, gates.data(), b.data(), cs_prev.data(), wci.data(),
-        wcf.data(), wco.data(), o.data(), h.data(), ci.data(), cs.data(),
-        co.data(), i.data(), f.data(), forget_bias, cell_clip, batch_size,
-        cell_size));
+    OP_REQUIRES_OK(
+        ctx, GpuLaunchKernel(lstm_gates<T, false, gate_layout>, grid_dim_2d,
+                             block_dim_2d, 0, cu_stream, gates.data(), b.data(),
+                             cs_prev.data(), wci.data(), wcf.data(), wco.data(),
+                             o.data(), h.data(), ci.data(), cs.data(),
+                             co.data(), i.data(), f.data(), forget_bias,
+                             cell_clip, batch_size, cell_size));
   }
 }
 

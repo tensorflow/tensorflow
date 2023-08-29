@@ -30,7 +30,7 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.python import tf2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -39,7 +39,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor as tensor_lib
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
@@ -59,10 +60,8 @@ from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
-# A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
-
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -76,8 +75,9 @@ from tensorflow.python.trackable import data_structures
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
-from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
+
+# A module that only depends on `keras.layers` import these from here.
 
 # pylint: disable=g-inconsistent-quotes
 metrics_mod = generic_utils.LazyLoader(
@@ -90,11 +90,10 @@ _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
 
 # TODO(mdan): Should we have a single generic type for types that can be passed
 # to tf.cast?
-_AUTOCAST_TYPES = (ops.Tensor, sparse_tensor.SparseTensor,
+_AUTOCAST_TYPES = (tensor_lib.Tensor, sparse_tensor.SparseTensor,
                    ragged_tensor.RaggedTensor)
 
 
-@keras_export('keras.layers.Layer')
 class Layer(module.Module, version_utils.LayerVersionSelector):
   """This is the class from which all layers inherit.
 
@@ -821,7 +820,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       TypeError: If input_signature contains a non-TensorSpec object.
     """
     def check_type_return_shape(s):
-      if not isinstance(s, tensor_spec.TensorSpec):
+      if not isinstance(s, tensor_lib.TensorSpec):
         raise TypeError('Only TensorSpec signature types are supported, '
                         'but saw signature entry: {}.'.format(s))
       return s.shape
@@ -834,7 +833,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # dtype.
       dtype = input_dtypes[0]
     return nest.map_structure(
-        lambda s: tensor_spec.TensorSpec(dtype=dtype, shape=s),
+        lambda s: tensor_lib.TensorSpec(dtype=dtype, shape=s),
         output_shape)
 
   def _keras_tensor_symbolic_call(self, inputs, input_masks, args, kwargs):
@@ -846,7 +845,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # TODO(fchollet): consider py_func as an alternative, which
       # would enable us to run the underlying graph if needed.
       input_signature = nest.map_structure(
-          lambda x: tensor_spec.TensorSpec(shape=x.shape, dtype=x.dtype),
+          lambda x: tensor_lib.TensorSpec(shape=x.shape, dtype=x.dtype),
           inputs)
       output_signature = self.compute_output_signature(input_signature)
       return nest.map_structure(keras_tensor.KerasTensor, output_signature)
@@ -1063,7 +1062,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         # Don't call `ops.convert_to_tensor` on all `inputs` because
         # `SparseTensors` can't be converted to `Tensor`.
         if isinstance(x, (np_arrays.ndarray, np.ndarray, float, int)):
-          return ops.convert_to_tensor_v2_with_dispatch(x)
+          return tensor_conversion.convert_to_tensor_v2_with_dispatch(x)
         return x
 
       inputs = nest.map_structure(_convert_non_tensor, inputs)
@@ -1484,8 +1483,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tf_type(loss):
-        loss = ops.convert_to_tensor_v2_with_dispatch(
-            loss, dtype=backend.floatx())
+        loss = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx()
+        )
       loss._unconditional_loss = True  # pylint: disable=protected-access
       return loss
 
@@ -1502,8 +1502,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         continue
       if not tensor_util.is_tf_type(loss) and not isinstance(
           loss, keras_tensor.KerasTensor):
-        loss = ops.convert_to_tensor_v2_with_dispatch(
-            loss, dtype=backend.floatx())
+        loss = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx()
+        )
       # TF Functions should take the eager path.
       if ((tf_utils.is_symbolic_tensor(loss) or
            isinstance(loss, keras_tensor.KerasTensor)) and
@@ -2290,7 +2291,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # confusion, we disallow the 'mixed_float16' policy with unsupported
       # strategies. This is because 'mixed_float16' requires loss scaling for
       # numeric stability.
-      strategy = ds_context.get_strategy()
+      strategy = distribute_lib.get_strategy()
       raise ValueError('Mixed precision is not supported with the '
                        'tf.distribute.Strategy: %s. Either stop using mixed '
                        'precision by removing the use of the "%s" policy or '
@@ -3261,7 +3262,7 @@ def _in_functional_construction_mode(layer, inputs, args, kwargs, input_list):  
 
 def _convert_numpy_or_python_types(x):
   if isinstance(x, (np_arrays.ndarray, np.ndarray, float, int)):
-    return ops.convert_to_tensor_v2_with_dispatch(x)
+    return tensor_conversion.convert_to_tensor_v2_with_dispatch(x)
   return x
 
 

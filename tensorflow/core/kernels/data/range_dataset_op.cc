@@ -184,7 +184,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t CardinalityInternal() const override {
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
     // If the signs of `stop_ - start_` and `step_` are different or either of
     // the values is zero, the range will be empty.
     if (sgn(stop_ - start_) * sgn(step_) <= 0) {
@@ -196,10 +196,6 @@ class RangeDatasetOp::Dataset : public DatasetBase {
       // Invariant: start_ - stop_ > 0 && step_ < 0
       return (start_ - stop_ - 1) / -step_ + 1;
     }
-  }
-
-  int64_t CardinalityInternal(CardinalityOptions options) const override {
-    return CardinalityInternal();
   }
 
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
@@ -293,7 +289,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
                         IteratorStateWriter* writer) override {
       if (split_provider_) {
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kHasSplitProvider), true));
+            writer->WriteScalar(prefix(), kHasSplitProvider, true));
         TF_RETURN_IF_ERROR(split_provider_->Save(
             [this](const std::string& key) {
               return SplitProviderKeyNameFn(key);
@@ -301,14 +297,14 @@ class RangeDatasetOp::Dataset : public DatasetBase {
             writer));
       } else {
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kNext), counter_->Peek()));
+            writer->WriteScalar(prefix(), kNext, counter_->Peek()));
       }
       return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      if (reader->Contains(full_name(kHasSplitProvider))) {
+      if (reader->Contains(prefix(), kHasSplitProvider)) {
         TF_RETURN_IF_ERROR(split_provider_->Restore(
             [this](const std::string& key) {
               return SplitProviderKeyNameFn(key);
@@ -316,7 +312,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
             reader));
       } else {
         int64_t next;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNext), &next));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kNext, &next));
         counter_->SetNext(next);
       }
       return OkStatus();

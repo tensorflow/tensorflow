@@ -7,8 +7,8 @@ def repo():
 
     # Attention: tools parse and update these lines.
     # LINT.IfChange
-    ABSL_COMMIT = "273292d1cfc0a94a65082ee350509af1d113344d"
-    ABSL_SHA256 = "94aef187f688665dc299d09286bfa0d22c4ecb86a80b156dff6aabadc5a5c26d"
+    ABSL_COMMIT = "b971ac5250ea8de900eae9f95e06548d14cd95fe"
+    ABSL_SHA256 = "8eeec9382fc0338ef5c60053f3a4b0e0708361375fe51c9e65d0ce46ccfe55a7"
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/abseil-cpp.cmake)
 
     SYS_DIRS = [
@@ -42,8 +42,9 @@ def repo():
         build_file = "//third_party/absl:com_google_absl.BUILD",
         system_build_file = "//third_party/absl:system.BUILD",
         system_link_files = SYS_LINKS,
-        # TODO(b/234139015): Remove the patch when https://github.com/abseil/abseil-cpp/issues/326 is resolved
-        patch_file = ["//third_party/absl:com_google_absl_fix_mac_and_nvcc_build.patch"],
+        # This patch pulls in a fix for designated initializers that MSVC
+        # complains about. It shouldn't be necessary at the next LTS release.
+        patch_file = ["//third_party/absl:absl_designated_initializers.patch"],
         strip_prefix = "abseil-cpp-{commit}".format(commit = ABSL_COMMIT),
         urls = tf_mirror_urls("https://github.com/abseil/abseil-cpp/archive/{commit}.tar.gz".format(commit = ABSL_COMMIT)),
     )

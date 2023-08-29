@@ -96,11 +96,11 @@ TEST_F(GpuLdgTest, LdgForNonParamRead) {
 // Check that reading a buffer that's modified in-place does not produce
 // ld.global.nc.
 //
-// We do this by creating a reduce that feeds into a sin.  We don't currently
-// fuse sin into reduce, and the sin is elementwise, so it reuses its input
+// We do this by creating a reduce that feeds into an add.  We don't currently
+// fuse add into reduce, and the add is elementwise, so it reuses its input
 // buffer as its output.
 //
-// It seems like a fair bet that we won't start fusing sin into the output of
+// It seems like a fair bet that we won't start fusing add into the output of
 // reduce in the foreseeable future.  But if that turns out to be wrong, I give
 // you, future reader, permission to delete this test.
 //
@@ -129,6 +129,8 @@ TEST_F(GpuLdgTest, NoLdgWhenSharingBuffer) {
   auto reduce_shape = ShapeUtil::MakeShape(F32, {32});
   HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "x"));
+  HloInstruction* param2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, reduce_shape, "y"));
   HloInstruction* reduce = builder.AddInstruction(HloInstruction::CreateReduce(
       reduce_shape,
       builder.AddInstruction(HloInstruction::CreateBinary(
@@ -136,14 +138,14 @@ TEST_F(GpuLdgTest, NoLdgWhenSharingBuffer) {
       builder.AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0))),
       {0}, reduce_computation));
-  builder.AddInstruction(
-      HloInstruction::CreateUnary(reduce_shape, HloOpcode::kSin, reduce));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      reduce_shape, HloOpcode::kAdd, reduce, param2));
 
   std::unique_ptr<HloComputation> computation = builder.Build();
   hlo_module->AddEntryComputation(std::move(computation));
 
   CompileAndOptionallyVerifyPtx(std::move(hlo_module), R"(
-    CHECK-LABEL: .entry sin
+    CHECK-LABEL: .entry wrapped_add
     CHECK: {
     CHECK-NOT: ld.global.nc.f32
     CHECK: ld.global.f32

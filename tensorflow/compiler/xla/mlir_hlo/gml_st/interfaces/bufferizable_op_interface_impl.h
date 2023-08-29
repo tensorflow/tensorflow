@@ -26,4 +26,4 @@ void registerBufferizableOpInterfaceExternalModels(DialectRegistry &registry);
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // MLIR_HLO_GML_ST_INTERFACES_BUFFERIZABLE_OP_INTERFACE_IMPL_H
+#endif

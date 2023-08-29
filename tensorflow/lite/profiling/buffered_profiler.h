@@ -79,8 +79,14 @@ class BufferedProfiler : public tflite::Profiler {
                    bool allow_dynamic_buffer_increase)
       : buffer_(max_num_initial_entries, false /*enabled*/,
                 allow_dynamic_buffer_increase),
-        supported_event_types_(~static_cast<uint64_t>(
-            EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT)) {}
+        supported_event_types_(
+            ~(static_cast<uint64_t>(
+                  EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT) |
+              static_cast<uint64_t>(EventType::TELEMETRY_EVENT) |
+              static_cast<uint64_t>(EventType::TELEMETRY_REPORT_SETTINGS) |
+              static_cast<uint64_t>(EventType::TELEMETRY_DELEGATE_EVENT) |
+              static_cast<uint64_t>(
+                  EventType::TELEMETRY_DELEGATE_REPORT_SETTINGS))) {}
 
   explicit BufferedProfiler(uint32_t max_num_entries)
       : BufferedProfiler(max_num_entries,

@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/profiler/protobuf/profile.pb.h"
 

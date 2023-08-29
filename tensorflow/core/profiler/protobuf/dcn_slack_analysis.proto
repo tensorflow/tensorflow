@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+message DcnSlack {
+  string rendezvous = 1;
+  // Xprof observed send start time.
+  uint64 send_start_time_us = 2;
+  // Xprof observed recv_done end time.
+  uint64 recv_done_end_time_us = 3;
+
+  // Slack is defined as the time the collective has to send and recv data
+  // without stalling the tpu. The effect of the network and other overlapping
+  // collectives are removed from the collective of interest.
+  //
+  //
+  // HOST 1 :
+  // |--------|SEND1|-------|SEND1.DONE|-------|RECV1|------|RECV1.DONE|-------
+  // HOST 2:
+  // |------|SEND2|-------|SEND2.DONE|-------|RECV2|------|RECV2.DONE    |-----
+  //
+  // Slack is computed as
+  // RECV2.DONE.StartTime - SEND2.StartTime - (Overlapping Communication)
+  // In this case, Overlapping communication is the duration of SEND2,
+  // SEND2.DONE and RECV2. In cases where other collectives are interspaced
+  // between this collective, Overlapping duration would include their durations
+  // as well. Host 1 is ignored while computing the slack, as we assume that the
+  // similar ops are executing each core. This also prevents clock drifts to
+  // effect the analysis.
+  uint64 slack_us = 4;
+
+  uint64 bytes_transmitted_over_network = 5;
+
+  // Duration the collective stalled the TPU.
+  uint64 stall_duration_us = 6;
+
+  // Recv op name
+  string recv_op_name = 7;
+
+  // Send op name
+  string send_op_name = 8;
+}
+
+message DcnSlackSummary {
+  // Rendezvous name for the collective.
+  string rendezvous = 1;
+  // Slack Time in Microseconds,
+  uint64 slack_us = 2;
+  // Number of occurrences in the sampled duration.
+  uint64 occurrences = 3;
+  // Bytes transmitted over the network.
+  uint64 bytes_transmitted_over_network = 4;
+  // Duration the collective stalled the TPU.
+  uint64 stall_duration_us = 5;
+  // Observed duration.
+  uint64 observed_duration_us = 6;
+  // Recv op name.
+  string recv_op_name = 7;
+
+  // Send op name.
+  string send_op_name = 8;
+}
+
+message DcnSlackAnalysis {
+  repeated DcnSlack dcn_slack = 1;
+  repeated DcnSlackSummary dcn_slack_summary = 2;
+}

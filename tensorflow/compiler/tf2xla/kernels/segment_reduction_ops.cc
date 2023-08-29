@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/lib/scatter.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -150,10 +152,11 @@ REGISTER_XLA_OP(
     Name("UnsortedSegmentSum").CompileTimeConstantInput("num_segments"),
     SegmentSum</*indices_are_sorted=*/false>);
 
-class UnsortedSegmentProd : public SegmentReduce {
+template <bool indices_are_sorted>
+class SegmentProd : public SegmentReduce {
  public:
-  explicit UnsortedSegmentProd(OpKernelConstruction* ctx)
-      : SegmentReduce(ctx, /*indices_are_sorted=*/false) {}
+  explicit SegmentProd(OpKernelConstruction* ctx)
+      : SegmentReduce(ctx, indices_are_sorted) {}
 
   xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
     return xla::One(builder, type_);
@@ -163,12 +166,15 @@ class UnsortedSegmentProd : public SegmentReduce {
 
 REGISTER_XLA_OP(
     Name("UnsortedSegmentProd").CompileTimeConstantInput("num_segments"),
-    UnsortedSegmentProd);
+    SegmentProd</*indices_are_sorted=*/false>);
+REGISTER_XLA_OP(Name("SegmentProdV2").CompileTimeConstantInput("num_segments"),
+                SegmentProd</*indices_are_sorted=*/true>);
 
-class UnsortedSegmentMin : public SegmentReduce {
+template <bool indices_are_sorted>
+class SegmentMin : public SegmentReduce {
  public:
-  explicit UnsortedSegmentMin(OpKernelConstruction* ctx)
-      : SegmentReduce(ctx, /*indices_are_sorted=*/false) {}
+  explicit SegmentMin(OpKernelConstruction* ctx)
+      : SegmentReduce(ctx, indices_are_sorted) {}
 
   xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
     return xla::MaxFiniteValue(builder, type_);
@@ -180,12 +186,15 @@ class UnsortedSegmentMin : public SegmentReduce {
 
 REGISTER_XLA_OP(
     Name("UnsortedSegmentMin").CompileTimeConstantInput("num_segments"),
-    UnsortedSegmentMin);
+    SegmentMin</*indices_are_sorted=*/false>);
+REGISTER_XLA_OP(Name("SegmentMinV2").CompileTimeConstantInput("num_segments"),
+                SegmentMin</*indices_are_sorted=*/true>);
 
-class UnsortedSegmentMax : public SegmentReduce {
+template <bool indices_are_sorted>
+class SegmentMax : public SegmentReduce {
  public:
-  explicit UnsortedSegmentMax(OpKernelConstruction* ctx)
-      : SegmentReduce(ctx, /*indices_are_sorted=*/false) {}
+  explicit SegmentMax(OpKernelConstruction* ctx)
+      : SegmentReduce(ctx, indices_are_sorted) {}
 
   xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
     return xla::MinFiniteValue(builder, type_);
@@ -197,7 +206,9 @@ class UnsortedSegmentMax : public SegmentReduce {
 
 REGISTER_XLA_OP(
     Name("UnsortedSegmentMax").CompileTimeConstantInput("num_segments"),
-    UnsortedSegmentMax);
+    SegmentMax</*indices_are_sorted=*/false>);
+REGISTER_XLA_OP(Name("SegmentMaxV2").CompileTimeConstantInput("num_segments"),
+                SegmentMax</*indices_are_sorted=*/true>);
 
 }  // namespace
 }  // namespace tensorflow

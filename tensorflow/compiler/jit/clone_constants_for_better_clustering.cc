@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-using se::port::StatusOr;
+using tsl::StatusOr;
 
 class CloneConstantsForBetterClusteringPassImpl {
  public:
@@ -39,8 +39,8 @@ class CloneConstantsForBetterClusteringPassImpl {
                                   Node* n);
   string GenerateUniqueName(const absl::flat_hash_set<string>& name_set,
                             absl::string_view prefix);
-  se::port::StatusOr<Node*> CloneNode(
-      const absl::flat_hash_set<string>& name_set, Node* n);
+  tsl::StatusOr<Node*> CloneNode(const absl::flat_hash_set<string>& name_set,
+                                 Node* n);
 
   Graph* graph_;
   int unique_name_counter_;

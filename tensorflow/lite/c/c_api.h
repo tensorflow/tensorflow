@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_C_C_API_H_
 #define TENSORFLOW_LITE_C_C_API_H_
 
-/// For documentation, see
-/// third_party/tensorflow/lite/core/c/c_api.h.
-#include "tensorflow/lite/core/c/c_api.h"  // IWYU pragma: export
+/// \file
+///
+/// C API for TensorFlow Lite.
+///
+/// For documentation, see tensorflow/lite/core/c/c_api.h
+
+#include "tensorflow/lite/core/c/c_api.h"
 
 #endif  // TENSORFLOW_LITE_C_C_API_H_

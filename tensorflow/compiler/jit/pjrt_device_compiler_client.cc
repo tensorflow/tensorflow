@@ -29,8 +29,14 @@ xla::CompileOptions GetPjRtCompileOptions(
   pjrt_compile_options.argument_layouts = result.xla_input_shapes;
   pjrt_compile_options.executable_build_options =
       GetExecutableBuildOptions(options, result, /*default_device_ordinal=*/-1);
-  // Compile portable executable for single device compilation.
-  pjrt_compile_options.compile_portable_executable = true;
+  if (pjrt_compile_options.executable_build_options.num_replicas() > 1 ||
+      pjrt_compile_options.executable_build_options.num_partitions() > 1) {
+    // Compile executable for sharded program
+    pjrt_compile_options.compile_portable_executable = false;
+  } else {
+    // Compile portable executable for single device compilation.
+    pjrt_compile_options.compile_portable_executable = true;
+  }
   return pjrt_compile_options;
 }
 }  // namespace
@@ -55,7 +61,7 @@ PjRtDeviceCompilerClient::BuildExecutable(
 StatusOr<std::string> PjRtDeviceCompilerClient::SerializeExecutable(
     const xla::PjRtLoadedExecutable& executable) {
   VLOG(1) << "Serializing xla::PjRtLoadedExecutable to string.";
-  return client_->SerializeExecutable(executable);
+  return executable.SerializeExecutable();
 }
 
 StatusOr<std::string> PjRtDeviceCompilerClient::BuildSerializedExecutable(
@@ -64,7 +70,7 @@ StatusOr<std::string> PjRtDeviceCompilerClient::BuildSerializedExecutable(
   VLOG(1) << "PJRT currently doesn't support AOT compilation. Compiling to "
              "xla::PjRtLoadedExecutable and serializing it";
   TF_ASSIGN_OR_RETURN(auto executable, BuildExecutable(options, result));
-  return SerializeExecutable(*executable);
+  return executable->SerializeExecutable();
 }
 
 StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>>

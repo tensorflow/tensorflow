@@ -65,6 +65,8 @@ HANDLER(GetDataServiceMetadata);
 HANDLER(GetDataServiceConfig);
 HANDLER(Snapshot);
 HANDLER(GetSnapshotSplit);
+HANDLER(GetSnapshotStreams);
+HANDLER(DisableCompressionAtRuntime);
 #undef HANDLER
 
 }  // namespace data

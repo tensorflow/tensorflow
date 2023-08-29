@@ -12,28 +12,39 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_QUANTIZE_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_QUANTIZE_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_QUANTIZE_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_QUANTIZE_PASSES_H_
 
+#include <optional>
+
+#include "absl/strings/string_view.h"
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
 namespace tensorflow {
 namespace quantization {
 
+// mlir_dump_file_prefix is an optional field that is used for debugging to save
+// mlir dump files.
 void AddQuantizeQatPasses(mlir::PassManager &pm,
-                          const QuantizationOptions &quantization_options);
+                          const QuantizationOptions &quantization_options,
+                          std::optional<const absl::string_view>
+                              mlir_dump_file_prefix = std::nullopt);
 
 void AddQuantizePtqDynamicRangePasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options);
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    std::optional<const absl::string_view> mlir_dump_file_prefix =
+        std::nullopt);
 
 void AddQuantizePtqPreCalibrationPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options);
 
 void AddQuantizePtqPostCalibrationPasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options);
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    std::optional<const absl::string_view> mlir_dump_file_prefix =
+        std::nullopt);
 
 }  // namespace quantization
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_QUANTIZE_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_QUANTIZE_PASSES_H_

@@ -157,7 +157,7 @@ class BufferValue {
   static LogicalBufferProto::Location ToLocationProto(
       const HloInstruction& instruction, const ShapeIndex& index);
 
-  const Color kInvalidColor = -1;
+  static constexpr Color kInvalidColor = -1;
 
  protected:
   BufferValue(HloInstruction* instruction, const ShapeIndex& index, Id id);

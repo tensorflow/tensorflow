@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_MULTI_H_
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -38,8 +39,8 @@ namespace tfprof {
 
 class TFMultiShow {
  public:
-  explicit TFMultiShow() {}
-  virtual ~TFMultiShow() {}
+  explicit TFMultiShow() = default;
+  virtual ~TFMultiShow() = default;
   virtual void AddNode(TFGraphNode* node) = 0;
   virtual void Build() = 0;
   const MultiGraphNodeProto& Show(const string& prefix, const Options& opts);

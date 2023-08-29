@@ -80,9 +80,9 @@ template <typename T>
 static absl::Status ReadProtoFile(Env* env, const std::string& fname,
                                   T* proto) {
   if (absl::EndsWith(fname, ".pbtxt")) {
-    return ToAbslStatus(ReadTextProto(env, fname, proto));
+    return ReadTextProto(env, fname, proto);
   } else {
-    return ToAbslStatus(ReadBinaryProto(env, fname, proto));
+    return ReadBinaryProto(env, fname, proto);
   }
 }
 
@@ -90,9 +90,9 @@ template <typename T>
 static absl::Status WriteProtoFile(Env* env, const std::string& fname,
                                    T& proto) {
   if (absl::EndsWith(fname, ".pbtxt")) {
-    return ToAbslStatus(WriteTextProto(env, fname, proto));
+    return WriteTextProto(env, fname, proto);
   } else {
-    return ToAbslStatus(WriteBinaryProto(env, fname, proto));
+    return WriteBinaryProto(env, fname, proto);
   }
 }
 
@@ -262,7 +262,7 @@ absl::Status Execute(RunnerFlags flags,
   if (auto st = ReadFileToString(env, flags.module_path, &module); !st.ok()) {
     return InternalError(
         StrFormat("failed to read module input from %s, error: %s",
-                  flags.module_path, st.error_message()));
+                  flags.module_path, st.message()));
   }
 
   // Read arguments from the input file.
@@ -295,7 +295,7 @@ absl::Status Execute(RunnerFlags flags,
   // Execute and convert results to proto message.
   if (auto executed = executable->Execute(args, converter, execute_opts);
       !executed.ok())
-    return executed;
+    return executed.status();
 
   if (auto inout = WriteInoutResults(args_proto, args, &results_proto);
       !inout.ok())

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/tsl/profiler/utils/buffer_pool.h"
 
+#include <ios>
+
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mem.h"
 #include "tensorflow/tsl/platform/mutex.h"

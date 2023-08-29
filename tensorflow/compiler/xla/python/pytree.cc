@@ -20,10 +20,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -33,9 +35,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl.h"
+#include "pybind11/attr.h"  // from @pybind11
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -44,38 +48,40 @@ namespace xla {
 
 namespace py = pybind11;
 
-/*static*/ PyTreeTypeRegistry* PyTreeTypeRegistry::Singleton() {
-  static auto* registry = []() -> PyTreeTypeRegistry* {
-    auto* registry = new PyTreeTypeRegistry;
-
-    auto add_builtin_type = [&](PyTypeObject* type_obj, PyTreeKind kind) {
-      py::object type = py::reinterpret_borrow<py::object>(
-          reinterpret_cast<PyObject*>(type_obj));
-      auto registration = std::make_unique<Registration>();
-      registration->kind = kind;
-      registration->type = type;
-      CHECK(registry->registrations_.emplace(type, std::move(registration))
-                .second);
-    };
+PyTreeRegistry::PyTreeRegistry(bool enable_none, bool enable_tuple,
+                               bool enable_namedtuple, bool enable_list,
+                               bool enable_dict) {
+  auto add_builtin_type = [&](PyTypeObject* type_obj, PyTreeKind kind) {
+    py::object type = py::reinterpret_borrow<py::object>(
+        reinterpret_cast<PyObject*>(type_obj));
+    auto registration = std::make_unique<Registration>();
+    registration->kind = kind;
+    registration->type = type;
+    CHECK(registrations_.emplace(type, std::move(registration)).second);
+  };
+  if (enable_none) {
     add_builtin_type(Py_TYPE(Py_None), PyTreeKind::kNone);
+  }
+  if (enable_tuple) {
     add_builtin_type(&PyTuple_Type, PyTreeKind::kTuple);
+  }
+  enable_namedtuple_ = enable_namedtuple;
+  if (enable_list) {
     add_builtin_type(&PyList_Type, PyTreeKind::kList);
+  }
+  if (enable_dict) {
     add_builtin_type(&PyDict_Type, PyTreeKind::kDict);
-    return registry;
-  }();
-  return registry;
+  }
 }
 
-/*static*/ void PyTreeTypeRegistry::Register(py::object type,
-                                             py::function to_iterable,
-                                             py::function from_iterable) {
-  PyTreeTypeRegistry* registry = Singleton();
+void PyTreeRegistry::Register(py::object type, py::function to_iterable,
+                              py::function from_iterable) {
   auto registration = std::make_unique<Registration>();
   registration->kind = PyTreeKind::kCustom;
   registration->type = type;
   registration->to_iterable = std::move(to_iterable);
   registration->from_iterable = std::move(from_iterable);
-  auto it = registry->registrations_.emplace(type, std::move(registration));
+  auto it = registrations_.emplace(type, std::move(registration));
   if (!it.second) {
     throw std::invalid_argument(
         absl::StrFormat("Duplicate custom PyTreeDef type registration for %s.",
@@ -83,38 +89,10 @@ namespace py = pybind11;
   }
 }
 
-/*static*/ const PyTreeTypeRegistry::Registration* PyTreeTypeRegistry::Lookup(
-    py::handle type) {
-  PyTreeTypeRegistry* registry = Singleton();
-  auto it = registry->registrations_.find(type);
-  return it == registry->registrations_.end() ? nullptr : it->second.get();
-}
-
-bool PyTreeDef::operator==(const PyTreeDef& other) const {
-  if (traversal_.size() != other.traversal_.size()) {
-    return false;
-  }
-  for (size_t i = 0; i < traversal_.size(); ++i) {
-    const Node& a = traversal_[i];
-    const Node& b = other.traversal_[i];
-    if (a.kind != b.kind || a.arity != b.arity ||
-        (a.node_data.ptr() == nullptr) != (b.node_data.ptr() == nullptr) ||
-        a.custom != b.custom) {
-      return false;
-    }
-    if (a.node_data && a.node_data.not_equal(b.node_data)) {
-      return false;
-    }
-    // We don't need to test equality of num_leaves and num_nodes since they
-    // are derivable from the other node data.
-  }
-  return true;
-}
-
-/*static*/ PyTreeKind PyTreeDef::GetKind(
-    const py::handle& obj, PyTreeTypeRegistry::Registration const** custom) {
-  const PyTreeTypeRegistry::Registration* registration =
-      PyTreeTypeRegistry::Lookup(obj.get_type());
+// Computes the node kind of a given Python object.
+PyTreeKind PyTreeRegistry::KindOfObject(
+    py::handle obj, PyTreeRegistry::Registration const** custom) const {
+  const PyTreeRegistry::Registration* registration = Lookup(obj.get_type());
   if (registration) {
     if (registration->kind == PyTreeKind::kCustom) {
       *custom = registration;
@@ -131,19 +109,96 @@ bool PyTreeDef::operator==(const PyTreeDef& other) const {
   }
 }
 
+/*static*/ const PyTreeRegistry::Registration* PyTreeRegistry::Lookup(
+    py::handle type) const {
+  auto it = registrations_.find(type);
+  return it == registrations_.end() ? nullptr : it->second.get();
+}
+
+std::shared_ptr<PyTreeRegistry> DefaultPyTreeRegistry() {
+  static std::shared_ptr<PyTreeRegistry>& registry =
+      *new std::shared_ptr<PyTreeRegistry>(std::make_shared<PyTreeRegistry>(
+          /*enable_none=*/true, /*enable_tuple=*/true,
+          /*enable_namedtuple=*/true, /*enable_list=*/true,
+          /*enable_dict=*/true));
+  return registry;
+}
+
+/*static*/ std::vector<py::object> GetSortedPyDictKeys(PyObject* py_dict) {
+  std::vector<py::object> keys;
+  keys.reserve(PyDict_Size(py_dict));
+  PyObject* key;
+  Py_ssize_t pos = 0;
+  while (PyDict_Next(py_dict, &pos, &key, /*value=*/nullptr)) {
+    keys.push_back(py::reinterpret_borrow<py::object>(key));
+  }
+
+  std::stable_sort(
+      keys.begin(), keys.end(), [](const py::object& a, const py::object& b) {
+        int cmp = PyObject_RichCompareBool(a.ptr(), b.ptr(), Py_LT);
+        if (cmp == -1) {
+          throw py::error_already_set();
+        }
+        return cmp;
+      });
+  return keys;
+}
+
+/*static*/ bool IsSortedPyDictKeysEqual(absl::Span<const py::object> lhs,
+                                        absl::Span<const py::object> rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  for (int i = 0; i < lhs.size(); ++i) {
+    if (lhs[i].not_equal(rhs[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool PyTreeDef::operator==(const PyTreeDef& other) const {
+  if (traversal_.size() != other.traversal_.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < traversal_.size(); ++i) {
+    const Node& a = traversal_[i];
+    const Node& b = other.traversal_[i];
+    if (a.kind != b.kind || a.arity != b.arity ||
+        (a.node_data.ptr() == nullptr) != (b.node_data.ptr() == nullptr) ||
+        (a.sorted_dict_keys.size() != b.sorted_dict_keys.size()) ||
+        a.custom != b.custom) {
+      return false;
+    }
+    if (a.node_data && a.node_data.not_equal(b.node_data)) {
+      return false;
+    }
+    if (!IsSortedPyDictKeysEqual(a.sorted_dict_keys, b.sorted_dict_keys)) {
+      return false;
+    }
+    // We don't need to test equality of num_leaves and num_nodes since they
+    // are derivable from the other node data.
+  }
+  return true;
+}
+
 template <typename T>
-void PyTreeDef::FlattenIntoImpl(
-    py::handle handle, T& leaves,
-    const std::optional<py::function>& leaf_predicate) {
+void PyTreeDef::FlattenImpl(py::handle handle, T& leaves,
+                            const std::optional<py::function>& leaf_predicate) {
   Node node;
   const int start_num_nodes = traversal_.size();
   const int start_num_leaves = leaves.size();
   if (leaf_predicate && (*leaf_predicate)(handle).cast<bool>()) {
     leaves.push_back(py::reinterpret_borrow<py::object>(handle));
   } else {
-    node.kind = GetKind(handle, &node.custom);
+    node.kind = registry_->KindOfObject(handle, &node.custom);
     auto recurse = [this, &leaf_predicate, &leaves](py::handle child) {
-      FlattenInto(child, leaves, leaf_predicate);
+      if (Py_EnterRecursiveCall(
+              " in flatten; PyTree may have cyclical node references.")) {
+        return;
+      }
+      Flatten(child, leaves, leaf_predicate);
+      Py_LeaveRecursiveCall();
     };
     switch (node.kind) {
       case PyTreeKind::kNone:
@@ -165,16 +220,13 @@ void PyTreeDef::FlattenIntoImpl(
       }
       case PyTreeKind::kDict: {
         py::dict dict = py::reinterpret_borrow<py::dict>(handle);
-        py::list keys =
-            py::reinterpret_steal<py::list>(PyDict_Keys(dict.ptr()));
-        if (PyList_Sort(keys.ptr())) {
-          throw py::error_already_set();
-        }
+
+        std::vector<py::object> keys = GetSortedPyDictKeys(dict.ptr());
         for (py::handle key : keys) {
           recurse(dict[key]);
         }
         node.arity = dict.size();
-        node.node_data = std::move(keys);
+        node.sorted_dict_keys = std::move(keys);
         break;
       }
       case PyTreeKind::kCustom: {
@@ -210,29 +262,33 @@ void PyTreeDef::FlattenIntoImpl(
   traversal_.push_back(std::move(node));
 }
 
-void PyTreeDef::FlattenInto(py::handle handle,
-                            absl::InlinedVector<py::object, 2>& leaves,
-                            std::optional<py::function> leaf_predicate) {
-  FlattenIntoImpl(handle, leaves, leaf_predicate);
+void PyTreeDef::Flatten(py::handle handle,
+                        absl::InlinedVector<py::object, 2>& leaves,
+                        std::optional<py::function> leaf_predicate) {
+  FlattenImpl(handle, leaves, leaf_predicate);
 }
 
-void PyTreeDef::FlattenInto(py::handle handle, std::vector<py::object>& leaves,
-                            std::optional<py::function> leaf_predicate) {
-  FlattenIntoImpl(handle, leaves, leaf_predicate);
+void PyTreeDef::Flatten(py::handle handle, std::vector<py::object>& leaves,
+                        std::optional<py::function> leaf_predicate) {
+  FlattenImpl(handle, leaves, leaf_predicate);
 }
 
-/*static*/ std::pair<std::vector<py::object>, std::unique_ptr<PyTreeDef>>
-PyTreeDef::Flatten(py::handle x, std::optional<py::function> leaf_predicate) {
+/*static*/ std::pair<std::vector<pybind11::object>, std::unique_ptr<PyTreeDef>>
+PyTreeDef::Flatten(pybind11::handle x,
+                   std::optional<pybind11::function> leaf_predicate,
+                   std::shared_ptr<PyTreeRegistry> registry) {
+  auto def = std::make_unique<PyTreeDef>(registry ? registry
+                                                  : DefaultPyTreeRegistry());
   std::vector<py::object> leaves;
-  auto tree = std::make_unique<PyTreeDef>();
-  tree->FlattenInto(x, leaves, leaf_predicate);
-  return std::make_pair(std::move(leaves), std::move(tree));
+  def->Flatten(x, leaves);
+  return std::make_pair(std::move(leaves), std::move(def));
 }
 
-/*static*/ bool PyTreeDef::AllLeaves(const py::iterable& x) {
-  const PyTreeTypeRegistry::Registration* custom;
+/*static*/ bool PyTreeDef::AllLeaves(PyTreeRegistry* registry,
+                                     const py::iterable& x) {
+  const PyTreeRegistry::Registration* custom;
   for (const py::handle& h : x) {
-    if (GetKind(h, &custom) != PyTreeKind::kLeaf) return false;
+    if (registry->KindOfObject(h, &custom) != PyTreeKind::kLeaf) return false;
   }
   return true;
 }
@@ -329,9 +385,8 @@ py::object PyTreeDef::Unflatten(absl::Span<const py::object> leaves) const {
 
     case PyTreeKind::kDict: {
       py::dict dict;
-      py::list keys = py::reinterpret_borrow<py::list>(node.node_data);
       for (int i = 0; i < node.arity; ++i) {
-        dict[keys[i]] = std::move(children[i]);
+        dict[node.sorted_dict_keys[i]] = std::move(children[i]);
       }
       return std::move(dict);
       break;
@@ -415,15 +470,13 @@ py::list PyTreeDef::FlattenUpTo(py::handle xs) const {
               absl::StrFormat("Expected dict, got %s.", py::repr(object)));
         }
         py::dict dict = py::reinterpret_borrow<py::dict>(object);
-        py::list keys =
-            py::reinterpret_steal<py::list>(PyDict_Keys(dict.ptr()));
-        if (PyList_Sort(keys.ptr())) {
-          throw xla::XlaRuntimeError("Dictionary key sort failed.");
-        }
-        if (keys.not_equal(node.node_data)) {
-          throw std::invalid_argument(
-              absl::StrFormat("Dict key mismatch; expected keys: %s; dict: %s.",
-                              py::repr(node.node_data), py::repr(object)));
+        std::vector<py::object> keys = GetSortedPyDictKeys(dict.ptr());
+        if (!IsSortedPyDictKeysEqual(keys, node.sorted_dict_keys)) {
+          // Convert to a py::list for py::repr to avoid having to stringify a
+          // vector. This is error path so it is fine to pay conversion cost.
+          throw std::invalid_argument(absl::StrFormat(
+              "Dict key mismatch; expected keys: %s; dict: %s.",
+              py::repr(py::cast(node.sorted_dict_keys)), py::repr(object)));
         }
         for (py::handle key : keys) {
           agenda.push_back(dict[key]);
@@ -455,7 +508,7 @@ py::list PyTreeDef::FlattenUpTo(py::handle xs) const {
       }
 
       case PyTreeKind::kCustom: {
-        auto* registration = PyTreeTypeRegistry::Lookup(object.get_type());
+        auto* registration = registry_->Lookup(object.get_type());
         if (registration != node.custom) {
           throw std::invalid_argument(absl::StrFormat(
               "Custom node type mismatch: expected type: %s, value: %s.",
@@ -524,8 +577,12 @@ py::object PyTreeDef::Walk(const py::function& f_node, py::handle f_leaf,
           tuple[i] = agenda.back();
           agenda.pop_back();
         }
-        agenda.push_back(
-            f_node(tuple, node.node_data ? node.node_data : py::none()));
+        py::object node_data = node.node_data;
+        if (node.kind == PyTreeKind::kDict) {
+          // Convert to a py::list for f_node invocation.
+          node_data = py::cast(node.sorted_dict_keys);
+        }
+        agenda.push_back(f_node(tuple, node_data ? node_data : py::none()));
       }
     }
   }
@@ -575,7 +632,11 @@ py::object PyTreeDef::FromIterableTree(py::handle xs) const {
 }
 
 std::unique_ptr<PyTreeDef> PyTreeDef::Compose(const PyTreeDef& inner) const {
-  auto out = std::make_unique<PyTreeDef>();
+  if (inner.registry_ != registry_) {
+    throw std::invalid_argument(
+        "PyTree registries of PyTreeDefs passed to Compose() must match.");
+  }
+  auto out = std::make_unique<PyTreeDef>(registry_->shared_from_this());
   for (const Node& n : traversal_) {
     if (n.kind == PyTreeKind::kLeaf) {
       absl::c_copy(inner.traversal_, std::back_inserter(out->traversal_));
@@ -594,12 +655,17 @@ std::unique_ptr<PyTreeDef> PyTreeDef::Compose(const PyTreeDef& inner) const {
 }
 
 /*static*/ std::unique_ptr<PyTreeDef> PyTreeDef::Tuple(
-    const std::vector<PyTreeDef>& defs) {
-  auto out = std::make_unique<PyTreeDef>();
+    std::shared_ptr<PyTreeRegistry> registry,
+    absl::Span<PyTreeDef* const> defs) {
+  auto out = std::make_unique<PyTreeDef>(std::move(registry));
   int num_leaves = 0;
-  for (const PyTreeDef& def : defs) {
-    absl::c_copy(def.traversal_, std::back_inserter(out->traversal_));
-    num_leaves += def.num_leaves();
+  for (const PyTreeDef* def : defs) {
+    if (def->registry() != out->registry()) {
+      throw std::invalid_argument(
+          "PyTree registries of PyTreeDefs passed to Tuple() must match.");
+    }
+    absl::c_copy(def->traversal_, std::back_inserter(out->traversal_));
+    num_leaves += def->num_leaves();
   }
   Node node;
   node.kind = PyTreeKind::kTuple;
@@ -619,7 +685,7 @@ std::vector<std::unique_ptr<PyTreeDef>> PyTreeDef::Children() const {
   children.resize(root.arity);
   int pos = traversal_.size() - 1;
   for (int i = root.arity - 1; i >= 0; --i) {
-    children[i] = std::make_unique<PyTreeDef>();
+    children[i] = std::make_unique<PyTreeDef>(registry_->shared_from_this());
     const Node& node = traversal_.at(pos - 1);
     if (pos < node.num_nodes) {
       throw std::logic_error("children() walked off start of array");
@@ -661,13 +727,13 @@ std::string PyTreeDef::ToString() const {
         representation = absl::StrCat("[", children, "]");
         break;
       case PyTreeKind::kDict: {
-        if (py::len(node.node_data) != node.arity) {
+        if (node.sorted_dict_keys.size() != node.arity) {
           throw std::logic_error("Number of keys and entries does not match.");
         }
         representation = "{";
         std::string separator;
         auto child_iter = agenda.end() - node.arity;
-        for (const py::handle& key : node.node_data) {
+        for (const py::handle& key : node.sorted_dict_keys) {
           absl::StrAppendFormat(&representation, "%s%s: %s", separator,
                                 py::repr(key), *child_iter);
           child_iter++;
@@ -710,21 +776,33 @@ std::string PyTreeDef::ToString() const {
   return absl::StrCat("PyTreeDef(", agenda.back(), ")");
 }
 
-py::object PyTreeDef::ToPickleable() const {
+py::object PyTreeDef::ToPickle() const {
   py::list traversal;
   for (const auto& node : traversal_) {
+    py::object node_data = node.node_data;
+    if (node.kind == PyTreeKind::kDict) {
+      // Convert to a py::list for pickling to avoid having to pickle a vector.
+      // Pickle should be a rare operation so this conversion cost is hopefully
+      // on non-critical path.
+      node_data = py::cast(node.sorted_dict_keys);
+    }
     traversal.append(
         py::make_tuple(static_cast<int>(node.kind), node.arity,
-                       node.node_data ? node.node_data : py::none(),
+                       node_data ? node_data : py::none(),
                        node.custom != nullptr ? node.custom->type : py::none(),
                        node.num_leaves, node.num_nodes));
   }
-  return traversal;
+  return py::make_tuple(py::cast(registry_->shared_from_this()), traversal);
 }
 
-PyTreeDef PyTreeDef::FromPickleable(py::object pickleable) {
-  PyTreeDef tree;
-  for (const auto& item : pickleable.cast<py::list>()) {
+PyTreeDef PyTreeDef::FromPickle(py::object pickleable) {
+  py::tuple pickle = pickleable.cast<py::tuple>();
+  if (pickle.size() != 2) {
+    throw xla::XlaRuntimeError("Malformed pickled PyTreeDef, expected 2-tuple");
+  }
+  auto registry = py::cast<std::shared_ptr<PyTreeRegistry>>(pickle[0]);
+  PyTreeDef tree(registry);
+  for (const auto& item : pickle[1].cast<py::list>()) {
     auto t = item.cast<py::tuple>();
     if (t.size() != 6) {
       throw xla::XlaRuntimeError("Malformed pickled PyTreeDef");
@@ -737,7 +815,7 @@ PyTreeDef PyTreeDef::FromPickleable(py::object pickleable) {
         node.node_data = t[2].cast<py::type>();
         break;
       case PyTreeKind::kDict:
-        node.node_data = t[2].cast<py::list>();
+        node.sorted_dict_keys = t[2].cast<std::vector<py::object>>();
         break;
       case PyTreeKind::kCustom:
         node.node_data = t[2];
@@ -749,7 +827,7 @@ PyTreeDef PyTreeDef::FromPickleable(py::object pickleable) {
         break;
     }
     if (node.kind == PyTreeKind::kCustom) {
-      node.custom = t[3].is_none() ? nullptr : PyTreeTypeRegistry::Lookup(t[3]);
+      node.custom = t[3].is_none() ? nullptr : registry->Lookup(t[3]);
       if (node.custom == nullptr) {
         throw xla::XlaRuntimeError(
             absl::StrCat("Unknown custom type in pickled PyTreeDef: ",
@@ -766,42 +844,282 @@ PyTreeDef PyTreeDef::FromPickleable(py::object pickleable) {
   return tree;
 }
 
+void PyTreeDef::SetNumLeavesAndNumNodes() {
+  // num_leaves and num_nodes are fully determined by arity.
+  std::vector<std::pair<int, int>> starts;
+  int num_leaves = 0;
+  for (int i = 0; i < traversal_.size(); ++i) {
+    std::pair<int, int> start = {num_leaves, i};
+    if (traversal_[i].kind == PyTreeKind::kLeaf) {
+      num_leaves += 1;
+    }
+    if (traversal_[i].arity == 0) {
+      starts.push_back(start);
+    } else {
+      starts.resize(starts.size() - (traversal_[i].arity - 1));
+    }
+    traversal_[i].num_leaves = num_leaves - starts.back().first;
+    traversal_[i].num_nodes = i + 1 - starts.back().second;
+  }
+}
+
+void PyTreeDef::SerializeTo(jax::PyTreeDefProto& result) const {
+  absl::flat_hash_map<std::string, uint32_t> interned_strings;
+  auto intern_str = [&](const std::string& key) {
+    auto [it, added] =
+        interned_strings.emplace(key, result.interned_strings_size());
+    if (added) {
+      result.add_interned_strings(key);
+    }
+    return it->second;
+  };
+  for (const auto& node : traversal_) {
+    auto* node_data = result.add_nodes();
+    node_data->set_arity(node.arity);
+    switch (node.kind) {
+      case PyTreeKind::kLeaf:
+        node_data->set_type(jax::PyTreeNodeType::PY_TREE_KIND_LEAF);
+        break;
+      case PyTreeKind::kList:
+        node_data->set_type(jax::PyTreeNodeType::PY_TREE_KIND_LIST);
+        break;
+      case PyTreeKind::kNone:
+        node_data->set_type(jax::PyTreeNodeType::PY_TREE_KIND_NONE);
+        break;
+      case PyTreeKind::kTuple:
+        node_data->set_type(jax::PyTreeNodeType::PY_TREE_KIND_TUPLE);
+        break;
+      case PyTreeKind::kDict:
+        node_data->set_type(jax::PyTreeNodeType::PY_TREE_KIND_DICT);
+        for (auto& key : node.sorted_dict_keys) {
+          if (!py::isinstance<py::str>(key)) {
+            throw std::invalid_argument(
+                "Only string keys are supported in proto pytree "
+                "serialization.");
+          }
+          node_data->mutable_dict_keys()->add_str_id(
+              intern_str(py::cast<std::string>(key)));
+        }
+        break;
+      default:
+        throw std::invalid_argument(
+            "User-defined nodes are not supported when serializing pytrees as "
+            "protocol buffers. You should either convert the user-defined "
+            "nodes to another type or use pickle instead.");
+        break;
+    }
+  }
+}
+
+PyTreeDef PyTreeDef::DeserializeFrom(std::shared_ptr<PyTreeRegistry> registry,
+                                     const jax::PyTreeDefProto& input) {
+  std::vector<py::str> interned_strings;
+  interned_strings.reserve(input.interned_strings().size());
+  for (auto& s : input.interned_strings()) {
+    interned_strings.push_back(py::str(s));
+  }
+  PyTreeDef result(std::move(registry));
+  for (auto& node_proto : input.nodes()) {
+    result.traversal_.emplace_back();
+    auto& node = result.traversal_.back();
+    node.arity = node_proto.arity();
+    node.custom = nullptr;
+    switch (node_proto.type()) {
+      case jax::PyTreeNodeType::PY_TREE_KIND_LEAF:
+        node.kind = PyTreeKind::kLeaf;
+        break;
+      case jax::PyTreeNodeType::PY_TREE_KIND_LIST:
+        node.kind = PyTreeKind::kList;
+        break;
+      case jax::PyTreeNodeType::PY_TREE_KIND_NONE:
+        node.kind = PyTreeKind::kNone;
+        break;
+      case jax::PyTreeNodeType::PY_TREE_KIND_TUPLE:
+        node.kind = PyTreeKind::kTuple;
+        break;
+      case jax::PyTreeNodeType::PY_TREE_KIND_DICT:
+        node.kind = PyTreeKind::kDict;
+        for (uint32_t str_id : node_proto.dict_keys().str_id()) {
+          if (str_id >= interned_strings.size()) {
+            throw std::invalid_argument(
+                "Malformed pytree proto (dict_key out of range).");
+          }
+          node.sorted_dict_keys.push_back(interned_strings.at(str_id));
+        }
+        break;
+      default:
+        throw std::invalid_argument(
+            "Malformed pytree proto (invalid node type)");
+        break;
+    }
+  }
+  result.SetNumLeavesAndNumNodes();
+  return result;
+}
+
+std::optional<std::pair<pybind11::type, pybind11::object>>
+PyTreeDef::GetNodeData() const {
+  if (traversal_.empty()) {
+    throw std::logic_error("empty PyTreeDef traversal.");
+  }
+  auto builtin_type = [](PyTypeObject* type_obj) {
+    return py::reinterpret_borrow<py::type>(
+        reinterpret_cast<PyObject*>(type_obj));
+  };
+  const auto& node = traversal_.back();
+  switch (node.kind) {
+    case PyTreeKind::kLeaf:
+      return std::nullopt;
+    case PyTreeKind::kNone:
+      return std::make_pair(builtin_type(Py_TYPE(Py_None)), py::none());
+    case PyTreeKind::kTuple:
+      return std::make_pair(builtin_type(&PyTuple_Type), py::none());
+    case PyTreeKind::kList:
+      return std::make_pair(builtin_type(&PyList_Type), py::none());
+    case PyTreeKind::kDict:
+      return std::make_pair(builtin_type(&PyDict_Type),
+                            py::cast(node.sorted_dict_keys));
+    case PyTreeKind::kNamedTuple:
+      return std::make_pair(py::cast<pybind11::type>(node.node_data),
+                            py::none());
+    case PyTreeKind::kCustom:
+      return std::make_pair(py::cast<pybind11::type>(node.custom->type),
+                            node.node_data);
+  }
+}
+
+PyTreeDef PyTreeDef::MakeFromNodeDataAndChildren(
+    std::shared_ptr<PyTreeRegistry> registry,
+    std::optional<std::pair<pybind11::type, pybind11::object>> node_data,
+    pybind11::iterable children) {
+  PyTreeDef result(std::move(registry));
+  int num_leaves = 0;
+  int arity = 0;
+  for (pybind11::handle pchild : children) {
+    const PyTreeDef& child = py::cast<const PyTreeDef&>(pchild);
+    absl::c_copy(child.traversal_, std::back_inserter(result.traversal_));
+    num_leaves += child.num_leaves();
+    ++arity;
+  }
+  result.traversal_.emplace_back();
+  auto& node = result.traversal_.back();
+  node.arity = arity;
+  node.custom = nullptr;
+  node.num_leaves = num_leaves;
+  node.num_nodes = result.traversal_.size();
+  if (node_data == std::nullopt) {
+    node.kind = PyTreeKind::kLeaf;
+    ++node.num_leaves;
+    return result;
+  }
+  int is_nt = PyObject_IsSubclass(node_data->first.ptr(),
+                                  reinterpret_cast<PyObject*>(&PyTuple_Type));
+  if (is_nt == -1) {
+    throw py::error_already_set();
+  }
+  if (is_nt != 0 && py::hasattr(node_data->first, "_fields")) {
+    node.kind = PyTreeKind::kNamedTuple;
+    node.node_data = node_data->first;
+    return result;
+  }
+  auto* registration = result.registry()->Lookup(node_data->first);
+  if (registration == nullptr) {
+    throw std::logic_error(
+        absl::StrFormat("Could not find type: %s.",
+                        py::repr(node_data->first).cast<std::string>()));
+  }
+  node.kind = registration->kind;
+  if (node.kind == PyTreeKind::kCustom) {
+    node.custom = registration;
+    node.node_data = node_data->second;
+  } else if (node.kind == PyTreeKind::kNamedTuple) {
+    node.node_data = node_data->first;
+  } else if (node.kind == PyTreeKind::kDict) {
+    node.sorted_dict_keys = node_data->second.cast<std::vector<py::object>>();
+  }
+  return result;
+}
+
 void BuildPytreeSubmodule(py::module& m) {
   py::module pytree = m.def_submodule("pytree", "Python tree library");
   pytree.attr("version") = py::int_(3);
-  pytree.def("flatten", &PyTreeDef::Flatten, py::arg("tree"),
-             py::arg("leaf_predicate") = std::nullopt);
+
+  py::class_<PyTreeDef> treedef(pytree, "PyTreeDef");
+
+  py::class_<PyTreeRegistry, std::shared_ptr<PyTreeRegistry>> registry(
+      m, "PyTreeRegistry", py::dynamic_attr());
+  registry.def(py::init<bool, bool, bool, bool, bool>(), py::kw_only(),
+               py::arg("enable_none") = true, py::arg("enable_tuple") = true,
+               py::arg("enable_namedtuple") = true,
+               py::arg("enable_list") = true, py::arg("enable_dict") = true);
+  registry.def(
+      "flatten",
+      [](std::shared_ptr<PyTreeRegistry> registry, pybind11::handle x,
+         std::optional<pybind11::function> leaf_predicate) {
+        std::vector<py::object> leaves;
+        PyTreeDef def(std::move(registry));
+        def.Flatten(x, leaves, leaf_predicate);
+        return std::make_pair(std::move(leaves), std::move(def));
+      },
+      py::arg("tree"), py::arg("leaf_predicate") = std::nullopt);
+  registry.def("register_node", &PyTreeRegistry::Register);
+  registry.def("__reduce__",
+               [](py::object self) { return self.attr("__name__"); });
+  pytree.def("default_registry", &DefaultPyTreeRegistry);
+
+  pytree.attr("PyTreeRegistry") = m.attr("PyTreeRegistry");
   pytree.def("tuple", &PyTreeDef::Tuple);
   pytree.def("all_leaves", &PyTreeDef::AllLeaves);
 
-  py::class_<PyTreeDef>(pytree, "PyTreeDef")
-      .def("unflatten",
-           static_cast<pybind11::object (PyTreeDef::*)(
-               pybind11::iterable leaves) const>(&PyTreeDef::Unflatten))
-      .def("flatten_up_to", &PyTreeDef::FlattenUpTo)
-      .def("compose", &PyTreeDef::Compose)
-      .def("walk", &PyTreeDef::Walk,
-           "Walk pytree, calling f_node(node, node_data) at nodes, and f_leaf "
-           "at leaves",
-           py::arg("f_node"), py::arg("f_leaf"), py::arg("leaves"))
-      .def("from_iterable_tree", &PyTreeDef::FromIterableTree)
-      .def("children", &PyTreeDef::Children)
-      .def_property_readonly("num_leaves", &PyTreeDef::num_leaves)
-      .def_property_readonly("num_nodes", &PyTreeDef::num_nodes)
-      .def("__repr__", &PyTreeDef::ToString)
-      .def("__eq__",
-           [](const PyTreeDef& a, const PyTreeDef& b) { return a == b; })
-      .def("__ne__",
-           [](const PyTreeDef& a, const PyTreeDef& b) { return a != b; })
-      .def("__hash__", [](const PyTreeDef& t) { return absl::HashOf(t); })
-      .def(py::pickle(
-          [](const PyTreeDef& t) { return t.ToPickleable(); },
-          [](py::object o) { return PyTreeDef::FromPickleable(o); }));
-
-  pytree.def("register_node", [](py::object type, py::function to_iterable,
-                                 py::function from_iterable) {
-    return PyTreeTypeRegistry::Register(type, to_iterable, from_iterable);
+  treedef.def("unflatten",
+              static_cast<pybind11::object (PyTreeDef::*)(
+                  pybind11::iterable leaves) const>(&PyTreeDef::Unflatten));
+  treedef.def("flatten_up_to", &PyTreeDef::FlattenUpTo);
+  treedef.def("compose", &PyTreeDef::Compose);
+  treedef.def(
+      "walk", &PyTreeDef::Walk,
+      "Walk pytree, calling f_node(node, node_data) at nodes, and f_leaf "
+      "at leaves",
+      py::arg("f_node"), py::arg("f_leaf"), py::arg("leaves"));
+  treedef.def("from_iterable_tree", &PyTreeDef::FromIterableTree);
+  treedef.def("children", &PyTreeDef::Children);
+  treedef.def_property_readonly("num_leaves", &PyTreeDef::num_leaves);
+  treedef.def_property_readonly("num_nodes", &PyTreeDef::num_nodes);
+  treedef.def("__repr__", &PyTreeDef::ToString);
+  treedef.def("__eq__",
+              [](const PyTreeDef& a, const PyTreeDef& b) { return a == b; });
+  treedef.def("__ne__",
+              [](const PyTreeDef& a, const PyTreeDef& b) { return a != b; });
+  treedef.def("__hash__", [](const PyTreeDef& t) { return absl::HashOf(t); });
+  treedef.def("serialize_using_proto", [](const PyTreeDef& a) {
+    jax::PyTreeDefProto result;
+    a.SerializeTo(result);
+    return py::bytes(result.SerializeAsString());
   });
+  treedef.def_static(
+      "deserialize_using_proto",
+      [](std::shared_ptr<PyTreeRegistry> registry, py::bytes data) {
+        jax::PyTreeDefProto input;
+        std::string_view serialized = data;
+        if (serialized.size() > std::numeric_limits<int>::max()) {
+          throw xla::XlaRuntimeError(
+              "Pytree serialization too large to deserialize.");
+        }
+        if (!input.ParseFromArray(serialized.data(), serialized.size())) {
+          throw xla::XlaRuntimeError("Could not deserialize PyTreeDefProto.");
+        }
+        return PyTreeDef::DeserializeFrom(std::move(registry), input);
+      },
+      py::arg("registry"), py::arg("data"));
+  treedef.def("node_data", &PyTreeDef::GetNodeData,
+              "Returns None if a leaf-pytree, else (type, node_data)");
+  treedef.def_static(
+      "make_from_node_data_and_children",
+      &PyTreeDef::MakeFromNodeDataAndChildren,
+      "Reconstructs a pytree from `node_data()` and `children()`.");
+  treedef.def(
+      py::pickle([](const PyTreeDef& t) { return t.ToPickle(); },
+                 [](py::object o) { return PyTreeDef::FromPickle(o); }));
 }
 
 }  // namespace xla

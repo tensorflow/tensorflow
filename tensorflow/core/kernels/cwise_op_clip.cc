@@ -286,6 +286,7 @@ REGISTER_CPU_KERNEL(std::complex<double>);
       Name("ClipByValue").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       ClipOp<GPUDevice, type>);
 REGISTER_GPU_KERNEL(Eigen::half);
+REGISTER_GPU_KERNEL(bfloat16);
 REGISTER_GPU_KERNEL(float);
 REGISTER_GPU_KERNEL(double);
 REGISTER_GPU_KERNEL(int8);

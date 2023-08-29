@@ -60,6 +60,7 @@ struct MyCustomKernel {
 };
 
 static bool delete_called = false;
+static bool async_kernel_done = false;
 
 static void* MyCreateFunc(TF_OpKernelConstruction* ctx) {
   struct MyCustomKernel* s = new struct MyCustomKernel;
@@ -85,6 +86,16 @@ static void* MyCreateFunc(TF_OpKernelConstruction* ctx) {
 
 static void MyComputeFunc(void* kernel, TF_OpKernelContext* ctx) {
   struct MyCustomKernel* s = static_cast<struct MyCustomKernel*>(kernel);
+  s->compute_called = true;
+  if (ctx != nullptr) {
+    EXPECT_EQ(43, TF_StepId(ctx));
+  }
+}
+
+static void MyAsyncComputeFunc(void* kernel, TF_OpKernelContext* ctx,
+                               TF_AsyncOpKernelDoneCallback* done) {
+  struct MyCustomKernel* s = static_cast<struct MyCustomKernel*>(kernel);
+  TF_RunAsyncOpKernelDoneCallback(done);
   s->compute_called = true;
   if (ctx != nullptr) {
     EXPECT_EQ(43, TF_StepId(ctx));
@@ -232,6 +243,50 @@ TEST(TestKernel, TF_RegisterKernelBuilderWithKernelDef) {
     kernel->Compute(nullptr);
   }
 
+  ASSERT_TRUE(delete_called);
+}
+
+// Tests registration of a single C async kernel and checks that calls through
+// the C/C++ boundary are being made.
+TEST(TestKernel, TestRegisterAsyncKernelBuilder) {
+  const char* node_name = "SomeNodeName";
+  const char* op_name = "AsyncFooOp";
+  const char* device_name = "FakeDeviceName1";
+
+  REGISTER_OP(op_name)
+      .Input("input1: double")
+      .Input("input2: uint8")
+      .Output("output1: uint8")
+      .Attr("SomeDataTypeAttr: type");
+
+  TF_KernelBuilder* builder = TF_NewAsyncKernelBuilder(
+      op_name, device_name, &MyCreateFunc, &MyAsyncComputeFunc, &MyDeleteFunc);
+
+  {
+    TF_Status* status = TF_NewStatus();
+    TF_RegisterKernelBuilder(node_name, builder, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    KernelList list;
+    list.ParseFromArray(buf->data, buf->length);
+    ASSERT_EQ(1, list.kernel_size());
+    ASSERT_EQ(device_name, list.kernel(0).device_type());
+    TF_DeleteBuffer(buf);
+    TF_DeleteStatus(status);
+  }
+
+  {
+    Status status;
+    std::unique_ptr<OpKernel> kernel =
+        GetFakeKernel(device_name, op_name, node_name, &status);
+    TF_EXPECT_OK(status);
+    ASSERT_NE(nullptr, kernel.get());
+    auto done = []() { async_kernel_done = true; };
+    down_cast<AsyncOpKernel*>(kernel.get())->ComputeAsync(nullptr, done);
+  }
+
+  ASSERT_TRUE(async_kernel_done);
   ASSERT_TRUE(delete_called);
 }
 

@@ -316,3 +316,22 @@ func.func @cos(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> (tensor<10xf32
   // CHECK: return %[[RDIV]], %[[IDIV]]
   func.return %2, %3 : tensor<10xf32>, tensor<10xf32>
 }
+
+// CHECK-LABEL: dot_complex
+func.func @dot_complex(%arg0: tensor<2x3xcomplex<f32>>, %arg1:  tensor<3x4xcomplex<f32>>) -> (tensor<2x4xcomplex<f32>>) {
+  // CHECK-DAG: [[ROP0:%.+]] = mhlo.real %arg0
+  // CHECK-DAG: [[IOP0:%.+]] = mhlo.imag %arg0
+  // CHECK-DAG: [[ROP1:%.+]] = mhlo.real %arg1
+  // CHECK-DAG: [[IOP1:%.+]] = mhlo.imag %arg1
+  // CHECK-DAG: %[[RR:.+]] = "mhlo.dot"([[ROP0]], [[ROP1]])
+  // CHECK-DAG: %[[II:.+]] = "mhlo.dot"([[IOP0]], [[IOP1]])
+  // CHECK-DAG: %[[RPART:.+]] = mhlo.subtract %[[RR]], %[[II]]
+  // CHECK-DAG: %[[RI:.+]] = "mhlo.dot"([[ROP0]], [[IOP1]])
+  // CHECK-DAG: %[[IR:.+]] = "mhlo.dot"([[IOP0]], [[ROP1]])
+  // CHECK-DAG: %[[IPART:.+]] = mhlo.add %[[RI]], %[[IR]]
+  // CHECK-DAG: %[[CMPLX:.+]] = mhlo.complex %[[RPART]], %[[IPART]]
+  %0 = "mhlo.dot"(%arg0, %arg1)  : (tensor<2x3xcomplex<f32>>, tensor<3x4xcomplex<f32>>) -> tensor<2x4xcomplex<f32>>
+  // CHECK: return %[[CMPLX]]
+  return %0 : tensor<2x4xcomplex<f32>>
+}
+

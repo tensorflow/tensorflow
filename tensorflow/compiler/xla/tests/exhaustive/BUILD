@@ -28,6 +28,8 @@ cc_library(
     tags = ["no_pip"],
     deps = [
         "//tensorflow/compiler/xla:bit_cast",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
@@ -49,7 +51,6 @@ xla_test(
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
-        "no_pip",
     ],
     deps = [
         ":exhaustive_op_test_utils",
@@ -70,7 +71,6 @@ xla_test(
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
-        "no_pip",
         # TODO(b/151340488): Timed out on 2020-03-18.
         "nozapfhahn",
     ],
@@ -93,7 +93,6 @@ xla_test(
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
-        "no_pip",
     ],
     deps = [
         ":exhaustive_op_test_utils",
@@ -114,7 +113,6 @@ xla_test(
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
-        "no_pip",
     ],
     deps = [
         ":exhaustive_op_test_utils",
@@ -133,7 +131,6 @@ xla_test(
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
-        "no_pip",
     ],
     deps = [
         ":exhaustive_op_test_utils",

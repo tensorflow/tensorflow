@@ -18,7 +18,10 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_kernels.h"
 
+#include <algorithm>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
@@ -79,14 +82,6 @@ limitations under the License.
 #include "tfrt/tensor/scalar_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_serialize_utils.h"  // from @tf_runtime
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_device.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
-#include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_gpu_allocator.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 namespace tfd {
@@ -130,7 +125,7 @@ using tfrt::TensorShape;
 
 #define TFD_REPORT_AND_RETURN_IF_ERROR(handler, status) \
   if (!status.ok()) {                                   \
-    handler.ReportError(status.error_message());        \
+    handler.ReportError(status.message());              \
     return;                                             \
   }
 
@@ -143,7 +138,7 @@ static AsyncValueRef<RuntimeFallbackTensor> CreateRuntimeFallbackTensor(
   tensorflow::Status status = th->NumDims(&rank);
   if (!status.ok())
     return tfrt::MakeErrorAsyncValueRef(tfrt::StrCat(
-        "error getting rank from TF tensor handle: ", status.error_message()));
+        "error getting rank from TF tensor handle: ", status.message()));
 
   llvm::SmallVector<tfrt::Index, 4> dims;
   for (auto i = 0; i < rank; ++i) {
@@ -152,7 +147,7 @@ static AsyncValueRef<RuntimeFallbackTensor> CreateRuntimeFallbackTensor(
     if (!status.ok())
       return tfrt::MakeErrorAsyncValueRef(
           tfrt::StrCat("error getting dimension from TFE tensor handle: ",
-                       status.error_message()));
+                       status.message()));
     dims.push_back(dim);
   }
 
@@ -208,94 +203,6 @@ static void TfdPrintTFT(Argument<RuntimeFallbackTensor> tft,
   out_chain.Set(in_chain);
 }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-static tensorflow::Status InjectTfGpuResourcesHelper(
-    tensorflow::EagerContext* ctx) {
-  // Inject TF's GPU resources to TFRT GpuOpHandler.
-  // Note that this requires RuntimeFallbackOpHandler to be created and
-  // initialized before tfrt::GpuOpHandler to work.
-
-  auto tf_gpu_process_state = tensorflow::GPUProcessState::singleton();
-  if (tf_gpu_process_state && tf_gpu_process_state->HasGPUDevice()) {
-    constexpr char gpu_device_type[] = "GPU";
-    int num_gpu = ctx->local_device_mgr()->NumDeviceType(gpu_device_type);
-    for (int gpu_ordinal = 0; gpu_ordinal < num_gpu; gpu_ordinal++) {
-      auto gpu_device_name = absl::StrCat(gpu_device_type, ":", gpu_ordinal);
-      Device* device;
-      TF_RETURN_IF_ERROR(
-          ctx->local_device_mgr()->LookupDevice(gpu_device_name, &device));
-      auto gpu_device = static_cast<tensorflow::BaseGPUDevice*>(device);
-      if (!gpu_device)
-        return tensorflow::errors::NotFound("TF BaseGPUDevice not found");
-#if TENSORFLOW_USE_ROCM
-      static_assert(
-          false,
-          "static_cast to GpuContext and CUstream are invalid for ROCm.");
-#endif
-      CUcontext gpu_context =
-          static_cast<stream_executor::gpu::GpuContext*>(
-              gpu_device->executor()->implementation()->GpuContextHack())
-              ->context();
-
-      // TF GPU allocator is already created in
-      // tensorflow::DeviceFactory::AddDevices above, so this GetGPUAllocator
-      // ignores options and total_bytes passed in and retrieves allocator based
-      // on `tf_device_id`.
-      TfDeviceId tf_device_id{gpu_ordinal};
-      GPUOptions dummy_options;
-      tensorflow::Allocator* tf_allocator =
-          tf_gpu_process_state->GetGPUAllocator(dummy_options, tf_device_id,
-                                                /*total_bytes=*/0,
-                                                /*peer_gpu_ids=*/{});
-      if (!tf_allocator)
-        return tensorflow::errors::NotFound("TF allocator not found");
-      auto accelerator_device_info =
-          gpu_device->tensorflow_accelerator_device_info();
-      if (!accelerator_device_info)
-        return tensorflow::errors::NotFound(
-            "accelerator_device_info not found");
-
-      tfrt::gpu::GpuResources gpu_resources;
-      gpu_resources.gpu_context = tfrt::gpu::wrapper::Context(gpu_context);
-      gpu_resources.allocator_factory =
-          CreateRuntimeFallbackGpuAllocatorFactory(tf_allocator);
-      gpu_resources.stream = tfrt::gpu::wrapper::Stream(static_cast<CUstream>(
-          accelerator_device_info->stream->implementation()->GpuStreamHack()));
-      auto platform = tfrt::gpu::wrapper::Platform::CUDA;
-      tfrt::gpu::SetTfrtGpuResources(
-          tfrt::gpu::wrapper::Device(gpu_ordinal, platform), gpu_resources);
-    }
-  }
-  return OkStatus();
-}
-
-tensorflow::Status InjectTfGpuResources() {
-  // TODO(zhangqiaorjc) Use more direct and low-level APIs to initialize GPU
-  // resources than using EagerContext. Note that this EagerContext is strictly
-  // locally scoped and an implementation detail of injecting GPU resources, and
-  // not is the same EagerContext set in RequestContext.
-  static bool already_injected_gpu_devices = false;
-  static absl::Mutex* mutex = new absl::Mutex();
-
-  absl::MutexLock lock(mutex);
-  if (!already_injected_gpu_devices) {
-    tfrt::Expected<OwnedEagerContext> ctx = InitEagerContext();
-    if (!ctx) {
-      return tensorflow::errors::Internal(
-          tfrt::StrCat("error initializing eager context: ", ctx.takeError()));
-    }
-
-    // GPU resources should be injected once per gpu ordinal.
-    TF_RETURN_IF_ERROR(InjectTfGpuResourcesHelper(ctx->get()));
-    already_injected_gpu_devices = true;
-  }
-
-  return OkStatus();
-}
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 // Kernel for initializing TF EagerContext.
 //
 // This kernel should be invoked at least once before any TF delegation kernels
@@ -316,7 +223,6 @@ static void TfdInitEagerContext(Argument<Chain> in_chain,
               tensorflow::tfd::kEagerContextResourceName);
   (void)eager_context_resource;
 
-  // TODO(zhangqiaorjc): Inject GPU resources to GPU kernels.
   out_chain.Set(in_chain);
 }
 
@@ -417,9 +323,9 @@ static tensorflow::Status PrepareAttributes(EagerOperation* eager_op,
 
         // DTypes in BEF attributes are tfrt::DType enums. So we need
         // to convert then to tensorflow data types first.
-        auto bef_dtypes = llvm::makeArrayRef(
-            static_cast<const tfrt::DType*>(op_attr.GetData()),
-            op_attr.element_count);
+        auto bef_dtypes =
+            llvm::ArrayRef(static_cast<const tfrt::DType*>(op_attr.GetData()),
+                           op_attr.element_count);
 
         llvm::SmallVector<tensorflow::DataType, 4> tf_dtypes;
         tf_dtypes.reserve(bef_dtypes.size());
@@ -589,7 +495,7 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
   auto emit_error = [&exec_ctx, results](const tensorflow::Status& status) {
     // Set the correct TFRT error code according to the error propagated from
     // runtime fallback execution.
-    auto error = EmitErrorAsync(exec_ctx, ToAbslStatus(status));
+    auto error = EmitErrorAsync(exec_ctx, status);
     // Set all results to error.
     std::fill(results.begin(), results.end(), error);
     return error;
@@ -906,8 +812,7 @@ void CoreRTTensorHandleToFallbackTensorInternal(
           result_ref->ForwardTo(std::move(knfb_tensor));
           return;
         }
-        auto expected_tf_tensor =
-            TFRTTensorToTFTensor(knfb_tensor.get(), exec_ctx.host());
+        auto expected_tf_tensor = tfrt::TFRTTensorToTFTensor(knfb_tensor.get());
         if (!expected_tf_tensor) {
           auto error = tfrt::EmitErrorAsync(
               exec_ctx, toString(expected_tf_tensor.takeError()));
@@ -921,55 +826,9 @@ void CoreRTTensorHandleToFallbackTensorInternal(
       });
     } else {
       set_result(tf_tensor_results[i],
-                 TFRTTensorToTFTensor(knfb_tensor.get(), exec_ctx.host()));
+                 tfrt::TFRTTensorToTFTensor(knfb_tensor.get()));
     }
   }
-}
-
-// Returns true if the tensorflow::DataType is trivially copyable.
-static bool IsTriviallyCopyableTensorflowDataType(tensorflow::DataType dtype) {
-  static const auto* const non_trivially_copyable_dtypes =
-      new absl::flat_hash_set<tensorflow::DataType>{
-          tensorflow::DataType::DT_STRING, tensorflow::DataType::DT_RESOURCE,
-          tensorflow::DataType::DT_VARIANT};
-  return !non_trivially_copyable_dtypes->contains(dtype);
-}
-
-static llvm::Expected<tensorflow::tfrt_stub::FallbackTensor> ConstDenseTensor(
-    tfrt::DenseAttr value, const tfrt::ExecutionContext& context) {
-  auto dtype = GetTfDataType(tfrt::DType(value.dtype()));
-  // The data type must be trivially copyable so that we can use memcpy.
-  DCHECK(IsTriviallyCopyableTensorflowDataType(dtype));
-  tensorflow::Tensor tensor(dtype, tensorflow::TensorShape(value.shape()));
-  std::memcpy(tensor.data(), value.GetElements(), tensor.TotalBytes());
-  return tensorflow::tfrt_stub::FallbackTensor(tensor);
-}
-
-static llvm::Expected<tensorflow::tfrt_stub::FallbackTensor> ConstStringTensor(
-    tfrt::ArrayAttr shape, tfrt::AggregateAttr value,
-    const ExecutionContext& context) {
-  llvm::SmallVector<int64_t> dims;
-  auto tfrt_tensor_shape = tfrt::TensorShape(shape.GetValue<int64_t>());
-  tfrt_tensor_shape.GetDimensions(&dims);
-  tensorflow::Tensor tensor(tensorflow::DT_STRING,
-                            tensorflow::TensorShape(dims));
-  auto len = tensor.NumElements();
-  auto from = value;
-  auto to = tensor.flat<tensorflow::tstring>();
-  if (from.GetNumElements() == 1) {
-    // All elements are the same, and only one element is saved in BEF.
-    for (size_t i = 0; i < len; ++i) {
-      to(i) =
-          ToAbslStringView(from.GetAttributeOfType<StringAttr>(0).GetValue());
-    }
-  } else {
-    assert(len == from.GetNumElements());
-    for (size_t i = 0; i < len; ++i) {
-      to(i) =
-          ToAbslStringView(from.GetAttributeOfType<StringAttr>(i).GetValue());
-    }
-  }
-  return tensorflow::tfrt_stub::FallbackTensor(tensor);
 }
 
 // The BEF kernel for tfrt::TensorHandle to tensorflow::Tensor conversion.
@@ -1027,36 +886,6 @@ void FallbackTensorToCoreRTTensorHandle(
                                              device.GetValue(), exec_ctx);
 }
 
-static llvm::Expected<bool> Predicate(
-    const tensorflow::tfrt_stub::FallbackTensor& input,
-    const tfrt::ExecutionContext& exec_ctx) {
-  const auto& tensor = input.tensor();
-  if (TensorShapeUtils::IsScalar(tensor.shape())) {
-    switch (tensor.dtype()) {
-#define CASE(T)                  \
-  case DataTypeToEnum<T>::value: \
-    return tensor.scalar<T>()() != 0;
-
-      CASE(float);
-      CASE(double);
-      CASE(uint8);
-      CASE(int8);
-      CASE(int16);
-      CASE(int32);
-      CASE(int64_t);
-      CASE(bool);
-#undef CASE
-      case DT_STRING:
-        return !tensor.scalar<tstring>()().empty();
-      default:
-        return tfrt::MakeStringError(DataTypeString(tensor.dtype()),
-                                     " cannot be converted to a boolean");
-    }
-  }
-
-  return tensor.NumElements() > 0;
-}
-
 tfrt::Chain PrintFallbackTensor(
     const tensorflow::tfrt_stub::FallbackTensor& arg, const tfrt::Chain& ch) {
   std::string message;
@@ -1111,7 +940,7 @@ static void RuntimeFallbackExecuteOp(
   Status s = eager_ctx->local_device_mgr()->LookupDevice(device_name, &device);
   if (!s.ok()) {
     // The device name can be invalid in certain cases. Use default CPU device.
-    VLOG(1) << s.error_message() << " using default CPU device.";
+    VLOG(1) << s.message() << " using default CPU device.";
   }
 
   // First we convert tensorflow::Tensor to RuntimeFallbackTensors.
@@ -1160,7 +989,7 @@ static void RuntimeFallbackExecuteOp(
     const tensorflow::Tensor* tf_tensor = nullptr;
     tensorflow::Status s =
         runtime_fallback_tensor.GetTensorHandle()->Tensor(&tf_tensor);
-    DCHECK(s.ok()) << s.ToString();
+    DCHECK(s.ok()) << s;
     results[i] =
         tfrt::MakeAvailableAsyncValueRef<tensorflow::Tensor>(*tf_tensor);
   }
@@ -1218,7 +1047,7 @@ static llvm::Expected<tfrt::Value> ConvertTFTensorHandleToTFRTTensor(
       tensor_handle->Resolve(&status)};
   if (!status.ok()) {
     return tfrt::MakeStringError("error resolving TensorHandle: ",
-                                 status.error_message());
+                                 status.message());
   }
   auto tf_dtype = tensor_interface->Type();
   if (tf_dtype == DT_STRING) {
@@ -1261,10 +1090,6 @@ void RegisterTfdDelegateKernels(tfrt::KernelRegistry* registry) {
   registry->AddKernel("tfd.convert_tft_to_dht",
                       TFRT_KERNEL(TfdConvertTFTToDHT));
   registry->AddKernel("tfd.print_tft", TFRT_KERNEL(TfdPrintTFT));
-  registry->AddKernel("tfrt_fallback_async.const_dense_tensor",
-                      TFRT_KERNEL(ConstDenseTensor));
-  registry->AddKernel("tfrt_fallback_async.const_string_tensor",
-                      TFRT_KERNEL(ConstStringTensor));
   registry->AddKernel(
       "tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor",
       TFRT_KERNEL(CoreRTTensorHandleToFallbackTensor));
@@ -1274,7 +1099,6 @@ void RegisterTfdDelegateKernels(tfrt::KernelRegistry* registry) {
 
   // TODO(b/187106271): Move fallback kernels to fallback only libraries so that
   // we don't have to depend on or link in corert kernels.
-  registry->AddKernel("tfrt_fallback_async.predicate", TFRT_KERNEL(Predicate));
   registry->AddKernel("tfrt_fallback_async.print_tensor",
                       TFRT_KERNEL(PrintFallbackTensor));
   registry->AddKernel("corert.create_runtime_fallback_op_handler",

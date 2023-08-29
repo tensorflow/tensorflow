@@ -138,7 +138,7 @@ Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
     }
     case kTensorArray: {
       TensorShape ta_shape;
-      ta_shape.AddDim(max_array_size_);
+      TF_RETURN_IF_ERROR(ta_shape.AddDimWithStatus(max_array_size_));
       ta_shape.AppendShape(shape_);
       value_ = xla::Broadcast(XlaHelpers::Zero(builder, type_),
                               ta_shape.dim_sizes());
@@ -146,7 +146,7 @@ Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
     }
     case kStack: {
       TensorShape ta_shape;
-      ta_shape.AddDim(max_array_size_);
+      TF_RETURN_IF_ERROR(ta_shape.AddDimWithStatus(max_array_size_));
       ta_shape.AppendShape(shape_);
       value_ =
           xla::Tuple(builder, {xla::Broadcast(XlaHelpers::Zero(builder, type_),
@@ -171,7 +171,7 @@ Status XlaResource::GetOrCreateTensorArrayGradient(const string& source,
   std::unique_ptr<XlaResource>& gradient = tensor_array_gradients_[source];
   if (!gradient) {
     TensorShape ta_shape;
-    ta_shape.AddDim(max_array_size_);
+    TF_RETURN_IF_ERROR(ta_shape.AddDimWithStatus(max_array_size_));
     ta_shape.AppendShape(shape_);
     xla::XlaOp gradient_value =
         xla::Broadcast(XlaHelpers::Zero(builder, type_), ta_shape.dim_sizes());

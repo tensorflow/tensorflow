@@ -16,9 +16,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_GROUP_H_
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
@@ -58,7 +59,7 @@ class TpuAotCompilationOptions : public xla::AotCompilationOptions {
     return allow_separate_sharding_programs_;
   }
 
-  const std::vector<xla::HloModuleConfig::ShardableValueUpdatePair>
+  std::vector<xla::HloModuleConfig::ShardableValueUpdatePair>
   shardable_value_update_pairs() const {
     return shardable_value_update_pairs_;
   }

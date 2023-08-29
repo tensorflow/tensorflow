@@ -165,12 +165,13 @@ static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
   // pass hints / configuration options.
   os << "  xla::XlaScopedFrontendAttributesAssignment "
         "frontend_attributes(lowering_context.builder, "
-        "CreateOpFrontendAttributesFromAttribute(op));\n\n";
+        "CreateXlaFrontendAttributesFromOp(op));\n\n";
 
   // Create a scoped object to assign op metadata to generated XLA ops.
   os << "  xla::XlaScopedOpMetadataAssignment "
         "op_metadata(lowering_context.builder, "
-        "mlir::mhlo::CreateOpMetadataFromLocation(op));\n\n";
+        "mlir::mhlo::CreateOpMetadataFromLocation("
+        "op, lowering_context.frame_index_builder));\n\n";
 
   // Retrieve all the definitions derived from MHLO_Op and sort by record name.
   for (const auto* def : records.getAllDerivedDefinitions("MHLO_Op")) {

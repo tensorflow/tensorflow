@@ -133,12 +133,12 @@ template <typename Input>
 EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
     const Eigen::DSizes<DenseIndex, internal::traits<Input>::NumDimensions>,
     const TensorReductionOp<
-        internal::MaxReducer<float>,
-        const Eigen::IndexList<Eigen::type2index<1> >,
+        internal::MaxReducer<
+            std::remove_const_t<typename internal::traits<Input>::Scalar>>,
+        const Eigen::IndexList<Eigen::type2index<1>>,
         const TensorReshapingOp<
             const Eigen::DSizes<DenseIndex, 3>,
-            const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
-                                      const Input> > > >
+            const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic, const Input>>>>
 CuboidMaxPooling(const Input& input, DenseIndex patchPlanes,
                  DenseIndex patchRows, DenseIndex patchCols,
                  DenseIndex stridePlanes, DenseIndex strideRows,
@@ -199,13 +199,16 @@ CuboidMaxPooling(const Input& input, DenseIndex patchPlanes,
     pre_reduce_dims[2] = post_reduce_dims[4];
   }
 
+  typedef std::remove_const_t<typename internal::traits<Input>::Scalar>
+      CoeffReturnType;
+
   // Take advantage of cxx11 to give the compiler information it can use to
   // optimize the code.
   Eigen::IndexList<Eigen::type2index<1> > reduction_dims;
   return input
       .extract_volume_patches(patchPlanes, patchRows, patchCols, stridePlanes,
                               strideRows, strideCols, padding_type,
-                              -Eigen::NumTraits<float>::highest())
+                              -Eigen::NumTraits<CoeffReturnType>::highest())
       .reshape(pre_reduce_dims)
       .maximum(reduction_dims)
       .reshape(post_reduce_dims);
@@ -457,12 +460,12 @@ template <typename Input>
 EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
     const Eigen::DSizes<DenseIndex, internal::traits<Input>::NumDimensions>,
     const TensorReductionOp<
-        internal::AvgPoolMeanReducer<float>,
-        const Eigen::IndexList<Eigen::type2index<1> >,
+        internal::AvgPoolMeanReducer<
+            std::remove_const_t<typename internal::traits<Input>::Scalar>>,
+        const Eigen::IndexList<Eigen::type2index<1>>,
         const TensorReshapingOp<
             const Eigen::DSizes<DenseIndex, 3>,
-            const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
-                                      const Input> > > >
+            const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic, const Input>>>>
 CuboidAvgPooling(const Input& input, DenseIndex patchPlanes,
                  DenseIndex patchRows, DenseIndex patchCols,
                  DenseIndex stridePlanes, DenseIndex strideRows,
@@ -532,7 +535,7 @@ CuboidAvgPooling(const Input& input, DenseIndex patchPlanes,
   return input
       .extract_volume_patches(patchPlanes, patchRows, patchCols, stridePlanes,
                               strideRows, strideCols, padding_type,
-                              -Eigen::NumTraits<float>::highest())
+                              -Eigen::NumTraits<CoeffReturnType>::highest())
       .reshape(pre_reduce_dims)
       .reduce(reduction_dims, mean_with_nan)
       .reshape(post_reduce_dims);

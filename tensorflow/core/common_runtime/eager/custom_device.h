@@ -15,11 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_CUSTOM_DEVICE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_CUSTOM_DEVICE_H_
 
+#include <optional>
 #include <string>
+#include <variant>
 
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -33,7 +36,7 @@ class CustomDeviceTensorHandle;
 // typically implemented with one or more of the custom device's own executions.
 class CustomDevice {
  public:
-  virtual ~CustomDevice() {}
+  virtual ~CustomDevice() = default;
   virtual const string& name() = 0;
   virtual Status CopyTensorToDevice(
       ImmediateExecutionTensorHandle* tensor,
@@ -61,7 +64,7 @@ class CustomDevice {
 // Custom devices do many of the same things as physical Devices, but have a
 // much more restricted interface. We pass around ambiguous pointers since
 // operations may be placed either on custom or physical devices.
-using VariantDevice = absl::variant<Device*, CustomDevice*>;
+using VariantDevice = std::variant<Device*, CustomDevice*>;
 
 // Indicates either HostCPU or an unset physical device. We never set a null
 // CustomDevice*.
@@ -74,6 +77,12 @@ const VariantDevice kVariantDeviceNull = static_cast<Device*>(nullptr);
 // TODO(allenl): Currently custom devices are tied to the eager C API. They
 // should be renamed op handlers and subclass AbstractTensorHandle instead so
 // they are eager/graph agnostic.
+//
+// full_type_ is not set by the constructor (because it is not currently
+// needed). If full type information is needed in the future, the constructor
+// could use map_dtype_to_child_of_tensor() from core/framework/types.h to set
+// it based on dtype. Update test CustomDevice.TestTensorHandle in
+// custom_device_test.cc if this changes.
 class CustomDeviceTensorHandle : public ImmediateExecutionTensorHandle {
  public:
   CustomDeviceTensorHandle(ImmediateExecutionContext* context,
@@ -88,6 +97,7 @@ class CustomDeviceTensorHandle : public ImmediateExecutionTensorHandle {
   virtual void* DevicePointer() const = 0;
 
   tensorflow::DataType DataType() const override { return dtype_; }
+  tensorflow::FullTypeDef FullType() const override { return full_type_; }
   Status Shape(PartialTensorShape* shape) const override;
   Status NumElements(int64_t* num_elements) const override;
 
@@ -103,12 +113,6 @@ class CustomDeviceTensorHandle : public ImmediateExecutionTensorHandle {
 
   AbstractTensorInterface* Resolve(Status* status) override;
 
-  ImmediateExecutionTensorHandle* Copy() override {
-    Ref();
-    return this;
-  }
-  void Release() override { Unref(); }
-
   // For LLVM style RTTI.
   static bool classof(const AbstractTensorHandle* ptr) {
     return ptr->getKind() == kCustomDevice;
@@ -120,8 +124,9 @@ class CustomDeviceTensorHandle : public ImmediateExecutionTensorHandle {
   ImmediateExecutionContext* const context_;
   CustomDevice* const device_;
   const tensorflow::DataType dtype_;
+  tensorflow::FullTypeDef full_type_;
 
-  mutable absl::optional<DeviceNameUtils::ParsedName> parsed_name_;
+  mutable std::optional<DeviceNameUtils::ParsedName> parsed_name_;
 };
 
 }  // namespace tensorflow

@@ -306,6 +306,11 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
+  llvm::Value* FCmpUGE(Args&&... args) {
+    return mixin_builder()->CreateFCmpUGE(std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
   llvm::Value* FDiv(Args&&... args) {
     return mixin_builder()->CreateFDiv(std::forward<Args>(args)...);
   }

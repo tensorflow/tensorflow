@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/executor_cache.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 
 namespace stream_executor {
@@ -70,14 +69,12 @@ class CPlatform : public Platform {
   }
   bool UseBfcAllocator() const { return platform_.use_bfc_allocator; }
   bool ForceMemoryGrowth() const { return platform_.force_memory_growth; }
-  port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
+  tsl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
-  port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
-  port::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
-      int ordinal, const PluginConfig& plugin_config) override;
-  port::StatusOr<StreamExecutor*> GetExecutor(
+  tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
+  tsl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;
-  port::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
+  tsl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) override;
 
   // Trace listener is not supported
@@ -165,46 +162,6 @@ class CEvent : public internal::EventInterface {
   SP_Device* device_;
   SP_StreamExecutor* stream_executor_;
   SP_Event event_handle_;
-};
-
-class CTimer : public internal::TimerInterface {
- public:
-  CTimer(SP_Device* device, SP_StreamExecutor* stream_executor,
-         SP_TimerFns* timer_fns)
-      : device_(device),
-        stream_executor_(stream_executor),
-        timer_handle_(nullptr),
-        timer_fns_(timer_fns) {}
-  ~CTimer() override { Destroy(); }
-
-  tsl::Status Create() {
-    tensorflow::TF_StatusPtr c_status(TF_NewStatus());
-    stream_executor_->create_timer(device_, &timer_handle_, c_status.get());
-    return tensorflow::StatusFromTF_Status(c_status.get());
-  }
-
-  void Destroy() {
-    if (timer_handle_ != nullptr) {
-      stream_executor_->destroy_timer(device_, timer_handle_);
-      timer_handle_ = nullptr;
-    }
-  }
-
-  SP_Timer Handle() { return timer_handle_; }
-
-  uint64 Microseconds() const override {
-    return timer_fns_->nanoseconds(timer_handle_) / 1000;
-  }
-
-  uint64 Nanoseconds() const override {
-    return timer_fns_->nanoseconds(timer_handle_);
-  }
-
- private:
-  SP_Device* device_;
-  SP_StreamExecutor* stream_executor_;
-  SP_Timer timer_handle_;
-  SP_TimerFns* timer_fns_;
 };
 
 }  // namespace stream_executor

@@ -144,6 +144,22 @@ class TPUEmbeddingConfigurationTest(test.TestCase):
           'Logging function lines should not be of truncating length.')
 
 
+class TPUEmbeddingUtilityFunctionTest(test.TestCase):
+
+  def test_sort_device_spec_strings(self):
+    device_spec_strings = []
+    for task in [2, 3, 0, 1]:  # Intentionally permuted
+      for device in range(8):
+        device_spec_strings.append(
+            f'/job:trainer/replica:0/task:{task}/device:TPU:{device}'
+        )
+    sorted_specs = tpu_embedding_v2_utils._sort_device_spec_strings(
+        device_spec_strings
+    )
+
+    self.assertEqual(sorted_specs, sorted(device_spec_strings))
+
+
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()
   test.main()

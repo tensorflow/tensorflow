@@ -868,10 +868,14 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
           cusparseCreateDnMat(&matC, m, n, ldc, c.data(), GPUDataType<T>::type,
                               CUSPARSE_ORDER_COL));
 
+#if CUDA_VERSION >= 12000
+      cusparseSpMMAlg_t algo = CUSPARSE_SPMM_ALG_DEFAULT;
+#else
+      cusparseSpMMAlg_t algo = CUSPARSE_MM_ALG_DEFAULT;
+#endif
       size_t bufferSize = 0;
       TF_RETURN_IF_ERROR(cuda_sparse.SpMMBufferSize(
-          transA, transB, &alpha, matA, matB, &beta, matC,
-          CUSPARSE_MM_ALG_DEFAULT, &bufferSize));
+          transA, transB, &alpha, matA, matB, &beta, matC, algo, &bufferSize));
 
       Tensor buffer;
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
@@ -879,7 +883,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       DCHECK(buffer.flat<int8>().data() != nullptr);
 
       TF_RETURN_IF_ERROR(cuda_sparse.SpMM(transA, transB, &alpha, matA, matB,
-                                          &beta, matC, CUSPARSE_MM_ALG_DEFAULT,
+                                          &beta, matC, algo,
                                           buffer.flat<int8>().data()));
 
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnMat(matB));

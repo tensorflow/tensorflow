@@ -18,16 +18,14 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import byte_swap_tensor as bst
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import nested_structure_coder
-from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -210,109 +208,7 @@ def get_element_from_tensor_info(tensor_info, graph=None, import_scope=None):
       ops.prepend_name_scope(tensor_info.name, import_scope=import_scope))
 
 
-# TODO(juanantoniomc): Delete these Path helper functions from this file when
-#                      cl/498254070 has been submitted.
-# Path helpers.
-
-
-def get_or_create_variables_dir(export_dir):
-  """Return variables sub-directory, or create one if it doesn't exist."""
-  variables_dir = get_variables_dir(export_dir)
-  file_io.recursive_create_dir(variables_dir)
-  return variables_dir
-
-
-def get_variables_dir(export_dir):
-  """Return variables sub-directory in the SavedModel."""
-  return file_io.join(
-      compat.as_text(export_dir), compat.as_text(constants.VARIABLES_DIRECTORY))
-
-
-def get_variables_path(export_dir):
-  """Return the variables path, used as the prefix for checkpoint files."""
-  return file_io.join(
-      compat.as_text(get_variables_dir(export_dir)),
-      compat.as_text(constants.VARIABLES_FILENAME))
-
-
-def get_or_create_assets_dir(export_dir):
-  """Return assets sub-directory, or create one if it doesn't exist."""
-  assets_destination_dir = get_assets_dir(export_dir)
-
-  file_io.recursive_create_dir(assets_destination_dir)
-
-  return assets_destination_dir
-
-
-def get_assets_dir(export_dir):
-  """Return path to asset directory in the SavedModel."""
-  return file_io.join(
-      compat.as_text(export_dir), compat.as_text(constants.ASSETS_DIRECTORY))
-
-
-def get_or_create_debug_dir(export_dir):
-  """Returns path to the debug sub-directory, creating if it does not exist."""
-  debug_dir = get_debug_dir(export_dir)
-
-  file_io.recursive_create_dir(debug_dir)
-
-  return debug_dir
-
-
-def get_saved_model_pbtxt_path(export_dir):
-  return file_io.join(
-      compat.as_bytes(compat.path_to_str(export_dir)),
-      compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT))
-
-
-def get_saved_model_pb_path(export_dir):
-  return file_io.join(
-      compat.as_bytes(compat.path_to_str(export_dir)),
-      compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
-
-
-def get_debug_dir(export_dir):
-  """Returns path to the debug sub-directory in the SavedModel."""
-  return file_io.join(
-      compat.as_text(export_dir), compat.as_text(constants.DEBUG_DIRECTORY))
-
-# Based on tensor_bundle/byte_swap.cc
-byte_swappable = [
-    dtypes.float16, dtypes.float32, dtypes.float64, dtypes.bfloat16,
-    dtypes.complex64, dtypes.complex128, dtypes.uint16, dtypes.uint32,
-    dtypes.uint64, dtypes.int16, dtypes.int32, dtypes.int64, dtypes.qint16,
-    dtypes.quint16, dtypes.qint32
-]
-
-
 def swap_function_tensor_content(meta_graph_def, from_endiness, to_endiness):
-  functions = meta_graph_def.graph_def.library.function
-  for function in functions:
-    node_def = function.node_def
-    for node in node_def:
-      if node.op == "Const":
-        tensor = node.attr["value"].tensor
-        byte_swap_tensor_content(tensor, from_endiness, to_endiness)
-
-
-def byte_swap_tensor_content(tensor, from_endiness, to_endiness):
-  """Byte swaps."""
-  if tensor.dtype in byte_swappable:
-    tshape = tensor.tensor_shape.dim
-    tensor_bytes = tensor.tensor_content
-    if tensor_bytes:
-      tensor_size = 1
-      for sz in tshape:
-        tensor_size = tensor_size * sz.size
-      chunksize = int(len(tensor_bytes) / tensor_size)
-      # Split tensor_data into chunks for byte swapping.
-      to_swap = [
-          tensor_bytes[i:i + chunksize]
-          for i in range(0, len(tensor_bytes), chunksize)
-      ]
-      # Swap and replace tensor_content.
-      tensor.tensor_content = b"".join([
-          int.from_bytes(byteswap,
-                         from_endiness).to_bytes(chunksize, to_endiness)
-          for byteswap in to_swap
-      ])
+  bst.swap_tensor_content_in_graph_function(
+      meta_graph_def, from_endiness, to_endiness
+  )

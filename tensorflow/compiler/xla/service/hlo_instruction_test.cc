@@ -626,6 +626,48 @@ TEST_F(HloInstructionTest, PostProcessAllVisitedNodes) {
   EXPECT_TRUE(Distinct(visitor.visited_nodes()));
 }
 
+TEST_F(HloInstructionTest, PostProcessAllVisitedNodesMultiComputation) {
+  // Verifies all the nodes are visited and post-processed in the same order,
+  // and that each node is visited exactly once.
+  const std::string& hlo_string = R"(
+  HloModule axpy_module
+    calculate_alpha {
+      c.1 = f32[] constant(1)
+      c.2 = f32[] constant(2)
+      c.3 = f32[] add(c.1, c.2)
+      c.4 = f32[] constant(4)
+      ROOT ret = f32[] multiply(c.4, c.3)
+    }
+    
+    ENTRY axpy_computation {
+      p.0 = f32[10] parameter(0)
+      p.1 = f32[10] parameter(1)
+      add.0 = f32[10] add(p.0, p.1)
+      alpha = f32[] call(), to_apply=calculate_alpha
+      broadcast = f32[10] broadcast(alpha), dimensions={}
+      p.2 = f32[10] parameter(2)
+      y = f32[10] multiply(broadcast, p.2)
+      x = f32[10] subtract(y, add.0)
+      p.3 = f32[10] parameter(3)
+      ROOT add.1 = f32[10] add(x, p.3)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* add1 = FindInstruction(module.get(), "add.1");
+  EXPECT_EQ(add1, module->entry_computation()->root_instruction());
+
+  NodeCollectorAndPostProcessor visitor;
+  ASSERT_IS_OK(add1->Accept(&visitor, /*call_finish_visit=*/true,
+                            /*ignore_control_predecessors=*/false,
+                            /*cross_computation=*/true));
+  // Verifies all the nodes are visited and post-processed in the same order.
+  EXPECT_EQ(visitor.visited_nodes(), visitor.post_processed_nodes());
+  // Verifies each node is visited exactly once.
+  EXPECT_TRUE(Distinct(visitor.visited_nodes()));
+}
+
 TEST_F(HloInstructionTest, SingletonFusionOp) {
   HloComputation::Builder builder(TestName());
   // Create a fusion instruction containing a single unary operation.
@@ -1582,6 +1624,88 @@ TEST_F(HloInstructionTest, Stringification) {
             "true_computation=%TransposeDot, false_computation=%TransposeDot");
 }
 
+TEST_F(HloInstructionTest, GetSetStatisticsViz) {
+  const Shape shape = ShapeUtil::MakeShape(F32, {5, 10});
+
+  HloComputation::Builder builder(TestName());
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
+
+  StatisticsViz statistics_viz;
+  statistics_viz.set_stat_index_to_visualize(-1);
+
+  x->set_statistics_viz(statistics_viz);
+
+  EXPECT_FALSE(x->has_statistics());
+  EXPECT_EQ(x->statistics_viz().stat_index_to_visualize(), -1);
+
+  Statistic statistic;
+  statistic.set_stat_name("stat-1");
+  statistic.set_stat_val(30.0);
+
+  x->add_single_statistic(statistic);
+  x->set_stat_index_to_visualize(0);
+
+  EXPECT_TRUE(x->has_statistics());
+  EXPECT_TRUE(
+      protobuf_util::ProtobufEquals(x->statistic_to_visualize(), statistic));
+
+  statistic.set_stat_val(40.0);
+  *statistics_viz.add_statistics() = statistic;
+
+  x->set_statistics_viz(statistics_viz);
+
+  EXPECT_TRUE(
+      protobuf_util::ProtobufEquals(x->statistics_viz(), statistics_viz));
+}
+
+TEST_F(HloInstructionTest, StringifyStatisticsViz) {
+  const Shape shape = ShapeUtil::MakeShape(F32, {5, 10});
+
+  HloComputation::Builder builder(TestName());
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
+  HloInstruction* y =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "y"));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, x, y));
+
+  // Empty statistics viz must not print "statistics={}"
+  add->set_statistics_viz({});
+  EXPECT_EQ(add->ToString(),
+            "%add = f32[5,10]{1,0} add(f32[5,10]{1,0} %x, f32[5,10]{1,0} %y)");
+
+  auto CreateStatisticsVizWithStatistics =
+      [](int64_t stat_index_to_visualize,
+         std::initializer_list<std::pair<absl::string_view, double>> statistics)
+      -> StatisticsViz {
+    StatisticsViz statistics_viz;
+    statistics_viz.set_stat_index_to_visualize(stat_index_to_visualize);
+
+    auto create_statistic = [](absl::string_view statistic_name,
+                               double statistic_value) {
+      Statistic statistic;
+      statistic.set_stat_name(std::string(statistic_name));
+      statistic.set_stat_val(statistic_value);
+      return statistic;
+    };
+
+    for (const auto& [statistic_name, statistic_value] : statistics) {
+      *statistics_viz.add_statistics() =
+          create_statistic(statistic_name, statistic_value);
+    }
+
+    return statistics_viz;
+  };
+
+  add->set_statistics_viz(CreateStatisticsVizWithStatistics(
+      1, {{"stat-1", 33.0}, {"stat-2", 44.0}}));
+
+  EXPECT_EQ(add->ToString(),
+            "%add = f32[5,10]{1,0} add(f32[5,10]{1,0} %x, f32[5,10]{1,0} %y), "
+            "statistics={visualizing_index=1,stat-1=33,stat-2=44}");
+}
+
 TEST_F(HloInstructionTest, StringifyGather_0) {
   Shape input_tensor_shape = ShapeUtil::MakeShape(F32, {50, 49, 48, 47, 46});
   Shape start_indices_tensor_shape =
@@ -1746,9 +1870,9 @@ TEST_F(HloInstructionTest, StringifyAsyncOps) {
 
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
-  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", custom_call_target="foo"
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
-  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_execution_thread="parallel_thread", custom_call_target="foo"
+  %custom-call-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", custom_call_target="foo"
+  %custom-call-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-start), async_execution_thread="parallel_thread", custom_call_target="foo"
+  ROOT %custom-call-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-update), async_execution_thread="parallel_thread", custom_call_target="foo"
 }
 
 )";
@@ -1763,9 +1887,108 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
-  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", calls=%AsyncOp
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_execution_thread="parallel_thread", calls=%AsyncOp
-  ROOT %async-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_execution_thread="parallel_thread", calls=%AsyncOp
+  %custom-call-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", calls=%AsyncOp
+  %custom-call-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-start), async_execution_thread="parallel_thread", calls=%AsyncOp
+  ROOT %custom-call-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-update), async_execution_thread="parallel_thread", calls=%AsyncOp
+}
+
+)";
+  auto options = HloPrintOptions().set_syntax_sugar_async_ops(false);
+  EXPECT_EQ(module->ToString(options), expected_without_syntax_sugar);
+}
+
+TEST_F(HloInstructionTest, StringifyAsyncOpsWithReduceScatter) {
+  const Shape rs_input_shape = ShapeUtil::MakeShape(F32, {20});
+  const Shape rs_output_shape = ShapeUtil::MakeShape(F32, {10});
+
+  std::unique_ptr<HloComputation> add_computation;
+  {
+    const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+    HloComputation::Builder add_builder("add");
+    HloInstruction* param0 = add_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* param1 = add_builder.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
+    add_builder.AddInstruction(HloInstruction::CreateBinary(
+        scalar_shape, HloOpcode::kAdd, param0, param1));
+    add_computation = add_builder.Build();
+  }
+
+  std::unique_ptr<HloComputation> async_computation;
+  {
+    HloComputation::Builder async_builder("AsyncOp");
+    HloInstruction* param = async_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, rs_input_shape, "pasync"));
+    async_builder.AddInstruction(HloInstruction::CreateReduceScatter(
+        rs_output_shape, {param}, add_computation.get(), {}, false,
+        std::nullopt, false, 0));
+    async_computation = async_builder.Build();
+  }
+
+  const Shape async_start_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({rs_input_shape}), rs_output_shape});
+
+  HloComputation::Builder entry_builder("Entry");
+  HloInstruction* entry_param = entry_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, rs_input_shape, "pentry"));
+  HloInstruction* async_start =
+      entry_builder.AddInstruction(HloInstruction::CreateAsyncStart(
+          async_start_shape, {entry_param}, async_computation.get(),
+          /*async_group_id=*/std::nullopt,
+          /*async_execution_thread=*/"parallel_thread"));
+  HloInstruction* async_update =
+      entry_builder.AddInstruction(HloInstruction::CreateAsyncUpdate(
+          async_start_shape, async_start, async_computation.get(),
+          /*async_group_id=*/std::nullopt,
+          /*async_execution_thread=*/"parallel_thread"));
+  entry_builder.AddInstruction(HloInstruction::CreateAsyncDone(
+      rs_output_shape, async_update, async_computation.get(),
+      /*async_group_id=*/std::nullopt,
+      /*async_execution_thread=*/"parallel_thread"));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(entry_builder.Build());
+  module->AddEmbeddedComputation(std::move(async_computation));
+  module->AddEmbeddedComputation(std::move(add_computation));
+
+  const std::string expected_with_syntax_sugar =
+      R"(HloModule StringifyAsyncOpsWithReduceScatter, entry_computation_layout={(f32[20]{0})->f32[10]{0}}
+
+%add (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %p0, f32[] %p1)
+}, execution_thread="parallel_thread"
+
+ENTRY %Entry (pentry: f32[20]) -> f32[10] {
+  %pentry = f32[20]{0} parameter(0)
+  %reduce-scatter-start = ((f32[20]{0}), f32[10]{0}) reduce-scatter-start(f32[20]{0} %pentry), async_execution_thread="parallel_thread", replica_groups={}, dimensions={0}, to_apply=%add
+  %reduce-scatter-update = ((f32[20]{0}), f32[10]{0}) reduce-scatter-update(((f32[20]{0}), f32[10]{0}) %reduce-scatter-start), async_execution_thread="parallel_thread", replica_groups={}, dimensions={0}, to_apply=%add
+  ROOT %reduce-scatter-done = f32[10]{0} reduce-scatter-done(((f32[20]{0}), f32[10]{0}) %reduce-scatter-update), async_execution_thread="parallel_thread", replica_groups={}, dimensions={0}, to_apply=%add
+}
+
+)";
+  EXPECT_EQ(module->ToString(), expected_with_syntax_sugar);
+
+  const std::string expected_without_syntax_sugar =
+      R"(HloModule StringifyAsyncOpsWithReduceScatter, entry_computation_layout={(f32[20]{0})->f32[10]{0}}
+
+%add (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %p0, f32[] %p1)
+}, execution_thread="parallel_thread"
+
+%AsyncOp (pasync: f32[20]) -> f32[10] {
+  %pasync = f32[20]{0} parameter(0)
+  ROOT %reduce-scatter = f32[10]{0} reduce-scatter(f32[20]{0} %pasync), replica_groups={}, dimensions={0}, to_apply=%add
+}, execution_thread="parallel_thread"
+
+ENTRY %Entry (pentry: f32[20]) -> f32[10] {
+  %pentry = f32[20]{0} parameter(0)
+  %reduce-scatter-start = ((f32[20]{0}), f32[10]{0}) async-start(f32[20]{0} %pentry), async_execution_thread="parallel_thread", calls=%AsyncOp
+  %reduce-scatter-update = ((f32[20]{0}), f32[10]{0}) async-update(((f32[20]{0}), f32[10]{0}) %reduce-scatter-start), async_execution_thread="parallel_thread", calls=%AsyncOp
+  ROOT %reduce-scatter-done = f32[10]{0} async-done(((f32[20]{0}), f32[10]{0}) %reduce-scatter-update), async_execution_thread="parallel_thread", calls=%AsyncOp
 }
 
 )";

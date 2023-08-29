@@ -16,11 +16,12 @@
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
@@ -52,8 +53,9 @@ def create_identity_with_grad_check_fn(expected_gradient, expected_dtype=None):
       if expected_dtype:
         assert dx.dtype == expected_dtype, (
             'dx.dtype should be %s but is: %s' % (expected_dtype, dx.dtype))
-      expected_tensor = ops.convert_to_tensor_v2_with_dispatch(
-          expected_gradient, dtype=dx.dtype, name='expected_gradient')
+      expected_tensor = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          expected_gradient, dtype=dx.dtype, name='expected_gradient'
+      )
       # Control dependency is to ensure input is available. It's possible the
       # dataset will throw a StopIteration to indicate there is no more data, in
       # which case we don't want to run the assertion.
@@ -91,7 +93,7 @@ def create_identity_with_nan_gradients_fn(have_nan_gradients):
     """Function whose gradient is NaN iff `have_nan_gradients` is True."""
     x = array_ops.identity(x)
     def grad(dx):
-      return control_flow_ops.cond(
+      return cond.cond(
           have_nan_gradients,
           lambda: dx * float('NaN'),
           lambda: dx

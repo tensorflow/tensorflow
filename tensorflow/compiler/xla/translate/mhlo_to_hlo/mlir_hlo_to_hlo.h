@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_MLIR_HLO_TO_HLO_H_
 #define TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_MLIR_HLO_TO_HLO_H_
 
+#include <optional>
 #include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -65,18 +66,6 @@ xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
                                 llvm::ArrayRef<xla::XlaOp> xla_params,
                                 std::vector<xla::XlaOp>& returns,
                                 MlirToHloConversionOptions options = {});
-
-// Converts a region to a computation. It returns a standalone module that
-// contains the converted region as the entry computation.
-xla::Status ConvertRegionToComputation(mlir::Region* region,
-                                       ::xla::XlaComputation* func,
-                                       MlirToHloConversionOptions options = {});
-
-// Creates XlaOp equivalent of a given MLIR operation using the operand info
-// from `value_lowering` map.
-llvm::Optional<::xla::XlaOp> CreateXlaOperator(
-    mlir::Operation* op,
-    llvm::DenseMap<mlir::Value, ::xla::XlaOp>* value_lowering);
 
 }  // namespace mlir
 

@@ -30,11 +30,11 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
-#include "tensorflow/core/profiler/convert/xla_op_utils.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
+#include "tensorflow/tsl/profiler/convert/xla_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -42,6 +42,7 @@ namespace {
 
 using op_profile::Metrics;
 using op_profile::Node;
+using tsl::profiler::IsFusion;
 
 // Fill symbol details into a node.
 void PopulateSymbolNode(const OpMetrics& op_metrics, Node* node) {
@@ -109,7 +110,7 @@ void SortAndPruneChildren(int k, int level, Node* root) {
     } else {
       *root->mutable_children() =
           TopKChildren(root, k, [](const Node* a, const Node* b) {
-            return a->metrics().time() > b->metrics().time();
+            return a->metrics().raw_time() > b->metrics().raw_time();
           }).children();
     }
   }
@@ -189,10 +190,6 @@ void PopulateOpMetricsNode(
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
   metrics->set_raw_time(op_metrics.time_ps());
   metrics->set_raw_flops(op_metrics.flops());
-  metrics->set_raw_bytes_accessed(op_metrics.bytes_accessed());
-
-  // "time" is the op or category fraction of total time.
-  metrics->set_time(SafeDivide(op_metrics.time_ps(), total_time_ps));
 
   // Hack to approximate utilization for INT8/4 convolution HLOs:
   // Since MXU BW is 2x/4x for INT8/4, multiply peak BW by the factor detemrined
@@ -204,39 +201,55 @@ void PopulateOpMetricsNode(
   }
   double flops_utilization = SafeDivide(GigaFlopsPerSecondPerCore(op_metrics),
                                         peak_gigaflops_per_second_per_core);
-  // The UI expects flops_utilization = flops / time. See:
+  // The UI expects flops_utilization = flop_util / time_fraction. See:
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
-  metrics->set_flops(flops_utilization * metrics->time());
+  const double time_fraction = SafeDivide(op_metrics.time_ps(), total_time_ps);
+  metrics->set_flops(flops_utilization * time_fraction);
 
-  // TODO(b/219984562): Use hierarchical roofline.
-  // For now, capture both overall and off-chip memory utilization.
-  const double mem_bw_utilization = SafeDivide(
-      GibiBytesPerSecondPerCore(op_metrics, MemorySpace::kAllMemories,
-                                OpMetrics::MemoryAccessed::UNKNOWN),
-      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_ALL]);
-  metrics->set_memory_bandwidth_util(mem_bw_utilization);
-  metrics->add_bandwidth_utils(mem_bw_utilization);
-
-  const double hbm_bw_gibibytes_per_second =
-      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics, MemorySpace::kHbm,
+  // Capture both on-chip and off-chip memory utilization.
+  const double hbm_gibibytes_per_second =
+      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics,
+                                           MemorySpace::MEMORY_SPACE_HBM,
                                            OpMetrics::MemoryAccessed::READ)) +
-      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics, MemorySpace::kHbm,
+      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics,
+                                           MemorySpace::MEMORY_SPACE_HBM,
                                            OpMetrics::MemoryAccessed::WRITE));
   const double hbm_bw_utilization = SafeDivide(
-      hbm_bw_gibibytes_per_second,
+      hbm_gibibytes_per_second,
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_HBM_RW]);
-  metrics->set_hbm_bandwidth_util(hbm_bw_utilization);
   metrics->add_bandwidth_utils(hbm_bw_utilization);
+  double hbm_bytes =
+      GibiToGiga(hbm_gibibytes_per_second) * PicoToNano(op_metrics.time_ps());
 
-  metrics->set_raw_hbm_bytes_accessed(GibiToGiga(hbm_bw_gibibytes_per_second) *
-                                      PicoToNano(op_metrics.time_ps()));
+  const double sram_rd_gibibytes_per_second = GigaToGibi(
+      GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
+                                OpMetrics::MemoryAccessed::READ));
+  const double sram_rd_bw_utilization = SafeDivide(
+      sram_rd_gibibytes_per_second,
+      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_RD]);
+  metrics->add_bandwidth_utils(sram_rd_bw_utilization);
+  double sram_rd_bytes = GibiToGiga(sram_rd_gibibytes_per_second) *
+                         PicoToNano(op_metrics.time_ps());
+
+  const double sram_wr_gibibytes_per_second = GigaToGibi(
+      GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
+                                OpMetrics::MemoryAccessed::WRITE));
+  const double sram_wr_bw_utilization = SafeDivide(
+      sram_wr_gibibytes_per_second,
+      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_WR]);
+  metrics->add_bandwidth_utils(sram_wr_bw_utilization);
+  double sram_wr_bytes = GibiToGiga(sram_wr_gibibytes_per_second) *
+                         PicoToNano(op_metrics.time_ps());
+
+  metrics->add_raw_bytes_accessed_array(hbm_bytes);
+  metrics->add_raw_bytes_accessed_array(sram_rd_bytes);
+  metrics->add_raw_bytes_accessed_array(sram_wr_bytes);
 }
 
 // Sets the total time on the root node metrics.
 void SetTotalTime(uint64_t total_time_ps, Node* root) {
   Metrics* metrics = root->mutable_metrics();
   metrics->set_raw_time(total_time_ps);
-  metrics->set_time(1.0);
 }
 
 // Recursively insert "fused instruction" nodes (with raw flops).
@@ -258,7 +271,7 @@ std::string OpProfileBuilder::GenerateProgramName(uint64_t program_id) const {
   DCHECK(program_name_map_ != nullptr);
   auto iter = program_name_map_->find(program_id);
   if (iter == program_name_map_->end()) return "main";
-  return HloModuleNameWithProgramId(iter->second, program_id);
+  return tsl::profiler::HloModuleNameWithProgramId(iter->second, program_id);
 }
 
 Node* OpProfileBuilder::AddOpNode(const OpMetrics& op_metrics,

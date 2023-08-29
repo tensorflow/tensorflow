@@ -45,7 +45,7 @@
 	%read = "tf.ReadVariableOp"(%res_rep) {_tpu_replicate = "cluster", device = ""} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<*xi32>
 	%inc = "tf.Add"(%read, %one) {_tpu_replicate = "cluster"} : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
 	"tf.AssignVariableOp"(%res_rep, %inc) {_tpu_replicate = "cluster"} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<*xi32>) -> ()
-	%res_out = "tf.TPUReplicatedOutput"(%res_rep) {is_packed = true} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
+	%res_out:2 = "tf.TPUReplicatedOutput"(%res_rep) : (tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<!tf_type.resource<tensor<i32>>>, tensor<!tf_type.resource<tensor<i32>>>)
         "tf_executor.yield"(%res) : (tensor<!tf_type.resource<tensor<i32>>>) -> ()
       }) : () -> (tensor<!tf_type.resource<tensor<i32>>>, !tf_executor.control)
       "tf_executor.fetch"(%i#0) : (tensor<!tf_type.resource<tensor<i32>>>) -> ()

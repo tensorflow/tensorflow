@@ -52,6 +52,9 @@ jobs:
             case "linaro.org":
               console.log(await script.filter({github, context, domain}));
               break;
+            case "arm.com":
+              console.log(await script.filter({github, context, domain}));
+              break;
             case "google.com":
               console.log("Googler. No action necessary");
               break;

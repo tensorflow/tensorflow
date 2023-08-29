@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 
 #include <memory>
+#include <optional>
+#include <set>
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/backend.h"

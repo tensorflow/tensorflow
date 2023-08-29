@@ -48,11 +48,9 @@ namespace {
 // considered empty.
 bool ComputationIsEmptyWithArrayRoot(const HloComputation* computation) {
   bool empty_operations = absl::c_all_of(
-      computation->MakeInstructionPostOrder(), [](const HloInstruction* inst) {
-        return inst->opcode() == HloOpcode::kTuple ||
-               inst->opcode() == HloOpcode::kGetTupleElement ||
-               inst->opcode() == HloOpcode::kParameter;
-      });
+      computation->MakeInstructionPostOrder(),
+      HloPredicateIsOp<HloOpcode::kTuple, HloOpcode::kGetTupleElement,
+                       HloOpcode::kParameter>);
   bool contains_array = false;
   ShapeUtil::ForEachSubshape(computation->root_instruction()->shape(),
                              [&](const Shape& shape, const ShapeIndex& index) {
@@ -513,7 +511,7 @@ StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
       absl::c_any_of(conditional->branch_computation(1)->instructions(),
                      instruction_is_expensive)) {
     VLOG(2)
-        << "Not attempting  to remove conditional as its branch_index is not a "
+        << "Not attempting to remove conditional as its branch_index is not a "
            "compile-time constant or contains expensive instructions: "
         << conditional->ToShortString();
     return false;

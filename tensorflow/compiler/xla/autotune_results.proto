@@ -17,7 +17,7 @@ syntax = "proto3";
 
 package xla;
 
-import "tensorflow/tsl/protobuf/autotuning.proto";
+import "tensorflow/compiler/xla/autotuning.proto";
 
 // A collection of algorithms for particular dot/convs.  Usually this is "the
 // best" algorithm for the particular dot/conv, although that's not strictly
@@ -33,19 +33,14 @@ message AutotuneResults {
   message Entry {
     string device = 1;
     string hlo = 2;
-
-    // nb: These results are always tied to a particular version of
-    // cublas/cudnn, but this is *especially* true for cublasLt results.  For
-    // cublasLt gemms, the result is an index into the list of candidate
-    // algorithms returned by cublasLt.  Different version of cublasLt ->
-    // different list of algos -> different interpretation of results!
-    tensorflow.AutotuneResult result = 3;
+    AutotuneResult result = 3;
   }
 
   int32 version = 1;
-  repeated Entry dots = 2;
-  repeated Entry convs = 3;
+  reserved 2;  // dots
+  reserved 3;  // convs
+  repeated Entry results = 4;
 }
 // LINT.ThenChange(
-//   "autotune_serialize.cc:version"
+//   "service/gpu/autotuner_util.cc:version"
 // )

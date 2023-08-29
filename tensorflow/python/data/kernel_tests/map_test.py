@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for `tf.data.Dataset.map()`."""
 import collections
+import dataclasses
 import functools
 import threading
 import time
@@ -24,6 +25,7 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python import tf2
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
@@ -41,9 +43,11 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import map_fn
@@ -51,9 +55,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -129,6 +135,59 @@ class Foo:
 
   def __init__(self):
     pass
+
+
+@dataclasses.dataclass
+class MyDataclass:
+  value1: tensor.Tensor
+  value2: tensor.Tensor
+
+  def __tf_flatten__(self):
+    metadata = tuple()
+    components = (self.value1, self.value2)
+    return metadata, components
+
+  @classmethod
+  def __tf_unflatten__(cls, metadata, components):
+    del metadata
+    return cls(value1=components[0], value2=components[1])
+
+
+@dataclasses.dataclass
+class MaskedTensor:
+  mask: bool
+  value: tensor.Tensor
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value,)
+    return metadata, components
+
+  @classmethod
+  def __tf_unflatten__(cls, metadata, components):
+    mask = metadata[0]
+    value = components[0]
+    return MaskedTensor(mask=mask, value=value)
+
+
+@dataclasses.dataclass
+class NestedMaskedTensor:
+  mask: bool
+  value: MaskedTensor
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value,)
+    return metadata, components
+
+  @classmethod
+  def __tf_unflatten__(cls, metadata, components):
+    mask = metadata[0]
+    value = components[0]
+    return NestedMaskedTensor(mask=mask, value=value)
+
+  def __eq__(self, other):
+    return self.mask == other.mask and self.value == other.value
 
 
 class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -544,6 +603,118 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset, expected_output=[i * 2 + i**2 for i in range(10)])
 
   @combinations.generate(_test_combinations())
+  def testMapDataclass(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = apply_map(dataset, lambda x: MyDataclass(value1=x, value2=2 * x))
+    dataset = apply_map(dataset, lambda x: x.value1 + x.value2)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[3 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapMaskedTensor(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = apply_map(dataset, lambda x: MaskedTensor(mask=True, value=x))
+    dataset = apply_map(dataset, lambda x: 3 * x.value)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[3 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapDataclassWithInputAndOutput(self, apply_map):
+    dataset = dataset_ops.Dataset.from_tensors(MyDataclass(value1=1, value2=2))
+    dataset = apply_map(dataset, lambda x: (x.value1 * 5, x.value2))
+    dataset = apply_map(
+        dataset, lambda x, y: MaskedTensor(mask=True, value=x + y)
+    )
+    dataset = apply_map(
+        dataset, lambda m: NestedMaskedTensor(mask=False, value=m)
+    )
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[
+            NestedMaskedTensor(
+                mask=False, value=MaskedTensor(mask=True, value=7)
+            )
+        ],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapListOfDataclassObjects(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+
+    # Creates a list of dataclass objects.
+    dataset = apply_map(
+        dataset,
+        lambda x: [  # pylint: disable=g-long-lambda
+            MyDataclass(value1=x, value2=1),
+            MyDataclass(value1=2, value2=2 * x),
+        ],
+    )
+
+    # Takes a list of dataclass objects as input.
+    dataset = apply_map(dataset, lambda *x: x[0].value1 + x[1].value2)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[3 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapDictOfDataclassValues(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+
+    # Creates a dict of {str -> dataclass}.
+    dataset = apply_map(
+        dataset,
+        lambda x: {  # pylint: disable=g-long-lambda
+            "a": MyDataclass(value1=x, value2=1),
+            "b": MyDataclass(value1=2, value2=2 * x),
+        },
+    )
+    # Takes a dict of dataclass values as input.
+    dataset = apply_map(dataset, lambda x: x["a"].value1 + x["b"].value2)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[3 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapNestedMaskedTensorWithDataclassInput(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = apply_map(dataset, lambda x: MaskedTensor(mask=True, value=x))
+    dataset = apply_map(
+        dataset,
+        # Takes a MaskedTensor as input.
+        lambda x: NestedMaskedTensor(mask=False, value=x),
+    )
+    dataset = apply_map(dataset, lambda x: 5 * x.value.value)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[5 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapNestedMaskedTensorWithDataclassOutput(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = apply_map(
+        dataset,
+        lambda x: NestedMaskedTensor(  # pylint: disable=g-long-lambda
+            mask=False, value=MaskedTensor(mask=True, value=x)
+        ),
+    )
+
+    # Return a MaskedTensor as the return value.
+    dataset = apply_map(dataset, lambda x: x.value)
+    dataset = apply_map(dataset, lambda x: 7 * x.value)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[7 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
   def testMapNamedtuple(self, apply_map):
     # construct dataset of tuples
     labels = dataset_ops.Dataset.range(10)
@@ -628,7 +799,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         return x // 2
 
       def defaults_two():
-        return control_flow_ops.cond(
+        return cond.cond(
             math_ops.equal(math_ops.mod(x, 2), 0),
             multiply,
             divide,
@@ -639,7 +810,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), defaults_two),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     def build_dataset(row, num):
@@ -672,7 +843,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), divide),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     def build_dataset(row, num):
@@ -702,7 +873,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         return x // 2
 
       def defaults_two():
-        return control_flow_ops.cond(
+        return cond.cond(
             math_ops.equal(math_ops.mod(x, 2), 0),
             multiply,
             divide,
@@ -713,7 +884,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), defaults_two),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     row = np.arange(6)
@@ -1149,7 +1320,6 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.close()
       thread.join()
 
-
   # TODO(b/126553094): map doesnt work with variable defined inside function in
   # eager mode, possible Graph tensors leak out of the function building context
   # from function graph in eager mode as variables are created in init_scope.
@@ -1168,7 +1338,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     if hasattr(dataset, "map_with_legacy_function"):
       # NOTE: In the legacy function, resource is captured by value.
       with self.assertRaisesWithPredicateMatch(
-          AttributeError, "'Tensor' object has no attribute 'assign_add'"):
+          AttributeError, ".*Tensor.* object has no attribute 'assign_add'"
+      ):
         dataset.map_with_legacy_function(func)
 
     dataset = dataset.map(func)
@@ -1238,9 +1409,9 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session(config=config):
 
       with ops.device("/device:CPU:0"):
-        a = variables.VariableV1(3.0)
+        a = variable_v1.VariableV1(3.0)
       with ops.device("/device:CPU:1"):
-        b = variables.VariableV1(5.0)
+        b = variable_v1.VariableV1(5.0)
 
       def func(_):
         nonlocal a, b
@@ -1337,18 +1508,29 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeBuffer(self):
-    # Tensor of size 512M
-    dataset = dataset_ops.Dataset.from_tensors(
-        array_ops.ones((128, 1024, 1024), dtype=dtypes.float32))
-    dataset = dataset.repeat()
+    if (pywrap_sanitizers.is_asan_enabled() or
+        pywrap_sanitizers.is_tsan_enabled() or
+        pywrap_sanitizers.is_msan_enabled()):
+      self.skipTest("Skip to avoid OOM when using sanitizers.")
+    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dataset = dataset.map(
+        # Create tensors of size 512M.
+        lambda seed: stateless_random_ops.stateless_random_uniform(
+            (128, 1024, 1024), seed, dtype=dtypes.float32
+        )
+    )
     # Set parallelism to 5 to exceed the 2GB protobuf limit
     dataset = dataset.map(lambda x: x * 2, num_parallel_calls=5)
     iterator = iter(dataset)
-    next(iterator)  # request an element to fill the parallel map buffer
+    next(iterator)  # Request an element to fill the parallel map buffer
+    time.sleep(1)  # Give buffers some time to fill
     ckpt = trackable_utils.Checkpoint(iterator=iterator)
     manager = checkpoint_management.CheckpointManager(
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
+    del dataset
+    del iterator
+    manager.restore_or_initialize()
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),

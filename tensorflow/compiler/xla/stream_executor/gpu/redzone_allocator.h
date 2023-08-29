@@ -57,7 +57,7 @@ class RedzoneAllocator : public ScratchAllocator {
     return allocated_bytes_excluding_redzones_;
   }
 
-  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
+  tsl::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
 
   // Non-empty redzone check status implies that there was a write into a
   // redzone, with a string communicating the location of the write.
@@ -89,7 +89,7 @@ class RedzoneAllocator : public ScratchAllocator {
   // Determines whether redzones around all allocated buffers are unmodified.
   //
   // Reinitializes redzones to the expected value, so that the same buffer
-  // could be reused for multiple checks.
+  // can be reused for multiple checks.
   //
   // Returns:
   //
@@ -97,7 +97,7 @@ class RedzoneAllocator : public ScratchAllocator {
   //  - RedzoneCheckStatus with a non-empty error message iff a write into a
   //    redzone has been detected.
   //  - A stream error, if loading or launching the kernel has failed.
-  port::StatusOr<RedzoneCheckStatus> CheckRedzones() const;
+  tsl::StatusOr<RedzoneCheckStatus> CheckRedzones() const;
 
   Stream* stream() const { return stream_; }
 

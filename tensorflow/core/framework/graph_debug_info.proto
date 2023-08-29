@@ -1,0 +1,61 @@
+syntax = "proto2";
+
+package tensorflow;
+
+option cc_enable_arenas = true;
+option java_outer_classname = "GraphDebugInfoProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
+message GraphDebugInfo {
+  // This represents a file/line location in the source code.
+  message FileLineCol {
+    // File name index, which can be used to retrieve the file name string from
+    // `files`. The value should be between 0 and (len(files)-1)
+    optional int32 file_index = 1;
+
+    // Line number in the file.
+    optional int32 line = 2;
+
+    // Col number in the file line.
+    optional int32 col = 3;
+
+    // Name of function contains the file line.
+    optional string func = 4;
+
+    // Source code contained in this file line.
+    optional string code = 5;
+  }
+
+  // This represents a stack trace which is a ordered list of `FileLineCol`.
+  message StackTrace {
+    repeated FileLineCol file_line_cols = 1;  // Deprecated.
+    repeated fixed64 frame_id = 2 [packed = true];
+  }
+
+  // This stores all the source code file names and can be indexed by the
+  // `file_index`.
+  repeated string files = 1;
+
+  // Stack traces and frames are uniqueified during construction. These maps
+  // index from the unique id for a frame/trace to the value.
+  map<fixed64, FileLineCol> frames_by_id = 4;
+  map<fixed64, StackTrace> traces_by_id = 6;
+
+  map<string, StackTrace> traces = 2;  // Deprecated.
+
+  // This maps a node name to a trace id contained in `traces_by_id`.
+  //
+  // The map key is a mangling of the containing function and op name with
+  // syntax:
+  //   op.name '@' func_name
+  // For ops in the top-level graph, the func_name is the empty string and hence
+  // the `@` may be ommitted.
+  // Note that op names are restricted to a small number of characters which
+  // exclude '@', making it impossible to collide keys of this form. Function
+  // names accept a much wider set of characters.
+  // It would be preferable to avoid mangling and use a tuple key of (op.name,
+  // func_name), but this is not supported with protocol buffers.
+  map<string, fixed64> name_to_trace_id = 5;
+}

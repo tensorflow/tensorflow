@@ -21,15 +21,6 @@ namespace xla {
 // XLA frontend attribute name which specifies TensorFlow rendezvous name.
 extern const char kXlaHostTransferRendezvousNameAttr[];
 
-// XLA frontend attribute name which specifies original host transfer type.
-// Value is XLA primitive type in lower case.
-extern const char kXlaHostTransferOriginalTypeAttr[];
-
-// XLA frontend attribute name which specifies whether a host transfer
-// instruction is lower bits for a splitted X64 host transfer. Value is "true"
-// or "false".
-extern const char kXlaHostTransferIsLowerBitsAttr[];
-
 // XLA frontend attribute name which specifies the name of host side handler
 // associates with this transfer.
 extern const char kXlaHostTransferHandlerNameAttr[];
@@ -61,6 +52,20 @@ extern const char kXlaShardingStrategyAttr[];
 extern const char kXlaShardingStrategyMod[];
 extern const char kXlaShardingStrategyDiv[];
 
+// XLA frontend attribute for pad value.
+extern const char kXlaPadValueAttr[];
+
+// XLA frontend attributes for simulated quantization.
+extern const char kXlaQuantizationHighValueAttr[];
+extern const char kXlaQuantizationLowValueAttr[];
+extern const char kXlaQuantizationNumBucketsValueAttr[];
+
+// XLA frontend attribute for table id.
+extern const char kXlaTableId[];
+
+// XLA frontend attribute for buffer placement.
+extern const char kXlaBufferPlacementAttr[];
+extern const char kXlaBufferPlacementParam[];
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SIDE_EFFECT_UTIL_H_

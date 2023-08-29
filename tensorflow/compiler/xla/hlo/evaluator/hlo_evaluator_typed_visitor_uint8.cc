@@ -17,5 +17,5 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"
 
 namespace xla {
-template class HloEvaluatorTypedVisitor<uint8_t>;
+template class HloEvaluatorTypedVisitor<uint8_t, uint64_t>;
 }  // namespace xla

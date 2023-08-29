@@ -15,12 +15,10 @@
 # pylint: disable=g-classes-have-attributes
 """Input dataset creator for `model.fit`."""
 
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.types import data as data_types
 
 
-@keras_export('keras.utils.experimental.DatasetCreator', v1=[])
 class DatasetCreator(object):
   """Object that returns a `tf.data.Dataset` upon invoking.
 
@@ -95,7 +93,7 @@ class DatasetCreator(object):
     # When a `DatasetCreator` is invoked, it forwards args/kwargs straight to
     # the callable.
     dataset = self.dataset_fn(*args, **kwargs)
-    if not isinstance(dataset, dataset_ops.DatasetV2):
+    if not isinstance(dataset, data_types.DatasetV2):
       raise TypeError('The `callable` provided to `DatasetCreator` must return '
                       'a Dataset.')
     return dataset

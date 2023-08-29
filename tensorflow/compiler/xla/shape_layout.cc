@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/shape_layout.h"
 
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -80,8 +83,8 @@ bool ShapeLayout::MatchesLayoutInShape(const Shape& shape,
 }
 
 const Layout& ShapeLayout::layout() const {
-  CHECK(LayoutIsSet());
-  CHECK(!shape_.IsTuple());
+  DCHECK(LayoutIsSet());
+  DCHECK(!shape_.IsTuple());
   return shape_.layout();
 }
 
@@ -90,17 +93,17 @@ void ShapeLayout::Clear() { LayoutUtil::ClearLayout(&shape_); }
 bool ShapeLayout::LayoutIsSet() const { return LayoutUtil::HasLayout(shape_); }
 
 void ShapeLayout::ResetLayout(const Layout& layout) {
-  CHECK(!shape_.IsTuple());
-  CHECK(!shape_.IsOpaque());
+  DCHECK(!shape_.IsTuple());
+  DCHECK(!shape_.IsOpaque());
   *shape_.mutable_layout() = layout;
-  TF_CHECK_OK(ShapeUtil::ValidateShape(shape_));
+  TF_DCHECK_OK(ShapeUtil::ValidateShape(shape_));
 }
 
 void ShapeLayout::ResetLayout(const Layout& layout,
                               ShapeIndexView shape_index) {
   *ShapeUtil::GetMutableSubshape(&shape_, shape_index)->mutable_layout() =
       layout;
-  TF_CHECK_OK(ShapeUtil::ValidateShape(shape_));
+  TF_DCHECK_OK(ShapeUtil::ValidateShape(shape_));
 }
 
 bool ShapeLayout::operator==(const ShapeLayout& other) const {

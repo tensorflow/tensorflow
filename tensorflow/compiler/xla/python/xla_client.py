@@ -21,9 +21,10 @@ import gzip
 import inspect
 import logging
 import os
-from typing import Dict, List, Sequence, Tuple, Union
+from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
+import ml_dtypes
 import numpy as np
 
 # Note this module does *not* depend on any Python protocol buffers. The XLA
@@ -42,11 +43,11 @@ ops = _xla.ops
 profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
-# changes.
-_version = 115
+# changes. In JAX, reference this via jax._src.lib.xla_extension_version.
+_version = 190
 
 # Version number for MLIR:Python components.
-mlir_api_version = 42
+mlir_api_version = 54
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -54,6 +55,8 @@ xla_platform_names = {
 }
 
 logger = logging.getLogger(__name__)
+
+_NameValueMapping = Mapping[str, Union[str, int, List[int], float]]
 
 
 def make_interpreter_client():
@@ -65,8 +68,14 @@ def make_cpu_client(*, use_tfrt: bool = True) -> ...:
   return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 
-def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
-                    allowed_devices=None):
+def make_gpu_client(
+    distributed_client=None,
+    node_id=0,
+    num_nodes=1,
+    platform_name=None,
+    allowed_devices=None,
+    mock=False,
+):
   """Returns a GPU client. BFC allocator is used by default."""
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
@@ -88,95 +97,99 @@ def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
+  if mock:
+    return _xla.get_mock_gpu_client(
+        asynchronous=True,
+        allocator_config=config,
+        distributed_client=distributed_client,
+        node_id=node_id,
+        num_nodes=num_nodes,
+        platform_name=platform_name,
+        allowed_devices=allowed_devices,
+    )
+
   return _xla.get_gpu_client(
       asynchronous=True,
       allocator_config=config,
       distributed_client=distributed_client,
       node_id=node_id,
+      num_nodes=num_nodes,
       platform_name=platform_name,
       allowed_devices=allowed_devices)
 
 
-def make_tfrt_tpu_c_api_client():
-  return _xla.get_c_api_client('tpu')
+def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
+  assert pjrt_plugin_loaded('tpu')
+  if not pjrt_plugin_initialized('tpu'):
+    initialize_pjrt_plugin('tpu')
+  if options is None:
+    options = {}
+  return _xla.get_c_api_client('tpu', options)
 
 
-def _use_pjrt_c_api() -> bool:
-  use_pjrt_c_api = os.getenv('JAX_USE_PJRT_C_API_ON_TPU', 'false')
-  if use_pjrt_c_api not in ('1', 'true', 'false'):
-    raise ValueError(
-        'JAX_USE_PJRT_C_API_ON_TPU env var must be "1", "true" or "false", '
-        f'got "{use_pjrt_c_api}"')
-  return use_pjrt_c_api in ('1', 'true')
+DeviceTopology = _xla.DeviceTopology
+get_topology_for_devices = _xla.get_topology_for_devices
+
+
+def make_tfrt_tpu_c_api_device_topology(
+    topology_name: str = '', **kwargs
+) -> DeviceTopology:
+  """Creates a PJRT C API TopologyDescription."""
+  return _xla.get_default_c_api_topology('tpu', topology_name, dict(**kwargs))
+
+
+def pjrt_plugin_loaded(plugin_name: str) -> bool:
+  return _xla.pjrt_plugin_loaded(plugin_name)
+
+
+def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
+  _xla.load_pjrt_plugin(plugin_name, library_path)
+
+
+def pjrt_plugin_initialized(plugin_name: str) -> bool:
+  return _xla.pjrt_plugin_initialized(plugin_name)
+
+
+def initialize_pjrt_plugin(plugin_name: str) -> None:
+  """Initializes a PJRT plugin.
+
+  The plugin needs to be loaded first (through load_pjrt_plugin_dynamically or
+  static linking) before this method is called.
+  Args:
+    plugin_name: the name of the PJRT plugin.
+  """
+  _xla.initialize_pjrt_plugin(plugin_name)
+
+
+def make_c_api_client(
+    plugin_name: str,
+    options: Optional[_NameValueMapping] = None,
+    distributed_client: Optional[_xla.DistributedRuntimeClient] = None,
+):
+  """Creates a PJRT C API client for a PJRT plugin.
+
+  It is required that load_pjrt_plugin_dynamically is called once with the same
+  plugin_name before this method is called.
+
+  Args:
+     plugin_name: the name of the PJRT plugin.
+     options: extra platform-specific options.
+     distributed_client: distributed client.
+
+  Returns:
+     A PJRT C API client for plugin_name.
+  """
+  if options is None:
+    options = {}
+  return _xla.get_c_api_client(plugin_name, options, distributed_client)
 
 
 def make_tpu_client():
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
-  if _use_pjrt_c_api():
-    return make_tfrt_tpu_c_api_client()
-
-  max_inflight_computations = os.getenv(
-      'JAX_TPU_MAX_INFLIGHT_COMPUTATIONS', '32')
-  try:
-    max_inflight_computations = int(max_inflight_computations)
-  except ValueError as e:
-    raise ValueError(
-        f'JAX_TPU_MAX_INFLIGHT_COMPUTATIONS env var must be an int, '
-        f'got {max_inflight_computations}') from e
-  return _xla.get_tpu_client(
-      max_inflight_computations=max_inflight_computations)
-
-
-def make_plugin_device_client():
-  """Returns a plugin device client."""
-  try:
-    return _xla.get_plugin_device_client()
-  except AttributeError as e:
-    raise AttributeError(
-        'xla_extension has no attributes named get_plugin_device_client. '
-        'Compile TensorFlow with '
-        '//tensorflow/compiler/xla/python:enable_plugin_device set to true '
-        '(defaults to false) to enable this.') from e
-
-
-def _get_pjrt_plugin_names_and_library_paths() -> Dict[str, str]:
-  """Gets the names and library paths of PJRT plugins to load from ENV.
-
-  By default, TPU with path set in 'TPU_LIBRARY_PATH' will be loaded. Set
-  PJRT_NAMES_AND_LIBRARY_PATHS='name1:path1,name2:path2' to load other PJRT
-  plugins as well.
-
-  Returns:
-    A dict of {plugin_name: library path} for the PJRT plugins to load.
-  """
-  pjrt_plugins = {'tpu': os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')}
-  plugins_from_env = os.getenv('PJRT_NAMES_AND_LIBRARY_PATHS', '')
-  if not plugins_from_env:
-    return pjrt_plugins
-
-  for plugin in plugins_from_env.split(','):
-    try:
-      name, library_path = plugin.split(':')
-      pjrt_plugins[name] = library_path
-    except ValueError:
-      logger.warning('invalid value in env PJRT_NAMES_AND_LIBRARY_PATHS: %s',
-                     plugin)
-  return pjrt_plugins
-
-
-# TODO(b/237099479): Move to xla_bridge.py when ready.
-def maybe_load_pjrt_plugins() -> None:
-  """Tries to load PJRT plugin for platform."""
-  if not _use_pjrt_c_api():
-    return
-  # TODO(b/261345120): implement plugin discovery.
-  pjrt_plugins = _get_pjrt_plugin_names_and_library_paths()
-  for plugin_name, library_path in pjrt_plugins.items():
-    try:
-      _xla.load_pjrt_plugin(plugin_name, library_path)
-    except Exception as e:  # pylint: disable=broad-except
-      logger.error("Error loading '%s' plugin from '%s': %s", plugin_name,
-                   library_path, e)
+  if not pjrt_plugin_loaded('tpu'):
+    library_path = os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
+    load_pjrt_plugin_dynamically('tpu', library_path)
+  return make_tfrt_tpu_c_api_client()
 
 
 class OpMetadata:
@@ -203,9 +216,12 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
 
 PrimitiveType = _xla.PrimitiveType
 
-bfloat16 = _xla.bfloat16_dtype()
-float8_e4m3fn = _xla.float8_e4m3fn_dtype()
-float8_e5m2 = _xla.float8_e5m2_dtype()
+bfloat16 = ml_dtypes.bfloat16
+float8_e4m3fn = ml_dtypes.float8_e4m3fn
+float8_e4m3b11fnuz = ml_dtypes.float8_e4m3b11fnuz
+float8_e4m3fnuz = ml_dtypes.float8_e4m3fnuz
+float8_e5m2 = ml_dtypes.float8_e5m2
+float8_e5m2fnuz = ml_dtypes.float8_e5m2fnuz
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
@@ -218,7 +234,10 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
     PrimitiveType.F8E4M3FN: np.dtype(float8_e4m3fn),
+    PrimitiveType.F8E4M3B11FNUZ: np.dtype(float8_e4m3b11fnuz),
     PrimitiveType.F8E5M2: np.dtype(float8_e5m2),
+    PrimitiveType.F8E4M3FNUZ: np.dtype(float8_e4m3fnuz),
+    PrimitiveType.F8E5M2FNUZ: np.dtype(float8_e5m2fnuz),
     PrimitiveType.BF16: np.dtype(bfloat16),
     PrimitiveType.F16: np.dtype('float16'),
     PrimitiveType.F32: np.dtype('float32'),
@@ -462,11 +481,10 @@ XlaComputation = _xla.XlaComputation
 XlaOp = _xla.XlaOp
 FftType = _xla.FftType
 Client = _xla.Client
-Buffer = _xla.Buffer
-ShardedBuffer = _xla.ShardedBuffer
+Memory = _xla.Memory
 ArrayImpl = _xla.ArrayImpl
-DeviceArrayBase = _xla.DeviceArrayBase
 LoadedExecutable = _xla.LoadedExecutable
+DeviceList = _xla.DeviceList
 OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding
 Sharding = _xla.Sharding
@@ -474,10 +492,31 @@ XLACompatibleSharding = _xla.XLACompatibleSharding
 NamedSharding = _xla.NamedSharding
 SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
-OpShardingSharding = _xla.OpShardingSharding
+GSPMDSharding = _xla.GSPMDSharding
 
 
-def register_custom_call_target(name, fn, platform='cpu'):
+def LoadedExecutable_execute(self, arguments, device=None):
+  del device
+  results = self.execute_sharded(arguments)
+  return [x[0] for x in results.disassemble_into_single_device_arrays()]
+
+
+def LoadedExecutable_execute_with_token(self, arguments, device=None):
+  del device
+  results = self.execute_sharded(arguments, with_tokens=True)
+  return (
+      [x[0] for x in results.disassemble_into_single_device_arrays()],
+      results.consume_token().get_token(0),
+  )
+
+
+LoadedExecutable.execute = LoadedExecutable_execute
+LoadedExecutable.execute_with_token = LoadedExecutable_execute_with_token
+
+
+def register_custom_call_target(
+    name: str, fn: Any, platform: str = 'cpu'
+) -> None:
   """Registers a custom call target.
 
   Args:
@@ -494,6 +533,7 @@ def register_custom_call_target(name, fn, platform='cpu'):
 # Deprecated. Use register_custom_call_target instead.
 register_cpu_custom_call_target = register_custom_call_target
 register_custom_call_partitioner = _xla.register_custom_call_partitioner
+encode_inspect_sharding_callback = _xla.encode_inspect_sharding_callback
 hlo_sharding_util = _xla.hlo_sharding_util
 
 
@@ -754,3 +794,7 @@ XlaRuntimeError = _xla.XlaRuntimeError
 atexit.register(_xla.collect_garbage)
 
 weakref_lru_cache = _xla.weakref_lru_cache
+array_result_handler = _xla.array_result_handler
+copy_array_to_devices_with_sharding = _xla.copy_array_to_devices_with_sharding
+batched_device_put = _xla.batched_device_put
+check_and_canonicalize_memory_kind = _xla.check_and_canonicalize_memory_kind

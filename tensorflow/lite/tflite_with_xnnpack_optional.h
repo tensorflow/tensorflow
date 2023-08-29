@@ -19,9 +19,10 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
+enum class XNNPackQS8Options { default_value, enabled, disabled };
+
 std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>
-MaybeCreateXNNPACKDelegate(TfLiteContext* context,
-                           bool enable_xnnpack_unsigned_quantized);
+MaybeCreateXNNPACKDelegate(TfLiteContext* context, XNNPackQS8Options x);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_TFLITE_WITH_XNNPACK_OPTIONAL_H_

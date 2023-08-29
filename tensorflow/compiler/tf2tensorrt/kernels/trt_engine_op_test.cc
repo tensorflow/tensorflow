@@ -77,7 +77,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
     Scope s = Scope::NewRootScope();
     auto feed = ops::_Arg(s.WithOpName("TensorRTInputPH_0"), dtype, 0);
     auto add = ops::Add(s.WithOpName("add"), feed, feed);
-    ops::_Retval(s.WithOpName("TensorRTOutputPH_0"), add, 0);
+    ops::_Retval give_me_a_name(s.WithOpName("TensorRTOutputPH_0"), add, 0);
 
     // Serialize the graph. TRTEngineOp will convert it using dynamic mode.
     GraphDef graph_def;

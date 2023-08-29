@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <functional>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/client/local_client.h"

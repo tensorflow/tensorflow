@@ -69,7 +69,7 @@ class HloInstructionWrapper {
   xla::HloOpcode HloOpcode() const { return instr_->opcode(); }
 
   std::string HloOpcodeString() const {
-    return xla::HloOpcodeString(instr_->opcode());
+    return std::string(xla::HloOpcodeString(instr_->opcode()));
   }
 
   const xla::OpMetadata& Metadata() const { return instr_->metadata(); }

@@ -21,21 +21,19 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/functional/any_invocable.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
 namespace host {
 
 // An implementation of StreamExecutor that does no communication or interaction
 // with a device, but DOES perform memory operations backed by the host.
-// Plugin routines (RNG, BLAS) are also supported and functional.
+// Plugin routines (BLAS) are also supported and functional.
 // Kernel invocations will fail, but host callbacks may be enqueued on this
 // executor and its associated stream, and should follow standard ordering
 // semantics.
@@ -54,12 +52,12 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                         KernelBase* kernel) override {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                      const BlockDim& block_dims, const KernelBase& kernel,
                      const KernelArgsArrayBase& args) override {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
@@ -106,7 +104,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
                                               uint64_t size) override;
 
   bool HostCallback(Stream* stream,
-                    std::function<tsl::Status()> callback) override;
+                    absl::AnyInvocable<tsl::Status() &&> callback) override;
 
   tsl::Status AllocateEvent(Event* event) override;
   tsl::Status DeallocateEvent(Event* event) override;
@@ -118,27 +116,18 @@ class HostExecutor : public internal::StreamExecutorInterface {
   void DeallocateStream(Stream* stream) override;
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;
 
-  // No special initialization is necessary for host timers.
-  bool AllocateTimer(Timer* timer) override { return true; }
-
-  void DeallocateTimer(Timer* timer) override {}
-
-  bool StartTimer(Stream* stream, Timer* timer) override;
-
-  bool StopTimer(Stream* stream, Timer* timer) override;
-
   tsl::Status BlockHostUntilDone(Stream* stream) override;
 
   int PlatformDeviceCount() override { return 1; }
 
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
-  port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+  tsl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
     return CreateDeviceDescription(0);
   }
 
-  static port::StatusOr<std::unique_ptr<DeviceDescription>>
+  static tsl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
   tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
@@ -149,17 +138,11 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return true;
   }
 
-  bool SupportsBlas() const override;
   blas::BlasSupport* CreateBlas() override;
 
-  bool SupportsDnn() const override { return false; }
   dnn::DnnSupport* CreateDnn() override { return nullptr; }
 
-  bool SupportsFft() const override;
   fft::FftSupport* CreateFft() override;
-
-  bool SupportsRng() const override;
-  rng::RngSupport* CreateRng() override;
 
   std::unique_ptr<internal::EventInterface> CreateEventImplementation()
       override;
@@ -170,10 +153,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
   }
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
-
-  std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override {
-    return std::unique_ptr<internal::TimerInterface>(new HostTimer());
-  }
 
   void* GpuContextHack() override { return nullptr; }
 

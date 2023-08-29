@@ -67,6 +67,12 @@ tf_proto {
         type_name: ".tensorflow.GPUOptions.Experimental.VirtualDevices"
       }
       field {
+        name: "num_virtual_devices_per_gpu"
+        number: 15
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
+      field {
         name: "use_unified_memory"
         number: 2
         label: LABEL_OPTIONAL

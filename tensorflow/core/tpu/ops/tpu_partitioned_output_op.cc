@@ -15,11 +15,13 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/framework/common_shape_fns.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -40,21 +42,38 @@ REGISTER_OP("TPUPartitionedOutput")
       int num_splits;
       TF_RETURN_IF_ERROR(c->GetAttr("num_splits", &num_splits));
       if (dtype == DT_RESOURCE) {
-        return errors::Unimplemented("Not implemented.");
+        return absl::UnimplementedError("Not implemented.");
+      } else if (c->num_inputs() == 0) {
+        return absl::InvalidArgumentError(
+            "Expected at least one input to TPUPartitionedOutput.");
       }
 
       ShapeHandle input = c->input(0);
+      int rank = InferenceContext::Rank(input);
+      // limitation: can only validate rank when it is known
+      if ((rank != InferenceContext::kUnknownRank && partition_dim >= rank) ||
+          (partition_dim < -1))
+        return absl::InvalidArgumentError(
+            absl::StrCat("Cannot partition dim ", partition_dim, " of rank ",
+                         rank, " tensor."));
+
       ShapeHandle newoutput0;
-      shape_inference::DimensionHandle new_dim;
-      TF_RETURN_WITH_CONTEXT_IF_ERROR(
-          c->Divide(c->Dim(input, partition_dim), num_splits,
-                    true /* evenly_divisible */, &new_dim),
-          "Number of ways to split should evenly divide the split dimension");
-      TF_CHECK_OK(c->ReplaceDim(input, partition_dim, new_dim, &newoutput0));
+      if (partition_dim == -1) {
+        newoutput0 = input;  // replicated input/output share shapes
+      } else {
+        shape_inference::DimensionHandle new_dim;
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(
+            c->Divide(c->Dim(input, partition_dim), num_splits,
+                      true /* evenly_divisible */, &new_dim),
+            "Number of ways to split should evenly divide the split dimension");
+        TF_CHECK_OK(c->ReplaceDim(input, partition_dim, new_dim, &newoutput0));
+      }
+
       for (int i = num_splits - 1; i >= 0; --i) {
         c->set_output(i, newoutput0);
       }
-      return OkStatus();
+
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TPUPartitionedOutputV2")
@@ -71,7 +90,10 @@ REGISTER_OP("TPUPartitionedOutputV2")
       int num_splits;
       TF_RETURN_IF_ERROR(c->GetAttr("num_splits", &num_splits));
       if (dtype == DT_RESOURCE) {
-        return errors::Unimplemented("Not implemented.");
+        return absl::UnimplementedError("Not implemented.");
+      } else if (c->num_inputs() == 0) {
+        return absl::InvalidArgumentError(
+            "Expected at least one input to TPUPartitionedOutputV2.");
       }
 
       ShapeHandle handle = c->input(0);
@@ -82,11 +104,11 @@ REGISTER_OP("TPUPartitionedOutputV2")
       }
 
       if (num_splits != num_cores_per_replica) {
-        return errors::InvalidArgument("Expected ", num_cores_per_replica,
-                                       " splits.");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected ", num_cores_per_replica, " splits."));
       } else if (rank > (int)partition_dims.size()) {
-        return errors::InvalidArgument("Expected at least ", rank,
-                                       " partition dimensions.");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected at least ", rank, " partition dimensions."));
       }
 
       for (int i = 0; i < rank; ++i) {
@@ -102,7 +124,7 @@ REGISTER_OP("TPUPartitionedOutputV2")
         c->set_output(i, handle);
       }
 
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

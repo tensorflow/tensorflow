@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <iostream>
+#include <ostream>
 #include <sstream>
 
 #ifdef _WIN32
@@ -73,14 +74,16 @@ class LoggingWrapper {
 #endif
       switch (severity_) {
         case LogSeverity::INFO:
+          std::cout << "INFO: " << stream_.str() << std::endl;
+          break;
         case LogSeverity::WARN:
-          std::cout << stream_.str() << std::endl;
+          std::cout << "WARN: " << stream_.str() << std::endl;
           break;
         case LogSeverity::ERROR:
-          std::cerr << stream_.str() << std::endl;
+          std::cerr << "ERROR: " << stream_.str() << std::endl;
           break;
         case LogSeverity::FATAL:
-          std::cerr << stream_.str() << std::endl;
+          std::cerr << "FATAL: " << stream_.str() << std::endl;
           std::flush(std::cerr);
           std::abort();
           break;

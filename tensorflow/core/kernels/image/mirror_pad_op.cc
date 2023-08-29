@@ -224,7 +224,6 @@ namespace functor {
   DECLARE_GPU_SPEC(T, int64_t, 5);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
-TF_CALL_bfloat16(DECLARE_GPU_SPECS);
 #undef DECLARE_GPU_SPECS
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
@@ -245,7 +244,6 @@ TF_CALL_bfloat16(DECLARE_GPU_SPECS);
                           MirrorPadOp<GpuDevice, T, int64>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
-TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -441,7 +439,6 @@ namespace functor {
   DECLARE_GPU_SPEC(T, int64_t, 5);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
-TF_CALL_bfloat16(DECLARE_GPU_SPECS);
 #undef DECLARE_GPU_SPECS
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
@@ -462,7 +459,6 @@ TF_CALL_bfloat16(DECLARE_GPU_SPECS);
                           MirrorPadGradOp<GpuDevice, T, int64>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
-TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

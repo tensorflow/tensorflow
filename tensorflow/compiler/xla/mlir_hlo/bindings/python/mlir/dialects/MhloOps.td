@@ -18,7 +18,6 @@ limitations under the License.
 #ifndef PYTHON_BINDINGS_MHLO_OPS
 #define PYTHON_BINDINGS_MHLO_OPS
 
-include "mlir/Bindings/Python/Attributes.td"
 include "mhlo/IR/hlo_ops.td"
 
 #endif

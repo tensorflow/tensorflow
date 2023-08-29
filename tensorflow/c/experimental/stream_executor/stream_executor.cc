@@ -22,7 +22,9 @@ limitations under the License.
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
 #include <string>
+#include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/c_api_macros_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
@@ -33,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/compiler/xla/stream_executor/timer.h"
 #include "tensorflow/core/common_runtime/device/device_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -70,16 +71,8 @@ tsl::Status ValidateSPPlatformFns(const SP_PlatformFns& platform_fns) {
   TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, destroy_device);
   TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, create_stream_executor);
   TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, destroy_stream_executor);
-  TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, create_timer_fns);
-  TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, destroy_timer_fns);
   TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, create_device_fns);
   TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, destroy_device_fns);
-  return ::tensorflow::OkStatus();
-}
-
-tsl::Status ValidateSPTimerFns(const SP_TimerFns& timer_fns) {
-  TF_VALIDATE_STRUCT_SIZE(SP_TimerFns, timer_fns, SP_TIMER_FNS_STRUCT_SIZE);
-  TF_VALIDATE_NOT_NULL(SP_TimerFns, timer_fns, nanoseconds);
   return ::tensorflow::OkStatus();
 }
 
@@ -132,10 +125,6 @@ tsl::Status ValidateSPStreamExecutor(const SP_StreamExecutor& se,
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, get_event_status);
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, record_event);
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, wait_for_event);
-  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, create_timer);
-  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, destroy_timer);
-  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, start_timer);
-  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, stop_timer);
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, memcpy_dtoh);
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, memcpy_htod);
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, sync_memcpy_dtoh);
@@ -193,7 +182,7 @@ DeviceMemoryBase DeviceMemoryBaseFromC(const SP_DeviceMemoryBase& mem) {
 
 // Wrapper that allows passing std::function across C API.
 struct HostCallbackContext {
-  std::function<tsl::Status()> callback;
+  absl::AnyInvocable<tsl::Status() &&> callback;
 };
 
 // This wrapper allows calling `HostCallbackContext::callback` across C API.
@@ -201,8 +190,8 @@ struct HostCallbackContext {
 // `callback_fn` to `host_callback` in `SP_StreamExecutor`.
 void HostCallbackTrampoline(void* ctx, TF_Status* status) {
   HostCallbackContext* host_ctx = static_cast<HostCallbackContext*>(ctx);
-  tsl::Status s = host_ctx->callback();
-  Set_TF_Status_from_Status(status, s);
+  tsl::Status s = std::move(host_ctx->callback)();
+  tsl::Set_TF_Status_from_Status(status, s);
   delete host_ctx;
 }
 
@@ -235,7 +224,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     stream_executor_->allocate(&device_, size, memory_space, &mem);
     tsl::Status status = ValidateSPDeviceMemoryBase(mem);
     if (!status.ok()) {
-      LOG(ERROR) << status.error_message();
+      LOG(ERROR) << status.message();
     }
     return DeviceMemoryBaseFromC(mem);
   }
@@ -282,7 +271,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     }
     tsl::Status status = ValidateSPAllocatorStats(c_stats);
     if (!status.ok()) {
-      LOG(ERROR) << status.error_message();
+      LOG(ERROR) << status.message();
       return absl::nullopt;
     }
     ::stream_executor::AllocatorStats stats;
@@ -314,12 +303,12 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
                                  uint64 size) override {
     // TODO(annarev): figure out if we should support memzero/memset
     // functionality by allocating on host and then copying to device.
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "SynchronousMemZero is not supported by pluggable device.");
   }
   tsl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
                                 uint64 size) override {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "SynchronousMemSet is not supported by pluggable device.");
   }
   tsl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
@@ -423,10 +412,10 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     return true;
   }
   bool HostCallback(Stream* stream,
-                    std::function<tsl::Status()> callback) override {
+                    absl::AnyInvocable<tsl::Status() &&> callback) override {
     SP_Stream stream_handle =
         static_cast<CStream*>(stream->implementation())->Handle();
-    HostCallbackContext* ctx = new HostCallbackContext{callback};
+    HostCallbackContext* ctx = new HostCallbackContext{std::move(callback)};
     return stream_executor_->host_callback(&device_, stream_handle,
                                            &HostCallbackTrampoline, ctx);
   }
@@ -486,44 +475,6 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     }
     return true;
   }
-  bool AllocateTimer(Timer* timer) override {
-    tsl::Status status =
-        static_cast<CTimer*>(timer->implementation())->Create();
-    // TODO(annarev): change return value of AllocateTimer
-    // to status (similar to AllocateEvent).
-    return status.ok();
-  }
-  void DeallocateTimer(Timer* timer) override {
-    static_cast<CTimer*>(timer->implementation())->Destroy();
-  }
-  bool StartTimer(Stream* stream, Timer* timer) override {
-    OwnedTFStatus c_status(TF_NewStatus());
-    SP_Stream stream_handle =
-        static_cast<CStream*>(stream->implementation())->Handle();
-    SP_Timer timer_handle =
-        static_cast<CTimer*>(timer->implementation())->Handle();
-    stream_executor_->start_timer(&device_, stream_handle, timer_handle,
-                                  c_status.get());
-    if (TF_GetCode(c_status.get()) != TF_OK) {
-      LOG(ERROR) << TF_Message(c_status.get());
-      return false;
-    }
-    return true;
-  }
-  bool StopTimer(Stream* stream, Timer* timer) override {
-    OwnedTFStatus c_status(TF_NewStatus());
-    SP_Stream stream_handle =
-        static_cast<CStream*>(stream->implementation())->Handle();
-    SP_Timer timer_handle =
-        static_cast<CTimer*>(timer->implementation())->Handle();
-    stream_executor_->stop_timer(&device_, stream_handle, timer_handle,
-                                 c_status.get());
-    if (TF_GetCode(c_status.get()) != TF_OK) {
-      LOG(ERROR) << TF_Message(c_status.get());
-      return false;
-    }
-    return true;
-  }
   tsl::Status BlockHostForEvent(Stream* stream, Event* event) {
     OwnedTFStatus c_status(TF_NewStatus());
     SP_Event event_handle =
@@ -571,7 +522,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
   }
   int PlatformDeviceCount() override { return visible_device_count_; }
   tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "EnablePeerAccessTo is not supported by pluggable device.");
   }
   bool CanEnablePeerAccessTo(StreamExecutorInterface* other) override {
@@ -586,7 +537,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
 
   // Creates a new DeviceDescription object.
   // Ownership is transferred to the caller.
-  port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+  tsl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
     OwnedTFStatus c_status(TF_NewStatus());
 
@@ -637,10 +588,6 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     return std::unique_ptr<internal::StreamInterface>(
         new CStream(&device_, stream_executor_));
   }
-  std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override {
-    return std::unique_ptr<internal::TimerInterface>(
-        new CTimer(&device_, stream_executor_, timer_fns_));
-  }
 
  private:
   SP_Device device_;
@@ -678,7 +625,7 @@ CPlatform::~CPlatform() {
   destroy_platform_fns_(&platform_fns_);
 }
 
-port::StatusOr<std::unique_ptr<DeviceDescription>>
+tsl::StatusOr<std::unique_ptr<DeviceDescription>>
 CPlatform::DescriptionForDevice(int ordinal) const {
   // TODO(annarev): see if we can get StreamExecutor instance
   // and call GetDeviceDescription. executor_cache_.Get would need
@@ -687,24 +634,17 @@ CPlatform::DescriptionForDevice(int ordinal) const {
   builder.set_name(name_);
   return builder.Build();
 }
-port::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
+tsl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
   stream_executor::StreamExecutorConfig config;
   config.ordinal = ordinal;
   return GetExecutor(config);
 }
-port::StatusOr<StreamExecutor*> CPlatform::ExecutorForDeviceWithPluginConfig(
-    int ordinal, const PluginConfig& plugin_config) {
-  StreamExecutorConfig config;
-  config.ordinal = ordinal;
-  config.plugin_config = plugin_config;
-  return GetExecutor(config);
-}
-port::StatusOr<StreamExecutor*> CPlatform::GetExecutor(
+tsl::StatusOr<StreamExecutor*> CPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
       config, [&]() { return GetUncachedExecutor(config); });
 }
-port::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
+tsl::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {
   // Fill device creation params
   SE_CreateDeviceParams device_params{SE_CREATE_DEVICE_PARAMS_STRUCT_SIZE};
@@ -790,9 +730,7 @@ tsl::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
   TF_RETURN_IF_ERROR(ValidateSPStreamExecutor(se, platform));
 
   SP_TimerFns timer_fns{SP_TIMER_FNS_STRUCT_SIZE};
-  platform_fns.create_timer_fns(&platform, &timer_fns, c_status.get());
   TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
-  TF_RETURN_IF_ERROR(ValidateSPTimerFns(timer_fns));
 
   // Register new platform
   *device_type = std::string(platform.type);
@@ -802,7 +740,7 @@ tsl::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
           std::move(platform), params.destroy_platform, std::move(platform_fns),
           params.destroy_platform_fns, std::move(device_fns), std::move(se),
           std::move(timer_fns)));
-  SE_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
+  TF_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
       std::move(cplatform)));
   // TODO(annarev): Return `use_bfc_allocator` value in some way so that it is
   // available in `PluggableDeviceProcessState` once the latter is checked in.

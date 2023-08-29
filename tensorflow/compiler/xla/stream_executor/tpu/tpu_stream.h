@@ -16,20 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_STREAM_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_STREAM_H_
 
-#include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include <cstdint>
+
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream_interface.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tpu {
 
 class TpuStream : public tensorflow::tpu::TpuStreamInterface {
  public:
-  using Status = stream_executor::port::Status;
-
   explicit TpuStream(SE_Stream* stream) : stream_(stream) {}
   ~TpuStream() override {
     stream_executor::tpu::ExecutorApiFn()->TpuStream_FreeFn(stream_);
@@ -42,7 +44,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
             stream_, static_cast<TpuStream*>(other)->stream_);
   }
 
-  Status EnqueueTransferHostToDevice(
+  tsl::Status EnqueueTransferHostToDevice(
       stream_executor::DeviceMemoryBase device_dst, const void* host_src,
       uint64_t size) {
     StatusHelper status;
@@ -53,7 +55,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
     return status.status();
   }
 
-  Status EnqueueTransferDeviceToHost(
+  tsl::Status EnqueueTransferDeviceToHost(
       stream_executor::DeviceMemoryBase device_src, void* host_dst,
       uint64_t size) {
     StatusHelper status;
@@ -64,7 +66,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
     return status.status();
   }
 
-  Status EnqueueOnTpuDeviceSendRecvLocal(
+  tsl::Status EnqueueOnTpuDeviceSendRecvLocal(
       stream_executor::DeviceMemoryBase send_buffer,
       stream_executor::DeviceMemoryBase recv_buffer) override {
     StatusHelper status;

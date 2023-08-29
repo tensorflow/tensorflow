@@ -10,6 +10,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
     "tf_cc_test",
+    "tf_cc_test_mkl",
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
@@ -79,6 +80,8 @@ filegroup(
         "bcast.cc",
         "bcast.h",
         "command_line_flags.h",
+        "debug_data_dumper.cc",
+        "debug_data_dumper.h",
         "determinism.h",
         "device_name_utils.h",
         "dump_graph.cc",
@@ -103,7 +106,6 @@ filegroup(
         "port.cc",
         "port.h",
         "presized_cuckoo_map.h",
-        "ptr_util.h",
         "ragged_to_dense_util.cc",
         "ragged_to_dense_util.h",
         "ragged_to_dense_util_common.h",
@@ -129,6 +131,8 @@ filegroup(
         "util.h",
         "work_sharder.cc",
         "work_sharder.h",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
         "//tensorflow/core/util/quantization:mobile_srcs_only_runtime",
         "//tensorflow/tsl/util:mobile_srcs_only_runtime",
     ],
@@ -141,6 +145,7 @@ filegroup(
         "batch_util.h",
         "bcast.h",
         "command_line_flags.h",
+        "debug_data_dumper.h",
         "debug_events_writer.h",
         "device_name_utils.h",
         "dump_graph.h",
@@ -159,7 +164,7 @@ filegroup(
         "matmul_autotune.h",
         "matmul_bcast.h",
         "mirror_pad_mode.h",
-        "mkl_threadpool.h",
+        "mkl_heuristics.h",
         "mkl_util.h",
         "onednn_env_vars.h",
         "overflow.h",
@@ -167,7 +172,6 @@ filegroup(
         "permutation_input_iterator.h",
         "permutation_output_iterator.h",
         "presized_cuckoo_map.h",
-        "ptr_util.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.h",
         "stat_summarizer.h",
@@ -187,6 +191,7 @@ filegroup(
         "util.h",
         "work_sharder.h",
         "xla_config_registry.h",
+        "zen_util.h",
         "//tensorflow/tsl/util:framework_internal_private_hdrs",
     ],
 )
@@ -209,6 +214,7 @@ filegroup(
         "activation_mode.cc",
         "batch_util.cc",
         "bcast.cc",
+        "debug_data_dumper.cc",
         "debug_events_writer.cc",
         "dump_graph.cc",
         "equal_graph_def.cc",
@@ -291,9 +297,10 @@ filegroup(
 filegroup(
     name = "mkl_util_hdrs",
     srcs = [
-        "mkl_threadpool.h",
+        "mkl_heuristics.h",
         "mkl_util.h",
         "onednn_env_vars.h",
+        "//tensorflow/tsl/util:onednn_util_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -333,6 +340,7 @@ filegroup(
         "activation_mode.h",
         "batch_util.h",
         "bcast.h",
+        "debug_data_dumper.h",
         "debug_events_writer.h",
         "device_name_utils.h",
         "dump_graph.h",
@@ -348,7 +356,6 @@ filegroup(
         "mirror_pad_mode.h",
         "padding.h",
         "port.h",
-        "ptr_util.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.h",
         "stat_summarizer.h",
@@ -587,14 +594,6 @@ cc_library(
 )
 
 cc_library(
-    name = "ptr_util",
-    hdrs = ["ptr_util.h"],
-    deps = [
-        "//tensorflow/tsl/util:ptr_util",
-    ],
-)
-
-cc_library(
     name = "tensor_format",
     srcs = ["tensor_format.cc"],
     hdrs = ["tensor_format.h"],
@@ -735,11 +734,10 @@ tf_kernel_library(
     }),
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lib",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
         "//tensorflow/compiler/xla/stream_executor/cuda:cusolver_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
     ],
 )
 
@@ -750,16 +748,15 @@ tf_kernel_library(
     compatible_with = [],
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
-        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -779,6 +776,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
     ] + if_cuda([
         "//tensorflow/compiler/xla/stream_executor/cuda:cusparse_lib",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_blas_utils",
+        "//tensorflow/compiler/xla/stream_executor:data_type",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
@@ -866,6 +865,7 @@ tf_cc_tests(
     srcs = [
         "bcast_test.cc",
         "command_line_flags_test.cc",
+        "debug_data_dumper_test.cc",
         "dump_graph_test.cc",
         "equal_graph_def_test.cc",
         "events_writer_test.cc",
@@ -957,6 +957,21 @@ tf_cc_test(
         "//tensorflow/core/platform",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test_mkl(
+    name = "mkl_heuristics_test",
+    size = "small",
+    srcs = ["mkl_heuristics_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/kernels:ops_testutil",
     ],
 )
 

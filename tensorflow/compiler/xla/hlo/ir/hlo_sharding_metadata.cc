@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -438,7 +439,7 @@ std::string ShardingMetadata::ToString() const {
 ShardingMetadata::ToShardingMetadata(const DomainMetadata* metadata) {
   if (metadata->Kind() != ShardingMetadata::KindName()) {
     return Status(
-        tsl::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         "ShardingMetadata normalizer called with incorrect domain metadata");
   }
   return static_cast<const ShardingMetadata*>(metadata);

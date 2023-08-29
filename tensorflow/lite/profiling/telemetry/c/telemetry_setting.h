@@ -15,7 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_PROFILING_TELEMETRY_C_TELEMETRY_SETTING_H_
 #define TENSORFLOW_LITE_PROFILING_TELEMETRY_C_TELEMETRY_SETTING_H_
 
+#include <stddef.h>
 #include <stdint.h>
+
+#include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,12 +40,49 @@ typedef struct TfLiteTelemetrySettings {
   const void* data;
 } TfLiteTelemetrySettings;
 
+typedef struct TfLiteTelemetryConversionMetadata
+    TfLiteTelemetryConversionMetadata;
+
+const int32_t* TfLiteTelemetryConversionMetadataGetModelOptimizationModes(
+    const TfLiteTelemetryConversionMetadata* metadata);
+
+size_t TfLiteTelemetryConversionMetadataGetNumModelOptimizationModes(
+    const TfLiteTelemetryConversionMetadata* metadata);
+
 // TfLite model information and settings of the interpreter.
 // Note: This struct does not comply with ABI stability.
-typedef struct TfLiteTelemetryInterpreterSettings {
-  // TODO(b/261369329): Deserialize and export conversion metadata here.
-  const void* placeholder;
-} TfLiteTelemetryInterpreterSettings;
+typedef struct TfLiteTelemetryInterpreterSettings
+    TfLiteTelemetryInterpreterSettings;
+
+const TfLiteTelemetryConversionMetadata*
+TfLiteTelemetryInterpreterSettingsGetConversionMetadata(
+    const TfLiteTelemetryInterpreterSettings* settings);
+
+// Telemetry data for a specific TFLite subgraph.
+typedef struct TfLiteTelemetrySubgraphInfo TfLiteTelemetrySubgraphInfo;
+
+size_t TfLiteTelemetryInterpreterSettingsGetNumSubgraphInfo(
+    const TfLiteTelemetryInterpreterSettings* settings);
+
+const TfLiteTelemetrySubgraphInfo*
+TfLiteTelemetryInterpreterSettingsGetSubgraphInfo(
+    const TfLiteTelemetryInterpreterSettings* settings);
+
+size_t TfLiteTelemetrySubgraphInfoGetNumQuantizations(
+    TfLiteTelemetrySubgraphInfo* subgraph_info);
+
+const TfLiteQuantization* TfLiteTelemetrySubgraphInfoGetQuantizations(
+    TfLiteTelemetrySubgraphInfo* subgraph_info);
+
+// Telemetry information for GPU delegate.
+typedef struct TfLiteTelemetryGpuDelegateSettings
+    TfLiteTelemetryGpuDelegateSettings;
+
+size_t TfLiteTelemetryGpuDelegateSettingsGetNumNodesDelegated(
+    const TfLiteTelemetryGpuDelegateSettings* settings);
+
+int TfLiteTelemetryGpuDelegateSettingsGetBackend(
+    const TfLiteTelemetryGpuDelegateSettings* settings);
 
 #ifdef __cplusplus
 }  // extern "C"

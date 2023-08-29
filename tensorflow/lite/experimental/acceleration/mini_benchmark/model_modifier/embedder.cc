@@ -24,16 +24,16 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/reflection_generated.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_status.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/jpeg_common.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/jpeg_header_parser.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/validation_graph_builder.h"
-#include "tensorflow/lite/interpreter_builder.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace fb = flatbuffers;
@@ -137,7 +137,7 @@ absl::Status Embedder::ValidateInputs() {
   VALIDATE(
       validation_input_count == main_output_count * 2,
       "validation subgraph input count must be 2 times main subgraph output "
-      "count (validation output count: %d, main subgraph output count: %d)",
+      "count (validation input count: %d, main subgraph output count: %d)",
       validation_input_count, main_output_count);
   for (int i = 0; i < main_output_count; i++) {
     auto main_output_tensor =

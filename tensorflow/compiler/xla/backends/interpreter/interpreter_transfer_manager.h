@@ -26,6 +26,18 @@ class InterpreterTransferManager : public GenericTransferManager {
   InterpreterTransferManager();
   ~InterpreterTransferManager() override = default;
 
+  bool CanShapedBufferBeAccessedNow(
+      se::StreamExecutor* executor,
+      const ShapedBuffer& device_buffer) const override {
+    return true;
+  }
+
+  bool CanBufferBeAccessedNow(
+      se::StreamExecutor* executor,
+      const se::DeviceMemoryBase& device_buffer) const override {
+    return true;
+  }
+
  private:
   InterpreterTransferManager(const InterpreterTransferManager&) = delete;
   InterpreterTransferManager& operator=(const InterpreterTransferManager&) =

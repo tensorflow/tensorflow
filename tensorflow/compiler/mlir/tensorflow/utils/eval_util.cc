@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/eval_util.h"
 
+#include <algorithm>
+#include <string>
+
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -27,7 +30,6 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -51,7 +53,7 @@ static bool IsOk(const TF_Status* s) {
 
 static bool IsOk(const Status& s) {
   if (s.ok()) return true;
-  VLOG(2) << s.error_message();
+  VLOG(2) << s.message();
   return false;
 }
 

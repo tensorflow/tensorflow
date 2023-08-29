@@ -23,7 +23,7 @@
 
     <uses-sdk
         android:minSdkVersion="23"
-        android:targetSdkVersion="23" />
+        android:targetSdkVersion="31" />
 
     <application
         android:debuggable="true">
@@ -36,6 +36,10 @@
             android:theme="@android:style/Theme.NoDisplay"
             android:exported="true"
             android:noHistory="true" />
+        <uses-library android:name="libOpenCL.so"
+           android:required="false"/>
+        <uses-library android:name="libOpenCL-pixel.so"
+           android:required="false"/>
     </application>
 
 </manifest>

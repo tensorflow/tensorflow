@@ -21,6 +21,7 @@ from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -30,12 +31,6 @@ from tensorflow.python.ops import handle_data_util
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_list_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.lazy_loader import LazyLoader
-
-# list_ops -> control_flow_ops -> tensor_array_ops -> list_ops
-control_flow_ops = LazyLoader(
-    "control_flow_ops", globals(),
-    "tensorflow.python.ops.control_flow_ops")
 
 
 ops.NotDifferentiable("TensorListConcatLists")
@@ -193,17 +188,13 @@ def tensor_list_set_item(input_handle,
                          resize_if_index_out_of_bounds=False,
                          name=None):
   """Sets `item` at `index` in input list."""
-  if resize_if_index_out_of_bounds:
-    input_list_size = gen_list_ops.tensor_list_length(input_handle)
-    # TODO(srbs): This could cause some slowdown. Consider fusing resize
-    # functionality in the SetItem op.
-    input_handle = control_flow_ops.cond(
-        index >= input_list_size,
-        lambda: gen_list_ops.tensor_list_resize(  # pylint: disable=g-long-lambda
-            input_handle, index + 1),
-        lambda: input_handle)
   output_handle = gen_list_ops.tensor_list_set_item(
-      input_handle=input_handle, index=index, item=item, name=name)
+      input_handle=input_handle,
+      index=index,
+      item=item,
+      name=name,
+      resize_if_index_out_of_bounds=resize_if_index_out_of_bounds,
+  )
   handle_data_util.copy_handle_data(input_handle, output_handle)
   return output_handle
 
@@ -301,15 +292,22 @@ def _TensorListGetItemGrad(op, ditem):
 @ops.RegisterGradient("TensorListSetItem")
 def _TensorListSetItemGrad(op, dlist):
   """Gradient function for TensorListSetItem."""
-  _, index, item = op.inputs
+  input_list, index, item = op.inputs
   list_grad = gen_list_ops.tensor_list_set_item(
-      dlist, index=index, item=array_ops.zeros_like(item))
+      dlist, index=index, item=array_ops.zeros_like(item)
+  )
   index_grad = None
   element_grad = tensor_list_get_item(
       dlist,
       index,
       element_shape=array_ops.shape(item),
-      element_dtype=item.dtype)
+      element_dtype=item.dtype,
+  )
+  if op.get_attr(
+      "resize_if_index_out_of_bounds"
+  ):
+    input_list_size = gen_list_ops.tensor_list_length(input_list)
+    list_grad = gen_list_ops.tensor_list_resize(list_grad, input_list_size)
   return list_grad, index_grad, element_grad
 
 
@@ -386,7 +384,7 @@ def _build_element_shape(shape):
   Returns:
     A None-free shape that can be converted to a tensor.
   """
-  if isinstance(shape, ops.Tensor):
+  if isinstance(shape, tensor_lib.Tensor):
     return shape
   if isinstance(shape, tensor_shape.TensorShape):
     # `TensorShape.as_list` requires rank to be known.
@@ -401,7 +399,7 @@ def _build_element_shape(shape):
   def convert(val):
     if val is None:
       return -1
-    if isinstance(val, ops.Tensor):
+    if isinstance(val, tensor_lib.Tensor):
       return val
     if isinstance(val, tensor_shape.Dimension):
       return val.value if val.value is not None else -1

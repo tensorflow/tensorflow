@@ -18,6 +18,7 @@ limitations under the License.
 // Note that side-effecting ops are not correctly handled yet.
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "llvm/ADT/MapVector.h"
@@ -25,8 +26,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/cluster_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
@@ -48,80 +50,6 @@ struct ClusterFormationPass
     : public impl::ClusterFormationPassBase<ClusterFormationPass> {
   void runOnOperation() override;
 };
-
-// Cluster structure captures all the operations that are assigned to same
-// device and can form a legal strict cluster.
-// Ops must follow same ordering in their parent block. We rely on this
-// assumption to perform analysis.
-struct Cluster {
-  llvm::SmallVector<Operation*, 4> ops;
-  StringRef device;
-};
-
-StringRef GetDevice(Operation* op) {
-  auto device_attr = op->getAttrOfType<StringAttr>("device");
-  return device_attr ? device_attr.getValue() : "";
-}
-
-// An op can be merged into cluster if it satisfies both of the following
-// conditions:
-//
-//  * All of its operands are one of the following:
-//    1) A block argument
-//    2) A value produced by other islands
-//    3) Defined before the cluster
-//    4) Defined by an operation in the cluster
-//  * Merging the op into the cluster does not reorder control dependencies.
-//
-// TODO(ycao): This is not optimal as it doesn't consider the situation of
-// defining_op's operands all meet the requirements above. In that case, the
-// defining_op can be moved and to_merge op would be legal to absorb.
-bool CanMergeIntoCluster(
-    const Cluster& c, Operation* to_merge,
-    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
-  // If any of the op's control predecessors appears after the last op in the
-  // cluster, merging the op may cause control dependencies to be reordered.
-  // Hence, the op cannot be merged to the cluster in such a case.
-  const bool has_control_predecessors_after_cluster =
-      !side_effect_analysis
-           .DirectControlPredecessors(
-               to_merge,
-               [&c](Operation* pred) {
-                 Operation* const last_c_op = c.ops.back();
-                 return last_c_op->getBlock() == pred->getBlock() &&
-                        last_c_op->isBeforeInBlock(pred);
-               })
-           .empty();
-  if (has_control_predecessors_after_cluster) {
-    return false;
-  }
-
-  return llvm::all_of(to_merge->getOperands(), [&](Value operand) {
-    // Block arguments.
-    if (operand.isa<BlockArgument>()) return true;
-
-    Operation* defining_op = operand.getDefiningOp();
-
-    // Operand produced by other islands.
-    if (defining_op->getBlock() != c.ops.front()->getBlock()) return true;
-
-    // Defining op is before the cluster.
-    if (defining_op->isBeforeInBlock(c.ops.front())) return true;
-
-    // Defining op is between first and last operation in cluster. Note that
-    // cluster may contain operations that are non-continuous in their original
-    // block, thus we also need to check defining_op is also assigned to
-    // cluster's device to be sure. This is a faster check than linearly
-    // searching through all ops in cluster.
-    if (defining_op->isBeforeInBlock(c.ops.back()->getNextNode()) &&
-        GetDevice(defining_op) == c.device)
-      return true;
-
-    // Other cases, operand is generated after or outside the cluster, this
-    // means it is illegal to merge operation.
-    return false;
-  });
-}
 
 void ReplaceLiveOutExternalUses(llvm::ArrayRef<Value> live_outs,
                                 tf_device::LaunchOp launch_op) {
@@ -154,59 +82,9 @@ void GetLiveOuts(Region* region, llvm::SmallVectorImpl<Value>* live_outs) {
   }
 }
 
-// Reorder all users of the given op's results to after the op.
-//
-// Since launch ops are inserted after the last op in the region, the region is
-// guaranteed to dominate all live-in values. On the other hand, it is still
-// possible that live-out values don't dominate the region. For example:
-//
-// ```
-// %0 = "tf.OpA"()
-// %1 = "tf.OpB"(%0)
-// %2 = "tf.OpC"(%0)
-// ```
-//
-// Assuming `tf.OpA` and `tf.OpC` are clustered together, the region will be
-// inserted right after `tf.OpC`. The live-out `%0`, however, is used by
-// `tf.OpB`, which won't dominate the region. This function reorders all users
-// of the cluster op to be placed after the cluster op itself so that SSA
-// dominance is preserved after cluster op creation.
-void ReorderOpResultUses(mlir::Operation* cluster) {
-  mlir::Block* const cluster_block = cluster->getBlock();
-  llvm::SetVector<mlir::Operation*> ops_to_reorder;
-
-  llvm::SmallVector<mlir::Value> worklist;
-  llvm::append_range(worklist, cluster->getResults());
-
-  while (!worklist.empty()) {
-    mlir::Value value = worklist.back();
-    worklist.pop_back();
-
-    for (mlir::Operation* const user : value.getUsers()) {
-      mlir::Operation* const op = cluster_block->findAncestorOpInBlock(*user);
-      if (op == nullptr || !op->isBeforeInBlock(cluster)) {
-        continue;
-      }
-
-      if (ops_to_reorder.insert(op)) {
-        llvm::append_range(worklist, op->getResults());
-      }
-    }
-  }
-
-  std::vector<mlir::Operation*> sorted = ops_to_reorder.takeVector();
-  llvm::sort(sorted, [](mlir::Operation* lhs, mlir::Operation* rhs) {
-    return lhs->isBeforeInBlock(rhs);
-  });
-
-  for (mlir::Operation* const op : llvm::reverse(sorted)) {
-    op->moveAfter(cluster);
-  }
-}
-
 // Build a `tf_device.launch` op with a region that contains all the operations
 // in given cluster. Then all ops in cluster are replaced by `tf_device.launch`.
-void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
+void BuildLaunchForCluster(const TF::Cluster& c, OpBuilder* builder) {
   // Set insertion point to right after all operations in cluster.
   builder->setInsertionPoint(c.ops.back()->getNextNode());
 
@@ -241,7 +119,7 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
   }
 
   tf_device::LaunchOp launch_op = builder->create<tf_device::LaunchOp>(
-      builder->getUnknownLoc(), builder->getStringAttr(c.device),
+      builder->getUnknownLoc(), builder->getStringAttr(c.target),
       live_out_types);
 
   // Attach the region to launch_op.
@@ -253,50 +131,28 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
 
   // Ensure that users of the launch op's results appear after the launch op
   // in order to preserve the dominance property.
-  ReorderOpResultUses(launch_op);
+  TF::ReorderOpResultUses(launch_op);
 }
 
-void BuildClusters(Block* block, OpBuilder builder,
+std::string GetDevice(Operation* op) {
+  auto device_attr = op->getAttrOfType<StringAttr>("device");
+  return device_attr ? device_attr.getValue().str() : "";
+}
+
+bool CanBeIgnoredInCluster(Operation* op) {
+  auto device_attr = op->getAttrOfType<StringAttr>("device");
+  return !device_attr || device_attr.getValue().empty();
+}
+
+void BuildClusters(Block& block, OpBuilder builder,
                    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
-  // Iteratively find clusters of different devices within an island.
-  // Whenever we see an operation that is assigned to an accelerator device
-  // (ie. device != ""), we try to merge it into the last cluster of same
-  // device. If that is infeasible (say because of violating def-before-use),
-  // create a new cluster with that operation and move on.
-  llvm::MapVector<StringRef, Cluster> nearest_clusters;
-  for (Operation& op : llvm::make_early_inc_range(*block)) {
-    auto device = GetDevice(&op);
-    if (device.empty()) continue;
-
-    // If no cluster of same device has been formed yet, create a new cluster
-    // with op alone.
-    auto it = nearest_clusters.find(device);
-    if (it == nearest_clusters.end()) {
-      nearest_clusters[device] = Cluster{{&op}, device};
-      continue;
+  auto all_clusters = TF::BuildAllClusters(block, side_effect_analysis,
+                                           GetDevice, CanBeIgnoredInCluster);
+  for (const auto& [device, clusters] : all_clusters) {
+    for (const auto& cluster : clusters) {
+      BuildLaunchForCluster(cluster, &builder);
     }
-
-    // Check if it is legal to merge op into nearest cluster of same device.
-    // If positive, update cluster and move on to next operation.
-    Cluster& nearest_cluster = it->second;
-    if (CanMergeIntoCluster(nearest_cluster, &op, side_effect_analysis)) {
-      nearest_cluster.ops.emplace_back(&op);
-      continue;
-    }
-
-    // If nearest cluster of same device can not absorb `op`, then that
-    // cluster needs to be finalized by building a `tf_device.launch` op with
-    // a region that contains all operations in clusters.
-    BuildLaunchForCluster(nearest_cluster, &builder);
-
-    // Create a new cluster to hold op alone and update nearest_clusters.
-    nearest_clusters[device] = Cluster{{&op}, device};
   }
-
-  // At the end, there might be left-over found clusters that need to be
-  // built.
-  for (auto& device_cluster : nearest_clusters)
-    BuildLaunchForCluster(device_cluster.second, &builder);
 }
 
 void ClusterFormationPass::runOnOperation() {
@@ -312,9 +168,9 @@ void ClusterFormationPass::runOnOperation() {
     // Operates on individual blocks independently of if they are directly in
     // the function body or if they are nested in individual
     // `tf_executor.island`.
-    for (Block& block : func.getBody()) BuildClusters(&block, builder, info);
+    for (Block& block : func.getBody()) BuildClusters(block, builder, info);
     func.walk([&](tf_executor::IslandOp island) {
-      BuildClusters(&island.GetBody(), builder, info);
+      BuildClusters(island.GetBody(), builder, info);
     });
   }
 }

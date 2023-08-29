@@ -60,6 +60,20 @@ def TosaStripQuantTypesPass : Pass<"tosa-strip-quant-types", "mlir::func::FuncOp
   let dependentDialects = ["TosaDialect"];
 }
 
+def TosaLowerComplexTypesPass : Pass<"tosa-lower-complex-types", "mlir::func::FuncOp"> {
+  let summary = "Convert all complex types to their storage type.";
+  let description = [{
+    Complex tensors are not supported in TOSA and are instead represented by two floating
+    point tensors corresponding to the "real" and "imag" parts of the complex tensor. This
+    pass replaces all complex tensors of shape [x, ..., y] with floating point tensors of
+    shape [x, ..., y, 2] where each inner pair of values represents a complex value. In
+    doing so, a 1:1 mapping between TFL and TOSA input/output tensors is maintained. The
+    pass will fail if not all complex tensors are converted.
+  }];
+  let constructor = "createLowerComplexTypesPass()";
+  let dependentDialects = ["TosaDialect"];
+}
+
 def TosaDequantizeTFLSoftmaxPass : Pass<"tosa-dequantize-tfl-softmax", "mlir::func::FuncOp"> {
   let summary = "Dequantize TFLite Softmax ops.";
   let description = [{
@@ -74,3 +88,40 @@ def TosaDequantizeTFLSoftmaxPass : Pass<"tosa-dequantize-tfl-softmax", "mlir::fu
   let constructor = "createDequantizeTFLSoftmaxPass()";
   let dependentDialects = ["mlir::TFL::TFLDialect", "quantfork::QuantizationForkDialect"];
 }
+
+def LowerGlobalTensors :
+    Pass<"tflite-lower-global-tensors", "mlir::ModuleOp"> {
+  let summary = "Lowers TFLite global tensors to MLProgram dialect variables.";
+  let constructor = "createLowerGlobalTensorsPass()";
+}
+
+def RetainCallOnceFuncs :
+    Pass<"tflite-retain-call-once-funcs", "mlir::ModuleOp"> {
+  let summary = "Guarantees that functions used by tfl.call_once are retained.";
+  let constructor = "createRetainCallOnceFuncsPass()";
+}
+
+def StripFunctionMetadata :
+    Pass<"tosa-tflite-strip-function-metadata", "mlir::func::FuncOp"> {
+  let summary = "Strip all unneeded TF/TFLite specific metadata.";
+  let constructor = "createStripFunctionMetadataPass()";
+}
+
+def StripModuleMetadata :
+    Pass<"tosa-tflite-strip-module-metadata", "mlir::ModuleOp"> {
+  let summary = "Strip all unneeded TF/TFLite specific metadata.";
+  let constructor = "createStripModuleMetadataPass()";
+}
+
+def VerifyFullyConverted :
+    Pass<"tosa-tflite-verify-fully-converted", "mlir::func::FuncOp"> {
+  let summary = "Verifies that all TFLite frontend ops were converted and none remain.";
+  let constructor = "createVerifyFullyConvertedPass()";
+}
+
+def ConvertFunctionMetadata :
+    Pass<"tosa-tflite-convert-function-metadata", "mlir::func::FuncOp"> {
+  let summary = "Converts TFLite input attributes to MLProgram arg attributes on functions.";
+  let constructor = "createConvertFunctionMetadataPass()";
+}
+

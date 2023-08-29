@@ -14,47 +14,43 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
 
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include <optional>
+
+#include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace quantization {
+namespace {
 
-void AddQuantizeQatPasses(mlir::PassManager &pm,
-                          const QuantizationOptions &quantization_options) {
+void AddConvertTpuToCpuModelPasses(mlir::PassManager &pm) {
+  pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::quant::CreateCastBf16OpsToF32Pass());
+}
+}  // namespace
+
+void AddQuantizeQatPasses(
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertFakeQuantToQdqPass());
-  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
   if (quantization_options.op_set() == OpSet::UNIFORM_QUANTIZED) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
   }
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateConvertTfXlaOpToTfOpPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
+
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
       quantization_options.op_set(),
       quantization_options.enable_two_input_tensors()));
@@ -66,32 +62,42 @@ void AddQuantizeQatPasses(mlir::PassManager &pm,
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set(),
-      quantization_options.enable_per_channel_quantization()));
+      quantization_options.enable_per_channel_quantization(),
+      quantization_options.min_num_elements_for_weights(),
+      quantization_options.enable_legacy_weight_only(), mlir_dump_file_prefix));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
-  // For XLA opset, the graph is inlined to take benefit of constant folding
-  // and the TF Conv/Matmul ops with cast-hack are converted to XLA ops.
-  if (quantization_options.op_set() == OpSet::XLA) {
+  // TODO(b/264637396): Deprecate TF opset
+  if (quantization_options.op_set() != OpSet::TF) {
     pm.addPass(mlir::createInlinerPass());
     pm.addPass(mlir::TF::CreateTFShapeInferencePass());
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+    if (quantization_options.op_set() == OpSet::XLA) {
+      pm.addNestedPass<mlir::func::FuncOp>(
+          mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+    }
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   }
-
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
 }
 
 void AddQuantizePtqDynamicRangePasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
-  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateUnrollBatchMatMulPassPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
+  if (quantization_options.experimental_enable_tpu_model_support()) {
+    AddConvertTpuToCpuModelPasses(pm);
+  }
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateConvertTfXlaOpToTfOpPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass(
+      quantization_options.quantization_method().experimental_method(),
+      quantization_options.op_set(),
       quantization_options.min_num_elements_for_weights()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
       quantization_options.quantization_method().experimental_method(),
@@ -99,22 +105,21 @@ void AddQuantizePtqDynamicRangePasses(
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set(),
-      quantization_options.enable_per_channel_quantization()));
+      quantization_options.enable_per_channel_quantization(),
+      quantization_options.min_num_elements_for_weights(),
+      quantization_options.enable_legacy_weight_only(), mlir_dump_file_prefix));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
-  // For XLA opset, the graph is inlined to take benefit of constant folding
-  // and the TF Conv/Matmul ops with cast-hack are converted to XLA ops.
-  // Weight only quantizaiton with XLA opset should avoid this pass to not
-  // constant folded.
-  if (quantization_options.op_set() == OpSet::XLA &&
-      quantization_options.quantization_method().experimental_method() !=
-          tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY) {
+  // TODO(b/264637396): Deprecate TF opset
+  if (quantization_options.op_set() != OpSet::TF) {
     pm.addPass(mlir::createInlinerPass());
     pm.addPass(mlir::TF::CreateTFShapeInferencePass());
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+    if (quantization_options.op_set() == OpSet::XLA) {
+      pm.addNestedPass<mlir::func::FuncOp>(
+          mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+    }
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   }
 
@@ -123,13 +128,18 @@ void AddQuantizePtqDynamicRangePasses(
 
 void AddQuantizePtqPreCalibrationPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
-  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
   if (quantization_options.op_set() == OpSet::UNIFORM_QUANTIZED) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
   }
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
+  if (quantization_options.experimental_enable_tpu_model_support()) {
+    AddConvertTpuToCpuModelPasses(pm);
+  }
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateConvertTfXlaOpToTfOpPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
       quantization_options.op_set(),
       quantization_options.enable_two_input_tensors()));
@@ -139,7 +149,8 @@ void AddQuantizePtqPreCalibrationPasses(
 }
 
 void AddQuantizePtqPostCalibrationPasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -150,21 +161,23 @@ void AddQuantizePtqPostCalibrationPasses(
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set(),
-      quantization_options.enable_per_channel_quantization()));
+      quantization_options.enable_per_channel_quantization(),
+      quantization_options.min_num_elements_for_weights(),
+      quantization_options.enable_legacy_weight_only(), mlir_dump_file_prefix));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
-  // For XLA opset, the graph is inlined to take benefit of constant folding
-  // and the TF Conv/Matmul ops with cast-hack are converted to XLA ops.
-  if (quantization_options.op_set() == OpSet::XLA) {
+  // TODO(b/264637396): Deprecate TF opset
+  if (quantization_options.op_set() != OpSet::TF) {
     pm.addPass(mlir::createInlinerPass());
     pm.addPass(mlir::TF::CreateTFShapeInferencePass());
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+    if (quantization_options.op_set() == OpSet::XLA) {
+      pm.addNestedPass<mlir::func::FuncOp>(
+          mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+    }
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   }
-
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
 }
 

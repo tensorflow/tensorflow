@@ -83,6 +83,34 @@ func.func @empty_device_op() {
 // CHECK-NOT:      tf_executor.yield [[A]]#1, [[A]]#0
 
 
+// Tests annotation `parallel_execution_ids` can be propagated correctly
+// CHECK-LABEL: func @propagate_parallel_execution_ids
+func.func @propagate_parallel_execution_ids() {
+  tf_executor.graph {
+    %0:5 = tf_executor.island {
+      %a = "tf.opA"() : () -> tensor<i1>
+      %launch:2 = "tf_device.launch"() ({
+        %b = "tf.opB"(%a) : (tensor<i1>) -> tensor<i32>
+        %c = "tf.opC"(%b) : (tensor<i32>) -> tensor<f32>
+        tf_device.return %c, %b : tensor<f32>, tensor<i32>
+      }) {device = "CPU:0", _parallel_execution_ids = "r4:5,p0:0"} : () -> (tensor<f32>, tensor<i32>)
+      %d = "tf.opD"() : () -> tensor<i1>
+      tf_executor.yield %a, %launch#0, %launch#1, %d : tensor<i1>, tensor<f32>, tensor<i32>, tensor<i1>
+    }
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// CHECK:      %[[A:.*]], {{.*}} = tf_executor.island wraps "tf.opA"
+// CHECK:      %[[B:.*]], {{.*}} = tf_executor.island wraps "tf.opB"(%[[A]])
+// CHECK-SAME: _parallel_execution_ids = "r4:5,p0:0", device = "CPU:0"
+// CHECK:      %[[C:.*]], {{.*}} = tf_executor.island wraps "tf.opC"(%[[B]])
+// CHECK-SAME: _parallel_execution_ids = "r4:5,p0:0", device = "CPU:0"
+// CHECK:      %[[D:.*]], {{.*}} = tf_executor.island wraps "tf.opD"
+// CHECK-NOT:  "tf_device.launch"
+// CHECK-NOT:      tf_executor.yield %[[A]], %[[C]], %[[B]], %[[D]]
+
 // -----
 
 

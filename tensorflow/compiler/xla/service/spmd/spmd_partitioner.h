@@ -16,14 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SPMD_PARTITIONER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SPMD_PARTITIONER_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -73,6 +77,10 @@ struct SpmdPartitionerOptions {
   // Whether doing bidirectional communication when decomposing independent
   // all-gathers.
   bool bidirectional_decomposed_all_gather = false;
+
+  // Whether to skip checking the numbers and shardings of windowed einsum's
+  // users.
+  bool skip_checking_windowed_einsum_users = false;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
@@ -255,10 +263,16 @@ class SpmdPartitioner : public HloModulePass {
       int64_t* next_channel_id, SpmdLogger* logger,
       SpmdPartitionerOptions options, const CallGraph& call_graph);
 
-  HloInstruction* AllGatherShardsInternal(
+  // This is the internal implementation for AllGatherShards(), returns a pair
+  // of hlo instructions whose first element is the result of the all-gather
+  // shard(which might not be the all-gather itself and it could go through
+  // some other formatting instructions), and the second element is the
+  // all-gather being generated or nullptr is no all-gather is generated.
+  std::pair<HloInstruction*, HloInstruction*> AllGatherShardsInternal(
       SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
       int64_t* next_channel_id, absl::Span<const int64_t> selected_dims,
       const SPMDCollectiveOpsCreator& collectives_creator, bool per_dim_ag);
+
   HloInstruction* AllReduceAlongShardingDimsInternal(
       SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
       int64_t* next_channel_id, absl::Span<const int64_t> selected_dims,
@@ -350,7 +364,7 @@ class PartitionedHlo {
     PartitionedHlo new_phlo = *this;
     new_phlo.hlo_ = hlo;
     if (!hlo->has_sharding() && hlo_->has_sharding()) {
-      hlo->set_sharding(hlo_->sharding());
+      hlo->copy_sharding(hlo_);
     }
     return new_phlo;
   }
@@ -397,7 +411,8 @@ class PartitionedHlo {
   // only modify the reshard cache.
   std::optional<WindowedInputShardReturnValue> ReshardAsWindowedInput(
       const Window& window, const HloSharding& target,
-      HloInstruction* pad_value, bool mask_invalid_region = true);
+      HloInstruction* pad_value, bool mask_invalid_region = true,
+      bool force_mask_in_compact = false);
 
   const PartitioningState& state() const { return state_; }
 

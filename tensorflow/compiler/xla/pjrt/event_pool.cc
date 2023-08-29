@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/event_pool.h"
 
 #include <memory>
+#include <utility>
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/status_macros.h"

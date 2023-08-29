@@ -20,7 +20,7 @@ from typing import Callable, List, Optional, Union
 
 from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import values as value_lib
-from tensorflow.python.eager import backprop
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -28,7 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -194,12 +194,32 @@ class CollectiveKeys(object):
     self._group_key = group_key_start
     self._instance_key_table = {}
     self._lock = threading.Lock()
+    self._known_groups = {}
 
   def get_group_key(self, devices):
+    """Returns a group key for the list of local devices.
+
+    The same group key is returned if the list of local devices is the same.
+
+    Args:
+      devices: a list of local canonical device strings in a collective group.
+
+    Returns:
+      a group key.
+    """
+    with self._lock:
+      devices_key = ','.join(devices)
+      if devices_key not in self._known_groups:
+        self._known_groups[devices_key] = self._get_new_group_key(devices)
+      return self._known_groups[devices_key]
+
+  def _get_new_group_key(self, devices):
     """Returns a new group key.
 
     The caller should store and reuse the same group key for the same set of
     devices. Calling this method always returns a new group key.
+
+    This method is not thread-safe.
 
     Args:
       devices: a list of canonical device strings in a collective group.
@@ -207,13 +227,12 @@ class CollectiveKeys(object):
     Returns:
       a new group key.
     """
-    with self._lock:
-      new_key = self._group_key
-      self._group_key += 1
-      self._instance_key_table[new_key] = {}
-      for device in devices:
-        self._instance_key_table[new_key][device] = INSTANCE_KEY_START_NUMBER
-      return new_key
+    new_key = self._group_key
+    self._group_key += 1
+    self._instance_key_table[new_key] = {}
+    for device in devices:
+      self._instance_key_table[new_key][device] = INSTANCE_KEY_START_NUMBER
+    return new_key
 
   def get_instance_key(self, group_key, device):
     """Returns a new instance key for use in defining a collective op.
@@ -323,7 +342,7 @@ class CollectiveReplicaLauncher(object):
 
   def _get_ordering_token(self):
     if self._use_ordering_token():
-      return self._ordering_token.handle
+      return self._ordering_token.handle  # pytype: disable=attribute-error
 
   def can_order_nccl(self):
     """Whether this launcher can order NCCL operations."""
@@ -501,7 +520,7 @@ class CollectiveReplicaLauncher(object):
   ) -> indexed_slices.IndexedSlices:
     """All-reduce an IndexedSlices.
 
-    This method must be called inside a tf.function.
+    This method can be called outside  tf.function.
 
     Args:
       input_slices: an IndexedSlices.
@@ -510,13 +529,7 @@ class CollectiveReplicaLauncher(object):
 
     Returns:
       The reduced IndexedSlices.
-
-    Raises:
-      RuntimeError: if called in eager mode.
     """
-    if context.executing_eagerly():
-      raise RuntimeError(
-          'all_reduce_indexed_slices is not supported in eager mode.')
 
     # Current CollectiveAllGather implementations require input IndexedSlices to
     # have consistent length across the board, we handle the reduction of
@@ -564,7 +577,7 @@ class CollectiveReplicaLauncher(object):
                                                   all_lengths[i]])
         return array_ops.concat(split_tensors, 0)
 
-      return control_flow_ops.cond(
+      return cond.cond(
           math_ops.equal(
               math_ops.reduce_max(all_lengths),
               math_ops.reduce_min(all_lengths)),
@@ -575,14 +588,14 @@ class CollectiveReplicaLauncher(object):
 def aggregate_tensors_or_indexed_slices(values, accumulation_fn=math_ops.add_n):
   """Aggregate tensors using `accumulation_fn` and IndexedSlices via concat."""
   if any(isinstance(v, indexed_slices.IndexedSlices) for v in values):
-    return backprop.aggregate_indexed_slices_gradients(values)
+    return backprop_util.AggregateIndexedSlicesGradients(values)
   else:
     return accumulation_fn(values)
 
 
 def divide_by_n_tensors_or_indexed_slices(value, n):
   if isinstance(value, indexed_slices.IndexedSlices):
-    value = backprop.flatten_nested_indexed_slices(value)
+    value = backprop_util.FlattenNestedIndexedSlices(value)
     return indexed_slices.IndexedSlices(value.values / n, value.indices,
                                         value.dense_shape)
   else:

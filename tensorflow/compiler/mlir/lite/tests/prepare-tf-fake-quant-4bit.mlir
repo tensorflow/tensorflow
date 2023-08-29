@@ -137,6 +137,21 @@ func.func @fakeQuantFollowedByTranspose(tensor<1x2xf32>, tensor<f32>, tensor<f32
 // CHECK:  return %1
 }
 
+// CHECK-LABEL: fakeQuantFollowedByTransposes
+func.func @fakeQuantFollowedByTransposes(tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> (tensor<2x1xf32>, tensor<2x1xf32>) {
+^bb0(%arg0: tensor<1x2xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>):
+  %cst_0 = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> tensor<1x2xf32>
+  %1 = "tf.Transpose"(%0, %cst_0): (tensor<1x2xf32>, tensor<2xi32>) -> tensor<2x1xf32>
+  %2 = "tf.Transpose"(%0, %cst_0): (tensor<1x2xf32>, tensor<2xi32>) -> tensor<2x1xf32>
+  func.return %1, %2 : tensor<2x1xf32>, tensor<2x1xf32>
+
+// CHECK:  %cst = arith.constant
+// CHECK:  %[[FQ:.*]] = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2)
+// CHECK:  %[[T1:.*]] = "tf.Transpose"(%[[FQ]], %cst)
+// CHECK:  %[[T2:.*]] = "tf.Transpose"(%[[FQ]], %cst)
+}
+
 // CHECK-LABEL: fakeQuantFollowedByReshape
 func.func @fakeQuantFollowedByReshape(tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> (tensor<2x1xf32>) {
 ^bb0(%arg0: tensor<1x2xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>):
@@ -150,6 +165,23 @@ func.func @fakeQuantFollowedByReshape(tensor<1x2xf32>, tensor<f32>, tensor<f32>)
 // CHECK-SAME: tensor<2x1xf32>
 // CHECK:  %1 = "tf.FakeQuantWithMinMaxVars"(%0, %arg1, %arg2)
 // CHECK:  return %1
+}
+
+// CHECK-LABEL: fakeQuantFollowedByReshapes
+func.func @fakeQuantFollowedByReshapes(tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> (tensor<2x1xf32>, tensor<2x1xf32>) {
+^bb0(%arg0: tensor<1x2xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>):
+  %cst_0 = arith.constant dense<[2, -1]> : tensor<2xi64>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> tensor<1x2xf32>
+  %1 = "tf.Reshape"(%0, %cst_0) : (tensor<1x2xf32>, tensor<2xi64>) -> tensor<2x1xf32>
+  %2 = "tf.Reshape"(%0, %cst_0) : (tensor<1x2xf32>, tensor<2xi64>) -> tensor<2x1xf32>
+  func.return %1, %2 : tensor<2x1xf32>, tensor<2x1xf32>
+
+// CHECK:  %cst = arith.constant
+// CHECK:  %[[FQ:.*]] = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2)
+// CHECK:  %[[R1:.*]] = "tf.Reshape"(%[[FQ]], %cst)
+// CHECK-SAME: tensor<2x1xf32>
+// CHECK:  %[[R2:.*]] = "tf.Reshape"(%[[FQ]], %cst)
+// CHECK-SAME: tensor<2x1xf32>
 }
 
 // CHECK-LABEL: fakeQuantWithConv2D

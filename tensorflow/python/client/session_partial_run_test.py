@@ -265,6 +265,7 @@ class PartialRunTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def testPartialRunMissingPlaceholderFeedExceptionDist(self):
+    self.skipTest('Flaky test. Short term b/278768411, long term b/280102873')
     server = server_lib.Server.create_local_server()
     self.RunTestPartialRunMissingPlaceholderFeedException(
         session.Session(server.target))

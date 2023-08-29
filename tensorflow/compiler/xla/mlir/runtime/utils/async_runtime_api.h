@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_UTILS_ASYNC_RUNTIME_API_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_UTILS_ASYNC_RUNTIME_API_H_
 
+#include "absl/functional/any_invocable.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
@@ -35,7 +36,7 @@ tsl::AsyncValueRef<tsl::Chain> ConvertAsyncTokenToChain(
 // reference on the runtime value after it is no longer needed.
 void ExtractAsyncValue(
     AsyncRuntime::Value* value, tsl::AsyncValue* dst,
-    llvm::function_ref<void(void*, tsl::AsyncValue*)> emplace_fn);
+    absl::AnyInvocable<void(void*, tsl::AsyncValue*)> emplace_fn);
 
 // A version of the `ExtractAsyncValue` function defined above that takes an
 // additional opaque pointer that will be passed to the emplace function when

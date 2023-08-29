@@ -18,6 +18,7 @@ import copy
 import itertools
 
 import numpy as np
+import sys
 
 from google.protobuf import json_format
 
@@ -30,6 +31,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -96,7 +98,9 @@ class ParseExampleTest(test.TestCase):
     serialized = kwargs["serialized"]
     batch_size = (
         self.evaluate(serialized).size
-        if isinstance(serialized, ops.Tensor) else np.asarray(serialized).size)
+        if isinstance(serialized, tensor_lib.Tensor)
+        else np.asarray(serialized).size
+    )
     for k, f in kwargs["features"].items():
       if isinstance(f, parsing_ops.FixedLenFeature) and f.shape is not None:
         self.assertEqual(tuple(out[k].shape.as_list()), (batch_size,) + f.shape)
@@ -2501,7 +2505,10 @@ class ParseTensorOpTest(test.TestCase):
   def testToFloat32(self):
     with self.cached_session():
       expected = np.random.rand(3, 4, 5).astype(np.float32)
-      tensor_proto = tensor_util.make_tensor_proto(expected)
+      if sys.byteorder == "big":
+        tensor_proto = tensor_util.make_tensor_proto(expected.byteswap())
+      else:
+        tensor_proto = tensor_util.make_tensor_proto(expected)
 
       serialized = array_ops.placeholder(dtypes.string)
       tensor = parsing_ops.parse_tensor(serialized, dtypes.float32)
@@ -2546,7 +2553,7 @@ class ParseTensorOpTest(test.TestCase):
       tensor = parsing_ops.parse_tensor(serialized, dtypes.uint16)
 
       with self.assertRaisesOpError(
-          "Could not parse `serialized` as TensorProto: 'bogus'"):
+          "Could not parse `serialized` as TensorProto, base64: Ym9ndXM="):
         tensor.eval(feed_dict={serialized: "bogus"})
 
       with self.assertRaisesOpError(

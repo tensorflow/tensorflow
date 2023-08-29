@@ -84,10 +84,6 @@ defvar MHLO_DimensionValue = HLO_DimensionValue;
 // Dynamic representation of a shape vector as a tensor.
 defvar MHLO_DimensionTensor = HLO_DimensionTensor;
 
-// In general, static shaped tensor constraints should be avoided unless
-// it is for a legacy op which is only correct with static shapes.
-defvar MHLO_StaticShapeTensor = HLO_StaticShapeTensor;
-
 //===----------------------------------------------------------------------===//
 // MHLO combined type definitions.
 //===----------------------------------------------------------------------===//
@@ -103,10 +99,30 @@ defvar MHLO_PredOrIntTensor = HLO_PredOrIntTensor;
 // Any floating-point or complex tensor types
 defvar MHLO_FpOrComplexTensor = HLO_FpOrComplexTensor;
 
-// Any int, floating-point or complex tensor types
-defvar MHLO_IntFpOrComplexTensor = HLO_IntFpOrComplexTensor;
+// Any floating-point, complex or quantized tensor types
+defvar MHLO_FpComplexOrQuantizedIntTensor = HLO_FpComplexOrQuantizedIntTensor;
+
+// Any int, floating-point, complex or quantized tensor types
+defvar MHLO_IntFpOrComplexOrQuantizedIntTensor = HLO_IntFpOrComplexOrQuantizedIntTensor;
 
 // Any pred, int or floating-point tensor types
 defvar MHLO_PredIntOrFpTensor = HLO_PredIntOrFpTensor;
+
+// Any pred, int, floating-point or quantized tensor types
+defvar MHLO_PredIntFpOrQuantizedTensor = HLO_PredIntFpOrQuantizedTensor;
+
+//===----------------------------------------------------------------------===//
+// MHLO static shape type definitions.
+//===----------------------------------------------------------------------===//
+
+// In general, static shaped tensor constraints should be avoided unless
+// it is for a legacy op which is only correct with static shapes.
+defvar MHLO_StaticShapeTensor = HLO_StaticShapeTensor;
+
+defvar MHLO_StaticShapeTensorOrToken = HLO_StaticShapeTensorOrToken;
+
+defvar MHLO_StaticShapeIntOrFpTensor = HLO_StaticShapeIntOrFpTensor;
+
+defvar MHLO_StaticShapeIntFpOrComplexTensor = HLO_StaticShapeIntFpOrComplexTensor;
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_BASE

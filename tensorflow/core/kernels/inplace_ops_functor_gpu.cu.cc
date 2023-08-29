@@ -177,10 +177,13 @@ Status DoInplace(const Device& d, InplaceOpType op, const Tensor& i,
     CASE(double)
     CASE(Eigen::half)
     CASE(Eigen::bfloat16)
-    CASE(int64)
+    CASE(uint8_t)
+    CASE(int8_t)
+    CASE(int64_t)
+    CASE(uint64_t)
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported data type: ",
+      return errors::InvalidArgument("Unsupported data type from DoInplace: ",
                                      DataTypeString(v.dtype()));
   }
   return OkStatus();
@@ -202,10 +205,13 @@ Status DoCopy(const Device& d, const Tensor& x, Tensor* y) {
     CASE(Eigen::bfloat16)
     CASE(complex64)
     CASE(complex128)
-    CASE(int64)
+    CASE(uint8_t)
+    CASE(int8_t)
+    CASE(int64_t)
+    CASE(uint64_t)
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported dtype: ",
+      return errors::InvalidArgument("Unsupported dtype from DoCopy: ",
                                      DataTypeString(x.dtype()));
   }
   return OkStatus();

@@ -120,7 +120,9 @@ SmallVector<Value> reshapeUpdatesToEnsureSingleScatterDimension(
   }
   if (numScatterDims == 0) {
     return to_vector(llvm::map_range(updates, [&](Value update) -> Value {
-      return insertDegenerateDimensions(b, loc, update, {0});
+      return insertDegenerateDimensions(
+          b, loc, cast<TypedValue<TensorType>>(update),
+          {0});
     }));
   }
   return updates;
@@ -138,8 +140,9 @@ SmallVector<Value> reshapeUpdatesToMatchOperandShape(
     shiftedScatterDimsToOperandDims.push_back(i + 1);
 
   return to_vector(map_range(updates, [&](Value update) -> Value {
-    return insertDegenerateDimensions(b, loc, update,
-                                      shiftedScatterDimsToOperandDims);
+    return insertDegenerateDimensions(
+        b, loc, cast<TypedValue<TensorType>>(update),
+        shiftedScatterDimsToOperandDims);
   }));
 }
 
@@ -189,7 +192,7 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
         makeOperandStartIndexPermutations(
             dimsAttrs.getScatterDimsToOperandDims(), operandRank);
 
-    TypedValue<TensorType> canonicalIndices =
+    Value canonicalIndices =
         canonicalizeStartIndices(rewriter, loc, scatterOp.getScatterIndices(),
                                  dimsAttrs.getIndexVectorDim());
 
@@ -201,7 +204,8 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
         dimsAttrs.getScatterDimsToOperandDims(),
         dimsAttrs.getUpdateWindowDims(), dimsAttrs.getInsertedWindowDims());
 
-    int64_t scatterIndicesVectorSize = canonicalIndices.getType().getDimSize(1);
+    int64_t scatterIndicesVectorSize =
+        canonicalIndices.getType().cast<TensorType>().getDimSize(1);
     auto canonicalDimsAttrs = ScatterDimensionNumbersAttr::get(
         rewriter.getContext(),
         /*updateWindowDims=*/

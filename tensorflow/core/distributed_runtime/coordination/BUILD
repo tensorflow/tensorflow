@@ -56,6 +56,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],
@@ -88,7 +89,7 @@ filegroup(
         "coordination_client.h",
     ],
     visibility = [
-        "//tensorflow/core/function:__pkg__",
+        "//tensorflow/core/function/runtime_client:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )

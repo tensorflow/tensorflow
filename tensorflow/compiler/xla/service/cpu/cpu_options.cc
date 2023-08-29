@@ -25,6 +25,7 @@ const char* const kLlvmIrDotTilingFactor = "xla_llvm_dot_tiling_factor";
 const char* const kXlaForceEnableExperimentalLlvmIrGemm =
     "xla_force_enable_experimental_llvm_ir_gemm";
 const char* const kLlvmIrGemmTileSize = "xla_llvm_ir_gemm_tile_size";
+const char* const kDisableSlpVectorizer = "xla_cpu_disable_slp_vectorizer";
 
 }  // namespace
 
@@ -42,6 +43,12 @@ bool VectorizedReduceDisabled(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   return extra_options_map.count(kXlaOptimizeForSizeCpuOption) > 0;
+}
+
+bool SlpVectorizerDisabled(const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  return extra_options_map.count(kDisableSlpVectorizer) > 0;
 }
 
 std::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {

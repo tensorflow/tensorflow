@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
@@ -219,8 +220,10 @@ Status HloSchedule::Update(
   std::vector<HloComputation*> nonfusion_computations =
       module_->MakeNonfusionComputations(execution_threads);
   for (const HloComputation* computation : nonfusion_computations) {
-    TF_RET_CHECK(sequences_.contains(computation->unique_id()))
-        << "Computation " << computation->name() << " not in HloSchedule.";
+    if (!is_computation_scheduled(computation)) {
+      GetOrCreateSequence(computation);
+      TF_RETURN_IF_ERROR(UpdateComputationSchedule(computation));
+    }
   }
   auto sum_of_sequences_for_threads = [&]() -> int64_t {
     if (execution_threads.empty()) {
@@ -365,23 +368,27 @@ std::string HloSchedule::ToString() const {
   std::vector<std::string> pieces;
 
   pieces.push_back("HloSchedule");
+  std::vector<int64_t> sorted_ids;
   for (const auto& id_sequence : sequences_) {
-    const HloComputation* computation =
-        IdToComputation(module_, id_sequence.first);
+    sorted_ids.push_back(id_sequence.first);
+  }
+  absl::c_sort(sorted_ids);
+
+  for (const int64_t id : sorted_ids) {
+    const HloComputation* computation = IdToComputation(module_, id);
+    const HloInstructionSequence& sequence = sequences_.at(id);
     if (computation == nullptr) {
       // The computation is not in the module and may have been deleted so it is
       // not safe to dereference any HLO pointers. Just use the HLO unique ids
       // stored in this object.
-      pieces.push_back(
-          absl::StrFormat("computation with id %d (no longer in HLO module):",
-                          id_sequence.first));
-      for (int id : id_sequence.second.ids()) {
+      pieces.push_back(absl::StrFormat(
+          "computation with id %d (no longer in HLO module):", id));
+      for (int id : sequence.ids()) {
         pieces.push_back(absl::StrCat("  ", id));
       }
     } else {
       pieces.push_back(absl::StrFormat("computation %s:", computation->name()));
-      for (const HloInstruction* instruction :
-           id_sequence.second.instructions()) {
+      for (const HloInstruction* instruction : sequence.instructions()) {
         pieces.push_back(absl::StrCat("  ", instruction->name()));
       }
     }
@@ -390,8 +397,7 @@ std::string HloSchedule::ToString() const {
 }
 
 std::ostream& operator<<(std::ostream& out, const HloSchedule& schedule) {
-  out << schedule.ToString();
-  return out;
+  return out << schedule.ToString();
 }
 
 }  // namespace xla

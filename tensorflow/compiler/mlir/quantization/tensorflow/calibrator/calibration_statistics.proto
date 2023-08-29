@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package tensorflow.calibrator;
+
+option cc_enable_arenas = true;
+
+// Calibration algorithm's collecting statistics.
+// NEXT_ID: 3
+message CalibrationStatistics {
+  message MinMaxStatistics {
+    // global minimum of all sample datasets.
+    float global_min = 1;
+
+    // global maximum of all sample datasets.
+    float global_max = 2;
+  }
+
+  message AverageMinMaxStatistics {
+    // sum of batch's minimum in each sample dataset.
+    float min_sum = 1;
+
+    // sum of batch's maximum in each sample dataset.
+    float max_sum = 2;
+
+    // number of sample datasets
+    int32 num_samples = 3;
+  }
+
+  MinMaxStatistics min_max_statistics = 1;
+  AverageMinMaxStatistics average_min_max_statistics = 2;
+}

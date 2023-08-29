@@ -25,10 +25,11 @@ limitations under the License.
 //
 // * Helper<T>: provides various routines given type T.  The routines
 //   includes running the constructor and destructor of T[], encoding
-//   an decoding T[] into/from a Cord, etc.
+//   a decoding T[] into/from a Cord, etc.
 
 #include "tensorflow/core/framework/tensor.h"
 
+#include <algorithm>
 #include <cstring>
 #include <memory>
 #include <ostream>
@@ -617,7 +618,7 @@ TensorBuffer* FromProtoField<ResourceHandle>(Allocator* a,
       if (!s.ok()) {
         LOG(ERROR) << "Could not decode resource handle from proto \""
                    << in.resource_handle_val(i).ShortDebugString()
-                   << "\", returned status: " << s.ToString();
+                   << "\", returned status: " << s;
         buf->Unref();
         return nullptr;
       }
@@ -741,7 +742,8 @@ void UnrefIfNonNull(core::RefCounted* buf) {
 
 Tensor::Tensor() : Tensor(DT_FLOAT) {}
 
-Tensor::Tensor(DataType type) : shape_(type), buf_(nullptr) {}
+// Note: TensorShape has a valid constructor that takes DataType.
+Tensor::Tensor(DataType type) : shape_(type), buf_(nullptr) { set_dtype(type); }
 
 Tensor::Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf)
     : shape_(shape), buf_(buf) {
@@ -830,6 +832,14 @@ Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
 bool Tensor::RefCountIsOne() const {
   return buf_ != nullptr && buf_->RefCountIsOne() &&
          buf_->root_buffer()->RefCountIsOne() && buf_->OwnsMemory();
+}
+
+int Tensor::RefCount() const {
+  if (buf_->root_buffer() != buf_) {
+    LOG(ERROR) << "Tensor RefCount not reliable if buf_ points to a SubBuffer.";
+    return -1;
+  }
+  return buf_->RefCount();
 }
 
 // The macro CASES() expands to a switch statement conditioned on
@@ -961,7 +971,7 @@ class SubBuffer : public TensorBuffer {
     CHECK_LE(root_->base<T>(), this->base<T>());
     T* root_limit = root_->base<T>() + root_->size() / sizeof(T);
     CHECK_LE(this->base<T>(), root_limit);
-    CHECK_LE(this->base<T>() + n, root_limit);
+    CHECK_LE(n, root_limit - this->base<T>());
     // Hold a ref of the underlying root buffer.
     // NOTE: 'buf' is a sub-buffer inside the 'root_' buffer.
     root_->Ref();
@@ -1297,6 +1307,9 @@ template <>
 string SummarizeArray<bool>(int64_t limit, int64_t num_elts,
                             const TensorShape& tensor_shape, const char* data,
                             const bool print_v2) {
+  if (data == nullptr) {
+    return strings::StrCat("");  // we already print type and shape
+  }
   // We first convert all chars to be 0/1 to not get InvalidEnumValue sanitizer
   // error
   auto mutable_data = std::unique_ptr<char[]>(new char[num_elts]);

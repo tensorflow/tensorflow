@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/equal_graph_def.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 

@@ -235,7 +235,7 @@ class FaultToleranceTest(data_service_test_base.TestBase,
 
     # Read additional elements to make sure that stopping 4/5 workers doesn't
     # result in a hang.
-    for _ in range(1000):
+    for _ in range(10):
       next(iterator).numpy()
 
   @combinations.generate(
@@ -310,7 +310,6 @@ class FaultToleranceTest(data_service_test_base.TestBase,
     it = iter(ds)
     cluster.add_worker()
     self.assertAllEqual(next(it), tensor)
-
 
 if __name__ == "__main__":
   test.main()

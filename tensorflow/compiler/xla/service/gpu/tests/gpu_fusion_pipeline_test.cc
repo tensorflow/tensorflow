@@ -19,15 +19,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -45,12 +41,14 @@ class GpuFusionPipelineTest : public GpuCodegenTest {
   void CheckGpuFusionPipeline(absl::string_view hlo,
                               std::optional<absl::string_view> expected) {
     HloPassPipeline pipeline("gpu-fusion");
-    pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
-    pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
-    pipeline.AddPass<FusionMerger>(TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+    const GpuDeviceInfo device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+    pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false,
+                                           device_info);
+    pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true, device_info);
+    pipeline.AddPass<FusionMerger>(device_info, se::CudaComputeCapability(),
                                    ShapeSizeBytesFunction());
     pipeline.AddPass<GpuMultiOutputFusion>(
-        TestGpuDeviceInfo::RTXA6000DeviceInfo(), ShapeSizeBytesFunction());
+        device_info, se::CudaComputeCapability(), ShapeSizeBytesFunction());
 
     RunAndFilecheckHloRewrite(hlo, std::move(pipeline), expected);
   }

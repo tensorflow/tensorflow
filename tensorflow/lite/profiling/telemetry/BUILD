@@ -45,6 +45,7 @@ cc_test(
         ":telemetry_status",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
         "@com_google_googletest//:gtest_main",
     ],
 )

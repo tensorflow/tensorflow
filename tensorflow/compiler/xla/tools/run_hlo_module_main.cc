@@ -72,6 +72,7 @@ std::string GetReferencePlatformName(std::string reference_platform) {
 
 int main(int argc, char** argv) {
   xla::RunHloModuleOptions opts;
+  bool different_random_seeds = false;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("platform", &opts.platform,
                 "The test platform that the HLO module will be executed on "
@@ -102,6 +103,9 @@ int main(int argc, char** argv) {
           "than the reference this is necessary because some HLO passes are "
           "legalization passes which must be run prior to code generation."),
 
+      tsl::Flag("random_init_input_literals", &opts.random_init_input_literals,
+                "Initialize input literals with random numbers."
+                "Leave them uninitialized otherwise."),
       tsl::Flag("use_large_float_range", &opts.use_large_float_range,
                 "Generate floating point values using a large uniform-log "
                 "distribution as opposed to a small uniform distribution."),
@@ -122,7 +126,11 @@ int main(int argc, char** argv) {
       tsl::Flag(
           "iterations", &opts.iterations,
           "The number of times to run the module. Each iteration will be run "
-          "with different input data.")};
+          "with different input data."),
+      tsl::Flag("different_random_seeds", &different_random_seeds,
+                "Whether each iteration should use a different random seed for "
+                "the HloModuleConfig."),
+  };
   xla::AppendDebugOptionsFlags(&flag_list);
   // The usage string includes the message at the top of the file, the
   // DebugOptions flags and the flags defined above.
@@ -156,28 +164,32 @@ int main(int argc, char** argv) {
     hlo_filename = argv[1];
   }
 
-  std::minstd_rand0 engine;
+  std::unique_ptr<std::minstd_rand0> engine;
+  if (opts.random_init_input_literals) {
+    engine = std::make_unique<std::minstd_rand0>();
+  }
   int failure_count = 0;
   const int iteration_count = opts.iterations;
   for (int i = 1; i <= iteration_count; ++i) {
     if (iteration_count != 1) {
       std::cerr << "\n=== Iteration " << i << "\n";
     }
-    xla::Status matched = xla::RunAndCompare(
-        hlo_filename, &test_runner, reference_runner.get(), &engine, opts);
+    xla::Status result = xla::RunAndCompare(
+        hlo_filename, &test_runner, reference_runner.get(), engine.get(), opts,
+        /*iteration_literals_proto=*/nullptr,
+        /*reference_module_modifier_hook=*/{},
+        [&](xla::HloModuleConfig* config) {
+          config->set_seed(different_random_seeds ? i : 42);
+        });
 
-    // The AssertionResult is only meaningful when the reference is
-    // used. Without a reference, the test just verifies that nothing blew up
-    // when running the module.
-    if (!reference_platform_name.empty()) {
-      if (matched.ok()) {
-        // Success.
+    if (result.ok()) {
+      if (!reference_platform_name.empty()) {
         std::cerr << "\n** Results on " << test_platform_name << " and "
                   << reference_platform_name << " are close enough. **\n";
-      } else {
-        failure_count++;
-        std::cerr << matched << "\n";
       }
+    } else {
+      failure_count++;
+      std::cerr << result << "\n";
     }
   }
 

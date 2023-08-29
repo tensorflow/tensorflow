@@ -71,7 +71,7 @@ RestoredResource::~RestoredResource() {
     if (!status.ok()) {
       LOG(WARNING)
           << "Failed executing destroy_resource function for RestoredResource: "
-          << status.error_message();
+          << status.message();
     }
   }
 }

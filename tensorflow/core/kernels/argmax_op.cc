@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/argmax_op.h"
 
 #include <memory>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -209,10 +210,8 @@ namespace functor {
   extern template struct ArgMin<GPUDevice, T, int32>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
-TF_CALL_bfloat16(DECLARE_GPU_SPECS);
 TF_CALL_bool(DECLARE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_CLASS);
-TF_CALL_bfloat16(DECLARE_GPU_CLASS);
 TF_CALL_bool(DECLARE_GPU_CLASS);
 
 #undef DECLARE_GPU_SPECS
@@ -252,7 +251,6 @@ TF_CALL_bool(DECLARE_GPU_CLASS);
                           ArgMinOp<GPUDevice, type, int32>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ARGMAX_GPU);
-TF_CALL_bfloat16(REGISTER_ARGMAX_GPU);
 TF_CALL_bool(REGISTER_ARGMAX_GPU);
 
 #undef REGISTER_ARGMAX_GPU

@@ -15,6 +15,8 @@ limitations under the License.
 
 // XLA-specific reverse Op.
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"

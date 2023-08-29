@@ -5,6 +5,16 @@ package xla;
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
+// Defines pass specific metrics.
+message PassMetrics {
+  // Unique ID of the module on which the pass was run.
+  int64 module_id = 1;
+  // The name of the pass.
+  string pass_name = 2;
+  // Duration of the pass.
+  google.protobuf.Duration pass_duration = 3;
+}
+
 // Defines XLA compilation metrics.
 message CompilationLogEntry {
   // Time when the event captured by this log entry occurred.
@@ -13,11 +23,17 @@ message CompilationLogEntry {
   enum CompilationStage {
     UNSPECIFIED = 0;
     END_TO_END = 1;
+    HLO_PASSES = 2;
+    CODE_GENERATION = 3;
+    BACKEND_PASSES = 4;
   }
   // Compilation stage recorded by this log entry.
   CompilationStage stage = 2;
   // Duration of the given compilation stage.
   google.protobuf.Duration duration = 3;
-  // Task index from which this log entry was recorded.
+  // Task index from which this log entry was recorded or
+  // -1 if the task index could not be fetched.
   int32 task_index = 4;
+  // Pass specific metrics.
+  repeated PassMetrics pass_metrics = 5;
 }

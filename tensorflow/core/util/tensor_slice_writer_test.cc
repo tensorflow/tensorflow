@@ -348,7 +348,7 @@ TEST(TensorSliceWriteTest, SizeErrors) {
     const std::vector<int8> data(300000000, -1);
     Status s = writer.Add("test1", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-    EXPECT_TRUE(absl::StrContains(s.error_message(),
+    EXPECT_TRUE(absl::StrContains(s.message(),
                                   "Tensor slice is too large to serialize"));
   }
 
@@ -359,7 +359,7 @@ TEST(TensorSliceWriteTest, SizeErrors) {
     const std::vector<tstring> data(256 * 1024, std::string(8192, 'f'));
     Status s = writer.Add("test2", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-    EXPECT_TRUE(absl::StrContains(s.error_message(),
+    EXPECT_TRUE(absl::StrContains(s.message(),
                                   "Tensor slice is too large to serialize"));
   }
 }
@@ -371,8 +371,7 @@ TEST(TensorSliceWriterTest, InvalidInput) {
   Status s = TensorSliceWriter::SaveData(data.data(), data.size(), &ss);
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
   EXPECT_TRUE(absl::StrContains(
-      s.error_message(),
-      "Tensor slice serialization not implemented for dtype"));
+      s.message(), "Tensor slice serialization not implemented for dtype"));
 }
 
 }  // namespace checkpoint

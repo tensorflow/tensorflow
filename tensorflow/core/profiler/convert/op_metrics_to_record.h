@@ -35,34 +35,40 @@ inline double GigaFlopsPerSecondPerCore(const OpMetrics& metrics) {
   return SafeDivide(metrics.flops(), PicoToNano(metrics.time_ps()));
 }
 
-enum MemorySpace {
-  kHbm = 1,
-  kAllMemories = UINT_MAX,
-};
-
-// Return BW for memory_space.  If invert_memory_space is true, returns BW
-// for all other memory spaces except the specified memory_space.
-inline double GigaBytesPerSecondPerCore(
+// Return ByteAccessed for memory_space and operation_type.
+inline double BytesAccessedPerCore(
     const OpMetrics& metrics, uint64_t memory_space,
     OpMetrics::MemoryAccessed::OperationType operation_type) {
   uint64_t bytes = 0;
-  if (memory_space == MemorySpace::kAllMemories) {
+  if (memory_space == MemorySpace::MEMORY_SPACE_ALL) {
     bytes = metrics.bytes_accessed();
   } else {
     for (const auto& breakdown : metrics.memory_accessed_breakdown()) {
-      if ((breakdown.memory_space() == memory_space) &&
-          ((breakdown.operation_type() == operation_type) ||
-           (operation_type == OpMetrics::MemoryAccessed::UNKNOWN))) {
+      // Count either on-chip or off-chip bytes.
+      if ((breakdown.operation_type() != operation_type) &&
+          (operation_type != OpMetrics::MemoryAccessed::UNKNOWN)) {
+        continue;
+      }
+      if (((memory_space == MemorySpace::MEMORY_SPACE_HBM) &&
+           (breakdown.memory_space() == MemorySpace::MEMORY_SPACE_HBM)) ||
+          ((memory_space == MemorySpace::MEMORY_SPACE_ON_CHIP) &&
+           (breakdown.memory_space() != MemorySpace::MEMORY_SPACE_HBM))) {
         bytes += breakdown.bytes_accessed();
       }
     }
   }
+  return bytes;
+}
 
+inline double GigaBytesPerSecondPerCore(
+    const OpMetrics& metrics, uint64_t memory_space,
+    OpMetrics::MemoryAccessed::OperationType operation_type) {
   // bytes_accessed and time_ps are accumulated across all occurrences on all
   // cores.
   // time_ps is used instead of self_time_ps because bytes_accessed for an op
   // includes the bytes accessed by children (nested) ops.
-  return SafeDivide(bytes, PicoToNano(metrics.time_ps()));
+  return SafeDivide(BytesAccessedPerCore(metrics, memory_space, operation_type),
+                    PicoToNano(metrics.time_ps()));
 }
 
 inline double GibiBytesPerSecondPerCore(
@@ -129,8 +135,9 @@ inline void SetRooflineMetrics(const OpMetrics& metrics,
                                Record* record) {
   using ::tensorflow::profiler::PicoToNano;
   record->set_measured_flop_rate(GigaFlopsPerSecondPerCore(metrics));
-  record->set_measured_memory_bw(GigaBytesPerSecondPerCore(
-      metrics, MemorySpace::kAllMemories, OpMetrics::MemoryAccessed::UNKNOWN));
+  record->set_measured_memory_bw(
+      GigaBytesPerSecondPerCore(metrics, MemorySpace::MEMORY_SPACE_ALL,
+                                OpMetrics::MemoryAccessed::UNKNOWN));
   record->set_operational_intensity(
       SafeDivide(metrics.flops(), metrics.bytes_accessed()));
   record->set_bound_by((metrics.bytes_accessed() != 0)

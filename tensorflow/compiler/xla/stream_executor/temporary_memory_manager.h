@@ -28,9 +28,9 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/temporary_device_memory.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace internal {
@@ -60,7 +60,7 @@ class TemporaryMemoryManager {
 
   // Allocates a temporary array that is then managed by this object.
   template <typename T>
-  port::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>> AllocateArray(
+  tsl::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>> AllocateArray(
       uint64_t element_count);
 
   // Forces deallocation of all managed temporary memory regions.
@@ -105,7 +105,7 @@ class TemporaryMemoryManager {
   // implementation can live in the source file. Without this base allocation
   // method, we incur a circular dependency between the StreamExecutor
   // definition and this class' definition.
-  port::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>> AllocateArrayBase(
+  tsl::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>> AllocateArrayBase(
       uint64_t element_count, uint64 element_size);
 
   // Mutex to guard temporary record state.
@@ -134,9 +134,9 @@ class TemporaryMemoryManager {
 // Inlines
 
 template <typename T>
-port::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>
+tsl::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>
 TemporaryMemoryManager::AllocateArray(uint64_t element_count) {
-  port::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>> temporary_memory =
+  tsl::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>> temporary_memory =
       AllocateArrayBase(element_count, sizeof(T));
   if (!temporary_memory.ok()) {
     return temporary_memory.status();

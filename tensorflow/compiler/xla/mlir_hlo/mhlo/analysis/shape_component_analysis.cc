@@ -715,7 +715,7 @@ struct ShapeVisitor {
   ArrayRef<SymbolicExpr> lookup(ShapeOrValueInfo requestedInfo) {
     auto i = symbolicExprsMap->find(requestedInfo);
     assert(i != symbolicExprsMap->end() && "op not processed yet?");
-    return llvm::makeArrayRef(i->second);
+    return llvm::ArrayRef(i->second);
   }
 
   // Inserts a new entry into the cache and returns a reference to its result
@@ -740,22 +740,22 @@ void ShapeComponentAnalysis::compute(ShapeOrValueInfo requestedInfo) {
       .visit(requestedInfo);
 }
 
-Optional<ArrayRef<SymbolicExpr>>
+std::optional<ArrayRef<SymbolicExpr>>
 ShapeComponentAnalysis::ShapeComponentAnalysis::GetShapeInfo(Value value) {
   auto request = ShapeOrValueInfo::getShapeInfoOf(value);
   compute(request);
   auto found = symbolicExprsMap.find(request);
   if (found == symbolicExprsMap.end()) return {};
-  return llvm::makeArrayRef(found->second);
+  return llvm::ArrayRef(found->second);
 }
 
-Optional<ArrayRef<SymbolicExpr>>
+std::optional<ArrayRef<SymbolicExpr>>
 ShapeComponentAnalysis::ShapeComponentAnalysis::GetValueInfo(Value shape) {
   auto request = ShapeOrValueInfo::getValueInfoOf(shape);
   compute(request);
   auto found = symbolicExprsMap.find(request);
   if (found == symbolicExprsMap.end()) return {};
-  return llvm::makeArrayRef(found->second);
+  return llvm::ArrayRef(found->second);
 }
 
 void ShapeComponentAnalysis::reset() {
@@ -811,7 +811,7 @@ bool SymbolicExpr::isKnownNotOne() const {
   return false;
 }
 
-llvm::Optional<Symbol> SymbolicExpr::singleton() const {
+std::optional<Symbol> SymbolicExpr::singleton() const {
   if (expr.isa<AffineSymbolExpr>() &&
       expr.cast<AffineSymbolExpr>().getPosition() == 0) {
     assert(symbols.size() == 1);

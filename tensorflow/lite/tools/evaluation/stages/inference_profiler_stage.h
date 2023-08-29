@@ -65,6 +65,7 @@ class InferenceProfilerStage : public EvaluationStage {
   std::vector<std::vector<int8_t>> int8_tensors_;
   std::vector<std::vector<uint8_t>> uint8_tensors_;
   std::vector<std::vector<uint16_t>> float16_tensors_;
+  std::vector<std::vector<int64_t>> int64_tensors_;
 };
 
 }  // namespace evaluation

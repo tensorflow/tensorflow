@@ -30,6 +30,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -240,7 +241,21 @@ class TransposePlan {
   int64_t scratch_size_ = 0;
 };
 
-struct TransposePlanCacheKey;
+struct TransposePlanCacheKey {
+  template <typename H>
+  friend H AbslHashValue(H h, const TransposePlanCacheKey& key);
+
+  size_t elem_size_in_bytes;
+  absl::InlinedVector<int64_t, 4> dims;
+  absl::InlinedVector<int64_t, 4> permutation;
+  bool input_layout_is_tiling;
+  absl::InlinedVector<int64_t, 4> input_layout;
+  absl::InlinedVector<int64_t, 4> output_tiling;
+  TransposePlan::Transformation transformation;
+  int num_threads;
+
+  bool operator==(const TransposePlanCacheKey& other) const;
+};
 
 template <typename H>
 H AbslHashValue(H h, const TransposePlanCacheKey& key);

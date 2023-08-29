@@ -22,6 +22,7 @@ import json
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer_utils
@@ -80,7 +81,7 @@ class Node:
     if not ops.executing_eagerly_outside_functions():
       # Create TensorFlowOpLayers if needed (in TF1)
       for obj in self._flat_arguments:
-        if (isinstance(obj, ops.Tensor) and
+        if (isinstance(obj, tensor_lib.Tensor) and
             base_layer_utils.needs_keras_history(
                 obj, ignore_call_context=True)):
           base_layer_utils.create_keras_history(obj)
@@ -178,7 +179,7 @@ class Node:
       if isinstance(t, np.ndarray):
         return t.tolist()
 
-      if isinstance(t, ops.Tensor):
+      if isinstance(t, tensor_lib.Tensor):
         return backend.get_value(t).tolist()
 
       return t

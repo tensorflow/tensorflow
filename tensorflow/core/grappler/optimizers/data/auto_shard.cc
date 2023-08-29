@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -89,7 +90,7 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 31> kPassThroughOps = {
+constexpr std::array<const char*, 32> kPassThroughOps = {
     "_Retval",
     "AssertNextDataset",
     "BatchDataset",
@@ -120,6 +121,7 @@ constexpr std::array<const char*, 31> kPassThroughOps = {
     "ShuffleDataset",
     "SkipDataset",
     "TakeDataset",
+    "UnbatchDataset",
     "WindowDataset",
 };
 
@@ -355,8 +357,7 @@ bool ReaderOpInFunction(const NodeDef& node,
   for (int i = 0; i < func->node_def_size(); i++) {
     NodeDef node_in_func = func->node_def(i);
     if (IsDatasetNodeOfType(node_in_func, kReaderDatasetOps) &&
-        node_in_func.input_size() > 0 &&
-        absl::StartsWith(node_in_func.input(0), "args_0")) {
+        node_in_func.input_size() > 0) {
       return true;
     }
     if (IsDatasetNodeOfType(func->node_def(i), kFuncDatasetOps) &&
@@ -783,11 +784,13 @@ Status ApplyAutoShard(const NodeDef& sink_node, int64_t num_workers,
     case AutoShardPolicy::AUTO:
     default:
       Status s = ShardByFile(sink_node, num_workers, index, &flib, graph);
-      if (errors::IsNotFound(s)) {
-        LOG(WARNING) << "AUTO sharding policy will apply DATA sharding policy "
-                        "as it failed to apply FILE sharding policy because of "
-                        "the following reason: "
-                     << s.error_message();
+      if (absl::IsNotFound(s)) {
+        if (VLOG_IS_ON(2)) {
+          VLOG(2) << "AUTO sharding policy will apply DATA sharding policy "
+                     "as it failed to apply FILE sharding policy because of "
+                     "the following reason: "
+                  << s.message();
+        }
         *policy_applied = AutoShardPolicy::DATA;
         return ShardByData(sink_node, num_workers, index, num_replicas, graph);
       }

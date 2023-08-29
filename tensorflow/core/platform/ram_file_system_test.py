@@ -15,6 +15,8 @@
 
 """Tests for ram_file_system.h."""
 
+import platform
+
 import numpy as np
 
 from tensorflow.python.eager import def_function
@@ -140,6 +142,9 @@ class RamFilesystemTest(test_util.TensorFlowTestCase):
     estimator.train(input_fn=input_fn, steps=10)
 
   def test_savedmodel(self):
+    if platform.system() == 'Windows':
+      self.skipTest('RAM FS not fully supported on Windows.')
+
     class MyModule(module.Module):
 
       @def_function.function(input_signature=[])

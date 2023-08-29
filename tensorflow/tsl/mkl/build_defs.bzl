@@ -102,8 +102,22 @@ def mkl_deps():
     """
     return select({
         "@org_tensorflow//tensorflow/tsl/mkl:build_with_mkl_aarch64": ["@mkl_dnn_acl_compatible//:mkl_dnn_acl"],
-        "@org_tensorflow//tensorflow/tsl:linux_x86_64": ["@mkl_dnn_v1//:mkl_dnn"],
-        "@org_tensorflow//tensorflow/tsl:windows": ["@mkl_dnn_v1//:mkl_dnn"],
+        "@org_tensorflow//tensorflow/tsl:linux_x86_64": ["@onednn//:mkl_dnn"],
+        "@org_tensorflow//tensorflow/tsl:windows": ["@onednn//:mkl_dnn"],
+        "//conditions:default": [],
+    })
+
+def onednn_v3_define():
+    """Returns a define to build with oneDNN v3.x if it is enabled. 
+
+    Returns:
+      A define to build with oneDNN v3.x for Linux x86 and Windows x86 builds.
+      An empty list of all other cases (include ARM builds).
+    """
+    return select({
+        "@org_tensorflow//tensorflow/tsl/mkl:build_with_mkl_aarch64": [],
+        "@org_tensorflow//tensorflow/tsl:linux_x86_64": ["-DENABLE_ONEDNN_V3"],
+        "@org_tensorflow//tensorflow/tsl:windows": ["-DENABLE_ONEDNN_V3"],
         "//conditions:default": [],
     })
 

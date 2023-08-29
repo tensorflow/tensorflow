@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 
+#include <memory>
+#include <numeric>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"

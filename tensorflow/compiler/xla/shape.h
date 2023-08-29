@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SHAPE_H_
 #define TENSORFLOW_COMPILER_XLA_SHAPE_H_
 
+#include <cstdint>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -23,9 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -54,6 +59,10 @@ class Shape {
 
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
+
+  // Prints a human-readable string that represents the given shape, with or
+  // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
+  void Print(Printer* printer, bool print_layout = false) const;
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
@@ -102,7 +111,7 @@ class Shape {
 
   // Add dimension_upper_bound().
 
-  // Removes the given dimension form the shape. Layout, if it exists, is
+  // Removes the given dimension from the shape. Layout, if it exists, is
   // adjusted to match the modified shape.
   void DeleteDimension(int64_t dim_to_delete);
 
@@ -118,7 +127,8 @@ class Shape {
 
   // Methods for accessing the dimensions array.
   int dimensions_size() const { return dimensions_.size(); }
-  int64_t dimensions(int index) const;
+  int64_t dimensions(int index) const { return dimensions_.at(index); }
+
   int64_t dimensions_minor(int index) const {
     CHECK(has_layout());
     return dimensions_.at(layout_->minor_to_major(index));
@@ -172,7 +182,7 @@ class Shape {
   void clear_dynamic_dimensions() {
     if (!IsTuple()) {
       if (is_dynamic()) {
-        mutable_layout()->set_dynamic_shape_metadata_prefix_in_bytes(0);
+        mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
       }
       for (int64_t i = 0; i < dynamic_dimensions_.size(); ++i) {
         dynamic_dimensions_[i] = false;
@@ -327,6 +337,8 @@ class ProgramShape {
 
   // Returns a proto representation of the object.
   ProgramShapeProto ToProto() const;
+
+  void Print(Printer* printer) const;
 
   std::string ToString() const;
 

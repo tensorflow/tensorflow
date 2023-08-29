@@ -15,17 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/ffi.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/ffi/ffi_c_api.h"
 #include "tensorflow/compiler/xla/runtime/module.h"
@@ -45,6 +46,9 @@ struct XLA_FFI_ExecutionContext {
 };
 
 //===----------------------------------------------------------------------===//
+
+template <typename T>
+using TensorRef = ::xla::runtime::CustomCall::TensorRef<T>;
 
 namespace xla {
 namespace runtime {
@@ -119,10 +123,38 @@ absl::StatusCode ConvertErrorCode(XLA_FFI_Error_Code errc) {
 // Adaptor from the Xla custom call to an Xla FFI calling convention.
 //===----------------------------------------------------------------------===//
 
-// We use weak linking to provide a default implementation here. The XLA:GPU
-// backend overrides this implementation, and it is picked at link time.
-ABSL_ATTRIBUTE_WEAK XLA_FFI_Stream* GetXlaFfiStream(
-    const CustomCall::UserData* user_data, const DiagnosticEngine* diagnostic) {
+using StreamProvider = XLA_FFI_Stream* (*)(const CustomCall::UserData*,
+                                           const DiagnosticEngine*);
+
+namespace {
+// For protecting GetStreamProviders().
+ABSL_CONST_INIT absl::Mutex stream_providers_mu(absl::kConstInit);
+}  // namespace
+
+static std::vector<StreamProvider>& GetStreamProviders()
+    ABSL_EXCLUSIVE_LOCKS_REQUIRED(stream_providers_mu) {
+  static auto* stream_providers = new std::vector<StreamProvider>();
+  return *stream_providers;
+}
+
+void RegisterXlaFfiStreamProvider(StreamProvider provider) {
+  absl::MutexLock lock(&stream_providers_mu);
+  std::vector<StreamProvider>& stream_providers = GetStreamProviders();
+  // AFAIK there is only one stream provider now, so this count operation is not
+  // slow.
+  if (absl::c_count(stream_providers, provider) == 0) {
+    stream_providers.push_back(provider);
+  }
+}
+
+XLA_FFI_Stream* GetXlaFfiStream(const CustomCall::UserData* user_data,
+                                const DiagnosticEngine* diagnostic) {
+  absl::MutexLock lock(&stream_providers_mu);
+  for (auto provider : GetStreamProviders()) {
+    if (XLA_FFI_Stream* stream = provider(user_data, diagnostic)) {
+      return stream;
+    }
+  }
   return nullptr;
 }
 
@@ -179,18 +211,27 @@ class FfiCustomCall : public CustomCall {
 // FFI modules registered with the runtime.
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-class FfiModule;
-
-// FfiState owns the opaque state created by the external FFI module, and
-// destroys it using XLA FFI module API.
+// FFI module state can be of two different types:
+//
+//   1. Per-executable state: state is instantiated for each executable, and
+//      destructed together with the executable. This type of state can be used
+//      for caching long lived objects whose lifetime is inherently coupled with
+//      the executable. For example in XLA:GPU per-executable state is used for
+//      caching various cuDNN library handles.
+//
+//   2. Per-execution state: state is instantiated for each execution, and
+//      destructed once execution is completed. This type of state can be used
+//      for caching short lived objects with lifetime bound to the concrete
+//      invocation of XLA executable.
+//
 struct FfiState : public runtime::Module::State {
-  FfiState(const FfiModule* parent, XLA_FFI_Module_State* state);
-  ~FfiState() final;
+  // Per-executable state owned by the XLA executable instance.
+  explicit FfiState(OwnedFfiState state) : state_or_module(std::move(state)) {}
 
-  const FfiModule* parent;
-  XLA_FFI_Module_State* state;
+  // Per-execution state instantiated lazily for each execution.
+  explicit FfiState(const FfiModule* module) : state_or_module(module) {}
+
+  std::variant<OwnedFfiState, const FfiModule*> state_or_module;
 };
 
 // Adaptor from the XLA FFI module and corresponding module API functions to the
@@ -205,53 +246,47 @@ class FfiModule : public runtime::StatefulModule<FfiState> {
   };
 
   FfiModule(const XLA_FFI_Api* api, int64_t module_id, const char* name,
-            XLA_FFI_Module* module, XLA_FFI_Module_CreateState* create_state,
+            XLA_FFI_Module* module, XLA_FFI_Module_StateType state_type,
+            XLA_FFI_Module_CreateState* create_state,
             XLA_FFI_Module_DestroyState* destroy_state,
             std::vector<ExportedFunction> exported_functions)
       : Base(name),
         api_(api),
         module_id_(module_id),
         module_(module),
+        state_type_(state_type),
         create_state_(create_state),
         destroy_state_(destroy_state),
         exported_functions_(std::move(exported_functions)) {}
 
   int64_t module_id() const { return module_id_; }
 
-  absl::StatusOr<std::unique_ptr<FfiState>> CreateModuleState() const final;
-  void DestroyState(XLA_FFI_Module_State* state) const;
-
   void Export(DynamicCustomCallRegistry& registry) const final;
+  absl::StatusOr<std::unique_ptr<FfiState>> CreateModuleState() const final;
+
+  absl::StatusOr<XLA_FFI_Module_State*> CreateFfiState() const;
+  void DestroyFfiState(XLA_FFI_Module_State* state) const;
 
  private:
   const XLA_FFI_Api* api_;
   int64_t module_id_;
   XLA_FFI_Module* module_;
+  XLA_FFI_Module_StateType state_type_;
   XLA_FFI_Module_CreateState* create_state_;
   XLA_FFI_Module_DestroyState* destroy_state_;
   std::vector<ExportedFunction> exported_functions_;
 };
 
-}  // namespace
-
-FfiState::FfiState(const FfiModule* parent, XLA_FFI_Module_State* state)
-    : parent(parent), state(state) {}
-
-FfiState::~FfiState() { parent->DestroyState(state); }
-
 absl::StatusOr<std::unique_ptr<FfiState>> FfiModule::CreateModuleState() const {
-  if (!create_state_) return nullptr;
+  if (state_type_ == XLA_FFI_Module_State_PER_EXECUTABLE) {
+    VLOG(3) << "Create a new per-executable state for module: " << name();
+    auto state = CreateFfiState();
+    if (!state.ok()) return state.status();
+    return std::make_unique<FfiState>(OwnedFfiState(this, state.value()));
+  }
 
-  XLA_FFI_Module_CreateState_Args args;
-  args.struct_size = XLA_FFI_Module_CreateState_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.module = module_;
-  args.state = nullptr;
-
-  XLA_FFI_Error* error = create_state_(&args);
-  if (error) return absl::InternalError(error->error);
-
-  return std::make_unique<FfiState>(this, args.state);
+  VLOG(3) << "Create a new per-execution state for module: " << name();
+  return std::make_unique<FfiState>(this);
 }
 
 void FfiModule::Export(DynamicCustomCallRegistry& registry) const {
@@ -263,8 +298,23 @@ void FfiModule::Export(DynamicCustomCallRegistry& registry) const {
   }
 }
 
-void FfiModule::DestroyState(XLA_FFI_Module_State* state) const {
-  if (!destroy_state_) return;
+absl::StatusOr<XLA_FFI_Module_State*> FfiModule::CreateFfiState() const {
+  if (!create_state_) return nullptr;  // stateless FFI module
+
+  XLA_FFI_Module_CreateState_Args args;
+  args.struct_size = XLA_FFI_Module_CreateState_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.module = module_;
+  args.state = nullptr;
+
+  XLA_FFI_Error* error = create_state_(&args);
+  if (error) return absl::InternalError(error->error);
+
+  return args.state;
+}
+
+void FfiModule::DestroyFfiState(XLA_FFI_Module_State* state) const {
+  if (!destroy_state_) return;  // stateless FFI module
 
   XLA_FFI_Module_DestroyState_Args args;
   args.struct_size = XLA_FFI_Module_DestroyState_Args_STRUCT_SIZE;
@@ -274,6 +324,14 @@ void FfiModule::DestroyState(XLA_FFI_Module_State* state) const {
 
   destroy_state_(&args);
 }
+
+void FfiStateDeleter::operator()(XLA_FFI_Module_State* state) {
+  module->DestroyFfiState(state);
+}
+
+OwnedFfiState::OwnedFfiState(const FfiModule* module,
+                             XLA_FFI_Module_State* state)
+    : Base(state, {module}) {}
 
 //===----------------------------------------------------------------------===//
 // Implement XLA FFI error reporting API.
@@ -292,12 +350,20 @@ static XLA_FFI_Error* CreateError(XLA_FFI_Error_Create_Args* args) {
 // XLA runtime FFI backend implementation.
 //===----------------------------------------------------------------------===//
 
-static std::vector<FfiModule>& OwnedFfiModules() {
+namespace {
+// For protecting OwnedFfiModules().
+ABSL_CONST_INIT absl::Mutex modules_mu(absl::kConstInit);
+}  // namespace
+
+static std::vector<FfiModule>& OwnedFfiModules()
+    ABSL_EXCLUSIVE_LOCKS_REQUIRED(modules_mu) {
   static auto* modules = new std::vector<FfiModule>();
   return *modules;
 }
 
 std::vector<const runtime::Module*> FfiModules() {
+  absl::MutexLock lock(&modules_mu);
+
   std::vector<const runtime::Module*> modules;
   absl::c_transform(OwnedFfiModules(), std::back_inserter(modules),
                     [](const FfiModule& module) { return &module; });
@@ -324,13 +390,36 @@ FfiModulesState::FfiModulesState(
     std::vector<std::unique_ptr<Module::State>> state)
     : state_(std::move(state)) {}
 
-FfiStateVector FfiModulesState::state_vector() const {
+absl::StatusOr<FfiStateVector> FfiModulesState::state_vector() const {
   FfiStateVector state_vector;
   for (auto& state : state_) {
     auto* ffi_state = dynamic_cast<FfiState*>(state.get());
-    state_vector.state.push_back(ffi_state ? ffi_state->state : nullptr);
+
+    // Skip stateless FFI modules.
+    if (!ffi_state) {
+      state_vector.state.push_back(nullptr);
+      continue;
+    }
+
+    // Pass the existing per-executable state.
+    if (auto* s = std::get_if<OwnedFfiState>(&ffi_state->state_or_module)) {
+      state_vector.state.push_back(s->get());
+      continue;
+    }
+
+    // Try to instantiate a new per-execution state.
+    if (auto* m = std::get_if<const FfiModule*>(&ffi_state->state_or_module)) {
+      auto created = (*m)->CreateFfiState();
+      if (!created.ok()) return created.status();
+
+      state_vector.state.push_back(created.value());
+      state_vector.per_execution_state.emplace_back(*m, created.value());
+      continue;
+    }
+
+    return absl::InternalError("Unsupported FFI module state");
   }
-  return state_vector;
+  return {std::move(state_vector)};
 }
 
 //===----------------------------------------------------------------------===//
@@ -353,10 +442,11 @@ static void RegisterXlaFfiModule(XLA_FFI_Module_Register_Args* args) {
     exported_functions.push_back(fn);
   }
 
+  absl::MutexLock lock(&modules_mu);
   auto& modules = OwnedFfiModules();
   modules.emplace_back(api(), /*id=*/modules.size(), args->name, args->module,
-                       args->create_state, args->destroy_state,
-                       std::move(exported_functions));
+                       args->state_type, args->create_state,
+                       args->destroy_state, std::move(exported_functions));
 }
 
 static XLA_FFI_Module_State* GetXlaFfiModuleState(
@@ -423,6 +513,10 @@ const XLA_FFI_Api ffi_api = {
     FfiTypeId<absl::Span<const double>>,
     FfiTypeId<absl::Span<const int32_t>>,
     FfiTypeId<absl::Span<const int64_t>>,
+    FfiTypeId<TensorRef<float>>,
+    FfiTypeId<TensorRef<double>>,
+    FfiTypeId<TensorRef<int32_t>>,
+    FfiTypeId<TensorRef<int64_t>>,
     FfiTypeId<::xla::runtime::MemrefView>,
     FfiTypeId<::xla::runtime::StridedMemrefView>,
     FfiTypeId<::xla::runtime::Dictionary>,

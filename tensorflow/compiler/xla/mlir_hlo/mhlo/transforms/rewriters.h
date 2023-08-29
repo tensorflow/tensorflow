@@ -41,12 +41,28 @@ void populateComplexLoweringPatterns(MLIRContext *context,
 void populateOptimizeMhloPatterns(MLIRContext *context,
                                   RewritePatternSet *patterns);
 
+// Rewrite patterns for create_token to equivalent after_all legalization.
+void populateCreateTokenToAfterAllPatterns(mlir::MLIRContext *context,
+                                           RewritePatternSet *patterns);
+
+// Rewrite patterns for cross-replica-sum to equivalent all_reduce legalization.
+void populateCrossReplicaSumToAllReducePatterns(mlir::MLIRContext *context,
+                                                RewritePatternSet *patterns);
+
+// Rewrite patterns for dot to equivalent dot_general legalization.
+void populateDotToDotGeneralPatterns(mlir::MLIRContext *context,
+                                     RewritePatternSet *patterns);
+
 // Rewrite patterns for einsum to equivalent dot_general legalization.
 void populateEinsumToDotGeneralPatterns(mlir::MLIRContext *context,
                                         RewritePatternSet *patterns);
 
 // Rewrite patterns for gather to equivalent torch index select legalization.
 void populateGatherToTorchIndexSelectPatterns(mlir::MLIRContext *context,
+                                              RewritePatternSet *patterns);
+
+// Rewrite patterns for torch index select to equivalent gather legalization.
+void populateTorchIndexSelectToGatherPatterns(mlir::MLIRContext *context,
                                               RewritePatternSet *patterns);
 
 void populateMhloToStdPatterns(RewritePatternSet *patterns, MLIRContext *ctx);
@@ -188,7 +204,8 @@ namespace stablehlo {
 // illegal types also get converted.
 void populateHloToStablehloPatterns(RewritePatternSet *patterns,
                                     TypeConverter *converter,
-                                    MLIRContext *context);
+                                    MLIRContext *context,
+                                    bool allowExperimentalFeatures);
 
 // Populates StableHLO ops to MHLO ops rewriting patterns.
 // Also see `stablehlo::registerFuncOpsForTypeConversion` for helper patterns

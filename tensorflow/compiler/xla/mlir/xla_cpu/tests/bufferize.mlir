@@ -48,6 +48,8 @@ func.func @all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
   %1 = "xla_cpu.all_to_all"(%arg0, %0) {
     concat_dimension = 0 : i64,
     replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+    channel_id_present = 0 : i32,
+    op_id = 0 : i64,
     split_count = 4 : i64,
     split_dimension = 1 : i64
   } : (tensor<4x16xf32>, tensor<16x4xf32>) -> tensor<16x4xf32>
@@ -71,7 +73,9 @@ func.func @all_to_all_tuple(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32>)
   %0 = tensor.empty() : tensor<128x4xf32>
   %1 = tensor.empty() : tensor<128x4xf32>
   %2:2 = "xla_cpu.all_to_all"(%arg0, %arg1, %0, %1) {
-    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+    channel_id_present = 0 : i32,
+    op_id = 0 : i64
   } : (tensor<128x4xf32>, tensor<128x4xf32>,
        tensor<128x4xf32>, tensor<128x4xf32>) ->
       (tensor<128x4xf32>, tensor<128x4xf32>)
@@ -106,3 +110,24 @@ func.func @fft(%arg0: tensor<3x5x4x8x256xf32>) -> tensor<3x5x4x8x129xcomplex<f32
 //       CHECK: %[[ARG0_MEMREF:.*]] = bufferization.to_memref %[[ARG0]]
 //       CHECK: %[[OUT:.*]] = memref.alloc() {{.*}}
 //       CHECK: "xla_cpu.fft"(%[[ARG0_MEMREF]], %[[OUT]])
+
+
+// -----
+
+func.func @rng_bit_generator(%state: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>) {
+  %new_state_init = tensor.empty() : tensor<2xui64>
+  %output_init = tensor.empty() : tensor<10x12xui32>
+  %new_state, %output = "xla_cpu.rng_bit_generator"(%state, %new_state_init,
+      %output_init) {
+    rng_algorithm = #mhlo.rng_algorithm<DEFAULT>
+  } : (tensor<2xui64>, tensor<2xui64>, tensor<10x12xui32>)
+      -> (tensor<2xui64>, tensor<10x12xui32>)
+  func.return %new_state, %output : tensor<2xui64>, tensor<10x12xui32>
+}
+
+// CHECK-LABEL: @rng_bit_generator
+//  CHECK-SAME:   %[[STATE:.*]]: tensor
+//       CHECK: %[[STATE_MEMREF:.*]] = bufferization.to_memref %[[STATE]]
+//       CHECK: %[[STATE_OUT:.*]] = memref.alloc() {{.*}}<2xui64>
+//       CHECK: %[[OUTPUT:.*]] = memref.alloc() {{.*}}<10x12xui32>
+//       CHECK: "xla_cpu.rng_bit_generator"(%[[STATE_MEMREF]], %[[STATE_OUT]], %[[OUTPUT]])

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/lookup_util.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -49,7 +50,7 @@ Status GetNumLinesInTextFile(Env* env, const string& vocab_file,
     next_id++;
     s = input_buffer.ReadLine(&line);
   }
-  if (!errors::IsOutOfRange(s)) {
+  if (!absl::IsOutOfRange(s)) {
     return s;
   }
   *num_lines = next_id;
@@ -110,7 +111,7 @@ class TextFileLineIterator
     string line;
     status_ = input_buffer_->ReadLine(&line);
     if (!status_.ok()) {
-      if (errors::IsOutOfRange(status_) && vocab_size_ != -1 &&
+      if (absl::IsOutOfRange(status_) && vocab_size_ != -1 &&
           next_id_ != vocab_size_) {
         status_ = errors::InvalidArgument("Invalid vocab_size in ", filename_,
                                           ": expected ", vocab_size_,
@@ -408,7 +409,7 @@ Status InitializeTableFromTextFile(
   // avoid trying to initialize the same table from the same file at the same
   // time.
   Status s = table->Initialize(iter, std::move(serializer));
-  if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
+  if (absl::IsFailedPrecondition(s) && table->is_initialized()) {
     LOG(INFO) << "Table trying to initialize from file " << filename
               << " is already initialized.";
     return OkStatus();

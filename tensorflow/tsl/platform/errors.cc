@@ -26,11 +26,11 @@ namespace errors {
 
 namespace {
 
-error::Code ErrnoToCode(int err_number) {
-  error::Code code;
+absl::StatusCode ErrnoToCode(int err_number) {
+  absl::StatusCode code;
   switch (err_number) {
     case 0:
-      code = error::Code::OK;
+      code = absl::StatusCode::kOk;
       break;
     case EINVAL:        // Invalid argument
     case ENAMETOOLONG:  // Filename too long
@@ -45,27 +45,27 @@ error::Code ErrnoToCode(int err_number) {
     case ENOTTY:        // Inappropriate I/O control operation
     case EPROTOTYPE:    // Protocol wrong type for socket
     case ESPIPE:        // Invalid seek
-      code = error::INVALID_ARGUMENT;
+      code = absl::StatusCode::kInvalidArgument;
       break;
     case ETIMEDOUT:  // Connection timed out
     case ETIME:      // Timer expired
-      code = error::DEADLINE_EXCEEDED;
+      code = absl::StatusCode::kDeadlineExceeded;
       break;
     case ENODEV:  // No such device
     case ENOENT:  // No such file or directory
     case ENXIO:   // No such device or address
     case ESRCH:   // No such process
-      code = error::NOT_FOUND;
+      code = absl::StatusCode::kNotFound;
       break;
     case EEXIST:         // File exists
     case EADDRNOTAVAIL:  // Address not available
     case EALREADY:       // Connection already in progress
-      code = error::ALREADY_EXISTS;
+      code = absl::StatusCode::kAlreadyExists;
       break;
     case EPERM:   // Operation not permitted
     case EACCES:  // Permission denied
     case EROFS:   // Read only file system
-      code = error::PERMISSION_DENIED;
+      code = absl::StatusCode::kPermissionDenied;
       break;
     case ENOTEMPTY:   // Directory not empty
     case EISDIR:      // Is a directory
@@ -84,7 +84,7 @@ error::Code ErrnoToCode(int err_number) {
     case ESHUTDOWN:  // Cannot send after transport endpoint shutdown
 #endif
     case ETXTBSY:  // Text file busy
-      code = error::FAILED_PRECONDITION;
+      code = absl::StatusCode::kFailedPrecondition;
       break;
     case ENOSPC:  // No space left on device
 #if !defined(_WIN32)
@@ -100,12 +100,12 @@ error::Code ErrnoToCode(int err_number) {
 #if !defined(_WIN32) && !defined(__HAIKU__)
     case EUSERS:  // Too many users
 #endif
-      code = error::RESOURCE_EXHAUSTED;
+      code = absl::StatusCode::kResourceExhausted;
       break;
     case EFBIG:      // File too large
     case EOVERFLOW:  // Value too large to be stored in data type
     case ERANGE:     // Result too large
-      code = error::OUT_OF_RANGE;
+      code = absl::StatusCode::kOutOfRange;
       break;
     case ENOSYS:        // Function not implemented
     case ENOTSUP:       // Operation not supported
@@ -118,7 +118,7 @@ error::Code ErrnoToCode(int err_number) {
     case ESOCKTNOSUPPORT:  // Socket type not supported
 #endif
     case EXDEV:  // Improper link
-      code = error::UNIMPLEMENTED;
+      code = absl::StatusCode::kUnimplemented;
       break;
     case EAGAIN:        // Resource temporarily unavailable
     case ECONNREFUSED:  // Connection refused
@@ -138,16 +138,16 @@ error::Code ErrnoToCode(int err_number) {
       defined(__HAIKU__))
     case ENONET:  // Machine is not on the network
 #endif
-      code = error::UNAVAILABLE;
+      code = absl::StatusCode::kUnavailable;
       break;
     case EDEADLK:  // Resource deadlock avoided
 #if !defined(_WIN32)
     case ESTALE:  // Stale file handle
 #endif
-      code = error::ABORTED;
+      code = absl::StatusCode::kAborted;
       break;
     case ECANCELED:  // Operation cancelled
-      code = error::CANCELLED;
+      code = absl::StatusCode::kCancelled;
       break;
     // NOTE: If you get any of the following (especially in a
     // reproducible way) and can propose a better mapping,
@@ -163,10 +163,10 @@ error::Code ErrnoToCode(int err_number) {
 #if !defined(_WIN32) && !defined(__HAIKU__)
     case EREMOTE:  // Object is remote
 #endif
-      code = error::UNKNOWN;
+      code = absl::StatusCode::kUnknown;
       break;
     default: {
-      code = error::UNKNOWN;
+      code = absl::StatusCode::kUnknown;
       break;
     }
   }

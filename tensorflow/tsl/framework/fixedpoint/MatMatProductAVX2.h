@@ -173,9 +173,9 @@ gemm_pack_lhs<QInt16, Index, DataMapper, Pack1, Pack2, QInt16, ColMajor,
 
   // Use alternate function for weird sizes
   if (rows % 16 != 0 || depth % 16 != 0) {
-    assert(false &&
-           "only depths and rows that are a multiple of 16 are currently "
-           "supported");
+    eigen_assert(false &&
+                 "only depths and rows that are a multiple of 16 are currently "
+                 "supported");
     // gemm_pack_lhs_any<QInt16, Index, DataMapper, Pack1, Pack2, ColMajor,
     // Conjugate, PanelMode> lhs_pack;
     // return lhs_pack(blockA, lhs, depth, rows, stride, offset);
@@ -259,9 +259,9 @@ gemm_pack_rhs<QInt16, Index, DataMapper, nr, ColMajor, Conjugate,
 
   // Use alternate function for weird sizes
   if (cols % 16 != 0 || depth % 16 != 0) {
-    assert(false &&
-           "only depths and cols that are a multiple of 16 are currently "
-           "supported");
+    eigen_assert(false &&
+                 "only depths and cols that are a multiple of 16 are currently "
+                 "supported");
     // gemm_pack_rhs_any<QInt16, Index, DataMapper, nr, ColMajor, Conjugate,
     // PanelMode> rhs_pack;
     // return rhs_pack(blockB, rhs, depth, cols, stride, offset);
@@ -360,9 +360,10 @@ gebp_kernel<QInt16, QInt16, Index, DataMapper, mr, nr, ConjugateLhs,
 
   // Use alternate function for weird sizes
   if (rows % 16 != 0 || cols % 16 != 0 || depth % 16 != 0) {
-    assert(false &&
-           "only depths, cols and rows that are a multiple of 16 are currently "
-           "supported");
+    eigen_assert(
+        false &&
+        "only depths, cols and rows that are a multiple of 16 are currently "
+        "supported");
     // gebp_kernel_any<QInt16, QInt16, Index, DataMapper, mr, nr, ConjugateLhs,
     // ConjugateRhs> gebp;
     // return gebp(res, blockA, blockB, rows, depth, cols, alpha, strideA,

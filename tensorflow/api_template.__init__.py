@@ -27,6 +27,7 @@ this file with a file generated from [`api_template.__init__.py`](https://www.gi
 """
 
 import distutils as _distutils
+import importlib
 import inspect as _inspect
 import logging as _logging
 import os as _os
@@ -38,7 +39,7 @@ from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
 
 # Make sure code inside the TensorFlow codebase can use tf2.enabled() at import.
-_os.environ['TF2_BEHAVIOR'] = '1'
+_os.environ["TF2_BEHAVIOR"] = "1"
 from tensorflow.python import tf2 as _tf2
 _tf2.enable()
 
@@ -53,7 +54,7 @@ _API_MODULE = _sys.modules[__name__].bitwise
 _tf_api_dir = _os.path.dirname(_os.path.dirname(_API_MODULE.__file__))
 _current_module = _sys.modules[__name__]
 
-if not hasattr(_current_module, '__path__'):
+if not hasattr(_current_module, "__path__"):
   __path__ = [_tf_api_dir]
 elif _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
@@ -74,8 +75,8 @@ except ImportError:
 
 # Load tensorflow-io-gcs-filesystem if enabled
 # pylint: disable=g-import-not-at-top
-if (_os.getenv('TF_USE_MODULAR_FILESYSTEM', '0') == 'true' or
-    _os.getenv('TF_USE_MODULAR_FILESYSTEM', '0') == '1'):
+if (_os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "true" or
+    _os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "1"):
   import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
 # pylint: enable=g-import-not-at-top
 
@@ -103,8 +104,6 @@ _major_api_version = 2
 
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
-# TODO(gunan): Enable setting an environment variable to define arbitrary plugin
-# directories.
 # TODO(gunan): Find a better location for this code snippet.
 from tensorflow.python.framework import load_library as _ll
 from tensorflow.python.lib.io import file_io as _fi
@@ -113,11 +112,11 @@ from tensorflow.python.lib.io import file_io as _fi
 _site_packages_dirs = []
 if _site.ENABLE_USER_SITE and _site.USER_SITE is not None:
   _site_packages_dirs += [_site.USER_SITE]
-_site_packages_dirs += [_p for _p in _sys.path if 'site-packages' in _p]
-if 'getsitepackages' in dir(_site):
+_site_packages_dirs += [p for p in _sys.path if "site-packages" in p]
+if "getsitepackages" in dir(_site):
   _site_packages_dirs += _site.getsitepackages()
 
-if 'sysconfig' in dir(_distutils):
+if "sysconfig" in dir(_distutils):
   _site_packages_dirs += [_distutils.sysconfig.get_python_lib()]
 
 _site_packages_dirs = list(set(_site_packages_dirs))
@@ -134,20 +133,25 @@ if _running_from_pip_package():
 
   # Load first party dynamic kernels.
   _tf_dir = _os.path.dirname(_current_file_location)
-  _kernel_dir = _os.path.join(_tf_dir, 'core', 'kernels')
+  _kernel_dir = _os.path.join(_tf_dir, "core", "kernels")
   if _os.path.exists(_kernel_dir):
     _ll.load_library(_kernel_dir)
 
   # Load third party dynamic kernels.
   for _s in _site_packages_dirs:
-    _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
+    _plugin_dir = _os.path.join(_s, "tensorflow-plugins")
     if _os.path.exists(_plugin_dir):
       _ll.load_library(_plugin_dir)
       # Load Pluggable Device Library
       _ll.load_pluggable_device_library(_plugin_dir)
 
+if _os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH", ""):
+  _ll.load_pluggable_device_library(
+      _os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH")
+  )
+
 # Add module aliases
-if hasattr(_current_module, 'keras'):
+if hasattr(_current_module, "keras"):
   # It is possible that keras is a lazily loaded module, which might break when
   # actually trying to import it. Have a Try-Catch to make sure it doesn't break
   # when it doing some very initial loading, like tf.compat.v2, etc.
@@ -166,15 +170,19 @@ if hasattr(_current_module, 'keras'):
   except ImportError:
     pass
 
-# Do an eager load for Keras' code so that any function/method that needs to
-# happen at load time will trigger, eg registration of optimizers in the
-# SavedModel registry.
-# See b/196254385 for more details.
-if hasattr(_current_module, "keras"):
+  # Do an eager load for Keras' code so that any function/method that needs to
+  # happen at load time will trigger, eg registration of optimizers in the
+  # SavedModel registry.
+  # See b/196254385 for more details.
   try:
-    _keras._load()
-  except ImportError:
+    importlib.import_module("keras.optimizers")
+  except (ImportError, AttributeError):
     pass
+  try:
+    importlib.import_module("keras.src.optimizers")
+  except (ImportError, AttributeError):
+    pass
+del importlib
 
 # Explicitly import lazy-loaded modules to support autocompletion.
 # pylint: disable=g-import-not-at-top
@@ -192,7 +200,7 @@ if _typing.TYPE_CHECKING:
 # Delete modules that should be hidden from dir().
 # Don't fail if these modules are not available.
 # For e.g. this file will be originally placed under tensorflow/_api/v1 which
-# does not have 'python', 'core' directories. Then, it will be copied
+# does not have "python", "core" directories. Then, it will be copied
 # to tensorflow/ which does have these two directories.
 # pylint: disable=undefined-variable
 try:

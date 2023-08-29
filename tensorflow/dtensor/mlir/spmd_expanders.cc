@@ -27,14 +27,17 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/einsum_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/elementwise_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/expanddims_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/fft_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/fill_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/gather_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/identity_n_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/in_top_k_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/io_op_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/iterator_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/matmul_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/meta_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/nullary_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/optional_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/qr_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/random_op_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/range_spmd_expander.h"
@@ -49,12 +52,14 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/sparse_to_dense_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/split_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/squeeze_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/strided_slice_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/tensorlist_getitem_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/tensorlist_reserve_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/tensorlist_setitem_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/top_k_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/trivial_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/unsupported_op_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/where_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
 
 namespace tensorflow {
@@ -69,6 +74,7 @@ REGISTER_SPMD(Cast, TF::CastOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Identity, TF::IdentityOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Neg, TF::NegOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(ZerosLike, TF::ZerosLikeOp, ElementwiseSPMDExpander);
+REGISTER_SPMD(OnesLike, TF::OnesLikeOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Exp, TF::ExpOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Sqrt, TF::SqrtOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Rsqrt, TF::RsqrtOp, ElementwiseSPMDExpander);
@@ -245,6 +251,7 @@ REGISTER_SPMD(BroadcastGradientArgs, TF::BroadcastGradientArgsOp,
 REGISTER_SPMD(AssignVariable, TF::AssignVariableOp, ResourceSPMDExpander);
 REGISTER_SPMD(AssignAddVariable, TF::AssignAddVariableOp, ResourceSPMDExpander);
 REGISTER_SPMD(AssignSubVariable, TF::AssignSubVariableOp, ResourceSPMDExpander);
+REGISTER_SPMD(SummaryWriter, TF::SummaryWriterOp, ResourceSPMDExpander);
 REGISTER_SPMD(ReadVariable, TF::ReadVariableOp, ResourceSPMDExpander);
 REGISTER_SPMD(VarHandle, TF::VarHandleOp, ResourceSPMDExpander);
 REGISTER_SPMD(VarIsInitialized, TF::VarIsInitializedOp, ResourceSPMDExpander);
@@ -390,7 +397,14 @@ REGISTER_SPMD(DTensorShardedPrefix, TF::DTensorShardedPrefixOp,
               DTensorShardPrefixSPMDExpander);
 
 // DTensor Virtual ops
+REGISTER_SPMD(
+    CopyToMesh, TF::CopyToMeshOp, UnsupportedOpSPMDExpander,
+    "CopyToMesh should have been lowered to DTensorSend and DTensorRecv.");
+REGISTER_SPMD(
+    CopyToMeshGrad, TF::CopyToMeshGradOp, UnsupportedOpSPMDExpander,
+    "CopyToMesh should have been lowered to DTensorSend and DTensorRecv.");
 REGISTER_SPMD(Relayout, TF::RelayoutOp, RelayoutSPMDExpander);
+REGISTER_SPMD(RelayoutLike, TF::RelayoutLikeOp, RelayoutLikeSPMDExpander);
 REGISTER_SPMD(DTensorSend, TF::DTensorSend, DTensorSendSPMDExpander);
 REGISTER_SPMD(DTensorRecv, TF::DTensorRecv, DTensorRecvSPMDExpander);
 
@@ -435,42 +449,18 @@ REGISTER_SPMD(AdjustContrastv2, TF::AdjustContrastv2Op,
 REGISTER_SPMD(AdjustSaturation, TF::AdjustSaturationOp,
               DataparallelSPMDExpander, llvm::DenseMap<int, int>{{0, 3}},
               llvm::DenseMap<int, int>{{0, 3}});
-REGISTER_SPMD(FFT, TF::FFTOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(FFT2D, TF::FFT2DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(FFT3D, TF::FFT3DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(IFFT, TF::IFFTOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(IFFT2D, TF::IFFT2DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(IFFT3D, TF::IFFT3DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(IRFFT, TF::IRFFTOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(IRFFT2D, TF::IRFFT2DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(IRFFT3D, TF::IRFFT3DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(RFFT, TF::RFFTOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(RFFT2D, TF::RFFT2DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(RFFT3D, TF::RFFT3DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
+REGISTER_SPMD(FFT, TF::FFTOp, FFTSPMDExpander);
+REGISTER_SPMD(FFT2D, TF::FFT2DOp, FFTSPMDExpander);
+REGISTER_SPMD(FFT3D, TF::FFT3DOp, FFTSPMDExpander);
+REGISTER_SPMD(IFFT, TF::IFFTOp, FFTSPMDExpander);
+REGISTER_SPMD(IFFT2D, TF::IFFT2DOp, FFTSPMDExpander);
+REGISTER_SPMD(IFFT3D, TF::IFFT3DOp, FFTSPMDExpander);
+REGISTER_SPMD(IRFFT, TF::IRFFTOp, FFTSPMDExpander);
+REGISTER_SPMD(IRFFT2D, TF::IRFFT2DOp, FFTSPMDExpander);
+REGISTER_SPMD(IRFFT3D, TF::IRFFT3DOp, FFTSPMDExpander);
+REGISTER_SPMD(RFFT, TF::RFFTOp, FFTSPMDExpander);
+REGISTER_SPMD(RFFT2D, TF::RFFT2DOp, FFTSPMDExpander);
+REGISTER_SPMD(RFFT3D, TF::RFFT3DOp, FFTSPMDExpander);
 REGISTER_SPMD(Cholesky, TF::CholeskyOp, DataparallelSPMDExpander,
               llvm::DenseMap<int, int>{{0, 2}},
               llvm::DenseMap<int, int>{{0, 2}});
@@ -519,9 +509,22 @@ REGISTER_SPMD(TensorListSetItem, TF::TensorListSetItemOp,
 
 // IO ops
 REGISTER_SPMD(WriteSummary, TF::WriteSummaryOp, IOOpSPMDExpander);
+REGISTER_SPMD(FlushSummaryWriter, TF::FlushSummaryWriterOp, IOOpSPMDExpander);
 REGISTER_SPMD(DisableCopyOnRead, TF::DisableCopyOnReadOp,
               DisableCopyOnReadSPMDExpander);
 REGISTER_SPMD(ShardedFilename, TF::ShardedFilenameOp, ReplicatedOpSPMDExpander);
+
+// tf.data Optional ops
+REGISTER_SPMD(OptionalHasValue, TF::OptionalHasValueOp,
+              OptionalHasValueSPMDExpander);
+REGISTER_SPMD(OptionalGetValue, TF::OptionalGetValueOp,
+              OptionalGetValueSPMDExpander);
+
+// tf.data Iterator ops
+REGISTER_SPMD(IteratorGetNext, TF::IteratorGetNextOp,
+              IteratorGetNextSPMDExpander);
+REGISTER_SPMD(IteratorGetNextAsOptional, TF::IteratorGetNextAsOptionalOp,
+              IteratorGetNextAsOptionalSPMDExpander);
 
 // Unsupported ops.
 REGISTER_SPMD(RandomNormal, TF::RandomUniformOp, UnsupportedOpSPMDExpander,
@@ -534,8 +537,15 @@ REGISTER_SPMD(RandomNormalInt, TF::RandomUniformIntOp,
               "Stateful random operations are not supported in DTensor. Please "
               "use stateless random operations instead.");
 
+// Where
+REGISTER_SPMD(Where, TF::WhereOp, WhereOpSPMDExpander);
+
 // Unique
 REGISTER_SPMD(Unique, TF::UniqueOp, ReplicatedOpSPMDExpander,
               /*relayout_when_sharded=*/true);
+// Image Ops
+
+REGISTER_SPMD(EncodePng, TF::EncodePngOp, ReduceSPMDExpander);
+
 }  // namespace dtensor
 }  // namespace tensorflow

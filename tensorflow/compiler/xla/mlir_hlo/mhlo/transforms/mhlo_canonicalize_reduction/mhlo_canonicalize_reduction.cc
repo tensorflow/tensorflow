@@ -16,6 +16,8 @@ limitations under the License.
 // This file canonicalize reduction ops in hlo dialect to match the
 // capacity of codegen backend.
 
+#include <memory>
+
 #include "mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"

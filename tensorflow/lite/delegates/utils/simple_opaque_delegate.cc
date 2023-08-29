@@ -22,14 +22,14 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace {
-TfLiteRegistrationExternal* GetDelegateKernelRegistration(
+TfLiteRegistrationExternal* CreateDelegateKernelRegistration(
     SimpleOpaqueDelegateInterface* delegate) {
   TfLiteRegistrationExternal* kernel_registration =
       TfLiteRegistrationExternalCreate(kTfLiteBuiltinDelegate, delegate->Name(),
@@ -93,8 +93,7 @@ TfLiteStatus DelegatePrepare(TfLiteOpaqueContext* opaque_context,
   TfLiteIntArray* execution_plan;
   TF_LITE_ENSURE_STATUS(
       TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan));
-  std::unique_ptr<TfLiteIntArray, decltype(&TfLiteIntArrayFree)> plan(
-      TfLiteIntArrayCopy(execution_plan), TfLiteIntArrayFree);
+  IntArrayUniquePtr plan(TfLiteIntArrayCopy(execution_plan));
 
   for (int i = 0; i < plan->size; ++i) {
     const int node_id = plan->data[i];
@@ -111,11 +110,12 @@ TfLiteStatus DelegatePrepare(TfLiteOpaqueContext* opaque_context,
   }
 
   TfLiteRegistrationExternal* delegate_kernel_registration =
-      GetDelegateKernelRegistration(simple_opaque_delegate);
+      CreateDelegateKernelRegistration(simple_opaque_delegate);
 
+  // Transfers ownership of delegate_kernel_registration to the opaque_context.
   return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
       opaque_context, delegate_kernel_registration,
-      BuildTfLiteIntArray(supported_nodes).get(), opaque_delegate);
+      BuildTfLiteArray(supported_nodes).get(), opaque_delegate);
 }
 }  // namespace
 
@@ -136,11 +136,9 @@ TfLiteOpaqueDelegate* TfLiteOpaqueDelegateFactory::CreateSimpleDelegate(
 
 void TfLiteOpaqueDelegateFactory::DeleteSimpleDelegate(
     TfLiteOpaqueDelegate* opaque_delegate) {
-  TfLiteDelegate* delegate = reinterpret_cast<TfLiteDelegate*>(opaque_delegate);
-  if (!delegate) return;
-  SimpleOpaqueDelegateInterface* simple_delegate =
-      reinterpret_cast<SimpleOpaqueDelegateInterface*>(
-          delegate->opaque_delegate_builder->data);
+  if (!opaque_delegate) return;
+  auto* simple_delegate = reinterpret_cast<SimpleOpaqueDelegateInterface*>(
+      TfLiteOpaqueDelegateGetData(opaque_delegate));
   delete simple_delegate;
   TfLiteOpaqueDelegateDelete(opaque_delegate);
 }

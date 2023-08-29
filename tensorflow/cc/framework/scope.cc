@@ -306,11 +306,11 @@ void Scope::UpdateStatus(const Status& s) const {
   }
 }
 
-Status Scope::ToGraphDef(GraphDef* gdef) const {
+Status Scope::ToGraphDef(GraphDef* gdef, bool include_debug_info) const {
   if (!ok()) {
     return *impl()->status_;
   }
-  graph()->ToGraphDef(gdef);
+  graph()->ToGraphDef(gdef, /*include_flib_def=*/true, include_debug_info);
   return OkStatus();
 }
 
@@ -427,7 +427,7 @@ Scope Scope::WithOpNameImpl(const string& op_name) const {
 }
 
 Scope Scope::WithControlDependencies(
-    const gtl::ArraySlice<Operation>& control_deps) const {
+    const gtl::ArraySlice<Operation> control_deps) const {
   return Scope(
       new Impl(*this, Impl::Tags::ControlDeps(),
                std::vector<Operation>(control_deps.begin(), control_deps.end()),

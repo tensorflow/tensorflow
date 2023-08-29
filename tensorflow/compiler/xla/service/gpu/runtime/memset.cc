@@ -119,13 +119,13 @@ static absl::Status MemsetImpl(const ServiceExecutableRunOptions* run_options,
   }
 
   // If the constant is not zero, use the given pattern to `memset`.
-  absl::StatusOr<uint32_t> pattern = ToBitPattern(constant);
-  if (!pattern.ok()) return pattern.status();
+  TF_ASSIGN_OR_RETURN(uint32_t pattern, ToBitPattern(constant));
 
-  if (dst_data.size() % 4 != 0)
+  if (dst_data.size() % 4 != 0) {
     return absl::InvalidArgumentError("Memref size is not divisible by 4");
+  }
 
-  stream->ThenMemset32(&dst_data, *pattern, dst_data.size());
+  stream->ThenMemset32(&dst_data, pattern, dst_data.size());
 
   return absl::OkStatus();
 }

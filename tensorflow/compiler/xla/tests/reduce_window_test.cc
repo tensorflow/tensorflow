@@ -115,7 +115,7 @@ XLA_TEST_P(ReduceWindowTest, MismatchedRanksGivesErrorStatus) {
                /*window_strides=*/{1}, Padding::kValid);
   ASSERT_EQ(builder_.first_error().code(), tsl::error::INVALID_ARGUMENT)
       << builder_.first_error();
-  ASSERT_THAT(builder_.first_error().error_message(),
+  ASSERT_THAT(builder_.first_error().message(),
               ::testing::HasSubstr("Want input dimensions size"));
 }
 
@@ -1129,16 +1129,12 @@ struct R2ReduceWindowTestData {
      /*pad_low=*/{0, 0}, /*pad_high=*/{35, 35},
      /*layout=*/{0, 1},
      /*reducer=*/Reducer::kAdd},
-// TODO(b/74260408): This test last failed on GPU on 2018-03-08, likely due to a
-// ptxas bug.
-#ifndef XLA_TEST_BACKEND_GPU
     {/*base_bounds=*/{6, 152}, /*window_bounds=*/{2, 25},
      /*strides=*/{5, 4},
      /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
      /*pad_low=*/{0, 1}, /*pad_high=*/{10, 11},
      /*layout=*/{0, 1},
      /*reducer=*/Reducer::kAdd},
-#endif
     {/*base_bounds=*/{6, 4}, /*window_bounds=*/{4, 2},
      /*strides=*/{3, 3},
      /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},

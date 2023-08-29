@@ -26,9 +26,12 @@ traced (a process known as retracing).
 """
 
 import abc
-from typing import Optional, Sequence, Any
+from typing import Any, Iterator, List, Optional, Sequence
+
 from typing_extensions import Protocol
 from typing_extensions import runtime_checkable
+
+from tensorflow.python.types import core
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
@@ -128,7 +131,8 @@ class TraceType(metaclass=abc.ABCMeta):
 
   @abc.abstractmethod
   def most_specific_common_supertype(
-      self, others: Sequence["TraceType"]) -> Optional["TraceType"]:
+      self, others: Sequence["TraceType"]
+  ) -> Optional["TraceType"]:
     """Returns the most specific supertype of `self` and `others`, if exists.
 
     The returned `TraceType` is a supertype of `self` and `others`, that is,
@@ -158,7 +162,7 @@ class TraceType(metaclass=abc.ABCMeta):
     """
 
   @abc.abstractmethod
-  def placeholder_value(self, placeholder_context=None) -> Any:
+  def placeholder_value(self, placeholder_context) -> Any:
     """Creates a placeholder for tracing.
 
     tf.funcion traces with the placeholder value rather than the actual value.
@@ -167,14 +171,12 @@ class TraceType(metaclass=abc.ABCMeta):
     value is more general and reusable which saves expensive retracing.
 
     Args:
-      placeholder_context: A `PlaceholderContext` container for context
-                           information when creating a placeholder value.
-
+      placeholder_context: A context reserved for internal/future usage.
     For the `Fruit` example shared above, implementing:
 
     ```python
     class FruitTraceType:
-      def placeholder_value(self, placeholder_context=None):
+      def placeholder_value(self, placeholder_context):
         return Fruit()
     ```
     instructs tf.function to trace with the `Fruit()` objects
@@ -195,14 +197,58 @@ class TraceType(metaclass=abc.ABCMeta):
     ```
     """
 
-  @doc_controls.do_not_doc_inheritable
-  def _to_tensors(self, value):
+  def to_tensors(self, value: Any) -> List[core.Tensor]:
     """Breaks down a value of this type into Tensors.
 
+    For a TraceType instance, the number of tensors generated for corresponding
+    value should be constant.
+
     Args:
-      value: An input value belonging to this TraceType
+      value: A value belonging to this TraceType
+
+    Returns:
+      List of Tensors.
     """
-    raise NotImplementedError
+    del value
+    return []
+
+  def from_tensors(self, tensors: Iterator[core.Tensor]) -> Any:
+    """Generates a value of this type from Tensors.
+
+    Must use the same fixed amount of tensors as `to_tensors`.
+
+    Args:
+      tensors: An iterator from which the tensors can be pulled.
+
+    Returns:
+      A value of this type.
+    """
+    del tensors
+    return self.placeholder_value(PlaceholderContext())
+
+  def flatten(self) -> List["TraceType"]:
+    """Returns a list of TensorSpecs corresponding to `to_tensors` values."""
+    return []
+
+  def cast(self, value, cast_context) -> Any:
+    """Cast value to this type.
+
+    Args:
+      value: An input value belonging to this TraceType.
+      cast_context: A context reserved for internal/future usage.
+
+    Returns:
+      The value casted to this TraceType.
+
+    Raises:
+      AssertionError: When _cast is not overloaded in subclass,
+        the value is returned directly, and it should be the same to
+        self.placeholder_value().
+    """
+    del cast_context
+    assert value == self.placeholder_value(
+        PlaceholderContext()), f"Can not cast {value!r} to type {self!r}"
+    return value
 
   @abc.abstractmethod
   def __hash__(self) -> int:
@@ -213,7 +259,6 @@ class TraceType(metaclass=abc.ABCMeta):
     pass
 
 
-@tf_export("types.experimental.TracingContext", v1=[])
 class TracingContext(metaclass=abc.ABCMeta):
   """Contains information scoped to the tracing of multiple objects.
 
@@ -223,12 +268,14 @@ class TracingContext(metaclass=abc.ABCMeta):
   __tf_tracing_type__ calls while constructing the TraceType for a particular
   set of objects.
   """
-  pass
 
 
-class PlaceholderContext(metaclass=abc.ABCMeta):
+class PlaceholderContext():
   """Contains context information for generating placeholders within a scope."""
-  pass
+
+
+class CastContext():
+  """Contains context info and rules for casting values to a TypeSpec."""
 
 
 @runtime_checkable
@@ -248,14 +295,15 @@ class SupportsTracingProtocol(Protocol):
     will use the tracing type of the call arguments.
 
     Args:
-      context: a context object created for each function call for tracking
-        information about the call arguments as a whole
+      context: a context reserved for internal/future usage.
+
     Returns:
       The tracing type of this object.
     """
 
+
 # TODO(b/219556836): Direct tf_export decorator adds non-method members to the
 # Protocol which breaks @runtime_checkable since it does not support them.
-tf_export(
-    "types.experimental.SupportsTracingProtocol",
-    v1=[]).export_constant(__name__, "SupportsTracingProtocol")
+tf_export("types.experimental.SupportsTracingProtocol", v1=[]).export_constant(
+    __name__, "SupportsTracingProtocol"
+)

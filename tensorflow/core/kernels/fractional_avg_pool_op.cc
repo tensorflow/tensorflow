@@ -51,7 +51,7 @@ class FractionalAvgPoolOp : public OpKernel {
                       pooling_ratio_[i]));
     }
     OP_REQUIRES(
-        context, pooling_ratio_[0] == 1 || pooling_ratio_[3] == 1,
+        context, pooling_ratio_[0] == 1 && pooling_ratio_[3] == 1,
         errors::Unimplemented("Fractional average pooling is not yet "
                               "supported on the batch nor channel dimension."));
     OP_REQUIRES_OK(context, context->GetAttr("deterministic", &deterministic_));

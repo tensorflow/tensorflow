@@ -73,6 +73,7 @@ def make_mirror_pad_tests(options):
           "mode": ["REFLECT"],
           "type": ["const"],
           "fully_quantize": [False, True],
+          "quant_16x8": [False, True],
       },
       {
           "input_shape": [[3, 2, 4, 5]],

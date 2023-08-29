@@ -111,9 +111,11 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
  public:
   explicit PrepareDRQQuantizableOp(MLIRContext* context,
                                    const quant::QuantizationSpecs& quant_specs,
+                                   OpSet op_set,
                                    bool enable_per_channel_quantization)
       : OpRewritePattern<arith::ConstantOp>(context),
         quant_specs_(quant_specs),
+        op_set_(op_set),
         enable_per_channel_quantization_(enable_per_channel_quantization) {}
 
   LogicalResult matchAndRewrite(arith::ConstantOp op,
@@ -178,6 +180,15 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
     DenseFPElementsAttr attr;
     if (!matchPattern(op->getResult(0), m_Constant(&attr))) return false;
 
+    if (attr.size() < quant_specs_.minimum_elements_for_weights) {
+      op->emitRemark("Quantization is skipped for ")
+          << quantized_op->getName().getStringRef().str() << " because it has "
+          << attr.dyn_cast<DenseFPElementsAttr>().size()
+          << " elements which is fewer than the threshold("
+          << quant_specs_.minimum_elements_for_weights << " elements).";
+      return false;
+    }
+
     if (is_per_channel_quantization) {
       quant_type = quant::GetUniformQuantizedPerAxisTypeForWeight(
                        attr, quant_dim,
@@ -240,6 +251,7 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
 
  protected:
   QuantizationSpecs quant_specs_;
+  OpSet op_set_;
   bool enable_per_channel_quantization_;
 };
 
@@ -259,7 +271,7 @@ void PrepareQuantizeDRQPass::runOnOperation() {
   ModuleOp module_op = getOperation();
 
   populateWithGenerated(patterns);
-  patterns.add<PrepareDRQQuantizableOp>(ctx, quant_specs_,
+  patterns.add<PrepareDRQQuantizableOp>(ctx, quant_specs_, op_set_,
                                         enable_per_channel_quantization_);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
 

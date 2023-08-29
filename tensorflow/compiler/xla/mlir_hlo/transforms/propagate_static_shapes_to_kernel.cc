@@ -18,6 +18,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -125,7 +126,7 @@ static void replaceStaticMemRefArguments(ArrayRef<BlockArgument> arguments,
   std::partial_sum(strides.rbegin(), strides.rend(), strides.rbegin(),
                    std::multiplies<int64_t>());
   strides.push_back(1);
-  replace(llvm::makeArrayRef(strides).drop_front(),
+  replace(llvm::ArrayRef(strides).drop_front(),
           arguments.drop_front(3 + memref.getRank()));
 }
 
@@ -139,7 +140,7 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
   }
 
   // Collect gpu.launch_func ops which launch the func_op kernel.
-  Optional<SymbolTable::UseRange> symUses =
+  std::optional<SymbolTable::UseRange> symUses =
       symbolTable.getSymbolUses(funcOp, symbolTable.getOp());
   if (!symUses)
     return rewriter.notifyMatchFailure(funcOp, "failed to find symbol uses");

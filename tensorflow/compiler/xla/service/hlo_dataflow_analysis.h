@@ -75,6 +75,19 @@ class HloDataflowAnalysis {
       const HloInstruction* instr, const HloInstruction* operand,
       const ShapeIndex& user_index)>;
 
+  // Infrastructure for overriding whether an instruction defines a new value.
+  //
+  // The first parameter is the instruction and the second parameter is the
+  // output index. If an empty optional is used, default rules are used. If a
+  // ForwardedOperand object is returned, the value at the corresponding
+  // operand's index is used for the output, overriding all default logic.
+  struct ForwardedOperand {
+    int64_t operand_number;
+    ShapeIndex operand_index;
+  };
+  using ForwardsValue = std::function<std::optional<ForwardedOperand>(
+      const HloInstruction* instr, const ShapeIndex& index)>;
+
   // Runs dataflow analysis on the given module. Parameters:
   //
   //   ssa_form : If true then new values are defined at the merge points of
@@ -96,7 +109,8 @@ class HloDataflowAnalysis {
   static StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
-      const CanShareBuffer& can_share_buffer = nullptr);
+      const CanShareBuffer& can_share_buffer = nullptr,
+      const ForwardsValue& forwards_value = nullptr);
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
@@ -206,12 +220,16 @@ class HloDataflowAnalysis {
   static std::vector<std::pair<HloOperandIndex, ShapeIndex>>
   GetInPlaceInputOutputPairs(const HloInstruction* instruction);
 
+  // Verifies various invariants of the dataflow analysis.
+  Status Verify() const;
+
  private:
   static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
 
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value = false,
-                      const CanShareBuffer& can_share_buffer = nullptr);
+                      const CanShareBuffer& can_share_buffer = nullptr,
+                      const ForwardsValue& forwards_value = nullptr);
 
   // 1. During value propagation (Propagate function), always create phi
   // values once it see multiple inputs merging at the same point. It then
@@ -308,9 +326,6 @@ class HloDataflowAnalysis {
       HloInstruction* instruction, const InstructionValueSet& new_value_set,
       const InstructionValueSet* prev_value_set = nullptr);
 
-  // Verifies various invariants of the dataflow analysis.
-  Status Verify() const;
-
   const HloModule& module_;
   const bool ssa_form_;
   const bool bitcast_defines_value_;
@@ -344,6 +359,8 @@ class HloDataflowAnalysis {
   // Backend specific function that decides whether an instruction can share
   // a buffer with its operand.
   CanShareBuffer can_share_buffer_ = nullptr;
+
+  ForwardsValue forwards_value_ = nullptr;
 };
 
 }  // namespace xla

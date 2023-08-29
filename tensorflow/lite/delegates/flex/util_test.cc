@@ -22,8 +22,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
@@ -189,10 +189,10 @@ TEST(UtilTest, CreateTfTensorFromTfLiteTensorResourceOrVariant) {
   TfLiteTensor tensor;
   tensor.type = kTfLiteResource;
   EXPECT_EQ(CreateTfTensorFromTfLiteTensor(&tensor).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
   tensor.type = kTfLiteVariant;
   EXPECT_EQ(CreateTfTensorFromTfLiteTensor(&tensor).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST(UtilTest, CreateTfTensorFromTfLiteTensorFloat) {

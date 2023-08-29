@@ -35,7 +35,6 @@ SE_StreamExecutor* TpuPlatform_GetExecutor(SE_Platform* platform,
                                            TF_Status* status);
 SE_PlatformId TpuPlatform_Id(SE_Platform* platform);
 int64_t TpuPlatform_VisibleDeviceCount(SE_Platform* platform);
-int64_t TpuPlatform_TpuMemoryLimit(SE_Platform* platform);
 bool TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy(SE_Platform* platform);
 SE_TpuTopology* TpuPlatform_GetTopologyPtr(SE_Platform* platform);
 SE_TpuTopology_Host* TpuPlatform_GetHostLocation(SE_Platform* platform);
@@ -76,13 +75,6 @@ void TpuExecutor_RecordEvent(SE_StreamExecutor* executor, SE_Stream* stream,
                              SE_Event* event, TF_Status* status);
 void TpuExecutor_WaitForEvent(SE_StreamExecutor* executor, SE_Stream* stream,
                               SE_Event* event, TF_Status* status);
-
-bool TpuExecutor_AllocateTimer(SE_StreamExecutor* executor, SE_Timer* timer);
-void TpuExecutor_DeallocateTimer(SE_StreamExecutor* executor, SE_Timer* timer);
-bool TpuExecutor_StartTimer(SE_StreamExecutor* executor, SE_Stream* stream,
-                            SE_Timer* timer);
-bool TpuExecutor_StopTimer(SE_StreamExecutor* executor, SE_Stream* stream,
-                           SE_Timer* timer);
 
 void TpuExecutor_SynchronousMemcpyToHost(SE_StreamExecutor* executor,
                                          void* host_dst,
@@ -148,11 +140,6 @@ void TpuStream_TpuEnqueueOnDeviceSendRecvLocal(SE_Stream* stream,
 SE_Event* TpuEvent_New(SE_StreamExecutor* parent);
 void TpuEvent_Free(SE_Event*);
 
-SE_Timer* TpuTimer_New(SE_StreamExecutor* parent);
-void TpuTimer_Free(SE_Timer*);
-int64_t TpuTimer_Nanoseconds(SE_Timer*);
-int64_t TpuTimer_Microseconds(SE_Timer*);
-
 TF_Status* TpuStatus_New();
 TF_Status* TpuStatus_Create(int32_t code, const char* msg);
 void TpuStatus_Set(TF_Status* status, int32_t code, const char* msg,
@@ -209,8 +196,9 @@ void TpuTransferManager_WriteSingleTupleIndexTable(
 void TpuTransferManager_GetInfeedLayout(XLA_Shape* shape,
                                         XLA_Shape* infeed_shape);
 void TpuTransferManager_LinearizeToBuffers(
-    XLA_TransferManager* manager, XLA_Literal* c_literal, char*** buffers_array,
-    int64_t** buffers_size, int64_t* buffers_array_size, TF_Status* status);
+    XLA_TransferManager* manager, XLA_Literal* c_literal,
+    XLA_Shape* c_device_shape, char*** buffers_array, int64_t** buffers_size,
+    int64_t* buffers_array_size, TF_Status* status);
 void TpuTransferManager_FreeBuffers(char** buffers_array, int64_t* buffers_size,
                                     int64_t buffers_array_size);
 void TpuTransferManager_TransferLiteralToInfeed(XLA_TransferManager* manager,
@@ -399,7 +387,6 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_GetExecutor);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_Id);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_VisibleDeviceCount);
-  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_TpuMemoryLimit);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_GetTopologyPtr);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_GetHostLocation);
@@ -422,21 +409,13 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_PollForEventStatus);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_RecordEvent);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_WaitForEvent);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_AllocateTimer);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DeallocateTimer);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_StartTimer);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_StopTimer);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SynchronousMemcpyToHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SynchronousMemcpyFromHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_MemcpyToHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_MemcpyFromHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_EnqueueInfeed);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DequeueOutfeed);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_WaitForInfeedReady);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_WaitForOutfeedReady);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_BlockHostUntilDone);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_BlockUntilDoneOrFailed);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SyncAndForgetFailedStreams);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SynchronizeAllActivity);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_UnloadAllPrograms);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_EnqueueCompactionOnStreamForHbm);
@@ -452,11 +431,6 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuEvent_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuEvent_Free);
-
-  TFTPU_ADD_FN_IN_STRUCT(TpuTimer_New);
-  TFTPU_ADD_FN_IN_STRUCT(TpuTimer_Free);
-  TFTPU_ADD_FN_IN_STRUCT(TpuTimer_Nanoseconds);
-  TFTPU_ADD_FN_IN_STRUCT(TpuTimer_Microseconds);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Create);

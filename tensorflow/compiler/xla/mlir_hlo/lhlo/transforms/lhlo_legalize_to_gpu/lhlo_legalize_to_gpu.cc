@@ -16,7 +16,9 @@ limitations under the License.
 // This file implements logic for lowering LHLO dialect to GPU dialect.
 
 #include <cstdint>
+#include <memory>
 #include <optional>
+#include <utility>
 
 #include "lhlo/IR/lhlo_ops.h"
 #include "lhlo/transforms/map_lmhlo_to_scalar_op.h"
@@ -29,10 +31,10 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
@@ -152,7 +154,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
       // Now copy over the actual body of the reduction, leaving out the
       // terminator.
-      BlockAndValueMapping mapping;
+      IRMapping mapping;
       mapping.map(reduceOp.getBody().getArgument(0), accumulator);
       mapping.map(reduceOp.getBody().getArgument(1), rhs);
       mapping.map(reduceOp.getBody().getArgument(2), accumulator);
@@ -176,8 +178,9 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 struct LhloLegalizeToGpuPass
     : public impl::LhloLegalizeToGpuPassBase<LhloLegalizeToGpuPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<AffineDialect, gpu::GPUDialect, linalg::LinalgDialect,
-                    memref::MemRefDialect, scf::SCFDialect>();
+    registry
+        .insert<affine::AffineDialect, gpu::GPUDialect, linalg::LinalgDialect,
+                memref::MemRefDialect, scf::SCFDialect>();
   }
 
   void runOnOperation() override {

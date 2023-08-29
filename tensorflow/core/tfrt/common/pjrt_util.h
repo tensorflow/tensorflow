@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_COMMON_PJRT_UTIL_H_
 
 #include <memory>
+#include <optional>
+#include <set>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/types.h"
@@ -23,17 +25,16 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Sets PJRT client for device_type in TFGlobalResourceManager. If a PJRT client
+// for this device_type already exists, the existing PJRT client will not be
+// destroyed, and will be kept alive in an "unused client" vector. PJRT API
+// semantics require the PJRT client to outlive PJRT buffers.
 Status SetPjRtClientInTFGlobalResourceManager(
     const DeviceType& device_type, std::unique_ptr<xla::PjRtClient> client);
 
-// Attempt to delete PJRT client from TFGlobalResourceManager. Returns OK if the
-// deletion succeeded, or if the PJRT resource was not found. Else return the
-// deletion error.
-Status DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(
-    const DeviceType& device_type);
-
-StatusOr<xla::PjRtClient*> GetPjRtClientFromTFGlobalResourceManager(
-    const DeviceType& device_type);
+// Gets (the most recent) PJRT client for device_type from
+// TFGlobalResourceManager.
+StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
 
 }  // namespace tensorflow
 

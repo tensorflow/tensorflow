@@ -60,17 +60,15 @@ class TelemetryStructTest : public ::testing::Test {
   TelemetryStructTest() {
     context_.profiler = &profiler_;
 
-    auto profiler_struct = new TfLiteTelemetryProfilerStruct();
-
-    profiler_struct->data = &mock_profiler_;
-    profiler_struct->ReportTelemetryEvent =
+    profiler_struct_.data = &mock_profiler_;
+    profiler_struct_.ReportTelemetryEvent =
         [](struct TfLiteTelemetryProfilerStruct* profiler,
            const char* event_name, uint64_t status) {
           static_cast<MockTelemtryProfiler*>(profiler->data)
               ->ReportTelemetryEvent(
                   event_name, tflite::telemetry::TelemetryStatusCode(status));
         };
-    profiler_struct->ReportTelemetryOpEvent =
+    profiler_struct_.ReportTelemetryOpEvent =
         [](struct TfLiteTelemetryProfilerStruct* profiler,
            const char* event_name, int64_t op_idx, int64_t subgraph_idx,
            uint64_t status) {
@@ -79,37 +77,38 @@ class TelemetryStructTest : public ::testing::Test {
                   event_name, op_idx, subgraph_idx,
                   tflite::telemetry::TelemetryStatusCode(status));
         };
-    profiler_struct->ReportSettings =
+    profiler_struct_.ReportSettings =
         [](struct TfLiteTelemetryProfilerStruct* profiler,
            const char* setting_name, const TfLiteTelemetrySettings* settings) {
           static_cast<MockTelemtryProfiler*>(profiler->data)
               ->ReportSettings(setting_name, settings);
         };
-    profiler_struct->ReportBeginOpInvokeEvent =
+    profiler_struct_.ReportBeginOpInvokeEvent =
         [](struct TfLiteTelemetryProfilerStruct* profiler, const char* op_name,
            int64_t op_idx, int64_t subgraph_idx) -> uint32_t {
       return static_cast<MockTelemtryProfiler*>(profiler->data)
           ->ReportBeginOpInvokeEvent(op_name, op_idx, subgraph_idx);
     };
-    profiler_struct->ReportEndOpInvokeEvent =
+    profiler_struct_.ReportEndOpInvokeEvent =
         [](struct TfLiteTelemetryProfilerStruct* profiler,
            uint32_t event_handle) {
           return static_cast<MockTelemtryProfiler*>(profiler->data)
               ->ReportEndOpInvokeEvent(event_handle);
         };
-    profiler_struct->ReportOpInvokeEvent =
+    profiler_struct_.ReportOpInvokeEvent =
         [](struct TfLiteTelemetryProfilerStruct* profiler, const char* op_name,
            uint64_t elapsed_time, int64_t op_idx, int64_t subgraph_idx) {
           return static_cast<MockTelemtryProfiler*>(profiler->data)
               ->ReportOpInvokeEvent(op_name, elapsed_time, op_idx,
                                     subgraph_idx);
         };
-    profiler_.reset(telemetry::MakeTfLiteTelemetryProfiler(profiler_struct));
+    profiler_.reset(telemetry::MakeTfLiteTelemetryProfiler(&profiler_struct_));
   }
 
   MockTelemtryProfiler mock_profiler_;
   std::unique_ptr<TelemetryProfiler> profiler_;
   TfLiteContext context_;
+  TfLiteTelemetryProfilerStruct profiler_struct_;
 };
 
 TEST_F(TelemetryStructTest, TelemetryReportEvent) {

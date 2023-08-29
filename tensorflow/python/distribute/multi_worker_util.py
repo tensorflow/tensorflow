@@ -195,6 +195,10 @@ def coordination_leader(cluster_spec):
   if not cluster_spec.as_dict():
     return ""
 
+  # Use PS 0 if parameter servers are in the cluster
+  if "ps" in cluster_spec.jobs:
+    return "/job:ps/replica:0/task:0"
+
   # Use chief if chief is in the cluster.
   if "chief" in cluster_spec.jobs:
     return "/job:chief/replica:0/task:0"

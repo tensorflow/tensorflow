@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 
-#include <cstdlib>
-#include <string_view>
-
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 
@@ -32,18 +29,23 @@ void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
   // Lower operations with registered IR emitters to Gpu launches.
   pm.addPass(createConvertLmhloToGpuLaunchPass(thunk_sequence));
 
+  // Clean up IR before converting it to the runtime operations.
+  pm.addPass(createCSEPass());
+
   // Convert global memrefs corresponding to constant arguments.
   pm.addPass(createConvertMemrefGetGlobalToArgPass());
   pm.addPass(createSymbolDCEPass());  // Clean up unused global constants.
 
+  // Outline CUDA-Graph-compatible operations into graph capture functions.
+  pm.addPass(
+      createOutlineGpuGraphsPass(opts.gpu_graph_level, opts.min_graph_size));
+  if (opts.enable_concurrent_region) {
+    pm.addPass(createAddConcurrentRegionsPass());
+  }
+
   // Lower all Gpu operations to the XLA Gpu runtime custom calls.
   pm.addPass(createConvertLmhloGpuToGpuRuntimePass());
   pm.addPass(createConvertLmhloToGpuRuntimePass());
-
-  if (opts.enable_cuda_graphs) {
-    pm.addPass(createConvertLaunchFuncToCudaGraphPass());
-  }
-
   pm.addPass(createConvertGpuToGpuRuntimePass());
 
   // Add performance tracing annotations.

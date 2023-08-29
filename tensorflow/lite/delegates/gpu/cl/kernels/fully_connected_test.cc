@@ -37,22 +37,22 @@ namespace {
 
 TEST_F(OpenCLOperationTest, FullyConnected) {
   auto status = FullyConnectedTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, FullyConnectedLarge) {
   auto status = FullyConnectedLargeTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, FullyConnectedExtraLarge) {
   auto status = FullyConnectedExtraLargeTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, FullyConnectedInt8) {
   auto status = FullyConnectedInt8Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, RearrageWeights) {

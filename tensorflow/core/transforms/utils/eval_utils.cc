@@ -115,7 +115,7 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
       "CPU", cpu_device, cpu_device->GetAllocator({}), node_def,
       TF_GRAPH_DEF_VERSION, &status);
   if (!status.ok()) {
-    VLOG(3) << status.error_message();
+    VLOG(3) << status.message();
     return failure();
   }
 
@@ -135,7 +135,7 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
   tensorflow::OpKernelContext op_context(&params);
   op_kernel->Compute(&op_context);
   if (!op_context.status().ok()) {
-    VLOG(3) << op_context.status().error_message();
+    VLOG(3) << op_context.status().message();
     return failure();
   }
 
@@ -151,7 +151,7 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
     tensorflow::StatusOr<ElementsAttr> attr_or =
         ConvertTensor(*(op_context.mutable_output(i)), builder);
     if (!attr_or.status().ok()) {
-      VLOG(3) << attr_or.status().error_message();
+      VLOG(3) << attr_or.status().message();
       return failure();
     }
     results.push_back(attr_or.value());

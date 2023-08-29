@@ -20,39 +20,25 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/core/c/c_api_types.h"
-#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/async_subgraph.h"
-#include "tensorflow/lite/core/async/common.h"
+#include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/async/task_internal.h"
-#include "tensorflow/lite/signature_runner.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/subgraph.h"
 
 namespace tflite {
-
-// This is a temporary helper class that will be removed after this API is
-// moved out of experimental.
-class SignatureRunnerHelper {
- public:
-  static Subgraph* GetSubgraph(SignatureRunner* runner) {
-    return runner->subgraph_;
-  }
-  static const internal::SignatureDef* GetSignatureDef(
-      SignatureRunner* runner) {
-    return runner->signature_def_;
-  }
-};
-
 namespace async {
 
 namespace {
 
 // Returns the tensor index of the given signature name.
 // `map` is a mapping from tensor signature name to tensor index.
-// Return -1 if name is not found in the map.
-int GetIndex(const std::map<std::string, uint32_t>& map, const char* name) {
-  const auto& it = map.find(name);
-  return it == map.end() ? -1 : it->second;
+// Return -1 if name is not found in the map or map is nullptr.
+int GetIndex(const std::map<std::string, uint32_t>* map, const char* name) {
+  if (map == nullptr) return -1;
+  const auto& it = map->find(name);
+  return it == map->end() ? -1 : it->second;
 }
 
 }  // namespace
@@ -61,12 +47,12 @@ int AsyncSignatureRunner::GetTensorIndex(TfLiteIoType io_type,
                                          const char* name) const {
   int tensor_index = -1;
   switch (io_type) {
-    case TfLiteIoType::kTfLiteIoInput: {
-      tensor_index = GetIndex(signature_def_->inputs, name);
+    case kTfLiteIoTypeInput: {
+      tensor_index = GetIndex(input_to_index_, name);
       break;
     };
-    case TfLiteIoType::kTfLiteIoOutput: {
-      tensor_index = GetIndex(signature_def_->outputs, name);
+    case kTfLiteIoTypeOutput: {
+      tensor_index = GetIndex(output_to_index_, name);
       break;
     }
     default: {
@@ -79,15 +65,22 @@ int AsyncSignatureRunner::GetTensorIndex(TfLiteIoType io_type,
   return tensor_index;
 }
 
-AsyncSignatureRunner::AsyncSignatureRunner(SignatureRunner* signature_runner)
-    : AsyncSignatureRunner(
-          SignatureRunnerHelper::GetSignatureDef(signature_runner),
-          SignatureRunnerHelper::GetSubgraph(signature_runner)) {}
-
 AsyncSignatureRunner::AsyncSignatureRunner(
     const internal::SignatureDef* signature_def, Subgraph* subgraph)
-    : signature_def_(signature_def), subgraph_(subgraph) {
+    : subgraph_(subgraph) {
   async_subgraph_ = std::make_unique<AsyncSubgraph>(subgraph);
+  if (signature_def) {
+    signature_key_ = signature_def->signature_key;
+    input_to_index_ = &signature_def->inputs;
+    output_to_index_ = &signature_def->outputs;
+    // Collects the list of input and output tensor names.
+    for (const auto& it : *input_to_index_) {
+      input_names_.push_back(it.first.c_str());
+    }
+    for (const auto& it : *output_to_index_) {
+      output_names_.push_back(it.first.c_str());
+    }
+  }
 }
 
 TfLiteStatus AsyncSignatureRunner::RegisterBuffer(
@@ -106,11 +99,11 @@ TfLiteStatus AsyncSignatureRunner::UnregisterBuffer(TfLiteBufferHandle handle) {
   return async_subgraph_->UnregisterBuffer(handle);
 }
 
-std::vector<const char*> AsyncSignatureRunner::SupportedBufferTypes(
+const std::vector<const char*>& AsyncSignatureRunner::SupportedBufferTypes(
     TfLiteIoType io_type) const {
   return async_subgraph_->SupportedBufferTypes(io_type);
 }
-std::vector<const char*> AsyncSignatureRunner::SupportedSynchronizations(
+const std::vector<const char*>& AsyncSignatureRunner::SupportedSynchronizations(
     TfLiteIoType io_type) const {
   return async_subgraph_->SupportedSynchronizations(io_type);
 }
@@ -120,6 +113,13 @@ bool AsyncSignatureRunner::ReconcileRestrictions(
     const TfLiteAttributeMap* user_provided_attributes,
     TfLiteAttributeMap* merged, TfLiteAttributeMap* conflict) const {
   auto tensor_index = GetTensorIndex(io_type, name);
+  return ReconcileRestrictions(tensor_index, user_provided_attributes, merged,
+                               conflict);
+}
+
+bool AsyncSignatureRunner::ReconcileRestrictions(
+    int tensor_index, const TfLiteAttributeMap* user_provided_attributes,
+    TfLiteAttributeMap* merged, TfLiteAttributeMap* conflict) const {
   if (tensor_index < 0) return false;
   return async_subgraph_->ReconcileRestrictions(
       tensor_index, user_provided_attributes, merged, conflict);
@@ -128,6 +128,11 @@ bool AsyncSignatureRunner::ReconcileRestrictions(
 TfLiteStatus AsyncSignatureRunner::SetAttributes(
     TfLiteIoType io_type, const char* name, const TfLiteAttributeMap* attrs) {
   auto tensor_index = GetTensorIndex(io_type, name);
+  return SetAttributes(tensor_index, attrs);
+}
+
+TfLiteStatus AsyncSignatureRunner::SetAttributes(
+    int tensor_index, const TfLiteAttributeMap* attrs) {
   if (tensor_index < 0) return kTfLiteError;
   return async_subgraph_->SetAttributes(tensor_index, attrs);
 }
@@ -138,8 +143,8 @@ TfLiteStatus AsyncSignatureRunner::PrepareBackends() {
 
 TfLiteExecutionTask* AsyncSignatureRunner::CreateTask() {
   auto* task = async_subgraph_->CreateTask();
-  task->task->SetInputNameMap(&signature_def_->inputs);
-  task->task->SetOutputNameMap(&signature_def_->outputs);
+  task->task->SetInputNameMap(input_to_index_);
+  task->task->SetOutputNameMap(output_to_index_);
   return task;
 }
 
@@ -153,6 +158,24 @@ TfLiteStatus AsyncSignatureRunner::Wait(TfLiteExecutionTask* task) {
 
 TfLiteStatus AsyncSignatureRunner::Finish(TfLiteExecutionTask* task) {
   return async_subgraph_->Finish(task);
+}
+
+const TfLiteOpaqueTensor* AsyncSignatureRunner::input_tensor(
+    const char* input_name) const {
+  if (auto idx = GetTensorIndex(kTfLiteIoTypeInput, input_name); idx >= 0) {
+    return reinterpret_cast<const TfLiteOpaqueTensor*>(subgraph_->tensor(idx));
+  }
+  subgraph_->ReportError("Input name %s was not found", input_name);
+  return nullptr;
+}
+
+const TfLiteOpaqueTensor* AsyncSignatureRunner::output_tensor(
+    const char* output_name) const {
+  if (auto idx = GetTensorIndex(kTfLiteIoTypeOutput, output_name); idx >= 0) {
+    return reinterpret_cast<const TfLiteOpaqueTensor*>(subgraph_->tensor(idx));
+  }
+  subgraph_->ReportError("Output name %s was not found", output_name);
+  return nullptr;
 }
 
 }  // namespace async

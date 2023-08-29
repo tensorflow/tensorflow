@@ -185,8 +185,8 @@ update_test_filter_tags() {
   add_test_filter_tag -no_pip -nopip
   # MacOS filter tags
   if [[ ${OS_TYPE} == "macos" ]]; then
-    remove_test_filter_tag nomac no_mac
-    add_test_filter_tag -nomac -no_mac
+    remove_test_filter_tag nomac no_mac mac_excluded
+    add_test_filter_tag -nomac -no_mac -mac_excluded
   fi
   echo "Final test filter tags: ${TF_TEST_FILTER_TAGS}"
 }
@@ -325,9 +325,16 @@ if [[ -z "$PYTHON_BIN_PATH" ]]; then
   die "PYTHON_BIN_PATH was not provided. Did you run configure?"
 fi
 
-${PYTHON_BIN_PATH} -m pip install tb-nightly
-${PYTHON_BIN_PATH} -m pip uninstall -y protobuf
-${PYTHON_BIN_PATH} -m pip install "protobuf < 4"
+if [[ "$IS_NIGHTLY" == 1 ]]; then
+  ${PYTHON_BIN_PATH} -m pip install tb-nightly
+else
+  ${PYTHON_BIN_PATH} -m pip install tensorboard
+fi
+
+if [[ "x${PY_MAJOR_MINOR_VER}x" == "x3.8x" ]]; then
+  ${PYTHON_BIN_PATH} -m pip uninstall -y protobuf
+  ${PYTHON_BIN_PATH} -m pip install "protobuf < 4"
+fi
 
 # Bazel build the file.
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
@@ -523,6 +530,7 @@ run_test_with_bazel() {
 
   if [[ "${IS_OSS_SERIAL}" == "1" ]]; then
     remove_test_filter_tag -no_oss
+    remove_test_filter_tag -oss_excluded
     remove_test_filter_tag -oss_serial
     add_test_filter_tag oss_serial
   else

@@ -38,10 +38,10 @@ namespace internal {
 namespace {
 string GetCudaVersion() { return TF_CUDA_VERSION; }
 string GetCudaRtVersion() { return TF_CUDART_VERSION; }
+string GetCuptiVersion() { return TF_CUPTI_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 string GetCublasVersion() { return TF_CUBLAS_VERSION; }
 string GetCusolverVersion() { return TF_CUSOLVER_VERSION; }
-string GetCurandVersion() { return TF_CURAND_VERSION; }
 string GetCufftVersion() { return TF_CUFFT_VERSION; }
 string GetCusparseVersion() { return TF_CUSPARSE_VERSION; }
 string GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
@@ -57,14 +57,14 @@ StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
   }
 
   auto message = absl::StrCat("Could not load dynamic library '", filename,
-                              "'; dlerror: ", status.error_message());
+                              "'; dlerror: ", status.message());
 #if !defined(PLATFORM_WINDOWS)
   if (const char* ld_library_path = getenv("LD_LIBRARY_PATH")) {
     message += absl::StrCat("; LD_LIBRARY_PATH: ", ld_library_path);
   }
 #endif
-  LOG(WARNING) << message;
-  return Status(error::FAILED_PRECONDITION, message);
+  VLOG(1) << message;
+  return Status(absl::StatusCode::kFailedPrecondition, message);
 }
 }  // namespace
 
@@ -107,13 +107,9 @@ StatusOr<void*> GetCusparseDsoHandle() {
   return GetDsoHandle("cusparse", GetCusparseVersion());
 }
 
-StatusOr<void*> GetCurandDsoHandle() {
-  return GetDsoHandle("curand", GetCurandVersion());
-}
-
 StatusOr<void*> GetCuptiDsoHandle() {
   // Load specific version of CUPTI this is built.
-  auto status_or_handle = GetDsoHandle("cupti", GetCudaVersion());
+  auto status_or_handle = GetDsoHandle("cupti", GetCuptiVersion());
   if (status_or_handle.ok()) return status_or_handle;
   // Load whatever libcupti.so user specified.
   return GetDsoHandle("cupti", "");
@@ -165,6 +161,10 @@ StatusOr<void*> GetHipsparseDsoHandle() {
   return GetDsoHandle("hipsparse", "");
 }
 
+StatusOr<void*> GetHipblasltDsoHandle() {
+  return GetDsoHandle("hipblaslt", "");
+}
+
 StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("amdhip64", ""); }
 
 }  // namespace DsoLoader
@@ -187,11 +187,6 @@ StatusOr<void*> GetCublasDsoHandle() {
 
 StatusOr<void*> GetCublasLtDsoHandle() {
   static auto result = new auto(DsoLoader::GetCublasLtDsoHandle());
-  return *result;
-}
-
-StatusOr<void*> GetCurandDsoHandle() {
-  static auto result = new auto(DsoLoader::GetCurandDsoHandle());
   return *result;
 }
 
@@ -259,6 +254,11 @@ StatusOr<void*> GetHipsolverDsoHandle() {
 
 StatusOr<void*> GetHipsparseDsoHandle() {
   static auto result = new auto(DsoLoader::GetHipsparseDsoHandle());
+  return *result;
+}
+
+StatusOr<void*> GetHipblasltDsoHandle() {
+  static auto result = new auto(DsoLoader::GetHipblasltDsoHandle());
   return *result;
 }
 

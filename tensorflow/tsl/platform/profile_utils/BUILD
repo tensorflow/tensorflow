@@ -1,6 +1,7 @@
 # Description:
 # profile_utils targets.
 
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
@@ -13,12 +14,12 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/platform:__subpackages__",
         "//tensorflow/tsl:__pkg__",
         "//tensorflow/tsl/platform/default:__pkg__",
-    ],
+    ]),
     licenses = ["notice"],
 )
 

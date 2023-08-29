@@ -68,6 +68,9 @@ Outputs
   out3: int64, list<shape=?> - fourth output that is in1 but incremented.
 )doc";
 
+  static const char* OpName() { return kOpName; }
+  static const char* Doc() { return kDoc; }
+
   // Attributes declaration (syntax: https://www.tensorflow.org/guide/create_op)
   static std::vector<std::string> Attrs() {
     return {absl::StrCat(kOutput1SizeAttr, ": int"), "output2_suffix: string",

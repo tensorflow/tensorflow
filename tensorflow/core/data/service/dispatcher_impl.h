@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_IMPL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_IMPL_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,11 +25,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/data/service/auto_scaler.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
 #include "tensorflow/core/data/service/export.pb.h"
+#include "tensorflow/core/data/service/snapshot/snapshot_manager.h"
 #include "tensorflow/core/data/service/task_remover.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -43,54 +46,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-
-// Structs for maintaining the in-memory state of `Snapshot`s. This state
-// mirrors that which is on-disk.
-struct SourceState {
-  SourceState() : next_local_split_index(0), done(false) {}
-  // A counter of all assigned splits for the source.
-  int64_t next_local_split_index;
-  // If true, there are no more splits to process for the source.
-  bool done;
-};
-
-struct StreamState {
-  explicit StreamState(absl::string_view worker_address, int64_t num_sources)
-      : worker_address(worker_address), sources(num_sources), done(false) {}
-  // The address of the worker processing the stream.
-  std::string worker_address;
-  // All sources whose splits have ever been assigned to be processed.
-  std::vector<SourceState> sources;
-  // Indices of all unfinished sources.
-  absl::flat_hash_set<int64_t> active_sources;
-  // If true, there are no more splits to process for the stream.
-  bool done;
-};
-
-struct SnapshotState {
-  enum class Mode {
-    // No streams are done.
-    kActive,
-    // Some streams are done, but not all.
-    kWindingDown,
-    // All streams are done.
-    kDone
-  };
-
-  SnapshotState() : next_global_split_index(0), mode(Mode::kActive) {}
-
-  // Split providers for each input of the dataset being materialized.
-  std::vector<std::unique_ptr<SplitProvider>> split_providers;
-  // All streams that have ever been assigned to be processed.
-  std::vector<StreamState> streams;
-  // Indices of all unfinished streams, keyed by worker address.
-  absl::flat_hash_map<std::string, int64_t> active_streams;
-  // A counter of all assigned splits for the snapshot.
-  int64_t next_global_split_index;
-  // If not `kActive`, at least one source of one stream has finished processing
-  // and no new streams are created or assigned.
-  Mode mode;
-};
 
 // A service which coordinates a pool of workers to serve dataset elements over
 // RPC.
@@ -224,11 +179,20 @@ class DataServiceDispatcherImpl {
   Status Snapshot(const SnapshotRequest* request, SnapshotResponse* response);
   Status GetSnapshotSplit(const GetSnapshotSplitRequest* request,
                           GetSnapshotSplitResponse* response);
+  Status GetSnapshotStreams(const GetSnapshotStreamsRequest* request,
+                            GetSnapshotStreamsResponse* response);
+  Status DisableCompressionAtRuntime(
+      const DisableCompressionAtRuntimeRequest* request,
+      DisableCompressionAtRuntimeResponse* response);
 
   // Exports the dispatcher state for debugging.
   DispatcherStateExport ExportState() const;
 
  private:
+  // A thread which periodically checks for iterations to clean up, clients to
+  // release, workers to consider missing, and snapshot streams to reassign.
+  void MaintenanceThread();
+
   // Restores split providers from the state in `iteration` and stores them in
   // `restored`.
   Status RestoreSplitProviders(
@@ -241,24 +205,16 @@ class DataServiceDispatcherImpl {
       const std::string& dataset_id,
       std::vector<std::unique_ptr<SplitProvider>>& split_providers)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Makes split providers for the specified `dataset_def`, and stores them in
-  // `split_providers`.
-  Status MakeSplitProviders(
-      const DatasetDef& dataset_def,
-      std::vector<std::unique_ptr<SplitProvider>>& split_providers)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Registers a dataset with the given fingerprint, storing the new dataset's
-  // id in `dataset_id`.
-  Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,
+  // Registers a dataset, storing the new dataset's id in `dataset_id`.
+  Status RegisterDataset(const DatasetDef& dataset,
                          const DataServiceMetadata& metadata,
                          const std::string& requested_dataset_id,
                          std::string& dataset_id)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Finds the dataset ID with the requested dataset ID, or with the matching
-  // fingerprint if the ID does not exist. Returns nullptr if no such dataset
-  // exists.
+  // Finds the dataset ID with the requested dataset ID.
+  // Returns nullptr if no such dataset exists.
   StatusOr<std::optional<std::string>> FindDataset(
-      const GetOrRegisterDatasetRequest& request, uint64 fingerprint);
+      const GetOrRegisterDatasetRequest& request);
   // Gets a worker's stub from `worker_stubs_`, or if none exists, creates a
   // stub and stores it in `worker_stubs_`. A borrowed pointer to the stub is
   // stored in `out_stub`.
@@ -294,6 +250,10 @@ class DataServiceDispatcherImpl {
       const absl::flat_hash_set<int64_t>& current_tasks,
       std::vector<std::shared_ptr<const DispatcherState::Task>>& assigned_tasks,
       WorkerHeartbeatResponse* response);
+  // Reports the processing time of each active task to `auto_scaler_`.
+  void ReportProcessingTimesFromActiveTasks(
+      const std::vector<ActiveTask>& active_tasks,
+      const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Acquires an iteration client id to read from the given iteration and sets
   // `iteration_client_id`.
   Status AcquireIterationClientId(
@@ -305,18 +265,6 @@ class DataServiceDispatcherImpl {
   Status CreateTasksForIteration(
       std::shared_ptr<const DispatcherState::Iteration> iteration,
       std::vector<std::shared_ptr<const DispatcherState::Task>>& tasks)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Populates `response.snapshots` with information from `snapshots_`.
-  Status PopulateSnapshotInfo(absl::string_view worker_address,
-                              WorkerHeartbeatResponse* response)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Adds a new stream to `snapshots_state`.
-  Status CreateSnapshotStream(absl::string_view snapshot_directory,
-                              absl::string_view worker_address,
-                              SnapshotState& snapshot_state);
-  // Validates `request` against `snapshots_`.
-  Status ValidateGetSnapshotSplitRequest(const GetSnapshotSplitRequest& request)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Creates a new task for an iteration. The created task may be either
@@ -366,12 +314,23 @@ class DataServiceDispatcherImpl {
   // used when recovering state when the dispatcher starts.
   Status ApplyWithoutJournaling(const Update& update)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // A thread which periodically checks for iterations to clean up.
-  void IterationGcThread();
+  // Removes the client with `client_id` from `auto_scaler_`
+  void RemoveClientFromAutoScaler(int64_t client_id)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Releases iteration clients that haven't heartbeated recently.
   Status ReleaseMissingClients() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Removes the worker with `worker_address` from `auto_scaler_`, which is
+  // potentially associated with multiple iterations.
+  void RemoveWorkerFromAutoScaler(const std::string& worker_address)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Checks for workers that haven't heartbeated recently and alerts the
+  // snapshot managers.
+  void DetectMissingWorkers() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Scans for old iterations and marks them as finished.
   Status GcOldIterations() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Returns true if an iteration should be garbage collected.
+  bool ShouldGcIteration(const DispatcherState::Iteration& iteration,
+                         int64_t now_us) const;
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
   // stores it in `dataset_def`.
   Status GetDatasetDef(const std::string& dataset_id,
@@ -382,6 +341,10 @@ class DataServiceDispatcherImpl {
   Status GetDatasetDef(const DispatcherState::Dataset& dataset,
                        std::shared_ptr<const DatasetDef>& dataset_def)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Gets host information about a noncolocated worker from the dispatcher
+  // state. Returns null if no noncolocated worker has registered.
+  std::optional<absl::flat_hash_map<std::string, std::string>>
+  WorkerCompressionInfoByProtocol() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const experimental::DispatcherConfig config_;
   Env* env_;
@@ -408,17 +371,26 @@ class DataServiceDispatcherImpl {
   // Map from client id to the time of the client's last heartbeat.
   absl::flat_hash_map<int64_t, absl::Time> latest_client_heartbeats_time_
       TF_GUARDED_BY(mu_);
+  // Map from worker address to the time of the worker's last heartbeat.
+  absl::flat_hash_map<std::string, absl::Time> latest_worker_heartbeats_time_
+      TF_GUARDED_BY(mu_);
 
-  // Map from snapshot directory to state mirroring that of the
-  // materialization.
-  absl::flat_hash_map<std::string, SnapshotState> snapshots_ TF_GUARDED_BY(mu_);
+  // TODO(mpcallanan): Don't recover completed snapshots.
+  // TODO(mpcallanan): Garbage collect completed snapshots.
+  // A manager for each snapshot resumed or started during the lifetime of this
+  // dispatcher instance.
+  absl::flat_hash_map<std::string, std::unique_ptr<SnapshotManager>> snapshots_
+      TF_GUARDED_BY(mu_);
+  // A single stream assignment manager shared by all managers in `snapshots_`.
+  SnapshotAssignmentManager snapshot_assignment_manager_;
 
   std::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);
   DispatcherState state_ TF_GUARDED_BY(mu_);
-  // Condition variable for waking up the iteration gc thread.
-  condition_variable iteration_gc_thread_cv_;
-  std::unique_ptr<Thread> iteration_gc_thread_;
+  // Condition variable for waking up the gc thread.
+  condition_variable maintenance_thread_cv_;
+  std::unique_ptr<Thread> maintenance_thread_;
+  MultipleIterationsAutoScaler auto_scaler_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
 };

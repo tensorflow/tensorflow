@@ -387,13 +387,16 @@ class Interpreter:
   Use `get_signature_runner()` for a more user-friendly inference API.
   """
 
-  def __init__(self,
-               model_path=None,
-               model_content=None,
-               experimental_delegates=None,
-               num_threads=None,
-               experimental_op_resolver_type=OpResolverType.AUTO,
-               experimental_preserve_all_tensors=False):
+  def __init__(
+      self,
+      model_path=None,
+      model_content=None,
+      experimental_delegates=None,
+      num_threads=None,
+      experimental_op_resolver_type=OpResolverType.AUTO,
+      experimental_preserve_all_tensors=False,
+      experimental_disable_delegate_clustering=False,
+  ):
     """Constructor.
 
     Args:
@@ -401,7 +404,7 @@ class Interpreter:
       model_content: Content of model.
       experimental_delegates: Experimental. Subject to change. List of
         [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
-          objects returned by lite.load_delegate().
+        objects returned by lite.load_delegate().
       num_threads: Sets the number of threads used by the interpreter and
         available to CPU kernels. If not set, the interpreter will use an
         implementation-dependent default number of threads. Currently, only a
@@ -421,6 +424,19 @@ class Interpreter:
         delegates are applied. If false, getting intermediate tensors could
         result in undefined values or None, especially when the graph is
         successfully modified by the Tensorflow Lite default delegate.
+      experimental_disable_delegate_clustering: If true, don't perform delegate
+        clustering during delegate graph partitioning phase. Disabling delegate
+        clustering will make the execution order of ops respect the
+        explicitly-inserted control dependencies in the graph (inserted via
+        `with tf.control_dependencies()`) since the TF Lite converter will drop
+        control dependencies by default. Most users shouldn't turn this flag to
+        True if they don't insert explicit control dependencies or the graph
+        execution order is expected. For automatically inserted control
+        dependencies (with `tf.Variable`, `tf.Print` etc), the user doesn't need
+        to turn this flag to True since they are respected by default. Note that
+        this flag is currently experimental, and it might be removed/updated if
+        the TF Lite converter doesn't drop such control dependencies in the
+        model. Default is False.
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -445,10 +461,14 @@ class Interpreter:
       custom_op_registerers_by_func = [
           x for x in self._custom_op_registerers if not isinstance(x, str)
       ]
-      self._interpreter = (
-          _interpreter_wrapper.CreateWrapperFromFile(
-              model_path, op_resolver_id, custom_op_registerers_by_name,
-              custom_op_registerers_by_func, experimental_preserve_all_tensors))
+      self._interpreter = _interpreter_wrapper.CreateWrapperFromFile(
+          model_path,
+          op_resolver_id,
+          custom_op_registerers_by_name,
+          custom_op_registerers_by_func,
+          experimental_preserve_all_tensors,
+          experimental_disable_delegate_clustering,
+      )
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
     elif model_content and not model_path:
@@ -462,10 +482,14 @@ class Interpreter:
       # Since python strings are immutable then PyString_XX functions
       # will always return the same pointer.
       self._model_content = model_content
-      self._interpreter = (
-          _interpreter_wrapper.CreateWrapperFromBuffer(
-              model_content, op_resolver_id, custom_op_registerers_by_name,
-              custom_op_registerers_by_func, experimental_preserve_all_tensors))
+      self._interpreter = _interpreter_wrapper.CreateWrapperFromBuffer(
+          model_content,
+          op_resolver_id,
+          custom_op_registerers_by_name,
+          custom_op_registerers_by_func,
+          experimental_preserve_all_tensors,
+          experimental_disable_delegate_clustering,
+      )
     elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:

@@ -19,7 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
@@ -27,10 +29,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -416,5 +420,108 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
   ASSERT_FALSE(schedule.is_computation_scheduled(
       module->MakeNonfusionComputations({"parallel_thread"}).front()));
 }
+
+TEST_F(HloScheduleTest, UpdateScheduleAddComputation) {
+  // Add a computation from a module main thread and verify the schedule can
+  // be updated.
+  const std::string module_str = R"(
+HloModule UpdateScheduleWithMultipleComputations
+
+%Body (param.1: (s32[], token[])) -> (s32[], token[]) {
+  %param.1 = (s32[], token[]) parameter(0)
+  %get-tuple-element.1 = s32[] get-tuple-element((s32[], token[]) %param.1), index=0
+  %constant.1 = s32[] constant(1)
+  %add = s32[] add(s32[] %get-tuple-element.1, s32[] %constant.1)
+  %get-tuple-element.2 = token[] get-tuple-element((s32[], token[]) %param.1), index=1
+  %after-all = token[] after-all(token[] %get-tuple-element.2)
+  ROOT %tuple = (s32[], token[]) tuple(s32[] %add, token[] %after-all)
+}
+
+%Cond (param: (s32[], token[])) -> pred[] {
+  %param = (s32[], token[]) parameter(0)
+  %get-tuple-element = s32[] get-tuple-element((s32[], token[]) %param), index=0
+  %constant = s32[] constant(42)
+  ROOT %less-than = pred[] compare(s32[] %get-tuple-element, s32[] %constant), direction=LT
+}
+
+%async_builder {
+  %p0 = f32[10] parameter(0)
+  %p1 = f32[10] parameter(1)
+  ROOT %foo = add(%p0, %p1)
+}, execution_thread="parallel_thread"
+
+ENTRY %WhileLoop () -> (s32[], f32[10]) {
+  %p0 = f32[10] parameter(0)
+  %p1 = f32[10] parameter(1)
+  %zero = s32[] constant(0)
+  %init_token = token[] after-all()
+  %init_tuple = (s32[], token[]) tuple(s32[] %zero, token[] %init_token)
+  %while = (s32[], token[]) while((s32[], token[]) %init_tuple), condition=%Cond, body=%Body
+  %async-start = ((f32[10], f32[10]), f32[10], s32[]) async-start(f32[10] %p0, f32[10] %p1), async_execution_thread="parallel_thread",calls=%async_builder
+  %async-done = f32[10]{0} async-done(((f32[10], f32[10]), f32[10], s32[]) %async-start), async_execution_thread="parallel_thread", calls=%async_builder
+  %main_res = s32[] get-tuple-element((s32[], token[]) %while), index=0
+  ROOT %res = tuple(%main_res, %async-done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(),
+                     [](const BufferValue& buffer) {
+                       return ShapeUtil::ByteSizeOf(
+                           buffer.shape(),
+                           /*pointer_size=*/sizeof(void*));
+                     },
+                     /*algorithm=*/{}, {HloInstruction::kMainExecutionThread}));
+
+  HloComputation* entry_computation = module->entry_computation();
+  // Insert computation
+  HloComputation::Builder comp_builder("fusion_computation");
+  HloInstruction* entry_comp_parameter_0 =
+      entry_computation->parameter_instruction(0);
+  HloInstruction* entry_comp_parameter_1 =
+      entry_computation->parameter_instruction(1);
+
+  std::vector<HloInstruction*> instructions_in_new_computation;
+
+  HloInstruction* added_instruction =
+      entry_computation->AddInstruction(HloInstruction::CreateBinary(
+          entry_comp_parameter_0->shape(), HloOpcode::kMultiply,
+          entry_comp_parameter_0, entry_comp_parameter_1));
+  instructions_in_new_computation.push_back(added_instruction);
+
+  HloInstruction* call =
+      entry_computation->CreateCallInstruction(instructions_in_new_computation);
+
+  Shape completion_sflag_shape = ShapeUtil::MakeScalarShape(U32);
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloInstruction * async_done,
+      entry_computation->CreateAsyncInstructions(
+          call, {completion_sflag_shape}, entry_computation->execution_thread(),
+          /*replace=*/true, /*override_names=*/true));
+
+  HloInstruction* result_2 =
+      entry_computation->root_instruction()->mutable_operand(1);
+  HloInstruction* modified_result_2 =
+      entry_computation->AddInstruction(HloInstruction::CreateBinary(
+          result_2->shape(), HloOpcode::kAdd, async_done, result_2));
+
+  TF_ASSERT_OK(result_2->ReplaceAllUsesWith(modified_result_2));
+
+  auto added_computation_name =
+      async_done->operand(0)->called_computations()[0]->name();
+  ASSERT_FALSE(schedule.is_computation_scheduled(
+      module->GetComputationWithName(added_computation_name)));
+
+  ASSERT_IS_NOT_OK(schedule.Verify());
+  TF_ASSERT_OK(schedule.Update({HloInstruction::kMainExecutionThread}));
+  TF_ASSERT_OK(schedule.Verify());
+
+  ASSERT_TRUE(schedule.is_computation_scheduled(
+      module->GetComputationWithName(added_computation_name)));
+}
+
 }  // namespace
 }  // namespace xla

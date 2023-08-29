@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef LIBTPU_EXCLUDE_C_API_IMPL
+
 #include "tensorflow/c/tf_status.h"
 
 #include "tensorflow/c/tf_status_internal.h"
@@ -28,9 +30,15 @@ void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg) {
 void TF_SetPayload(TF_Status* s, const char* key, const char* value) {
   TSL_SetPayload(s, key, value);
 }
+void TF_ForEachPayload(const TF_Status* s, TF_PayloadVisitor visitor,
+                       void* capture) {
+  TSL_ForEachPayload(s, visitor, capture);
+}
 void TF_SetStatusFromIOError(TF_Status* s, int error_code,
                              const char* context) {
   TSL_SetStatusFromIOError(s, error_code, context);
 }
 TF_Code TF_GetCode(const TF_Status* s) { return TF_Code(TSL_GetCode(s)); }
 const char* TF_Message(const TF_Status* s) { return TSL_Message(s); }
+
+#endif  // LIBTPU_EXCLUDE_C_API_IMPL

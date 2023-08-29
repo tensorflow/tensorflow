@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_COMBINER_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_COMBINER_H_
 
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"

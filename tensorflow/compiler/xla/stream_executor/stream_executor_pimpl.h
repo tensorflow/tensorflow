@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <tuple>
@@ -28,35 +29,25 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
-#include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
 
 class Stream;
-
-// Structure used for device memory leak checking.
-struct AllocRecord {
-  // The requested allocation size of the buffer.
-  uint64_t bytes;
-
-  // Holds a representation of the stack at the time the associated buffer was
-  // allocated. Produced in a form described in
-  // //util/symbolize/symbolized_stacktrace.h.
-  std::string stack_trace;
-};
 
 // Forward declaration of private friend class.
 template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
@@ -87,24 +78,8 @@ class StreamExecutor {
   tsl::Status Init();
   tsl::Status Init(DeviceOptions device_options);
 
-  // Returns the platform that this StreamExecutor is acting upon.
-  ABSL_DEPRECATED("Use platform() instead.")
-  PlatformKind platform_kind() const { return platform_kind_; }
-
   // Returns a reference to the platform that created this executor.
   const Platform* platform() const { return platform_; }
-
-  // Gets a human-readable description of the device, e.g. "nvidia GPU
-  // supporting sm75 with 32GB RAM, 80 SMs, ...".  This is intended to be the if
-  // and only if two devices are "the same" (e.g. the same make/model of GPU),
-  // though it may not completely succeed at this for all platforms.
-  //
-  // This string is not guaranteed to be stable between versions.  Please DO NOT
-  // rely on it never changing.  (Within one version of the code, it won't
-  // change, don't worry.)
-  absl::string_view device_description_str() const {
-    return device_description_str_;
-  }
 
   // Retrieves (loads) a kernel for the platform this StreamExecutor is acting
   // upon, if one exists.
@@ -135,7 +110,7 @@ class StreamExecutor {
   // Unloads the module with handle `module_handle`.
   bool UnloadModule(ModuleHandle module_handle);
 
-  port::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
+  tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
       Stream* stream, const std::vector<uint8_t>& content);
 
   // Synchronously allocates an array on the device of type T with element_count
@@ -163,17 +138,6 @@ class StreamExecutor {
     return AllocateOwnedArray<T>(1);
   }
 
-  // Synchronously allocates a scalar of type T on the device that is (POD)
-  // zero-byte initialized.
-  template <typename T>
-  DeviceMemory<T> AllocateZeroed();
-
-  // As AllocateZeroed(), but returns a ScopedDeviceMemory<T>.
-  template <typename T>
-  ScopedDeviceMemory<T> AllocateOwnedZeroed() {
-    return ScopedDeviceMemory<T>(this, AllocateZeroed<T>());
-  }
-
   // Allocate a memory region inside another allocated memory region.
   // Offset and size are specified in terms of T elements.
   // Warning: Do not free a parent buffer before its sub-buffers; this may cause
@@ -186,17 +150,8 @@ class StreamExecutor {
   DeviceMemory<T> GetSubBuffer(DeviceMemory<T>* parent, uint64_t element_offset,
                                uint64_t element_count);
 
-  // Finds a symbol within the module corresponding to `module_handle` and
-  // returns device memory allocated to the symbol. The user has to make sure
-  // that the type of symbol and T match.
-  // - Note: symbol_name should include its namespace as well. For example,
-  //         pass "nms0::symbol" if referring to nms0::symbol.
-  template <typename T>
-  port::StatusOr<DeviceMemory<T>> GetSymbol(const std::string& symbol_name,
-                                            ModuleHandle module_handle);
-
   // An untyped version of GetSymbol.
-  port::StatusOr<DeviceMemoryBase> GetUntypedSymbol(
+  tsl::StatusOr<DeviceMemoryBase> GetUntypedSymbol(
       const std::string& symbol_name, ModuleHandle module_handle);
 
   // Deallocate the DeviceMemory previously allocated via this interface.
@@ -205,14 +160,6 @@ class StreamExecutor {
   // Resets the internal contents of mem to be null-representative, but this
   // null-out effect should not be relied upon in client code.
   void Deallocate(DeviceMemoryBase* mem);
-
-  // Retrieves a mapping of active opaque device memory pointer to a string
-  // representation of the [allocating thread's] stack at the time the pointer
-  // was allocated. Useful for tracking device memory leaks.
-  //
-  // Note: this will only be populated if --check_device_leaks flag is
-  // activated.
-  void GetMemAllocs(std::map<void*, AllocRecord>* records_out);
 
   // Allocates unified memory space of the given size, if supported.
   // See
@@ -233,18 +180,6 @@ class StreamExecutor {
   // Deallocates a region of host memory allocated by HostMemoryAllocate().
   void HostMemoryDeallocate(void* location);
 
-  // Registers a region of host memory with the platform API. Registered memory
-  // (or memory allocated with HostMemoryAllocate) is required for use with
-  // asynchronous memcpy operations, such as Stream::ThenMemcpy. This method
-  // is used to register memory allocated outside the StreamExecutor;
-  // HostMemoryAllocate implicitly registers its allocations and
-  // HostMemoryDeallocate implicitly deregisters on deallocation.
-  bool HostMemoryRegister(void* location, uint64_t size) ABSL_MUST_USE_RESULT;
-
-  // Unregisters a region of host memory registered with HostMemoryRegister.
-  // This should be done before deallocating the region with delete[]/free/etc.
-  bool HostMemoryUnregister(void* location) ABSL_MUST_USE_RESULT;
-
   // Synchronizes all activity occurring in the StreamExecutor's context (most
   // likely a whole device).
   bool SynchronizeAllActivity() ABSL_MUST_USE_RESULT;
@@ -254,25 +189,6 @@ class StreamExecutor {
   tsl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                  uint64_t size) ABSL_MUST_USE_RESULT;
 
-  // Blocks the caller while "size" bytes are initialized to "value" (in POD
-  // fashion) at the given location in device memory.
-  tsl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                uint64_t size) ABSL_MUST_USE_RESULT;
-
-  // [deprecated] Blocks the caller while a data segment of the given size is
-  // copied from the host source to the device destination.
-  ABSL_DEPRECATED(
-      "Prefer SynchronousMemcpyH2D, to avoid error-prone API usage.")
-  bool SynchronousMemcpy(DeviceMemoryBase* device_dst, const void* host_src,
-                         uint64_t size) ABSL_MUST_USE_RESULT;
-
-  // [deprecated] Blocks the caller while a data segment of the given size is
-  // copied from the device source to the host destination.
-  ABSL_DEPRECATED(
-      "Prefer SynchronousMemcpyD2H, to avoid error-prone API usage.")
-  bool SynchronousMemcpy(void* host_dst, const DeviceMemoryBase& device_src,
-                         uint64_t size) ABSL_MUST_USE_RESULT;
-
   // Same as SynchronousMemcpy(DeviceMemoryBase*, ...) above.
   tsl::Status SynchronousMemcpyH2D(const void* host_src, int64_t size,
                                    DeviceMemoryBase* device_dst);
@@ -281,7 +197,7 @@ class StreamExecutor {
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <class T>
-  tsl::Status SynchronousMemcpyH2D(port::ArraySlice<T> host_src,  // non-absl ok
+  tsl::Status SynchronousMemcpyH2D(absl::Span<const T> host_src,
                                    DeviceMemoryBase* device_dst) {
     auto host_size = host_src.size() * sizeof(T);
     CHECK(device_dst->size() == 0 || device_dst->size() >= host_size);
@@ -291,17 +207,6 @@ class StreamExecutor {
   // Same as SynchronousMemcpy(void*, ...) above.
   tsl::Status SynchronousMemcpyD2H(const DeviceMemoryBase& device_src,
                                    int64_t size, void* host_dst);
-
-  // Alternative interface for memcpying from device to host that takes an
-  // array slice. Checks that the destination size can accommodate the host
-  // slice size.
-  template <typename T>
-  tsl::Status SynchronousMemcpyD2H(const DeviceMemory<T>& device_src,
-                                   port::MutableArraySlice<T> host_dst) {
-    auto host_size = host_dst.size() * sizeof(T);
-    CHECK(device_src.size() == 0 || host_size >= device_src.size());
-    return SynchronousMemcpyD2H(device_src, host_size, host_dst.begin());
-  }
 
   // Blocks the caller while a data segment of the given size is copied from the
   // device source to the device destination.
@@ -357,32 +262,6 @@ class StreamExecutor {
   // will be reflected in "free".
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const;
 
-  // The device count reported by this StreamExecutor's platform.
-  // Note: on OpenCL we implicitly select platform zero at the moment.
-  int PlatformDeviceCount() const;
-
-  // Returns whether the StreamExecutor supports BLAS routines for the platform
-  // that underlies this interface.
-  bool SupportsBlas() const;
-
-  // Returns whether the StreamExecutor supports FFT routines for the platform
-  // that underlies this interface.
-  bool SupportsFft() const;
-
-  // Returns whether the StreamExecutor supports RNG routines for the platform
-  // that underlies this interface.
-  bool SupportsRng() const;
-
-  // Returns whether the StreamExecutor support neural net routines for the
-  // platform that underlies this interface.
-  bool SupportsDnn() const;
-
-  // Returns the list of supported algorithms for the specified convolution
-  // operation.
-  bool GetConvolveAlgorithms(dnn::ConvolutionKind kind,
-                             dnn::DataType input_type,
-                             std::vector<dnn::AlgorithmDesc>* out_algorithms);
-
   // Returns the supported algorithms / execution plans for a convolution.
   tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
@@ -394,7 +273,19 @@ class StreamExecutor {
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, ScratchAllocator* scratch_allocator,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
+
+  tsl::Status GetGraphConvolveRunners(
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      bool use_fallback, const NumericOptions& numeric_options,
+      std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* out_exec_plans,
+      std::string serialized_graph);
 
   tsl::Status GetFusedConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
@@ -407,6 +298,7 @@ class StreamExecutor {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, dnn::ActivationMode activation_mode,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
 
   tsl::Status GetFusedMatmulRunners(
@@ -415,6 +307,7 @@ class StreamExecutor {
       bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
       int64_t lda, int64_t ldb, int64_t ldc,
       dnn::ActivationMode activation_mode, bool use_fallback,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
           out_exec_plans);
 
@@ -440,21 +333,21 @@ class StreamExecutor {
 
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
-  port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
+  tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
       int num_layers, int hidden_size, int input_size, int cell_size,
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
       dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-      float dropout, uint64_t seed, ScratchAllocator* state_allocator,
-      bool use_padded_io);
+      const NumericOptions& numeric_options, float dropout, uint64_t seed,
+      ScratchAllocator* state_allocator, bool use_padded_io);
 
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
-  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type);
 
-  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
@@ -462,7 +355,7 @@ class StreamExecutor {
 
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.
-  port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type);
 
@@ -482,7 +375,7 @@ class StreamExecutor {
   // The canonical storage for both ptx and cubin_data should outlive the
   // lifetime of the kernel.
   template <typename... Args>
-  port::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
+  tsl::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
       absl::string_view kernel_name, absl::string_view ptx,
       absl::Span<const uint8_t> cubin_data);
 
@@ -534,9 +427,6 @@ class StreamExecutor {
   // underlying platform.
   blas::BlasSupport* AsBlas();
 
-  // Turns StreamExecutor operation tracing on or off.
-  void EnableTracing(bool enable);
-
   // Registers a trace listener to receive callbacks for only a single
   // StreamExecutor instance.
   // To register a listener for all executors for a given platform, see
@@ -560,10 +450,6 @@ class StreamExecutor {
   // allocation.
   StreamExecutorMemoryAllocator* GetAllocator() { return &allocator_; }
 
-  internal::StreamExecutorInterface* GetInternalExecutor() {
-    return implementation_.get();
-  }
-
   // Returns a stream allocated by this executor, or nullptr if not found.
   // Performs linear search over alive GPU streams.
   Stream* FindAllocatedStream(void* gpu_stream) {
@@ -576,7 +462,6 @@ class StreamExecutor {
   friend class ScopedTracer;
   friend class Event;
   friend class Stream;
-  friend class Timer;
   template <typename... Params>
   friend class TypedKernel;
   template <typename... Args>
@@ -586,15 +471,6 @@ class StreamExecutor {
   // a DeviceMemoryBase representing that allocation. In the case of failure,
   // nullptr is returned.
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space);
-
-  // Gets-or-creates (creates with memoization) an RngSupport datatype that can
-  // be used for random-number-generation routines on the current platform.
-  //
-  // Ownership and user-facing is the same as AsBlas() above.
-  //
-  // Returns null if there was an error initializing the RNG support for the
-  // underlying platform.
-  rng::RngSupport* AsRng();
 
   // Causes the host code to synchronously wait for operations entrained onto
   // stream to complete. Effectively a join on the asynchronous device
@@ -628,12 +504,9 @@ class StreamExecutor {
 
   // Entrains on a stream a user-specified function to be run on the host.
   // See Stream::ThenDoHostCallback for full details.
-  bool HostCallback(Stream* stream, std::function<void()> callback);
-
-  // Entrains on a stream a user-specified function to be run on the host.
-  // See Stream::ThenDoHostCallback for full details.
   // This is the preferred form for a callback that may return an error.
-  bool HostCallback(Stream* stream, std::function<tsl::Status()> callback);
+  bool HostCallback(Stream* stream,
+                    absl::AnyInvocable<tsl::Status() &&> callback);
 
   // Performs platform-specific allocation and initialization of an event.
   tsl::Status AllocateEvent(Event* event);
@@ -646,6 +519,11 @@ class StreamExecutor {
 
   // Wait for the specified event at the end of the specified stream.
   tsl::Status WaitForEvent(Stream* stream, Event* event);
+
+  // Wait for the specified event at the end of the raw platform-specific
+  // stream. Currently only implemented for GPU, where stream is a
+  // GpuStreamHandle (e.g. cudaStream_t).
+  tsl::Status WaitForEventOnExternalStream(std::intptr_t stream, Event* event);
 
   // Requests the current status of the event from the underlying platform.
   Event::Status PollForEventStatus(Event* event);
@@ -661,38 +539,16 @@ class StreamExecutor {
   // last-enqueued work.
   bool CreateStreamDependency(Stream* dependent, Stream* other);
 
-  // Allocates timer resources on the underlying platform and initializes its
-  // internals.
-  bool AllocateTimer(Timer* timer);
-
-  // Deallocates timer resources on the underlying platform.
-  void DeallocateTimer(Timer* timer);
-
-  // Records a start event for an interval timer.
-  bool StartTimer(Stream* stream, Timer* timer);
-
-  // Records a stop event for an interval timer.
-  bool StopTimer(Stream* stream, Timer* timer);
-
   // Allocates a new metadata object, appropriately populated, on the heap, with
   // ownership transfer to caller.
   std::unique_ptr<DeviceDescription> CreateDeviceDescription() const;
 
-  // Adds a task to the port::ThreadPool work queue. These tasks must be
+  // Adds a task to the tsl::thread::ThreadPool work queue. These tasks must be
   // fire-and-forget and have no external data or timing dependencies; their
   // execution order and completion time have no guarantees.
   // For an example of an appropriate task, see HostBlas::DoBlasGemmInternal;
   // there, temporary internal buffers are freed using this method.
   void EnqueueOnBackgroundThread(std::function<void()> task);
-
-  // Adds an AllocRecord for 'opaque' of size 'bytes' to the record map, for
-  // leak checking. NULL buffer pointers and buffer sizes of 0 will not be
-  // tracked.
-  void CreateAllocRecord(void* opaque, uint64_t bytes);
-
-  // Removes the AllocRecord keyed by 'opaque' from the record map. NULL
-  // pointers will not be erased (as they're not tracked, per above).
-  void EraseAllocRecord(void* opaque);
 
   // Calls the relevant TraceListener routine to begin tracing for the specified
   // asynchronous method.
@@ -716,11 +572,6 @@ class StreamExecutor {
   // fashion.
   std::unique_ptr<internal::StreamExecutorInterface> implementation_;
 
-  // A mapping of pointer (to device memory) to string representation of the
-  // stack (of the allocating thread) at the time at which the pointer was
-  // allocated.
-  std::map<void*, AllocRecord> mem_allocs_ ABSL_GUARDED_BY(mu_);
-
   // Memoized BLAS support object -- we only want to create this once when asked
   // for a BLAS interface.
   std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);
@@ -733,20 +584,10 @@ class StreamExecutor {
   // for a FFT interface.
   std::unique_ptr<fft::FftSupport> fft_;
 
-  // Memoized RNG support object -- we only want to create this once when asked
-  // for an RNG interface.
-  std::unique_ptr<rng::RngSupport> rng_ ABSL_GUARDED_BY(mu_);
-
   // Slot to cache the owned DeviceDescription for the underlying device
   // once it has been queried from DeviceDescription().
   mutable std::unique_ptr<DeviceDescription> device_description_
       ABSL_GUARDED_BY(mu_);
-
-  // The kind of the underlying platform that is being targeted, as passed
-  // during construction.
-  //
-  // Immutable post-initialization.
-  PlatformKind platform_kind_;
 
   // The device ordinal that this object was initialized with.
   //
@@ -761,7 +602,7 @@ class StreamExecutor {
   // here.
   //
   // Immutable post-initialization. Object is thread-safe.
-  std::unique_ptr<port::ThreadPool> background_threads_;
+  std::unique_ptr<tsl::thread::ThreadPool> background_threads_;
 
   // Counter for the current number of live streams. This is used to check
   // for accidentally-outstanding streams at StreamExecutor teardown time, as
@@ -780,16 +621,11 @@ class StreamExecutor {
   // The set of TraceListeners registered for this StreamExecutor.
   std::set<TraceListener*> listeners_ ABSL_GUARDED_BY(mu_);
 
-  // Allocated memory in bytes.
-  int64_t mem_alloc_bytes_;
-
   // Memory limit in bytes. Value less or equal to 0 indicates there is no
   // limit.
   int64_t memory_limit_bytes_;
 
   StreamExecutorMemoryAllocator allocator_;
-
-  std::string device_description_str_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };
@@ -833,7 +669,7 @@ class ScopedModuleHandle {
 // Inlines
 
 template <typename... Args>
-inline port::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
+inline tsl::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
 StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
                                   absl::string_view ptx,
                                   absl::Span<const uint8_t> cubin_data) {
@@ -857,17 +693,6 @@ inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64_t element_count,
   return DeviceMemory<T>(Allocate(bytes, memory_space));
 }
 
-template <typename T>
-inline port::StatusOr<DeviceMemory<T>> StreamExecutor::GetSymbol(
-    const std::string& symbol_name, ModuleHandle module_handle) {
-  port::StatusOr<DeviceMemoryBase> untyped_symbol =
-      GetUntypedSymbol(symbol_name, module_handle);
-  if (!untyped_symbol.ok()) {
-    return untyped_symbol.status();
-  }
-  return DeviceMemory<T>(untyped_symbol.value());
-}
-
 template <typename ElemT>
 ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(StreamExecutor* parent,
                                               DeviceMemoryBase value)
@@ -886,23 +711,6 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
       TF_CHECK_OK(Free());
     }
   }
-}
-
-template <typename T>
-DeviceMemory<T> StreamExecutor::AllocateZeroed() {
-  DeviceMemoryBase buf = Allocate(sizeof(T), /*memory_space=*/0);
-  if (buf.is_null()) {
-    return DeviceMemory<T>{};
-  }
-
-  DeviceMemory<T> result(buf);
-  bool ok = SynchronousMemZero(&result, sizeof(T)).ok();
-  if (!ok) {
-    Deallocate(&result);
-    return DeviceMemory<T>{};
-  }
-
-  return result;
 }
 
 template <typename T>

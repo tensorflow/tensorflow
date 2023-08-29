@@ -44,7 +44,8 @@ namespace xla {
 // a += e
 class WhileLoopAllReduceCodeMotion : public HloModulePass {
  public:
-  WhileLoopAllReduceCodeMotion() = default;
+  explicit WhileLoopAllReduceCodeMotion(bool enable_reduce_scatter = false)
+      : enable_reduce_scatter_(enable_reduce_scatter) {}
   ~WhileLoopAllReduceCodeMotion() override = default;
 
   absl::string_view name() const override {
@@ -54,6 +55,9 @@ class WhileLoopAllReduceCodeMotion : public HloModulePass {
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  const bool enable_reduce_scatter_;
 };
 }  // namespace xla
 

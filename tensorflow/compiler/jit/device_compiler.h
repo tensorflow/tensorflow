@@ -118,6 +118,12 @@ class DeviceCompiler : public ResourceBase {
   ClientType* client() const { return compiler_client_->client(); }
   const DeviceType& device_type() const { return persistor_->device_type(); }
   DeviceCompilationCache<ExecutableType>* cache() { return cache_.get(); }
+  DeviceExecutablePersistor<ExecutableType, ClientType>* persistor() {
+    return persistor_.get();
+  }
+  DeviceCompilerClient<ExecutableType, ClientType>* compiler_client() {
+    return compiler_client_.get();
+  }
 
   string DebugString() const override;
 
@@ -182,8 +188,9 @@ inline void LogOnceXlaCompiledFirstCluster() {
   });
 }
 
+template <typename ExecutableType>
 inline Status EligibleToPersist(DeviceCompileState compile_state,
-                                const xla::LocalExecutable* executable) {
+                                const ExecutableType* executable) {
   if (compile_state != DeviceCompileState::kCompiled) {
     return errors::FailedPrecondition(
         "Cache entry to serialize is not compiled.");
@@ -313,13 +320,12 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
   } else {
     auto built_executable =
         compiler_client_->BuildExecutable(options, *out_compilation_result);
-    cache_value.compilation_status = built_executable.status();
-    if (built_executable.ok()) {
-      out_executable = *std::move(built_executable);
-    }
+    TF_RETURN_IF_ERROR(built_executable.status());
+    out_executable = *std::move(built_executable);
 
-    TF_RETURN_IF_ERROR(device_compiler_internal::EligibleToPersist(
-        cache_value.compile_state, out_executable.get()));
+    TF_RETURN_IF_ERROR(
+        device_compiler_internal::EligibleToPersist<ExecutableType>(
+            cache_value.compile_state, out_executable.get()));
     TF_RETURN_IF_ERROR(persistor_->TryToPersistExecutable(
         DeviceCompilationClusterSignature::Hash()(sig), sig.HumanString(),
         options, *out_compilation_result, *out_executable,

@@ -36,3 +36,4 @@ dnn_version_info {
   minor: 3
   patch: 2
 }
+device_description_str: "sm_6.0 with 17071734784B RAM, 56 cores, 1480500KHz clock, 715000KHz mem clock, 4194304B L2$"
