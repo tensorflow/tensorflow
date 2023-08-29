@@ -2,6 +2,7 @@ BUILD:
 tensorflow/__init__:.py
 tensorflow/api_template.__init__:.py
 tensorflow/api_template_v1.__init__:.py
+tensorflow/cc/saved_model/image_format/README.md:
 tensorflow/compat_template.__init__:.py
 tensorflow/compat_template_v1.__init__:.py
 tensorflow/compiler/mlir/glob_lit_test.bzl:
