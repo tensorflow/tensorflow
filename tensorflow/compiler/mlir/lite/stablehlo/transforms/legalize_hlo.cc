@@ -937,7 +937,7 @@ class ConvertNonTrivialConvOp
     if (dnums.getKernelInputFeatureDimension() != num_spatial_dims + 1 ||
         dnums.getKernelOutputFeatureDimension() != num_spatial_dims)
       return rewriter.notifyMatchFailure(conv_op,
-                                         "requires kernel format [b, 0, 1, f]");
+                                         "requires kernel format [0, 1, o, i]");
     auto kernel_spatial_dimensions = dnums.getKernelSpatialDimensions();
     for (auto p : llvm::enumerate(kernel_spatial_dimensions)) {
       if (p.value() != p.index())
