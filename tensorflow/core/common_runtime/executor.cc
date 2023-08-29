@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
+#include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
@@ -630,39 +631,8 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
   AsyncState* state =
       new AsyncState(params, tagged_node, &item, first_input, stats);
 
-  auto done = [this, state, activity_id]() {
-    Device* device = immutable_state_.params().device;
-    NodeExecStatsInterface* stats = state->stats;  // Shorthand
-    Entry* first_input = state->first_input;       // Shorthand
-
-    nodestats::SetOpEnd(stats);
-    EntryVector outputs(state->item->num_outputs);
-    Status s = ProcessOutputs(*state->item, &state->ctx, outputs.data(), stats);
-    nodestats::SetMemory(stats, &state->ctx);
-    if (vlog_) {
-      VLOG(2) << "Async kernel done: " << state->item->node_id << " step "
-              << step_id_ << " " << SummarizeNodeDef(state->item->kernel->def())
-              << (state->tagged_node.get_is_dead() ? " is dead" : "")
-              << " device: " << device->name();
-    }
-
-    // Clears inputs.
-    const int num_inputs = state->item->num_inputs;
-    for (int i = 0; i < num_inputs; ++i) {
-      (first_input + i)->ClearVal();
-    }
-    propagator_.MaybeMarkCompleted(state->tagged_node);
-    activity_watcher::ActivityEnd(activity_id);
-    TaggedNodeSeq ready;
-    if (s.ok()) {
-      propagator_.PropagateOutputs(state->tagged_node, &outputs, &ready);
-    }
-    outputs.clear();
-    const bool completed = NodeDone(s, &ready, stats, nullptr);
-    delete state;
-    if (completed) ScheduleFinish();
-  };
   nodestats::SetOpStart(stats);
+
   {
     // Always trace async ops.
     profiler::AnnotatedTraceMe activity(
@@ -671,6 +641,64 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
               state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
         },
         profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
+
+    // Trace async op start.
+    profiler::TraceMeProducer producer(
+        [&] {
+          return profiler::TraceMeEncode(
+              "ExecutorState::ProcessAsync::Start",
+              {{"name", async_kernel->name()},
+               {"kernel_type", async_kernel->type_string()},
+               {"step_id", step_id_}});
+        },
+        profiler::ContextType::kTfExecutor);
+
+    auto done = [this, state, activity_id, ctx_id = producer.GetContextId()]() {
+      // Trace async op done.
+      profiler::TraceMeConsumer consumer(
+          [&] {
+            return profiler::TraceMeEncode(
+                "ExecutorState::ProcessAsync::Done",
+                {{"name", state->item->kernel->name()},
+                 {"kernel_type", state->item->kernel->type_string()},
+                 {"step_id", step_id_}});
+          },
+          profiler::ContextType::kTfExecutor, ctx_id);
+
+      Device* device = immutable_state_.params().device;
+      NodeExecStatsInterface* stats = state->stats;  // Shorthand
+      Entry* first_input = state->first_input;       // Shorthand
+
+      nodestats::SetOpEnd(stats);
+      EntryVector outputs(state->item->num_outputs);
+      Status s =
+          ProcessOutputs(*state->item, &state->ctx, outputs.data(), stats);
+      nodestats::SetMemory(stats, &state->ctx);
+      if (vlog_) {
+        VLOG(2) << "Async kernel done: " << state->item->node_id << " step "
+                << step_id_ << " "
+                << SummarizeNodeDef(state->item->kernel->def())
+                << (state->tagged_node.get_is_dead() ? " is dead" : "")
+                << " device: " << device->name();
+      }
+
+      // Clears inputs.
+      const int num_inputs = state->item->num_inputs;
+      for (int i = 0; i < num_inputs; ++i) {
+        (first_input + i)->ClearVal();
+      }
+      propagator_.MaybeMarkCompleted(state->tagged_node);
+      activity_watcher::ActivityEnd(activity_id);
+      TaggedNodeSeq ready;
+      if (s.ok()) {
+        propagator_.PropagateOutputs(state->tagged_node, &outputs, &ready);
+      }
+      outputs.clear();
+      const bool completed = NodeDone(s, &ready, stats, nullptr);
+      delete state;
+      if (completed) ScheduleFinish();
+    };
+
     immutable_state_.params().device->ComputeAsync(async_kernel, &state->ctx,
                                                    std::move(done));
   }
