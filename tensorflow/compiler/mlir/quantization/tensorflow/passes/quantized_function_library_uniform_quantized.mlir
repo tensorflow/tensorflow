@@ -33,7 +33,7 @@
 
 module {
 
-  for main_op in ["Conv2D", "DepthwiseConv2D"] {
+  for main_op in ["Conv2D", "DepthwiseConv2D", "MatMul"] {
     parameters[
       {"quantized_ops": ["${main_op}", "BiasAdd"], "act_func": "internal_requantize_no_activation_fn", "output_type": "!tf_type.qint8"},
       {"quantized_ops": ["${main_op}", "BiasAdd", "Relu"], "act_func": "internal_requantize_and_relu_fn", "output_type": "!tf_type.qint8"},
@@ -45,7 +45,7 @@ module {
                           %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
                           %bias_scale : tensor<*xf32>, %bias_zp : tensor<*xi32>,
                           %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x${output_type}>
-        attributes {tf_quant.quantized_ops = ${quantized_ops}} {
+    attributes {tf_quant.quantized_ops = ${quantized_ops}} {
       // Given the convolution takes 2 qint8 inputs and output a qint32.
       // The accumulation scale is (input_scale * filter_scale).
       // The accumulation zero point is 0.
@@ -168,6 +168,28 @@ module {
         attr_map = ""
       } : (tensor<*x!tf_type.qint8>, tensor<*x!tf_type.qint8>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint32>
     func.return %conv_out : tensor<*x!tf_type.qint32>
+  }
+
+  // MatMul.
+  func.func private @internal_matmul_fn(%input : tensor<*x!tf_type.qint8>, %filter : tensor<*x!tf_type.qint8>,
+                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
+                         %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>, %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x!tf_type.qint32> {
+    %dot_out = "tf.UniformQuantizedDot"(%input, %filter,
+                                %input_scale, %input_zp, %filter_scale, %filter_zp, %out_scale, %out_zp) {
+        Tin = "tfdtype$DT_QINT8",
+        Tout = "tfdtype$DT_QINT32",
+        lhs_quantization_axis = -1,
+        lhs_quantization_min_val = -128,
+        lhs_quantization_max_val = 127,
+        rhs_quantization_axis = -1,
+        rhs_quantization_min_val = -128,
+        rhs_quantization_max_val = 127,
+        output_quantization_axis = -1,
+        output_quantization_min_val = -2147483648,
+        output_quantization_max_val = 2147483647,
+        attr_map = ""
+      } : (tensor<*x!tf_type.qint8>, tensor<*x!tf_type.qint8>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint32>
+    func.return %dot_out : tensor<*x!tf_type.qint32>
   }
 
   // Quantize initial input at the start of the graph. Output is qint8.
