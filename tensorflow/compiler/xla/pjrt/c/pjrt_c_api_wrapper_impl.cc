@@ -1453,6 +1453,11 @@ PJRT_Error* PJRT_Buffer_Memory(PJRT_Buffer_Memory_Args* args) {
       args->struct_size));
   args->memory = FindMemoryWrapper(args->buffer->buffer->memory_space(),
                                    args->buffer->client->addressable_memories);
+  if (args->memory == nullptr) {
+    return new PJRT_Error{xla::Unimplemented(
+        "PJRT_Buffer_Memory not implemented for platform '%s'",
+        args->buffer->client->client->platform_name())};
+  }
   return nullptr;
 }
 
