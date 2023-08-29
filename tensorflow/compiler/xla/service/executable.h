@@ -308,16 +308,6 @@ class Executable {
       absl::Span<const ServiceExecutableRunOptions> run_options,
       absl::Span<const absl::Span<const ShapedBuffer* const>> arguments);
 
-  // Populates `hlo_execution_profile` from `executor`. This is implicit in any
-  // Execute* API call that takes a hlo_execution_profile argument, but must be
-  // called explicitly for other (async, for example) variants after the stream
-  // has completed.
-  virtual Status PopulateExecutionProfile(
-      ExecutionProfile* execution_profile,
-      HloExecutionProfile* hlo_execution_profile, se::Stream* stream) {
-    return OkStatus();
-  }
-
   // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a
   // timer for the execution, sets up HLO profiling if enabled, and fills in the
   // given ExecutionProfile if non-null.
