@@ -5,6 +5,7 @@ package tensorflow.profiler;
 import "google/protobuf/any.proto";
 import "tensorflow/core/profiler/protobuf/diagnostics.proto";
 import "tensorflow/core/profiler/protobuf/input_pipeline.proto";
+import "tensorflow/core/profiler/protobuf/power_metrics.proto";
 
 // Overview result for a TensorFlow Op.
 message OverviewTfOp {
@@ -187,6 +188,8 @@ message OverviewPageRunEnvironment {
   int32 num_cores_per_replica = 10;
   // Whether it is a training analysis or inference analysis.
   bool is_training = 11;
+  // Power Metrics for TPU.
+  PowerMetrics power_metrics = 12;
   reserved 6;
 }
 
