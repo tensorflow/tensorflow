@@ -20,8 +20,14 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
-* tf.types.experimental.TraceType now allows custom tf.function inputs to
-  declare Tensor decomposition and type casting support.
+* Making the tf.function type system fully available:
+    * `tf.types.experimental.TraceType` now allows custom tf.function inputs to
+       declare Tensor decomposition and type casting support.
+    * Introducing `tf.types.experimental.FunctionType` as the comprehensive
+      representation of the signature of `tf.function` callables. It can be
+      accessed through the `function_type` property of `tf.function`s and
+      `ConcreteFunction`s. See the `tf.types.experimental.FunctionType`
+      documentation for more details.
 
 ### Bug Fixes and Other Changes
 

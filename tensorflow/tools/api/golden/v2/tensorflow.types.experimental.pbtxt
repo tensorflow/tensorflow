@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "FunctionType"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "GenericFunction"
     mtype: "<type \'type\'>"
   }

@@ -1031,6 +1031,10 @@ class Function(core.GenericFunction, trackable.Trackable):
         self._jit_compile,
     )
 
+  @property
+  def function_type(self):
+    return self._function_type
+
   def pretty_printed_concrete_signatures(self, verbose=True):
     joiner = "\n\n" if verbose else "\n"
     return joiner.join([
