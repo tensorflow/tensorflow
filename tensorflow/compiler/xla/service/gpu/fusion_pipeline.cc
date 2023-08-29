@@ -82,7 +82,7 @@ HloPassPipeline FusionPipeline(
   fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                          /*only_fusion_computations=*/true);
   fusion.AddPass<HloDCE>();
-  return fusion;
+  return std::move(fusion);
 }
 
 HloPassPipeline HorizontalFusionPipeline(const GpuDeviceInfo& gpu_device_info) {
@@ -93,7 +93,7 @@ HloPassPipeline HorizontalFusionPipeline(const GpuDeviceInfo& gpu_device_info) {
                                     /*only_fusion_computations=*/true);
   horizontal_fusion.AddPass<HloDCE>();
 
-  return horizontal_fusion;
+  return std::move(horizontal_fusion);
 }
 
 }  // namespace gpu
