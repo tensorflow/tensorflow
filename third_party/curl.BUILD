@@ -345,6 +345,7 @@ cc_library(
         "lib/vtls/rustls.h",
         "lib/vtls/schannel.c",
         "lib/vtls/schannel.h",
+        "lib/vtls/schannel_int.h",
         "lib/vtls/schannel_verify.c",
         "lib/vtls/sectransp.h",
         "lib/vtls/vtls.c",
