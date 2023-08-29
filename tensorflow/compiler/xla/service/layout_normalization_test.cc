@@ -555,6 +555,31 @@ ENTRY main {
   )");
 }
 
+TEST_F(LayoutNormalizationTest, ConstantAvoidRevisitOfUser) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  c = f32[5,4]{0,1} constant({...})
+  s = f32[5,4]{0,1} sine(c)
+  t = f32[5,4]{0,1} tanh(s)
+  ROOT o = f32[5,4]{0,1} add(s, t)
+}
+)";
+  // If we allowed visiting the normalized user 's' of the constant, we would
+  // run into a CHECK failure, because the constant was normalized in-place and
+  // therefore would not be revisited.
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[constant_2:%[^ ]+]] = f32[4,5]{1,0} constant({...})
+// CHECK-NEXT: [[sine:%[^ ]+]] = f32[4,5]{1,0} sine([[constant_2]])
+// CHECK-NEXT: [[bitcast_1:%[^ ]+]] = f32[5,4]{0,1} bitcast([[sine]])
+// CHECK-NEXT: [[bitcast_2:%[^ ]+]] = f32[4,5]{1,0} bitcast([[bitcast_1]])
+// CHECK-NEXT: [[tanh:%[^ ]+]] = f32[4,5]{1,0} tanh([[bitcast_2]])
+// CHECK-NEXT: [[add_3:%[^ ]+]] = f32[4,5]{1,0} add([[bitcast_2]], [[tanh]])
+// CHECK-NEXT: ROOT [[bitcast_3_4:%[^ ]+]] = f32[5,4]{0,1} bitcast([[add_3]])
+  )");
+}
+
 TEST_F(LayoutNormalizationTest, Slice) {
   const char* hlo = R"(
 HloModule module

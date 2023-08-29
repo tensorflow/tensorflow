@@ -502,6 +502,10 @@ cc_library(
     name = "pjrt_compile_util",
     srcs = ["pjrt_compile_util.cc"],
     hdrs = ["pjrt_compile_util.h"],
+    visibility = [
+        ":internal",
+        "//tensorflow/core/tfrt/gpu/kernel:__pkg__",
+    ],
     deps = [
         ":device_compilation_profiler",
         ":device_compiler",
@@ -557,6 +561,7 @@ cc_library(
         "//learning/brain/tfrt/tpu_plugin:__pkg__",
         "//learning/brain/tfrt/tpu_common:__pkg__",
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
+        "//tensorflow/core/tfrt/gpu/kernel:__pkg__",
     ],
     deps = [
         ":pjrt_tensor_buffer",
@@ -663,6 +668,7 @@ cc_library(
     visibility = [
         ":internal",
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
+        "//tensorflow/core/tfrt/gpu/kernel:__pkg__",
     ],
     deps = [
         ":flags_headers",
@@ -1619,12 +1625,14 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":pjrt_tensor_buffer",
         ":pjrt_tensor_buffer_util",
         "//tensorflow/c/experimental/next_pluggable_device:tensor_pjrt_buffer_util",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_api",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",

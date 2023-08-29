@@ -642,6 +642,21 @@ TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#define REGISTER_KERNELS(type)                                           \
+  REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")                    \
+                              .Device(DEVICE_DEFAULT)                    \
+                              .TypeConstraint<type>("dtype")             \
+                              .HostMemory("resource"),                   \
+                          AssignUpdateVariableOp<CPUDevice, type, ADD>); \
+  REGISTER_KERNEL_BUILDER(Name("AssignSubVariableOp")                    \
+                              .Device(DEVICE_DEFAULT)                    \
+                              .TypeConstraint<type>("dtype")             \
+                              .HostMemory("resource"),                   \
+                          AssignUpdateVariableOp<CPUDevice, type, SUB>);
+
+TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+
 class VarIsInitializedOp : public OpKernel {
  public:
   explicit VarIsInitializedOp(OpKernelConstruction* c) : OpKernel(c) {}

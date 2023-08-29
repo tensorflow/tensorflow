@@ -1594,7 +1594,7 @@ tf_xla_py_strict_test(
     # TODO(b/232442915): Enable MLIR.
     enable_mlir_bridge = False,
     python_version = "PY3",
-    shard_count = 10,
+    shard_count = 20,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
@@ -2898,6 +2898,9 @@ tpu_py_strict_test(
     srcs = ["mean_op_test.py"],
     disable_experimental = False,
     disable_mlir_bridge = False,
+    tags = [
+        "notsan",  # timesout
+    ],
     deps = [
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework",

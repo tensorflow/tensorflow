@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/check_accepted_ops_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_tfl_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
@@ -279,7 +280,8 @@ tensorflow::Status ConvertTFToStableHLO(
     // Print out a detailed report of non-converted stats.
     // Because this pass aborts the pass if there are unconverted ops,
     // we need to locate createPrintOpStatsPass after all optimization.
-    pm.addPass(mlir::odml::createPrintOpStatsPass());
+    pm.addPass(
+        mlir::odml::createPrintOpStatsPass(GetAcceptedStableHLODialects()));
   }
 
   if (failed(pm.run(tf_module))) {

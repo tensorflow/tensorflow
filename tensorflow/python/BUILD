@@ -3,7 +3,6 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 # Placeholder: load py_proto_library
-load("//tensorflow:py.default.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
@@ -66,7 +65,7 @@ package(
 
 # Description:
 
-py_library(
+py_strict_library(
     name = "python",
     srcs = ["__init__.py"],
     srcs_version = "PY3",
@@ -83,8 +82,10 @@ py_library(
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:stateful_random_ops",
+        "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/structured:structured_ops",
         "//tensorflow/python/tpu:tpu_estimator",
+        "//tensorflow/python/tpu:tpu_noestimator",
     ],
 )
 
@@ -116,7 +117,7 @@ py_strict_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "no_contrib",
     srcs = ["__init__.py"],
     srcs_version = "PY3",
@@ -326,7 +327,7 @@ py_strict_library(
 )
 
 # This target should only be used for API generation.
-py_library(
+py_strict_library(
     name = "modules_with_exports",
     srcs = ["modules_with_exports.py"],
     srcs_version = "PY3",
@@ -356,8 +357,10 @@ py_library(
         "//tensorflow/python/distribute:merge_call_interim",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/distribute/experimental/rpc:rpc_ops",
         "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
         "//tensorflow/python/distribute/failure_handling:preemption_watcher",
@@ -407,7 +410,6 @@ py_library(
         "//tensorflow/python/ops:tpu_ops_gen",
         "//tensorflow/python/ops:uniform_quant_ops_gen",
         "//tensorflow/python/ops:while_v2",
-        "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/linalg/sparse:sparse_py",
         "//tensorflow/python/ops/losses",
@@ -464,7 +466,11 @@ tf_python_pybind_extension(
         "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
         "//tensorflow:windows": [],
     }),
+    enable_stub_generation = True,
     features = ["-layering_check"],
+    pytype_srcs = [
+        "_pywrap_tfcompile.pyi",
+    ],
     static_deps = tf_python_pybind_static_deps(),
     deps = [
         ":tfcompile_headers_lib",
@@ -483,6 +489,10 @@ tf_python_pybind_extension(
         "//tensorflow/python/training:quantize_training_wrapper.cc",
     ],
     hdrs = ["//tensorflow/core/common_runtime:quantize_training_hdrs"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_quantize_training.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -524,6 +534,10 @@ tf_python_pybind_extension(
         "lite/toco_python_api_wrapper.cc",
     ],
     hdrs = ["//tensorflow/lite/toco/python:toco_python_api_hdrs"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_toco_api.pyi",
+    ],
     deps = [
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
@@ -1078,6 +1092,10 @@ py_strict_library(
 tf_python_pybind_extension(
     name = "flags_pybind",
     srcs = ["//tensorflow/core/config:flags_api_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "flags_pybind.pyi",
+    ],
     visibility = ["//tensorflow/core/config:__subpackages__"],
     deps = [
         "//tensorflow/core:lib_headers_for_pybind",
@@ -1092,6 +1110,10 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_sanitizers",
     srcs = ["sanitizers_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_sanitizers.pyi",
+    ],
     deps = [
         "@pybind11",
     ],
@@ -1224,6 +1246,10 @@ tf_python_pybind_extension(
         "//tensorflow/c/eager:pywrap_headers_monitoring_reader",
         "//tensorflow/python/util:util_hdr",
     ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_tfe_monitoring_reader.pyi",
+    ],
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
@@ -1264,6 +1290,10 @@ tf_python_pybind_extension(
         "//tensorflow/c/eager/parallel_device:sources",
         "//tensorflow/python/distribute/parallel_device:pywrap_parallel_device.cc",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
+    ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_parallel_device.pyi",
     ],
     visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
     deps = [

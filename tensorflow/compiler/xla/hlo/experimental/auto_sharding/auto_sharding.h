@@ -68,12 +68,15 @@ class AutoShardingImplementation {
   // using HloPassInterface::Run;
   StatusOr<AutoShardingResult> RunAutoSharding(
       HloModule* module,
+      const absl::flat_hash_set<std::string>& replicated_small_tensors,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Removes SPMD annotations (if there are) to test AutoSharding on manually
   // annotated graphs.
   StatusOr<bool> RemoveShardingAnnotation(
       HloModule* module,
+      const absl::flat_hash_set<std::string>& replicated_small_tensors = {},
+
       const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Canonicalizes entry_computation_layouts by calling

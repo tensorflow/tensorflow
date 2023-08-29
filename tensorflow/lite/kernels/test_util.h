@@ -600,6 +600,9 @@ class SingleOpModel {
   // Define the operator in this model.
   void SetBuiltinOp(BuiltinOperator type, BuiltinOptions builtin_options_type,
                     flatbuffers::Offset<void> builtin_options);
+  void SetBuiltinOp(BuiltinOperator type,
+                    BuiltinOptions2 builtin_options_2_type,
+                    flatbuffers::Offset<void> builtin_options_2);
   void SetCustomOp(const string& name,
                    const std::vector<uint8_t>& custom_option,
                    const std::function<TfLiteRegistration*()>& registration);

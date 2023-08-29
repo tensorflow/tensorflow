@@ -97,16 +97,6 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
     return GetExecutor(config);
   }
 
-  StatusOr<::stream_executor::StreamExecutor*>
-  ExecutorForDeviceWithPluginConfig(
-      int ordinal,
-      const ::stream_executor::PluginConfig& plugin_config) override {
-    stream_executor::StreamExecutorConfig config;
-    config.ordinal = ordinal;
-    config.plugin_config = plugin_config;
-    return GetExecutor(config);
-  }
-
   StatusOr<::stream_executor::StreamExecutor*> GetExecutor(
       const ::stream_executor::StreamExecutorConfig& config) override;
 

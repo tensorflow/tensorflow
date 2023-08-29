@@ -376,6 +376,9 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
 
 class GpuLatencyEstimator : public ApproximateLatencyEstimator {
  public:
+  explicit GpuLatencyEstimator(
+      GetCanonicalAsyncOpFunc func = GpuGetCanonicalAsyncOp)
+      : ApproximateLatencyEstimator(func) {}
   TimeCost NodeCost(const HloInstruction* instr) const override {
     if (IsNopInstruction(*instr)) {
       return 0.0;
@@ -401,7 +404,7 @@ class GpuLatencyEstimator : public ApproximateLatencyEstimator {
       if (from.GetInstr().opcode() == HloOpcode::kRecv) {
         // Recv -> RecvDone has a low latency.
         return ApproximateLatencyEstimator::kLowLatency;
-      } else if (target.GetInstr().opcode() == HloOpcode::kSend) {
+      } else if (from.GetInstr().opcode() == HloOpcode::kSend) {
         // Send -> SendDone has a very high latency.
         return ApproximateLatencyEstimator::kHighLatency * 10;
       }

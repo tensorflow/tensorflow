@@ -685,44 +685,6 @@ void XlaBuilder::IsConstantVisitor(const int64_t op_handle, int depth,
   visited->insert(op_handle);
 }
 
-Status XlaBuilder::SetDynamicBinding(int64_t dynamic_size_param_num,
-                                     ShapeIndex dynamic_size_param_index,
-                                     int64_t target_param_num,
-                                     ShapeIndex target_param_index,
-                                     int64_t target_dim_num) {
-  bool param_exists = false;
-  for (size_t index = 0; index < instructions_.size(); ++index) {
-    HloInstructionProto& instr = instructions_[index];
-    if (instr.opcode() == HloOpcodeString(HloOpcode::kParameter) &&
-        instr.parameter_number() == target_param_num) {
-      param_exists = true;
-      Shape param_shape(instr.shape());
-      Shape* param_shape_ptr = &param_shape;
-      for (int64_t index : target_param_index) {
-        param_shape_ptr = param_shape_ptr->mutable_tuple_shapes(index);
-      }
-      param_shape_ptr->set_dynamic_dimension(target_dim_num,
-                                             /*is_dynamic=*/true);
-      *instr.mutable_shape() = param_shape.ToProto();
-      instruction_shapes_[index] =
-          std::make_unique<Shape>(std::move(param_shape));
-    }
-  }
-  if (!param_exists) {
-    return InvalidArgument(
-        "Asked to mark parameter %lld as dynamic sized parameter, but the "
-        "doesn't exists",
-        target_param_num);
-  }
-
-  TF_RETURN_IF_ERROR(dynamic_parameter_binding_.Bind(
-      DynamicParameterBinding::DynamicParameter{dynamic_size_param_num,
-                                                dynamic_size_param_index},
-      DynamicParameterBinding::DynamicDimension{
-          target_param_num, target_param_index, target_dim_num}));
-  return OkStatus();
-}
-
 Status XlaBuilder::SetInstructionFrontendAttribute(const XlaOp op,
                                                    std::string attribute,
                                                    std::string value) {
@@ -818,8 +780,6 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64_t root_id,
     TF_RETURN_IF_ERROR(PopulateInputOutputAliasAndBufferDonor(
         module, program_shape, input_output_aliases_, buffer_donors_));
   }
-  *(module->mutable_dynamic_parameter_binding()) =
-      dynamic_parameter_binding_.ToProto();
 
   // Clear data held by this builder.
   this->instructions_.clear();

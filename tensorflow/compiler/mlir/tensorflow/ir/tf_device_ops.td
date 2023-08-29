@@ -39,6 +39,7 @@ def TfDevice_Dialect : Dialect {
 }];
 
   let cppNamespace = "::mlir::tf_device";
+  let usePropertiesForAttributes = 0;
 }
 
 //===----------------------------------------------------------------------===//

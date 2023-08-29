@@ -14,6 +14,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "cast"
+    argspec: "args=[\'self\', \'value\', \'casting_context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "experimental_as_proto"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
@@ -24,6 +28,14 @@ tf_class {
   member_method {
     name: "experimental_type_proto"
     argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "flatten"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_tensors"
+    argspec: "args=[\'self\', \'tensors\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_value"
@@ -48,5 +60,9 @@ tf_class {
   member_method {
     name: "placeholder_value"
     argspec: "args=[\'self\', \'placeholder_context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_tensors"
+    argspec: "args=[\'self\', \'value\'], varargs=None, keywords=None, defaults=None"
   }
 }

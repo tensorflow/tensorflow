@@ -304,8 +304,10 @@ static Status CreateHloXlaPipeline(
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::bufferization::createBufferDeallocationPass());
     pm.addPass(mlir::createBufferizationToMemRefPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        xla::cpu::createRemoveCopiesToOutParamsPass());
+    if (options.remove_copies_to_outparams) {
+      pm.addNestedPass<mlir::func::FuncOp>(
+          xla::cpu::createRemoveCopiesToOutParamsPass());
+    }
   }
   pm.addNestedPass<mlir::func::FuncOp>(mlir::thlo::createLegalizeSortPass());
 

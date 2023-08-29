@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/test_matchers.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -104,29 +105,6 @@ tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
                          compilation_result.get());
 }
 
-/* The third party version of the Graph Analysis always returns disabled so
- * these matchers short circuit on that error. */
-MATCHER(IsOkOrFiltered,
-        "Status was OK or equal to the Graph Analysis failure") {
-  bool is_ok = arg.ok();
-  auto graph_analysis_failure =
-      (arg.status() == CompileToHloGraphAnalysisFailedError());
-  return testing::ExplainMatchResult(
-      testing::IsTrue(), is_ok || graph_analysis_failure, result_listener);
-}
-
-MATCHER_P(
-    IncrementedOrFiltered, metric,
-    "Metric was incremented or Status equal to the Graph Analysis failure") {
-  auto graph_analysis_failure =
-      (arg.status() == CompileToHloGraphAnalysisFailedError());
-  if (graph_analysis_failure) {
-    return testing::ExplainMatchResult(testing::IsTrue(),
-                                       graph_analysis_failure, result_listener);
-  }
-  return testing::ExplainMatchResult(testing::Eq(metric), 1, result_listener);
-}
-
 TEST(LegalizeWithCombinedBridge, DoesNotUseMlirLowering) {
   CellReader<int64_t> mlir_bridge_legalize_count(kMlirLegalizeCount);
   CellReader<int64_t> counts(kBridgeStatusCounter);
@@ -136,9 +114,9 @@ TEST(LegalizeWithCombinedBridge, DoesNotUseMlirLowering) {
   ASSERT_THAT(result, IsOkOrFiltered());
   EXPECT_EQ(mlir_bridge_legalize_count.Delta("tf.Acos"), 0);
   EXPECT_THAT(result,
-              IncrementedOrFiltered(counts.Delta(kMlirCombinedMlirSuccess)));
+              IncrementedOrFiltered(counts.Delta(kMlirCombinedMlirSuccess), 1));
   EXPECT_THAT(result,
-              IncrementedOrFiltered(counts.Delta(kMlirCombinedOldSuccess)));
+              IncrementedOrFiltered(counts.Delta(kMlirCombinedOldSuccess), 1));
 }
 
 TEST(LegalizeWithCombinedBridge,
@@ -152,9 +130,9 @@ TEST(LegalizeWithCombinedBridge,
   // Never failed to legalize because it was never attempted
   EXPECT_EQ(legalize_failure_count.Read("tf.DoesntExist", "Unknown"), 0);
   EXPECT_THAT(result,
-              IncrementedOrFiltered(counts.Delta(kMlirCombinedMlirSuccess)));
+              IncrementedOrFiltered(counts.Delta(kMlirCombinedMlirSuccess), 1));
   EXPECT_THAT(result,
-              IncrementedOrFiltered(counts.Delta(kMlirCombinedOldFailure)));
+              IncrementedOrFiltered(counts.Delta(kMlirCombinedOldFailure), 1));
 }
 
 };  // namespace internal

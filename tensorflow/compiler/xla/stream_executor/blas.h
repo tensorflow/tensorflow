@@ -16,8 +16,7 @@ limitations under the License.
 // Exposes the family of BLAS routines as pre-canned high performance calls for
 // use in conjunction with the StreamExecutor abstraction.
 //
-// Note that this interface is optionally supported by platforms; see
-// StreamExecutor::SupportsBlas() for details.
+// Note that this interface is optionally supported by platforms.
 //
 // This abstraction makes it simple to entrain BLAS operations on GPU data into
 // a Stream -- users typically will not use this API directly, but will use the

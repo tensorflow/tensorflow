@@ -136,6 +136,23 @@ func.func @uniform_quantize_add(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) 
 
 // -----
 
+// CHECK-LABEL: func @uniform_quantize_add_i32
+func.func @uniform_quantize_add_i32(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> () {
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i32:f32, 1.000000e+00:3>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i32:f32, 1.000000e+00:3>>
+
+  // CHECK: %[[VAL1:.*]] = mhlo.convert %[[VAL0:.*]] : tensor<?x?xi32>
+  // CHECK: %[[VAL3:.*]] = mhlo.convert %[[VAL2:.*]] : tensor<?x?xi32>
+  // CHECK-DAG: %[[VAL5:.*]] = mhlo.constant dense<3> : tensor<i32>
+  // CHECK: %[[VAL4:.*]] = chlo.broadcast_add %[[VAL1:.*]], %[[VAL3:.*]] : (tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL6:.*]] = chlo.broadcast_subtract %[[VAL4]], %[[VAL5]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK-NEXT: return
+  %2 = mhlo.add %0, %1: (tensor<?x?x!quant.uniform<i32:f32, 1.000000e+00:3>>,tensor<?x?x!quant.uniform<i32:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i32:f32, 1.000000e+00:3>>
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @uniform_quantize_add_int4
 func.func @uniform_quantize_add_int4(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> () {
   %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>

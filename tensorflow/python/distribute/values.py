@@ -485,10 +485,10 @@ class DistributedVariableTraceType(trace.TraceType):
   def placeholder_value(self, placeholder_context=None):
     return self.distributed_variable
 
-  def _to_tensors(self, value):
+  def to_tensors(self, value):
     return []
 
-  def _cast(self, value, _):
+  def cast(self, value, _):
     return value
 
   def __hash__(self) -> int:

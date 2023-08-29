@@ -26,7 +26,7 @@ namespace tensorflow::tfrt_stub {
 PYBIND11_MODULE(_pywrap_saved_model, m) {
   py::google::ImportStatusModule();
 
-  py::class_<tensorflow::tfrt_stub::SavedModel>(m, "SavedModel");
+  py::class_<tensorflow::tfrt_stub::SavedModel> give_me_a_name(m, "SavedModel");
 
   m.def("LoadSavedModel", &tensorflow::tfrt_stub::LoadSavedModel,
         py::arg("saved_model_dir") = absl::string_view(),

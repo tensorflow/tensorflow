@@ -451,8 +451,8 @@ message DebugOptions {
 
   // 0:   Disable GPU graph capture.
   // 1:   Enable GPU graphs for fusions and memcpy (safest ones).
-  // 2:   Enable GPU graphs for gemms and convs.
-  // 3+   Enable GPU graphs for collectives.
+  // 2:   Enable GPU graphs for gemms.
+  // 3:   Enable GPU graphs for convolutions.
   //
   // Default: 0.
   int32 xla_gpu_graph_level = 194;
@@ -606,7 +606,11 @@ message DebugOptions {
 
   bool xla_gpu_enable_split_k_autotuning = 241;
 
-  // Next id: 242
+  bool xla_gpu_single_wave_autotuning = 242;
+  // Whether reduction epilogue fusion is enabled in fusion passes.
+  bool xla_gpu_enable_reduction_epilogue_fusion = 243;
+
+  // Next id: 244
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

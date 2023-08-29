@@ -52,15 +52,6 @@ void populateExtraBufferizePatterns(
     bufferization::BufferizeTypeConverter *converter,
     RewritePatternSet *patterns);
 
-/// Populate patterns to pack JIT invocations.
-void PopulatePackJitInvocationsPatterns(MLIRContext *ctx,
-                                        RewritePatternSet *patterns,
-                                        llvm::ArrayRef<int64_t> tile_sizes,
-                                        llvm::ArrayRef<int64_t> unroll_factors,
-                                        int64_t max_supported_rank,
-                                        bool enable_ftz, bool index_64bit,
-                                        bool cpu_codegen);
-
 }  // namespace transforms
 }  // namespace kernel_gen
 }  // namespace mlir

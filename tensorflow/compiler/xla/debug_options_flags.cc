@@ -188,6 +188,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_copy_insertion_use_region_analysis(true);
   opts.set_xla_gpu_collect_cost_model_stats(false);
   opts.set_xla_gpu_enable_split_k_autotuning(true);
+
+  opts.set_xla_gpu_single_wave_autotuning(true);
+  opts.set_xla_gpu_enable_reduction_epilogue_fusion(true);
   return opts;
 }
 
@@ -917,7 +920,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       int32_setter_for(&DebugOptions::set_xla_gpu_graph_level),
       debug_options->xla_gpu_graph_level(),
       "Set GPU graph level. 0 = off; 1 = capture fusions and memcpys; 2 = "
-      "capture convolutions and gemms; 3 = capture collectives."));
+      "capture gemms; 3 = capture convolutions."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_graph_num_runs_to_instantiate",
       int32_setter_for(
@@ -1226,10 +1229,30 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If true, use the new fine-grain region-based live range interference"
       " analysis in the copy insertion optimization pass."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_collect_cost_model_stats",
+      bool_setter_for(&DebugOptions::set_xla_gpu_collect_cost_model_stats),
+      debug_options->xla_gpu_collect_cost_model_stats(),
+      "If true, each fusion instruction will have a cost model runtime "
+      "estimate in backend config after compilation."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_split_k_autotuning",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_split_k_autotuning),
       debug_options->xla_gpu_enable_split_k_autotuning(),
       "Enable split_k autotuning for triton gemms."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_single_wave_autotuning",
+      bool_setter_for(&DebugOptions::set_xla_gpu_single_wave_autotuning),
+      debug_options->xla_gpu_single_wave_autotuning(),
+      "Enable single \"wave\" autotuning. This uses more memory for "
+      "compilation, but utilizes CPU cores better, so compilation can be "
+      "faster."));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_reduction_epilogue_fusion",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_reduction_epilogue_fusion),
+      debug_options->xla_gpu_enable_reduction_epilogue_fusion(),
+      "Enable fusion for reduction epilogues"));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

@@ -54,6 +54,7 @@ tf_cc_shared_test(
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
+            "//tensorflow/c:c_api",
             "//tensorflow/core:test",
             "//tensorflow/core:test_main",
             "//tensorflow/core/framework:types_proto_cc",
@@ -120,6 +121,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":attr_util",
+        "//tensorflow/c:tf_tensor",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",

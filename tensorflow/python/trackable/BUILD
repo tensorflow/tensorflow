@@ -120,11 +120,13 @@ tf_py_strict_test(
         ":base_delegate",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

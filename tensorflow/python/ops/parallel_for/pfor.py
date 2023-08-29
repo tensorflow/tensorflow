@@ -63,7 +63,6 @@ from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import special_math_ops
@@ -4458,7 +4457,7 @@ def _convert_decode_csv(pfor_input: _PforInput):
   if not select_cols:
     select_cols = None
   return [
-      wrap(t, True) for t in parsing_ops.decode_csv(
+      wrap(t, True) for t in gen_parsing_ops.decode_csv(
           lines,
           record_defaults,
           field_delim=field_delim,

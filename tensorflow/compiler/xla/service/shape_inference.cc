@@ -207,23 +207,6 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                                        output_is_dynamic);
 }
 
-StatusOr<PrimitiveType> MaybeUpcast(
-    PrimitiveType from_type,
-    std::optional<PrimitiveType> preferred_element_type) {
-  if (!preferred_element_type.has_value() ||
-      *preferred_element_type == from_type) {
-    return from_type;
-  }
-  if (!primitive_util::IsFloatingPointType(from_type) &&
-      primitive_util::BitWidth(*preferred_element_type) <
-          primitive_util::BitWidth(from_type)) {
-    return InvalidArgument(
-        "`preferred_element_type` must not be narrower than the original "
-        "type.");
-  }
-  return *preferred_element_type;
-}
-
 }  // namespace
 
 /* static */ StatusOr<Shape> ShapeInference::InferUnaryOpShape(
@@ -796,10 +779,9 @@ Status ValidateDotDimensionNumbers(
       is_dynamic.push_back(rhs.is_dynamic_dimension(i));
     }
   }
-  TF_ASSIGN_OR_RETURN(
-      PrimitiveType type,
-      MaybeUpcast(ShapeUtil::HigherPrecisionElementType(lhs, rhs),
-                  preferred_element_type));
+
+  PrimitiveType type = preferred_element_type.value_or(
+      ShapeUtil::HigherPrecisionElementType(lhs, rhs));
   Shape result = ShapeUtil::MakeShape(type, dimensions, is_dynamic);
 
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
@@ -1927,10 +1909,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       }
     }
   }
-  TF_ASSIGN_OR_RETURN(
-      PrimitiveType type,
-      MaybeUpcast(ShapeUtil::HigherPrecisionElementType(lhs, rhs),
-                  preferred_element_type));
+  PrimitiveType type = preferred_element_type.value_or(
+      ShapeUtil::HigherPrecisionElementType(lhs, rhs));
   return ShapeUtil::MakeShape(type, dimensions, is_dynamic);
 }
 

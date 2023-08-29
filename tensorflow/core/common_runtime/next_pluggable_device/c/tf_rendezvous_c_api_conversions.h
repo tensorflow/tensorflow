@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"  // IWYU pragma: keep
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/tsl/framework/allocator.h"
 
 namespace tensorflow {
@@ -29,7 +31,7 @@ namespace c_api {
 
 class TfCThunkRendezvous final : public ::tensorflow::RendezvousInterface {
  public:
-  explicit TfCThunkRendezvous(const TF_RendezvousThunk* thunk)
+  explicit TfCThunkRendezvous(const TF_RendezvousThunk& thunk)
       : thunk_(thunk) {}
 
   ~TfCThunkRendezvous() override = default;
@@ -43,7 +45,7 @@ class TfCThunkRendezvous final : public ::tensorflow::RendezvousInterface {
   void StartAbort(const Status& status) override;
 
  private:
-  const TF_RendezvousThunk* thunk_;
+  const TF_RendezvousThunk thunk_;
 };
 
 }  // namespace c_api
@@ -76,14 +78,6 @@ TF_RendezvousThunk* ToC(tensorflow::RendezvousInterface* rendezvous);
 std::unique_ptr<tensorflow::c_api::TfCThunkRendezvous> FromC(
     const TF_RendezvousThunk* thunk);
 void Destroy(TF_RendezvousThunk* thunk);
-
-void Destroy(TF_RendezvousSenderImpl* send_func);
-void Destroy(TF_RendezvousAsyncRecverImpl* recv_func);
-void Destroy(TF_RendezvousStartAbortImpl* start_abort_func);
-
-struct DestroyOCParams {
-  void operator()(SE_OutsideCompilationParams* params);
-};
 
 }  // namespace tensorflow
 

@@ -543,7 +543,7 @@ def in_cross_replica_context():
 
 
 @tf_export("distribute.get_strategy")
-def get_strategy():
+def get_strategy() -> "StrategyBase":
   """Returns the current `tf.distribute.Strategy` object.
 
   Typically only used in a cross-replica context:

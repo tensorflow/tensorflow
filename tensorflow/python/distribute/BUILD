@@ -118,6 +118,7 @@ cuda_py_strict_test(
 
 py_strict_library(
     name = "distribute",
+    srcs = ["__init__.py"],
     srcs_version = "PY3",
     deps = [
         ":cross_device_ops",

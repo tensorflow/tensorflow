@@ -8222,6 +8222,13 @@ op {
     }
   }
   attr {
+    name: "is_stateless"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "Nordering_token"
     type: "int"
     default_value {
@@ -8639,6 +8646,13 @@ op {
     }
   }
   attr {
+    name: "is_stateless"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "Nordering_token"
     type: "int"
     default_value {
@@ -8892,6 +8906,13 @@ op {
     }
   }
   attr {
+    name: "is_stateless"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "Nordering_token"
     type: "int"
     default_value {
@@ -8984,6 +9005,13 @@ op {
     type: "float"
     default_value {
       f: 0
+    }
+  }
+  attr {
+    name: "is_stateless"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
   attr {

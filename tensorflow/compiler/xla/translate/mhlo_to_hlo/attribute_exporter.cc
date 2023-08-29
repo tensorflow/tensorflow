@@ -251,6 +251,30 @@ DotDimensionNumbers ConvertDotDimensionNumbers(
   return output;
 }
 
+DotDimensionNumbers ConvertDotDimensionNumbers(
+    absl::Span<const int64_t> lhs_batch, absl::Span<const int64_t> lhs_contract,
+    absl::Span<const int64_t> rhs_batch,
+    absl::Span<const int64_t> rhs_contract) {
+  DotDimensionNumbers output;
+  for (auto v : lhs_batch) {
+    output.add_lhs_batch_dimensions(v);
+  }
+
+  for (auto v : rhs_batch) {
+    output.add_rhs_batch_dimensions(v);
+  }
+
+  for (auto v : lhs_contract) {
+    output.add_lhs_contracting_dimensions(v);
+  }
+
+  for (auto v : rhs_contract) {
+    output.add_rhs_contracting_dimensions(v);
+  }
+
+  return output;
+}
+
 StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
     const mlir::ArrayAttr& array) {
   int rank = array.size();

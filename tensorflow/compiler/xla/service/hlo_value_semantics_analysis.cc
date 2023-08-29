@@ -26,6 +26,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -425,6 +428,7 @@ HloValueSemanticsPropagation::ComputeSemanticsFromOperands(
   CHECK(!operand_indices.empty());
   CHECK(operand_shape_indices.empty() ||
         operand_indices.size() == operand_shape_indices.size());
+  VLOG(3) << __func__ << ", instruction: " << instruction->ToString();
   std::vector<HloValueSemantics> semantics_vec;
   for (int64_t operand_index : operand_indices) {
     const HloInstruction* operand = instruction->operand(operand_index);
@@ -432,6 +436,9 @@ HloValueSemanticsPropagation::ComputeSemanticsFromOperands(
         operand, operand_shape_indices.empty()
                      ? ShapeIndex()
                      : operand_shape_indices[operand_index]);
+    VLOG(3) << __func__ << ", operand_index: " << operand_index
+            << ", operand: " << operand->name()
+            << ", operand_semantics: " << operand_semantics->ToString();
     semantics_vec.push_back(*operand_semantics);
   }
   while (semantics_vec.size() >= 2) {
@@ -518,6 +525,8 @@ HloValueSemanticsPropagation::ComputeSemanticsFromOperands(
                << " should be handled in its own handler instead of the "
                   "default handler.";
   }
+  VLOG(3) << __func__
+          << ", result semantics: " << semantics_vec.back().ToString();
   return semantics_vec.back();
 }
 

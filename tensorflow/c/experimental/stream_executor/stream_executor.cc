@@ -639,13 +639,6 @@ tsl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
   config.ordinal = ordinal;
   return GetExecutor(config);
 }
-tsl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDeviceWithPluginConfig(
-    int ordinal, const PluginConfig& plugin_config) {
-  StreamExecutorConfig config;
-  config.ordinal = ordinal;
-  config.plugin_config = plugin_config;
-  return GetExecutor(config);
-}
 tsl::StatusOr<StreamExecutor*> CPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(

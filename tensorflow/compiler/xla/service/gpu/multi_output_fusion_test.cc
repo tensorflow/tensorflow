@@ -618,6 +618,41 @@ TEST_F(MultiOutputFusionTest,
   ASSERT_FALSE(mof_.Run(module.get()).value());
 }
 
+TEST_F(MultiOutputFusionTest, SiblingFusionBitcastAndLoopFusionNotFused) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule test
+
+fused_computation_1 {
+  p0.1 = f32[2048,16000]{1,0} parameter(0)
+  bitcast = f32[2048,1,16000]{2,1,0} bitcast(p0.1)
+  ROOT exp = f32[2048,1,16000]{2,1,0} exponential(bitcast)
+}
+
+ENTRY main {
+  param_0 = f32[2048,16000]{1,0} parameter(0)
+  fusion = f32[2048,1,16000]{2,1,0} fusion(param_0), kind=kLoop, calls=fused_computation_1
+  bitcast = f32[16000,1,2048]{2,1,0} bitcast(param_0)
+  ROOT tuple.143 = (f32[16000,1,2048]{2,1,0}, f32[2048,1,16000]{2,1,0}) tuple(bitcast, fusion)
+})")
+                    .value();
+  EXPECT_FALSE(mof_.Run(module.get()).value());
+}
+
+TEST_F(MultiOutputFusionTest,
+       ProducerConsumerFusionBitcastAndElementwiseNotFused) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule test
+
+ENTRY main {
+  param_0 = f32[2048,16000]{1,0} parameter(0)
+  convert = bf16[2048,16000]{1,0} convert(param_0)
+  bitcast = bf16[16000,1,2048]{2,1,0} bitcast(convert)
+  ROOT tuple.143 = (bf16[16000,1,2048]{2,1,0}, bf16[2048,16000]{1,0}) tuple(bitcast, convert)
+})")
+                    .value();
+  EXPECT_FALSE(mof_.Run(module.get()).value());
+}
+
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionElementwiseAndReduce) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY reduce {

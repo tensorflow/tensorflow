@@ -49,17 +49,6 @@ namespace stream_executor {
 
 class Stream;
 
-// Structure used for device memory leak checking.
-struct AllocRecord {
-  // The requested allocation size of the buffer.
-  uint64_t bytes;
-
-  // Holds a representation of the stack at the time the associated buffer was
-  // allocated. Produced in a form described in
-  // //util/symbolize/symbolized_stacktrace.h.
-  std::string stack_trace;
-};
-
 // Forward declaration of private friend class.
 template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
           typename... BeginArgsT>
@@ -88,10 +77,6 @@ class StreamExecutor {
 
   tsl::Status Init();
   tsl::Status Init(DeviceOptions device_options);
-
-  // Returns the platform that this StreamExecutor is acting upon.
-  ABSL_DEPRECATED("Use platform() instead.")
-  PlatformKind platform_kind() const { return platform_kind_; }
 
   // Returns a reference to the platform that created this executor.
   const Platform* platform() const { return platform_; }
@@ -195,14 +180,6 @@ class StreamExecutor {
   // Resets the internal contents of mem to be null-representative, but this
   // null-out effect should not be relied upon in client code.
   void Deallocate(DeviceMemoryBase* mem);
-
-  // Retrieves a mapping of active opaque device memory pointer to a string
-  // representation of the [allocating thread's] stack at the time the pointer
-  // was allocated. Useful for tracking device memory leaks.
-  //
-  // Note: this will only be populated if --check_device_leaks flag is
-  // activated.
-  void GetMemAllocs(std::map<void*, AllocRecord>* records_out);
 
   // Allocates unified memory space of the given size, if supported.
   // See
@@ -332,22 +309,6 @@ class StreamExecutor {
   // device
   // will be reflected in "free".
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const;
-
-  // The device count reported by this StreamExecutor's platform.
-  // Note: on OpenCL we implicitly select platform zero at the moment.
-  int PlatformDeviceCount() const;
-
-  // Returns whether the StreamExecutor supports BLAS routines for the platform
-  // that underlies this interface.
-  bool SupportsBlas() const;
-
-  // Returns whether the StreamExecutor supports FFT routines for the platform
-  // that underlies this interface.
-  bool SupportsFft() const;
-
-  // Returns whether the StreamExecutor support neural net routines for the
-  // platform that underlies this interface.
-  bool SupportsDnn() const;
 
   // Returns the supported algorithms / execution plans for a convolution.
   tsl::Status GetConvolveRunners(
@@ -644,15 +605,6 @@ class StreamExecutor {
   // there, temporary internal buffers are freed using this method.
   void EnqueueOnBackgroundThread(std::function<void()> task);
 
-  // Adds an AllocRecord for 'opaque' of size 'bytes' to the record map, for
-  // leak checking. NULL buffer pointers and buffer sizes of 0 will not be
-  // tracked.
-  void CreateAllocRecord(void* opaque, uint64_t bytes);
-
-  // Removes the AllocRecord keyed by 'opaque' from the record map. NULL
-  // pointers will not be erased (as they're not tracked, per above).
-  void EraseAllocRecord(void* opaque);
-
   // Calls the relevant TraceListener routine to begin tracing for the specified
   // asynchronous method.
   template <typename TraceCallT, typename... ArgsT>
@@ -675,11 +627,6 @@ class StreamExecutor {
   // fashion.
   std::unique_ptr<internal::StreamExecutorInterface> implementation_;
 
-  // A mapping of pointer (to device memory) to string representation of the
-  // stack (of the allocating thread) at the time at which the pointer was
-  // allocated.
-  std::map<void*, AllocRecord> mem_allocs_ ABSL_GUARDED_BY(mu_);
-
   // Memoized BLAS support object -- we only want to create this once when asked
   // for a BLAS interface.
   std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);
@@ -696,12 +643,6 @@ class StreamExecutor {
   // once it has been queried from DeviceDescription().
   mutable std::unique_ptr<DeviceDescription> device_description_
       ABSL_GUARDED_BY(mu_);
-
-  // The kind of the underlying platform that is being targeted, as passed
-  // during construction.
-  //
-  // Immutable post-initialization.
-  PlatformKind platform_kind_;
 
   // The device ordinal that this object was initialized with.
   //
@@ -734,9 +675,6 @@ class StreamExecutor {
 
   // The set of TraceListeners registered for this StreamExecutor.
   std::set<TraceListener*> listeners_ ABSL_GUARDED_BY(mu_);
-
-  // Allocated memory in bytes.
-  int64_t mem_alloc_bytes_;
 
   // Memory limit in bytes. Value less or equal to 0 indicates there is no
   // limit.

@@ -38,6 +38,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/MLProgram/IR/MLProgram.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -957,6 +961,9 @@ PjRtCApiExecutable::GetHloModules() const {
     xla::HloProto hlo_proto;
     mlir::MLIRContext ctx;
     mlir::DialectRegistry registry;
+    registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
+                    mlir::ml_program::MLProgramDialect,
+                    mlir::shape::ShapeDialect>();
     mlir::stablehlo::registerAllDialects(registry);
     mlir::mhlo::registerAllMhloDialects(registry);
     ctx.appendDialectRegistry(registry);
@@ -1772,6 +1779,23 @@ StatusOr<size_t> PjRtCApiBuffer::GetOnDeviceSizeInBytes() const {
       client_->pjrt_c_api());
 
   return args.on_device_size_in_bytes;
+}
+
+PjRtMemorySpace* PjRtCApiBuffer::memory_space() const {
+  PJRT_Buffer_Memory_Args args;
+  args.struct_size = PJRT_Buffer_Memory_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_.get();
+  const PJRT_Api* api = pjrt_c_api();
+  std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> error(
+      api->PJRT_Buffer_Memory(&args), pjrt::MakeErrorDeleter(api));
+  if (error == nullptr && args.memory != nullptr) {
+    return client_->GetCppMemory(args.memory);
+  } else if (error != nullptr && pjrt::GetErrorCode(error.get(), api) !=
+                                     PJRT_Error_Code_UNIMPLEMENTED) {
+    pjrt::LogFatalIfPjrtError(error.get(), api);
+  }
+  return nullptr;
 }
 
 PjRtDevice* PjRtCApiBuffer::device() const {

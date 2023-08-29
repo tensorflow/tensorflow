@@ -60,9 +60,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
-#ifdef XLA_PYTHON_ENABLE_TPU
-#include "tensorflow/compiler/xla/pjrt/tpu_client.h"
-#endif  // XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/python/custom_call_sharding.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
@@ -646,8 +643,6 @@ static void Init(py::module_& m) {
       py::arg("platform_name"),
       py::arg("options") = absl::flat_hash_map<std::string, PjRtValueType>(),
       py::arg("distributed_client") = nullptr);
-  // TODO(b/262050449): move out from `#ifdef XLA_PYTHON_ENABLE_TPU` when
-  // GetCApiTopology does not depend on TPU.
   m.def("get_default_c_api_topology",
         [](std::string platform_name, std::string topology_name,
            const absl::flat_hash_map<std::string, PjRtValueType>& options)

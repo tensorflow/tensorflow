@@ -135,27 +135,21 @@ StatusOr<bool> ProcessScatter(HloInstruction* hlo,
     return false;
   }
   // Split the scatter to:
-  //   scatter0 = scatter(operand0, indices0, updates0)
-  //   scatter1 = scatter(operand1, indices1, updates1)
-  //   a = add(scatter0, scatter1)
+  //   scatter0 = scatter(operand, indices0, updates0)
+  //   scatter1 = scatter(scatter0, indices1, updates1)
   HloInstruction* scatter0 =
       computation->AddInstruction(HloInstruction::CreateScatter(
-          scatter->shape(), lhs_operand, lhs_indices, lhs_updates,
+          scatter->shape(), operand, lhs_indices, lhs_updates,
           scatter->to_apply(), dnums, false, false));
   scatter0->set_metadata(scatter->metadata());
   scatter0->set_sharding(scatter->sharding());
   HloInstruction* scatter1 =
       computation->AddInstruction(HloInstruction::CreateScatter(
-          scatter->shape(), rhs_operand, rhs_indices, lhs_updates,
+          scatter->shape(), scatter0, rhs_indices, rhs_updates,
           scatter->to_apply(), dnums, false, false));
   scatter1->set_metadata(scatter->metadata());
   scatter1->set_sharding(scatter->sharding());
-  HloInstruction* addition =
-      computation->AddInstruction(HloInstruction::CreateBinary(
-          scatter->shape(), HloOpcode::kAdd, scatter0, scatter1));
-  addition->set_metadata(scatter->metadata());
-  addition->set_sharding(scatter->sharding());
-  TF_RETURN_IF_ERROR(scatter->ReplaceAllUsesWith(addition));
+  TF_RETURN_IF_ERROR(scatter->ReplaceAllUsesWith(scatter1));
   return true;
 }
 

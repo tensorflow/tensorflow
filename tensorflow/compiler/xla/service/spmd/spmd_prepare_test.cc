@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -49,9 +50,9 @@ TEST_F(SpmdPrepareTest, ScatterParallelIndexSplit) {
   absl::string_view hlo_string = R"(
 HloModule module
 
-region_157.5067 {                                                                                                                                                                            
-  Arg_0.5068 = f32[] parameter(0)                                                                                                                                                            
-  Arg_1.5069 = f32[] parameter(1)                                                                                                                                                            
+region_157.5067 {
+  Arg_0.5068 = f32[] parameter(0)
+  Arg_1.5069 = f32[] parameter(1)
   ROOT add.5070 = f32[] add(Arg_0.5068, Arg_1.5069)
 }
 
@@ -59,8 +60,8 @@ ENTRY entry {
   p0 = f32[16,1000,2000]{2,1,0} parameter(0), sharding={devices=[4,2,1]<=[8]}
   p1 = f32[16,1000,2000]{2,1,0} parameter(1), sharding={devices=[4,2,1]<=[8]}
   p2 = s32[16,1000,64,1]{3,2,1,0} parameter(2), sharding={devices=[4,2,1,1]<=[8]}
-  p3 = f32[16,1000,64]{2,1,0} parameter(3), sharding={devices=[4,2,1]<=[8]} 
-  p4 = f32[16,1000,64]{2,1,0} parameter(4), sharding={devices=[4,2,1]<=[8]} 
+  p3 = f32[16,1000,64]{2,1,0} parameter(3), sharding={devices=[4,2,1]<=[8]}
+  p4 = f32[16,1000,64]{2,1,0} parameter(4), sharding={devices=[4,2,1]<=[8]}
   iota.0 = s32[16,1000,64,1]{3,2,1,0} iota(), iota_dimension=0, sharding={devices=[4,2,1,1]<=[8]}
   iota.1 = s32[16,1000,64,1]{3,2,1,0} iota(), iota_dimension=1, sharding={devices=[4,2,1,1]<=[8]}
   iota.2 = s32[16,1000,64,1]{3,2,1,0} iota(), iota_dimension=0, sharding={devices=[4,2,1,1]<=[8]}
@@ -72,20 +73,20 @@ ENTRY entry {
   add.190 = f32[16,1000,2000]{2,1,0} add(p0, p1), sharding={devices=[4,2,1]<=[8]}
   ROOT scatter.2 = f32[16,1000,2000]{2,1,0} scatter(add.190, concatenate.130, concatenate.131), update_window_dims={}, inserted_window_dims={0,1,2}, scatter_dims_to_operand_dims={0,1,2}, index_vector_dim=3, to_apply=region_157.5067, sharding={devices=[4,2,1]<=[8]}
 })";
+
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
   auto module = std::move(module_status).value();
   HloInstruction* root = module->entry_computation()->root_instruction();
-  XLA_VLOG_LINES(0, module->ToString());
+  XLA_VLOG_LINES(1, module->ToString());
   EXPECT_THAT(
       root,
-      op::Add(
-          op::Scatter(op::Parameter(),
+      op::Scatter(
+          op::Scatter(op::Add(),
                       op::Concatenate(op::Iota(), op::Iota(), op::Parameter()),
                       op::Parameter()),
-          op::Scatter(op::Parameter(),
-                      op::Concatenate(op::Iota(), op::Iota(), op::Parameter()),
-                      op::Parameter())));
+          op::Concatenate(op::Iota(), op::Iota(), op::Parameter()),
+          op::Parameter()));
 }
 
 }  // namespace

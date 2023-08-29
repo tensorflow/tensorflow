@@ -46,11 +46,6 @@ typedef struct TF_DeviceContext_CopyCPUTensorToDevice_Params {
 typedef void (*TF_DeviceContext_CopyCPUTensorToDevice_Function)(
     void*, TF_DeviceContext_CopyCPUTensorToDevice_Params*);
 
-typedef struct TF_DeviceContext_CopyCPUTensorToDevice_Impl {
-  void* context;
-  TF_DeviceContext_CopyCPUTensorToDevice_Function cpu_to_device_func;
-} TF_DeviceContext_CopyCPUTensorToDevice_Impl;
-
 // Structs for CopyDeviceTensorToCPU API.
 typedef struct TF_DeviceContext_CopyDeviceTensorToCPU_Params {
   TF_Tensor* device_tensor;
@@ -65,11 +60,6 @@ typedef struct TF_DeviceContext_CopyDeviceTensorToCPU_Params {
 typedef void (*TF_DeviceContext_CopyDeviceTensorToCPU_Function)(
     void*, TF_DeviceContext_CopyDeviceTensorToCPU_Params*);
 
-typedef struct TF_DeviceContext_CopyDeviceTensorToCPU_Impl {
-  void* context;
-  TF_DeviceContext_CopyDeviceTensorToCPU_Function device_to_cpu_func;
-} TF_DeviceContext_CopyDeviceTensorToCPU;
-
 // Structs for CopyTensorInSameDevice API.
 typedef struct TF_DeviceContext_CopyTensorInSameDevice_Params {
   TF_Tensor* input_tensor;
@@ -82,16 +72,12 @@ typedef struct TF_DeviceContext_CopyTensorInSameDevice_Params {
 typedef void (*TF_DeviceContext_CopyTensorInSameDevice_Function)(
     void*, TF_DeviceContext_CopyTensorInSameDevice_Params*);
 
-typedef struct TF_DeviceContext_CopyTensorInSameDevice_Impl {
-  void* context;
-  TF_DeviceContext_CopyTensorInSameDevice_Function same_device_func;
-} TF_DeviceContext_CopyTensorInSameDevice_Impl;
-
 /* DeviceContext */
 typedef struct TF_DeviceContext {
-  TF_DeviceContext_CopyCPUTensorToDevice_Impl cpu_to_device;
-  TF_DeviceContext_CopyDeviceTensorToCPU_Impl device_to_cpu;
-  TF_DeviceContext_CopyTensorInSameDevice_Impl same_device;
+  void* device_context;
+  TF_DeviceContext_CopyCPUTensorToDevice_Function cpu_to_device_func;
+  TF_DeviceContext_CopyDeviceTensorToCPU_Function device_to_cpu_func;
+  TF_DeviceContext_CopyTensorInSameDevice_Function same_device_func;
 } TF_DeviceContext;
 
 #ifdef __cplusplus

@@ -1504,8 +1504,7 @@ StatusOr<bool> CudnnFusedMHARewriter::Run(
        module->MakeNonfusionComputations(execution_threads)) {
     const DebugOptions& debug_options =
         comp->parent()->config().debug_options();
-    if (debug_options.xla_gpu_enable_xla_runtime_executable() ||
-        !debug_options.xla_gpu_enable_cudnn_fmha() ||
+    if (!debug_options.xla_gpu_enable_cudnn_fmha() ||
         !IsComputeCapabilityAndCudnnSupported(
             compute_capability_, cudnn_version_, stream_executor_,
             stream_executor::dnn::VersionInfo(8, 8, 0))) {

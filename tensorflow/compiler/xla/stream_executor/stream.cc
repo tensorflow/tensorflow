@@ -1153,92 +1153,12 @@ Stream &Stream::ThenBlasAxpy(uint64_t elem_count, float alpha,
               y, incy);
 }
 
-Stream &Stream::ThenBlasAxpy(uint64_t elem_count, double alpha,
-                             const DeviceMemory<double> &x, int incx,
-                             DeviceMemory<double> *y, int incy) {
-  VLOG_CALL(PARAM(elem_count), PARAM(alpha), PARAM(x), PARAM(incx), PARAM(y),
-            PARAM(incy));
-
-  ThenBlasImpl<uint64_t, double, const DeviceMemory<double> &, int,
-               DeviceMemory<double> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasAxpy, elem_count, alpha, x, incx,
-              y, incy);
-}
-
-Stream &Stream::ThenBlasAxpy(uint64_t elem_count, std::complex<float> alpha,
-                             const DeviceMemory<std::complex<float>> &x,
-                             int incx, DeviceMemory<std::complex<float>> *y,
-                             int incy) {
-  VLOG_CALL(PARAM(elem_count), PARAM(alpha), PARAM(x), PARAM(incx), PARAM(y),
-            PARAM(incy));
-
-  ThenBlasImpl<uint64_t, std::complex<float>,
-               const DeviceMemory<std::complex<float>> &, int,
-               DeviceMemory<std::complex<float>> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasAxpy, elem_count, alpha, x, incx,
-              y, incy);
-}
-
-Stream &Stream::ThenBlasAxpy(uint64_t elem_count, std::complex<double> alpha,
-                             const DeviceMemory<std::complex<double>> &x,
-                             int incx, DeviceMemory<std::complex<double>> *y,
-                             int incy) {
-  VLOG_CALL(PARAM(elem_count), PARAM(alpha), PARAM(x), PARAM(incx), PARAM(y),
-            PARAM(incy));
-
-  ThenBlasImpl<uint64_t, std::complex<double>,
-               const DeviceMemory<std::complex<double>> &, int,
-               DeviceMemory<std::complex<double>> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasAxpy, elem_count, alpha, x, incx,
-              y, incy);
-}
-
 Stream &Stream::ThenBlasCopy(uint64_t elem_count, const DeviceMemory<float> &x,
                              int incx, DeviceMemory<float> *y, int incy) {
   VLOG_CALL(PARAM(elem_count), PARAM(x), PARAM(incx), PARAM(y), PARAM(incy));
 
   ThenBlasImpl<uint64_t, const DeviceMemory<float> &, int,
                DeviceMemory<float> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasCopy, elem_count, x, incx, y,
-              incy);
-}
-
-Stream &Stream::ThenBlasCopy(uint64_t elem_count, const DeviceMemory<double> &x,
-                             int incx, DeviceMemory<double> *y, int incy) {
-  VLOG_CALL(PARAM(elem_count), PARAM(x), PARAM(incx), PARAM(y), PARAM(incy));
-
-  ThenBlasImpl<uint64_t, const DeviceMemory<double> &, int,
-               DeviceMemory<double> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasCopy, elem_count, x, incx, y,
-              incy);
-}
-
-Stream &Stream::ThenBlasCopy(uint64_t elem_count,
-                             const DeviceMemory<std::complex<float>> &x,
-                             int incx, DeviceMemory<std::complex<float>> *y,
-                             int incy) {
-  VLOG_CALL(PARAM(elem_count), PARAM(x), PARAM(incx), PARAM(y), PARAM(incy));
-
-  ThenBlasImpl<uint64_t, const DeviceMemory<std::complex<float>> &, int,
-               DeviceMemory<std::complex<float>> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasCopy, elem_count, x, incx, y,
-              incy);
-}
-
-Stream &Stream::ThenBlasCopy(uint64_t elem_count,
-                             const DeviceMemory<std::complex<double>> &x,
-                             int incx, DeviceMemory<std::complex<double>> *y,
-                             int incy) {
-  VLOG_CALL(PARAM(elem_count), PARAM(x), PARAM(incx), PARAM(y), PARAM(incy));
-
-  ThenBlasImpl<uint64_t, const DeviceMemory<std::complex<double>> &, int,
-               DeviceMemory<std::complex<double>> *, int>
       impl;
   return impl(this, &blas::BlasSupport::DoBlasCopy, elem_count, x, incx, y,
               incy);
@@ -1379,21 +1299,6 @@ Stream &Stream::ThenBlasSbmv(blas::UpperLower uplo, uint64_t n, uint64 k,
   ThenBlasImpl<blas::UpperLower, uint64_t, uint64_t, float,
                const DeviceMemory<float> &, int, const DeviceMemory<float> &,
                int, float, DeviceMemory<float> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasSbmv, uplo, n, k, alpha, a, lda,
-              x, incx, beta, y, incy);
-}
-
-Stream &Stream::ThenBlasSbmv(blas::UpperLower uplo, uint64_t n, uint64 k,
-                             double alpha, const DeviceMemory<double> &a,
-                             int lda, const DeviceMemory<double> &x, int incx,
-                             double beta, DeviceMemory<double> *y, int incy) {
-  VLOG_CALL(PARAM(uplo), PARAM(n), PARAM(k), PARAM(alpha), PARAM(a), PARAM(lda),
-            PARAM(x), PARAM(incx), PARAM(beta), PARAM(y), PARAM(incy));
-
-  ThenBlasImpl<blas::UpperLower, uint64_t, uint64_t, double,
-               const DeviceMemory<double> &, int, const DeviceMemory<double> &,
-               int, double, DeviceMemory<double> *, int>
       impl;
   return impl(this, &blas::BlasSupport::DoBlasSbmv, uplo, n, k, alpha, a, lda,
               x, incx, beta, y, incy);
@@ -1557,18 +1462,6 @@ Stream &Stream::ThenBlasTrsmBatched(
               diag, m, n, alpha, as, lda, bs, ldb, batch_count);
 }
 
-Stream &Stream::ThenBlasGemmBatched(
-    blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, float alpha, DeviceMemorySlice<Eigen::half> a, int lda,
-    DeviceMemorySlice<Eigen::half> b, int ldb, float beta,
-    DeviceMemorySlice<Eigen::half> c, int ldc, int batch_count,
-    const NumericOptions &numeric_options) {
-  return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
-                                        b, ldb, beta, c, ldc, batch_count,
-                                        numeric_options,
-                                        /*scratch_allocator=*/nullptr);
-}
-
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
     blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
     uint64_t k, float alpha, DeviceMemorySlice<Eigen::half> a, int lda,
@@ -1644,20 +1537,6 @@ Stream &Stream::ThenBlasGemmBatchedWithScratch(
               numeric_options, scratch_allocator);
 }
 
-Stream &Stream::ThenBlasGemmBatched(blas::Transpose transa,
-                                    blas::Transpose transb, uint64_t m,
-                                    uint64 n, uint64_t k, double alpha,
-                                    DeviceMemorySlice<double> a, int lda,
-                                    DeviceMemorySlice<double> b, int ldb,
-                                    double beta, DeviceMemorySlice<double> c,
-                                    int ldc, int batch_count,
-                                    const NumericOptions &numeric_options) {
-  return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
-                                        b, ldb, beta, c, ldc, batch_count,
-                                        numeric_options,
-                                        /*scratch_allocator=*/nullptr);
-}
-
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
     blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
     uint64_t k, double alpha, DeviceMemorySlice<double> a, int lda,
@@ -1714,19 +1593,6 @@ Stream &Stream::ThenBlasGemmBatchedWithScratch(
   return impl(this, &blas::BlasSupport::DoBlasGemmBatched, transa, transb, m, n,
               k, alpha, a, lda, b, ldb, beta, c, ldc, batch_count,
               numeric_options, scratch_allocator);
-}
-
-Stream &Stream::ThenBlasGemmBatched(
-    blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, std::complex<double> alpha,
-    DeviceMemorySlice<std::complex<double>> a, int lda,
-    DeviceMemorySlice<std::complex<double>> b, int ldb,
-    std::complex<double> beta, DeviceMemorySlice<std::complex<double>> c,
-    int ldc, int batch_count, const NumericOptions &numeric_options) {
-  return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
-                                        b, ldb, beta, c, ldc, batch_count,
-                                        numeric_options,
-                                        /*scratch_allocator=*/nullptr);
 }
 
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
@@ -2107,20 +1973,6 @@ Stream &Stream::ThenDoHostCallbackWithStatus(
   return *this;
 }
 
-Stream &Stream::ThenRunAfterNextBlockHostUntilDone(
-    absl::AnyInvocable<void() &&> callback) {
-  VLOG_CALL(PARAM(callback));
-
-  if (!ok()) {
-    LOG(INFO) << DebugStreamPointers()
-              << " was in error state before adding callback to be run after "
-                 "next block-host-until-done.";
-  }
-  absl::MutexLock lock(&mu_);
-  after_block_host_until_done_callbacks_.push_back(std::move(callback));
-  return *this;
-}
-
 void Stream::CheckError(bool operation_retcode) {
   if (operation_retcode) {
     return;
@@ -2235,226 +2087,6 @@ Stream &Stream::ThenEnqueueOnBackgroundThread(
   return ThenDoHostCallback([stream_executor, bound_task]() {
     stream_executor->EnqueueOnBackgroundThread(bound_task);
   });
-}
-
-Stream& Stream::ThenFusedConvolutionBiasActivation(
-    const dnn::BatchDescriptor& conv_input_descriptor,
-    const DeviceMemory<float>& conv_input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<float>& filter_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& bias_descriptor,
-    const DeviceMemory<float>& bias_data, dnn::ActivationMode activation_mode,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<float>* output_data) {
-  VLOG_CALL(PARAM(conv_input_descriptor), PARAM(conv_input_data),
-            PARAM(filter_descriptor), PARAM(filter_data),
-            PARAM(convolution_descriptor), PARAM(bias_descriptor),
-            PARAM(bias_data), PARAM(activation_mode), PARAM(output_descriptor),
-            PARAM(output_data));
-
-  if (ok()) {
-    if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
-      CheckError(dnn->DoFusedConvolutionBiasActivation(
-          this, conv_input_descriptor, conv_input_data, filter_descriptor,
-          filter_data, convolution_descriptor, bias_descriptor, bias_data,
-          activation_mode, output_descriptor, output_data,
-          /*output_profile_result=*/nullptr));
-    } else {
-      SetErrorAndLogNoDnnSupport();
-    }
-  }
-
-  return *this;
-}
-
-Stream& Stream::ThenFusedBatchNormActivationInference(
-    const dnn::BatchDescriptor& x_descriptor, const DeviceMemory<float>& x_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<float>& scale_data,
-    const DeviceMemory<float>& offset_data,
-    const DeviceMemory<float>& mean_data,
-    const DeviceMemory<float>& variance_data, double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data) {
-  VLOG_CALL(PARAM(x_descriptor), PARAM(x_data),
-            PARAM(scale_offset_mean_variance_descriptor), PARAM(scale_data),
-            PARAM(offset_data), PARAM(mean_data), PARAM(variance_data),
-            PARAM(epsilon), PARAM(activation_mode), PARAM(y_data));
-
-  if (ok()) {
-    if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
-      CheckError(dnn->DoFusedBatchNormActivationInference(
-          this, x_descriptor, x_data, scale_offset_mean_variance_descriptor,
-          scale_data, offset_data, mean_data, variance_data, epsilon,
-          activation_mode, y_data,
-          /*output_profile_result=*/nullptr));
-    } else {
-      SetErrorAndLogNoDnnSupport();
-    }
-  }
-
-  return *this;
-}
-
-Stream& Stream::ThenFusedBatchNormActivationInference(
-    const dnn::BatchDescriptor& x_descriptor,
-    const DeviceMemory<Eigen::half>& x_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<float>& scale_data,
-    const DeviceMemory<float>& offset_data,
-    const DeviceMemory<float>& mean_data,
-    const DeviceMemory<float>& variance_data, double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data) {
-  VLOG_CALL(PARAM(x_descriptor), PARAM(x_data),
-            PARAM(scale_offset_mean_variance_descriptor), PARAM(scale_data),
-            PARAM(offset_data), PARAM(mean_data), PARAM(variance_data),
-            PARAM(epsilon), PARAM(activation_mode), PARAM(y_data));
-
-  if (ok()) {
-    if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
-      CheckError(dnn->DoFusedBatchNormActivationInference(
-          this, x_descriptor, x_data, scale_offset_mean_variance_descriptor,
-          scale_data, offset_data, mean_data, variance_data, epsilon,
-          activation_mode, y_data,
-          /*output_profile_result=*/nullptr));
-    } else {
-      SetErrorAndLogNoDnnSupport();
-    }
-  }
-
-  return *this;
-}
-
-Stream& Stream::ThenFusedBatchNormActivationForward(
-    const dnn::BatchDescriptor& x_descriptor, const DeviceMemory<float>& x_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<float>& scale_data,
-    const DeviceMemory<float>& offset_data, double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data,
-    DeviceMemory<float>* batch_mean_data, DeviceMemory<float>* batch_var_data,
-    DeviceMemory<float>* saved_mean_data, DeviceMemory<float>* saved_var_data) {
-  VLOG_CALL(PARAM(x_descriptor), PARAM(x_data),
-            PARAM(scale_offset_mean_variance_descriptor), PARAM(scale_data),
-            PARAM(offset_data), PARAM(epsilon), PARAM(activation_mode),
-            PARAM(y_data), PARAM(batch_mean_data), PARAM(batch_var_data),
-            PARAM(saved_mean_data), PARAM(saved_var_data));
-
-  if (ok()) {
-    if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
-      CheckError(dnn->DoFusedBatchNormActivationForward(
-          this, x_descriptor, x_data, scale_offset_mean_variance_descriptor,
-          scale_data, offset_data, epsilon, activation_mode, y_data,
-          batch_mean_data, batch_var_data, saved_mean_data, saved_var_data,
-          /*output_profile_result=*/nullptr));
-    } else {
-      SetErrorAndLogNoDnnSupport();
-    }
-  }
-
-  return *this;
-}
-
-Stream& Stream::ThenFusedBatchNormActivationForward(
-    const dnn::BatchDescriptor& x_descriptor,
-    const DeviceMemory<Eigen::half>& x_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<float>& scale_data,
-    const DeviceMemory<float>& offset_data, double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
-    DeviceMemory<float>* batch_mean_data, DeviceMemory<float>* batch_var_data,
-    DeviceMemory<float>* saved_mean_data, DeviceMemory<float>* saved_var_data) {
-  VLOG_CALL(PARAM(x_descriptor), PARAM(x_data),
-            PARAM(scale_offset_mean_variance_descriptor), PARAM(scale_data),
-            PARAM(offset_data), PARAM(epsilon), PARAM(activation_mode),
-            PARAM(y_data), PARAM(batch_mean_data), PARAM(batch_var_data),
-            PARAM(saved_mean_data), PARAM(saved_var_data));
-
-  if (ok()) {
-    if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
-      CheckError(dnn->DoFusedBatchNormActivationForward(
-          this, x_descriptor, x_data, scale_offset_mean_variance_descriptor,
-          scale_data, offset_data, epsilon, activation_mode, y_data,
-          batch_mean_data, batch_var_data, saved_mean_data, saved_var_data,
-          /*output_profile_result=*/nullptr));
-    } else {
-      SetErrorAndLogNoDnnSupport();
-    }
-  }
-
-  return *this;
-}
-
-Stream& Stream::ThenFusedBatchNormActivationBackward(
-    const dnn::BatchDescriptor& y_act_backprop_descriptor,
-    const DeviceMemory<float>& y_act_backprop_data,
-    const DeviceMemory<float>& y_act_data, dnn::ActivationMode activation_mode,
-    const DeviceMemory<float>& x_bn_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<float>& scale_data,
-    const DeviceMemory<float>& offset_data,
-    const DeviceMemory<float>& saved_mean_data,
-    const DeviceMemory<float>& saved_var_data,
-    DeviceMemory<float>* x_bn_backprop_data,
-    DeviceMemory<float>* scale_backprop_data,
-    DeviceMemory<float>* offset_backprop_data) {
-  VLOG_CALL(PARAM(y_act_backprop_descriptor), PARAM(y_act_backprop_data),
-            PARAM(y_act_data), PARAM(activation_mode), PARAM(x_bn_data),
-            PARAM(scale_offset_mean_variance_descriptor), PARAM(scale_data),
-            PARAM(offset_data), PARAM(saved_mean_data), PARAM(saved_var_data),
-            PARAM(x_bn_backprop_data), PARAM(scale_backprop_data),
-            PARAM(offset_backprop_data));
-
-  if (ok()) {
-    if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
-      CheckError(dnn->DoFusedBatchNormActivationBackward(
-          this, y_act_backprop_descriptor, y_act_backprop_data, y_act_data,
-          activation_mode, x_bn_data, scale_offset_mean_variance_descriptor,
-          scale_data, offset_data, saved_mean_data, saved_var_data,
-          x_bn_backprop_data, scale_backprop_data, offset_backprop_data,
-          /*output_profile_result=*/nullptr));
-    } else {
-      SetErrorAndLogNoDnnSupport();
-    }
-  }
-
-  return *this;
-}
-
-Stream& Stream::ThenFusedBatchNormActivationBackward(
-    const dnn::BatchDescriptor& y_act_backprop_descriptor,
-    const DeviceMemory<Eigen::half>& y_act_backprop_data,
-    const DeviceMemory<Eigen::half>& y_act_data,
-    dnn::ActivationMode activation_mode,
-    const DeviceMemory<Eigen::half>& x_bn_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<float>& scale_data,
-    const DeviceMemory<float>& offset_data,
-    const DeviceMemory<float>& saved_mean_data,
-    const DeviceMemory<float>& saved_var_data,
-    DeviceMemory<Eigen::half>* x_bn_backprop_data,
-    DeviceMemory<float>* scale_backprop_data,
-    DeviceMemory<float>* offset_backprop_data) {
-  VLOG_CALL(PARAM(y_act_backprop_descriptor), PARAM(y_act_backprop_data),
-            PARAM(y_act_data), PARAM(activation_mode), PARAM(x_bn_data),
-            PARAM(scale_offset_mean_variance_descriptor), PARAM(scale_data),
-            PARAM(offset_data), PARAM(saved_mean_data), PARAM(saved_var_data),
-            PARAM(x_bn_backprop_data), PARAM(scale_backprop_data),
-            PARAM(offset_backprop_data));
-
-  if (ok()) {
-    if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
-      CheckError(dnn->DoFusedBatchNormActivationBackward(
-          this, y_act_backprop_descriptor, y_act_backprop_data, y_act_data,
-          activation_mode, x_bn_data, scale_offset_mean_variance_descriptor,
-          scale_data, offset_data, saved_mean_data, saved_var_data,
-          x_bn_backprop_data, scale_backprop_data, offset_backprop_data,
-          /*output_profile_result=*/nullptr));
-    } else {
-      SetErrorAndLogNoDnnSupport();
-    }
-  }
-
-  return *this;
 }
 
 tsl::Status Stream::BlockHostUntilDone() {

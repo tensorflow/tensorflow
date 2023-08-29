@@ -464,7 +464,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
       NullMemRefOp null_memref_op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = null_memref_op->getLoc();
-    LLVMTypeConverter type_converter = *getTypeConverter();
+    const LLVMTypeConverter &type_converter = *getTypeConverter();
     MLIRContext *ctx = null_memref_op.getContext();
     mlir::Operation *op = null_memref_op.getOperation();
 
