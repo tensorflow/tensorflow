@@ -168,7 +168,7 @@ Status IteratorResource::Save(OpKernelContext* ctx,
                    << checkpoint.GetStatus();
       return checkpoint.GetStatus();
     }
-    VLOG(1) << "Saving symbolic checkpoint";
+    LOG(INFO) << "Saving symbolic checkpoint";
     TF_RETURN_IF_ERROR(checkpoint.Save(writer));
     return OkStatus();
   }
