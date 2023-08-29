@@ -39,6 +39,7 @@ from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.ops.numpy_ops import np_utils
+from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_export
 
@@ -1495,7 +1496,8 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
   x = asarray(x)
 
   x_shape = array_ops.shape(x)
-  N = N or x_shape[0]
+  if N is None:
+    N = x_shape[0]
 
   N_temp = np_utils.get_static_value(N)  # pylint: disable=invalid-name
   if N_temp is not None:
@@ -2045,7 +2047,7 @@ def _getitem(self, slice_spec):
   if (
       isinstance(slice_spec, bool)
       or (
-          isinstance(slice_spec, tensor_lib.Tensor)
+          isinstance(slice_spec, core_tf_types.Tensor)
           and slice_spec.dtype == dtypes.bool
       )
       or (
@@ -2067,7 +2069,7 @@ def _with_index_update_helper(update_method, a, slice_spec, updates):
   if (
       isinstance(slice_spec, bool)
       or (
-          isinstance(slice_spec, tensor_lib.Tensor)
+          isinstance(slice_spec, core_tf_types.Tensor)
           and slice_spec.dtype == dtypes.bool
       )
       or (

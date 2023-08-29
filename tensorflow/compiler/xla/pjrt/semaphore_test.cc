@@ -41,8 +41,13 @@ TEST(SemaphoreTest, UnthreadedTests) {
 
   {
     auto a = semaphore.ScopedAcquire(1);
+    EXPECT_EQ(a.amount(), 1);
     { auto b = semaphore.ScopedAcquire(1); }
     { auto c = semaphore.ScopedAcquire(1); }
+  }
+  {
+    auto d = semaphore.ScopedAcquire(2);
+    EXPECT_EQ(d.amount(), 2);
   }
 }
 

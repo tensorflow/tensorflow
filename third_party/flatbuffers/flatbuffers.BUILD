@@ -88,6 +88,8 @@ cc_binary(
         ":platform_freebsd": [
             "-lm",
         ],
+        # If Visual Studio 2022 developers facing linking errors,
+        # change the line below as ":windows": ["/DEFAULTLIB:msvcrt.lib"],
         ":windows": [],
         "//conditions:default": [
             "-lm",

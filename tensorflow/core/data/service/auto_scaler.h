@@ -120,9 +120,12 @@ class MultipleIterationsAutoScaler {
   // Returns an error if the specified iteration does not exist.
   tsl::Status UnregisterIteration(int64_t iteration_id) TF_LOCKS_EXCLUDED(mu_);
   // Updates the metric value with the current estimated optimal number of
-  // workers. Returns an error if there are no previously reported processing
-  // and target processing times for at least one iteration.
-  tsl::Status UpdateOptimalNumberOfWorkersMetric() TF_LOCKS_EXCLUDED(mu_);
+  // workers. The estimate is limited to min(4 * `current_number_of_workers`,
+  // `current_number_of_workers` + 500). Returns an error if there are no
+  // previously reported processing and target processing times for at least one
+  // iteration, or `current_number_of_workers` is not positive.
+  tsl::Status UpdateOptimalNumberOfWorkersMetric(
+      int64_t current_number_of_workers) TF_LOCKS_EXCLUDED(mu_);
   // Returns the estimated optimal number of workers according to the current
   // observed workload. If there are no previously reported processing and
   // target processing times for at least one iteration, returns nullopt.

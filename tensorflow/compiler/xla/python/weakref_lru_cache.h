@@ -20,6 +20,12 @@ limitations under the License.
 
 namespace jax {
 
+// pybind11-index-annotation BEGIN
+// refs {
+//   module_path: "tensorflow/compiler/xla/python/xla.cc"
+//   module_arg {}
+// }
+// pybind11-index-annotation END
 void BuildWeakrefLRUCacheAPI(pybind11::module& m);
 
 }  // namespace jax

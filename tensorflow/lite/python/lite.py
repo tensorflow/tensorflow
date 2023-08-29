@@ -73,7 +73,6 @@ from tensorflow.lite.python.util import trace_model_call as _trace_model_call
 from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.lite.tools.optimize.debugging.python.debugger import QuantizationDebugger  # pylint: disable=unused-import
 from tensorflow.lite.tools.optimize.debugging.python.debugger import QuantizationDebugOptions  # pylint: disable=unused-import
-from tensorflow.python import saved_model as _saved_model
 from tensorflow.python.client import session as _session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function as _def_function
@@ -87,6 +86,7 @@ from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundEr
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader_impl as _loader_impl
+from tensorflow.python.saved_model import save as _save
 from tensorflow.python.saved_model import save_options as _save_options
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
@@ -263,8 +263,14 @@ class QuantizationMode:
     self._target_spec = target_spec
     self._representative_dataset = representative_dataset
     self._graph_def = graph_def
+    if self._is_int8_target_required():
+      self._validate_int8_required()
 
-    self._validate_int8_required()
+    self.enable_mlir_variable_quantization = (
+        experimental_mlir_variable_quantization
+    )
+    if self._is_float16_target_required():
+      self._validate_float16_required()
     self._disable_per_channel = disable_per_channel
 
     self._enable_new_dynamic_range_quantizer = (
@@ -278,10 +284,6 @@ class QuantizationMode:
         full_integer_quantization_bias_type
     )
     self._validate_full_integer_quantization_bias_type()
-
-    self.enable_mlir_variable_quantization = (
-        experimental_mlir_variable_quantization
-    )
 
   def is_post_training_int8_only_quantization(self):
     return (
@@ -471,9 +473,6 @@ class QuantizationMode:
 
   def _validate_int8_required(self):
     """Int8 mode requires certain parameters to exist and be compatible."""
-    if not self._is_int8_target_required():
-      return
-
     # Validate target_spec attibute.
     if set(self._target_spec.supported_ops) == {
         OpsSet.TFLITE_BUILTINS_INT8
@@ -506,6 +505,14 @@ class QuantizationMode:
         self._representative_dataset = RepresentativeDataset(
             self._representative_dataset
         )
+
+  def _validate_float16_required(self):
+    """Float16 mode requires certain parameters to exist and be compatible."""
+    if self.enable_mlir_variable_quantization:
+      raise ValueError(
+          "`_experimental_variable_quantization` is only supported for full"
+          " integer quantization."
+      )
 
   def _validate_full_integer_quantization_bias_type(self):
     """Validates bias type for full interger quantization."""
@@ -550,6 +557,9 @@ class QuantizationMode:
     return (OpsSet.TFLITE_BUILTINS in set(self._target_spec.supported_ops)) or (
         OpsSet.SELECT_TF_OPS in set(self._target_spec.supported_ops)
     )
+
+  def _is_float16_target_required(self):
+    return _dtypes.float16 in self._target_spec.supported_types
 
   def is_any_optimization_enabled(self):
     return bool(
@@ -1488,7 +1498,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
       output_tensors: List of output tensors.
     """
     try:
-      _saved_model.save(
+      _save.save(
           self._keras_model,
           output_dir,
           options=_save_options.SaveOptions(save_debug_info=True),
@@ -1710,7 +1720,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
           signatures[func.graph.name] = func
           signature_keys.append(func.graph.name)
 
-      _saved_model.save(
+      _save.save(
           self._trackable_obj,
           output_dir,
           signatures=signatures,

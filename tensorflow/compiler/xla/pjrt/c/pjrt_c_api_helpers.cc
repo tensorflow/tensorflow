@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
@@ -527,19 +528,6 @@ xla::Status ValidateCreateOptions(
   return tsl::OkStatus();
 }
 
-PJRT_SerializedExecutableDeleter MakeSerializedExecutableDeleter(
-    const PJRT_Api* api) {
-  return [api](PJRT_SerializedExecutable* serialized_executable) -> void {
-    PJRT_SerializedExecutable_Destroy_Args destroy_args;
-    destroy_args.struct_size =
-        PJRT_SerializedExecutable_Destroy_Args_STRUCT_SIZE;
-    destroy_args.priv = nullptr;
-    destroy_args.serialized_executable = serialized_executable;
-    pjrt::LogFatalIfPjrtError(
-        api->PJRT_SerializedExecutable_Destroy(&destroy_args), api);
-  };
-}
-
 static std::string StructSizeErrorMsg(absl::string_view struct_name,
                                       size_t expected_size,
                                       size_t actual_size) {
@@ -611,6 +599,16 @@ PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
   args.device = device;
   pjrt::LogFatalIfPjrtError(api->PJRT_Device_GetDescription(&args), api);
   return args.device_description;
+}
+
+absl::Span<PJRT_Memory*> GetAddressableMemories(const PJRT_Api* api,
+                                                PJRT_Device* device) {
+  PJRT_Device_AddressableMemories_Args args;
+  args.struct_size = PJRT_Device_AddressableMemories_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device;
+  pjrt::LogFatalIfPjrtError(api->PJRT_Device_AddressableMemories(&args), api);
+  return absl::MakeSpan(args.memories, args.num_memories);
 }
 
 static void PjRtValueDeleterCallback(char* value) { delete[] value; }

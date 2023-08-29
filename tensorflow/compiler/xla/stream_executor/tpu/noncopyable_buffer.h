@@ -16,16 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_NONCOPYABLE_BUFFER_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_NONCOPYABLE_BUFFER_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <type_traits>
 #include <utility>
 
-#include "absl/base/casts.h"
 #include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/mem.h"
 
 namespace tensorflow {

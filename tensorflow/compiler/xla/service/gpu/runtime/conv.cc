@@ -332,15 +332,16 @@ static GpuConvDescriptor GetConvDescriptor(
 }
 
 template <CudnnConvKind kind>
-static absl::Status ConvImpl(
+static absl::Status DoConv(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, NonAtomicallyUpgradeableRWLock* gpu_lock,
     State<ConvRunner> runner,
     // Arguments
     StridedMemrefView operand0, StridedMemrefView operand1,
     std::optional<FlatMemrefView> bias,
-    std::optional<StridedMemrefView> side_input, StridedMemrefView output,
-    FlatMemrefView scratch, int64_t uid,
+    std::optional<StridedMemrefView> side_input,
+    absl::Span<const StridedMemrefView> outputs, FlatMemrefView scratch,
+    int64_t uid,
     // Convolution config
     ConvDimensionNumbers conv_dims,
     // Window config
@@ -355,7 +356,10 @@ static absl::Status ConvImpl(
     // Optional attributes for fused convolutions.
     std::optional<se::dnn::ActivationMode> activation_mode = std::nullopt,
     std::optional<double> side_input_scale = std::nullopt,
-    std::optional<double> leakyrelu_alpha = std::nullopt) {
+    std::optional<double> leakyrelu_alpha = std::nullopt,
+    // Optional extra arguments for graph convolutions.
+    absl::Span<const StridedMemrefView> extra_operands = {},
+    std::optional<std::string_view> serialized_graph = std::nullopt) {
   // Build config for optional attributes.
   std::optional<FusedConvAttrs> fused_attrs = std::nullopt;
   if (activation_mode.has_value()) fused_attrs = {*activation_mode};
@@ -379,12 +383,15 @@ static absl::Status ConvImpl(
       ConvRunner * conv,
       runner.GetOrCreate([&]() -> absl::StatusOr<ConvRunner> {
         GpuConvDescriptor descriptor = GetConvDescriptor(
-            kind, operand0, operand1, output, scratch, conv_dims,
+            kind, operand0, operand1, outputs[0], scratch, conv_dims,
             {window_strides, padding, lhs_dilation, rhs_dilation,
              window_reversal},
             backend_config, {feature_group_count, result_scale}, fused_attrs,
             side_input_attrs, leakyrelu_alpha_attrs);
-
+        if (serialized_graph.has_value()) {
+          descriptor.backend_config.set_serialized_graph(
+              std::string(serialized_graph.value()));
+        }
         TF_ASSIGN_OR_RETURN(GpuConvConfig conv_config,
                             GetGpuConvConfig(descriptor, ""));
 
@@ -396,8 +403,14 @@ static absl::Status ConvImpl(
                                                GetDeviceAddress(operand1)};
   if (bias.has_value()) buffers.push_back(GetDeviceAddress(*bias));
   if (side_input.has_value()) buffers.push_back(GetDeviceAddress(*side_input));
+  for (const StridedMemrefView& operand : extra_operands) {
+    buffers.push_back(GetDeviceAddress(operand));
+  }
 
-  se::DeviceMemoryBase result_buffer = GetDeviceAddress(output);
+  std::vector<se::DeviceMemoryBase> result_buffers;
+  for (const StridedMemrefView& output : outputs) {
+    result_buffers.push_back(GetDeviceAddress(output));
+  }
   se::DeviceMemoryBase scratch_buffer = GetDeviceAddress(scratch);
 
   int64_t scratch_buffer_size = scratch_buffer.size();
@@ -419,7 +432,7 @@ static absl::Status ConvImpl(
         AutotuneResult best_algo,
         conv_algorithm_picker.PickBestAlgorithmWithAllocatedBuffer(
             config, gpu_conv_config, run_options, *debug_options, buffers,
-            result_buffer));
+            result_buffers));
 
     // Set algorithm in the convolution runner state.
     se::dnn::AlgorithmDesc algo_desc(best_algo.conv().algorithm(),
@@ -447,7 +460,7 @@ static absl::Status ConvImpl(
                                             scratch_buffer_size);
 
     // Run the convolution using the new scratch buffer.
-    TF_RETURN_IF_ERROR(RunGpuConv(conv->config, buffers, result_buffer,
+    TF_RETURN_IF_ERROR(RunGpuConv(conv->config, buffers, result_buffers,
                                   new_scratch_buffer, run_options->stream(),
                                   opts));
     if (!run_options->stream()->ok()) {
@@ -457,13 +470,107 @@ static absl::Status ConvImpl(
   }
 
   // Run the convolution.
-  TF_RETURN_IF_ERROR(RunGpuConv(conv->config, buffers, result_buffer,
+  TF_RETURN_IF_ERROR(RunGpuConv(conv->config, buffers, result_buffers,
                                 scratch_buffer, run_options->stream(), opts));
   if (!run_options->stream()->ok()) {
     return absl::InternalError("run_options stream not ok");
   }
 
   return absl::OkStatus();
+}
+
+template <CudnnConvKind kind>
+static absl::Status ConvImpl(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, NonAtomicallyUpgradeableRWLock* gpu_lock,
+    State<ConvRunner> runner,
+    // Arguments
+    StridedMemrefView operand0, StridedMemrefView operand1,
+    std::optional<FlatMemrefView> bias,
+    std::optional<StridedMemrefView> side_input, StridedMemrefView output,
+    FlatMemrefView scratch, int64_t uid,
+    // Convolution config
+    ConvDimensionNumbers conv_dims,
+    // Window config
+    absl::Span<const int64_t> window_strides, absl::Span<const int64_t> padding,
+    absl::Span<const int64_t> lhs_dilation,
+    absl::Span<const int64_t> rhs_dilation,
+    absl::Span<const int64_t> window_reversal,
+    // Backend config attributes
+    ConvBackendConfig backend_config,
+    // Remaining attributes
+    int64_t feature_group_count, double result_scale,
+    // Optional attributes for fused convolutions.
+    std::optional<se::dnn::ActivationMode> activation_mode = std::nullopt,
+    std::optional<double> side_input_scale = std::nullopt,
+    std::optional<double> leakyrelu_alpha = std::nullopt) {
+  return DoConv<kind>(run_options, debug_options, gpu_lock, runner, operand0,
+                      operand1, bias, side_input, {output}, scratch, uid,
+                      conv_dims, window_strides, padding, lhs_dilation,
+                      rhs_dilation, window_reversal, backend_config,
+                      feature_group_count, result_scale, activation_mode,
+                      side_input_scale, leakyrelu_alpha);
+}
+
+template <CudnnConvKind kind>
+static absl::Status ConvGraphImpl(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, NonAtomicallyUpgradeableRWLock* gpu_lock,
+    State<ConvRunner> runner,
+    // Arguments
+    StridedMemrefView operand0, StridedMemrefView operand1,
+    CustomCall::RemainingArgs args, int64_t uid,
+    // Convolution config
+    ConvDimensionNumbers conv_dims,
+    // Window config
+    absl::Span<const int64_t> window_strides, absl::Span<const int64_t> padding,
+    absl::Span<const int64_t> lhs_dilation,
+    absl::Span<const int64_t> rhs_dilation,
+    absl::Span<const int64_t> window_reversal,
+    // Backend config attributes
+    ConvBackendConfig backend_config,
+    // Remaining attributes
+    int64_t feature_group_count, double result_scale, int32_t n_aux_outputs,
+    std::string_view serialized_graph) {
+  // Let N be the size of 'args'. The first (N - n_aux_outputs - 2) elements of
+  // 'args' are extra operands, which are operands other than the input and
+  // filter. The next (n_aux_outputs + 1) elements are the outputs -- the first
+  // being the main convolution output and the others being the "auxiliary"
+  // outputs (e.g. amax). The last element of 'args' is the scratch space.
+  std::vector<StridedMemrefView> extra_operands;
+  for (int i = 0; i < args.size() - n_aux_outputs - 2; i++) {
+    auto arg = args.get<StridedMemrefView>(i);
+    if (failed(arg)) {
+      return absl::InternalError(
+          "Failed to get operand buffer for convolution graph");
+    }
+    extra_operands.push_back(arg.value());
+  }
+
+  std::vector<StridedMemrefView> outputs;
+  for (int i = args.size() - n_aux_outputs - 2; i < args.size() - 1; i++) {
+    auto arg = args.get<StridedMemrefView>(i);
+    if (failed(arg)) {
+      return absl::InternalError(
+          "Failed to get output buffer for convolution graph");
+    }
+    outputs.push_back(arg.value());
+  }
+
+  auto scratch = args.get<FlatMemrefView>(args.size() - 1);
+  if (failed(scratch)) {
+    return absl::InternalError(
+        "Failed to get scratch buffer for convolution graph");
+  }
+
+  return DoConv<kind>(run_options, debug_options, gpu_lock, runner, operand0,
+                      operand1, /*bias=*/{},
+                      /*side_input=*/{}, outputs, scratch.value(), uid,
+                      conv_dims, window_strides, padding, lhs_dilation,
+                      rhs_dilation, window_reversal, backend_config,
+                      feature_group_count, result_scale, /*activation_mode=*/{},
+                      /*side_input_scale=*/{}, /*leakyrelu_alpha=*/{},
+                      extra_operands, serialized_graph);
 }
 
 //===----------------------------------------------------------------------===//
@@ -551,6 +658,21 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<double>("side_input_scale")
         .Value(std::optional<double>()));  // leaky_relu_alpha
 
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    ConvForwardGraph, FunctionWrapper<ConvGraphImpl<Kind::kForwardGraph>>(),
+    checks,
+    BindConvAttributes(CustomCall::Bind("xla.gpu.conv.forward.graph")
+                           .UserData<const ServiceExecutableRunOptions*>()
+                           .UserData<const DebugOptions*>()
+                           .UserData<NonAtomicallyUpgradeableRWLock*>()
+                           .State<ConvRunner>("uid")  // runner
+                           .Arg<StridedMemrefView>()  // operand0
+                           .Arg<StridedMemrefView>()  // operand1
+                           .RemainingArgs()           // binary_operands
+                       )
+        .Attr<int32_t>("n_aux_outputs")
+        .Attr<std::string_view>("serialized_graph"));
+
 //===----------------------------------------------------------------------===//
 
 void RegisterConvCustomCalls(runtime::DirectCustomCallRegistry& registry) {
@@ -560,6 +682,7 @@ void RegisterConvCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register(conv("backward.filter"), Conv<Kind::kBackwardFilter>);
   registry.Register(conv("forward.fused"), ConvFused);
   registry.Register(conv("forward.fused.side_input"), ConvFusedSideInput);
+  registry.Register(conv("forward.graph"), ConvForwardGraph);
 }
 
 }  // namespace gpu

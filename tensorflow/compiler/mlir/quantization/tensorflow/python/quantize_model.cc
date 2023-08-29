@@ -460,17 +460,11 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
     return aliased_function_names.insert(aliases.first);
   });
 
-  // TODO(b/274858158): Removing this triggers an error on unit test.
-  if (aliased_function_names.empty()) {
-    TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
-        module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr));
-  } else {
-    TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
-        /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
-        /*is_inliner_run=*/false,
-        /*noinline_functions=*/aliased_function_names, module_ref.get(),
-        &context, bundle ? bundle->GetSession() : nullptr));
-  }
+  TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+      /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
+      /*is_inliner_run=*/true,
+      /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
+      bundle ? bundle->GetSession() : nullptr));
 
   TF_QUANT_RETURN_IF_ERROR(RunPasses(
       /*name=*/kTfQuantQatStepName,
@@ -685,16 +679,11 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     return aliased_function_names.insert(aliases.first);
   });
 
-  if (aliased_function_names.empty()) {
-    TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
-        module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr));
-  } else {
-    TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
-        /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
-        /*is_inliner_run=*/false,
-        /*noinline_functions=*/aliased_function_names, module_ref.get(),
-        &context, bundle ? bundle->GetSession() : nullptr));
-  }
+  TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+      /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
+      /*is_inliner_run=*/true,
+      /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
+      bundle ? bundle->GetSession() : nullptr));
 
   TF_QUANT_RETURN_IF_ERROR(RunPasses(
       /*name=*/kTfQuantPtqDynamicRangeStepName,

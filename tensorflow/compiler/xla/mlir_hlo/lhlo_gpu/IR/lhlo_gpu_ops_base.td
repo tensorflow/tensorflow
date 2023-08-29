@@ -25,6 +25,7 @@ def LmhloGpuDialect : Dialect {
   let cppNamespace = "::mlir::lmhlo_gpu";
 
   let useDefaultAttributePrinterParser = 1;
+  let usePropertiesForAttributes = 0;
 }
 
 #endif // LHLO_GPU_OPS_BASE

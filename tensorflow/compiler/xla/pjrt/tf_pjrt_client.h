@@ -45,6 +45,9 @@ class TfPjRtBuffer : public PjRtBuffer {
   StatusOr<Shape> logical_on_device_shape() override {
     return wrapped_->logical_on_device_shape();
   }
+  PjRtMemorySpace* memory_space() const override {
+    return wrapped_->memory_space();
+  }
   PjRtDevice* device() const override { return wrapped_->device(); }
   PjRtClient* client() const override;
   StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
@@ -201,6 +204,9 @@ class TfPjRtClient : public PjRtClient {
           "Wrapped PJRT client in TfPjRtClient is already destoryed.");
     }
     return wrapped_->LookupAddressableDevice(local_hardware_id);
+  }
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override {
+    return wrapped_->memory_spaces();
   }
   PjRtPlatformId platform_id() const override {
     return wrapped_->platform_id();

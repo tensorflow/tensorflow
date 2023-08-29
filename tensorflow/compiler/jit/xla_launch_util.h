@@ -140,6 +140,18 @@ Status RunPjRtExecutable(
     xla::PjRtClient* pjrt_client, xla::PjRtLoadedExecutable* executable,
     OpKernelContext* ctx);
 
+// Similar to the above function but it does not take an OpKernelContext, and
+// it returns the output in PjRtBuffers, instead of populating results into
+// OpKernelContext.
+StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
+    int num_missing_prefix_ctx_inputs, const std::vector<const Tensor*>& inputs,
+    const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
+    const std::vector<VariableInfo>& updated_variables,
+    const DeviceType& device_type, bool use_pjrt_tensor_buffer,
+    const XlaCompiler::CompilationResult& compilation_result,
+    xla::PjRtDevice* device, xla::PjRtClient* pjrt_client,
+    xla::PjRtLoadedExecutable* executable);
+
 // Helper class to perform the marshalling of TensorFlow inputs and outputs to
 // ShapedBuffers suitable for passing to an XLA computation.
 class XlaComputationLaunchContext {

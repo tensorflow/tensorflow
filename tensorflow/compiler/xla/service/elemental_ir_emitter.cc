@@ -2602,9 +2602,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
                              : index_type;
     // Possibly extend the value at the beginning to ensure clamping logic stays
     // in bounds.
+    bool is_signed = ShapeUtil::ElementIsSigned(indices_shape);
     auto maybe_extended_index =
         index_component_type != extended_type
-            ? b_->CreateSExt(index_component, extended_type)
+            ? b_->CreateIntCast(index_component, extended_type, is_signed)
             : index_component;
     int64_t operand_dim = dim_numbers.start_index_map(dim);
     int64_t output_dim = operand_to_output_dim[operand_dim];
@@ -2620,7 +2621,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
     // Clamp the gather index so that the gather region fits in the operand.
     // clamped_index =
     //     clamp(gather_dim_component_extended, 0, largest_valid_start_index);
-    bool is_signed = ShapeUtil::ElementIsSigned(indices_shape);
     auto clamped_index = EmitIntegralMin(
         llvm::ConstantInt::get(extended_type, largest_valid_start_index),
         EmitIntegralMax(llvm::ConstantInt::get(extended_type, 0),

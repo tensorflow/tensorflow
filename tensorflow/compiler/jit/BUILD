@@ -307,11 +307,9 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:global_data",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/common_runtime:device",
         "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/framework:allocator",
@@ -359,8 +357,10 @@ cc_library(
         "//tensorflow/core/tfrt/common:pjrt_util",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/tsl/framework:device_id_utils",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
@@ -499,6 +499,58 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_compile_util",
+    srcs = ["pjrt_compile_util.cc"],
+    hdrs = ["pjrt_compile_util.h"],
+    visibility = [
+        ":internal",
+        "//tensorflow/core/tfrt/gpu/kernel:__pkg__",
+    ],
+    deps = [
+        ":device_compilation_profiler",
+        ":device_compiler",
+        ":xla_compile_util",
+        ":xla_device_no_jit_rewrite_registration",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "pjrt_compile_util_test",
+    srcs = ["pjrt_compile_util_test.cc"],
+    tags = [
+        "config-cuda-only",
+        "no_oss",  # This test only runs with GPU.
+        "requires-gpu-nvidia",
+        "xla",
+    ],
+    deps = [
+        ":pjrt_compile_util",
+        ":test_util",
+        ":xla_gpu_jit",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:math_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/tfrt/common:pjrt_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "xla_launch_util",
     srcs = ["xla_launch_util.cc"],
     hdrs = ["xla_launch_util.h"],
@@ -509,6 +561,7 @@ cc_library(
         "//learning/brain/tfrt/tpu_plugin:__pkg__",
         "//learning/brain/tfrt/tpu_common:__pkg__",
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
+        "//tensorflow/core/tfrt/gpu/kernel:__pkg__",
     ],
     deps = [
         ":pjrt_tensor_buffer",
@@ -568,6 +621,7 @@ tf_cc_test(
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/tfrt/common:create_pjrt_client_util",
         "//tensorflow/core/tfrt/common:pjrt_util",
+        "//tensorflow/tsl/framework:device_id_utils",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
@@ -614,12 +668,16 @@ cc_library(
     visibility = [
         ":internal",
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
+        "//tensorflow/core/tfrt/gpu/kernel:__pkg__",
     ],
     deps = [
         ":flags_headers",
         "//tensorflow/compiler/tf2xla:xla_argument",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tfrt/common:global_state",
         "//tensorflow/core/util:determinism",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -994,6 +1052,7 @@ cc_library(
         ":internal",
         "//tensorflow/core/tfrt/utils:__pkg__",
         "//third_party/cloud_tpu/inference_converter:__pkg__",
+        "//waymo/onboard/ml/chauffeur_net:__pkg__",
     ],
     deps = [
         "compilability_check_util",
@@ -1566,12 +1625,14 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":pjrt_tensor_buffer",
         ":pjrt_tensor_buffer_util",
         "//tensorflow/c/experimental/next_pluggable_device:tensor_pjrt_buffer_util",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_api",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
@@ -1812,6 +1873,7 @@ tf_cuda_cc_test(
         ":xla_gpu_jit",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:test",

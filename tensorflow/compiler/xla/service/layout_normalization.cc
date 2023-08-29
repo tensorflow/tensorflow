@@ -59,19 +59,18 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   // To handle a constant, just give the literal data a new layout.
   Status HandleConstant(HloInstruction* hlo) override {
     Literal& literal = *Cast<HloConstantInstruction>(hlo)->mutable_literal();
-    const Shape& shape = hlo->shape();
     if (literal.shape().IsTuple()) {
       // TODO(cheshire): Tuple constants.
       return OkStatus();
     }
 
-    Shape normalized_shape = Normalize(hlo->shape());
+    const Shape& shape = hlo->shape();
+    Shape normalized_shape = Normalize(shape);
     *literal.mutable_shape_do_not_use() = normalized_shape;
-
-    HloInstruction* normalized = hlo->parent()->AddInstruction(
-        HloInstruction::CreateConstant(std::move(literal)), &hlo->metadata());
-    HloInstruction* bc_to_orig = MakeBitcastHlo(normalized, shape);
-    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    HloInstruction* bc_to_orig = MakeBitcastHlo(hlo, shape);
+    *hlo->mutable_shape() = normalized_shape;
+    TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWithDifferentShape(bc_to_orig));
+    MarkAsChanged();
     return OkStatus();
   }
 
@@ -101,6 +100,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
                                      &hlo->metadata()));
     *normalized_slice->mutable_shape()->mutable_layout() =
         normalized_input->shape().layout();
+    SetVisited(*normalized_slice);
     HloInstruction* bc_to_orig = MakeBitcastHlo(normalized_slice, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
@@ -126,6 +126,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
     auto normalized_shape = Normalize(shape);
     auto bc_to_normalized = MakeBitcastHlo(hlo, normalized_shape);
+    SetVisited(*bc_to_normalized);
     auto bc_to_orig = MakeBitcastHlo(bc_to_normalized, shape);
     TF_RETURN_IF_ERROR(hlo->ReplaceUsesWith(users, bc_to_orig));
     MarkAsChanged();
@@ -152,6 +153,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto normalized_concat =
         hlo->AddInstruction(HloInstruction::CreateConcatenate(
             normalized_shape, normalized_inputs, normalized_concat_dim));
+    SetVisited(*normalized_concat);
     auto bc_to_orig = MakeBitcastHlo(normalized_concat, hlo->shape());
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
@@ -187,6 +189,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
         MakeReduceWindowHlo(normalized_input, hlo->mutable_operand(1),
                             new_window, hlo->called_computations()[0],
                             &hlo->metadata()));
+    SetVisited(*rw);
 
     HloInstruction* bc_to_orig = MakeBitcastHlo(rw, hlo->shape());
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
@@ -221,6 +224,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     }
     auto normalized_broadcast = MakeBroadcastHlo(
         normalized_input, br_dimensions, normalized_shape, &hlo->metadata());
+    SetVisited(*normalized_broadcast);
     VLOG(3) << "Generated broadcast: " << normalized_broadcast->ToString();
     auto bc_to_orig = MakeBitcastHlo(normalized_broadcast, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
@@ -275,6 +279,11 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
           new_unary,
           MakeUnaryHlo(hlo->opcode(), normalized_input, &hlo->metadata()));
     }
+    if (normalized_input != new_unary) {
+      // SetVisited() should only be called for unvisited ops.
+      // 'normalized_input' is already marked as visited.
+      SetVisited(*new_unary);
+    }
     auto bc_to_orig = MakeBitcastHlo(new_unary, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
@@ -312,6 +321,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
       TF_ASSIGN_OR_RETURN(
           new_binary, MakeBinaryHlo(hlo->opcode(), a0, b0, &hlo->metadata()));
     }
+    SetVisited(*new_binary);
     auto bc_to_orig = MakeBitcastHlo(new_binary, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
@@ -334,6 +344,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto normalized_reshape_s = Normalize(s);
     TF_ASSIGN_OR_RETURN(auto new_reshape,
                         MakeReshapeHlo(normalized_reshape_s, a0));
+    SetVisited(*new_reshape);
     auto bc_to_orig = MakeBitcastHlo(new_reshape, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
@@ -380,6 +391,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
       auto dimensions = ComposePermutations(t, l_perm);
       auto normalized_transpose = hlo->AddInstruction(
           HloInstruction::CreateTranspose(normalized_shape, a0, dimensions));
+      SetVisited(*normalized_transpose);
       VLOG(3) << "Generated normalized physical transpose: "
               << normalized_transpose->ToString();
       auto bc_to_orig = MakeBitcastHlo(normalized_transpose, s);
@@ -415,6 +427,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto dimensions = ComposePermutations(l0_perm, l_perm);
     auto t = hlo->AddInstruction(
         HloInstruction::CreateTranspose(s_normalized, a0, dimensions));
+    SetVisited(*t);
     auto bc_to_orig = MakeBitcastHlo(t, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
@@ -435,6 +448,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     absl::c_sort(new_dimensions);
     auto normalized_reverse = hlo->AddInstruction(
         HloInstruction::CreateReverse(a0->shape(), a0, new_dimensions));
+    SetVisited(*normalized_reverse);
     auto bc_to_orig = MakeBitcastHlo(normalized_reverse, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
@@ -466,6 +480,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
     auto padded_normalized = hlo->AddInstruction(HloInstruction::CreatePad(
         s_normalized, normalized_input, padded_by, new_padding));
+    SetVisited(*padded_normalized);
     auto bc_to_orig = MakeBitcastHlo(padded_normalized, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
@@ -477,6 +492,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
           std::optional<HloInstruction*> transformed_custom_call,
           custom_call_transformer_(Cast<HloCustomCallInstruction>(hlo)));
       if (transformed_custom_call) {
+        SetVisited(*(*transformed_custom_call)->operand(0));
         TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, *transformed_custom_call));
         return OkStatus();
       }
@@ -519,6 +535,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
                             &hlo->metadata()));
     *normalized_dynamic_slice->mutable_shape()->mutable_layout() =
         normalized_input->shape().layout();
+    SetVisited(*normalized_dynamic_slice);
     HloInstruction* bc_to_orig = MakeBitcastHlo(normalized_dynamic_slice, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
@@ -545,6 +562,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
         MakeDynamicUpdateSliceHlo(new_operand, new_update, new_start_indices,
                                   &hlo->metadata()));
     *new_dus->mutable_shape()->mutable_layout() = new_operand->shape().layout();
+    SetVisited(*new_dus);
 
     HloInstruction* bc_to_orig = MakeBitcastHlo(new_dus, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
@@ -578,6 +596,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     HloInstruction* normalized = hlo->parent()->AddInstruction(
         HloInstruction::CreateTernary(new_shape, opcode, p_0, i1_0, i2_0));
     hlo->SetupDerivedInstruction(normalized);
+    SetVisited(*normalized);
 
     HloInstruction* bc_to_orig = MakeBitcastHlo(normalized, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));

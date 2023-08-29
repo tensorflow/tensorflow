@@ -429,6 +429,10 @@ def _get_dtype_and_weakness(x):
       return (_NP_TO_TF[x], False)
   except TypeError:
     pass
+  # bool type check must happen before int type check because
+  # isinstance(True, int) == True (https://peps.python.org/pep-0285/).
+  if isinstance(x, bool) or x == bool:
+    return _b8
   # TODO(b/286585058): Update implementation depending on whether Python
   # scalars are inferred to 32 bit or 64 bit.
   if isinstance(x, _pi):
@@ -441,11 +445,19 @@ def _get_dtype_and_weakness(x):
     return _f32w
   if isinstance(x, _pc) or x == complex:
     return _c128w
-  if isinstance(x, bool) or x == bool:
-    return _b8
   if isinstance(x, tensor_shape.TensorShape):
     # Since TensorShape is always integer value, return int32.
     return _i32
+  # Only support NumPy dtype objects with corresponding TF types.
+  if isinstance(x, np.dtype):
+    try:
+      np_dtype = dtypes.as_dtype(x)
+      return (np_dtype, False)
+    except TypeError as exc:
+      raise NotImplementedError(
+          f'Auto dtype conversion semantics does not support {x}. Try using a'
+          ' NumPy built-in dtype objects or cast them explicitly.'
+      ) from exc
   raise NotImplementedError(
       f'Auto dtype conversion semantics does not support {type(x)} type.'
   )

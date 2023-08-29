@@ -13,13 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 
+from __future__ import annotations
+
 import enum
 import inspect
 import types
 import typing
 from typing import (
-    Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type,
-    TypeVar, Union, overload)
+    Any, Callable, ClassVar, Dict, Iterator, List, Optional, Sequence, Tuple,
+    Type, TypeVar, Union, overload)
 
 import numpy as np
 
@@ -350,6 +352,7 @@ class Device:
   platform: str
   device_kind: str
   client: Client
+  local_hardware_id: int | None
   def __repr__(self) -> str: ...
   def __str__(self) -> str: ...
   def transfer_to_infeed(self, literal: _LiteralSlice): ...
@@ -367,21 +370,18 @@ class Memory:
   kind: str
   def __repr__(self) -> str: ...
   def __str__(self) -> str: ...
-  def attached_devices(self) -> List[Device]: ...
-
-class _GpuAllocatorKind(enum.IntEnum):
-    DEFAULT: int
-    PLATFORM: int
-    BFC: int
-    CUDA_ASYNC: int
+  def addressable_by_devices(self) -> List[Device]: ...
 
 class GpuAllocatorConfig:
-  # TODO(b/194673104): Remove once pytype correctly resolves a nested enum.
-  Kind = _GpuAllocatorKind
+  class Kind(enum.IntEnum):
+      DEFAULT: int
+      PLATFORM: int
+      BFC: int
+      CUDA_ASYNC: int
 
   def __init__(
       self,
-      kind: _GpuAllocatorKind = ...,
+      kind: Kind = ...,
       memory_fraction: float = ...,
       preallocate: bool = ...) -> None: ...
 
@@ -398,6 +398,7 @@ class Client:
   def local_device_count(self) -> int: ...
   def devices(self) -> List[Device]: ...
   def local_devices(self) -> List[Device]: ...
+  def device_from_local_hardware_id(self, int) -> Device: ...
   def live_buffers(self) -> List[Any]: ...
   def live_arrays(self) -> List[ArrayImpl]: ...
   def live_executables(self) -> List[LoadedExecutable]: ...
@@ -457,7 +458,13 @@ def get_gpu_client(
     node_id: int = ...,
     allowed_devices: Optional[Any] = ...,
     platform_name: Optional[str] = ...) -> Client:...
-def get_tpu_client(max_inflight_computations: int = ...) -> Client: ...
+def get_mock_gpu_client(
+    asynchronous: bool = ...,
+    allocator_config: GpuAllocatorConfig = ...,
+    distributed_client: Optional[DistributedRuntimeClient] = ...,
+    node_id: int = ...,
+    allowed_devices: Optional[Any] = ...,
+    platform_name: Optional[str] = ...) -> Client:...
 def get_c_api_client(platform_name: str, options: Dict[str, Union[str, int, List[int], float]]) -> Client: ...
 def get_default_c_api_topology(
     platform_name: str,
@@ -465,10 +472,14 @@ def get_default_c_api_topology(
     options: Dict[str, Union[str, int, List[int], float]],
 ) -> DeviceTopology:
   ...
+def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
+  ...
 
 
 def load_pjrt_plugin(platform_name: str, library_path: str) -> _Status: ...
 def pjrt_plugin_loaded(plugin_name: str) -> bool: ...
+def pjrt_plugin_initialized(plugin_name: str) -> bool: ...
+def initialize_pjrt_plugin(platform_name: str) -> _Status: ...
 
 ArrayImpl = Any
 
@@ -511,6 +522,8 @@ def batched_device_put(
 ) -> ArrayImpl:
   ...
 
+def check_and_canonicalize_memory_kind(
+    memory_kind: Optional[str], device_list: DeviceList) -> Optional[str]: ...
 
 def array_result_handler(
                aval: Any,
@@ -575,11 +588,13 @@ class DeviceTopology:
   platform: str
   platform_version: str
   def _make_compile_only_devices(self) -> List[Device]: ...
+  def serialize(self) -> bytes: ...
 
 
 def buffer_to_dlpack_managed_tensor(
     buffer: ArrayImpl,
-    take_ownership: bool = ...) -> Any: ...
+    take_ownership: bool = ...,
+    stream: int | None = None) -> Any: ...
 def dlpack_managed_tensor_to_buffer(
     tensor: Any, cpu_backend: Optional[Client] = ...,
     gpu_backend: Optional[Client] = ...) -> ArrayImpl: ...
@@ -627,7 +642,6 @@ class DistributedRuntimeClient:
 def get_distributed_runtime_service(
     address: str,
     num_nodes: int,
-    use_coordination_service: bool = ...,
     heartbeat_interval: Optional[int] = ...,
     max_missing_heartbeats: Optional[int] = ...,
     enumerate_devices_timeout: Optional[int] = ...,
@@ -635,7 +649,6 @@ def get_distributed_runtime_service(
 def get_distributed_runtime_client(
     address: str,
     node_id: int,
-    use_coordination_service: bool = ...,
     rpc_timeout: Optional[int] = ...,
     init_timeout: Optional[int] = ...,
     shutdown_timeout: Optional[int] = ...,
@@ -671,27 +684,54 @@ class PmapFunction:
 def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
   ...
 
+
+class DeviceList:
+  def __init__(self, device_assignment: Tuple[Device, ...]): ...
+  def __hash__(self) -> int: ...
+  def __eq__(self, other: Any) -> bool: ...
+  def __ne__(self, other: Any) -> bool: ...
+  def __len__(self) -> int: ...
+  def __getitem__(self, index: Any) -> Any: ...
+  def __iter__(self) -> Iterator[Device]: ...
+  def __str__(self) -> str: ...
+  def __getstate__(self) -> Any: ...
+  def __setstate__(self, state: Any): ...
+  @property
+  def is_fully_addressable(self) -> bool: ...
+  @property
+  def addressable_device_list(self) -> DeviceList: ...
+  @property
+  def default_memory_kind(self) -> Optional[str]: ...
+  @property
+  def memory_kinds(self) -> Tuple[str, ...]: ...
+
+
 class Sharding: ...
 
 class XLACompatibleSharding(Sharding): ...
 
 class NamedSharding(XLACompatibleSharding):
   def __init__(self, mesh: Any, spec: Any, *, memory_kind: Optional[str] = None,
-               _parsed_pspec: Any = None): ...
+               _parsed_pspec: Any = None,
+               _manual_axes: frozenset[Any] = frozenset()): ...
   mesh: Any
   spec: Any
-  memory_kind: Optional[str]
+  _memory_kind: Optional[str]
   _parsed_pspec: Any
+  _internal_device_list: DeviceList
+  _manual_axes: frozenset[Any]
 
 class SingleDeviceSharding(XLACompatibleSharding):
   def __init__(self, device: Device, *, memory_kind: Optional[str] = None): ...
   _device: Device
   _memory_kind: Optional[str]
+  _internal_device_list: DeviceList
 
 class PmapSharding(XLACompatibleSharding):
   def __init__(self, devices: Sequence[Any], sharding_spec: pmap_lib.ShardingSpec): ...
   devices: List[Any]
   sharding_spec: pmap_lib.ShardingSpec
+  _internal_device_list: DeviceList
 
 class GSPMDSharding(XLACompatibleSharding):
   def __init__(self, devices: Sequence[Device],
@@ -700,6 +740,7 @@ class GSPMDSharding(XLACompatibleSharding):
   _devices: Tuple[Device, ...]
   _hlo_sharding: HloSharding
   _memory_kind: Optional[str]
+  _internal_device_list: DeviceList
 
 class PjitFunction:
   def __call__(self, *args, **kwargs) -> Any: ...

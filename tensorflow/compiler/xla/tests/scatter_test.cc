@@ -639,6 +639,38 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
+XLA_TEST_F(ScatterTest, U8Index) {
+  const std::string hlo_text = R"(
+HloModule BatchDynamicSlice
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[129,3]{1,0} parameter(0)
+  indices = u8[6,2]{1,0} parameter(1)
+  updates = s32[6,1,1]{2,1,0} parameter(2)
+  ROOT scatter = s32[129,3]{1,0} scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1,2},
+      inserted_window_dims={},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1
+}
+)";
+  Literal operand =
+      LiteralUtil::CreateRandomLiteral<S32>(ShapeUtil::MakeShape(S32, {129, 3}),
+                                            /*mean=*/500, /*stddev=*/100)
+          .value();
+  Literal scatter_indices = LiteralUtil::CreateR2<uint8_t>(
+      {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {0x80, 1}, {1, 2}});
+  Literal updates = LiteralUtil::CreateR3<int32_t>(
+      {{{10}}, {{20}}, {{30}}, {{40}}, {{50}}, {{60}}});
+  RunTest(hlo_text, &operand, &scatter_indices, &updates);
+}
+
 XLA_TEST_F(ScatterTest, NegativeIndex) {
   const std::string hlo_text = R"(
 HloModule BatchDynamicSlice

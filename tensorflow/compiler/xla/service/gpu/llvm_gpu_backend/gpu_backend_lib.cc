@@ -400,20 +400,8 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
     }
   }
 
-  int32_t opt_level = debug_options.xla_backend_optimization_level();
-
-  if (opt_level < 2) {
-    LOG(ERROR) << std::string(80, '*');
-    LOG(ERROR) << "The XLA GPU backend doesn't support unoptimized code "
-                  "generation but ";
-    LOG(ERROR) << "--xla_backend_optimization_level is set to " << opt_level
-               << "!";
-    LOG(ERROR) << "(Supported configuration is "
-                  "--xla_backend_optimization_level >= 2.)";
-    LOG(ERROR) << std::string(80, '*');
-  }
   llvm::OptimizationLevel ol;
-  switch (opt_level) {
+  switch (debug_options.xla_backend_optimization_level()) {
     case 0:
       ol = llvm::OptimizationLevel::O0;
       break;

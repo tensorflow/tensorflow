@@ -554,6 +554,69 @@ void SubgraphBuilder::BuildDynamicOpTriggersAllocationOfUnsedInputSubgraph(
   AddAddNode(subgraph, kIntermediateTensor0, kOutputValue1, kOutputValue0);
 }
 
+enum OpType { kMax, kMin };
+
+template <OpType op_type>
+static void BuildMinMaxSubgraph(Subgraph* subgraph) {
+  const int kInput1 = 0;
+  const int kInput2 = 1;
+  const int kOutput = 2;
+  const int kTensorCount = 3;
+  // kInput1(0) --> +---+
+  //                |Op| --> kOutput(2)
+  // kInput2(1) --> +---+
+
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs({kInput1, kInput2}), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kOutput}), kTfLiteOk);
+
+  SetupTensor(subgraph, kInput1, kTfLiteInt32);
+  SetupTensor(subgraph, kInput2, kTfLiteInt32);
+  SetupTensor(subgraph, kOutput, kTfLiteInt32);
+
+  TfLiteRegistration* reg;
+  if (op_type == kMax) {
+    reg = ops::builtin::Register_MAXIMUM();
+    reg->builtin_code = kTfLiteBuiltinMaximum;
+  } else if (op_type == kMin) {
+    reg = ops::builtin::Register_MINIMUM();
+    reg->builtin_code = kTfLiteBuiltinMinimum;
+  }
+  int node_index;
+  subgraph->AddNodeWithParameters({kInput1, kInput2}, {kOutput}, {}, nullptr, 0,
+                                  nullptr, reg, &node_index);
+}
+
+void SubgraphBuilder::BuildMaximumSubgraph(Subgraph* subgraph) {
+  BuildMinMaxSubgraph<OpType::kMax>(subgraph);
+}
+
+void SubgraphBuilder::BuildMinimumSubgraph(Subgraph* subgraph) {
+  BuildMinMaxSubgraph<OpType::kMin>(subgraph);
+}
+
+void SubgraphBuilder::BuildOutputIsSecondInputSubgraph(Subgraph* subgraph) {
+  const int kInput1 = 0;
+  const int kInput2 = 1;
+  const int kTensorCount = 2;
+  // kInput1(0) --> x
+  //                    | --> kOutput(2)
+  // kInput2(1) --> ----^
+
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs({kInput1, kInput2}), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kInput2}), kTfLiteOk);
+
+  SetupTensor(subgraph, kInput1, kTfLiteInt32);
+  SetupTensor(subgraph, kInput2, kTfLiteInt32);
+}
+
 // Build a subgraph with an mul op. Helper function for testing.
 void SubgraphBuilder::BuildMulSubgraph(Subgraph* subgraph) {
   const int kInput1 = 0;

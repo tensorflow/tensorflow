@@ -102,6 +102,40 @@ module {
 }
 
 // -----
+// This test verifies that the new WhileOp inherrits the parallel_iterations attribute.
+module {
+  func.func @main() {
+    %cst = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+    %0 = "tf.While"(%cst) {body = @while_body, cond = @while_cond, is_stateless = false, parallel_iterations = 3} : (tensor<i32>) -> (tensor<i32>)
+    return
+  }
+  func.func private @while_body(%arg0: tensor<i32>) -> (tensor<i32>) {
+    // The pipelining control flow and supporting functions stay the same as the training version above.
+    // The order of these functions is also significant.
+    // CHECK: {{.*tf.While.* body = @new_while_body.* cond = @new_while_cond.* parallel_iterations = 3}}
+    // CHECK: return
+    // metadata ops
+    "tf.TPUReplicateMetadata"() {_has_manual_control_dependencies = true, _replication_info = "repl_info", num_replicas = 1 : i64} : () -> ()
+    %1 = "tf.TPUCompilationResult"() {_tpu_compilation_status = "repl_info"} : () -> tensor<!tf_type.string>
+
+    // forward_ops
+    %res_f = "tf.Identity"(%arg0) {_embedding_pipelining = "forward", _replication_info = "repl_info"} : (tensor<i32>) -> tensor<i32>
+
+    // core_tpu ops:
+    %res_t = "tf.Identity"(%res_f) {_replication_info = "repl_info"} : (tensor<i32>) -> tensor<i32>
+
+    // non_tpu_ops
+    %res_n = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+
+    return %res_n : tensor<i32>
+  }
+  func.func private @while_cond(%arg0: tensor<i32>) -> tensor<i1> {
+    %0 = "tf.Less"(%arg0, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    return %0 : tensor<i1>
+  }
+}
+
+// -----
 // A test verifying too many TPUReplicateMetadataOp ops. Same logic tests too many TPUCompilationResultOp ops.
 module {
   func.func @main(%arg0: tensor<*x!tf_type.resource>, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<*x!tf_type.resource<tensor<512x256xf32>>>) {

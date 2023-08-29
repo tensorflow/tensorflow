@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -126,7 +127,7 @@ std::optional<int64_t> AutoScaler::GetOptimalNumberOfWorkers() const
   int64_t optimal_number_of_workers =
       ceil(consumption_rates_sum_ / average_worker_throughput);
 
-  return std::max(static_cast<int64_t>(1), optimal_number_of_workers);
+  return std::max(int64_t{1}, optimal_number_of_workers);
 }
 
 tsl::Status AutoScaler::ReportProcessingTime(const std::string& worker_address,
@@ -203,8 +204,12 @@ tsl::Status MultipleIterationsAutoScaler::UnregisterIteration(
   return tsl::OkStatus();
 }
 
-tsl::Status MultipleIterationsAutoScaler::UpdateOptimalNumberOfWorkersMetric()
-    TF_LOCKS_EXCLUDED(mu_) {
+tsl::Status MultipleIterationsAutoScaler::UpdateOptimalNumberOfWorkersMetric(
+    int64_t current_number_of_workers) TF_LOCKS_EXCLUDED(mu_) {
+  if (current_number_of_workers <= 0)
+    return absl::InvalidArgumentError(
+        "The current number of workers must be positive");
+
   std::optional<int64_t> optimal_number_of_workers =
       GetOptimalNumberOfWorkers();
   if (!optimal_number_of_workers)
@@ -215,8 +220,24 @@ tsl::Status MultipleIterationsAutoScaler::UpdateOptimalNumberOfWorkersMetric()
 
   VLOG(3) << "Estimated optimal number of workers: "
           << optimal_number_of_workers.value();
+
+  // Limit the estimate to wait for target processing times to converge to a
+  // feasible value. First, start increasing exponentially by 4x. Once
+  // increases are greater than 500, scale linearly.
+  int64_t bound_optimal_number_of_workers = optimal_number_of_workers.value();
+  if (bound_optimal_number_of_workers > current_number_of_workers * 4 ||
+      bound_optimal_number_of_workers > current_number_of_workers + 500) {
+    bound_optimal_number_of_workers = std::min(current_number_of_workers * 4,
+                                               current_number_of_workers + 500);
+  }
+  // Limit the estimate to at most 100k workers.
+  bound_optimal_number_of_workers =
+      std::min(bound_optimal_number_of_workers, int64_t{100000});
+  VLOG(3) << "Bound optimal number of workers: "
+          << bound_optimal_number_of_workers;
+
   metrics::RecordTFDataServiceOptimalNumberOfWorkers(
-      optimal_number_of_workers.value());
+      bound_optimal_number_of_workers);
 
   return tsl::OkStatus();
 }

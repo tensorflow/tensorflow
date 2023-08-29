@@ -48,6 +48,10 @@ using Node = DataflowAnalysis::Node;
 class StreamAssignmentPass
     : public impl::StreamAssignmentPassBase<StreamAssignmentPass> {
   void runOnOperation() override;
+
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<func::FuncDialect>();
+  }
 };
 
 static constexpr int kNumStreams = 10;
@@ -158,7 +162,8 @@ std::optional<int> GetAssignedStream(Operation* op) {
 // TODO(anlunx): Handle the case where the cuda graph contains non
 // parallelizable ops (cuBLAS, cuDNN).
 //
-void AddSynchronization(runtime::CustomCallDeclarations custom_calls,
+void AddSynchronization(FuncOp await_op,
+                        runtime::CustomCallDeclarations custom_calls,
                         const DataflowGraph& graph) {
   for (const Node& node : graph) {
     Operation* op = node.operation;
@@ -194,8 +199,6 @@ void AddSynchronization(runtime::CustomCallDeclarations custom_calls,
       continue;
     }
 
-    func::FuncOp await_op = custom_calls.GetOrCreate(b, "xla.streams.await",
-                                                     TypeRange(), TypeRange());
     b.setInsertionPoint(op);
     auto call = b.create<func::CallOp>(await_op.getName(), TypeRange());
     call->setAttr(b.getStringAttr("from"), b.getI64IntegerAttr(from_stream));
@@ -211,6 +214,14 @@ void StreamAssignmentPass::runOnOperation() {
   runtime::CustomCallDeclarations custom_calls(std::move(sym_table));
 
   auto func_ops = llvm::to_vector(module.getOps<FuncOp>());
+  ImplicitLocOpBuilder b(module->getLoc(), custom_calls.sym_table().getOp());
+  func::FuncOp begin_marker = custom_calls.GetOrCreate(
+      b, "xla.gpu.concurrent_region.begin", TypeRange(), TypeRange());
+  func::FuncOp end_marker = custom_calls.GetOrCreate(
+      b, "xla.gpu.concurrent_region.end", TypeRange(), TypeRange());
+  func::FuncOp await_op = custom_calls.GetOrCreate(b, "xla.streams.await",
+                                                   TypeRange(), TypeRange());
+
   for (auto func_op : func_ops) {
     if (!absl::StrContains(func_op.getSymNameAttr().str(),
                            "xla.gpu.graph.capture")) {
@@ -221,7 +232,9 @@ void StreamAssignmentPass::runOnOperation() {
     DataflowGraph graph = dataflow_analysis.GetDataflowGraph(func_op);
     std::vector<size_t> stream_assignment = AssignStreams(graph, kNumStreams);
 
+    size_t stream_count = 0;
     for (auto [index, stream] : llvm::enumerate(stream_assignment)) {
+      stream_count = std::max(stream_count, stream + 1);
       Node node = graph[index];
       Operation* op = node.operation;
       ImplicitLocOpBuilder b(op->getLoc(), custom_calls.sym_table().getOp());
@@ -230,7 +243,21 @@ void StreamAssignmentPass::runOnOperation() {
       }
     }
 
-    AddSynchronization(custom_calls, graph);
+    AddSynchronization(await_op, custom_calls, graph);
+
+    ImplicitLocOpBuilder b(func_op->getLoc(), custom_calls.sym_table().getOp());
+    auto first_op = &(*func_op.getOps().begin());
+    b.setInsertionPoint(first_op);
+    auto call = b.create<func::CallOp>(begin_marker.getName(), TypeRange());
+    call->setAttr(b.getStringAttr("size"), b.getI64IntegerAttr(stream_count));
+
+    auto op_it = func_op.getOps().begin();
+    while (!isa<func::ReturnOp>(*op_it)) {
+      op_it++;
+    }
+    Operation* return_op = &(*op_it);
+    b.setInsertionPoint(return_op);
+    b.create<func::CallOp>(end_marker.getName(), TypeRange());
   }
 }
 

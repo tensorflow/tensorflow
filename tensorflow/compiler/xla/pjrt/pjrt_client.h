@@ -26,7 +26,6 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
@@ -173,9 +172,7 @@ class PjRtDevice {
   }
 
   // Returns all memory spaces attached to this device.
-  virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const {
-    return {};
-  }
+  virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const = 0;
 
   // Returns the default memory space attached to this device.
   virtual StatusOr<PjRtMemorySpace*> default_memory_space() const = 0;
@@ -479,9 +476,7 @@ class PjRtClient {
       int local_hardware_id) const = 0;
 
   // Return all memory spaces owned by the client.
-  virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const {
-    return {};
-  }
+  virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const = 0;
 
   // Return an ID that identifies the platform (CPU/GPU/TPU).
   virtual PjRtPlatformId platform_id() const = 0;
@@ -937,7 +932,7 @@ class PjRtBuffer {
     return shape;
   }
 
-  virtual PjRtMemorySpace* memory_space() const { return nullptr; }
+  virtual PjRtMemorySpace* memory_space() const = 0;
   // TODO(b/277820585): remove device() after the migration is done.
   virtual PjRtDevice* device() const = 0;
   virtual PjRtClient* client() const = 0;
@@ -954,6 +949,13 @@ class PjRtBuffer {
     virtual ~ExternalReference() = 0;
     // Return opaque device memory pointer to root buffer.
     void* OpaqueDeviceMemoryDataPointer() const { return data_ptr_; }
+
+    // Stream is platform-specific. This is intended to support dlpack on GPU
+    // and is not expected to be implemented for all hardware platforms.
+    virtual Status WaitUntilBufferReadyOnStream(std::intptr_t stream) {
+      return Unimplemented(
+          "WaitUntilBufferReadyOnExternalStream is only implemented for GPU.");
+    }
 
    protected:
     void* data_ptr_;

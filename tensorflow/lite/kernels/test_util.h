@@ -600,6 +600,9 @@ class SingleOpModel {
   // Define the operator in this model.
   void SetBuiltinOp(BuiltinOperator type, BuiltinOptions builtin_options_type,
                     flatbuffers::Offset<void> builtin_options);
+  void SetBuiltinOp(BuiltinOperator type,
+                    BuiltinOptions2 builtin_options_2_type,
+                    flatbuffers::Offset<void> builtin_options_2);
   void SetCustomOp(const string& name,
                    const std::vector<uint8_t>& custom_option,
                    const std::function<TfLiteRegistration*()>& registration);
@@ -873,6 +876,11 @@ class SingleOpModel {
     zero_point = nudged_zero_point;
     // finally, return the values
     return {scale, zero_point};
+  }
+
+  void AddSubgraphs(int subgraphs_to_add,
+                    int* first_new_subgraph_index = nullptr) {
+    interpreter_->AddSubgraphs(subgraphs_to_add, first_new_subgraph_index);
   }
 
  private:

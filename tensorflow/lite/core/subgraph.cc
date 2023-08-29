@@ -1950,18 +1950,18 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
         TfLiteIntArrayEqual(tensor->dims, new_size) == 0;
     if (tensor->type != kTfLiteString && tensor->type != kTfLiteResource &&
         tensor->type != kTfLiteVariant) {
-      size_t bytesRequired;
+      size_t bytes_required;
       TfLiteStatus status =
           tflite::BytesRequired(tensor->type, new_size->data, new_size->size,
-                                &bytesRequired, &context_);
+                                &bytes_required, &context_);
       if (status != kTfLiteOk) {
         TfLiteIntArrayFree(new_size);
         return kTfLiteError;
       }
 
       // Realloc space for heap-allocated tensors.
-      TfLiteTensorResizeMaybeCopy(bytesRequired, tensor, false);
-      tensor->bytes = bytesRequired;
+      TfLiteTensorResizeMaybeCopy(bytes_required, tensor, false);
+      tensor->bytes = bytes_required;
     }
     if (tensor->dims && tensor->dims != new_size) {
       TfLiteIntArrayFree(tensor->dims);

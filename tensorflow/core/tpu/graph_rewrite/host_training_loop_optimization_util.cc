@@ -15,21 +15,40 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/graph_rewrite/host_training_loop_optimization_util.h"
 
+#include <cstdint>
 #include <deque>
-#include <map>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/function_body.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/graph/control_flow.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_pass_internal.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/tstring.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -78,7 +97,7 @@ bool IsExecuteNodeOrIdentityToExecuteNode(
 // by searching/traversing nodes in below pattern of nodes:
 // Enter ----> (identity) --->  While body input
 // Returns nullptr if the Enter node is not found.
-xla::StatusOr<Node*> FindEnterNodeFromTPUExecuteNodeInput(Node* input_node) {
+StatusOr<Node*> FindEnterNodeFromTPUExecuteNodeInput(Node* input_node) {
   Node* node = input_node;
   while (node->IsIdentity()) {
     TF_RETURN_IF_ERROR(node->input_node(0, &node));
@@ -90,7 +109,7 @@ xla::StatusOr<Node*> FindEnterNodeFromTPUExecuteNodeInput(Node* input_node) {
   return nullptr;
 }
 
-xla::StatusOr<bool> ResourceOnlyUsedForTPUExecuteInLoop(
+StatusOr<bool> ResourceOnlyUsedForTPUExecuteInLoop(
     const Graph& graph, const std::unordered_set<Node*>& loop_nodes,  // NOLINT
     const Node* enter_node, const absl::flat_hash_set<Node*> execute_nodes) {
   for (const Edge* output_edge : enter_node->out_edges()) {
@@ -111,11 +130,12 @@ xla::StatusOr<bool> ResourceOnlyUsedForTPUExecuteInLoop(
 // program and its model weight variable inputs as well.
 // TPUCompileMetadataProto of TPUCompile node must be reset to `new_metadata`
 // if new reshard ops are added.
-Status ExtractExecuteNodeInfo(const Node* compile_node, const Graph& graph,
-                              const std::unordered_set<Node*>& loop_nodes,  // NOLINT
-                              std::vector<ExecuteNodeInfo>* execute_node_info,
-                              TPUCompileMetadataProto* new_metadata) {
-  string metadata_string;
+Status ExtractExecuteNodeInfo(
+    const Node* compile_node, const Graph& graph,
+    const std::unordered_set<Node*>& loop_nodes,  // NOLINT
+    std::vector<ExecuteNodeInfo>* execute_node_info,
+    TPUCompileMetadataProto* new_metadata) {
+  std::string metadata_string;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(compile_node->attrs(), "metadata", &metadata_string));
   new_metadata->ParsePartialFromString(metadata_string);
@@ -221,7 +241,7 @@ bool IsTPUCompileOp(const Node& n) { return n.type_string() == "TPUCompile"; }
 void FindTPUCompileNodes(
     const std::string* current_function_name,
     const AttrValueMap* current_function_attr,
-    const std::unordered_map<string, WhileLoopFrame>& frames,
+    const std::unordered_map<std::string, WhileLoopFrame>& frames,
     std::vector<HostTrainingLoopInfo>* host_training_loops_info) {
   // Adds frames with no children (i.e., the innermost frames) to a worklist.
   std::deque<const WhileLoopFrame*> worklist;
@@ -326,7 +346,7 @@ Status GetOrCreateBeforeEachIterationNode(const Node& loop_cond_node,
   TF_RETURN_IF_ERROR(GetNodeAttr(loop_switch_node->def(), "T", &dtype));
 
   AddNodeAttr("T", dtype, &at_loop_iteration_nodedef);
-  at_loop_iteration_nodedef.set_name(graph->NewName(strings::StrCat(
+  at_loop_iteration_nodedef.set_name(graph->NewName(absl::StrCat(
       "TPUVariableReshard/before_iteration", "/_", internal::GetNodeId())));
 
   Status status;
@@ -351,7 +371,7 @@ Status AddNoOpAfterLastIteration(const Node& loop_cond_node, Graph* graph,
   NodeDef after_last_iteration;
   after_last_iteration.set_op("NoOp");
 
-  after_last_iteration.set_name(graph->NewName(strings::StrCat(
+  after_last_iteration.set_name(graph->NewName(absl::StrCat(
       "TPUVariableReshard/after_last_iteration", "/_", internal::GetNodeId())));
 
   Status status;
@@ -370,13 +390,13 @@ Status AddNoOpAfterLastIteration(const Node& loop_cond_node, Graph* graph,
     DataType dtype;
     TF_RETURN_IF_ERROR(GetNodeAttr(switch_node->def(), "T", &dtype));
     AddNodeAttr("T", dtype, &switch_exit);
-    auto name = strings::StrCat("TPUVariableReshard/switch_exit/", "/_",
-                                internal::GetNodeId());
+    auto name = absl::StrCat("TPUVariableReshard/switch_exit/", "/_",
+                             internal::GetNodeId());
     switch_exit.set_name(graph->NewName(name));
     // Introducing identity nodes risks a device copy, which isn't guaranteed
     // to be available for all types. Hence the colocation constraint.
     AddNodeAttr(kColocationAttrName,
-                std::vector<string>{
+                std::vector<std::string>{
                     absl::StrCat(kColocationGroupPrefix, switch_node->name())},
                 &switch_exit);
 
@@ -443,7 +463,7 @@ Status DetectHostTrainingLoop(
   TF_RETURN_IF_ERROR(
       BuildControlFlowInfo(graph, &cf_info, /*unreachable_nodes=*/nullptr));
 
-  std::unordered_map<string, WhileLoopFrame> frames;
+  std::unordered_map<std::string, WhileLoopFrame> frames;
   TF_RETURN_IF_ERROR(ExtractWhileLoopFrames(cf_info, graph, &frames));
   FindTPUCompileNodes(current_function_name, current_function_attr, frames,
                       host_training_loops_info);
@@ -468,7 +488,7 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
   if (!status.ok()) {
     LOG(ERROR) << "Encountered error when trying to extract execute nodes, "
                   "skipping host loop optimization. Status: "
-               << status.ToString();
+               << status;
     return OkStatus();
   }
 
@@ -479,7 +499,7 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
   // Update the TPUCompileMetadata such that sharding config of the
   // sharded resource variable inputs is set to ALLOWED instead of
   // TENTATIVE.
-  string new_metadata_string;
+  std::string new_metadata_string;
   metadata.SerializeToString(&new_metadata_string);
   compile_node->ClearAttr("metadata");
   compile_node->AddAttr("metadata", new_metadata_string);
@@ -512,14 +532,14 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
   // (i.e. no-op sharding).
   NodeDef default_sharding;
   default_sharding.set_op("Const");
-  default_sharding.set_name(graph->NewName(strings::StrCat(
+  default_sharding.set_name(graph->NewName(absl::StrCat(
       "TPUVariableReshard/default_shard_state", "/_", internal::GetNodeId())));
   AddNodeAttr("dtype", DT_STRING, &default_sharding);
 
   Tensor t(DT_STRING, {3});
-  t.vec<tstring>()(0) = kDefaultShardingValue;
-  t.vec<tstring>()(1) = kDefaultShardingValue;
-  t.vec<tstring>()(2) = kDefaultShardingValue;
+  t.vec<tsl::tstring>()(0) = kDefaultShardingValue;
+  t.vec<tsl::tstring>()(1) = kDefaultShardingValue;
+  t.vec<tsl::tstring>()(2) = kDefaultShardingValue;
   t.AsProtoTensorContent(
       (*default_sharding.mutable_attr())["value"].mutable_tensor());
 
@@ -533,7 +553,7 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
   // Build a no-op node used to add control edges after unshard nodes.
   NodeDef after_unshard;
   after_unshard.set_op("NoOp");
-  after_unshard.set_name(graph->NewName(strings::StrCat(
+  after_unshard.set_name(graph->NewName(absl::StrCat(
       "TPUVariableReshard/last_iteration", "/_", internal::GetNodeId())));
   TF_ASSIGN_OR_RETURN(auto after_unshard_node, graph->AddNode(after_unshard));
 
@@ -542,7 +562,7 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
     // Create Reshard op that optionally shards model weight variables
     // prior to program execution.
     NodeDef reshard_node_def;
-    reshard_node_def.set_name(graph->NewName(strings::StrCat(
+    reshard_node_def.set_name(graph->NewName(absl::StrCat(
         "TPUVariableReshard/reshard", "/_", internal::GetNodeId())));
     reshard_node_def.set_op("TPUReshardVariables");
     AddNodeAttr("N", static_cast<int>(info.var_inputs.size()),
@@ -571,12 +591,12 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
     graph->AddEdge(compile_node, compilation_key_edge->src_output(),
                    reshard_op_node, new_key_input);
 
-    // Create VarHandleOp to store sharding state. Sharding state holds string
-    // compilation key that identifies whether the graph is re-compiled and the
-    // variables need to be sharded again.
+    // Create VarHandleOp to store sharding state. Sharding state holds
+    // std::string compilation key that identifies whether the graph is
+    // re-compiled and the variables need to be sharded again.
     NodeDef var_handle_def;
     var_handle_def.set_op("VarHandleOp");
-    var_handle_def.set_name(graph->NewName(strings::StrCat(
+    var_handle_def.set_name(graph->NewName(absl::StrCat(
         "TPUVariableReshard/reshard_state", "/_", internal::GetNodeId())));
     AddNodeAttr("dtype", DT_STRING, &var_handle_def);
     AddNodeAttr("shape", TensorShape({}), &var_handle_def);
@@ -595,7 +615,7 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
 
     // Create Reshard op that represents unsharding after TPUExecute.
     NodeDef unshard_node_def;
-    unshard_node_def.set_name(graph->NewName(strings::StrCat(
+    unshard_node_def.set_name(graph->NewName(absl::StrCat(
         "TPUVariableReshard/unshard", "/_", internal::GetNodeId())));
     unshard_node_def.set_op("TPUReshardVariables");
     AddNodeAttr("N", static_cast<int>(info.var_inputs.size()),

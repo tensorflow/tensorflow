@@ -35,42 +35,22 @@ limitations under the License.
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <thread>  // NOLINT
 #include <tuple>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "pybind11/cast.h"  // from @pybind11
-#include "pybind11/numpy.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
-#include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/python/exceptions.h"
-#include "tensorflow/compiler/xla/python/ifrt/array.h"
-#include "tensorflow/compiler/xla/python/ifrt/client.h"
-#include "tensorflow/compiler/xla/python/ifrt/sharding.h"
-#include "tensorflow/compiler/xla/python/py_array.h"
-#include "tensorflow/compiler/xla/python/py_buffer.h"
-#include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
-#include "tensorflow/compiler/xla/python/python_ref_manager.h"
-#include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
+#include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
-#include "tensorflow/compiler/xla/python/util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
@@ -148,6 +128,14 @@ static std::string OptionalDebugString(
   }
 }
 
+bool FetchMemoriesFlag() {
+  auto& global_state = GlobalJitState();
+  auto& thread_local_state = ThreadLocalJitState();
+  CHECK(global_state.enable_memories.has_value());
+  return thread_local_state.enable_memories.value_or(
+      *global_state.enable_memories);
+}
+
 std::string CallSignature::DebugString() const {
   auto py_object_formatter = [](std::string* out, const py::object& o) {
     out->append(py::cast<std::string>(py::str(o)));
@@ -172,6 +160,7 @@ std::string CallSignature::DebugString() const {
       "device: %s\n"
       "default_device: %s\n"
       "jax_enable_x64: %d\n"
+      "jax_enable_memories: %d\n"
       "global_extra_jit_context: %s\n"
       "thread_local_extra_jit_context: %s\n",
       absl::StrJoin(static_args, ",", py_object_formatter),
@@ -182,7 +171,7 @@ std::string CallSignature::DebugString() const {
       absl::StrJoin(dynamic_arg_names, ",", py_object_formatter),
       absl::StrJoin(dynamic_arg_treedefs, "| ", treedef_formatter),  // new line
       device != nullptr ? device->DebugString() : "nullptr",
-      OptionalDebugString(default_device), jax_enable_x64,
+      OptionalDebugString(default_device), jax_enable_x64, jax_enable_memories,
       OptionalDebugString(global_extra_jit_context),
       OptionalDebugString(thread_local_extra_jit_context));
 }
@@ -192,11 +181,11 @@ bool CallSignature::operator==(const CallSignature& other) const {
   // instead of hashing and checking sharding's pointer values.
   return std::tie(dynamic_arg_treedefs, dynamic_arg_names,
                   dynamic_arg_signatures, device, jax_enable_x64,
-                  static_arg_names, committed_args) ==
+                  jax_enable_memories, static_arg_names, committed_args) ==
              std::tie(other.dynamic_arg_treedefs, other.dynamic_arg_names,
                       other.dynamic_arg_signatures, other.device,
-                      other.jax_enable_x64, other.static_arg_names,
-                      other.committed_args) &&
+                      other.jax_enable_x64, other.jax_enable_memories,
+                      other.static_arg_names, other.committed_args) &&
          // `==` on py:objects is the Python `is`. We need equal.
          std::equal(dynamic_arg_shardings.begin(), dynamic_arg_shardings.end(),
                     other.dynamic_arg_shardings.begin(),
@@ -331,9 +320,12 @@ void BuildJaxjitSubmodule(py::module& m) {
   py::class_<JitState> jit_state_(jitlib, "JitState");
   jit_state_.def_readwrite("disable_jit", &JitState::disable_jit);
   jit_state_.def_readwrite("enable_x64", &JitState::enable_x64);
+  jit_state_.def_readwrite("enable_memories", &JitState::enable_memories);
   jit_state_.def_readwrite("default_device", &JitState::default_device);
   jit_state_.def_readwrite("extra_jit_context", &JitState::extra_jit_context);
   jit_state_.def_readwrite("post_hook", &JitState::post_hook);
+
+  GetEnableMemories = +[] { return FetchMemoriesFlag(); };
 
   jitlib.def(
       "global_state", [&]() { return &GlobalJitState(); },

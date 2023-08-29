@@ -43,7 +43,7 @@ struct CompileModuleResults {
   std::vector<BufferAllocation> allocations;
   std::variant<GpuExecutable::OwnedThunkSequence,
                GpuExecutable::OwnedGpuRuntimeProgram,
-               GpuExecutable::OwnedOpenXlaRuntimeProgram>
+               GpuExecutable::OwnedGpu2RuntimeProgram>
       executable;
   EntryFunctionAttributes entry_func_attrs;
   std::vector<GpuExecutable::ConstantInfo> constants;

@@ -50,19 +50,6 @@ def is_nan(x):
     return math.isnan(x)
 
 
-def cast_and_return_whether_casted(
-    trace_types, values, context
-) -> PythonTuple[PythonList[Any], bool]:
-  did_cast = False
-  casted_values = []
-  for t, v in zip(trace_types, values):
-    casted_v = t._cast(v, context)  # pylint: disable=protected-access
-    casted_values.append(casted_v)
-    if casted_v is not v:
-      did_cast = True
-  return casted_values, did_cast
-
-
 class Literal(trace.TraceType, serialization.Serializable):
   """Represents a Literal type like bool, int or string."""
 
@@ -288,7 +275,7 @@ class Tuple(trace.TraceType, serialization.Serializable):
         self.components
     ), f"Expected {value} to have length of {len(self.components)}"
 
-    casted_values, was_casted = cast_and_return_whether_casted(
+    casted_values, was_casted = util.cast_and_return_whether_casted(
         self.components, value, casting_context
     )
     if was_casted:
@@ -374,7 +361,7 @@ class List(trace.TraceType, serialization.Serializable):
         self.components_tuple.components
     ), f"Expected {value} to have length of {len(self.components_tuple)}"
 
-    casted_values, was_casted = cast_and_return_whether_casted(
+    casted_values, was_casted = util.cast_and_return_whether_casted(
         self.components_tuple.components, value, casting_context
     )
     if was_casted:
@@ -509,7 +496,7 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
         self.attribute_names
     ), f"{value!r} has different attributes with the TraceType {self!r}"
 
-    casted_values, was_casted = cast_and_return_whether_casted(
+    casted_values, was_casted = util.cast_and_return_whether_casted(
         self.attributes.components,
         [getattr(value, name) for name in self.attribute_names],
         casting_context,
@@ -647,7 +634,7 @@ class Attrs(trace.TraceType):
     assert util.is_attrs(value)
 
     attr_names = self.named_attributes.attribute_names
-    casted_values, was_casted = cast_and_return_whether_casted(
+    casted_values, was_casted = util.cast_and_return_whether_casted(
         self.named_attributes.attributes.components,
         [getattr(value, name) for name in attr_names],
         casting_context,
@@ -796,7 +783,7 @@ class Dict(trace.TraceType, serialization.Serializable):
         self.mapping.keys()
     ), f"{value!r} has different keys with the TraceType {self!r}."
 
-    casted_values, was_casted = cast_and_return_whether_casted(
+    casted_values, was_casted = util.cast_and_return_whether_casted(
         self.mapping.values(),
         [value[k] for k in self.mapping.keys()],
         casting_context,
@@ -823,6 +810,7 @@ class Dict(trace.TraceType, serialization.Serializable):
 
   def __repr__(self):
     return f"{self.__class__.__name__}(mapping={self.mapping!r})"
+
 
 serialization.register_serializable(Literal)
 serialization.register_serializable(Tuple)

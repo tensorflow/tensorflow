@@ -39,16 +39,15 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":checkpoint_context",
+        ":trackable_view",
         "//tensorflow/python/distribute:device_util",
-        "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:executor",
-        "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/saved_model:pywrap_saved_model",
+        "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:object_identity",
         "@absl_py//absl/logging",
     ],
@@ -113,6 +112,7 @@ tf_py_strict_test(
         "no_windows",  # TODO(b/201457117)
     ],
     deps = [
+        ":async_checkpoint_helper",
         ":checkpoint",
         ":checkpoint_management",
         ":checkpoint_options",
@@ -473,6 +473,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",

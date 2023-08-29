@@ -114,6 +114,18 @@ adb shell "/data/local/tmp/stable_delegate_test_suite \
   --acceleration_test_config_path=/data/local/tmp/stable_delegate_acceleration_test_config.json"
 ```
 
+You can also specify `gunit_filter` to only run a subset of tests. This can be
+used to skip non release-blocking test cases (e.g. fp16 precision issues) which
+are subject to Android ML team's approval. For example, the following command
+would skip TestA, TestB and TestC.
+
+```bash
+adb shell "/data/local/tmp/stable_delegate_test_suite \
+  --stable_delegate_settings_file=/data/local/tmp/stable_delegate_settings.json \
+  --acceleration_test_config_path=/data/local/tmp/stable_delegate_acceleration_test_config.json \
+  --gunit_filter=-TestA:TestB:TestC"
+```
+
 The test suite will show the following output in console after all tests are
 passed:
 

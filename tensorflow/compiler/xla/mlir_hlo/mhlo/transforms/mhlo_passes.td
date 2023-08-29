@@ -83,6 +83,29 @@ def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "func::FuncOp">
   let dependentDialects = ["scf::SCFDialect", "tensor::TensorDialect"];
 }
 
+def LegalizeCreateTokenToAfterAllPass : Pass<"mhlo-legalize-create-token-to-after-all", "func::FuncOp"> {
+  let summary = "Legalize create_token ops to after_all ops.";
+  let constructor = "createLegalizeCreateTokenToAfterAllPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
+}
+
+def LegalizeCrossReplicaSumToAllReducePass : Pass<"mhlo-legalize-cross-replica-sum-to-all-reduce", "func::FuncOp"> {
+  let summary = "Legalizes cross-replica-sum ops to all_reduce ops.";
+  let constructor = "createLegalizeCrossReplicaSumToAllReducePass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
+}
+
+def LegalizeDotGeneralToDotPass : Pass<"mhlo-legalize-dot-general-to-dot", "func::FuncOp"> {
+  let summary = "Legalizes dot_general ops to dot ops.";
+  let constructor = "createLegalizeDotGeneralToDotPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
+}
+
+def LegalizeDotToDotGeneralPass : Pass<"mhlo-legalize-dot-to-dot-general", "func::FuncOp"> {
+  let summary = "Legalizes dot ops to dot_general ops.";
+  let constructor = "createLegalizeDotToDotGeneralPass()";
+}
+
 def LegalizeEinsumToDotGeneralPass : Pass<"mhlo-legalize-einsum-to-dot-general", "func::FuncOp"> {
   let summary = "Legalizes einsum ops to dot_general ops.";
   let constructor = "createLegalizeEinsumToDotGeneralPass()";

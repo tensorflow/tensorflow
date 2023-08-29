@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_PIPELINER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_PIPELINER_H_
 
-#include <string>
-
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -63,22 +61,32 @@ class CollectivePipeliner : public HloModulePass {
     kForward,
   };
   struct Config {
-    HloOpcode op;
     int64_t level_to_operate_on = 0;
     // Maximum number of HLOs to pipeline per loop. (Meant to help controlling
     // memory pressure manually).
     int64_t max_pipelining_per_loop = 0;
     bool last_run = true;
+    // The pipeliner should try to pipeline instructions that have a tree of
+    // uses of allowed instructions. This could increase memory pressure as
+    // multiple instructions might have to be saved to be pushed to the next
+    // iteration.
+    bool pipeline_use_tree = false;
     bool process_different_sized_ops = false;
     PipeliningDirection pipelining_direction = PipeliningDirection::kForward;
     HloPredicate should_process;
   };
   static const char* const kInsertedByPreviousStep;
-  explicit CollectivePipeliner(const Config& config);
+  explicit CollectivePipeliner(const Config& config) : config_(config) {}
   CollectivePipeliner(CollectivePipeliner&& other) = default;
   CollectivePipeliner& operator=(CollectivePipeliner&& other) = default;
 
-  absl::string_view name() const override { return pass_name_; }
+  absl::string_view name() const override {
+    if (config_.pipelining_direction == kForward) {
+      return "collective-pipeliner-forward";
+    } else {
+      return "collective-pipeliner-backward";
+    }
+  }
 
   using HloPassInterface::Run;
   StatusOr<bool> Run(
@@ -87,7 +95,6 @@ class CollectivePipeliner : public HloModulePass {
 
  private:
   const Config config_;
-  const std::string pass_name_;
 };
 
 }  // namespace xla

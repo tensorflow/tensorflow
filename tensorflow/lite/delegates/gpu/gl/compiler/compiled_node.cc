@@ -44,12 +44,11 @@ absl::Status MergeCode(CompiledNodeAttributes* attr,
   RETURN_IF_ERROR(Rename(
       [&](absl::string_view name) -> std::string {
         std::string n(name.begin(), name.end());
-        // if a name is unique, then keep it as is. Otherwise append a unique
-        // index.
-        if (known_names.find(n) == known_names.end()) {
-          return n;
+        // Add index to the end of a variable name until it's unique
+        std::string ret = n;
+        while (known_names.find(ret) != known_names.end()) {
+          ret = absl::StrCat(n, index++);
         }
-        std::string ret = absl::StrCat(n, index++);
         known_names.insert(ret);
         return ret;
       },

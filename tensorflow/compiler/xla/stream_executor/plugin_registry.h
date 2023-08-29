@@ -69,11 +69,6 @@ class PluginRegistry {
                                              const std::string& name,
                                              FactoryT factory);
 
-  // TODO(b/22689637): Setter for temporary mapping until all users are using
-  // MultiPlatformManager / PlatformId.
-  void MapPlatformKindToId(PlatformKind platform_kind,
-                           Platform::Id platform_id);
-
   // Potentially sets the plugin identified by plugin_id to be the default
   // for the specified platform and plugin kind. If this routine is called
   // multiple types for the same PluginKind, the PluginId given in the last call
@@ -90,13 +85,6 @@ class PluginRegistry {
   // or a tsl::Status on error.
   template <typename FactoryT>
   tsl::StatusOr<FactoryT> GetFactory(Platform::Id platform_id,
-                                     PluginId plugin_id);
-
-  // TODO(b/22689637): Deprecated/temporary. Will be deleted once all users are
-  // on MultiPlatformManager / PlatformId.
-  template <typename FactoryT>
-  ABSL_DEPRECATED("Use MultiPlatformManager / PlatformId instead.")
-  tsl::StatusOr<FactoryT> GetFactory(PlatformKind platform_kind,
                                      PluginId plugin_id);
 
  private:
@@ -138,10 +126,6 @@ class PluginRegistry {
   // The singleton itself.
   static PluginRegistry* instance_;
 
-  // TODO(b/22689637): Temporary mapping until all users are using
-  // MultiPlatformManager / PlatformId.
-  std::map<PlatformKind, Platform::Id> platform_id_by_kind_;
-
   // The set of registered factories, keyed by platform ID.
   std::map<Platform::Id, PluginFactories> factories_;
 
@@ -165,10 +149,7 @@ class PluginRegistry {
       PluginRegistry::FACTORY_TYPE factory);                                 \
   template <>                                                                \
   tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
-      Platform::Id platform_id, PluginId plugin_id);                         \
-  template <>                                                                \
-  tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
-      PlatformKind platform_kind, PluginId plugin_id)
+      Platform::Id platform_id, PluginId plugin_id)
 
 DECLARE_PLUGIN_SPECIALIZATIONS(BlasFactory);
 DECLARE_PLUGIN_SPECIALIZATIONS(DnnFactory);

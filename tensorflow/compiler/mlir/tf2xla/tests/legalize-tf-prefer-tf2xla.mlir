@@ -45,27 +45,49 @@ func.func @xla_svd(%arg0: tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, t
 
 // CHECK-LABEL: func @random_uniform_simple
 func.func @random_uniform_simple(%arg0: tensor<3xi32>) -> tensor<12x?x64xf32> {
-  // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK-DAG: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK: %[[CONV:.*]] = mhlo.convert %arg0 : (tensor<3xi32>) -> tensor<3xi64>
-  // CHECK: %[[F32:.*]] = "mhlo.rng"(%[[ZERO]], %[[ONE]], %[[CONV]]) {{.*UNIFORM.*}} -> tensor<12x?x64xf32>
-  %0 = "tf.RandomUniform"(%arg0) : (tensor<3xi32>) -> tensor<12x?x64xf32>
-  // CHECK: return %[[F32]]
+  // expected-remark@+1 {{lowering requires operand #0 to be a constant}}
+  %0 = "tf.RandomUniform"(%arg0) {device = "", seed = 0 : i64, seed2 = 0 : i64} : (tensor<3xi32>) -> tensor<12x?x64xf32>
   func.return %0 : tensor<12x?x64xf32>
 }
 
 // -----
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
+// CHECK-LABEL: func @random_uniform_without_seeds
+func.func @random_uniform_without_seeds(%arg0: tensor<4xi32>) -> tensor<32x12x12x64xf32> {
+  // CHECK: %0 = mhlo.constant dense<[32, 12, 12, 64]> : tensor<4xi32>
+  // CHECK-NEXT: %1 = "tf.RandomUniform"(%0) : (tensor<4xi32>) -> tensor<32x12x12x64xf32>
+  // expected-remark@+1 {{failed to create tf2xla kernel: INVALID_ARGUMENT: NodeDef missing attrs 'seed2', 'seed' from}}
+  %cst = "tf.Const"() {value = dense<[32, 12, 12, 64]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %0 = "tf.RandomUniform"(%cst) {} : (tensor<4xi32>) -> tensor<32x12x12x64xf32>
+  // CHECK: return %1 : tensor<32x12x12x64xf32>
+  func.return %0 : tensor<32x12x12x64xf32>
+}
+}
+// -----
 // CHECK-LABEL: func @random_uniform_with_seeds
 func.func @random_uniform_with_seeds(%arg0: tensor<4xi32>) -> tensor<32x12x12x64xf32> {
-  // CHECK:  %0 = mhlo.constant dense<[32, 12, 12, 64]> : tensor<4xi32>
-  // CHECK-NEXT:  %1 = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK-NEXT:  %2 = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK-NEXT:  %3 = mhlo.convert %0 : (tensor<4xi32>) -> tensor<4xi64>
-  // CHECK-NEXT:  %4 = "mhlo.rng"(%1, %2, %3) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<4xi64>) -> tensor<32x12x12x64xf32>
+    // CHECK: %0 = mhlo.constant dense<[32, 12, 12, 64]> : tensor<4xi32>
+    // CHECK-NEXT: %1 = mhlo.constant dense<[32, 12, 12, 64]> : tensor<4xi32>
+    // CHECK-NEXT: %2 = "mhlo.slice"(%1) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1xi32>
+    // CHECK-NEXT: %3 = mhlo.reshape %2 : (tensor<1xi32>) -> tensor<i32>
+    // CHECK-NEXT: %4 = mhlo.convert %3 : tensor<i32>
+    // CHECK-NEXT: %5 = "mhlo.slice"(%1) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1xi32>
+    // CHECK-NEXT: %6 = mhlo.reshape %5 : (tensor<1xi32>) -> tensor<i32>
+    // CHECK-NEXT: %7 = mhlo.convert %6 : tensor<i32>
+    // CHECK-NEXT: %8 = "mhlo.slice"(%1) {limit_indices = dense<3> : tensor<1xi64>, start_indices = dense<2> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1xi32>
+    // CHECK-NEXT: %9 = mhlo.reshape %8 : (tensor<1xi32>) -> tensor<i32>
+    // CHECK-NEXT: %10 = mhlo.convert %9 : tensor<i32>
+    // CHECK-NEXT: %11 = "mhlo.slice"(%1) {limit_indices = dense<4> : tensor<1xi64>, start_indices = dense<3> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1xi32>
+    // CHECK-NEXT: %12 = mhlo.reshape %11 : (tensor<1xi32>) -> tensor<i32>
+    // CHECK-NEXT: %13 = mhlo.convert %12 : tensor<i32>
+    // CHECK-NEXT: %14 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+    // CHECK-NEXT: %15 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+    // CHECK-NEXT: %16 = mhlo.constant dense<[32, 12, 12, 64]> : tensor<4xi64>
+    // CHECK-NEXT: %17 = "mhlo.rng"(%14, %15, %16) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<4xi64>) -> tensor<32x12x12x64xf32>
   %cst = "tf.Const"() {value = dense<[32, 12, 12, 64]> : tensor<4xi32>} : () -> tensor<4xi32>
   %0 = "tf.RandomUniform"(%cst) {seed = 87654321 : i64, seed2 = 0 : i64} : (tensor<4xi32>) -> tensor<32x12x12x64xf32>
-  // CHECK: return %4 : tensor<32x12x12x64xf32>
+    // CHECK: return %17 : tensor<32x12x12x64xf32>
   func.return %0 : tensor<32x12x12x64xf32>
 }
 
@@ -133,7 +155,7 @@ func.func @fused_conv2d(%input: tensor<1x300x300x40xi8>,
   %input_scale = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
   %side_input_scale = "tf.Const"() {value = dense<2.0> : tensor<f32>} : () -> tensor<f32>
   %conv2d = "tf._FusedConv2D"(%input, %filter, %bias, %act, %input_scale, %side_input_scale) {
-    data_format = "NHWC", dilations = [1, 1, 1, 1], epsilon = 9.99999974E-5 : f32, explicit_paddings = [], filter_format = "HWIO", fused_ops = ["BiasAdd", "Relu"], leakyrelu_alpha = 2.000000e-01 : f32, num_args = 2 : i64, operand_segment_sizes = array<i32: 1, 1, 2, 2>, padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true
+    data_format = "NHWC", dilations = [1, 1, 1, 1], epsilon = 9.99999974E-5 : f32, explicit_paddings = [], filter_format = "HWIO", fused_ops = ["BiasAdd", "Relu"], leakyrelu_alpha = 2.000000e-01 : f32, num_args = 2 : i64, operandSegmentSizes = array<i32: 1, 1, 2, 2>, padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true
     } : (tensor<1x300x300x40xi8>, tensor<3x3x40x40xi8>, tensor<40xf32>, tensor<0xi8>, tensor<f32>, tensor<f32>) -> tensor<1x300x300x40xi8>
   func.return %conv2d : tensor<1x300x300x40xi8>
 }

@@ -2685,7 +2685,14 @@ StatusOr<std::reference_wrapper<const Literal>> ReshapedScatterIndices(
   std::vector<int64_t> new_shape(indices.shape().dimensions().begin(),
                                  indices.shape().dimensions().end());
   new_shape.push_back(1);
-  TF_ASSIGN_OR_RETURN(*reshaped_indices, indices.Reshape(new_shape));
+  if (indices.shape().is_dynamic()) {
+    // TODO(b/243182930): If we add support for dynamic reshape, remove this
+    // check and the call to ToStatic().
+    TF_ASSIGN_OR_RETURN(*reshaped_indices,
+                        indices.ToStatic().Reshape(new_shape));
+  } else {
+    TF_ASSIGN_OR_RETURN(*reshaped_indices, indices.Reshape(new_shape));
+  }
   return std::cref(*reshaped_indices);
 }
 

@@ -26,7 +26,7 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
-			TF_PYTHON_VERSION=3.11
+                        TF_PYTHON_VERSION=3.11
                     }
                     steps {
                         sh '''

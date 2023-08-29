@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Async/IR/Async.h"  // from @llvm-project
 #include "mlir/Dialect/Async/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
@@ -32,9 +33,11 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/_virtual_includes/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 
@@ -44,10 +47,10 @@ namespace runtime {
 void RegisterDefaultXlaGpuRuntimeDialects(DialectRegistry& dialects) {
   // Register MLIR dialects supported by the compiled executables.
   dialects->insert<mlir::memref::MemRefDialect, mlir::scf::SCFDialect,
-                   mlir::func::FuncDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
-                   mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
-                   mlir::async::AsyncDialect, mlir::arith::ArithDialect,
-                   RuntimeDialect>();
+                   mlir::cf::ControlFlowDialect, mlir::func::FuncDialect,
+                   mlir::lmhlo_gpu::LmhloGpuDialect, mlir::lmhlo::LmhloDialect,
+                   mlir::mhlo::MhloDialect, mlir::async::AsyncDialect,
+                   mlir::arith::ArithDialect, RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
   mlir::registerBuiltinDialectTranslation(*dialects);

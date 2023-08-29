@@ -26,6 +26,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_BIT_CAST_H_
 #define TENSORFLOW_COMPILER_XLA_BIT_CAST_H_
 
+#include <cstdint>
+
 #include "absl/base/casts.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/compiler/xla/types.h"

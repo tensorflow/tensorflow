@@ -790,7 +790,7 @@ tf_module {
   }
   member_method {
     name: "CollectiveAllToAllV2"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'communication_hint\', \'timeout_seconds\', \'is_stateless\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'False\', \'None\'], "
   }
   member_method {
     name: "CollectiveAllToAllV3"
@@ -822,7 +822,7 @@ tf_module {
   }
   member_method {
     name: "CollectiveGatherV2"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'communication_hint\', \'timeout_seconds\', \'is_stateless\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'False\', \'None\'], "
   }
   member_method {
     name: "CollectiveInitializeCommunicator"
@@ -838,11 +838,11 @@ tf_module {
   }
   member_method {
     name: "CollectiveReduceScatterV2"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'max_subdivs_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'-1\', \'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'is_stateless\', \'max_subdivs_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "CollectiveReduceV2"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'max_subdivs_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'-1\', \'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'is_stateless\', \'max_subdivs_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "CollectiveReduceV3"
@@ -1381,6 +1381,10 @@ tf_module {
     argspec: "args=[\'sample_indices_or_row_splits\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
   }
   member_method {
+    name: "DynamicEnqueueTPUEmbeddingRaggedTensorBatch"
+    argspec: "args=[\'sample_splits\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'table_ids\', \'combiners\', \'max_sequence_lengths\', \'num_features\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'[]\', \'[]\', \'None\'], "
+  }
+  member_method {
     name: "DynamicPartition"
     argspec: "args=[\'data\', \'partitions\', \'num_partitions\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1419,6 +1423,10 @@ tf_module {
   member_method {
     name: "EmptyTensorList"
     argspec: "args=[\'element_shape\', \'max_num_elements\', \'element_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "EmptyTensorMap"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "EncodeBase64"
@@ -1693,6 +1701,10 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "FFTND"
+    argspec: "args=[\'input\', \'fft_length\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "FIFOQueue"
     argspec: "args=[\'component_types\', \'shapes\', \'capacity\', \'container\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'-1\', \'\', \'\', \'None\'], "
   }
@@ -1735,6 +1747,10 @@ tf_module {
   member_method {
     name: "FakeQueue"
     argspec: "args=[\'resource\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "FileSystemSetConfiguration"
+    argspec: "args=[\'scheme\', \'key\', \'value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Fill"
@@ -1961,6 +1977,10 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "IFFTND"
+    argspec: "args=[\'input\', \'fft_length\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "IRFFT"
     argspec: "args=[\'input\', \'fft_length\', \'Treal\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
@@ -1971,6 +1991,10 @@ tf_module {
   member_method {
     name: "IRFFT3D"
     argspec: "args=[\'input\', \'fft_length\', \'Treal\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "IRFFTND"
+    argspec: "args=[\'input\', \'fft_length\', \'axes\', \'Treal\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "Identity"
@@ -2179,6 +2203,14 @@ tf_module {
   member_method {
     name: "IteratorV2"
     argspec: "args=[\'shared_name\', \'container\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "KMC2ChainInitialization"
+    argspec: "args=[\'distances\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "KmeansPlusPlusInitialization"
+    argspec: "args=[\'points\', \'num_to_sample\', \'seed\', \'num_retries_per_sample\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "L2Loss"
@@ -2715,6 +2747,10 @@ tf_module {
   member_method {
     name: "Ndtri"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "NearestNeighbors"
+    argspec: "args=[\'points\', \'centers\', \'k\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Neg"
@@ -3295,6 +3331,10 @@ tf_module {
   member_method {
     name: "RFFT3D"
     argspec: "args=[\'input\', \'fft_length\', \'Tcomplex\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'complex64\'>\", \'None\'], "
+  }
+  member_method {
+    name: "RFFTND"
+    argspec: "args=[\'input\', \'fft_length\', \'axes\', \'Tcomplex\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'complex64\'>\", \'None\'], "
   }
   member_method {
     name: "RGBToHSV"
@@ -5237,6 +5277,30 @@ tf_module {
     argspec: "args=[\'input_handle\', \'element_shape\', \'element_dtype\', \'num_elements\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
+    name: "TensorMapErase"
+    argspec: "args=[\'input_handle\', \'key\', \'value_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "TensorMapHasKey"
+    argspec: "args=[\'input_handle\', \'key\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "TensorMapInsert"
+    argspec: "args=[\'input_handle\', \'key\', \'value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "TensorMapLookup"
+    argspec: "args=[\'input_handle\', \'key\', \'value_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "TensorMapSize"
+    argspec: "args=[\'input_handle\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "TensorMapStackKeys"
+    argspec: "args=[\'input_handle\', \'key_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "TensorScatterAdd"
     argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -5482,7 +5546,7 @@ tf_module {
   }
   member_method {
     name: "VarHandleOp"
-    argspec: "args=[\'dtype\', \'shape\', \'container\', \'shared_name\', \'allowed_devices\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'[]\', \'None\'], "
+    argspec: "args=[\'dtype\', \'shape\', \'container\', \'shared_name\', \'debug_name\', \'allowed_devices\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'[]\', \'None\'], "
   }
   member_method {
     name: "VarIsInitializedOp"

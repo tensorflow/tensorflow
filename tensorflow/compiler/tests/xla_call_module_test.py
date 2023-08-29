@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for XLA call module op wrapper."""
+
 import os
 import re
 from typing import Tuple
@@ -24,12 +25,12 @@ from tensorflow.compiler.mlir.stablehlo import stablehlo
 from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.compiler.tf2xla.python import xla
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 
@@ -48,15 +49,10 @@ class XlaCallModuleOpTest(xla_test.XLATestCase):
                                      expected,
                                      equality_fn=None):
     """Asserts op(*args) == expected."""
-    with self.session() as session:
-      with self.test_scope():
-        placeholders = [
-            array_ops.placeholder(dtypes.as_dtype(arg.dtype), arg.shape)
-            for arg in args
-        ]
-        feeds = {placeholders[i]: args[i] for i in range(0, len(args))}
-        output = op(*placeholders)
-      result = session.run(output, feeds)
+    with self.test_scope():
+      tf_func = def_function.function(op, autograph=False, jit_compile=True)
+      result = tf_func(*args)
+
       if not equality_fn:
         equality_fn = self.assertAllClose
       equality_fn(result, expected, rtol=1e-3)
@@ -216,8 +212,7 @@ module @jit_f.0 {
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x), x.shape[1]))
 
-  def test_dim_var_basic_wrapped(self):
-    """Like dim_arg_var_basic, but with the wrapper already added."""
+  def test_poly_basic(self):
     x = np.arange(6, dtype=np.float32).reshape((2, 3))
 
     def f(x):  # x: f32[2, b]
@@ -242,6 +237,27 @@ module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
                              platforms=[self.testing_platform()],)
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x), x.shape[1]))
+
+  def test_poly_unranked(self):
+    x = np.arange(6, dtype=np.float32).reshape((2, 3))
+
+    def f(x):  # x: f32[2, b]
+      # sin(x)
+      module, version = serialize("""
+module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
+  func.func public @main(%arg1: tensor<*xf32>) -> tensor<*xf32> {
+    %0 = stablehlo.sine %arg1 : tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+}
+""")
+      return xla.call_module([x],
+                             module=module, version=version,
+                             Tout=[x.dtype],
+                             Sout=[(None, None),],
+                             platforms=[self.testing_platform()],)
+
+    self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x),))
 
   def test_wrong_actual_args_errors(self):
     x = np.arange(6, dtype=np.float32).reshape((3, 2))
@@ -1396,7 +1412,7 @@ module @jit_f.0 {
 
 
 if __name__ == '__main__':
-  # This test is using Tensorflow sessions which are not compatible with eager
-  # mode.
-  ops.disable_eager_execution()
+  ops.enable_eager_execution(
+      config=config_pb2.ConfigProto(log_device_placement=True)
+  )
   googletest.main()

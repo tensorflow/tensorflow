@@ -87,7 +87,6 @@ from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model.load import load
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training import training_ops
-from tensorflow.python.types import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -168,79 +167,36 @@ class FunctionBenchmark(test.Benchmark):
 @dataclasses.dataclass
 class MaskedTensor:
   mask: bool
-  value: ops.Tensor
+  value: tensor_lib.Tensor
 
   def __tf_flatten__(self):
     metadata = (self.mask,)
     components = (self.value,)
     return metadata, components
 
-  def __tf_unflatten__(self, metadata, leaves):
+  @classmethod
+  def __tf_unflatten__(cls, metadata, leaves):
     mask = metadata[0]
     value = leaves[0]
     return MaskedTensor(mask=mask, value=value)
 
-  def __tf_tracing_type__(self, signature_context):
-    del signature_context
-    return MaskedTensorTraceType(
-        mask=self.mask,
-        value_spec=tensor_lib.TensorSpec.from_tensor(self.value),
-    )
 
+@dataclasses.dataclass
+class MaskedTensorPair:
+  masks: list[bool]
+  value1: MaskedTensor
+  value2: MaskedTensor
 
-class MaskedTensorTraceType(trace.TraceType):
+  def __tf_flatten__(self):
+    metadata = (self.masks,)
+    components = (self.value1, self.value2)
+    return metadata, components
 
-  def __init__(self, mask, value_spec):
-    self.mask = mask
-    self.value_spec = value_spec
-
-  def is_subtype_of(self, other):
-    if not isinstance(other, MaskedTensorTraceType):
-      return False
-
-    return self.value_spec.is_subtype_of(other.value_spec)
-
-  def most_specific_common_supertype(self, others):
-    if not all(isinstance(other, MaskedTensorTraceType) for other in others):
-      return None
-
-    if not all(self.mask == other.mask for other in others):
-      return None
-
-    supertyped_value = self.value_spec.most_specific_common_supertype(
-        [other.value_spec for other in others]
-    )
-    return MaskedTensorTraceType(self.mask, supertyped_value)
-
-  def __eq__(self, other):
-    if not isinstance(other, MaskedTensorTraceType):
-      return False
-
-    return self.mask == other.mask and self.value_spec == other.value_spec
-
-  def __hash__(self):
-    return hash((self.mask, self.value_spec))
-
-  def __repr__(self):
-    return (
-        f'{self.__class__.__name__}(mask={self.mask},'
-        f' value_spec={self.value_spec})'
-    )
-
-  def placeholder_value(self, placeholder_context):
-    return MaskedTensor(
-        self.mask, self.value_spec.placeholder_value(placeholder_context)
-    )
-
-  def _to_tensors(self, value):
-    assert isinstance(value, MaskedTensor)
-    return self.value_spec._to_tensors(value.value)
-
-  def _from_tensors(self, tensors):
-    return MaskedTensor(self.mask, self.value_spec._from_tensors(tensors))
-
-  def _flatten(self):
-    return [self.value_spec]
+  @classmethod
+  def __tf_unflatten__(cls, metadata, leaves):
+    masks = metadata[0]
+    value1, value2 = leaves
+    return MaskedTensorPair(masks=masks, value1=value1, value2=value2)
 
 
 # TODO(mdan): Organize these tests.
@@ -5000,6 +4956,21 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(result.mask, mt.mask)
     self.assertAllEqual(result.value, mt.value)
 
+  def testInputAndOutputNestedDataclass(self):
+    @polymorphic_function.function
+    def f(x):
+      return x
+
+    mt = MaskedTensor(mask=True, value=constant_op.constant([1.0]))
+    mt2 = MaskedTensor(mask=False, value=constant_op.constant([2.0]))
+    mtp = MaskedTensorPair(masks=[True, False], value1=mt, value2=mt2)
+    result = f(mtp)
+    self.assertEqual(result.masks, mtp.masks)
+    self.assertEqual(result.value1.mask, mt.mask)
+    self.assertAllEqual(result.value1.value, mt.value)
+    self.assertEqual(result.value2.mask, mt2.mask)
+    self.assertAllEqual(result.value2.value, mt2.value)
+
   def testInputAndCreatNewDataclass(self):
     @polymorphic_function.function
     def f(x, y):
@@ -5010,6 +4981,55 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     result = f(mt, mt2)
     self.assertEqual(result.mask, mt.mask)
     self.assertAllEqual(result.value, mt2.value)
+
+  def testDataclassWithUnhashableMetadata(self):
+    @polymorphic_function.function
+    def f(x, y):
+      return MaskedTensorPair(
+          masks=x.masks + y.masks, value1=x.value1, value2=y.value2
+      )
+
+    mt = MaskedTensor(mask=False, value=constant_op.constant([1.0]))
+    mt2 = MaskedTensor(mask=True, value=constant_op.constant([2.0]))
+    mtp = MaskedTensorPair(masks=[True, True], value1=mt, value2=mt2)
+    mt3 = MaskedTensor(mask=False, value=constant_op.constant([3.0]))
+    mt4 = MaskedTensor(mask=True, value=constant_op.constant([4.0]))
+    mtp2 = MaskedTensorPair(masks=[False, False], value1=mt3, value2=mt4)
+    result = f(mtp, mtp2)
+    self.assertEqual(result.masks, mtp.masks + mtp2.masks)
+    self.assertEqual(result.value1.mask, mt.mask)
+    self.assertAllEqual(result.value1.value, mt.value)
+    self.assertEqual(result.value2.mask, mt4.mask)
+    self.assertAllEqual(result.value2.value, mt4.value)
+
+  def testDataClassWithSubTraceType(self):
+    @polymorphic_function.function
+    def f(x):
+      return x
+
+    mt = MaskedTensor(mask=True, value=constant_op.constant([1.0]))
+    mt2 = MaskedTensor(mask=True, value=constant_op.constant([2.0]))
+    f1 = f.get_concrete_function(mt)
+    f2 = f.get_concrete_function(mt2)
+    # mt2's TraceType is the same as mt1, so it doesn't need retrace
+    self.assertIs(f1, f2)
+
+    mt3 = MaskedTensor(
+        mask=False,
+        value=tensor_lib.TensorSpec(shape=[None, None], dtype=dtypes.int32),
+    )
+    f3 = f.get_concrete_function(mt3)
+    self.assertIsNot(f1, f3)
+
+    mt4 = MaskedTensor(
+        mask=False,
+        value=constant_op.constant(
+            [[1], [2]], shape=[2, 1], dtype=dtypes.int32
+        ),
+    )
+    f4 = f.get_concrete_function(mt4)
+    # mt4's TraceType can be matched by mt3's spec, so it doesn't need retrace
+    self.assertIs(f3, f4)
 
 
 if __name__ == '__main__':

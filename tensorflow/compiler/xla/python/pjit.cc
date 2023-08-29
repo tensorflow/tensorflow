@@ -344,7 +344,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
         TF_ASSIGN_OR_RETURN(
             xla::DevicePutResult on_device,
             DevicePut(arg, executable.ifrt_loaded_executable()->client(),
-                      data_device, options));
+                      data_device, options, xla::ifrt::MemoryKind()));
 
         num_args_arrays.push_back(std::move(on_device.ifrt_array));
         if (on_device.owning_pybuffer) {
@@ -388,10 +388,9 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
                                          addressable_devices[0].get()) {
       xla::ifrt::DeviceList::Devices ifrt_devices;
       ifrt_devices.push_back(addressable_devices[0].get());
-      // TODO(hyeontaek,yashkatariya): Use the original array's memory_kind.
       auto sharding = xla::ifrt::OpaqueSharding::Create(
           xla::ifrt::DeviceList(std::move(ifrt_devices)),
-          xla::ifrt::MemoryKind());
+          ifrt_array->sharding().memory_kind());
       TF_ASSIGN_OR_RETURN(
           auto copied_ifrt_array,
           ifrt_array->Reshard(std::move(sharding),
@@ -630,6 +629,7 @@ xla::Status PjitFunction::UpdateArgsSignature(
 
   arguments.signature.default_device = GetDefaultDevice();
   arguments.signature.jax_enable_x64 = jax_enable_x64;
+  arguments.signature.jax_enable_memories = GetEnableMemories();
 
   auto& dynamic_arg_signatures = arguments.signature.dynamic_arg_signatures;
   dynamic_arg_signatures.reserve(arguments.flat_dynamic_args.size());

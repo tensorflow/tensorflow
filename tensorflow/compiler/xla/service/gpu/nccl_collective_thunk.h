@@ -150,7 +150,7 @@ class NcclCollectiveThunk : public Thunk {
  private:
   bool IsAsync() const { return async_ != nullptr; }
   int64_t GetStreamId() const {
-    return IsAsync() ? 1 + GetAsyncStreamKind() : 0;
+    return xla::gpu::GetStreamId(IsAsync(), GetAsyncStreamKind());
   }
 
 #if XLA_ENABLE_XCCL

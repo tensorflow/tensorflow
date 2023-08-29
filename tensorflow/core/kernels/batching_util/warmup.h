@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -103,8 +104,7 @@ class WarmupStateRegistry {
   // metadata with the model. Returns an RAII handle that unregisters the model
   // at its destruction.
   absl::StatusOr<Handle> Register(const Key& model_key,
-                                  std::unique_ptr<PerModelData> per_model_data =
-                                      std::make_unique<PerModelData>());
+                                  std::unique_ptr<PerModelData> per_model_data);
 
   // Return model data. A nullptr indicates the key was not present.
   const PerModelData* Lookup(const Key& model_key);
@@ -121,6 +121,10 @@ class WarmupStateRegistry {
 };
 
 WarmupStateRegistry& GetGlobalWarmupStateRegistry();
+
+// Utility function that returns whether or not to warmup all batch sizes,
+// based on the state of WarmupStateRegistry.
+bool ShouldWarmupAllBatchSizes(const OpKernelContext* c);
 
 }  // namespace serving
 }  // namespace tensorflow

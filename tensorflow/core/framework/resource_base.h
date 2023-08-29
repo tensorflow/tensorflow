@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_RESOURCE_BASE_H_
 #define TENSORFLOW_CORE_FRAMEWORK_RESOURCE_BASE_H_
 
+#include <cstdint>
+#include <string>
+
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
@@ -34,6 +38,11 @@ class ResourceBase : public core::WeakRefCounted {
  public:
   // Returns a debug string for *this.
   virtual std::string DebugString() const = 0;
+
+  // Returns a name for ref-counting handles.
+  virtual std::string MakeRefCountingHandleName(int64_t resource_id) const {
+    return absl::StrFormat("Resource-%d-at-%p", resource_id, this);
+  }
 
   // Returns memory used by this resource.
   virtual int64_t MemoryUsed() const { return 0; }

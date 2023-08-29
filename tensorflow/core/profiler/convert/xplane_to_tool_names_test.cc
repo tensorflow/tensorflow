@@ -40,11 +40,13 @@ struct XPlaneToToolsTestCase {
   std::string test_name;
   std::string_view plane_name;
   bool has_hlo_module;
+  bool has_dcn_collective_stats;
   std::vector<std::string> expected_tools;
 };
 
 SessionSnapshot CreateSessionSnapshot(std::unique_ptr<XSpace> xspace,
-                                      bool has_hlo_module) {
+                                      bool has_hlo_module,
+                                      bool has_dcn_collective_stats) {
   std::string test_name =
       ::testing::UnitTest::GetInstance()->current_test_info()->name();
   std::string path = absl::StrCat("ram://", test_name, "/");
@@ -67,6 +69,24 @@ SessionSnapshot CreateSessionSnapshot(std::unique_ptr<XSpace> xspace,
         .IgnoreError();
   }
 
+  if (has_dcn_collective_stats) {
+    tensorflow::Env::Default()
+        ->NewAppendableFile(
+            absl::StrCat(path, "hostname.dcn_collective_stats.pb"),
+            &xplane_file)
+        .IgnoreError();
+    tensorflow::Env::Default()
+        ->NewAppendableFile(
+            absl::StrCat(path, "ALL_HOSTS.dcn_collective_stats.pb"),
+            &xplane_file)
+        .IgnoreError();
+  } else {
+    tensorflow::Env::Default()
+        ->NewAppendableFile(
+            absl::StrCat(path, "NO_HOST.dcn_collective_stats.pb"), &xplane_file)
+        .IgnoreError();
+  }
+
   std::vector<std::unique_ptr<XSpace>> xspaces;
   xspaces.push_back(std::move(xspace));
 
@@ -84,14 +104,15 @@ TEST_P(XPlaneToToolsTest, ToolsList) {
   FindOrAddMutablePlaneWithName(xspace.get(), test_case.plane_name);
 
   SessionSnapshot sessionSnapshot =
-      CreateSessionSnapshot(std::move(xspace), test_case.has_hlo_module);
+      CreateSessionSnapshot(std::move(xspace), test_case.has_hlo_module,
+                            test_case.has_dcn_collective_stats);
 
   StatusOr<std::string> toolsString = GetAvailableToolNames(sessionSnapshot);
   ASSERT_TRUE(toolsString.ok());
 
   std::vector<std::string> tools = absl::StrSplit(toolsString.value(), ',');
 
-  std::vector<std::string> expected_tools = {"trace_viewer@",
+  std::vector<std::string> expected_tools = {"trace_viewer",
                                              "overview_page",
                                              "input_pipeline_analyzer",
                                              "tensorflow_stats",
@@ -107,19 +128,27 @@ TEST_P(XPlaneToToolsTest, ToolsList) {
 INSTANTIATE_TEST_SUITE_P(
     XPlaneToToolsTests, XPlaneToToolsTest,
     ::testing::ValuesIn<XPlaneToToolsTestCase>({
-        {"ToolsForTpuWithoutHloModule", kTpuPlanePrefix, false, {}},
+        {"ToolsForTpuWithoutHloModule", kTpuPlanePrefix, false, false, {}},
         {"ToolsForTpuWithHloModule",
          kTpuPlanePrefix,
          true,
+         false,
          {"graph_viewer", "memory_viewer"}},
         {"ToolsForGpuWithoutHloModule",
          kGpuPlanePrefix,
+         false,
          false,
          {"kernel_stats"}},
         {"ToolsForGpuWithHloModule",
          kGpuPlanePrefix,
          true,
+         false,
          {"kernel_stats", "graph_viewer", "memory_viewer"}},
+        {"ToolsForTpuWithDcnCollectiveStats",
+         kTpuPlanePrefix,
+         false,
+         true,
+         {"dcn_collective_stats"}},
     }),
     [](const ::testing::TestParamInfo<XPlaneToToolsTest::ParamType>& info) {
       return info.param.test_name;

@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -41,7 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir/backends/openxla/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/backends/gpu2/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/mlir_hlo/transforms/gpu_passes.h"
 #include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/fusion_wrapper.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_convert_async_collectives_to_sync.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
@@ -59,11 +61,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_rematerialization.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/optimization_barrier_expander.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
@@ -130,21 +134,26 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
   return OkStatus();
 }
 
-// Lowers MLIR module to the OpenXla runtime (aka IREE input dialects).
-static Status LowerToOpenXlaRuntime(mlir::ModuleOp module,
+// Lowers MLIR module to the XLA:GPU experimental runtime (IREE input dialects).
+static Status LowerToXlaGpu2Runtime(mlir::ModuleOp module,
                                     llvm::StringRef entry_function_name,
                                     llvm::ArrayRef<int64_t> buffer_sizes,
                                     ThunkSequence* thunk_sequence,
                                     const DebugOptions& debug_options) {
   mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
 
-  OpenXlaBackend backend = debug_options.xla_gpu_enable_openxla_hal()
-                               ? OpenXlaBackend::kHAL
-                               : OpenXlaBackend::kStreamExecutor;
-  populateOpenXlaRuntimePasses(pm, thunk_sequence, backend);
+  RuntimeBackend backend = debug_options.xla_gpu_enable_gpu2_hal()
+                               ? RuntimeBackend::kHAL
+                               : RuntimeBackend::kStreamExecutor;
+
+  Gpu2PipelineOpts opts;
+  opts.graph_level = debug_options.xla_gpu_graph_level();
+
+  populateGpu2RuntimePasses(pm, thunk_sequence, backend, opts);
 
   if (pm.run(module).failed()) {
-    return InternalError("Failed to lower LMHLO to OpenXLA input dialects.");
+    return InternalError(
+        "Failed to lower LMHLO to XLA:GPU runtime input dialects.");
   }
 
   return OkStatus();
@@ -219,7 +228,7 @@ StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
       module_config.debug_options());
 }
 
-StatusOr<GpuExecutable::OwnedOpenXlaRuntimeProgram> LowerToOpenXla(
+StatusOr<GpuExecutable::OwnedGpu2RuntimeProgram> LowerToXlaGpu2Runtime(
     std::unique_ptr<mlir::MLIRContext> ctx,
     mlir::OwningOpRef<mlir::ModuleOp> module,
     llvm::StringRef entry_function_name, llvm::ArrayRef<int64_t> buffer_sizes,
@@ -229,8 +238,7 @@ StatusOr<GpuExecutable::OwnedOpenXlaRuntimeProgram> LowerToOpenXla(
   // Forward collective (NCCL) attributes for use by the lowering pipeline.
   ForwardCollectiveAttrs(*module, entry_function_name, module_config);
 
-  // Lower LMHLO operations to the OpenXLA compiler input dialects.
-  TF_RETURN_IF_ERROR(LowerToOpenXlaRuntime(
+  TF_RETURN_IF_ERROR(LowerToXlaGpu2Runtime(
       *module, {entry_function_name.data(), entry_function_name.size()},
       buffer_sizes, thunk_sequence.get(), module_config.debug_options()));
 
@@ -240,7 +248,7 @@ StatusOr<GpuExecutable::OwnedOpenXlaRuntimeProgram> LowerToOpenXla(
                             module_str);
   }
 
-  return std::make_unique<OpenXlaRuntimeProgram>(
+  return std::make_unique<Gpu2RuntimeProgram>(
       std::move(ctx), std::move(module), entry_function_name.str(),
       buffer_sizes.vec(), module_config.debug_options());
 }
@@ -352,8 +360,10 @@ Status CompileModuleToLlvmIrImpl(
   results->llvm_module->setTargetTriple(target_triple);
   results->llvm_module->setDataLayout(data_layout);
 
+  const int64_t scheduler_mem_limit =
+      GetSchedulerMemoryLimit(hlo_module, gpu_device_info, pointer_size);
   TF_RETURN_IF_ERROR(
-      ScheduleGpuModule(hlo_module, pointer_size, gpu_device_info));
+      ScheduleGpuModule(hlo_module, pointer_size, scheduler_mem_limit));
   {
     HloPassPipeline pipeline("post-scheduling-passes");
 
@@ -369,15 +379,20 @@ Status CompileModuleToLlvmIrImpl(
   {
     HloPassPipeline pipeline("remat-pipeline");
 
+    auto shape_size_func = [pointer_size](const Shape& shape) {
+      return GetSizeOfShape(shape, pointer_size);
+    };
+    HloCostAnalysis hlo_cost_analysis(shape_size_func);
+    HloRematerialization::RematerializationModeConfig
+        rematerialization_mode_config(/*recompute=*/true, /*compress=*/true,
+                                      /*host_offload=*/false);
     HloRematerialization::Options options(
-        [pointer_size](const Shape& shape) {
-          return GetSizeOfShape(shape, pointer_size);
-        },
+        hlo_cost_analysis, rematerialization_mode_config,
         // Assume 75% of the total device memory is available for XLA.
-        /*memory_limit_bytes=*/gpu_device_info.device_memory_size * 0.75,
+        /*memory_limit_bytes=*/scheduler_mem_limit,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
-        /*compact_shape_function=*/nullptr,
-        HloRematerialization::RematerializationMode::kRecomputeAndCompress);
+        /*min_remat_size=*/0, /*compact_shape_function=*/nullptr,
+        /*host_memory_offload_config=*/std::nullopt);
     HloRematerialization::RematerializationSizes sizes;
     pipeline.AddPass<HloRematerialization>(options, sizes);
 
@@ -387,6 +402,12 @@ Status CompileModuleToLlvmIrImpl(
               << sizes.before_bytes - sizes.after_bytes << " bytes";
     }
   }
+
+  HloPassPipeline pipeline("fusion-wrapper");
+  // Wrap remaining unfused ops that have no LHLO equivalent in single-op
+  // fusions. This needs to happen after rematerialization, because it will
+  // insert additional copies.
+  TF_RETURN_IF_ERROR(FusionWrapper().Run(hlo_module).status());
 
   auto buffer_size_bytes_function =
       [pointer_size](const BufferValue& buffer_value) -> int64_t {
@@ -424,11 +445,13 @@ Status CompileModuleToLlvmIrImpl(
       registry, mlir::MLIRContext::Threading::DISABLED);
 
   mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::ModuleOp::create(mlir::Builder(mlir_context.get()).getUnknownLoc());
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module = mlir::ModuleOp::create(
+      mlir::Builder(mlir_context.get()).getUnknownLoc(), hlo_module->name());
 
-  TF_RETURN_IF_ERROR(
-      HloToLhloModule(*results->buffer_assignment, *hlo_module, *mlir_module));
+  absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>
+      operation_map;
+  TF_RETURN_IF_ERROR(HloToLhloModule(*results->buffer_assignment, *hlo_module,
+                                     *mlir_module, &operation_map));
 
   results->module_name =
       mlir::mhlo::GetDebugNameFromLocation(mlir_module->getLoc());
@@ -457,7 +480,8 @@ Status CompileModuleToLlvmIrImpl(
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
         "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-    TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
+    TF_RETURN_IF_ERROR(
+        ir_emitter->EmitLmhloRegion(&entry_function.getBody(), operation_map));
 
     bool supports_runtime_managed_constants =
         // TODO(b/218907125): Implement this feature for ROCm as well.
@@ -496,13 +520,14 @@ Status CompileModuleToLlvmIrImpl(
     return OkStatus();
   }
 
-  if (IsOpenXlaRuntimeEnabled(hlo_module->config())) {
+  if (IsXlaGpu2RuntimeEnabled(hlo_module->config())) {
     TF_ASSIGN_OR_RETURN(
         results->executable,
-        LowerToOpenXla(std::move(mlir_context), std::move(mlir_module),
-                       entry_function.getName(), buffer_sizes,
-                       hlo_module->config(), ir_emitter->ConsumeThunkSequence(),
-                       /*hlo_module_for_dump=*/hlo_module));
+        LowerToXlaGpu2Runtime(std::move(mlir_context), std::move(mlir_module),
+                              entry_function.getName(), buffer_sizes,
+                              hlo_module->config(),
+                              ir_emitter->ConsumeThunkSequence(),
+                              /*hlo_module_for_dump=*/hlo_module));
     return OkStatus();
   }
 

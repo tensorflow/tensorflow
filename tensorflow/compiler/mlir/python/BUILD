@@ -43,8 +43,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:import_utils",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
@@ -74,7 +74,7 @@ cc_library(
         # TODO: It might be still preferrable to place graph_optimization_pass
         # as part of the libtensorflow_framework.so, as it is the central
         # place for core related components.
-        "//tensorflow/compiler/mlir/tensorflow:graph_optimization_pass_registration",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir/tensorflow/transforms:graph_optimization_pass_registration",  # buildcleaner: keep
     ],
     alwayslink = 1,
 )

@@ -225,6 +225,28 @@ class OpOptionData {
     op_to_option_["BITCAST"] = "";
     op_to_option_["BITWISE_XOR"] = "";
     op_to_option_["RIGHT_SHIFT"] = "";
+    op_to_option_["STABLEHLO_LOGISTIC"] = "";
+    op_to_option_["STABLEHLO_ADD"] = "";
+    op_to_option_["STABLEHLO_DIVIDE"] = "";
+    op_to_option_["STABLEHLO_MULTIPLY"] = "";
+    op_to_option_["STABLEHLO_MAXIMUM"] = "";
+    op_to_option_["STABLEHLO_MINIMUM"] = "";
+    op_to_option_["STABLEHLO_RESHAPE"] = "";
+    op_to_option_["STABLEHLO_CLAMP"] = "";
+    op_to_option_["STABLEHLO_ABS"] = "";
+    op_to_option_["STABLEHLO_AND"] = "";
+    op_to_option_["STABLEHLO_COSINE"] = "";
+    op_to_option_["STABLEHLO_EXPONENTIAL"] = "";
+    op_to_option_["STABLEHLO_FLOOR"] = "";
+    op_to_option_["STABLEHLO_LOG"] = "";
+    op_to_option_["STABLEHLO_OR"] = "";
+    op_to_option_["STABLEHLO_NEGATE"] = "";
+    op_to_option_["STABLEHLO_POWER"] = "";
+    op_to_option_["STABLEHLO_REMAINDER"] = "";
+    op_to_option_["STABLEHLO_RSQRT"] = "";
+    op_to_option_["STABLEHLO_SELECT"] = "";
+    op_to_option_["STABLEHLO_SUBTRACT"] = "";
+    op_to_option_["STABLEHLO_TANH"] = "";
 
     // TODO(aselle): These are undesirable hacks. Consider changing C structs
     option_to_struct_["Pool2DOptions"] = "TfLitePoolParams";
@@ -248,6 +270,17 @@ class OpOptionData {
           break;
         }
       }
+      // add second union into the check
+      auto d2 = tflite::BuiltinOptions2TypeTable();
+      for (int i = 0; i < d2->num_elems; i++) {
+        std::string option_name = d2->names[i];
+        std::string collapsed_option_name = ToCollapsed(option_name);
+        if (collapsed_option_name_guess == collapsed_option_name) {
+          op_to_option_.insert(std::make_pair(op_name, option_name));
+          break;
+        }
+      }
+
       auto it = op_to_option_.find(op_name);
       if (it == op_to_option_.end()) {
         std::cerr << "Didn't find option for  " << op_name << std::endl;

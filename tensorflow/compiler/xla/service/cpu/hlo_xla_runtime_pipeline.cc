@@ -175,6 +175,7 @@ static Status CreateHloXlaPipeline(
   // Transform HLO operations to Linalg.
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeControlFlowPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeDotGeneralToDotPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       xla::cpu::createLegalizeLibraryOpsPass());
@@ -303,8 +304,10 @@ static Status CreateHloXlaPipeline(
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::bufferization::createBufferDeallocationPass());
     pm.addPass(mlir::createBufferizationToMemRefPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        xla::cpu::createRemoveCopiesToOutParamsPass());
+    if (options.remove_copies_to_outparams) {
+      pm.addNestedPass<mlir::func::FuncOp>(
+          xla::cpu::createRemoveCopiesToOutParamsPass());
+    }
   }
   pm.addNestedPass<mlir::func::FuncOp>(mlir::thlo::createLegalizeSortPass());
 

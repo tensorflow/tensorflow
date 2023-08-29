@@ -89,7 +89,7 @@ bool AllReduceOp::bufferizesToMemoryWrite(
   return !bufferizesToMemoryRead(opOperand, state);
 }
 
-bufferization::AliasingOpResultList AllReduceOp::getAliasingOpResults(
+bufferization::AliasingValueList AllReduceOp::getAliasingValues(
     OpOperand &opOperand, const bufferization::AnalysisState &) {
   if (opOperand.getOperandNumber() < getNumOperands() / 2) {
     return {};

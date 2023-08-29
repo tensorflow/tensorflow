@@ -111,7 +111,15 @@ void DcnEventsProcessor::SetupMessageInfo(const XPlaneVisitor& plane) {
 // If we use megacore, collective traffic goes to even TPU tensor cores.
 // Odd ones are woken up from their even pair (e.g. 0 wakes up 1).
 uint32_t DcnEventsProcessor::FindTpuIdx(int tpu) {
-  return is_megacore_ ? (tpu >> 1) : tpu;
+  uint32_t num_tpus = num_tpu_tensor_cores_;
+  if (is_megacore_) {
+    num_tpus /= 2;
+  }
+  uint32_t tpu_idx = tpu % num_tpus;
+  if (is_megacore_) {
+    tpu_idx = tpu_idx * 2;
+  }
+  return tpu_idx;
 }
 
 void DcnEventsProcessor::GenerateTimestampEvents(

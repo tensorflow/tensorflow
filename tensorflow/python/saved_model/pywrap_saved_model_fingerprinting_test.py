@@ -77,16 +77,28 @@ class FingerprintingTest(test.TestCase):
                          "12074714563970609759",  # saved_object_graph_hash
                          ]))
 
-  def test_read_saved_model_singleprint_from_sm(self):
+  def test_read_saved_model_singleprint_from_fp(self):
     export_dir = test.test_src_dir_path(
         "cc/saved_model/testdata/VarsAndArithmeticObjectGraph")
-    singleprint = pywrap_fingerprinting.SingleprintFromSM(export_dir)
+    singleprint = pywrap_fingerprinting.SingleprintFromFP(export_dir)
     # checkpoint_hash is non-deterministic and not included
     self.assertRegex(singleprint,
                      "/".join([
                          "706963557435316516",  # graph_def_program_hash
                          "5693392539583495303",  # signature_def_hash
                          "12074714563970609759",  # saved_object_graph_hash
+                         ]))
+
+  def test_read_saved_model_singleprint_from_sm(self):
+    export_dir = test.test_src_dir_path(
+        "cc/saved_model/testdata/AssetModule")
+    singleprint = pywrap_fingerprinting.SingleprintFromSM(export_dir)
+    # checkpoint_hash is non-deterministic and not included
+    self.assertRegex(singleprint,
+                     "/".join([
+                         "14732473038199296573",  # graph_def_program_hash
+                         "11983586671997178523",  # signature_def_hash
+                         "14640180866165615446",  # saved_object_graph_hash
                          ]))
 
   def test_read_chunked_saved_model_fingerprint(self):

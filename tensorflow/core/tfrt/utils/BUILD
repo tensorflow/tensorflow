@@ -11,6 +11,7 @@ package_group(
     name = "friends",
     packages = [
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
+        "//learning/brain/google/xla/kernels/...",
         # copybara:uncomment "//learning/brain/research/pjrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/infra/mira/distributed/...",
@@ -66,6 +67,7 @@ tf_cc_shared_test(
     tags = ["no_oss"],
     deps = [
         ":utils",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -114,6 +116,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":tensor_util",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "@com_google_googletest//:gtest_main",
@@ -265,6 +268,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":fallback_tensor",
+        "//tensorflow/core/common_runtime:dma_helper",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -320,12 +324,4 @@ cc_library(
 cc_library(
     name = "any_ptr",
     hdrs = ["any_ptr.h"],
-)
-
-cc_library(
-    name = "export_error",
-    hdrs = ["export_error.h"],
-    deps = [
-        "@com_google_absl//absl/strings",
-    ],
 )

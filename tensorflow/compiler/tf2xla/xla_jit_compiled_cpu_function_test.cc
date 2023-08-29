@@ -301,11 +301,6 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
       return nullptr;
     }
 
-    tsl::StatusOr<se::StreamExecutor*> ExecutorForDeviceWithPluginConfig(
-        int ordinal, const se::PluginConfig& config) override {
-      return nullptr;
-    }
-
     tsl::StatusOr<se::StreamExecutor*> GetExecutor(
         const se::StreamExecutorConfig& config) override {
       return nullptr;

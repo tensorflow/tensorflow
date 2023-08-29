@@ -16,23 +16,25 @@ limitations under the License.
 #include "tensorflow/core/tpu/ops/tpu_embedding_ops.h"
 
 #include <array>
-#include <set>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/protobuf/tpu/optimization_parameters.pb.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/ops/tpu_embedding_shape_util.h"
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
 #include "tensorflow/core/tpu/tpu_embedding_output_layout_utils.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 
@@ -44,31 +46,31 @@ REGISTER_OP("ExecuteTPUEmbeddingPartitioner")
     .Output("common_config: string")
     .Attr("config: string")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
-      string config_string;
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
+      std::string config_string;
       TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
       TPUEmbeddingConfiguration config;
       TF_RET_CHECK(config.ParseFromString(config_string));
       if (config.mode() == TPUEmbeddingConfiguration::UNSPECIFIED) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "TPUEmbeddingConfiguration.mode is INVALID.  Must be INFERENCE, "
             "TRAINING, or BACKWARD_PASS_ONLY");
       }
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("ConfigureTPUEmbeddingMemory")
     .Input("common_config: string")
     .Output("memory_config: string")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
       TF_RET_CHECK(c->num_inputs() == 1);
       // Validate that all the input shape is compatible.
       ShapeHandle input(c->Scalar());
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CollateTPUEmbeddingMemory")
@@ -76,7 +78,7 @@ REGISTER_OP("CollateTPUEmbeddingMemory")
     .Output("merged_memory_config: string")
     .Attr("N: int >= 1")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
       TF_RET_CHECK(c->num_inputs() > 0);
       ShapeHandle input(c->Scalar());
       // Validate that all the inputs are compatible with the correct
@@ -85,7 +87,7 @@ REGISTER_OP("CollateTPUEmbeddingMemory")
         TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
       }
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("ConfigureTPUEmbeddingHost")
@@ -94,13 +96,13 @@ REGISTER_OP("ConfigureTPUEmbeddingHost")
     .Output("network_config: string")
     .Attr("config: string")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
-      string config_string;
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
+      std::string config_string;
       TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
       TPUEmbeddingConfiguration config;
       TF_RET_CHECK(config.ParseFromString(config_string));
       if (config.mode() == TPUEmbeddingConfiguration::UNSPECIFIED) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "TPUEmbeddingConfiguration.mode is INVALID.  Must be INFERENCE, "
             "TRAINING, or BACKWARD_PASS_ONLY");
       }
@@ -109,14 +111,14 @@ REGISTER_OP("ConfigureTPUEmbeddingHost")
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
       TF_RETURN_IF_ERROR(c->Merge(c->input(1), input, &input));
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("ConnectTPUEmbeddingHosts")
     .Input("network_configs: N * string")
     .Attr("N: int >= 1")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
       TF_RET_CHECK(c->num_inputs() > 0);
       ShapeHandle input(c->Scalar());
       // Validate that all the inputs are compatible with the correct
@@ -124,21 +126,21 @@ REGISTER_OP("ConnectTPUEmbeddingHosts")
       for (int i = 0; i < c->num_inputs(); ++i) {
         TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("FinalizeTPUEmbedding")
     .Input("common_config: string")
     .Input("memory_config: string")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
       // Validate that all the inputs are compatible with the correct
       // vector shape.
       TF_RET_CHECK(c->num_inputs() == 2);
       ShapeHandle input(c->Scalar());
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
       TF_RETURN_IF_ERROR(c->Merge(c->input(1), input, &input));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 // After configuring the TPU system (detailed in tpu_configuration_ops.cc),
@@ -235,8 +237,8 @@ REGISTER_OP("LoadAllTPUEmbeddingParameters")
     .Attr("num_shards: int")
     .Attr("shard_id: int")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
-      string config_string;
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
+      std::string config_string;
       TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
       TPUEmbeddingConfiguration config;
       TF_RET_CHECK(config.ParseFromString(config_string));
@@ -267,7 +269,7 @@ REGISTER_OP("LoadAllTPUEmbeddingParameters")
             c->WithRank(accumulators[0][table_id], 2, &parameter_shape));
 
         std::vector<tpu::StateVariableSpecification> state_variable_specs;
-        Status status = tpu::GetOptimizationAlgorithmStateVariables(
+        absl::Status status = tpu::GetOptimizationAlgorithmStateVariables(
             config.table_descriptor(table_id).optimization_parameters(),
             &state_variable_specs);
         TF_RET_CHECK(status.ok());
@@ -301,7 +303,7 @@ REGISTER_OP("LoadAllTPUEmbeddingParameters")
               c->WithValue(c->NumElements(accumulator_i_shape), 0, &dim));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("RetrieveAllTPUEmbeddingParameters")
@@ -318,8 +320,8 @@ REGISTER_OP("RetrieveAllTPUEmbeddingParameters")
     .Attr("num_shards: int")
     .Attr("shard_id: int")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
-      string config_string;
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
+      std::string config_string;
       TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
       TPUEmbeddingConfiguration config;
       TF_RET_CHECK(config.ParseFromString(config_string));
@@ -358,7 +360,7 @@ REGISTER_OP("RetrieveAllTPUEmbeddingParameters")
               c->set_output(absl::StrCat("auxiliary", i), output_handles));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("EnqueueTPUEmbeddingBatch")
@@ -368,18 +370,18 @@ REGISTER_OP("EnqueueTPUEmbeddingBatch")
     .Attr("device_ordinal: int = -1")
     .Attr("combiners: list(string) = []")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
       std::vector<std::string> combiners;
       TF_RETURN_IF_ERROR(c->GetAttr("combiners", &combiners));
       int n;
       TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
       if (!combiners.empty() && combiners.size() != n) {
-        return errors::InvalidArgument("Invalid length of combiners. Have ",
-                                       combiners.size(), " but expected 0 or ",
-                                       n);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid length of combiners. Have ", combiners.size(),
+                         " but expected 0 or ", n));
       }
 
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaRecvTPUEmbeddingActivations")
@@ -388,27 +390,27 @@ REGISTER_OP("XlaRecvTPUEmbeddingActivations")
     .Attr("num_tables: int >= 1")
     .Attr("config: string")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       int num_tables;
       TF_RETURN_IF_ERROR(c->GetAttr("num_tables", &num_tables));
       if (c->num_outputs() != num_tables) {
-        return errors::InvalidArgument(absl::StrFormat(
+        return absl::InvalidArgumentError(absl::StrFormat(
             "Number of outputs: %d of the XlaRecvTPUEmbeddingActivations node "
             "does not match the num_tables attribute: %d.",
             c->num_outputs(), num_tables));
       }
-      string config_string;
+      std::string config_string;
       TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
       tpu::TPUEmbeddingConfiguration config;
       if (!config.ParseFromString(config_string)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Malformed config attribute in the XlaRecvTPUEmbeddingActivations "
             "node.");
       }
       std::vector<TensorShapeProto> output_shapes;
       TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
       if (c->num_outputs() != output_shapes.size()) {
-        return errors::InvalidArgument(absl::StrFormat(
+        return absl::InvalidArgumentError(absl::StrFormat(
             "Number of outputs: %d of the XlaRecvTPUEmbeddingActivations node "
             "does not match the number of tables or features in the TPU "
             "embedding config: %d.",
@@ -420,7 +422,7 @@ REGISTER_OP("XlaRecvTPUEmbeddingActivations")
             c->MakeShapeFromShapeProto(output_shapes[i], &output_shape));
         c->set_output(i, output_shape);
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSendTPUEmbeddingGradients")
@@ -431,7 +433,7 @@ REGISTER_OP("XlaSendTPUEmbeddingGradients")
     .Attr("NumLearningRateTags: int >= 0 = 0")
     .Attr("config: string")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       int learning_rate_tag_count;
       TF_RETURN_IF_ERROR(
           c->GetAttr("NumLearningRateTags", &learning_rate_tag_count));
@@ -444,7 +446,7 @@ REGISTER_OP("XlaSendTPUEmbeddingGradients")
             c->WithRank(learning_rates[i], 0, &learning_rates_shape));
       }
 
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaRecvTPUEmbeddingDeduplicationData")
@@ -475,13 +477,13 @@ REGISTER_OP("SplitDedupData")
     .Attr("float_type: {half, bfloat16, float}")
     .Attr("tuple_mask: string")
     .Attr("config: string = ''")
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       std::string tuple_mask_str;
       TF_RETURN_IF_ERROR(c->GetAttr("tuple_mask", &tuple_mask_str));
 
       tensorflow::TensorProto tuple_mask_tensor;
       if (!tuple_mask_tensor.ParseFromString(tuple_mask_str)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Malformed `tuple_mask` attr in SplitDedupData Op.");
       }
       const tensorflow::TensorShapeProto& tuple_tensor_shape =
@@ -490,14 +492,14 @@ REGISTER_OP("SplitDedupData")
       if (num_tuple_elements == 0) {
         c->set_output(0, c->MakeShape({c->MakeDim(0)}));
         c->set_output(1, c->MakeShape({c->MakeDim(0)}));
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       const int tuple_mask_rank = tuple_tensor_shape.dim_size();
       if (tuple_mask_rank != 2) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "`tuple_mask` TensorProto must be a rank-2 tensor, but get ",
-            tuple_mask_rank);
+            tuple_mask_rank));
       }
       TF_RET_CHECK(tuple_mask_tensor.int_val_size() == 2 * num_tuple_elements);
 
@@ -512,18 +514,18 @@ REGISTER_OP("SplitDedupData")
         } else if (element_type == DedupTupleElementType::kFloat) {
           float_offset += span_size;
         } else {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Unexpected type of element in deduplication tuple, enum = ",
-              element_type, ", which is not integer or floating.");
+              element_type, ", which is not integer or floating."));
         }
       }
 
-      string config_string;
+      std::string config_string;
       TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
       if (!config_string.empty()) {
         tpu::TPUEmbeddingConfiguration config;
         if (!config.ParseFromString(config_string)) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "Malformed config attribute in the SplitDedupData node.");
         }
       }
@@ -534,7 +536,7 @@ REGISTER_OP("SplitDedupData")
           c->MakeDim(float_offset);
       c->set_output(0, c->MakeShape({integer_tensor_dim}));
       c->set_output(1, c->MakeShape({float_tensor_dim}));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 // `MergeDedupData` is to merge outputs of `SplitDedupData` back to an XLA tuple

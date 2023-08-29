@@ -1,9 +1,5 @@
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load("//tensorflow/compiler/xla:glob_lit_test.bzl", "glob_lit_tests")
-load(
-    "//tensorflow/tsl/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -14,15 +10,6 @@ glob_lit_tests(
     name = "all_tests",
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
-    tags_override = {
-        "gpu_ops.mlir": tf_cuda_tests_tags() + [
-            "noasan",
-            "nomsan",
-            "noubsan",
-            "no_cuda_asan",
-            "no_oss",
-        ],
-    },
     test_file_exts = [
         "mlir",
         "hlo",

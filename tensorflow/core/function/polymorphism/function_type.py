@@ -29,7 +29,14 @@ from tensorflow.python.types import trace
 
 # Represents a defined parameter default value that is saved alongside the
 # function's captures.
-CAPTURED_DEFAULT_VALUE = object()
+class CapturedDefaultValue:
+  def __repr__(self):
+    return "<captured_default_value>"
+
+  def __str__(self):
+    return "<captured_default_value>"
+
+CAPTURED_DEFAULT_VALUE = CapturedDefaultValue()
 
 PROTO_TO_PY_ENUM = {
     function_type_pb2.Parameter.Kind.POSITIONAL_ONLY:

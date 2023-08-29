@@ -16,13 +16,17 @@ limitations under the License.
 #include "tensorflow/security/fuzzing/cc/core/framework/tensor_domains.h"
 
 #include <limits>
+#include <string>
 
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/tensor_shape_domains.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow::fuzzing {
 namespace {
@@ -50,9 +54,8 @@ Domain<bool> DomainRange(double min, double max) {
   return Arbitrary<bool>();
 }
 
-template <class T>
-auto StatusOrAnyNumericTensor(const TensorShape& shape, double min,
-                              double max) {
+template <typename T>
+auto StatusOrAnyTensor(const TensorShape& shape, Domain<T> content_domain) {
   return Map(
       [shape](const std::vector<T>& contents) -> StatusOr<Tensor> {
         Tensor tensor;
@@ -64,45 +67,29 @@ auto StatusOrAnyNumericTensor(const TensorShape& shape, double min,
         }
         return tensor;
       },
-      VectorOf(DomainRange<T>(min, max)).WithSize(shape.num_elements()));
+      VectorOf(content_domain).WithSize(shape.num_elements()));
 }
 
-Domain<StatusOr<Tensor>> StatusOrAnyNumericTensorOfShapeAndType(
-    const TensorShape& shape, DataType data_type, double min, double max) {
+#define NUMERIC_TENSOR_HELPER(data_type) \
+  case data_type:                        \
+    return StatusOrAnyTensor(            \
+        shape, DomainRange<EnumToDataType<data_type>::Type>(min, max));
+
+Domain<StatusOr<Tensor>> StatusOrAnyNumericTensor(const TensorShape& shape,
+                                                  DataType data_type,
+                                                  double min, double max) {
   switch (data_type) {
-    case DT_FLOAT:
-      return StatusOrAnyNumericTensor<EnumToDataType<DT_FLOAT>::Type>(shape,
-                                                                      min, max);
-    case DT_DOUBLE:
-      return StatusOrAnyNumericTensor<EnumToDataType<DT_DOUBLE>::Type>(
-          shape, min, max);
-    case DT_INT32:
-      return StatusOrAnyNumericTensor<EnumToDataType<DT_INT32>::Type>(shape,
-                                                                      min, max);
-    case DT_UINT8:
-      return StatusOrAnyNumericTensor<EnumToDataType<DT_UINT8>::Type>(shape,
-                                                                      min, max);
-    case DT_INT16:
-      return StatusOrAnyNumericTensor<EnumToDataType<DT_INT16>::Type>(shape,
-                                                                      min, max);
-    case DT_INT8:
-      return StatusOrAnyNumericTensor<EnumToDataType<DT_INT8>::Type>(shape, min,
-                                                                     max);
-    case DT_INT64:
-      return StatusOrAnyNumericTensor<EnumToDataType<DT_INT64>::Type>(shape,
-                                                                      min, max);
-    case DT_UINT16:
-      return StatusOrAnyNumericTensor<EnumToDataType<DT_UINT16>::Type>(
-          shape, min, max);
-    case DT_UINT32:
-      return StatusOrAnyNumericTensor<EnumToDataType<DT_UINT32>::Type>(
-          shape, min, max);
-    case DT_UINT64:
-      return StatusOrAnyNumericTensor<EnumToDataType<DT_UINT64>::Type>(
-          shape, min, max);
-    case DT_BOOL:
-      return StatusOrAnyNumericTensor<EnumToDataType<DT_BOOL>::Type>(shape, min,
-                                                                     max);
+    NUMERIC_TENSOR_HELPER(DT_FLOAT);
+    NUMERIC_TENSOR_HELPER(DT_DOUBLE);
+    NUMERIC_TENSOR_HELPER(DT_INT32);
+    NUMERIC_TENSOR_HELPER(DT_UINT8);
+    NUMERIC_TENSOR_HELPER(DT_INT16);
+    NUMERIC_TENSOR_HELPER(DT_INT8);
+    NUMERIC_TENSOR_HELPER(DT_INT64);
+    NUMERIC_TENSOR_HELPER(DT_UINT16);
+    NUMERIC_TENSOR_HELPER(DT_UINT32);
+    NUMERIC_TENSOR_HELPER(DT_UINT64);
+    NUMERIC_TENSOR_HELPER(DT_BOOL);
     // TODO(b/268338352): Add unsupported types
     // DT_BOOL, DT_STRING, DT_COMPLEX64, DT_QINT8, DT_QUINT8, DT_QINT32,
     // DT_BFLOAT16, DT_QINT16, DT_COMPLEX128, DT_HALF, DT_RESOURCE, DT_VARIANT,
@@ -112,35 +99,48 @@ Domain<StatusOr<Tensor>> StatusOrAnyNumericTensorOfShapeAndType(
   }
 }
 
-}  // namespace
-
-Domain<Tensor> AnyValidTensorOfShapeAndType(const TensorShape& shape,
-                                            DataType datatype, double min,
-                                            double max) {
+Domain<Tensor> FilterInvalid(Domain<StatusOr<Tensor>> domain) {
   return Map(
       [](const StatusOr<Tensor>& t) { return *t; },
       Filter(
           [](const StatusOr<Tensor>& inner_t) { return inner_t.status().ok(); },
-          StatusOrAnyNumericTensorOfShapeAndType(shape, datatype, min, max)));
+          domain));
 }
 
-Domain<Tensor> AnyValidTensor(Domain<TensorShape> tensor_shape_domain,
-                              Domain<DataType> datatype_domain, double min,
-                              double max) {
+}  // namespace
+
+Domain<Tensor> AnyValidNumericTensor(const TensorShape& shape,
+                                     DataType datatype, double min,
+                                     double max) {
+  return FilterInvalid(StatusOrAnyNumericTensor(shape, datatype, min, max));
+}
+
+Domain<Tensor> AnyValidNumericTensor(Domain<TensorShape> tensor_shape_domain,
+                                     Domain<DataType> datatype_domain,
+                                     double min, double max) {
   return FlatMap(
       [min, max](const TensorShape& shape, DataType datatype) {
-        return AnyValidTensorOfShapeAndType(shape, datatype, min, max);
+        return AnyValidNumericTensor(shape, datatype, min, max);
       },
       tensor_shape_domain, datatype_domain);
 }
 
-Domain<Tensor> AnySmallValidTensor() {
-  return fuzzing::AnyValidTensor(fuzzing::AnyValidTensorShape(
-                                     /*max_rank=*/5,
-                                     /*dim_lower_bound=*/0,
-                                     /*dim_upper_bound=*/10),
-                                 fuzztest::Just(DT_INT32),
-                                 /*min=*/-10,
-                                 /*max=*/10);
+Domain<Tensor> AnySmallValidNumericTensor(DataType datatype) {
+  return fuzzing::AnyValidNumericTensor(fuzzing::AnyValidTensorShape(
+                                            /*max_rank=*/5,
+                                            /*dim_lower_bound=*/0,
+                                            /*dim_upper_bound=*/10),
+                                        fuzztest::Just(datatype),
+                                        /*min=*/-10,
+                                        /*max=*/10);
 }
+
+Domain<Tensor> AnyValidStringTensor(const TensorShape& tensor_shape,
+                                    Domain<std::string> string_domain) {
+  return FilterInvalid(StatusOrAnyTensor<tstring>(
+      tensor_shape,
+      Map([](const std::string& s) { return static_cast<tstring>(s); },
+          string_domain)));
+}
+
 }  // namespace tensorflow::fuzzing

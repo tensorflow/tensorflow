@@ -51,6 +51,33 @@ ENTRY e {
   )");
 }
 
+TEST_F(DotDimensionMergerTest,
+       MergeConsecutiveBatchDimensionsNonDefaultLayouts) {
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+ p0 = bf16[79,2,4,12,11]{4,0,3,2,1} parameter(0)
+ p1 = bf16[79,2,4,11,44]{3,0,4,2,1} parameter(1)
+ ROOT d = bf16[2,4,12,44]{3,1,0,2} dot(p0, p1),
+  lhs_batch_dims={1,2}, lhs_contracting_dims={0,4},
+  rhs_batch_dims={1,2}, rhs_contracting_dims={0,3},
+  metadata={op_name="testname"}
+})";
+
+  RunAndFilecheckHloRewrite(kHloText, DotDimensionMerger(), R"(
+; CHECK: %[[R0:.*]] = bf16[79,8,12,11]{3,0,2,1} reshape(%p0)
+; CHECK: %[[R1:.*]] = bf16[79,8,11,44]{2,0,3,1} reshape(%p1)
+; CHECK: %[[DOT:.*]] = bf16[8,12,44]{2,0,1} dot(%[[R0]], %[[R1]])
+; CHECK-SAME: lhs_batch_dims={1}
+; CHECK-SAME: lhs_contracting_dims={0,3}
+; CHECK-SAME: rhs_batch_dims={1}
+; CHECK-SAME: rhs_contracting_dims={0,2}
+; CHECK-NEXT: ROOT {{[^ ]+}} = bf16[2,4,12,44]{3,1,0,2} reshape(%[[DOT]])
+; CHECK-SAME: metadata={op_name="testname"}
+  )");
+}
+
 TEST_F(DotDimensionMergerTest, SkipPhysicallyNonConsecutiveBatchDimensions) {
   const std::string kHloText = R"(
 HloModule m

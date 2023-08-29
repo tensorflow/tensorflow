@@ -282,8 +282,9 @@ void SnapshotStreamWriter::Cancel() TF_LOCKS_EXCLUDED(mu_) {
 }
 
 Status SnapshotStreamWriter::Save() {
-  LOG(INFO) << "Checkpointing distributed tf.data snapshot writer. Stream "
-            << params_.stream_index << ", chunk " << chunk_index_
+  LOG(INFO) << "Checkpointing distributed tf.data snapshot writer for snapshot "
+            << params_.DebugString() << ". Stream " << params_.stream_index
+            << ", chunk " << chunk_index_
             << ", chunk size in bytes: " << chunk_size_bytes_
             << ", number of elements in chunk: " << chunk_num_elements_ << ".";
   tsl::profiler::TraceMe activity("SnapshotCheckpoint",

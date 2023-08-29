@@ -26,6 +26,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
@@ -170,6 +172,10 @@ static void EvictAllGraphs(
             vec.end());
 
   auto timed_out = [&](GraphInstances::Impl::State& state) -> bool {
+    if (!eviction_timeout_seconds.has_value()) {
+      return false;
+    }
+
     auto diff = tsl::Env::Default()->NowMicros() - state.last_use_micros;
     return (diff / (1000 * 1000)) > *eviction_timeout_seconds;
   };
@@ -339,12 +345,18 @@ Status GraphInstances::InstantiateAllGraphs(
     absl::StatusOr<GraphInstance*> instance =
         instances.GetOrCreate(ordinal, instantiate);
 
-    // Retry on OOM error after evicting all graphs from executor.
-    if (instance.status().code() == absl::StatusCode::kResourceExhausted &&
-        num_retries++ == 0) {
-      EvictAllGraphs(executor);
-      --ordinal;  // we'll try to instantiate the same graph one more time
-      continue;
+    if (instance.status().code() == absl::StatusCode::kResourceExhausted) {
+      if (num_retries == 0) {
+        // Retry on OOM error after evicting all graphs from executor.
+        EvictAllGraphs(executor);
+        num_retries++;
+        ordinal--;  // we'll try to instantiate the same graph one more time
+        continue;
+      } else {
+        LOG(WARNING) << "InstantiateAllGraph failed due to insufficient memory."
+                        " Uninitializd graphs will run in op-by-op mode.";
+        return OkStatus();
+      }
     }
 
     // Otherwise return an error to the caller.
@@ -490,6 +502,9 @@ static absl::Status RunGraphOpByOp(
     CustomCall::UserData user_data) {
   // Prepare options for executing graph capture function.
   Executable::ExecuteOpts opts;
+  auto* concurrent_region_status = user_data.get<ConcurrentRegionStatus>();
+  // Ops should not run in parallel during op-by-op execution.
+  concurrent_region_status->DisableConcurrentRegion();
   opts.custom_call_data = &user_data;
 
   TraceMe trace([&] {
@@ -512,6 +527,7 @@ static absl::Status RunGraphOpByOp(
 
   auto executed =
       function_ref(args, runtime::NoResultConverter{}, opts, InDebugMode());
+  concurrent_region_status->EnableConcurrentRegion();
   if (!executed.ok()) {
     return InternalError("RunGraphOpByOp failed (%s): %s",
                          diagnostic.empty() ? "<no details>" : diagnostic,
@@ -585,8 +601,22 @@ static absl::Status LaunchGraph(
     return GraphInstance(ptrs_hash, std::move(e));
   };
 
-  TF_ASSIGN_OR_RETURN(GraphInstance * instance,
-                      instances->GetOrCreate(capture.ordinal, instantiate));
+  GraphInstance* instance;
+  if (num_runs_to_instantiate < 0) {
+    // If num_runs_to_instantiate is less than 0, all graphs should be
+    // instantiated ahead-of-time. If we fail to get the graph instance, then
+    // graph instantiation failed due to OOM. So we run the graph op-by-op.
+    absl::StatusOr<GraphInstance*> try_get_instance =
+        instances->Get(capture.ordinal);
+    if (try_get_instance.ok()) {
+      instance = try_get_instance.value();
+    } else {
+      return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
+    }
+  } else {
+    TF_ASSIGN_OR_RETURN(instance,
+                        instances->GetOrCreate(capture.ordinal, instantiate));
+  }
 
   {
     // Lock graph instance for read only access. If we'll have to update the
@@ -620,7 +650,14 @@ static absl::Status LaunchGraph(
   absl::WriterMutexLock lock(instance->mutex.get());
 
   // Update captured graph executable.
-  TF_RETURN_IF_ERROR(instance->exec.Update(std::move(g)));
+  auto update = instance->exec.Update(std::move(g));
+  if (!update.ok()) {
+    // TODO(b/297051365): We currently fallback to op-by-op mode because CUBLAS
+    // sometimes cause graph update to fail. We should remove the fallback
+    // mechanism once cuBLAS completely works in gpu graphs.
+    LOG(WARNING) << "Failed to update graph instance. Run graph op-by-op";
+    return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
+  }
 
   // Update captured graph pointers hash.
   instance->ptr_hash = ptrs_hash;

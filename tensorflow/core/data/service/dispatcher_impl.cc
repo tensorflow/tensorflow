@@ -27,6 +27,7 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "grpcpp/impl/codegen/server_context.h"
 #include "grpcpp/security/credentials.h"
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
+#include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/snapshot/snapshot_manager.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/data/standalone.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -69,6 +72,8 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -1175,6 +1180,72 @@ Status DataServiceDispatcherImpl::GetSnapshotSplit(
   return OkStatus();
 }
 
+std::optional<absl::flat_hash_map<std::string, std::string>>
+DataServiceDispatcherImpl::WorkerCompressionInfoByProtocol() {
+  for (const auto& worker : state_.ListWorkers()) {
+    if (absl::c_find(worker->tags, kColocatedWorkerTag) != worker->tags.end()) {
+      continue;
+    }
+    absl::flat_hash_map<std::string, std::string>
+        worker_compression_info_by_protocol;
+    for (const auto& transfer_server : worker->transfer_servers) {
+      worker_compression_info_by_protocol[transfer_server.protocol()] =
+          transfer_server.compatibility_info();
+    }
+    return worker_compression_info_by_protocol;
+  }
+  return std::nullopt;
+}
+
+Status DataServiceDispatcherImpl::DisableCompressionAtRuntime(
+    const DisableCompressionAtRuntimeRequest* request,
+    DisableCompressionAtRuntimeResponse* response) {
+  std::shared_ptr<const Dataset> dataset;
+  mutex_lock l(mu_);
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
+  if (dataset->metadata.compression() !=
+      DataServiceMetadata::COMPRESSION_SNAPPY) {
+    response->set_no_compression_to_disable(true);
+    return OkStatus();
+  }
+  if (std::optional<bool> compression_disabled_at_runtime =
+          state_.CompressionDisabledAtRuntime(request->dataset_id());
+      compression_disabled_at_runtime.has_value()) {
+    response->set_compression_disabled_at_runtime(
+        *compression_disabled_at_runtime);
+    return OkStatus();
+  }
+  auto journal = [&](bool disable_compression_at_runtime)
+                     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> Status {
+    Update update;
+    CompressionDisabledAtRuntimeUpdate* compression_disabled_at_runtime =
+        update.mutable_compression_disabled_at_runtime();
+    compression_disabled_at_runtime->set_dataset_id(request->dataset_id());
+    compression_disabled_at_runtime->set_compression_disabled(
+        disable_compression_at_runtime);
+    TF_RETURN_IF_ERROR(Apply(update));
+    return OkStatus();
+  };
+  if (request->trainer_is_ineligible()) {
+    response->set_compression_disabled_at_runtime(false);
+    TF_RETURN_IF_ERROR(journal(false));
+    return OkStatus();
+  }
+  std::optional<absl::flat_hash_map<std::string, std::string>>
+      worker_compression_info_by_protocol = WorkerCompressionInfoByProtocol();
+  if (!worker_compression_info_by_protocol.has_value()) {
+    response->set_not_enough_information(true);
+    return OkStatus();
+  }
+  TF_ASSIGN_OR_RETURN(bool disable_compression_at_runtime,
+                      tensorflow::data::DisableCompressionAtRuntime(
+                          request->trainer_compression_info(),
+                          *worker_compression_info_by_protocol));
+  response->set_compression_disabled_at_runtime(disable_compression_at_runtime);
+  TF_RETURN_IF_ERROR(journal(disable_compression_at_runtime));
+  return OkStatus();
+}
+
 Status DataServiceDispatcherImpl::PopulateTaskDef(
     std::shared_ptr<const Task> task, TaskDef* task_def) const
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -1266,7 +1337,8 @@ void DataServiceDispatcherImpl::MaintenanceThread() {
       }
     }
     {
-      Status s = auto_scaler_.UpdateOptimalNumberOfWorkersMetric();
+      Status s = auto_scaler_.UpdateOptimalNumberOfWorkersMetric(
+          state_.GetNumberOfRegisteredWorkers());
       if (!s.ok()) {
         LOG(WARNING) << "Error updating the optimal number of workers metric "
                         "in tf.data service AutoScaler: "

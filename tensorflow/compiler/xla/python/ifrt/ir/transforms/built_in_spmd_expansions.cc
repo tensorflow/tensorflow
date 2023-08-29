@@ -18,7 +18,8 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/python/ifrt/ir/transforms/spmd_expanders/unimplemented_ifrt_spmd_expander.h"
+#include "tensorflow/compiler/xla/python/ifrt/ir/transforms/spmd_expanders/noop_ifrt_spmd_expander.h"
+#include "tensorflow/compiler/xla/python/ifrt/ir/transforms/spmd_expanders/terminator_ifrt_spmd_expander.h"
 
 namespace xla {
 namespace ifrt {
@@ -26,9 +27,10 @@ namespace {
 
 void AttachFuncDialectOpsSpmdExpansions(mlir::MLIRContext* context,
                                         mlir::func::FuncDialect* dialect) {
-  // TODO(b/261623129): Implement the SPMD expander for func::ReturnOp.
   mlir::func::ReturnOp::attachInterface<
-      UnimplementedIfrtSpmdExpander<mlir::func::ReturnOp>>(*context);
+      TerminatorIfrtSpmdExpander<mlir::func::ReturnOp>>(*context);
+  mlir::func::CallOp::attachInterface<NoOpIfrtSpmdExpander<mlir::func::CallOp>>(
+      *context);
 }
 
 }  // namespace

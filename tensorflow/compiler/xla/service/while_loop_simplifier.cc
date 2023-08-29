@@ -29,9 +29,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/union_find.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -1359,6 +1362,37 @@ StatusOr<bool> WhileLoopSimplifier::Run(
   }
 
   for (HloInstruction* while_op : while_ops) {
+    // Each of the optimizations below modifies the while loop itself if it's
+    // successful, meaning that `while_op` is no longer valid after one of these
+    // transformations returns true.
+    // These optimizations should be fine even with send/recv nodes within the
+    // loop.
+
+    TF_ASSIGN_OR_RETURN(bool result,
+                        TryRemoveRepeatedWhileTupleIndices(while_op));
+    changed |= result;
+    if (result) {
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(result, TryFlattenNestedTuples(while_op));
+    changed |= result;
+    if (result) {
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(result, TryRemoveDeadWhileParams(while_op));
+    changed |= result;
+    if (result) {
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(result, TryRemoveConstantParams(while_op));
+    changed |= result;
+    if (result) {
+      continue;
+    }
+
     // We can't remove while loops that contain send/recv nodes, because we rely
     // on the particular loop structure around the node matching on the send and
     // recv sides.  Other while simplifications require us to remove the loop
@@ -1375,7 +1409,7 @@ StatusOr<bool> WhileLoopSimplifier::Run(
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(bool result, TryPropagateConstant(while_op));
+    TF_ASSIGN_OR_RETURN(result, TryPropagateConstant(while_op));
     changed |= result;
 
     TF_ASSIGN_OR_RETURN(result, TryRemoveWhileLoop(while_op));
@@ -1396,35 +1430,6 @@ StatusOr<bool> WhileLoopSimplifier::Run(
       continue;
     }
 
-    // Each of the optimizations below modifies the while loop itself if it's
-    // successful, meaning that `while_op` is no longer valid after one of these
-    // transformations returns true.
-
-    TF_ASSIGN_OR_RETURN(result, TryRemoveRepeatedWhileTupleIndices(while_op));
-    changed |= result;
-    if (result) {
-      continue;
-    }
-
-    TF_ASSIGN_OR_RETURN(result, TryFlattenNestedTuples(while_op));
-    changed |= result;
-    if (result) {
-      continue;
-    }
-
-    TF_ASSIGN_OR_RETURN(result, TryRemoveDeadWhileParams(while_op));
-
-    changed |= result;
-    if (result) {
-      continue;
-    }
-
-    TF_ASSIGN_OR_RETURN(result, TryRemoveConstantParams(while_op));
-    changed |= result;
-    if (result) {
-      continue;
-    }
-
     bool merged_induction_vars = false;
     // Notably missing from this list are S16 and U16.  These don't currently
     // work because S/U16 literals are not implemented.
@@ -1441,7 +1446,9 @@ StatusOr<bool> WhileLoopSimplifier::Run(
       continue;
     }
   }
-
+  HloDCE dce;
+  TF_ASSIGN_OR_RETURN(bool dce_changed, dce.Run(module));
+  changed |= dce_changed;
   XLA_VLOG_LINES(3,
                  "WhileLoopSimplifier::Run(), after:\n" + module->ToString());
   return changed;

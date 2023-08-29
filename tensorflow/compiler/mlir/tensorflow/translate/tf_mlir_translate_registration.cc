@@ -58,7 +58,7 @@ static OwningOpRef<mlir::ModuleOp> GraphdefToMlirTranslateFunction(
       prune_unused_nodes,     convert_legacy_fed_inputs,
       graph_as_function,      upgrade_legacy,
       enable_shape_inference, unconditionally_use_set_output_shapes,
-      enable_soft_placement};
+      enable_soft_placement,  set_original_tf_func_name};
 
   auto module_or = tensorflow::GraphdefToMlirTranslateFunction(
       input, input_arrays, input_dtypes, input_shapes, output_arrays,
@@ -122,6 +122,7 @@ static LogicalResult MlirToGraphTranslateFunction(ModuleOp module,
 
   tensorflow::GraphExportConfig confs;
   confs.export_entry_func_to_flib = export_entry_func_to_flib;
+  confs.export_original_tf_func_name = export_original_tf_func_name;
 
   std::unique_ptr<tensorflow::FunctionLibraryDefinition> flib_def;
   auto graph =
@@ -169,6 +170,8 @@ static LogicalResult MlirToGraphdefTranslateFunction(
   // TODO(fengliuai): Add exporter flags.
   tensorflow::GraphExportConfig confs;
   confs.export_entry_func_to_flib = export_entry_func_to_flib;
+  confs.export_original_tf_func_name = export_original_tf_func_name;
+
   StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
       tensorflow::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {

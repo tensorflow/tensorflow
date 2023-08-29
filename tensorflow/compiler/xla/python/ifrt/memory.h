@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/ifrt/device.h"
 
 namespace xla {
 namespace ifrt {
@@ -70,6 +71,16 @@ class MemoryKind {
  private:
   std::optional<absl::string_view> memory_kind_;
 };
+
+// Canonicalizes `MemoryKind`. If `MemoryKind` has no memory kind chosen,
+// returns a default `MemoryKind` chosen for the device. If there is no default
+// indicated by the device, simply returns `MemoryKind` with no memory kind
+// chosen.
+//
+// TODO(hyeontaek,yashkatariya): Harden `MemoryKind` creation paths so that
+// every `MemoryKind` is canonicalized and does not require on-demand
+// canonicalization.
+MemoryKind CanonicalizeMemoryKind(MemoryKind memory_kind, Device* device);
 
 }  // namespace ifrt
 }  // namespace xla

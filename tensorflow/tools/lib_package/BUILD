@@ -138,6 +138,7 @@ genrule(
     srcs = [
         "//third_party/icu/data:LICENSE",
         "@curl//:COPYING",
+        "@ducc//:LICENSE",
         "@gemmlowp//:LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
         "@llvm-project//llvm:LICENSE.TXT",
@@ -177,6 +178,7 @@ genrule(
     srcs = [
         "//third_party/icu/data:LICENSE",
         "@curl//:COPYING",
+        "@ducc//:LICENSE",
         "@gemmlowp//:LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
         "@llvm-project//llvm:LICENSE.TXT",

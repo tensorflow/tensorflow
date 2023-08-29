@@ -132,7 +132,7 @@ class HloModule {
 
   // Move computations from the input module to this one, while ensuring that
   // the names of instructions within the computations are unchanged.
-  void MoveComputationsFrom(HloModule* module);
+  void MoveComputationsFrom(HloModule* module, bool make_names_unique = false);
 
   // Returns a deep copy of this module including all computations.
   std::unique_ptr<HloModule> Clone(const std::string& suffix = "clone") const;
@@ -422,14 +422,11 @@ class HloModule {
     return input_output_alias_config_;
   }
 
-  // DynamicParameterBinding holds the list of bindings that indicates which
-  // parameter dimensions are dynamic and which parameters represent their
-  // runtime value.
-  DynamicParameterBinding& dynamic_parameter_binding() {
-    return dynamic_parameter_binding_;
-  }
-  const DynamicParameterBinding& dynamic_parameter_binding() const {
-    return dynamic_parameter_binding_;
+  // buffer_donor_config_ indicates the set of input buffer donors that are
+  // expected from the module.
+  HloBufferDonorConfig& buffer_donor_config() { return buffer_donor_config_; }
+  const HloBufferDonorConfig& buffer_donor_config() const {
+    return buffer_donor_config_;
   }
 
   // Returns an id that is unique to this module across all modules created over
@@ -651,8 +648,9 @@ class HloModule {
   // are expected from the module.
   HloInputOutputAliasConfig input_output_alias_config_;
 
-  // Bindings for dynamic parameter mapping.
-  DynamicParameterBinding dynamic_parameter_binding_;
+  // buffer_donor_config_ indicates the donor information of input buffers that
+  // are expected from the module.
+  HloBufferDonorConfig buffer_donor_config_;
 
   // The HLO shardings of the entry computation's parameters for
   // SPMD-partitioned programs.

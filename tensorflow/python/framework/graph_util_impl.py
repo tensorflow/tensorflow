@@ -26,7 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
-tf_export(v1=["GraphDef"])(graph_pb2.GraphDef)
+GraphDef = tf_export(v1=["GraphDef"])(graph_pb2.GraphDef)
 
 _VARIABLE_OPS = {
     "Assign",

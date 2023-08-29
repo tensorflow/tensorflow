@@ -23,7 +23,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/c_api_opaque.h"
@@ -58,9 +57,8 @@ const TfLiteRegistrationExternal* GetNoOpRegistrationExternal() {
 }
 
 TEST(CApiExperimentalTest, Smoke) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -81,9 +79,8 @@ TEST(CApiExperimentalTest, Smoke) {
 
 // Test using TfLiteInterpreterCreateWithSelectedOps.
 TEST(CApiExperimentalTest, SelectedBuiltins) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -105,9 +102,8 @@ TEST(CApiExperimentalTest, SelectedBuiltins) {
 // Test that when using TfLiteInterpreterCreateWithSelectedOps,
 // we do NOT get the standard builtin operators by default.
 TEST(CApiExperimentalTest, MissingBuiltin) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   // Install a custom error reporter into the interpreter by way of options.
@@ -163,9 +159,8 @@ const TfLiteRegistration* MyFindCustomOp(void*, const char* custom_op,
 
 // Test using TfLiteInterpreterCreateWithSelectedOps.
 TEST(CApiExperimentalTest, SetOpResolver) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -274,9 +269,8 @@ const TfLiteRegistration* SinhFindCustomOp(void*, const char* custom_op,
 // Test using TfLiteInterpreterOptionsSetOpResolverExternal and
 // TfLiteInterpreterCreateWithSelectedOps.
 TEST(CApiExperimentalTest, SetOpResolverExternal) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -305,9 +299,8 @@ TEST(CApiExperimentalTest, SetOpResolverExternal) {
 // a TfLiteRegistrationExternal pointer.
 TEST(CApiExperimentalTest,
      SetOpResolverExternalWithFallback_BuiltinOp_NormalCase) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -341,9 +334,8 @@ TEST(CApiExperimentalTest,
 // returns a TfLiteRegistration pointer.
 TEST(CApiExperimentalTest,
      SetOpResolverExternalWithFallback_BuiltinOp_FallbackCase) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -377,10 +369,8 @@ TEST(CApiExperimentalTest,
 // a TfLiteRegistrationExternal pointer.
 TEST(CApiExperimentalTest,
      SetOpResolverExternalWithFallback_CustomOp_NormalCase) {
-  TfLiteModel* model =
-      TfLiteModelCreateFromFile(tensorflow::GetDataDependencyFilepath(
-                                    "tensorflow/lite/testdata/custom_sinh.bin")
-                                    .c_str());
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/custom_sinh.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -423,10 +413,8 @@ TEST(CApiExperimentalTest,
 // returns a TfLiteRegistration pointer.
 TEST(CApiExperimentalTest,
      SetOpResolverExternalWithFallback_CustomOp_FallbackCase) {
-  TfLiteModel* model =
-      TfLiteModelCreateFromFile(tensorflow::GetDataDependencyFilepath(
-                                    "tensorflow/lite/testdata/custom_sinh.bin")
-                                    .c_str());
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/custom_sinh.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -493,9 +481,8 @@ void VerifyOutputs(TfLiteInterpreter* interpreter) {
 void CheckExecution(TfLiteInterpreterOptions* options,
                     TfLiteStatus expected_first_result,
                     TfLiteStatus expected_subsequent_results) {
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);

@@ -47,6 +47,7 @@ struct BatchFunctionOp : mlrt::KernelFrame {
   using KernelFrame::KernelFrame;
 
   static constexpr char kName[] = "tf_mlrt.batch_function";
+  static constexpr bool kUseCustomDevice = false;
 
   mlrt::RegisterValueSpan<tfrt_stub::FallbackTensor> args() const {
     return arguments();

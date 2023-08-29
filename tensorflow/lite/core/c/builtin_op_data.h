@@ -546,6 +546,10 @@ typedef struct {
   bool approximate;
 } TfLiteGeluParams;
 
+typedef struct {
+  int64_t dimension;
+} TfLiteStablehloConcatenateParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

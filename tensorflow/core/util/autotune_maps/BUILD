@@ -2,6 +2,8 @@
 # The autotuning results can be serialized as a string, allowing you to save
 # and later restore them.
 
+# Placeholder: load py_proto_library
+
 # TODO(ruochengw): Currently only supports contrib's fused_conv2d_bias_activation_op.
 # We plan to add more ops and move fused_conv2d_bias_activation_op back into core library.
 load(

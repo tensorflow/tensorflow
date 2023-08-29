@@ -138,10 +138,19 @@ class PjRtClient final
     return pjrt_client_->LookupDevice(device_id);
   }
 
+  StatusOr<Device*> LookupAddressableDevice(
+      int local_hardware_id) const override {
+    DCHECK(this);
+    return pjrt_client_->LookupAddressableDevice(local_hardware_id);
+  }
+
   Compiler* GetDefaultCompiler() override {
     DCHECK(this);
     return &default_compiler_;
   }
+
+  StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
+  GetTopologyForDevices(absl::Span<Device* const> devices) const override;
 
   static char ID;  // NOLINT
 

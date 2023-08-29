@@ -1519,12 +1519,21 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
 
       // Check if the output needs to be tupled.
       if (return_types.size() == 1 && return_types.front() == result_type) {
+        for (auto attr : attributes) {
+          reduce->setAttr(attr.getName(), attr.getValue());
+        }
         return reduce.getOperation();
       }
 
-      return func_builder
-          ->create<mlir::mhlo::TupleOp>(loc, result_type, reduce.getResults())
-          .getOperation();
+      mlir::Operation* operation =
+          func_builder
+              ->create<mlir::mhlo::TupleOp>(loc, result_type,
+                                            reduce.getResults())
+              .getOperation();
+      for (auto attr : attributes) {
+        operation->setAttr(attr.getName(), attr.getValue());
+      }
+      return operation;
     }
     case HloOpcode::kReverse: {
       return func_builder

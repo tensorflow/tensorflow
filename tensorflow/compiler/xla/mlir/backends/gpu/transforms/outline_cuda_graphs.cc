@@ -468,13 +468,17 @@ void OutlineGpuGraphsPass::runOnOperation() {
   }
 
   if (gpu_graph_level_ >= 2) {
-    // Enable capturing conv/gemms.
+    // Enable capturing gemms.
+    patterns.emplace_back(new GemmOpCapture());
+  }
+
+  if (gpu_graph_level_ >= 3) {
+    // Enable capturing convolutions.
     patterns.emplace_back(new ConvForwardOpCapture());
     patterns.emplace_back(new ConvBackwardInputOpCapture());
     patterns.emplace_back(new ConvBackwardFilterOpCapture());
     patterns.emplace_back(new ConvForwardFusedOpCapture());
     patterns.emplace_back(new ConvForwardFusedSideInputOpCapture());
-    patterns.emplace_back(new GemmOpCapture());
   }
 
   unsigned ordinal = 1;  // entry point will be exported with ordinal 0

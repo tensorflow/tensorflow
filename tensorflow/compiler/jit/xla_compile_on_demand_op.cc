@@ -173,7 +173,8 @@ Status XlaCompileOnDemandOp::Compile(
     const XlaCompiler::CompilationResult** result,
     xla::PjRtLoadedExecutable** executable) {
   TF_RETURN_IF_ERROR(GetOrCreatePjRtDeviceCompilerAndProfiler(
-      platform_info_, ctx->function_library(), pjrt_device_compiler, profiler));
+      *ctx, platform_info_, ctx->function_library(), pjrt_device_compiler,
+      profiler));
 
   XlaCompiler::Options options =
       GenerateCompilerOptionsForPjRt(*(ctx->function_library()), ctx->device(),

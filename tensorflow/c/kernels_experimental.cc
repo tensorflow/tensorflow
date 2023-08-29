@@ -23,9 +23,11 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/ref_var.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 
@@ -43,6 +45,7 @@ limitations under the License.
 
 using tensorflow::AllocatorAttributes;
 using tensorflow::mutex_lock;
+using tensorflow::ResourceBase;
 using tensorflow::Status;
 using tensorflow::Tensor;
 using tensorflow::TF_TensorFromTensor;
@@ -282,6 +285,96 @@ void TF_AssignUpdateVariable(TF_OpKernelContext* ctx, int input_index,
   TF_Tensor* tf_var_tensor = TF_TensorFromTensor(*var_tensor, &s);
   TF_Tensor* tf_value = TF_TensorFromTensor(value, &s);
   updateFunc(ctx, tf_var_tensor, tf_value, Op);
+  TF_SetStatus(tf_status, TF_OK, "");
+}
+
+struct TmpVar : public ResourceBase {
+  tensorflow::mutex mu;
+  Tensor val;
+  std::string name;
+  std::string DebugString() const { return name; }
+  ~TmpVar() override { VLOG(3) << "TmpVar " << name << " deleted"; }
+};
+
+// Makes a unique name for a temporary variable inside a while loop body,
+// because loop can be executed in multiple iterations in parallel.
+std::string TemporaryVariableName(
+    const std::string& var_name,
+    const tensorflow::FrameAndIter& control_frame) {
+  if (control_frame.frame_id != tensorflow::kIllegalFrameId &&
+      control_frame.iter_id != tensorflow::kIllegalIterId) {
+    return tensorflow::strings::StrCat(var_name,
+                                       "/frame:", control_frame.frame_id,
+                                       "/iter:", control_frame.iter_id);
+  }
+  return var_name;
+}
+
+void TF_TemporaryVariable(TF_OpKernelContext* ctx, TF_DataType dtype,
+                          const int64_t* dims, int num_dims,
+                          TF_StringView* var_name,
+                          void (*allocFunc)(TF_OpKernelContext*, TF_Tensor*,
+                                            TF_DataType, const int64_t*, int,
+                                            TF_Status*),
+                          TF_Status* tf_status) {
+  auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  tensorflow::ResourceMgr* rm = context->resource_manager();
+  OP_REQUIRES(context, rm,
+              absl::InternalError("No per-step resource manager."));
+
+  std::string unique_name =
+      TemporaryVariableName(var_name->data, context->frame_iter());
+  auto* tmp_var = new TmpVar;
+  OP_REQUIRES(context, tmp_var,
+              absl::ResourceExhaustedError("Could not allocate TmpVar."));
+  tmp_var->name = unique_name;
+
+  Status s;
+  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tmp_var_tf(
+      tensorflow::TF_TensorFromTensor(tmp_var->val, &s), TF_DeleteTensor);
+  OP_REQUIRES_OK(context, s);
+  allocFunc(ctx, tmp_var_tf.get(), dtype, dims, num_dims, tf_status);
+  s = tensorflow::StatusFromTF_Status(tf_status);
+  if (!s.ok()) tmp_var->Unref();
+  OP_REQUIRES_OK(context, s);
+
+  OP_REQUIRES_OK(context, TF_TensorToTensor(tmp_var_tf.get(), &tmp_var->val));
+  OP_REQUIRES_OK(context,
+                 context->step_container()->Create(rm, unique_name, tmp_var));
+  context->set_output_ref(0, &tmp_var->mu, &tmp_var->val);
+
+  if (context->track_allocations()) {
+    context->record_persistent_memory_allocation(tmp_var->val.AllocatedBytes());
+  }
+
+  TF_SetStatus(tf_status, TF_OK, "");
+}
+
+void TF_DestroyTemporaryVariable(TF_OpKernelContext* ctx, const int index,
+                                 TF_StringView* var_name,
+                                 TF_Status* tf_status) {
+  auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (!IsRefType(context->input_dtype(0))) {
+    tf_status->status =
+        InvalidArgument("TF_DestroyTemporaryVariable requires input is ref");
+    return;
+  }
+  Tensor tmpvar = context->mutable_input(0, false);
+  context->set_output(0, tmpvar);
+
+  tensorflow::ResourceMgr* rm = context->resource_manager();
+  OP_REQUIRES(context, rm,
+              absl::InternalError("No per-step resource manager."));
+  std::string unique_name =
+      TemporaryVariableName(var_name->data, context->frame_iter());
+  OP_REQUIRES_OK(context,
+                 context->step_container()->Delete<TmpVar>(rm, unique_name));
+
+  if (context->track_allocations()) {
+    context->record_persistent_memory_allocation(
+        -static_cast<int64_t>(tmpvar.AllocatedBytes()));
+  }
+
   TF_SetStatus(tf_status, TF_OK, "");
 }
 

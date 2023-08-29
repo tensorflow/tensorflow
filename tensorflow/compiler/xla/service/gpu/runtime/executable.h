@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/fused_attention.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
@@ -155,18 +156,23 @@ class GpuRuntimeExecutable {
   // Keep a cache for conv configs for all conv operations in the program.
   ConvRunners conv_runners_;
 
+  // Keep a cache for fused_dot_attention configs for all fused_dot_attention
+  // operations in the program.
+  FusedAttentionRunners fused_attention_runners_;
+
+  // Keep a cache for fused_dot_attention configs for all fused_dot_attention
+  // backward
+  // operations in the program.
+  FusedAttentionBackwardRunners fused_attention_backward_runners_;
+
   // Support for running collective operations.
   CollectivesSupport collectives_;
 
   // Keep a cache of fft plans for all FFT operations in the program.
   FftPlans fft_plans_;
 
-#if GOOGLE_CUDA
-  // Keep matmul execution plans (only if cuBLASLt is available).
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM  // Keep matmul execution plans.
   MatmulPlans cublas_lt_matmul_plans_;
-#endif  // GOOGLE_CUDA
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Keep captured and instantiated GPU graphs instances.
   GraphInstances graph_instances_;
   CapturedFunctionExecutionCounts captured_function_counts_;

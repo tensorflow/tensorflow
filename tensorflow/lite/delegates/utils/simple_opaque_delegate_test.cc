@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
@@ -45,9 +44,8 @@ TEST_F(TestDelegate, TestDataAddBin_SingleInputSingleOutput_FullyDelegated) {
   //
   // Create the model and the interpreter
   //
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   ASSERT_NE(options, nullptr);
@@ -123,9 +121,8 @@ TEST(DelegateTest,
       TfLiteOpaqueDelegateFactory::Create(
           std::make_unique<example::SampleStableDelegate>());
 
-  TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
-          .c_str());
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -201,10 +198,8 @@ TEST(DelegateTest, TestDataMultiAddBin_MultiInputMultiOutput_FullyDelegated) {
       TfLiteOpaqueDelegateFactory::Create(
           std::make_unique<example::SampleStableDelegate>());
 
-  TfLiteModel* model =
-      TfLiteModelCreateFromFile(tensorflow::GetDataDependencyFilepath(
-                                    "tensorflow/lite/testdata/multi_add.bin")
-                                    .c_str());
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/multi_add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -424,9 +419,7 @@ TEST_F(TestDelegate, SetBufferHandle) {
   // Load a model and build an interpreter.
   std::unique_ptr<tflite::FlatBufferModel> model =
       tflite::FlatBufferModel::BuildFromFile(
-          tensorflow::GetDataDependencyFilepath(
-              "tensorflow/lite/testdata/add.bin")
-              .c_str());
+          "tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
   tflite::ops::builtin::BuiltinOpResolver resolver;
   tflite::InterpreterBuilder builder(*model, resolver);
@@ -496,9 +489,7 @@ TEST(DelegateTest,
       TfLiteOpaqueDelegateFactory::Create(
           std::make_unique<example::SampleStableDelegate>());
   TfLiteModel* model = TfLiteModelCreateFromFile(
-      tensorflow::GetDataDependencyFilepath(
-          "tensorflow/lite/testdata/conv_huge_im2col.bin")
-          .c_str());
+      "tensorflow/lite/testdata/conv_huge_im2col.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();

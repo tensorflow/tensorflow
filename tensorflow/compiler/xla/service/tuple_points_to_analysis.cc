@@ -519,7 +519,7 @@ Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
   points_to_set.ForEachMutableElement([&](const ShapeIndex& index,
                                           PointsToSet::BufferList* buffers) {
     auto it = aliased_outputs.find(index);
-    if (it == aliased_outputs.end()) {
+    if (it == aliased_outputs.end() || !alias_buffer_across_dataflow_) {
       points_to_set.AddPointedToBuffer(
           logical_buffer_analysis_->GetBuffer(custom_call, index), index);
     } else {

@@ -61,11 +61,6 @@ PluginRegistry::PluginRegistry() {}
   return instance_;
 }
 
-void PluginRegistry::MapPlatformKindToId(PlatformKind platform_kind,
-                                         Platform::Id platform_id) {
-  platform_id_by_kind_[platform_kind] = platform_id;
-}
-
 template <typename FACTORY_TYPE>
 tsl::Status PluginRegistry::RegisterFactoryInternal(
     PluginId plugin_id, const std::string& plugin_name, FACTORY_TYPE factory,
@@ -221,19 +216,6 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
     }                                                                         \
     return GetFactoryInternal(plugin_id, factories_[platform_id].FACTORY_VAR, \
                               generic_factories_.FACTORY_VAR);                \
-  }                                                                           \
-                                                                              \
-  /* TODO(b/22689637): Also temporary WRT MultiPlatformManager */             \
-  template <>                                                                 \
-  tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(     \
-      PlatformKind platform_kind, PluginId plugin_id) {                       \
-    auto iter = platform_id_by_kind_.find(platform_kind);                     \
-    if (iter == platform_id_by_kind_.end()) {                                 \
-      return tsl::Status(absl::StatusCode::kFailedPrecondition,               \
-                         absl::StrFormat("Platform kind %d not registered.",  \
-                                         static_cast<int>(platform_kind)));   \
-    }                                                                         \
-    return GetFactory<PluginRegistry::FACTORY_TYPE>(iter->second, plugin_id); \
   }
 
 EMIT_PLUGIN_SPECIALIZATIONS(BlasFactory, blas, "BLAS");

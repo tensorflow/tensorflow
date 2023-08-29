@@ -95,6 +95,31 @@ cc_library(
 )
 
 cc_library(
+    name = "fused_attention",
+    srcs = ["fused_attention.cc"],
+    hdrs = ["fused_attention.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:custom_call_encoding",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service/gpu:gpu_asm_opts_util",
+        "//tensorflow/compiler/xla/service/gpu:gpu_fused_mha_runner",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:attribute_exporter",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "conv_reorder",
     srcs = ["conv_reorder.cc"],
     hdrs = ["conv_reorder.h"],
@@ -147,6 +172,7 @@ cc_library(
         ":cublas_lt_matmul",
         ":custom_call",
         ":fft",
+        ":fused_attention",
         ":gemm",
         ":graph_launch",
         ":io_feed",
@@ -154,9 +180,11 @@ cc_library(
         ":memcpy",
         ":memset",
         ":send_recv",
+        ":stream_synchronization",
         ":support",
         ":topk",
         ":tracing",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/runtime:executable",
@@ -164,10 +192,14 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:jit_executable",
         "//tensorflow/compiler/xla/runtime:module_registry",
         "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:stream_pool",
         "//tensorflow/compiler/xla/service/gpu:buffer_allocations",
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
+        "//tensorflow/compiler/xla/service/gpu:thunk",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
         "//tensorflow/tsl/protobuf:dnn_proto_cc",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -350,11 +382,9 @@ cc_library(
         ":gemm",
         ":kernel_launch",
         ":support",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
-        "//tensorflow/compiler/xla/runtime:state",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor",
@@ -363,7 +393,8 @@ cc_library(
         "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -373,6 +404,23 @@ cc_library(
     srcs = ["concurrent_region.cc"],
     hdrs = ["concurrent_region.h"],
     deps = [
+        ":support",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:stream_pool",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "stream_synchronization",
+    srcs = ["stream_synchronization.cc"],
+    hdrs = ["stream_synchronization.h"],
+    deps = [
+        ":concurrent_region",
         ":support",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
@@ -478,6 +526,7 @@ cc_library(
     name = "support",
     srcs = ["support.cc"],
     hdrs = ["support.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:custom_call_encoding",
@@ -519,6 +568,7 @@ cc_library(
     name = "tracing",
     srcs = ["tracing.cc"],
     hdrs = ["tracing.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":support",
         "//tensorflow/compiler/xla/runtime:custom_call",

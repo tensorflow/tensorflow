@@ -2707,9 +2707,9 @@ TEST_F(LatencyHidingSchedulerTest, AddDeleteOccupierForSharedResource) {
   CHECK(check_eq({4, 6, 7}));
 
   occupiers.clear();
-  edge1.SetLatency(1);
-  edge2.SetLatency(2);
-  edge3.SetLatency(3);
+  edge1.SetOriginalLatency(1);
+  edge2.SetOriginalLatency(2);
+  edge3.SetOriginalLatency(3);
 
   DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
   CHECK(check_eq({1}));
@@ -2766,25 +2766,22 @@ TEST_F(LatencyHidingSchedulerTest, AddDeleteOccupierForSharedResource) {
   DefaultSchedulerCore::AddOccupierToResource(2, edge3, occupiers);
   CHECK(check_eq({1, 4, 6}));
 
-  HloEdge edge0(0, nullptr);
-  auto res = DefaultSchedulerCore::AddOccupierToResource(1, edge0, occupiers);
-  CHECK(!res);
-
-  edge0.SetLatency(0.5);
+  HloEdge edge0(0.5, nullptr);
   DefaultSchedulerCore::AddOccupierToResource(2, edge0, occupiers);
   CHECK(check_eq({1, 3.5, 4.5, 6.5}));
 
   //========================== Additions & Deletions ===========================
   occupiers.clear();
-  edge1.SetLatency(1);
-  edge2.SetLatency(2);
-  edge3.SetLatency(3);
+  edge1.SetOriginalLatency(1);
+  edge2.SetOriginalLatency(2);
+  edge3.SetOriginalLatency(3);
 
   DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
   DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
   DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
   CHECK(check_eq({3, 5, 6}));
-  res = DefaultSchedulerCore::DeleteOccupierFromResource(0, edge0, occupiers);
+  auto res =
+      DefaultSchedulerCore::DeleteOccupierFromResource(0, edge0, occupiers);
   CHECK(!res);
 
   DefaultSchedulerCore::DeleteOccupierFromResource(0, edge1, occupiers);
@@ -2827,5 +2824,54 @@ TEST_F(LatencyHidingSchedulerTest, AddDeleteOccupierForSharedResource) {
   DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
   DefaultSchedulerCore::DeleteOccupierFromResource(4, edge3, occupiers);
   CHECK(check_eq({3, 4.5}));
+}
+
+TEST_F(LatencyHidingSchedulerTest, DepthPressureReduction) {
+  absl::string_view hlo_string = R"(
+    HloModule serial_collective_permute_test, is_scheduled=true
+    ENTRY after_optimizations_test {
+    %parameter.1 = bf16[8]{0} parameter(0)
+    %parameter.2 = bf16[8]{0} parameter(1)
+    %parameter.3 = bf16[8]{0} parameter(2)
+    %parameter.4 = bf16[8]{0} parameter(3)
+    %collective-permute.2 = bf16[8]{0} collective-permute(parameter.1), source_target_pairs={{0,1},{1,2},{2,3}}
+    %a = bf16[8]{0} add(collective-permute.2, parameter.2)
+    %b = bf16[8]{0} add(a, parameter.3)
+    %c = bf16[8]{0} add(b, parameter.4)
+    %d = bf16[8]{0} add(c, parameter.4)
+    %c1 = bf16[8]{0} copy(d)
+    %e = bf16[8]{0} add(d, parameter.3)
+    %c0 = bf16[8]{0} copy(e)
+    %f = bf16[8]{0} add(e, parameter.2)
+    %h = bf16[8]{0} add(c0, b)
+    %g = bf16[8]{0} add(c1, c)
+    %i = bf16[8]{0} add(f, a)
+    ROOT %t = (bf16[8]{0}, bf16[8]{0}, bf16[8]{0}, bf16[8]{0}) tuple(f, g, h, i)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 0;
+  sched_config.depth_based_memory_pressure_reduction = true;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  const HloInstruction* f = FindInstruction(hlo_module.get(), "f");
+  const HloInstruction* g = FindInstruction(hlo_module.get(), "g");
+  EXPECT_LT(PositionInVector(new_instruction_sequence, g),
+            PositionInVector(new_instruction_sequence, f));
 }
 }  // namespace xla

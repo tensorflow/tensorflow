@@ -45,8 +45,10 @@ extern llvm::cl::opt<bool> upgrade_legacy;
 extern llvm::cl::opt<bool> enable_shape_inference;
 extern llvm::cl::opt<bool> unconditionally_use_set_output_shapes;
 extern llvm::cl::opt<bool> enable_soft_placement;
+extern llvm::cl::opt<bool> set_original_tf_func_name;
 
 // Export options.
 extern llvm::cl::opt<bool> export_entry_func_to_flib;
+extern llvm::cl::opt<bool> export_original_tf_func_name;
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_CL_H_

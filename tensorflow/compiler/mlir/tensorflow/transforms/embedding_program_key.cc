@@ -319,10 +319,10 @@ void RewritePreprocessInputs(OpBuilder* builder, func::FuncOp func_op,
 }
 
 void EmbeddingProgramKeyPass::runOnOperation() {
-  // Find all of the revelant post processing ops.
+  // Find all of the relevant post processing ops.
   llvm::SmallVector<Operation*, 6> preprocess_ops;
 
-  // Handle ops with mini_batch_splits attribute first since all preproccessing
+  // Handle ops with mini_batch_splits attribute first since all preprocessing
   // ops may need to be moved.
   getOperation().walk([&](Operation* op) {
     if (op->hasAttr(kMiniBatchSplitsAttr) &&

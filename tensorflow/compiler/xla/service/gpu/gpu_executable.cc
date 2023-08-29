@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -41,18 +42,23 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
-#include "tensorflow/compiler/xla/service/gpu/openxla/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime2/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -72,17 +78,16 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// If OpenXLA runtime is enabled, it automatically disables "classic" XLA
-// runtime which is enabled by default.
+// If experimental XLA:GPU runtime is enabled, it automatically disables
+// "classic" XLA:GPU runtime which is enabled by default.
 bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config) {
   bool runtime = config.debug_options().xla_gpu_enable_xla_runtime_executable();
-  bool openxla = config.debug_options().xla_gpu_enable_openxla_runtime();
-  return runtime && !openxla;
+  bool gpu2 = config.debug_options().xla_gpu_enable_gpu2_runtime();
+  return runtime && !gpu2;
 }
 
-bool IsOpenXlaRuntimeEnabled(const HloModuleConfig& config) {
-  bool openxla = config.debug_options().xla_gpu_enable_openxla_runtime();
-  return openxla;
+bool IsXlaGpu2RuntimeEnabled(const HloModuleConfig& config) {
+  return config.debug_options().xla_gpu_enable_gpu2_runtime();
 }
 
 namespace {
@@ -119,12 +124,12 @@ StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
     return result;
   }
 
-  if (std::holds_alternative<OwnedOpenXlaRuntimeProgram>(executable)) {
-    auto& program = std::get<OwnedOpenXlaRuntimeProgram>(executable);
+  if (std::holds_alternative<OwnedGpu2RuntimeProgram>(executable)) {
+    auto& program = std::get<OwnedGpu2RuntimeProgram>(executable);
     TF_ASSIGN_OR_RETURN(
-        result->openxla_executable_,
-        OpenXlaRuntimeExecutable::Create(std::move(program), result->text(),
-                                         result->binary()));
+        result->gpu2_runtime_executable_,
+        Gpu2RuntimeExecutable::Create(std::move(program), result->text(),
+                                      result->binary()));
     return result;
   }
 
@@ -180,9 +185,9 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     const ServiceExecutableRunOptions* run_options) {
   se::Stream* main_stream = run_options->stream();
 
-  stream_executor::PlatformKind platform_kind =
-      main_stream->parent()->platform_kind();
-  if (platform_kind == stream_executor::PlatformKind::kROCm) {
+  stream_executor::Platform::Id platform_id =
+      main_stream->parent()->platform()->id();
+  if (platform_id == stream_executor::rocm::kROCmPlatformId) {
     auto cc = main_stream->GetRocmComputeCapability();
     std::string stream_arch = cc.gcn_arch_name();
     std::string gpu_exec_arch =
@@ -190,7 +195,7 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     TF_RET_CHECK(stream_arch == gpu_exec_arch)
         << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_arch
         << ", but was " << stream_arch;
-  } else if (platform_kind == stream_executor::PlatformKind::kCuda) {
+  } else if (platform_id == stream_executor::cuda::kCudaPlatformId) {
     GpuVersion cc = main_stream->GetCudaComputeCapability();
     TF_RET_CHECK(std::get<se::CudaComputeCapability>(cc) ==
                  std::get<se::CudaComputeCapability>(gpu_version_))
@@ -199,7 +204,7 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
         << "}, but was {" << std::get<se::CudaComputeCapability>(cc).ToString()
         << "}";
   } else {
-    return InternalError("Unknown platform: %d", platform_kind);
+    return InternalError("Unknown platform");
   }
 
   return OkStatus();
@@ -225,14 +230,15 @@ Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
   }
 
   // Create the needed streams to support NcclCollectiveThunk.
-  absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comms_streams;
-  for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
-    StatusOr<StreamPool::Ptr> async_comms_stream =
-        run_options->BorrowStream(executor->device_ordinal(), stream_priority);
-    async_comms_streams.push_back(
-        async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
+  absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comms_streams(
+      kAsyncStreamTotal, nullptr);
+  StatusOr<std::vector<StreamPool::Ptr>> streams = run_options->BorrowStreams(
+      executor->device_ordinal(), kAsyncStreamTotal, stream_priority);
+  if (streams.ok()) {
+    for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
+      async_comms_streams[i] = streams->at(i).get();
+    }
   }
-
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
   tsl::profiler::TraceMe hlo_module_activity(
@@ -319,11 +325,11 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
 
   absl::flat_hash_map<int64_t, se::DeviceMemoryBase> globals;
   se::ModuleHandle module_handle;
-  // The CUDA driver isn't able to load empty PTX. It's okay if we skip loading
-  // in this case; if the module isn't loaded, all symbol lookups will fail,
-  // just as they should for an empty module.
-  if (!(executor->platform_kind() == se::PlatformKind::kCuda &&
-        module_spec.cuda_ptx_in_memory() == nullptr)) {
+  // The CUDA driver isn't able to load a PTX and a binary which are both empty.
+  // It's okay if we skip loading in this case; if the module isn't loaded, all
+  // symbol lookups will fail, just as they should for an empty module.
+  if (!(executor->platform()->id() == stream_executor::cuda::kCudaPlatformId &&
+        binary().empty() && text().empty())) {
     TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
   }
 
@@ -540,12 +546,13 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
       block_host_until_done ? run_options->stream() : nullptr);
 }
 
-static Status ExecuteOpenXlaRuntime(
-    const std::string& module_name, ModuleIdentifier module_id,
-    OpenXlaRuntimeExecutable& openxla_executable,
-    const ServiceExecutableRunOptions* run_options,
-    const BufferAllocations& buffer_allocations,
-    const BufferAllocation* temp_buffer, bool block_host_until_done) {
+static Status ExecuteXlaRuntime2(const std::string& module_name,
+                                 ModuleIdentifier module_id,
+                                 Gpu2RuntimeExecutable& gpu2_executable,
+                                 const ServiceExecutableRunOptions* run_options,
+                                 const BufferAllocations& buffer_allocations,
+                                 const BufferAllocation* temp_buffer,
+                                 bool block_host_until_done) {
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
   tsl::profiler::TraceMe hlo_module_activity(
@@ -562,7 +569,7 @@ static Status ExecuteOpenXlaRuntime(
   });
 
   auto executed =
-      openxla_executable.Execute(run_options, buffer_allocations, temp_buffer);
+      gpu2_executable.Execute(run_options, buffer_allocations, temp_buffer);
   if (!executed.ok()) return executed;
 
   return MaybeSyncAndProfile(
@@ -836,10 +843,10 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
                              temp_buffer, block_host_until_done, gpu_lock);
   }
 
-  if (openxla_executable_) {
-    return ExecuteOpenXlaRuntime(module_name_, unique_id, *openxla_executable_,
-                                 run_options, buffer_allocations, temp_buffer,
-                                 block_host_until_done);
+  if (gpu2_runtime_executable_) {
+    return ExecuteXlaRuntime2(
+        module_name_, unique_id, *gpu2_runtime_executable_, run_options,
+        buffer_allocations, temp_buffer, block_host_until_done);
   }
 
   return FailedPrecondition("Expected XLA gpu executable is not supplied.");

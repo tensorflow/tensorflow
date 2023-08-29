@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -223,15 +224,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTensorListOpsDecompositionPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTensorArrayOpsDecompositionPass();
 
-// Create a pass that legalize HLO to TF dialect.
-std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass();
-
 // Create a pass that legalize TFG to TF dialect.
 std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
-
-// Addds the HLO to TF rewrite patterns to the specified pattern list.
-void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
-                                     MLIRContext* context);
 
 // Matches sequence of ops to TensorFlow fused kernels. This pass should not be
 // generally used beyond exporting to runtimes that supports these ops. In the
@@ -496,6 +490,16 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateLaunchToDeviceAttributePass(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateHostLaunchToOutsideCompiledPass();
 
+// Creates a pass that wraps ops with the same `_xla_outside_compilation`
+// attribute value in a tf_device.launch op with host device assignment.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateOutsideCompiledToHostLaunchPass();
+
+// Creates a pass to ensure that the `_xla_outside_compilation` and
+// tf_device.launch op no longer exist after Outside Compilation is complete.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateVerifyNoOutsideCompilationMarkersPass();
+
 // Create a pass that encapsulates StatefulPartitionedCallOp within a cluster.
 std::unique_ptr<OperationPass<ModuleOp>> CreateXlaClusterFormationPass();
 
@@ -527,7 +531,8 @@ CreateTPUPartitionedOpConversionPass();
 
 // Creates a pass that forms clusters from operations of the same
 // `_replication_info` attribute.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass(
+    bool strict_clusters = false);
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUValidateInputsPass();
 
@@ -600,11 +605,6 @@ CreateTPUColocateCompositeResourceOps();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUVariableRuntimeReformattingPass();
 
-// Creates a pass that wraps ops with the same `_xla_outside_compilation`
-// attribute value in a tf_device.launch op with host device assignment.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateOutsideCompiledToHostLaunchPass();
-
 // Creates a pass that expands outside compilation cluster at the head/tail of
 // TPU computation by adding outside compilation attribute to identity/cast ops
 // that are only used for host computation.
@@ -640,6 +640,10 @@ CreateTPUCompileOpReplicationPass();
 // Creates a pass that applies space to depth transform
 // for the first or frontier convolutions consume host inputs on TPU.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUSpaceToDepthPass();
+
+// Adjusts the device on TPUCopyWithDynamicShape ops.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateColocateTPUCopyWithDynamicShapePass();
 
 }  // namespace TFTPU
 
@@ -696,7 +700,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_MERGECONTROLFLOWPASS
 #define GEN_PASS_DECL_MOVETRANSPOSESPASS
 #define GEN_PASS_DECL_ORDERBYDIALECTPASS
-#define GEN_PASS_DECL_OUTSIDECOMPILEDTOHOSTLAUNCHPASS
 #define GEN_PASS_DECL_PARALLELEXECUTETOISLANDSPASS
 #define GEN_PASS_DECL_PREPARETPUCOMPUTATIONFORTFEXPORTPASS
 #define GEN_PASS_DECL_PROMOTERESOURCESTOARGSPASS
@@ -766,8 +769,10 @@ namespace TFDevice {
 #define GEN_PASS_DECL_DEVICEATTRIBUTETOLAUNCHPASS
 #define GEN_PASS_DECL_HOSTLAUNCHTOOUTSIDECOMPILEDPASS
 #define GEN_PASS_DECL_LAUNCHTODEVICEATTRIBUTEPASS
+#define GEN_PASS_DECL_OUTSIDECOMPILEDTOHOSTLAUNCHPASS
 #define GEN_PASS_DECL_RESOURCEOPLIFTINGFORMAINFUNCTIONPASS
 #define GEN_PASS_DECL_RESOURCEOPLIFTINGPASS
+#define GEN_PASS_DECL_VERIFYNOOUTSIDECOMPILATIONMARKERSPASS
 #define GEN_PASS_DECL_XLACLUSTERFORMATIONPASS
 #define GEN_PASS_DECL_XLAINLINEDEVICEOPSPASS
 #define GEN_PASS_DECL_XLAREWRITEPASS

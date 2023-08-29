@@ -36,6 +36,7 @@ list(APPEND TFLITE_LABEL_IMAGE_SRCS
 if(TFLITE_ENABLE_XNNPACK)
   list(APPEND TFLITE_LABEL_IMAGE_SRCS
     ${TFLITE_SOURCE_DIR}/tools/delegates/xnnpack_delegate_provider.cc
+    ${TFLITE_SOURCE_DIR}/core/acceleration/configuration/c/xnnpack_plugin.cc
   )
 else()
   set(TFLITE_LABEL_IMAGE_CC_OPTIONS "-DTFLITE_WITHOUT_XNNPACK")

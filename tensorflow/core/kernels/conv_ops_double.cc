@@ -73,13 +73,27 @@ namespace functor {
       typename TTypes<T, 4, int>::Tensor out);                              \
   extern template struct TransformFilter<GPUDevice, T, int, 4>;             \
   template <>                                                               \
+  void TransformFilter<GPUDevice, T, int, 5>::operator()(                   \
+      const GPUDevice& d, FilterTensorFormat dst_filter_format,             \
+      typename TTypes<T, 5, int>::ConstTensor in,                           \
+      typename TTypes<T, 5, int>::Tensor out);                              \
+  extern template struct TransformFilter<GPUDevice, T, int, 5>;             \
+  template <>                                                               \
   void PadInput<GPUDevice, T, int, 4>::operator()(                          \
       const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,       \
       const std::array<int, 2>& padding_left,                               \
       const std::array<int, 2>& padding_right,                              \
       typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format,     \
       const T& padding_value);                                              \
-  extern template struct PadInput<GPUDevice, T, int, 4>
+  extern template struct PadInput<GPUDevice, T, int, 4>;                    \
+  template <>                                                               \
+  void PadInput<GPUDevice, T, int, 5>::operator()(                          \
+      const GPUDevice& d, typename TTypes<T, 5, int>::ConstTensor in,       \
+      const std::array<int, 3>& padding_left,                               \
+      const std::array<int, 3>& padding_right,                              \
+      typename TTypes<T, 5, int>::Tensor out, TensorFormat data_format,     \
+      const T& padding_value);                                              \
+  extern template struct PadInput<GPUDevice, T, int, 5>
 
 DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
@@ -90,9 +104,13 @@ DECLARE_GPU_SPEC(double);
 REGISTER_KERNEL_BUILDER(
     Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<double>("T"),
     Conv2DOp<GPUDevice, double>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv").Device(DEVICE_GPU).TypeConstraint<double>("T"),
+    ConvOp<GPUDevice, double>);
 
 // Explicit instantiation.
 template struct LaunchConv2DOp<GPUDevice, double>;
+template struct LaunchConvOp<GPUDevice, double>;
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

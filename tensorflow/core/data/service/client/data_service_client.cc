@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/tsl/platform/host_info.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -345,12 +347,14 @@ DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
       CreateDataServiceWorkerClient(params_.protocol, transfer_server);
   if (worker.ok()) {
     LOG(INFO) << "Successfully started client for data transfer protocol '"
-              << transfer_server.protocol() << "'.";
+              << transfer_server.protocol() << "' for worker '"
+              << task_info.worker_address() << "'.";
     return worker;
   }
-  LOG(ERROR) << "Failed to start client for data transfer protocol '"
-             << transfer_server.protocol() << "'; falling back to grpc. "
-             << "Original error: " << worker.status();
+  LOG(WARNING) << "Failed to start client for data transfer protocol '"
+               << transfer_server.protocol() << "' for worker '"
+               << task_info.worker_address() << "'; falling back to grpc. "
+               << "Original error: " << worker.status();
   metrics::RecordTFDataServiceDataTransferProtocolFallback(
       transfer_server.protocol(),
       static_cast<error::Code>(worker.status().raw_code()),
@@ -386,8 +390,12 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
     }
     LOG(INFO)
         << "Failed to find transfer server for default data transfer protocol '"
-        << default_protocol << "'; falling back to grpc. "
-        << "Original error: " << transfer_server.status();
+        << default_protocol << "' for worker '" << task_info.worker_address()
+        << "'; falling back to grpc. Original error: "
+        << transfer_server.status();
+    metrics::RecordTFDataServiceDataTransferProtocolFallback(
+        default_protocol, error::Code::NOT_FOUND,
+        "Failed to find transfer server for default protocol");
   }
   return CreateGrpcWorkerClient(task_info);
 }
@@ -817,8 +825,9 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
           task->worker->GetDataTransferProtocol() == kLocalTransferProtocol) {
         return s;
       }
-      LOG(ERROR) << "failed to use alternative data transfer protocol '"
-                 << task->worker->GetDataTransferProtocol()
+      LOG(ERROR) << "Failed to use alternative data transfer protocol '"
+                 << task->worker->GetDataTransferProtocol() << "' for worker '"
+                 << task->info.worker_address()
                  << "'; falling back to grpc. Original error: " << s;
       metrics::RecordTFDataServiceDataTransferProtocolError(
           task->worker->GetDataTransferProtocol(),

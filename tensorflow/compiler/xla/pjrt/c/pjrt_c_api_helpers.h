@@ -89,12 +89,6 @@ PJRT_EventDeleter MakeEventDeleter(const PJRT_Api* api);
 using PJRT_SerializedExecutableDeleter =
     std::function<void(PJRT_SerializedExecutable*)>;
 
-// Pass in an API pointer; receive a custom deleter for smart pointers.
-// The lifetime of the Api pointed to must be longer than the serialized
-// executable.
-PJRT_SerializedExecutableDeleter MakeSerializedExecutableDeleter(
-    const PJRT_Api* api);
-
 using PJRT_TopologyDescriptionDeleter =
     std::function<void(PJRT_TopologyDescription*)>;
 
@@ -174,6 +168,9 @@ xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk);
 
 PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
                                              PJRT_Device* device);
+
+absl::Span<PJRT_Memory*> GetAddressableMemories(const PJRT_Api* api,
+                                                PJRT_Device* device);
 
 using PJRT_KeyValueGetCFunc =
     std::function<PJRT_Error*(PJRT_KeyValueGetCallback_Args* args)>;

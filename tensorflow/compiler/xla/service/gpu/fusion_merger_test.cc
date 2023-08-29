@@ -603,7 +603,7 @@ fused_computation.105 {
   transpose.238 = f16[1,8,512,1536]{2,3,1,0} transpose(bitcast.1896), dimensions={0,1,3,2}
   param_0.315 = f16[8,512]{1,0} parameter(0)
   broadcast.482 = f16[1,8,512,1536]{2,3,1,0} broadcast(param_0.315), dimensions={1,2}
-  subtract.22 = f16[1,8,512,1536]{2,3,1,0} subtract(transpose.238, broadcast.482) 
+  subtract.22 = f16[1,8,512,1536]{2,3,1,0} subtract(transpose.238, broadcast.482)
   ROOT exponential.15 = f16[1,8,512,1536]{2,3,1,0} exponential(subtract.22)
 }
 

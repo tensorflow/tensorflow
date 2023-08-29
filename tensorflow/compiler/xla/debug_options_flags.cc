@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 
+#include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -28,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_parsers.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/tsl/util/command_line_flags.h"
 
 namespace xla {
 
@@ -78,6 +81,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // TODO(AyanmoI): Remove this flag when cuDNN FMHA is fully supported.
   opts.set_xla_gpu_enable_cudnn_fmha(false);
 
+  opts.set_xla_gpu_fused_attention_use_cudnn_rng(false);
+
   // By default, copy TF's Eigen style min_max behavior with nans.
   opts.set_xla_cpu_enable_fast_min_max(true);
 
@@ -107,7 +112,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_all_reduce_combine_threshold_bytes(kDefaultThreshold);
   opts.set_xla_gpu_all_gather_combine_threshold_bytes(kDefaultThreshold);
   opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(kDefaultThreshold);
+
+  opts.set_xla_gpu_enable_async_collectives(false);
   opts.set_xla_gpu_enable_async_all_reduce(true);
+  opts.set_xla_gpu_enable_async_all_gather(false);
+  opts.set_xla_gpu_enable_async_collective_permute(false);
+  opts.set_xla_gpu_enable_async_all_to_all(false);
+  opts.set_xla_gpu_enable_async_reduce_scatter(false);
+
   opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
 
   opts.set_xla_cpu_enable_xprof_traceme(false);
@@ -119,9 +131,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
 
-  // OpenXLA/IREE runtime flags.
-  opts.set_xla_gpu_enable_openxla_runtime(false);
-  opts.set_xla_gpu_enable_openxla_hal(true);
+  // XLA:GPU + IREE runtime flags.
+  opts.set_xla_gpu_enable_gpu2_runtime(false);
+  opts.set_xla_gpu_enable_gpu2_hal(true);
 
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
@@ -131,12 +143,17 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
   opts.set_xla_dump_latency_hiding_schedule(false);
   opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
-  opts.set_xla_gpu_lhs_enable_gpu_async_tracker(false);
+  opts.set_xla_gpu_lhs_enable_gpu_async_tracker(true);
   opts.set_xla_gpu_pgle_profile_file_or_directory_path("");
-  opts.set_xla_gpu_enable_highest_priority_async_stream(false);
+  opts.set_xla_gpu_enable_highest_priority_async_stream(true);
+
+  opts.set_xla_gpu_enable_pipelined_collectives(false);
   opts.set_xla_gpu_enable_pipelined_all_reduce(false);
   opts.set_xla_gpu_enable_pipelined_all_gather(false);
   opts.set_xla_gpu_enable_pipelined_reduce_scatter(false);
+
+  opts.set_xla_gpu_collective_permute_decomposer_threshold(
+      std::numeric_limits<int64_t>::max());
 
   opts.set_xla_cpu_enable_mlir_tiling_and_fusion(true);
   opts.set_xla_cpu_enable_custom_matmul_tiling(false);
@@ -161,13 +178,19 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_collective_inflation_factor(1);
 
-  opts.set_xla_gpu_enable_experimental_block_size(true);
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
   opts.set_xla_gpu_enable_priority_fusion(false);
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
+
+  opts.set_xla_gpu_copy_insertion_use_region_analysis(true);
+  opts.set_xla_gpu_collect_cost_model_stats(false);
+  opts.set_xla_gpu_enable_split_k_autotuning(true);
+
+  opts.set_xla_gpu_single_wave_autotuning(true);
+  opts.set_xla_gpu_enable_reduction_epilogue_fusion(true);
   return opts;
 }
 
@@ -779,6 +802,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_deterministic_ops(),
                 "Guarantees run-to-run determinism on GPU."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_async_collectives",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_collectives),
+      debug_options->xla_gpu_enable_async_collectives(),
+      "Converts synchronous collective ops into asynchronous."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_async_all_reduce",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_all_reduce),
       debug_options->xla_gpu_enable_async_all_reduce(),
@@ -877,6 +905,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "that dropout support and the developement of this feature as a whole is "
       "in progress. Attention with dropout may cause results to diverge with "
       "and without this  flag turned on."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_fused_attention_use_cudnn_rng",
+      bool_setter_for(&DebugOptions::set_xla_gpu_fused_attention_use_cudnn_rng),
+      debug_options->xla_gpu_fused_attention_use_cudnn_rng(),
+      "Use cudnn random number generator for fused attention kernel."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_enable_cublaslt",
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_cublaslt),
@@ -887,7 +920,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       int32_setter_for(&DebugOptions::set_xla_gpu_graph_level),
       debug_options->xla_gpu_graph_level(),
       "Set GPU graph level. 0 = off; 1 = capture fusions and memcpys; 2 = "
-      "capture convolutions and gemms; 3 = capture collectives."));
+      "capture gemms; 3 = capture convolutions."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_graph_num_runs_to_instantiate",
       int32_setter_for(
@@ -950,16 +983,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
       debug_options->xla_gpu_enable_xla_runtime_executable(),
       "Whether to enable XLA runtime for XLA:GPU backend"));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_openxla_runtime",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_openxla_runtime),
-      debug_options->xla_gpu_enable_openxla_runtime(),
-      "Whether to enable OpenXLA runtime for XLA:GPU backend"));
   flag_list->push_back(
-      tsl::Flag("xla_gpu_enable_openxla_hal",
-                bool_setter_for(&DebugOptions::set_xla_gpu_enable_openxla_hal),
-                debug_options->xla_gpu_enable_openxla_hal(),
-                "Whether to enable OpenXLA CUDA HAL for XLA:GPU backend"));
+      tsl::Flag("xla_gpu_enable_gpu2_runtime",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_gpu2_runtime),
+                debug_options->xla_gpu_enable_gpu2_runtime(),
+                "Whether to enable experimental XLA:GPU runtime"));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_gpu2_hal",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_gpu2_hal),
+                debug_options->xla_gpu_enable_gpu2_hal(),
+                "Whether to enable CUDA HAL in experimental XLA:GPU runtime"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_nccl_termination_timeout_seconds",
       int64_setter_for(
@@ -1071,6 +1104,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_highest_priority_async_stream(),
       "Enable async stream to have the highest priority."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_pipelined_collectives",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_collectives),
+      debug_options->xla_gpu_enable_pipelined_collectives(),
+      "Enable pipelinling of collective instructions (all-reduce, all-gather, "
+      "and reduce-scatter)."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_pipelined_all_reduce",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_all_reduce),
       debug_options->xla_gpu_enable_pipelined_all_reduce(),
@@ -1086,6 +1125,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                     &DebugOptions::set_xla_gpu_enable_pipelined_reduce_scatter),
                 debug_options->xla_gpu_enable_pipelined_reduce_scatter(),
                 "Enable pipelinling of reduce-scatter instructions."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_collective_permute_decomposer_threshold",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_collective_permute_decomposer_threshold),
+      debug_options->xla_gpu_collective_permute_decomposer_threshold(),
+      "Collective permute decomposer threshold."));
   flag_list->push_back(tsl::Flag(
       "xla_partitioning_algorithm", setter_for_xla_partitioning_algorithm,
       DebugOptions::PartitioningAlgorithm_Name(
@@ -1114,12 +1159,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_triton_gemm_any(),
                 "Use Triton-based matrix multiplication for any GEMM it "
                 "supports without filtering only faster ones."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_enable_experimental_block_size",
-                bool_setter_for(
-                    &DebugOptions::set_xla_gpu_enable_experimental_block_size),
-                debug_options->xla_gpu_enable_experimental_block_size(),
-                "Enable experimental block size."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_exhaustive_tiling_search",
       bool_setter_for(&DebugOptions::set_xla_gpu_exhaustive_tiling_search),
@@ -1182,6 +1221,38 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Dumps autotuned Triton fusions to the directory specified by "
       "xla_dump_to or stdout. Each fusion is dumped only once, as an optimized "
       "HLO."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_copy_insertion_use_region_analysis",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_copy_insertion_use_region_analysis),
+      debug_options->xla_gpu_copy_insertion_use_region_analysis(),
+      "If true, use the new fine-grain region-based live range interference"
+      " analysis in the copy insertion optimization pass."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_collect_cost_model_stats",
+      bool_setter_for(&DebugOptions::set_xla_gpu_collect_cost_model_stats),
+      debug_options->xla_gpu_collect_cost_model_stats(),
+      "If true, each fusion instruction will have a cost model runtime "
+      "estimate in backend config after compilation."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_split_k_autotuning",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_split_k_autotuning),
+      debug_options->xla_gpu_enable_split_k_autotuning(),
+      "Enable split_k autotuning for triton gemms."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_single_wave_autotuning",
+      bool_setter_for(&DebugOptions::set_xla_gpu_single_wave_autotuning),
+      debug_options->xla_gpu_single_wave_autotuning(),
+      "Enable single \"wave\" autotuning. This uses more memory for "
+      "compilation, but utilizes CPU cores better, so compilation can be "
+      "faster."));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_reduction_epilogue_fusion",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_reduction_epilogue_fusion),
+      debug_options->xla_gpu_enable_reduction_epilogue_fusion(),
+      "Enable fusion for reduction epilogues"));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

@@ -432,7 +432,7 @@ message HloInputOutputAliasProto {
   //  parameter_shape_index={1, 2},
   // }
   //
-  // This entry indicates that the first paremter's {1, 2} element is
+  // This entry indicates that the first parameter's {1, 2} element is
   // aliased with the {1} element of the root instruction.
   message AliasEntryProto {
     // ShapeIndex of the root hlo.
@@ -448,39 +448,27 @@ message HloInputOutputAliasProto {
   repeated AliasEntryProto entries = 1;
 }
 
-message DynamicParameterBindingProto {
-  // A list of bindings which indicates that the `target_param_dim_num` in
-  // the subshape `target_param_index` of parameter `target_param_num`
-  // is a dynamic dimension and its real dynamic size is represented
-  // by `dynamic_param_index` in parameter `dynamic_param_num`.
+message HloBufferDonorProto {
+  // The following proto describes an input (described by parameter number and a
+  // ShapeIndex of the parameter) that can donate its butter to any output
+  // tensor. It is similar to HloInputOutputAliasProto, but without a paired
+  // output. For example:
   //
-  // As an example, imagine we have a program:
-  //
-  // ENTRY main {
-  //   a = f32[] parameter(0)
-  //   b = f32[10] parameter(1)
-  //   ROOT root = (f32[], f32[10]) tuple(%a, %b)
+  // entry = {
+  //  parameter_number=0,
+  //  parameter_shape_index={1, 2},
   // }
   //
-  // Let's say 'b' (param index 1) is a dynamic shape whose input has
-  // an upperbound of 10 and real size is determined at runtime.'a'
-  // represents the real size of b's first dimension.
-  //
-  // In this case, the fields are set in the following way:
-  // dynamic_param_num = 1
-  // dynamic_param_index = {}
-  // target_param_num = 0
-  // target_param_index = {}
-  // target_param_dim_num = 0
-  message Binding {
-    int64 dynamic_param_num = 1;
-    repeated int64 dynamic_param_index = 2;
-    int64 target_param_num = 3;
-    repeated int64 target_param_index = 4;
-    int64 target_param_dim_num = 5;
+  // This entry indicates that the first parameter's {1, 2} element can donate
+  // its buffer.
+  message BufferDonorEntryProto {
+    // Number of the parameter in entry computation.
+    int64 parameter_number = 1;
+    // ShapeIndex of the parameter instruction.
+    repeated int64 parameter_shape_index = 2;
   }
 
-  repeated Binding entries = 1;
+  repeated BufferDonorEntryProto entries = 1;
 }
 
 message CrossProgramPrefetch {
@@ -551,7 +539,8 @@ message HloModuleProto {
   // Describes alias information between inputs and outputs.
   HloInputOutputAliasProto input_output_alias = 8;
 
-  DynamicParameterBindingProto dynamic_parameter_binding = 9;
+  // Describes the information of input buffer donors.
+  HloBufferDonorProto buffer_donor = 18;
 
   repeated CrossProgramPrefetch cross_program_prefetches = 10;
 
@@ -594,6 +583,9 @@ message HloModuleProto {
 
   // Stack frames index.
   StackFrameIndexProto stack_frame_index = 17;
+
+  reserved 9;
+  reserved "dynamic_parameter_binding";
 }
 
 // Serialization of LogicalBuffer.

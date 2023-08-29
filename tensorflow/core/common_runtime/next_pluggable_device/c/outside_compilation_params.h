@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_OUTSIDE_COMPILATION_PARAMS_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_OUTSIDE_COMPILATION_PARAMS_H_
 
-#include <stddef.h>
-
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
 
@@ -29,6 +27,7 @@ struct SE_OutsideCompilationParams {
   char* device_name;
   char* rendezvous_key;
   TF_RendezvousThunk* rendezvous;
+  OpaqueTransferManagerImpl* opaque_host_device_transfer_mgr;
   TpuSerializedProto host_transfers;
 };
 

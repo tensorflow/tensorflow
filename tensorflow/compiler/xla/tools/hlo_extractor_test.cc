@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/hlo_extractor.h"
 
+#include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -148,9 +152,9 @@ TEST_F(HloExtractorTest, ExtractFromMultipleComputation) {
     calculate_alpha {
       c.1 = f32[] constant(1)
       c.2 = f32[] constant(2)
-      c.3 = f32[] add(c.1, c.2)
-      c.4 = f32[] constant(4)
-      ROOT ret = f32[] subtract(c.4, c.3)
+      add.0 = f32[] add(c.1, c.2)
+      c.3 = f32[] constant(4)
+      ROOT ret = f32[] subtract(add.0, c.3)
     }
     
     ENTRY axpy_computation {
@@ -159,39 +163,58 @@ TEST_F(HloExtractorTest, ExtractFromMultipleComputation) {
       x = f32[10] parameter(0)
       ax = f32[10] multiply(broadcast, x)
       y = f32[10] parameter(1)
-      ROOT add = f32[10] add(ax, y)
+      ROOT add.1 = f32[10] add(ax, y)
     }
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  {
-    // Find the kSubtract instruction in computation: calculate_alpha
-    HloInstruction* inst =
-        FindInstruction(hlo_module.get(), HloOpcode::kSubtract);
-    EXPECT_NE(inst, nullptr);
-    EXPECT_THAT(inst, op::Subtract());
 
-    // Extract from the non-entry computation, with kSubstract instruction as
-    // the new root instruction
-    auto extracted_module = ExtractModule(inst, /*height=*/1);
-    EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
-                op::Subtract(op::Constant(), op::Add()));
-    EXPECT_EQ(extracted_module->computation_count(), 1);
+  HloInstruction* inst = FindInstruction(hlo_module.get(), "add.0");
+  EXPECT_THAT(inst, op::Add());
+
+  auto extract_selector = [&inst](const HloInstruction* hlo_inst) {
+    return hlo_inst != inst;
+  };
+
+  // Exclude `add.0 = f32[] add(c.1, c.2)` from computation `calculate_alpha`,
+  // and replace it with a constant.
+  {
+    auto replace_type_selector = [](const HloInstruction* hlo_inst) {
+      return ReplaceType::kReplaceConst;
+    };
+
+    auto extracted_module =
+        ExtractModule(hlo_module->entry_computation()->root_instruction(),
+                      /*height=*/-1, /*extract_selector=*/extract_selector,
+                      /*replace_type_selector=*/replace_type_selector,
+                      /*cross_computation=*/true);
+    EXPECT_EQ(extracted_module->computation_count(), 2);
+    auto calculate_alpha_root_instruction =
+        FindComputation(extracted_module.get(), "calculate_alpha")
+            ->root_instruction();
+    EXPECT_THAT(calculate_alpha_root_instruction,
+                op::Subtract(op::Constant(), op::Constant()));
   }
 
+  // Exclude `add.0 = f32[] add(c.1, c.2)` from computation `calculate_alpha`,
+  // and replace it with a broadcasted zero.
   {
-    // FindInstruction iterates from the ENTRY computation, therefore, it
-    // matches to the kAdd instruction at the entry computation, instead of the
-    // kAdd instruction in the Computation:calculate_alpha
-    HloInstruction* inst = FindInstruction(hlo_module.get(), "add");
-    EXPECT_NE(inst, nullptr);
-    EXPECT_THAT(inst, op::Add(op::Multiply(), op::Parameter()));
+    auto replace_type_selector = [](const HloInstruction* hlo_inst) {
+      return ReplaceType::kReplaceZeroBroadcast;
+    };
 
-    auto extracted_module = ExtractModule(inst);
-    EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
-                op::Add(op::Multiply(), op::Parameter()));
+    auto extracted_module =
+        ExtractModule(hlo_module->entry_computation()->root_instruction(),
+                      /*height=*/-1, /*extract_selector=*/extract_selector,
+                      /*replace_type_selector=*/replace_type_selector,
+                      /*cross_computation=*/true);
     EXPECT_EQ(extracted_module->computation_count(), 2);
+    auto calculate_alpha_root_instruction =
+        FindComputation(extracted_module.get(), "calculate_alpha")
+            ->root_instruction();
+    EXPECT_THAT(calculate_alpha_root_instruction,
+                op::Subtract(op::Broadcast(op::Constant()), op::Constant()));
   }
 }
 
@@ -352,8 +375,8 @@ ENTRY %entry {
                 op::Add(op::GetTupleElement(op::Constant()), op::Parameter()));
   }
 
-  // Testing kReplaceZeroBroadcast -- replace a scalar (`element`) with a
-  // constant.
+  // Testing kReplaceZeroBroadcast -- replace a scalar (`element`) with
+  // a broadcasted zero.
   {
     auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
       return hlo_inst->opcode() != HloOpcode::kGetTupleElement;
@@ -369,8 +392,24 @@ ENTRY %entry {
                 op::Add(op::Broadcast(), op::Parameter()));
   }
 
-  // Testing kReplaceZeroBroadcast -- replace a tuple op (`tuple.1`) with a
-  // constant.
+  // Testing kReplaceRandomBroadcast -- replace a scalar (`element`) with a
+  // broadcasted random constant.
+  {
+    auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+      return hlo_inst->opcode() != HloOpcode::kGetTupleElement;
+    };
+    auto replace_type_selector =
+        [](const HloInstruction* hlo_inst) -> ReplaceType {
+      return ReplaceType::kReplaceRandomBroadcast;
+    };
+    auto extracted_module =
+        ExtractModule(FindInstruction(hlo_module.get(), "add"),
+                      /*height=*/-1, hlo_selector, replace_type_selector);
+    EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
+                op::Add(op::Broadcast(), op::Parameter()));
+  }
+
+  // Testing kReplaceZeroBroadcast -- replace a tuple op (`tuple.1`) with zeros.
   {
     auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
       return hlo_inst->opcode() != HloOpcode::kTuple;
@@ -378,6 +417,25 @@ ENTRY %entry {
     auto replace_type_selector =
         [](const HloInstruction* hlo_inst) -> ReplaceType {
       return ReplaceType::kReplaceZeroBroadcast;
+    };
+    auto extracted_module =
+        ExtractModule(FindInstruction(hlo_module.get(), "add"),
+                      /*height=*/-1, hlo_selector, replace_type_selector);
+    EXPECT_THAT(
+        extracted_module->entry_computation()->root_instruction(),
+        op::Add(op::GetTupleElement(op::Tuple(op::Tuple(), op::Broadcast())),
+                op::Parameter()));
+  }
+
+  // Testing kReplaceRandomBroadcast -- replace a tuple op (`tuple.1`) with a
+  // broadcasted random constant.
+  {
+    auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+      return hlo_inst->opcode() != HloOpcode::kTuple;
+    };
+    auto replace_type_selector =
+        [](const HloInstruction* hlo_inst) -> ReplaceType {
+      return ReplaceType::kReplaceRandomBroadcast;
     };
     auto extracted_module =
         ExtractModule(FindInstruction(hlo_module.get(), "add"),

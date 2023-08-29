@@ -322,9 +322,18 @@ TEST(MultipleIterationsAutoScalerTest, UnregisterNonexistentIteration) {
 }
 
 TEST(MultipleIterationsAutoScalerTest,
+     UpdateOptimalNumberOfWorkersMetricInvalidCurrentWorkers) {
+  MultipleIterationsAutoScaler auto_scaler;
+  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(0);
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
+  status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(-1);
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(MultipleIterationsAutoScalerTest,
      UpdateOptimalNumberOfWorkersMetricNoReportedTimes) {
   MultipleIterationsAutoScaler auto_scaler;
-  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric();
+  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(1);
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
 }
 
@@ -336,7 +345,7 @@ TEST(MultipleIterationsAutoScalerTest,
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(5)));
   TF_ASSERT_OK(
       auto_scaler.ReportTargetProcessingTime(1, 0, absl::Microseconds(5)));
-  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric();
+  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(1);
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
 }
 
@@ -348,7 +357,7 @@ TEST(MultipleIterationsAutoScalerTest,
                                                 absl::Microseconds(10)));
   TF_ASSERT_OK(auto_scaler.ReportProcessingTime(1, "/worker/task/0:20000",
                                                 absl::Microseconds(10)));
-  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric();
+  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(1);
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
 }
 
@@ -364,10 +373,79 @@ TEST(MultipleIterationsAutoScalerTest,
       auto_scaler.ReportTargetProcessingTime(1, 0, absl::Microseconds(5)));
   TF_ASSERT_OK(auto_scaler.ReportProcessingTime(1, "/worker/task/0:20000",
                                                 absl::Microseconds(10)));
-  TF_ASSERT_OK(auto_scaler.UpdateOptimalNumberOfWorkersMetric());
+  TF_ASSERT_OK(auto_scaler.UpdateOptimalNumberOfWorkersMetric(1));
   monitoring::testing::CellReader<int64_t> cell_reader(
       "/tensorflow/data/service/optimal_number_of_workers");
   EXPECT_GT(cell_reader.Read(), 0);
+  metrics::RecordTFDataServiceOptimalNumberOfWorkers(0);
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     UpdateOptimalNumberOfWorkersMetricIncreaseWithinLimit) {
+  MultipleIterationsAutoScaler auto_scaler;
+
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
+                                                absl::Microseconds(500)));
+  // Estimated workers = 50. Current workers = 15.
+  // 50 <= 15 * 4 = 60, so the estimate is not modified.
+  TF_ASSERT_OK(auto_scaler.UpdateOptimalNumberOfWorkersMetric(15));
+  monitoring::testing::CellReader<int64_t> cell_reader(
+      "/tensorflow/data/service/optimal_number_of_workers");
+  EXPECT_EQ(cell_reader.Read(), 50);
+  metrics::RecordTFDataServiceOptimalNumberOfWorkers(0);
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     UpdateOptimalNumberOfWorkersMetric4xIncreaseLimit) {
+  MultipleIterationsAutoScaler auto_scaler;
+
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(1)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
+                                                absl::Microseconds(10)));
+  // Estimated workers = 10. Current workers = 2.
+  // 10 > 4 * 2 = 8, so the estimate is limited to 8.
+  TF_ASSERT_OK(auto_scaler.UpdateOptimalNumberOfWorkersMetric(2));
+  monitoring::testing::CellReader<int64_t> cell_reader(
+      "/tensorflow/data/service/optimal_number_of_workers");
+  EXPECT_EQ(cell_reader.Read(), 8);
+  metrics::RecordTFDataServiceOptimalNumberOfWorkers(0);
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     UpdateOptimalNumberOfWorkersMetric500IncreaseLimit) {
+  MultipleIterationsAutoScaler auto_scaler;
+
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(1)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
+                                                absl::Microseconds(10000)));
+  // Estimated workers = 10000. Current workers = 1000.
+  // 10000 > 1000 * 4 = 4000, and 10000 > 1000 + 500 = 1500, so the estimate is
+  // limited to min(4000, 1500) = 1500.
+  TF_ASSERT_OK(auto_scaler.UpdateOptimalNumberOfWorkersMetric(1000));
+  monitoring::testing::CellReader<int64_t> cell_reader(
+      "/tensorflow/data/service/optimal_number_of_workers");
+  EXPECT_EQ(cell_reader.Read(), 1500);
+  metrics::RecordTFDataServiceOptimalNumberOfWorkers(0);
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     UpdateOptimalNumberOfWorkersMetricMaxLimit) {
+  MultipleIterationsAutoScaler auto_scaler;
+
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(1)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
+                                                absl::Microseconds(200000)));
+  // Estimated workers = 200000. Current workers = 99700.
+  // The estimate is limited to 100k workers.
+  TF_ASSERT_OK(auto_scaler.UpdateOptimalNumberOfWorkersMetric(99700));
+  monitoring::testing::CellReader<int64_t> cell_reader(
+      "/tensorflow/data/service/optimal_number_of_workers");
+  EXPECT_EQ(cell_reader.Read(), 100000);
   metrics::RecordTFDataServiceOptimalNumberOfWorkers(0);
 }
 

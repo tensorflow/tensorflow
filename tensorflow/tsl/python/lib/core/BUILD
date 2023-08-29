@@ -1,5 +1,6 @@
 # Description:
-# Implementation of custom numpy floats.
+#   Implementation of custom numpy floats.
+
 load("//tensorflow/tsl:tsl.bzl", "if_windows")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_shared_library")
@@ -23,19 +24,13 @@ filegroup(
 
 filegroup(
     name = "basic_hdrs",
-    srcs = [
-        "numpy.h",
-    ],
+    srcs = ["numpy.h"],
 )
 
 cc_library(
     name = "ml_dtypes_lib",
-    srcs = [
-        "ml_dtypes.cc",
-    ],
-    hdrs = [
-        "ml_dtypes.h",
-    ],
+    srcs = ["ml_dtypes.cc"],
+    hdrs = ["ml_dtypes.h"],
     # Requires data dependency in order to load py module from C++.
     data = [
         "@ml_dtypes",
@@ -44,32 +39,6 @@ cc_library(
         "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "@pybind11",
-    ],
-)
-
-# Deprecated, use ml_dtypes_lib.
-cc_library(
-    name = "bfloat16_lib",
-    hdrs = [
-        "bfloat16.h",
-    ],
-    deprecation = "Please use ml_dtypes_lib",
-    deps = [
-        ":ml_dtypes_lib",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-    ],
-)
-
-# Deprecated, use ml_dtypes_lib.
-cc_library(
-    name = "float8_lib",
-    hdrs = [
-        "float8.h",
-    ],
-    deprecation = "Please use ml_dtypes_lib",
-    deps = [
-        ":ml_dtypes_lib",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
     ],
 )
 

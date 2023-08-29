@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/common_runtime/dma_helper.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -137,6 +138,24 @@ TEST(FallbackTensorTest, FallbackTensorCopy) {
     auto copy = fallback_tensor;
     EXPECT_TRUE(copy.is_immutable());
   }
+}
+
+TEST(FallbackTensorTest, FallbackTensorCopyRootBuffer) {
+  int32_t scalar = 123;
+  tensorflow::Tensor tensor(scalar);
+  auto immutable_tensor = ImmutableTensor::Create(tensor);
+
+  FallbackTensor fallback_tensor(&immutable_tensor);
+  EXPECT_TRUE(fallback_tensor.is_immutable());
+
+  EXPECT_EQ(fallback_tensor.buffer()->root_buffer(),
+            tensorflow::DMAHelper::buffer(&tensor));
+
+  FallbackTensor copy = fallback_tensor;
+  EXPECT_TRUE(copy.is_immutable());
+
+  EXPECT_EQ(copy.buffer()->root_buffer(),
+            tensorflow::DMAHelper::buffer(&tensor));
 }
 
 }  // namespace

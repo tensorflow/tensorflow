@@ -85,6 +85,7 @@ class FallbackTensor {
   const TensorBuffer* buffer() const {
     return tensorflow::DMAHelper::buffer(&tensor());
   }
+  TensorBuffer* buffer() { return tensorflow::DMAHelper::buffer(&tensor()); }
 
   bool is_immutable() const { return is_immutable_; }
 

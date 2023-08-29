@@ -124,15 +124,11 @@ void SsePackInner(const int8_t* src, uint8_t* box, int src_rows, int src_cols,
   }
 }
 
-void SsePrepack(uint8_t** dest, const int8_t* tensor, int layout_rows,
+void SsePrepack(uint8_t* dest, const int8_t* tensor, int layout_rows,
                 int layout_cols, int src_rows, int src_cols, int width,
                 int depth) {
   size_t size = layout_rows * layout_cols / 2;
-  int res =
-      posix_memalign(reinterpret_cast<void**>(dest), EIGEN_MAX_ALIGN_BYTES,
-                     size + (EIGEN_MAX_ALIGN_BYTES));
-  (void)res;
-  memset(*dest, static_cast<uint8_t>(119), sizeof(uint8_t) * size);
+  memset(dest, static_cast<uint8_t>(119), sizeof(uint8_t) * size);
   int outer_cols = layout_cols / depth;
   int outer_rows = layout_rows / width;
   int inner_cols = depth;
@@ -141,7 +137,7 @@ void SsePrepack(uint8_t** dest, const int8_t* tensor, int layout_rows,
     for (int outer_col = 0; outer_col < outer_cols; ++outer_col) {
       const int cluster_index = outer_row * outer_cols + outer_col;
       const int real_depth = inner_cols / 2;
-      uint8_t* box = *dest + cluster_index * real_depth * inner_rows;
+      uint8_t* box = dest + cluster_index * real_depth * inner_rows;
       SsePackInner(tensor, box, src_rows, src_cols, outer_row, outer_col,
                    outer_rows, outer_cols, inner_rows, inner_cols);
     }
@@ -343,18 +339,17 @@ void SseRunKernel(const uint8_t* lhs, const int8_t* rhs, int32_t* dst,
   const int outer_cols = (clamped_end_col + RowsRight - 1) / RowsRight;
   const int depth = std::min(lhs_layout_cols / Cols, rhs_layout_cols / Cols);
   const __m128i bitmask = _mm_set1_epi8(15);
-  uint8_t* lhs_vec = nullptr;
+  const uintptr_t padding = 15;
+  std::vector<uint8_t> lhs_vec_data((RowsLeft * lhs_layout_cols / 2) + padding);
+  uint8_t* lhs_vec = lhs_vec_data.data();
   for (int i = start_row; i < outer_rows; ++i) {
     int left_index = i * RowsLeft * lhs_layout_cols / 2;
     const uint8_t* lhs_val_data = lhs + left_index;
     if (!is_aligned(lhs_val_data, 16)) {
       size_t size = RowsLeft * lhs_layout_cols / 2;
-      if (!lhs_vec) {
-        int res = posix_memalign(reinterpret_cast<void**>(&lhs_vec),
-                                 EIGEN_MAX_ALIGN_BYTES,
-                                 size + (EIGEN_MAX_ALIGN_BYTES));
-        (void)res;
-      }
+      uintptr_t aligned =
+          (reinterpret_cast<uintptr_t>(lhs_vec) + padding) & ~(padding);
+      lhs_vec = reinterpret_cast<uint8_t*>(aligned);
       memcpy(lhs_vec, lhs_val_data, size);
       lhs_val_data = lhs_vec;
     }
@@ -404,9 +399,6 @@ void SseRunKernel(const uint8_t* lhs, const int8_t* rhs, int32_t* dst,
         elementPtr += 4;
       }
     }
-  }
-  if (lhs_vec != nullptr) {
-    free(lhs_vec);
   }
 }
 // NOLINTEND

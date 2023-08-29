@@ -34,6 +34,7 @@ class TensorOrMemrefOf<list<Type> allowedTypes> :
 def THLO_Dialect : Dialect {
   let name = "thlo";
   let cppNamespace = "::mlir::thlo";
+  let usePropertiesForAttributes = 0;
 }
 
 class THLO_Op<string mnemonic, list<Trait> traits> :

@@ -20,20 +20,22 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/op.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 
@@ -76,7 +78,6 @@ class TpuOutfeedDequeueOp : public T {
   DataType dtype_;
   xla::Shape xla_shape_;
 
-  // OutfeedDequeueOp is neither copyable nor movable.
   TpuOutfeedDequeueOp(const TpuOutfeedDequeueOp&) = delete;
   TpuOutfeedDequeueOp& operator=(const TpuOutfeedDequeueOp&) = delete;
 };
@@ -129,7 +130,6 @@ class TpuOutfeedDequeueTupleOp : public T {
   std::vector<xla::Shape> xla_shapes_;
   xla::Shape tuple_shape_;
 
-  // OutfeedDequeueTupleOp is neither copyable nor movable.
   TpuOutfeedDequeueTupleOp(const TpuOutfeedDequeueTupleOp&) = delete;
   TpuOutfeedDequeueTupleOp& operator=(const TpuOutfeedDequeueTupleOp&) = delete;
 };

@@ -19,7 +19,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/eval_util.h"
 
 namespace mlir {
 namespace quant {

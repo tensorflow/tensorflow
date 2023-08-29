@@ -15,20 +15,28 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_op.h"
 
 #include <memory>
-#include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/statusor.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/tpu/compilation_result.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compile_op_common.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_options.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tensorflow/tsl/platform/tstring.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace tpu {
-using ::tsl::StatusOr;
 
 TpuCompileOp::TpuCompileOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-  StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> compile_op_impl =
+  absl::StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> compile_op_impl =
       CompileOpImplFactory::Get()->CreateNonMlirImpl(ctx);
   OP_REQUIRES_OK(ctx, compile_op_impl.status());
   impl_ = std::move(compile_op_impl.value());
@@ -37,7 +45,7 @@ TpuCompileOp::TpuCompileOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
 void TpuCompileOp::Compute(OpKernelContext* ctx) { impl_->Compute(ctx); }
 
 TpuCompileMlirOp::TpuCompileMlirOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-  StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> compile_op_impl =
+  absl::StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> compile_op_impl =
       CompileOpImplFactory::Get()->CreateMlirImpl(ctx);
   OP_REQUIRES_OK(ctx, compile_op_impl.status());
   impl_ = std::move(compile_op_impl.value());
@@ -48,14 +56,15 @@ void TpuCompileMlirOp::Compute(OpKernelContext* ctx) { impl_->Compute(ctx); }
 void TpuCompileSucceededAssertOp::Compute(OpKernelContext* ctx) {
   const Tensor compilation_result = ctx->input(0);
   CompilationResultProto proto;
-  Status status;
-  if (!proto.ParseFromString(compilation_result.scalar<tstring>()())) {
+  absl::Status status;
+  if (!proto.ParseFromString(compilation_result.scalar<tsl::tstring>()())) {
     status =
-        errors::InvalidArgument("Unable to parse compilation result proto");
+        absl::InvalidArgumentError("Unable to parse compilation result proto");
   }
   if (!status.ok() || proto.status_code() != error::Code::OK) {
-    status.Update(Status(static_cast<absl::StatusCode>(proto.status_code()),
-                         proto.status_error_message()));
+    status.Update(
+        absl::Status(static_cast<absl::StatusCode>(proto.status_code()),
+                     proto.status_error_message()));
     LOG(WARNING) << "TPU compilation failed: " << status;
     errors::AppendToMessage(&status, "TPU compilation failed");
     if (tensorflow::internal::TpuCompilationFailureClosesChips()) {
@@ -68,7 +77,7 @@ void TpuCompileSucceededAssertOp::Compute(OpKernelContext* ctx) {
                     "as part of device state, and a failed compilation results "
                     "in a device reset.";
 
-      Status close_status = TpuNodeContext::CloseTpuHost();
+      absl::Status close_status = TpuNodeContext::CloseTpuHost();
 
       if (!close_status.ok()) {
         errors::AppendToMessage(&status, close_status.message());
@@ -86,5 +95,6 @@ REGISTER_MODULE_INITIALIZER(register_tpu_compile_op_kernel, {
   REGISTER_KERNEL_BUILDER(Name("TPUCompileSucceededAssert").Device(DEVICE_CPU),
                           TpuCompileSucceededAssertOp);
 });
+
 }  // namespace tpu
 }  // namespace tensorflow

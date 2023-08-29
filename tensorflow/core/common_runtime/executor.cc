@@ -154,9 +154,9 @@ class ExecutorImpl : public Executor {
     return OkStatus();
   }
 
-  void RunAsync(const Args& args, DoneCallback done) override;
-
  private:
+  void RunAsyncInternal(const Args& args, DoneCallback done) override;
+
   template <class PropagatorStateType>
   friend class ExecutorState;
 
@@ -664,12 +664,13 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
   };
   nodestats::SetOpStart(stats);
   {
+    // Always trace async ops.
     profiler::AnnotatedTraceMe activity(
         [async_kernel, state] {
           return async_kernel->TraceString(
               state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
         },
-        profiler::GetTFTraceMeLevel(kernel_stats_->IsExpensive(item)));
+        profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
     immutable_state_.params().device->ComputeAsync(async_kernel, &state->ctx,
                                                    std::move(done));
   }
@@ -1477,7 +1478,7 @@ void ExecutorState<PropagatorStateType>::Finish() {
   }
 }
 
-void ExecutorImpl::RunAsync(const Args& args, DoneCallback done) {
+void ExecutorImpl::RunAsyncInternal(const Args& args, DoneCallback done) {
   if (OpOrderDeterminismRequired()) {
     (new ExecutorState<OrderedPropagatorState>(args, immutable_state_,
                                                &kernel_stats_))

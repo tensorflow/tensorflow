@@ -86,7 +86,6 @@ static constexpr char const* kProgram = R"(HloModule HostTransfer
         is_host_transfer=true,
         frontend_attributes={
           _xla_host_transfer_handler_name="undef",
-          _xla_host_transfer_original_type="f32",
           _xla_host_transfer_rendezvous="undef"
         }
       send-done = token[] send-done(send),
@@ -97,7 +96,6 @@ static constexpr char const* kProgram = R"(HloModule HostTransfer
         is_host_transfer=true,
         frontend_attributes={
           _xla_host_transfer_handler_name="undef",
-          _xla_host_transfer_original_type="f32",
           _xla_host_transfer_rendezvous="undef"
         }
       recv-done = (f32[2], token[]) recv-done(recv),
