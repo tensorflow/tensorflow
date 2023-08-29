@@ -36,6 +36,7 @@ cc_library(
     deps = [
         ":calibration_statistics_collector",
         ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -86,6 +87,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/types:span",
     ],
@@ -98,6 +100,7 @@ tf_cc_test(
     deps = [
         ":calibration_statistics_collector",
         ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_googletest//:gtest_main",
@@ -127,6 +130,7 @@ tf_kernel_library(
     ],
     deps = [
         ":calibrator_singleton_impl",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:framework",
     ],
 )
@@ -155,6 +159,7 @@ tf_py_strict_test(
         ":calibration_statistics_proto_py",
         ":gen_custom_aggregator_op_wrapper",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_quantize_model",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/framework:dtypes",

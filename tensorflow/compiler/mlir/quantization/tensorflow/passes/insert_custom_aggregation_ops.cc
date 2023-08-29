@@ -12,22 +12,29 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <algorithm>
 #include <memory>
-#include <string>
-#include <tuple>
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -35,12 +42,24 @@ namespace mlir {
 namespace quant {
 namespace {
 
+using ::tensorflow::quantization::CalibrationOptions;
+
 constexpr StringRef kQuantTraitAttrName = "_tfl_quant_trait";
 
 class InsertCustomAggregationOpsPass
     : public PassWrapper<InsertCustomAggregationOpsPass,
                          OperationPass<func::FuncOp>> {
  public:
+  explicit InsertCustomAggregationOpsPass() : test_mode_(true) {}
+
+  explicit InsertCustomAggregationOpsPass(const CalibrationOptions &calib_opts)
+      : test_mode_(false), calib_opts_(calib_opts) {}
+
+  InsertCustomAggregationOpsPass(const InsertCustomAggregationOpsPass &other) {
+    test_mode_ = other.test_mode_;
+    calib_opts_ = other.calib_opts_;
+  }
+
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertCustomAggregationOpsPass)
 
   StringRef getArgument() const final {
@@ -59,6 +78,25 @@ class InsertCustomAggregationOpsPass
   }
 
   void runOnOperation() override;
+
+ private:
+  enum TestCase {
+    TEST_CASE_MIN_MAX,
+    TEST_CASE_AVERAGE_MIN_MAX,
+  };
+
+  bool test_mode_;
+  CalibrationOptions calib_opts_;
+  Option<TestCase> test_case_{
+      *this, "test-case",
+      llvm::cl::desc(
+          "Select a the test case for testing various calibration methods. It "
+          "sets the value of calib_opts_ when test_mode_ is true."),
+      llvm::cl::init(TEST_CASE_MIN_MAX),
+      llvm::cl::values(clEnumValN(TEST_CASE_MIN_MAX, "MIN_MAX",
+                                  "Uses MIN_MAX calibration method"),
+                       clEnumValN(TEST_CASE_AVERAGE_MIN_MAX, "AVERAGE_MIN_MAX",
+                                  "Uses AVERAGE_MIN_MAX calibration method"))};
 };
 
 static PassRegistration<InsertCustomAggregationOpsPass> pass;
@@ -67,8 +105,10 @@ class AddCustomAggregationOp : public RewritePattern {
  public:
   // Does not take ownership of context, which must refer to a valid value that
   // outlives this object.
-  explicit AddCustomAggregationOp(MLIRContext *context)
-      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
+  explicit AddCustomAggregationOp(MLIRContext *context,
+                                  const CalibrationOptions &calib_opts)
+      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, context),
+        calib_opts_(calib_opts) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -101,8 +141,12 @@ class AddCustomAggregationOp : public RewritePattern {
       }
 
       // ID attribute will have empty value for now.
-      SmallVector<NamedAttribute, 1> attributes{
-          rewriter.getNamedAttr("id", rewriter.getStringAttr(""))};
+      SmallVector<NamedAttribute, 2> attributes{
+          rewriter.getNamedAttr("id", rewriter.getStringAttr("")),
+          rewriter.getNamedAttr(
+              "serialized_calibration_options",
+              rewriter.getStringAttr(calib_opts_.SerializeAsString())),
+      };
 
       // Insert custom aggregation op between operand and operator.
       rewriter.setInsertionPointAfterValue(input);
@@ -120,6 +164,9 @@ class AddCustomAggregationOp : public RewritePattern {
     // Return failure when there is no matching operand.
     return mutated ? success() : failure();
   }
+
+ private:
+  CalibrationOptions calib_opts_;
 };
 
 void InsertCustomAggregationOpsPass::runOnOperation() {
@@ -127,7 +174,20 @@ void InsertCustomAggregationOpsPass::runOnOperation() {
   RewritePatternSet patterns(ctx);
   func::FuncOp func = getOperation();
 
-  patterns.add<AddCustomAggregationOp>(ctx);
+  if (test_mode_) {
+    switch (test_case_.getValue()) {
+      case TEST_CASE_MIN_MAX:
+        calib_opts_.set_calibration_method(
+            CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
+        break;
+      case TEST_CASE_AVERAGE_MIN_MAX:
+        calib_opts_.set_calibration_method(
+            CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX);
+        break;
+    }
+  }
+
+  patterns.add<AddCustomAggregationOp>(ctx, calib_opts_);
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     func.emitError() << "quant-insert-custom-aggregation-ops failed.";
     signalPassFailure();
@@ -137,8 +197,8 @@ void InsertCustomAggregationOpsPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateInsertCustomAggregationOpsPass() {
-  return std::make_unique<InsertCustomAggregationOpsPass>();
+CreateInsertCustomAggregationOpsPass(const CalibrationOptions &calib_opts) {
+  return std::make_unique<InsertCustomAggregationOpsPass>(calib_opts);
 }
 
 }  // namespace quant

@@ -26,10 +26,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 namespace calibrator {
+
+using tensorflow::quantization::CalibrationOptions;
 
 class CalibratorSingleton {
  public:
@@ -40,12 +43,22 @@ class CalibratorSingleton {
   static void ClearData(absl::string_view id);
 
   // Reports data to singleton using float vector.
-  static void Report(absl::string_view id, const std::vector<float>& data_vec);
+  // Only calculates the required statistics from CalibrationMethod based
+  // on CalibrationOptions.
+  static void Report(absl::string_view id, const std::vector<float>& data_vec,
+                     const CalibrationOptions& calib_opts);
 
   // Reports data to singleton using absl::Span
-  static void Report(absl::string_view id, absl::Span<float> data_span);
+  // Only calculates the required statistics from CalibrationMethod based
+  // on CalibrationOptions.
+  static void Report(absl::string_view id, absl::Span<float> data_span,
+                     const CalibrationOptions& calib_opts);
 
-  static void Report(absl::string_view id, const Tensor& data_tensor);
+  // Reports data to singleton using absl::Span
+  // Only calculates the required statistics from CalibrationMethod based
+  // on CalibrationOptions.
+  static void Report(absl::string_view id, const Tensor& data_tensor,
+                     const CalibrationOptions& calib_opts);
 
   // Returns the calibration statistics of the given id.
   static std::optional<CalibrationStatistics> GetStatistics(

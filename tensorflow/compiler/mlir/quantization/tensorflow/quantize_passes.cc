@@ -144,7 +144,8 @@ void AddQuantizePtqPreCalibrationPasses(
       quantization_options.op_set(),
       quantization_options.enable_two_input_tensors()));
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateInsertCustomAggregationOpsPass());
+      mlir::quant::CreateInsertCustomAggregationOpsPass(
+          quantization_options.calibration_options()));
   pm.addPass(mlir::quant::CreateIssueIDsOfCustomAggregationOpsPass());
 }
 

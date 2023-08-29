@@ -15,31 +15,40 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CALIBRATOR_CALIBRATION_STATISTICS_COLLECTOR_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CALIBRATOR_CALIBRATION_STATISTICS_COLLECTOR_H_
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 namespace calibrator {
+
+using tensorflow::quantization::CalibrationOptions;
 
 class CalibrationStatisticsCollector {
  public:
   explicit CalibrationStatisticsCollector() { ClearData(); }
 
   // Collect data for calibration using float vector.
-  // It internally calls private method Collect(float*, unsigned int).
-  void Collect(const std::vector<float> &data_vec);
+  // It internally calls private method Collect(float*, unsigned int,
+  // CalibrationOptions).
+  void Collect(const std::vector<float>& data_vec,
+               const CalibrationOptions& calib_opts);
 
   // Collect data for calibration using absl::Span<float>.
-  // It internally calls private method Collect(float*, unsigned int).
-  void Collect(absl::Span<float> data_span);
+  // It internally calls private method Collect(float*, unsigned int,
+  // CalibrationOptions).
+  void Collect(absl::Span<float> data_span,
+               const CalibrationOptions& calib_opts);
 
   /// Collect data for calibration using Tensor
-  // It internally calls private method Collect(float*, unsigned int).
-  void Collect(const Tensor &data_tensor);
+  // It internally calls private method Collect(float*, unsigned int,
+  // CalibrationOptions).
+  void Collect(const Tensor& data_tensor, const CalibrationOptions& calib_opts);
 
   // proto message CalibrationStatistics is returned.
   std::optional<CalibrationStatistics> GetStatistics();
@@ -50,10 +59,12 @@ class CalibrationStatisticsCollector {
  private:
   // Collect data for calibration using float pointer and data size N.
   // if N == 0, function terminates immediately.
-  void Collect(const float *data, unsigned int N);
+  void Collect(const float* data, unsigned int N,
+               const CalibrationOptions& calib_opts);
 
   CalibrationStatistics::MinMaxStatistics min_max_statistics_;
   CalibrationStatistics::AverageMinMaxStatistics average_min_max_statistics_;
+  int64_t num_data_;
 };
 
 }  // namespace calibrator
