@@ -79,7 +79,7 @@ PwStreamResultsOp::PwStreamResultsOp(tensorflow::OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, ctx->GetAttr("_callback_id", &callback_id_.id));
 
   auto interface = tensorflow::tfrt_stub::GetGlobalStreamInterfaceFactory()
-                       .CreateWorkerStreamInterface();
+                       .CreateWorkerStreamInterface()(controller_address_);
   OP_REQUIRES_OK(ctx, interface.status());
   stream_ = *std::move(interface);
 }
