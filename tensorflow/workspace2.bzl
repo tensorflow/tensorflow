@@ -610,9 +610,9 @@ def _tf_repositories():
         name = "nccl_archive",
         build_file = "//third_party:nccl/archive.BUILD",
         patch_file = ["//third_party/nccl:archive.patch"],
-        sha256 = "0e3d7b6295beed81dc15002e88abf7a3b45b5c686b13b779ceac056f5612087f",
-        strip_prefix = "nccl-2.16.5-1",
-        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.16.5-1.tar.gz"),
+        sha256 = "6477d83c9edbb34a0ebce6d751a1b32962bc6415d75d04972b676c6894ceaef9",
+        strip_prefix = "nccl-2.18.3-1",
+        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.18.3-1.tar.gz"),
     )
 
     java_import_external(
