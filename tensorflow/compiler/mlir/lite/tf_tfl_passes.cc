@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/passes.h"
@@ -49,8 +50,9 @@ namespace {
 const char kTFLiteDataLayout[] = "NHWC";
 }  // namespace
 
-void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
+void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
                            mlir::OpPassManager& pass_manager) {
+  const mlir::quant::QuantizationSpecs& quant_specs = pass_config.quant_specs;
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreatePrepareQuantizePass(quant_specs));
   if (quant_specs.default_ranges.first.has_value() ||
@@ -84,13 +86,20 @@ void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
       mlir::TFL::CreateOptimizeOpOrderPass());
   // Add optimization pass after quantization for additional fusing
   // opportunities.
+
+  if (!pass_config.unfold_batch_matmul) {
+    // Enable an optimization pass that transforms FC to BatchMatmul only when
+    // `unfold_batch_matmul=false`.
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::CreateOptimizeBatchMatmulPass());
+  }
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
 }
 
-void AddDynamicRangeQuantizationPasses(
-    const mlir::quant::QuantizationSpecs& quant_specs,
-    mlir::OpPassManager& pass_manager) {
+void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
+                                       mlir::OpPassManager& pass_manager) {
+  const mlir::quant::QuantizationSpecs& quant_specs = pass_config.quant_specs;
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreatePrepareDynamicRangeQuantizePass(quant_specs));
   pass_manager.addNestedPass<mlir::func::FuncOp>(
@@ -117,6 +126,12 @@ void AddDynamicRangeQuantizationPasses(
       mlir::TFL::CreateOptimizeOpOrderPass());
   // Add optimization pass after quantization for additional fusing
   // opportunities.
+  if (!pass_config.unfold_batch_matmul) {
+    // Enable an optimization pass that transforms FC to BatchMatmul only when
+    // `unfold_batch_matmul=false`.
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::CreateOptimizeBatchMatmulPass());
+  }
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
 }
@@ -383,6 +398,12 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addPass(mlir::TFL::CreateAnalyzeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeHashTablesPass());
+    if (!pass_config.unfold_batch_matmul) {
+      // Enable an optimization pass that transforms FC to BatchMatmul only when
+      // `unfold_batch_matmul=false`.
+      pass_manager->addNestedPass<mlir::func::FuncOp>(
+          mlir::TFL::CreateOptimizeBatchMatmulPass());
+    }
     pass_manager->addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true,
                                       toco_flags.disable_fuse_mul_and_fc()));
@@ -403,13 +424,13 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     // completed. Add either full integer quantization or dynamic range
     // quantization passes based on quant_specs.
     if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
-      AddQuantizationPasses(pass_config.quant_specs, *pass_manager);
+      AddQuantizationPasses(pass_config, *pass_manager);
       // Remove unnecessary QDQs while handling QAT models.
       pass_manager->addNestedPass<mlir::func::FuncOp>(
           mlir::TFL::CreatePostQuantizeRemoveQDQPass());
     } else if (pass_config.quant_specs
                    .RunAndRewriteDynamicRangeQuantizationPasses()) {
-      AddDynamicRangeQuantizationPasses(pass_config.quant_specs, *pass_manager);
+      AddDynamicRangeQuantizationPasses(pass_config, *pass_manager);
     }
     pass_manager->addPass(mlir::createCanonicalizerPass());
 
