@@ -73,6 +73,12 @@ class TensorIterationSpec {
     // Logical subfragments when this iteration is composed
     // of several HLO dimensions. Product of subfragments equals `count`.
     std::vector<int64_t> subfragments;
+
+    std::string ToString() const {
+      return absl::StrCat("{stride=", stride, ", count=", count,
+                          ", subfragments=[", absl::StrJoin(subfragments, ", "),
+                          "]}");
+    }
   };
   // Description of complex iteration over a sequence of several strides.
   // Describes a logically contiguous dimension of a tensor physically
@@ -99,14 +105,28 @@ class TensorIterationSpec {
   // Compares physical layouts of tensors ignoring subfragments of dimensions.
   bool operator==(const TensorIterationSpec& other) const;
 
+  std::string ToString() const {
+    return absl::StrCat(
+        "{",
+        absl::StrJoin(dim_iteration_specs_, ", ",
+                      [&](std::string* s, const auto& kv) {
+                        absl::StrAppend(
+                            s, kv.first, ": ", "[",
+                            absl::StrJoin(kv.second, ", ",
+                                          [&](std::string* ss, const auto& v) {
+                                            absl::StrAppend(ss, v.ToString());
+                                          }),
+                            "]");
+                      }),
+        "}");
+  }
+
  private:
   StorageType dim_iteration_specs_;
 };
 
 // Analysis of tensor iteration orders within tiled fusions.
 class TritonFusionAnalysis {
-  TritonFusionAnalysis() {}
-
   Status ExecuteForDotFusion(const HloInstruction& dot, int split_k);
 
  public:
@@ -136,10 +156,48 @@ class TritonFusionAnalysis {
     return parameters_.at(scope);
   }
 
+  std::string ToString() const {
+    return absl::StrCat(
+        "TritonFusionAnalysis{\n",
+        absl::StrJoin(iter_specs_, ",\n",
+                      [&](std::string* s, const auto& kv) {
+                        absl::StrAppend(
+                            s, ScopeToString(kv.first), ": ",
+                            IterationSpecByInstructionMapToString(kv.second));
+                      }),
+        "\n}");
+  }
+
  private:
-  absl::flat_hash_map<
-      Scope, absl::flat_hash_map<const HloInstruction*, TensorIterationSpec>>
-      iter_specs_;
+  using IterationSpecByInstructionMap =
+      absl::flat_hash_map<const HloInstruction*, TensorIterationSpec>;
+  using IterationSpecByInstructionByScopeMap =
+      absl::flat_hash_map<Scope, IterationSpecByInstructionMap>;
+
+  static std::string IterationSpecByInstructionMapToString(
+      const IterationSpecByInstructionMap& m) {
+    return absl::StrCat("IterSpec{",
+                        absl::StrJoin(m, ", ",
+                                      [&](std::string* s, const auto& kv) {
+                                        absl::StrAppend(s, kv.first->name(),
+                                                        ": ",
+                                                        kv.second.ToString());
+                                      }),
+                        "}");
+  }
+
+  static std::string ScopeToString(Scope s) {
+    switch (s) {
+      case Scope::LHS:
+        return "LHS";
+      case Scope::RHS:
+        return "RHS";
+      case Scope::OUTPUT:
+        return "OUTPUT";
+    }
+  }
+
+  IterationSpecByInstructionByScopeMap iter_specs_;
   // HLO computation parameters per scope.
   absl::flat_hash_map<Scope, absl::flat_hash_set<const HloInstruction*>>
       parameters_;

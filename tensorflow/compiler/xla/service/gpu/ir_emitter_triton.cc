@@ -750,8 +750,10 @@ StatusOr<LaunchDimensions> MatMulImpl(
   CHECK_GE(block_n, 16);
 
   const DotDimensionNumbers& dims = dot_instr->dot_dimension_numbers();
-  TF_ASSIGN_OR_RETURN(const auto analysis, TritonFusionAnalysis::Execute(
-                                               *dot_instr->parent(), split_k));
+  TF_ASSIGN_OR_RETURN(
+      const TritonFusionAnalysis analysis,
+      TritonFusionAnalysis::Execute(*dot_instr->parent(), split_k));
+  VLOG(6) << analysis.ToString();
 
   // Rely on dot decomposer: there is just one contracting and one
   // non-contracting dimension on each side + batch ones optionally.
