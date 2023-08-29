@@ -263,14 +263,14 @@ GpuTargetConfig::GpuTargetConfig(const se::GpuTargetConfigProto& proto)
     : gpu_device_info(proto.gpu_device_info()),
       platform_name(proto.platform_name()),
       dnn_version_info(proto.dnn_version_info()) {
-  if (proto.has_cuda_compute_capability()) {
+  if (proto.gpu_device_info().has_cuda_compute_capability()) {
     stream_executor::CudaComputeCapability cuda_compute_capability(
-        proto.cuda_compute_capability());
+        proto.gpu_device_info().cuda_compute_capability());
     gpu_version = cuda_compute_capability;
   } else {
-    CHECK(proto.has_rocm_compute_capability());
+    CHECK(proto.gpu_device_info().has_rocm_compute_capability());
     stream_executor::RocmComputeCapability rocm_compute_capability(
-        proto.rocm_compute_capability());
+        proto.gpu_device_info().rocm_compute_capability());
     gpu_version = rocm_compute_capability;
   }
 
@@ -284,12 +284,12 @@ se::GpuTargetConfigProto GpuTargetConfig::ToProto() const {
   if (std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
     auto cuda_compute_capability =
         std::get<se::CudaComputeCapability>(gpu_version);
-    *proto.mutable_cuda_compute_capability() =
+    *proto.mutable_gpu_device_info()->mutable_cuda_compute_capability() =
         cuda_compute_capability.ToProto();
   } else {
     auto rocm_compute_capability =
         std::get<se::RocmComputeCapability>(gpu_version);
-    *proto.mutable_rocm_compute_capability() =
+    *proto.mutable_gpu_device_info()->mutable_rocm_compute_capability() =
         rocm_compute_capability.ToProto();
   }
 

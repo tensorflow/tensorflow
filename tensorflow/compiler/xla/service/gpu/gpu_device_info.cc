@@ -15,13 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+
 namespace xla {
 namespace gpu {
 namespace {
 GpuDeviceInfo GetGpuDeviceInfo(
     const stream_executor::DeviceDescription& device) {
   GpuDeviceInfo device_info;
-  device_info.name = device.name();
+  if (auto cc = device.cuda_compute_capability(); cc.major > 0) {
+    device_info.compute_capability = cc;
+  } else {
+    // Strip the gcn_arch_name down to just the gfx... part.
+    device_info.compute_capability = stream_executor::RocmComputeCapability(
+        device.rocm_compute_capability().gfx_version());
+  }
   device_info.threads_per_block_limit = device.threads_per_block_limit();
   device_info.threads_per_warp = device.threads_per_warp();
   device_info.shared_memory_per_block = device.shared_memory_per_block();

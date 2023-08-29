@@ -99,10 +99,9 @@ cc_library(
 cc_library(
     name = "gpu_types",
     hdrs = ["gpu_types.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/stream_executor:device_description",
-        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -247,6 +246,7 @@ cc_library(
     hdrs = ["gpu_device_info.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":gpu_types",
         "//tensorflow/compiler/xla/stream_executor:device_description_proto_cc",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
     ],
@@ -260,6 +260,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":gpu_device_info",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
     ],
 )
 
@@ -270,6 +271,7 @@ xla_cc_test(
     deps = [
         ":gpu_device_info",
         ":gpu_device_info_for_tests",
+        ":gpu_types",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_description",
@@ -3055,6 +3057,7 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],

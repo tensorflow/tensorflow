@@ -24,7 +24,7 @@ namespace gpu {
 
 constexpr char kDeviceHloOpProfiles[] = R"pb(
   entries {
-    key: "NVIDIA RTX A6000"
+    key: "sm_89"
     value {
       entries {
         instruction {
@@ -590,7 +590,7 @@ constexpr char kDeviceHloOpProfiles[] = R"pb(
   }
 
   entries {
-    key: "NVIDIA A100-SXM4-40GB"
+    key: "sm_80"
     value {
       entries {
         instruction {
@@ -890,7 +890,7 @@ constexpr char kDeviceHloOpProfiles[] = R"pb(
   }
 
   entries {
-    key: "Tesla V100-SXM2-16GB"
+    key: "sm_70"
     value {
       entries {
         instruction {
@@ -1330,7 +1330,7 @@ constexpr char kDeviceHloOpProfiles[] = R"pb(
   }
 
   entries {
-    key: "Tesla P100-SXM2-16GB"
+    key: "sm_60"
     value {
       entries {
         instruction {
@@ -1770,7 +1770,7 @@ constexpr char kDeviceHloOpProfiles[] = R"pb(
   }
 
   entries {
-    key: "NVIDIA TU-AUTO-PROD"
+    key: "sm_75"
     value {
       entries {
         instruction {
