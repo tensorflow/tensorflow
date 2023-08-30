@@ -29,6 +29,11 @@
       `ConcreteFunction`s. See the `tf.types.experimental.FunctionType`
       documentation for more details.
 
+*   `tf.data`:
+
+    *   Moved option `warm_start` from
+        `tf.data.experimental.OptimizationOptions` to `tf.data.Options`.
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>

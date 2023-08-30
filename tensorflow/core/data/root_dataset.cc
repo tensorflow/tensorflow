@@ -129,9 +129,8 @@ void AddTraceMetadata(const RootDataset::Params& params, const Options& options,
     trace_metadata->push_back(
         std::make_pair(kExperiments, absl::StrJoin(experiments, " ")));
   }
-  trace_metadata->push_back(std::make_pair(
-      kWarmStart,
-      options.optimization_options().warm_start() ? "true" : "false"));
+  trace_metadata->push_back(
+      std::make_pair(kWarmStart, options.warm_start() ? "true" : "false"));
 }
 }  // namespace
 
