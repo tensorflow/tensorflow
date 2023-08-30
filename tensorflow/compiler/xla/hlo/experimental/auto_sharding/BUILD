@@ -248,6 +248,7 @@ xla_cc_test(
     srcs = ["auto_sharding_test.cc"],
     deps = [
         ":auto_sharding",
+        ":auto_sharding_option",
         ":auto_sharding_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
