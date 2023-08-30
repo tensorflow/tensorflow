@@ -19,16 +19,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 class MultiOutputFusionTest : public HloTestBase {
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
@@ -106,7 +107,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceAndReduceFusion) {
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Reduce(), op::Reduce()));
+              GmockMatch(m::Tuple(m::Reduce(), m::Reduce())));
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceInputShapes) {
@@ -241,7 +242,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceFusions) {
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Reduce(), op::Reduce()));
+              GmockMatch(m::Tuple(m::Reduce(), m::Reduce())));
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionNoSiblingFusionForCommonScalar) {
@@ -313,7 +314,7 @@ TEST_F(MultiOutputFusionTest,
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Reduce(), op::Reduce(), op::Reduce()));
+              GmockMatch(m::Tuple(m::Reduce(), m::Reduce(), m::Reduce())));
 }
 
 TEST_F(MultiOutputFusionTest,
@@ -457,9 +458,9 @@ TEST_F(MultiOutputFusionTest, InputVariadicReductionFusions) {
             1);
   const HloInstruction* fusion =
       module->entry_computation()->parameter_instruction(0)->users()[0];
-  EXPECT_THAT(fusion, op::Fusion());
+  EXPECT_THAT(fusion, GmockMatch(m::Fusion()));
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Reduce(), op::Reduce()));
+              GmockMatch(m::Tuple(m::Reduce(), m::Reduce())));
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
@@ -489,7 +490,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Multiply(), op::Divide()));
+              GmockMatch(m::Tuple(m::Multiply(), m::Divide())));
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopElementwise) {
@@ -514,7 +515,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopElementwise) {
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Multiply(), op::Divide()));
+              GmockMatch(m::Tuple(m::Multiply(), m::Divide())));
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopsDifferentShapes) {
@@ -578,7 +579,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopAndMultiOutputLoop) {
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Multiply(), op::Exp(), op::Add()));
+              GmockMatch(m::Tuple(m::Multiply(), m::Exp(), m::Add())));
 }
 
 TEST_F(MultiOutputFusionTest,
@@ -665,11 +666,12 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionElementwiseAndReduce) {
   ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
-  const HloInstruction* fusion = root->operand(0)->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root, GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                        m::GetTupleElement())));
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Reduce(), op::Exp()));
+              GmockMatch(m::Tuple(m::Reduce(), m::Exp())));
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduce) {
@@ -693,11 +695,12 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduce) {
   ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
-  const HloInstruction* fusion = root->operand(0)->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root, GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                        m::GetTupleElement())));
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Reduce(), op::Add()));
+              GmockMatch(m::Tuple(m::Reduce(), m::Add())));
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
@@ -739,12 +742,13 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
   ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement(),
-                              op::GetTupleElement()));
-  const HloInstruction* fusion = root->operand(0)->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root,
+              GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                  m::GetTupleElement(), m::GetTupleElement())));
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Reduce(), op::Reduce(), op::Select()));
+              GmockMatch(m::Tuple(m::Reduce(), m::Reduce(), m::Select())));
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
@@ -815,12 +819,13 @@ TEST_F(MultiOutputFusionTest,
   ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement(),
-                              op::GetTupleElement()));
-  const HloInstruction* fusion = root->operand(0)->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root,
+              GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                  m::GetTupleElement(), m::GetTupleElement())));
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Reduce(), op::Reduce(), op::Select()));
+              GmockMatch(m::Tuple(m::Reduce(), m::Reduce(), m::Select())));
 }
 
 TEST_F(MultiOutputFusionTest,

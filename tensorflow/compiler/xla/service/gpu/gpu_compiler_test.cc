@@ -23,9 +23,10 @@ limitations under the License.
 #include "absl/log/scoped_mock_log.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
-#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -34,7 +35,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 using ::testing::IsEmpty;
 using ::testing::Not;
@@ -149,10 +150,11 @@ ENTRY main {
   const HloInstruction* entry_root =
       compiled_module->entry_computation()->root_instruction();
   // Check that we add bitcast when needed.
-  EXPECT_THAT(entry_root, op::Tuple(op::GetTupleElement(op::Fusion()),
-                                    op::GetTupleElement(op::Fusion()),
-                                    op::GetTupleElement(op::Fusion()),
-                                    op::GetTupleElement(op::Fusion())));
+  EXPECT_THAT(
+      entry_root,
+      GmockMatch(m::Tuple(
+          m::GetTupleElement(m::Fusion()), m::GetTupleElement(m::Fusion()),
+          m::GetTupleElement(m::Fusion()), m::GetTupleElement(m::Fusion()))));
 }
 
 class PersistedAutotuningTest : public HloTestBase {

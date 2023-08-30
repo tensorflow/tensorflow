@@ -16,13 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/copy_fusion.h"
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 class CopyFusionTest : public HloTestBase {
  public:
@@ -62,11 +63,11 @@ TEST_F(CopyFusionTest, CopyFusionTransposeOfBroadcastedConstantTwoCopies) {
   ASSERT_TRUE(cf_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
-  const HloInstruction* fusion =
-      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root, GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                        m::GetTupleElement())));
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Transpose(), op::Copy(), op::Copy()));
+              GmockMatch(m::Tuple(m::Transpose(), m::Copy(), m::Copy())));
 }
 
 TEST_F(CopyFusionTest, CopyFusionTransposeTwoCopies) {
@@ -107,11 +108,11 @@ TEST_F(CopyFusionTest, CopyFusionNegateAndTwoCopies) {
   ASSERT_TRUE(cf_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
-  const HloInstruction* fusion =
-      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root, GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                        m::GetTupleElement())));
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Negate(), op::Copy(), op::Copy()));
+              GmockMatch(m::Tuple(m::Negate(), m::Copy(), m::Copy())));
 }
 
 TEST_F(CopyFusionTest, CopyFusionShouldNotRunWithReduce) {
@@ -157,11 +158,11 @@ TEST_F(CopyFusionTest, CopyFusionShouldRunWithUncopiedReduce) {
   ASSERT_TRUE(cf_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
-  const HloInstruction* fusion =
-      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root, GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                        m::GetTupleElement())));
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Multiply(), op::Reduce(), op::Copy()));
+              GmockMatch(m::Tuple(m::Multiply(), m::Reduce(), m::Copy())));
 }
 
 TEST_F(CopyFusionTest, CopyFusionShouldNotFuseForSliceMultioutputFusion) {
@@ -290,11 +291,12 @@ TEST_F(CopyFusionTest, CopyFusionWithDynamicUpdateSliceNotInplace) {
   ASSERT_TRUE(cf_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
-  const HloInstruction* fusion =
-      module->entry_computation()->root_instruction()->operand(0)->operand(0);
-  EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::DynamicUpdateSlice(), op::Negate(), op::Copy()));
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root, GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                        m::GetTupleElement())));
+  EXPECT_THAT(
+      fusion->fused_expression_root(),
+      GmockMatch(m::Tuple(m::DynamicUpdateSlice(), m::Negate(), m::Copy())));
 }
 
 TEST_F(CopyFusionTest, CopyFusionTransposeAndThreeCopies) {
@@ -317,12 +319,13 @@ TEST_F(CopyFusionTest, CopyFusionTransposeAndThreeCopies) {
   ASSERT_TRUE(cf_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement(),
-                              op::GetTupleElement()));
-  const HloInstruction* fusion =
-      module->entry_computation()->root_instruction()->operand(0)->operand(0);
-  EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Transpose(), op::Copy(), op::Copy(), op::Copy()));
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root,
+              GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                  m::GetTupleElement(), m::GetTupleElement())));
+  EXPECT_THAT(
+      fusion->fused_expression_root(),
+      GmockMatch(m::Tuple(m::Transpose(), m::Copy(), m::Copy(), m::Copy())));
 }
 
 TEST_F(CopyFusionTest, CopyFusionRunWithOnlyOneCopy) {
@@ -342,11 +345,10 @@ TEST_F(CopyFusionTest, CopyFusionRunWithOnlyOneCopy) {
   ASSERT_TRUE(cf_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::GetTupleElement());
-  const HloInstruction* fusion =
-      module->entry_computation()->root_instruction()->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root, GmockMatch(m::GetTupleElement(m::Fusion(&fusion))));
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Negate(), op::Copy()));
+              GmockMatch(m::Tuple(m::Negate(), m::Copy())));
 }
 
 TEST_F(CopyFusionTest, CopyFusionNegateAndTwoCopiesAndTransposeCopy) {
@@ -370,12 +372,11 @@ TEST_F(CopyFusionTest, CopyFusionNegateAndTwoCopiesAndTransposeCopy) {
   ASSERT_TRUE(cf_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::Bitcast(),
-                              op::GetTupleElement()));
-  const HloInstruction* fusion =
-      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root, GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                        m::Bitcast(), m::GetTupleElement())));
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Negate(), op::Copy(), op::Copy()));
+              GmockMatch(m::Tuple(m::Negate(), m::Copy(), m::Copy())));
 }
 
 TEST_F(CopyFusionTest, CopyFusionRunWithOnlyOneNonTransposeCopy) {
@@ -400,12 +401,11 @@ TEST_F(CopyFusionTest, CopyFusionRunWithOnlyOneNonTransposeCopy) {
   ASSERT_TRUE(cf_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              op::Tuple(op::GetTupleElement(), op::Bitcast(), op::Bitcast()));
-  const HloInstruction* fusion =
-      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root, GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                        m::Bitcast(), m::Bitcast())));
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Negate(), op::Copy()));
+              GmockMatch(m::Tuple(m::Negate(), m::Copy())));
 }
 
 TEST_F(CopyFusionTest, CopyFusionSkipTupleCopies) {
@@ -452,11 +452,12 @@ TEST_F(CopyFusionTest, CopyFusionTupleAndGetTuple) {
   ASSERT_TRUE(cf_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
-  const HloInstruction* fusion =
-      module->entry_computation()->root_instruction()->operand(0)->operand(0);
-  EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Negate(), op::Negate(), op::Copy(), op::Copy()));
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root, GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                        m::GetTupleElement())));
+  EXPECT_THAT(
+      fusion->fused_expression_root(),
+      GmockMatch(m::Tuple(m::Negate(), m::Negate(), m::Copy(), m::Copy())));
 }
 
 TEST_F(CopyFusionTest, CopyFusionWithFusionReturningTupleAndOtherUser) {
@@ -484,12 +485,12 @@ TEST_F(CopyFusionTest, CopyFusionWithFusionReturningTupleAndOtherUser) {
   ASSERT_TRUE(cf_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              op::Tuple(op::Copy(), op::Bitcast(), op::GetTupleElement()));
-  const HloInstruction* fusion =
-      module->entry_computation()->root_instruction()->operand(2)->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root,
+              GmockMatch(m::Tuple(m::Copy(), m::Bitcast(),
+                                  m::GetTupleElement(m::Fusion(&fusion)))));
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Negate(), op::Negate(), op::Copy()));
+              GmockMatch(m::Tuple(m::Negate(), m::Negate(), m::Copy())));
 }
 
 }  // namespace gpu
