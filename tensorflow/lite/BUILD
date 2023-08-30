@@ -194,9 +194,9 @@ cc_test(
     ],
     deps = [
         ":arena_planner_with_profiler",
+        ":builtin_ops",
         ":graph_info",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -748,7 +748,7 @@ cc_library(
         "//visibility:public",
     ],
     deps = [
-        "//tensorflow/lite:stderr_reporter",
+        ":stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
     ],
 )
@@ -778,7 +778,7 @@ cc_library(
         "//visibility:public",
     ],
     deps = [
-        "//tensorflow/lite:mutable_op_resolver",
+        ":mutable_op_resolver",
         "//tensorflow/lite/core/api:op_resolver",
     ],
 )
