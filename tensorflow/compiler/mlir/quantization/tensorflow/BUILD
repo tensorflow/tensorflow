@@ -349,6 +349,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "passes/add_dump_tensor_op.cc",
         "passes/cast_bf16_ops_to_f32.cc",
         "passes/cast_bf16_ops_to_f32.inc",
         "passes/convert_custom_aggregation_op_to_quant_stats.cc",
@@ -445,6 +446,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/ir/importexport:mangling",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:path",

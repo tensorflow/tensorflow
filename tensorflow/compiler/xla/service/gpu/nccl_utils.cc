@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/rendezvous.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -151,12 +152,26 @@ using NcclClique = Lockable<NcclCliqueState>;
 std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
     RunId run_id, OpId op_id, NcclCliqueKey clique_key,
     const NcclUniqueIdCallback& unique_id_callback,
-    size_t num_local_participants) {
+    size_t num_local_participants, bool may_skip_rendezvous) {
   static auto& cliques = *new ThreadSafeMap<NcclCliqueKey, NcclClique>;
 
   VLOG(2) << "AcquireNcclClique Rendezvous key (clique_key:"
           << clique_key.ToString() << ", run" << run_id.ToString() << ", op"
           << op_id.value() << ")";
+
+  // RendezvousSingle should only be used to guard nccl communicator
+  // initialization. Return the clique state when we are done with such
+  // initialization.
+  //
+  // TODO(bixia): enable this unconditionally after fixing a deadlock issue.
+  if (may_skip_rendezvous) {
+    // Destruct clique if it hasn't been notified.
+    NcclClique::Lock clique = cliques[clique_key].Acquire();
+    if (clique->ready.HasBeenNotified() && clique->run_id == run_id.ToInt()) {
+      return std::make_shared<StatusOr<NcclClique::Lock>>(std::move(clique));
+    }
+  }
+
   auto rendezvous_key = std::make_tuple(run_id, op_id, std::move(clique_key));
 
   int64_t terminate_timeout = xla::GetDebugOptionsFromFlags()
@@ -240,13 +255,15 @@ StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
 StatusOr<NcclComm::Lock> AcquireNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int rank,
-    int64_t stream_id) {
+    const NcclUniqueIdCallback& unique_id_callback, int rank, int64_t stream_id,
+    bool enable_clique_optimization) {
   // Ensure that this group of threads have exclusive access to the clique to
   // prevent threads from different groups locking communicators in the clique.
   NcclCliqueKey clique_key(std::move(participants), stream_id);
   std::shared_ptr<StatusOr<NcclClique::Lock>> clique = AcquireNcclClique(
-      run_id, op_id, clique_key, unique_id_callback, num_local_participants);
+      run_id, op_id, clique_key, unique_id_callback, num_local_participants,
+      enable_clique_optimization ||
+          stream_id == GetStreamId(true, kAsyncStreamP2P));
 
   if (!clique->ok()) return clique->status();
 

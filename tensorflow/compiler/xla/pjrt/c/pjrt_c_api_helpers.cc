@@ -748,4 +748,33 @@ xla::StatusOr<xla::Layout> ConvertToLayout(
   return layout;
 }
 
+PJRT_Buffer_Type GetElementType(const PJRT_Api* api, PJRT_Buffer* buffer) {
+  PJRT_Buffer_ElementType_Args args;
+  args.struct_size = PJRT_Buffer_ElementType_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer;
+  LogFatalIfPjrtError(api->PJRT_Buffer_ElementType(&args), api);
+  return args.type;
+}
+
+absl::Span<const int64_t> GetDimensions(const PJRT_Api* api,
+                                        PJRT_Buffer* buffer) {
+  PJRT_Buffer_Dimensions_Args args;
+  args.struct_size = PJRT_Buffer_Dimensions_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer;
+  LogFatalIfPjrtError(api->PJRT_Buffer_Dimensions(&args), api);
+  return {args.dims, args.num_dims};
+}
+
+PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
+                                         PJRT_Buffer* buffer) {
+  PJRT_Buffer_GetMemoryLayout_Args args;
+  args.struct_size = PJRT_Buffer_GetMemoryLayout_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer;
+  LogFatalIfPjrtError(api->PJRT_Buffer_GetMemoryLayout(&args), api);
+  return args.layout;
+}
+
 }  // namespace pjrt

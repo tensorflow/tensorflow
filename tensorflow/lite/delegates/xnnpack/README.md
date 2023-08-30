@@ -778,6 +778,7 @@ Below is the list of currently supported operators:
 
 * `CONV_2D`
 * `DEPTHWISE_CONV_2D`
+* `RESIZE_BILINEAR`
 
 ### Other limitations
 

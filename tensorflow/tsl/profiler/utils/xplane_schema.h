@@ -307,8 +307,9 @@ enum StatType {
   kDcnDestinationPerSliceDeviceId,
   kDcnChunk,
   kDcnLoopIndex,
-  kModelInfo,
-  kLastStatType = kModelInfo,
+  kEdgeTpuModelInfo,
+  kEdgeTpuModelProfileInfo,
+  kLastStatType = kEdgeTpuModelProfileInfo,
 };
 
 static constexpr uint32_t kLineIdOffset = 10000;

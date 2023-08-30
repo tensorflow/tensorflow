@@ -10,6 +10,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "function_type"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "input_signature"
     mtype: "<type \'property\'>"
   }

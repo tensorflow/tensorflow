@@ -147,8 +147,6 @@ static Status LowerToXlaGpu2Runtime(mlir::ModuleOp module,
                                : RuntimeBackend::kStreamExecutor;
 
   Gpu2PipelineOpts opts;
-  opts.graph_level = debug_options.xla_gpu_graph_level();
-
   populateGpu2RuntimePasses(pm, thunk_sequence, backend, opts);
 
   if (pm.run(module).failed()) {

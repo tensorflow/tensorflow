@@ -1,5 +1,5 @@
 // RUN: tf-quant-opt %s -quant-insert-quantized-functions | FileCheck %s
-// RUN: tf-quant-opt %s -quant-insert-quantized-functions='quantization-method=ptq target-opset=UNIFORM_QUANTIZED' | FileCheck --check-prefix=UQ-CHECK %s
+// RUN: tf-quant-opt %s -quant-insert-quantized-functions='quantization-method=ptq target-opset=UNIFORM_QUANTIZED' --mlir-print-ir-after-all | FileCheck --check-prefix=UQ-CHECK %s
 
 // Empty module
 module {
@@ -51,5 +51,12 @@ module {
 // UQ-CHECK: func private @quantized_depthwise_conv2d_with_bias_and_relu6_fn
 // UQ-CHECK: func private @quantized_depthwise_conv2d_with_relu_fn
 // UQ-CHECK: func private @quantized_depthwise_conv2d_with_relu6_fn
+// UQ-CHECK: func private @quantized_matmul_with_bias_fn
+// UQ-CHECK-SAME: tf_quant.quantized_ops = ["MatMul", "BiasAdd"]
+// UQ-CHECK: func private @quantized_matmul_with_bias_and_relu_fn
+// UQ-CHECK: func private @quantized_matmul_with_bias_and_relu6_fn
+// UQ-CHECK: func private @quantized_matmul_with_relu_fn
+// UQ-CHECK: func private @quantized_matmul_with_relu6_fn
 // UQ-CHECK: func private @quantize_i8
+// UQ-CHECK: func private @quantize_i32
 // UQ-CHECK: func private @dequantize_i8

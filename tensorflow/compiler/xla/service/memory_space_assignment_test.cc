@@ -6748,7 +6748,7 @@ TEST_P(MemorySpaceAssignmentTest, ReduceReservedScopedVmemIfOperandInVmem) {
   Options options = DefaultMemorySpaceOptions();
   options.max_repacks = 10;
   options.repack_after_every_allocation = true;
-  options.reduce_scoped_vmem_limit = true;
+  options.reduce_scoped_memory_limit = true;
   options.reserved_scoped_memory_fn =
       [&](const HloInstruction* instruction,
           const absl::flat_hash_set<std::pair<int, ShapeIndex>>

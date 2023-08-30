@@ -311,7 +311,10 @@ static void Init(py::module_& m) {
           "Returns memory statistics for this device keyed by name. May not be "
           "implemented on all platforms, and different platforms may return "
           "different stats, or -1 for unavailable stats. 'bytes_in_use' is "
-          "usually available. Intended for diagnostic use.");
+          "usually available. Intended for diagnostic use.")
+      .def("get_stream_for_external_ready_events",
+           xla::ValueOrThrowWrapper(
+               &PjRtDevice::GetStreamForExternalReadyEvents));
   static PyMethodDef get_attr_method = {
       "__getattr__",
       +[](PyObject* self, PyObject* args) -> PyObject* {
@@ -780,6 +783,13 @@ static void Init(py::module_& m) {
         xla::ValueOrThrowWrapper(BufferToDLPackManagedTensor),
         py::arg("buffer"), py::arg("take_ownership") = true,
         py::arg("stream") = py::none());
+  m.def("dlpack_managed_tensor_to_buffer",
+        [](const pybind11::capsule& tensor, ClientAndPtr<PjRtDevice> device,
+           std::optional<std::intptr_t> stream) {
+          return xla::ValueOrThrow(DLPackManagedTensorToBuffer(
+              tensor, device.get(), device.client(), stream));
+        });
+  // Legacy overload
   m.def(
       "dlpack_managed_tensor_to_buffer",
       [](const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,

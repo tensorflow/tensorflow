@@ -53,33 +53,36 @@ void CalibratorSingleton::ClearData(absl::string_view id) {
 }
 
 void CalibratorSingleton::Report(absl::string_view id,
-                                 absl::Span<float> data_span) {
+                                 absl::Span<float> data_span,
+                                 const CalibrationOptions& calib_opts) {
   absl::MutexLock lock(&lock_);
 
   CalibratorSingleton& instance = GetInstance();
 
   const std::string id_str{id};
-  instance.id_to_collector_[id_str].Collect(data_span);
+  instance.id_to_collector_[id_str].Collect(data_span, calib_opts);
 }
 
 void CalibratorSingleton::Report(absl::string_view id,
-                                 const std::vector<float>& data_vec) {
+                                 const std::vector<float>& data_vec,
+                                 const CalibrationOptions& calib_opts) {
   absl::MutexLock lock(&lock_);
 
   CalibratorSingleton& instance = GetInstance();
 
   const std::string id_str{id};
-  instance.id_to_collector_[id_str].Collect(data_vec);
+  instance.id_to_collector_[id_str].Collect(data_vec, calib_opts);
 }
 
 void CalibratorSingleton::Report(absl::string_view id,
-                                 const Tensor& data_tensor) {
+                                 const Tensor& data_tensor,
+                                 const CalibrationOptions& calib_opts) {
   absl::MutexLock lock(&lock_);
 
   CalibratorSingleton& instance = GetInstance();
 
   const std::string id_str{id};
-  instance.id_to_collector_[id_str].Collect(data_tensor);
+  instance.id_to_collector_[id_str].Collect(data_tensor, calib_opts);
 }
 
 std::optional<CalibrationStatistics> CalibratorSingleton::GetStatistics(

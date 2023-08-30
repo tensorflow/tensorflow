@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_DEVICE_INFO_H_
 
 #include <string>
+#include <variant>
 
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
@@ -28,7 +30,7 @@ namespace gpu {
 // se::DeviceDescription, but separating these out lets us write code that does
 // not depend on stream executor.
 struct GpuDeviceInfo {
-  std::string name;
+  GpuVersion compute_capability;
   int threads_per_block_limit;
   int threads_per_warp;
   int shared_memory_per_block;
@@ -47,6 +49,13 @@ struct GpuDeviceInfo {
 
   stream_executor::GpuDeviceInfoProto ToProto() const {
     stream_executor::GpuDeviceInfoProto proto;
+    if (auto* ptr = std::get_if<stream_executor::CudaComputeCapability>(
+            &compute_capability))
+      *proto.mutable_cuda_compute_capability() = ptr->ToProto();
+    if (auto* ptr = std::get_if<stream_executor::RocmComputeCapability>(
+            &compute_capability))
+      *proto.mutable_rocm_compute_capability() = ptr->ToProto();
+
     proto.set_threads_per_block_limit(threads_per_block_limit);
     proto.set_threads_per_warp(threads_per_warp);
     proto.set_shared_memory_per_block(shared_memory_per_block);
@@ -67,6 +76,13 @@ struct GpuDeviceInfo {
 
   GpuDeviceInfo() = default;
   explicit GpuDeviceInfo(const stream_executor::GpuDeviceInfoProto& proto) {
+    if (proto.has_cuda_compute_capability()) {
+      compute_capability = stream_executor::CudaComputeCapability(
+          proto.cuda_compute_capability());
+    } else {
+      compute_capability = stream_executor::RocmComputeCapability(
+          proto.rocm_compute_capability());
+    }
     threads_per_block_limit = proto.threads_per_block_limit();
     threads_per_warp = proto.threads_per_warp();
     shared_memory_per_block = proto.shared_memory_per_block();

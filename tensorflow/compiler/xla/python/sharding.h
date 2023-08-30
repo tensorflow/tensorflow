@@ -98,7 +98,7 @@ class NamedSharding : public XLACompatibleSharding {
     return type;
   }
 
-  std::shared_ptr<PyDeviceList> internal_device_list() {
+  std::shared_ptr<PyDeviceList> internal_device_list() const {
     return internal_device_list_;
   }
 
@@ -129,7 +129,7 @@ class SingleDeviceSharding : public XLACompatibleSharding {
     return type;
   }
 
-  std::shared_ptr<PyDeviceList> internal_device_list() {
+  std::shared_ptr<PyDeviceList> internal_device_list() const {
     return internal_device_list_;
   }
 
@@ -156,7 +156,7 @@ class PmapSharding : public XLACompatibleSharding {
     return type;
   }
 
-  std::shared_ptr<PyDeviceList> internal_device_list() {
+  std::shared_ptr<PyDeviceList> internal_device_list() const {
     return internal_device_list_;
   }
 
@@ -213,7 +213,7 @@ class GSPMDSharding : public XLACompatibleSharding {
            this->memory_kind().equal(other.memory_kind());
   }
 
-  std::shared_ptr<PyDeviceList> internal_device_list() {
+  std::shared_ptr<PyDeviceList> internal_device_list() const {
     return internal_device_list_;
   }
 

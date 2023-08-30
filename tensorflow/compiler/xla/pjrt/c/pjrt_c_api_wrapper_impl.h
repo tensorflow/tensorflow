@@ -279,8 +279,6 @@ PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
 PJRT_Error* PJRT_Buffer_DynamicDimensionIndices(
     PJRT_Buffer_DynamicDimensionIndices_Args* args);
 PJRT_Error* PJRT_Buffer_GetMemoryLayout(PJRT_Buffer_GetMemoryLayout_Args* args);
-PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
-    PJRT_Buffer_OnDeviceTrimmedShape_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
     PJRT_Buffer_OnDeviceSizeInBytes_Args* args);
 PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args);
@@ -486,11 +484,10 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_Buffer_DynamicDimensionIndices,
       /*PJRT_Buffer_GetMemoryLayout=*/
       pjrt::PJRT_Buffer_GetMemoryLayout,
-      /*PJRT_Buffer_OnDeviceTrimmedShape=*/
-      pjrt::PJRT_Buffer_OnDeviceTrimmedShape,
       /*PJRT_Buffer_OnDeviceSizeInBytes=*/
       pjrt::PJRT_Buffer_OnDeviceSizeInBytes,
       /*PJRT_Buffer_Device=*/pjrt::PJRT_Buffer_Device,
+      /*PJRT_Buffer_Memory=*/pjrt::PJRT_Buffer_Memory,
       /*PJRT_Buffer_Delete=*/pjrt::PJRT_Buffer_Delete,
       /*PJRT_Buffer_IsDeleted=*/pjrt::PJRT_Buffer_IsDeleted,
       /*PJRT_Buffer_CopyToDevice=*/pjrt::PJRT_Buffer_CopyToDevice,
@@ -528,12 +525,7 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_TopologyDescription_Serialize=*/
       pjrt::PJRT_TopologyDescription_Serialize,
 
-      /*.PJRT_Compile=*/pjrt::PJRT_Compile,
-
-      // Always add new fields to the end of the struct.
-      // TODO(skyewm, jieying): Move fields below to their corresponding places
-      // after each major version bump.
-      /*PJRT_Buffer_Memory=*/pjrt::PJRT_Buffer_Memory,
+      /*PJRT_Compile=*/pjrt::PJRT_Compile,
   };
 }
 

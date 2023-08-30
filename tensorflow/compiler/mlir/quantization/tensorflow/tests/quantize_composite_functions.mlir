@@ -199,3 +199,88 @@ module {
 // CHECK: Number of quantize layers added: 0
 // CHECK: Number of dequantize layers added: 0
 }
+
+// -----
+
+module {
+  func.func @conv_with_dump(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    %cst = "tf.Const"() {device = "", value = dense<[-0.0192535277, -5.998660e-03]> : tensor<2xf32>} : () -> tensor<2xf32>
+    %cst_0 = "tf.Const"() {device = "", value = dense<[[[[-0.282878935, -0.211567819], [-0.248810023, -0.0989695191]], [[0.400888503, 0.0803082585], [-0.0671417713, -0.23301053]]], [[[0.345862567, 0.311298311], [-0.595954239, 0.202630222]], [[-0.606417357, -0.257358253], [-0.3036502, -0.35013032]]]]> : tensor<2x2x2x2xf32>} : () -> tensor<2x2x2x2xf32>
+    %cst_1 = "tf.Const"() {device = "", value = dense<[-0.0291469581, 0.0106381178]> : tensor<2xf32>} : () -> tensor<2xf32>
+    %cst_2 = "tf.Const"() {device = "", value = dense<[[[[0.208403707, 0.478067577], [0.593097508, -0.305721074]], [[-0.114346057, 0.583530128], [0.211413622, -0.606618404]]], [[[0.314416587, -0.260997623], [-0.375806928, 0.0813755393]], [[-0.208318114, 0.275989294], [-3.469230e-01, -0.406548172]]]]> : tensor<2x2x2x2xf32>} : () -> tensor<2x2x2x2xf32>
+    %0 = "quantfork.stats"(%arg0) {layerStats = dense<[1.878980e-02, 0.988373816]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    %1 = "tf.PartitionedCall"(%0, %cst_0, %cst) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", device = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_20} : (tensor<*xf32>, tensor<2x2x2x2xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %2 = "quantfork.stats"(%1) {layerStats = dense<[0.000000e+00, 0.36084348]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    "tf.DumpTensor"(%2) {device = "", enabled = true, file_name = "quantized_tensor_data.pb", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2"} : (tensor<*xf32>) -> ()
+    %3 = "tf.PartitionedCall"(%2, %cst_2, %cst_1) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", device = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_10} : (tensor<*xf32>, tensor<2x2x2x2xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %4 = "quantfork.stats"(%3) {layerStats = dense<[0.000000e+00, 0.18486841]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    %5 = "tf.Identity"(%4) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+    %6 = "quantfork.stats"(%5) {layerStats = dense<[0.000000e+00, 0.18486841]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    %7 = "tf.PartitionedCall"(%2, %cst_2, %cst_1) {config = "", config_proto = "", device = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1_00} : (tensor<*xf32>, tensor<2x2x2x2xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %8 = "quantfork.stats"(%7) {layerStats = dense<[0.000000e+00, 0.18486841]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    %9 = "tf.PartitionedCall"(%0, %cst_0, %cst) {config = "", config_proto = "", device = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_2_00} : (tensor<*xf32>, tensor<2x2x2x2xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %10 = "quantfork.stats"(%9) {layerStats = dense<[0.000000e+00, 0.36084348]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    "tf.DumpTensor"(%10) {device = "", enabled = true, file_name = "unquantized_tensor_data.pb", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2"} : (tensor<*xf32>) -> ()
+    "tf.DumpTensor"(%4) {device = "", enabled = true, file_name = "quantized_tensor_data.pb", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1"} : (tensor<*xf32>) -> ()
+    "tf.DumpTensor"(%8) {device = "", enabled = true, file_name = "unquantized_tensor_data.pb", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1"} : (tensor<*xf32>) -> ()
+    func.return %6 : tensor<*xf32>
+  }
+
+  func.func private @composite_conv2d_with_bias_and_relu6_fn_10(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
+    %0 = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %1 = "tf.BiasAdd"(%0, %arg2) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %2 = "tf.Relu6"(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    func.return %2 : tensor<*xf32>
+  }
+  func.func private @composite_conv2d_with_bias_and_relu6_fn_1_00(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
+    %0 = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %1 = "tf.BiasAdd"(%0, %arg2) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %2 = "tf.Relu6"(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    func.return %2 : tensor<*xf32>
+  }
+  func.func private @composite_conv2d_with_bias_and_relu6_fn_20(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
+    %0 = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %1 = "tf.BiasAdd"(%0, %arg2) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %2 = "tf.Relu6"(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    func.return %2 : tensor<*xf32>
+  }
+  func.func private @composite_conv2d_with_bias_and_relu6_fn_2_00(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
+    %0 = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %1 = "tf.BiasAdd"(%0, %arg2) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %2 = "tf.Relu6"(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    func.return %2 : tensor<*xf32>
+  }
+
+// CHECK-LABE: @conv_with_dump
+// CHECK-DAG: %[[w0_float:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}-0.282878935, -0.211567819
+// CHECK-DAG: %[[b0_float:.*]] = "tf.Const"() {value = dense<[-0.0192535277, -5.998660e-03]> : tensor<2xf32>} : () -> tensor<2xf32>
+// CHECK-DAG: %[[w1_float:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}0.208403707, 0.478067577
+// CHECK-DAG: %[[b1_float:.*]] = "tf.Const"() {value = dense<[-0.0291469581, 0.0106381178]> : tensor<2xf32>} : () -> tensor<2xf32>
+// CHECK-DAG: %[[w0_quantized:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}-59, -44
+// CHECK-DAG: %[[b0_quantized:.*]] = "tf.Const"() {value = dense<[-1040, -324]> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK-DAG: %[[w1_quantized:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}44, 100
+// CHECK-DAG: %[[b1_quantized:.*]] = "tf.Const"() {value = dense<[-4312, 1574]> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK-DAG: %[[in_scale:.*]] = "tf.Const"() {value = dense<0.00387597573> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG: %[[in_out_zp:.*]] = "tf.Const"() {value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG: %[[w0_scale:.*]] = "tf.Const"() {value = dense<0.00477493973> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG: %[[w_b_zp:.*]]  = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG: %[[b0_scale:.*]] = "tf.Const"() {value = dense<1.85075514E-5> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG: %[[mid_scale:.*]] = "tf.Const"() {value = dense<0.00141507247> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG: %[[w1_scale:.*]] = "tf.Const"() {value = dense<0.00477652298> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG: %[[b1_scale:.*]] = "tf.Const"() {value = dense<6.75912588E-6> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG: %[[out_scale:.*]] = "tf.Const"() {value = dense<7.24974147E-4> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG: %[[arg_quantized:.*]] = "tf.PartitionedCall"(%arg0, %[[in_scale]], %[[in_out_zp]]) {config = "", config_proto = "", executor_type = "", f = @quantize_i8}
+// CHECK-DAG: %[[conv0_quantized:.*]] = "tf.PartitionedCall"(%[[arg_quantized]], %[[w0_quantized]], %[[b0_quantized]], %[[in_scale]], %[[in_out_zp]], %[[w0_scale]], %[[w_b_zp]], %[[b0_scale]], %[[w_b_zp]], %[[mid_scale]], %[[in_out_zp]]) {config = "", config_proto = "", executor_type = "", f = @quantized_conv2d_with_bias_and_relu6_fn_1}
+// CHECK-DAG: %[[conv0_dequantized:.*]] = "tf.PartitionedCall"(%[[conv0_quantized]], %[[mid_scale]], %[[in_out_zp]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_i8}
+// CHECK-DAG: %[[conv1_quantized:.*]] = "tf.PartitionedCall"(%[[conv0_quantized]], %[[w1_quantized]], %[[b1_quantized]], %[[mid_scale]], %[[in_out_zp]], %[[w1_scale]], %[[w_b_zp]], %[[b1_scale]], %[[w_b_zp]], %[[out_scale]], %[[in_out_zp]]) {config = "", config_proto = "", executor_type = "", f = @quantized_conv2d_with_bias_and_relu6_fn_0}
+// CHECK-DAG: %[[conv1_dequantized_0:.*]] = "tf.PartitionedCall"(%[[conv1_quantized]], %[[out_scale]], %[[in_out_zp]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_i8}
+// CHECK-DAG: %[[conv1_dequantized_1:.*]] = "tf.PartitionedCall"(%[[conv1_quantized]], %[[out_scale]], %[[in_out_zp]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_i8}
+// CHECK-DAG: %[[identity:.*]] = "tf.Identity"(%[[conv1_dequantized_1]])
+// CHECK-DAG: %[[conv0_float:.*]] = "tf.PartitionedCall"(%arg0, %[[w0_float]], %[[b0_float]]) {config = "", config_proto = "", device = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_2_00}
+// CHECK-DAG: %[[conv1_float:.*]] = "tf.PartitionedCall"(%[[conv0_dequantized]], %[[w1_float]], %[[b1_float]]) {config = "", config_proto = "", device = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1_00}
+// CHECK-DAG: "tf.DumpTensor"(%[[conv0_dequantized]]) {device = "", enabled = true, file_name = "quantized_tensor_data.pb", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2"}
+// CHECK-DAG: "tf.DumpTensor"(%[[conv0_float]]) {device = "", enabled = true, file_name = "unquantized_tensor_data.pb", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2"}
+// CHECK-DAG: "tf.DumpTensor"(%[[conv1_dequantized_0]]) {device = "", enabled = true, file_name = "quantized_tensor_data.pb", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1"}
+// CHECK-DAG: "tf.DumpTensor"(%[[conv1_float]]) {device = "", enabled = true, file_name = "unquantized_tensor_data.pb", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1"}
+// CHECK-DAG: return %[[identity]]
+}

@@ -36,7 +36,7 @@ struct PassConfig {
         trim_functions_allowlist({}),
         quant_specs(std::move(specs)),
         form_clusters(false),
-        unfold_batch_matmul(true),
+        unfold_batch_matmul(false),
         shape_inference(true),
         runtime_verification(true),
         enable_tflite_variables(false),
@@ -62,8 +62,8 @@ struct PassConfig {
   // If `form_clusters` is true , clusters are formed by grouping consecutive
   // ops of the same device, under a `tf_device.launch` op.
   bool form_clusters;
-  // if `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
-  // of tfl.fully_connected ops.
+  // If `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
+  // of tfl.fully_connected ops. Default value is false.
   bool unfold_batch_matmul;
   // Whether to outline WhileOp at the end of the pipeline.
   bool outline_tf_while = false;

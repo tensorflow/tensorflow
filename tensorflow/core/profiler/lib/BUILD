@@ -10,10 +10,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-    ],
+    default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
 
@@ -223,7 +220,9 @@ cc_library(
 cc_library(
     name = "scoped_annotation_stack",
     hdrs = ["scoped_annotation_stack.h"],
-    visibility = ["//tensorflow/compiler/xla:runtime"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",

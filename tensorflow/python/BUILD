@@ -466,7 +466,11 @@ tf_python_pybind_extension(
         "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
         "//tensorflow:windows": [],
     }),
+    enable_stub_generation = True,
     features = ["-layering_check"],
+    pytype_srcs = [
+        "_pywrap_tfcompile.pyi",
+    ],
     static_deps = tf_python_pybind_static_deps(),
     deps = [
         ":tfcompile_headers_lib",
@@ -485,6 +489,10 @@ tf_python_pybind_extension(
         "//tensorflow/python/training:quantize_training_wrapper.cc",
     ],
     hdrs = ["//tensorflow/core/common_runtime:quantize_training_hdrs"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_quantize_training.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -526,6 +534,10 @@ tf_python_pybind_extension(
         "lite/toco_python_api_wrapper.cc",
     ],
     hdrs = ["//tensorflow/lite/toco/python:toco_python_api_hdrs"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_toco_api.pyi",
+    ],
     deps = [
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
@@ -1080,6 +1092,10 @@ py_strict_library(
 tf_python_pybind_extension(
     name = "flags_pybind",
     srcs = ["//tensorflow/core/config:flags_api_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "flags_pybind.pyi",
+    ],
     visibility = ["//tensorflow/core/config:__subpackages__"],
     deps = [
         "//tensorflow/core:lib_headers_for_pybind",
@@ -1094,6 +1110,10 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_sanitizers",
     srcs = ["sanitizers_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_sanitizers.pyi",
+    ],
     deps = [
         "@pybind11",
     ],
@@ -1226,6 +1246,10 @@ tf_python_pybind_extension(
         "//tensorflow/c/eager:pywrap_headers_monitoring_reader",
         "//tensorflow/python/util:util_hdr",
     ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_tfe_monitoring_reader.pyi",
+    ],
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
@@ -1266,6 +1290,10 @@ tf_python_pybind_extension(
         "//tensorflow/c/eager/parallel_device:sources",
         "//tensorflow/python/distribute/parallel_device:pywrap_parallel_device.cc",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
+    ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_parallel_device.pyi",
     ],
     visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
     deps = [

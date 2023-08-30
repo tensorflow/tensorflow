@@ -99,10 +99,9 @@ cc_library(
 cc_library(
     name = "gpu_types",
     hdrs = ["gpu_types.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/stream_executor:device_description",
-        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -247,6 +246,7 @@ cc_library(
     hdrs = ["gpu_device_info.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":gpu_types",
         "//tensorflow/compiler/xla/stream_executor:device_description_proto_cc",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
     ],
@@ -260,6 +260,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":gpu_device_info",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
     ],
 )
 
@@ -270,6 +271,7 @@ xla_cc_test(
     deps = [
         ":gpu_device_info",
         ":gpu_device_info_for_tests",
+        ":gpu_types",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_description",
@@ -472,6 +474,7 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/mlir_hlo:map_mhlo_to_scalar_op",
+        "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/stream_executor:device_description",
@@ -2396,6 +2399,55 @@ cc_library(
 )
 
 cc_library(
+    name = "fusion_pipeline",
+    srcs = ["fusion_pipeline.cc"],
+    hdrs = ["fusion_pipeline.h"],
+    deps = [
+        ":fusion_merger",
+        ":gpu_device_info",
+        ":gpu_hlo_cost_analysis",
+        ":gpu_shape_verifier",
+        ":horizontal_input_fusion",
+        ":horizontal_loop_fusion",
+        ":instruction_fusion",
+        ":multi_output_fusion",
+        ":priority_fusion",
+        ":variadic_op_splitter",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/compiler/xla/service:hlo_cse",
+        "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:layout_assignment",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+    ],
+)
+
+cc_library(
+    name = "prepare_hlo_for_ir_emitting_pipeline",
+    srcs = ["prepare_hlo_for_ir_emitting_pipeline.cc"],
+    hdrs = ["prepare_hlo_for_ir_emitting_pipeline.h"],
+    deps = [
+        ":alias_passthrough_params",
+        ":copy_fusion",
+        ":gpu_sanitize_constant_names",
+        ":gpu_shape_verifier",
+        ":horizontal_loop_fusion",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:copy_insertion",
+        "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
+        "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:layout_assignment",
+        "//tensorflow/compiler/xla/service:loop_schedule_linearizer",
+    ],
+)
+
+cc_library(
     name = "gpu_compiler",
     srcs = if_gpu_is_configured([
         "gpu_compiler.cc",
@@ -2583,7 +2635,11 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:traceme",
-    ]) + ["//tensorflow/tsl/lib/monitoring:counter"],
+    ]) + [
+        ":fusion_pipeline",
+        ":prepare_hlo_for_ir_emitting_pipeline",
+        "//tensorflow/tsl/lib/monitoring:counter",
+    ],
 )
 
 xla_cc_test(
@@ -3055,6 +3111,7 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],

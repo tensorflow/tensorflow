@@ -20,6 +20,20 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
+* Making the tf.function type system fully available:
+    * `tf.types.experimental.TraceType` now allows custom tf.function inputs to
+       declare Tensor decomposition and type casting support.
+    * Introducing `tf.types.experimental.FunctionType` as the comprehensive
+      representation of the signature of `tf.function` callables. It can be
+      accessed through the `function_type` property of `tf.function`s and
+      `ConcreteFunction`s. See the `tf.types.experimental.FunctionType`
+      documentation for more details.
+
+*   `tf.data`:
+
+    *   Moved option `warm_start` from
+        `tf.data.experimental.OptimizationOptions` to `tf.data.Options`.
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -109,6 +123,14 @@ This release contains contributions from many people at Google, as well as:
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+*   The `tensorflow` pip package has a new, optional installation method for
+    Linux that installs necessary Nvidia CUDA libraries through pip. As long as
+    the Nvidia driver is already installed on the system, you may now run `pip
+    install tensorflow[and-cuda]` to install TensorFlow's Nvidia CUDA library
+    dependencies in the Python environment. Aside from the Nvidia driver, no
+    other pre-existing Nvidia CUDA packages are necessary.
+
 * `tf.keras`
     * `Model.compile` now support `steps_per_execution='auto'` as a parameter,
     allowing automatic tuning of steps per execution during `Model.fit`,

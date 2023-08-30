@@ -19,8 +19,8 @@ package(
     default_visibility = [
         "__subpackages__",
         "//tensorflow:internal",
-        "//tensorflow/cc/experimental/image_format:__subpackages__",
         "//tensorflow/cc/experimental/tf2:__subpackages__",
+        "//tensorflow/cc/saved_model/image_format:__subpackages__",
     ],
     licenses = ["notice"],
 )

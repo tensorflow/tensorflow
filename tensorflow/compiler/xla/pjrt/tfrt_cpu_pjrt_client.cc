@@ -825,7 +825,13 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
 
 StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtDevice* device,
-    std::function<void()> on_delete_callback) {
+    std::function<void()> on_delete_callback,
+    std::optional<std::intptr_t> stream) {
+  if (stream) {
+    return Unimplemented(
+        "TfrtCpuClient::CreateViewOfDeviceBuffer does not support `stream` "
+        "argument.");
+  }
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers;
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
   auto non_owning_buffer =

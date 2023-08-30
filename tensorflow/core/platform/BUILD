@@ -1214,8 +1214,6 @@ cc_library(
     visibility = [
         "//tensorflow/contrib/fused_conv:__pkg__",
         "//tensorflow/contrib/image:__pkg__",
-        "//tensorflow/core/kernels:__pkg__",
-        "//tensorflow/core/kernels/image:__pkg__",
     ],
 )
 
@@ -1570,10 +1568,7 @@ filegroup(
         ":ctstring",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/core/lib/jpeg:__pkg__",
-    ],
+    visibility = ["//tensorflow/core:__pkg__"],
 )
 
 filegroup(
@@ -1759,8 +1754,6 @@ bzl_library(
     ] + tf_platform_alias("build_config_root.bzl"),
     visibility = [
         "//learning/brain/google/xla/tests:__pkg__",
-        "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
-        "//nlp/deleuze:__pkg__",
         "//tensorflow:__subpackages__",
     ],
 )

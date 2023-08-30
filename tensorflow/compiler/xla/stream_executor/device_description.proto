@@ -44,6 +44,10 @@ message GpuDeviceInfoProto {
   float clock_rate_ghz = 13;
   int64 device_memory_size = 14;
   int32 shared_memory_per_block_optin = 15;
+  oneof compute_capability {
+    CudaComputeCapabilityProto cuda_compute_capability = 16;
+    RocmComputeCapabilityProto rocm_compute_capability = 17;
+  }
 }
 
 message DnnVersionInfoProto {
@@ -54,10 +58,8 @@ message DnnVersionInfoProto {
 
 message GpuTargetConfigProto {
   GpuDeviceInfoProto gpu_device_info = 1;
-  oneof compute_capability {
-    CudaComputeCapabilityProto cuda_compute_capability = 2;
-    RocmComputeCapabilityProto rocm_compute_capability = 3;
-  }
+  reserved 2, 3;
+  reserved "cuda_compute_capability", "rocm_compute_capability";
   string platform_name = 4;
   DnnVersionInfoProto dnn_version_info = 5;
 

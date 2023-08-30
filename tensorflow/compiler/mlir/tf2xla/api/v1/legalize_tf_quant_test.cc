@@ -81,6 +81,27 @@ TEST(LegalizeTFQuantTest, LegalizesModuleWithTFUniformQuantization) {
   }
 }
 
+TEST(LegalizeTFQuantTest, LegalizesModuleWithDequantize) {
+  constexpr char legalization[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+    func.func @main(%arg0: tensor<1x!tf_type.qint8>) -> tensor<1xf32> {
+      %min_range = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+      %max_range = "tf.Const"() { value = dense<5.0> : tensor<f32> } : () -> tensor<f32>
+      %0 = "tf.Dequantize"(%arg0, %min_range, %max_range) : (tensor<1x!tf_type.qint8>, tensor<f32>, tensor<f32>) -> tensor<1xf32>
+      func.return %0 : tensor<1xf32>
+    }
+  })";
+
+  std::vector<tensorflow::TensorShape> arg_shapes = {{1}};
+  XlaCompilationResult compilation_result;
+
+  TF_EXPECT_OK(CompileSerializedMlirToXlaHlo(
+                   legalization, arg_shapes, /*device_type=*/"XLA_CPU_JIT",
+                   /*use_tuple_args=*/true, /*enable_op_fallback=*/true,
+                   /*shape_determination_fns=*/{}, &compilation_result)
+                   .status());
+}
+
 }  // namespace v1
 }  // namespace tf2xla
 }  // namespace tensorflow

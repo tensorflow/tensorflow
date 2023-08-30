@@ -76,8 +76,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   tsl::Status BlockHostUntilDone(::stream_executor::Stream* stream) override;
 
-  tsl::Status BlockUntilDoneOrFailed();
-
   StatusOr<std::unique_ptr<::stream_executor::DeviceDescription>>
   CreateDeviceDescription() const override;
 
@@ -127,7 +125,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
                             const ::stream_executor::DeviceMemoryBase& host_src,
                             uint64_t size) override;
 
-  void SyncAndForgetFailedStreams();
   bool SynchronizeAllActivity() override;
 
   tsl::Status SynchronousMemcpy(::stream_executor::DeviceMemoryBase* device_dst,
@@ -147,10 +144,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
                           ::stream_executor::Event* event) override;
   tsl::Status WaitForEvent(Stream* stream,
                            ::stream_executor::Event* event) override;
-
-  tsl::Status WaitForInfeedReady(int32_t infeed_queue_index);
-
-  tsl::Status WaitForOutfeedReady(int32_t outfeed_queue_index);
 
   tsl::Status UnloadAllPrograms() override;
 

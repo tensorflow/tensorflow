@@ -2262,6 +2262,23 @@ func.func @convert_conv2d_valid_padding(%arg0: tensor<1x8x8x207xf32>, %arg1: ten
   func.return %0 : tensor<1x6x6x16xf32>
 }
 
+// CHECK-LABEL:   func @convert_reduce_to_prod(
+// CHECK-SAME:                                %[[VAL_0:.*]]: tensor<1x256xf32>) -> tensor<1xf32> {
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK:           %[[VAL_3:.*]] = "tf.Prod"(%[[VAL_0]], %[[VAL_2]]) {keep_dims = false} : (tensor<1x256xf32>, tensor<1xi64>) -> tensor<1xf32>
+// CHECK:           return %[[VAL_3]] : tensor<1xf32>
+// CHECK:         }
+func.func @convert_reduce_to_prod(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
+  %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  %1 = "mhlo.reduce"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %2 = mhlo.multiply %arg1, %arg2 : tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
+  func.return %1 : tensor<1xf32>
+}
+
 // CHECK-LABEL:   func @convert_reduce_to_sum(
 // CHECK-SAME:                                %[[VAL_0:.*]]: tensor<1x256xf32>) -> tensor<1xf32> {
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
@@ -2279,6 +2296,24 @@ func.func @convert_reduce_to_sum(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
   func.return %1 : tensor<1xf32>
 }
 
+// CHECK-LABEL:   func @convert_reduce_to_prod_non_constant_init(
+// CHECK-SAME:                                %[[ARG_0:.*]]: tensor<1x256xf32>,
+// CHECK-SAME:                                %[[ARG_1:.*]]: tensor<f32>) -> tensor<1xf32> {
+// CHECK-DAG:       %[[VAL_0:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK:           %[[VAL_1:.*]] = "tf.Prod"(%[[ARG_0]], %[[VAL_0]]) {keep_dims = false} : (tensor<1x256xf32>, tensor<1xi64>) -> tensor<1xf32>
+// CHECK:           %[[VAL_2:.*]] = "tf.Mul"(%[[VAL_1]], %[[ARG_1]]) : (tensor<1xf32>, tensor<f32>) -> tensor<1xf32>
+// CHECK:           return %[[VAL_2]] : tensor<1xf32>
+// CHECK:         }
+func.func @convert_reduce_to_prod_non_constant_init(%arg0: tensor<1x256xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
+  %1 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %2 = mhlo.multiply %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
+  func.return %1 : tensor<1xf32>
+}
+
+
 // CHECK-LABEL:   func @convert_reduce_to_sum_non_constant_init(
 // CHECK-SAME:                                %[[ARG_0:.*]]: tensor<1x256xf32>,
 // CHECK-SAME:                                %[[ARG_1:.*]]: tensor<f32>) -> tensor<1xf32> {
@@ -2295,6 +2330,24 @@ func.func @convert_reduce_to_sum_non_constant_init(%arg0: tensor<1x256xf32>, %ar
   }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
   func.return %1 : tensor<1xf32>
 }
+
+// CHECK-LABEL:   func @convert_int_reduce_to_prod(
+// CHECK-SAME:                                %[[VAL_0:.*]]: tensor<1x256xi32>) -> tensor<1xi32> {
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK:           %[[VAL_3:.*]] = "tf.Prod"(%[[VAL_0]], %[[VAL_2]]) {keep_dims = false} : (tensor<1x256xi32>, tensor<1xi64>) -> tensor<1xi32>
+// CHECK:           return %[[VAL_3]] : tensor<1xi32>
+// CHECK:         }
+func.func @convert_int_reduce_to_prod(%arg0: tensor<1x256xi32>) -> tensor<1xi32> {
+  %0 = mhlo.constant dense<1> : tensor<i32>
+  %1 = "mhlo.reduce"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
+    %2 = mhlo.multiply %arg1, %arg2 : tensor<i32>
+    "mhlo.return"(%2) : (tensor<i32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xi32>, tensor<i32>) -> tensor<1xi32>
+  func.return %1 : tensor<1xi32>
+}
+
 
 // CHECK-LABEL:   func @convert_int_reduce_to_sum(
 // CHECK-SAME:                                %[[VAL_0:.*]]: tensor<1x256xi32>) -> tensor<1xi32> {

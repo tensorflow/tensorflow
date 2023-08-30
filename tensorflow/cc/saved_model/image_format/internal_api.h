@@ -13,10 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Copy of cc/experimental/image_format/internal_api.h
-
-#ifndef TENSORFLOW_TOOLS_PROTO_SPLITTER_PUBLIC_INTERNAL_API_H_
-#define TENSORFLOW_TOOLS_PROTO_SPLITTER_PUBLIC_INTERNAL_API_H_
+#ifndef TENSORFLOW_CC_SAVED_MODEL_IMAGE_FORMAT_INTERNAL_API_H_
+#define TENSORFLOW_CC_SAVED_MODEL_IMAGE_FORMAT_INTERNAL_API_H_
 
 #include <string>
 
@@ -39,8 +37,8 @@ absl::Status ReadSavedModel(const std::string& file_prefix,
 absl::Status WriteSavedModel(SavedModel* saved_model_proto,
                              const std::string& file_prefix);
 
-// See above. The `debug_max_size` argument can be used to set the maximum size
-// to less than 2GB for testing purposes.
+// See above. The `debug_max_size` argument can be used to the maximum size to
+// less than 2GB for testing purposes.
 absl::Status WriteSavedModel(SavedModel* saved_model_proto,
                              const std::string& file_prefix,
                              int debug_max_size);
@@ -48,4 +46,4 @@ absl::Status WriteSavedModel(SavedModel* saved_model_proto,
 }  // namespace image_format
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_TOOLS_PROTO_SPLITTER_PUBLIC_INTERNAL_API_H_
+#endif  // TENSORFLOW_CC_SAVED_MODEL_IMAGE_FORMAT_INTERNAL_API_H_

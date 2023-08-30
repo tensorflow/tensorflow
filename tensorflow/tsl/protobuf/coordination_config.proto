@@ -61,4 +61,10 @@ message CoordinationServiceConfig {
   // silently. This is useful when we know that a task can immediately resume
   // work upon re-connecting to the service.
   bool allow_new_incarnation_to_reconnect = 11;
+
+  // Disables coordination service.
+  // Some libraries enable coordination service by default even if the user did
+  // not specify any config. This field allows users to explicitly disable
+  // coordination service under all situations.
+  bool force_disable = 12;
 }

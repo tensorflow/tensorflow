@@ -184,6 +184,7 @@ TfLiteRegistration* Register_ASSIGN_VARIABLE();
 TfLiteRegistration* Register_BITCAST();
 TfLiteRegistration* Register_BITWISE_XOR();
 TfLiteRegistration* Register_RIGHT_SHIFT();
+TfLiteRegistration* Register_STABLEHLO_SCATTER();
 
 namespace {
 
@@ -536,6 +537,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_BITCAST, Register_BITCAST());
   AddBuiltin(BuiltinOperator_BITWISE_XOR, Register_BITWISE_XOR());
   AddBuiltin(BuiltinOperator_RIGHT_SHIFT, Register_RIGHT_SHIFT());
+  AddBuiltin(BuiltinOperator_STABLEHLO_SCATTER, Register_STABLEHLO_SCATTER());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

@@ -9,6 +9,7 @@ package(
 # copybara:uncomment_begin(not supported in OSS build)
 #
 # glob_lit_tests(
+#     name = "all_tests",
 #     data = [":test_utilities"],
 #     default_tags = ["notap"],
 #     driver = "//tensorflow/compiler/xla:run_lit.sh",

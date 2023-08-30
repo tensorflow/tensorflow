@@ -64,6 +64,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
     bool enable_canonicalization, bool disable_fuse_mul_and_fc = false);
 std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass();
 
+// Creates an instance of the Tensorflow Lite batch matmul Optimize pass.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizeBatchMatmulPass();
+
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
     bool unfold_batch_matmul, bool allow_bf16_and_f16_type_legalization,

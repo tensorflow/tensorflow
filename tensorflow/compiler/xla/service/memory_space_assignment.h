@@ -1410,9 +1410,10 @@ struct Options {
              const absl::flat_hash_set<
                  ShapeIndex>& /*outputs_in_alternate_memory*/) { return 0; };
 
-  // If true, we will try to reduce scoped VMEM buffer size for all instructions
-  // if their operand/output has been allocated in VMEM.
-  bool reduce_scoped_vmem_limit = false;
+  // If true, we will try to reduce scoped allocation buffer size for all
+  // instructions if their operand/output has been allocated in alternate
+  // memory.
+  bool reduce_scoped_memory_limit = false;
 
   // If true, we allocate the reserved scoped memory at the same offset. This
   // is useful to enable more deduplication between HLOs that have reserved
@@ -2494,7 +2495,7 @@ class AlternateMemoryBestFitHeap
   // Update reserved scoped allocation size for instructions when their
   // operand/output has been allocated in alternate memory by invoking
   // reserved_scoped_memory_fn
-  void UpdateReservedScopedVmemSize();
+  void UpdateReservedScopedAllocationSize();
 
   // Imports repacked allocations and updates the internal data structures
   // consistent with the new packing.

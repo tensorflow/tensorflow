@@ -705,6 +705,42 @@ def _add_calibration_statistics(
         )
 
 
+def _enable_dump_tensor(graph_def: graph_pb2.GraphDef) -> None:
+  """Enable DumpTensor in the graph def.
+
+  DumpTensor is disabled by default to avoid logging data during calibration.
+  This function is called after calibration to enable DumpTensor.
+
+  Args:
+    graph_def: GraphDef to enable DumpTensor
+  """
+  for function_def in graph_def.library.function:
+    for node_def in function_def.node_def:
+      if node_def.op != 'DumpTensor':
+        continue
+
+      node_def.attr['enabled'].b = True
+
+
+def _change_dump_tensor_file_name(graph_def: graph_pb2.GraphDef) -> None:
+  """Change file_name used by DumpTensor to quantized_tensor_data.pb.
+
+  In whole model verify, DumpTensor in unquantized model uses file_name
+  unquantized_tensor_data.pb.
+  After unquantized dump model is created, this function allows quantized dump
+  model to use quantized_tensor_data.pb as file_name.
+
+  Args:
+    graph_def: GraphDef to change file_name of DumpTensor
+  """
+  for function_def in graph_def.library.function:
+    for node_def in function_def.node_def:
+      if node_def.op != 'DumpTensor':
+        continue
+
+      node_def.attr['file_name'].s = 'quantized_tensor_data.pb'.encode('utf-8')
+
+
 def _get_saver_def_or_none(
     exported_model: exported_model_pb2.ExportedModel,
 ) -> Optional[saver_pb2.SaverDef]:
@@ -802,6 +838,36 @@ def _run_static_range_ptq(
   )
 
   _add_calibration_statistics(graph_def, quant_opts.calibration_options)
+
+  if quant_opts.HasField('debugger_options'):
+    # Since DumpTensor was disabled by default, we need to enable them.
+    _enable_dump_tensor(graph_def)
+
+    if (
+        quant_opts.debugger_options.debugger_type
+        == quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL
+    ):
+      # TODO: b/295139417 - Remove CustomAggregator op in unquantized dump model
+      # TODO: b/296916287 - Create a separate function for saving unquantized
+      # dump model
+      save_model.save_model_v1(
+          graph_def,
+          quant_opts.debugger_options.unquantized_dump_model_path,
+          signature_def_map,
+          quant_opts.tags,
+          exported_model.init_node_name,
+          _get_saver_def_or_none(exported_model),
+          exported_model.checkpoint_dir,
+          exported_model.function_aliases,
+          asset_file_defs=exported_model.asset_file_defs,
+      )
+
+      _copy_assets(
+          src_saved_model_path,
+          quant_opts.debugger_options.unquantized_dump_model_path,
+      )
+
+      _change_dump_tensor_file_name(graph_def)
 
   calibrated_model_path = tempfile.mkdtemp()
   save_model.save_model_v1(
@@ -1226,6 +1292,28 @@ def _populate_quantization_options_default_values(
 
   # Check and populate calibration options.
   _populate_calibration_options(quantization_options)
+
+  if quantization_options.HasField('debugger_options'):
+    if not quantization_options.debugger_options.log_dir_path:
+      quantization_options.debugger_options.log_dir_path = '/tmp/dumps'
+
+    if (
+        quantization_options.debugger_options.debugger_type
+        == quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_UNSPECIFIED
+    ):
+      raise ValueError(
+          'Debugger is enabled but debugger type was not specified.'
+      )
+
+    if (
+        quantization_options.debugger_options.debugger_type
+        == quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL
+        and not quantization_options.debugger_options.unquantized_dump_model_path
+    ):
+      raise ValueError(
+          'Debugger type whole model verify was used but'
+          ' unquantized_dump_model_path was not specified.'
+      )
 
   # Check and populate quantization component spec
   _populate_quantization_component_spec(quantization_options)

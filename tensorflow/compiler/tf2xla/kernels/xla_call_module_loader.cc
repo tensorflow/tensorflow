@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
@@ -61,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -147,6 +149,39 @@ tsl::StatusOr<mlir::Value> ComputeDimensionValue(
   return val;
 }
 
+// For a module whose "main" takes a first platform_index argument, sets
+// the argument to a constant value, and erases the argument.
+tsl::Status SetPlatformIndex(mlir::func::FuncOp main, int platform_index) {
+  mlir::Block &main_body = main.front();
+
+  if (main.getNumArguments() < 1) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "The module should have a platform index argument but it has no ",
+        "arguments"));
+  }
+  mlir::OpBuilder op_builder(main);
+  op_builder.setInsertionPointToStart(&main_body);
+  mlir::BlockArgument platform_index_arg = main_body.getArgument(0);
+  mlir::RankedTensorType arg_ranked_type =
+      platform_index_arg.getType().dyn_cast<mlir::RankedTensorType>();
+  if (!arg_ranked_type || arg_ranked_type.getRank() != 0 ||
+      !arg_ranked_type.getElementType().isSignlessInteger(32)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Module argument at index 0 should be a 0-dimensional "
+                     "32-bit integer-tensor platform index argument but "
+                     "has type ",
+                     mlir::debugString(platform_index_arg.getType())));
+  }
+  auto platform_index_op = op_builder.create<mlir::stablehlo::ConstantOp>(
+      platform_index_arg.getLoc(),
+      op_builder.getI32IntegerAttr(platform_index));
+  platform_index_arg.replaceAllUsesWith(platform_index_op);
+
+  main.eraseArgument(0);
+
+  return tsl::OkStatus();
+}
+
 }  // namespace
 
 tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
@@ -164,6 +199,7 @@ tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
   return loader;
 }
 
+// TODO(b/283439649): DEPRECATED, to be removed.
 // Adds a wrapper for the "main" function to compute the platform index and the
 // dimension arguments.
 //
@@ -459,6 +495,7 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
   VLOG(3) << "Parsed serialized module (version = " << version
           << ", platforms = [" << absl::StrJoin(platforms, ", ")
           << "], loading_platform = " << loading_platform
+          << ", main_has_token_input_output = " << main_has_token_input_output
           << ", dim_args_spec = [" << absl::StrJoin(dim_args_spec_, ", ")
           << "], disabled_checks = [" << absl::StrJoin(disabled_checks, ", ")
           << "], loading_disabled_checks = ["
@@ -517,19 +554,26 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
     return absl::InvalidArgumentError("Cannot find 'main' in module");
   }
 
-  if (!dim_args_spec_.empty() || platform_index_ >= 0) {
+  if (!dim_args_spec_.empty()) {
+    // TODO(b/283439649): to be removed.
     TF_RETURN_IF_ERROR(AddMainWrapper());
     main_ = module_->lookupSymbol<mlir::func::FuncOp>("main");
   }
 
+  if (platforms.size() > 1) {
+    VLOG(3) << "XlaCallModule setting the platform_index to "
+            << platform_index_;
+    TF_RETURN_IF_ERROR(SetPlatformIndex(main_, platform_index_));
+  }
+
   mlir::Block &main_body = main_.front();
+  int nr_token_arguments = main_has_token_input_output ? 1 : 0;
   int nr_platform_args = (platform_index_ >= 0 ? 1 : 0);
   int nr_dim_args = dim_args_spec_.size();
-  int nr_token_arguments = main_has_token_input_output ? 1 : 0;
   if (num_invocation_args != main_body.getNumArguments() - nr_token_arguments) {
     return absl::InvalidArgumentError(absl::StrCat(
-        "Incorrect number of arguments passed to XlaCallModule: ",
-        num_invocation_args, ". The module takes ",
+        "Incorrect number of arguments passed to XlaCallModule = ",
+        num_invocation_args, ". The module main function takes ",
         main_body.getNumArguments() + nr_platform_args + nr_dim_args +
             nr_token_arguments,
         " arguments of which ", nr_platform_args, " platform index arguments, ",
