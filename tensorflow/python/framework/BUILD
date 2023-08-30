@@ -1681,6 +1681,7 @@ py_strict_library(
     name = "none_tensor",
     srcs = ["none_tensor.py"],
     srcs_version = "PY3",
+    visibility = visibility + ["//learning/deepmind:__subpackages__"],
     deps = [
         ":composite_tensor",
         ":type_spec",
