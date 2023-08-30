@@ -280,9 +280,11 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     // so no matter whether dataset()->params_.autotune is on or not
     // we need to pass ram_budget_manager_ to the downstream dataset operations
     params.ram_budget_manager = ram_budget_manager_;
-    if (dataset()->params_.autotune) {
-      params.model = model_;
-    }
+    // After cl/548201925, `ctx->model()` may not be `nullptr` even when
+    // autotuning is off, but `model_` should be `nullptr` and it should have
+    // been set to a valid model in `Initialize()` if autotuning is on. We
+    // should simply set `params.model` to `model_` here.
+    params.model = model_;
     if (dataset()->params_.private_threadpool_size >= 0) {
       params.runner = [pool = thread_pool_.get()](std::function<void()> c) {
         pool->Schedule(std::move(c));
