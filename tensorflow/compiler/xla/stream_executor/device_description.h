@@ -22,15 +22,17 @@ limitations under the License.
 
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 namespace internal {
@@ -129,39 +131,46 @@ class RocmComputeCapability {
   RocmComputeCapability() = default;
   ~RocmComputeCapability() = default;
 
-  std::string gcn_arch_name() { return gcn_arch_name_; }
+  std::string gcn_arch_name() const { return gcn_arch_name_; }
 
-  std::string gfx_version() {
+  std::string gfx_version() const {
     std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name_, ':');
     return tokens[0];
   }
 
-  bool is_supported_gfx_version() {
-    return supported_gfx_versions().count(gfx_version()) != 0;
+  bool is_supported_gfx_version() const {
+    return absl::c_count(kSupportedGfxVersions, gfx_version()) != 0;
   }
 
-  std::string supported_gfx_versions_str() {
-    return absl::StrJoin(supported_gfx_versions(), ", ");
+  std::string supported_gfx_versions_str() const {
+    return absl::StrJoin(kSupportedGfxVersions, ", ");
   }
 
-  bool has_nhwc_layout_support() {
-    return gfx_versions_with_nhwc_layout_support().count(gfx_version()) != 0;
+  bool has_nhwc_layout_support() const {
+    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a"};
+    return absl::c_count(kList, gfx_version()) != 0;
   }
 
-  bool has_bf16_dtype_support() {
-    return gfx_versions_with_fast_bf16_support().count(gfx_version()) != 0;
+  bool has_bf16_dtype_support() const {
+    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a"};
+    return absl::c_count(kList, gfx_version()) != 0;
   }
 
-  bool has_fast_fp16_support() {
-    return gfx_versions_with_fast_fp16_support().count(gfx_version()) != 0;
+  bool has_fast_fp16_support() const {
+    static constexpr absl::string_view kList[] = {"gfx906", "gfx908", "gfx90a",
+                                                  "gfx1030"};
+    return absl::c_count(kList, gfx_version()) != 0;
   }
 
-  bool has_mfma_instr_support() {
-    return gfx_versions_with_mfma_instr_support().count(gfx_version()) != 0;
+  bool has_mfma_instr_support() const {
+    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a"};
+    return absl::c_count(kList, gfx_version()) != 0;
   }
 
-  bool has_fp16_atomics_support() {
-    return gfx_versions_with_fp16_atomics_support().count(gfx_version()) != 0;
+  bool has_fp16_atomics_support() const {
+    // TODO(rocm): Check. This should be the same as has_fast_fp16_support().
+    static constexpr absl::string_view kList[] = {"gfx90a"};
+    return absl::c_count(kList, gfx_version()) != 0;
   }
 
   RocmComputeCapabilityProto ToProto() const {
@@ -170,34 +179,20 @@ class RocmComputeCapability {
     return proto;
   }
 
+  bool operator==(const RocmComputeCapability &other) const {
+    return gcn_arch_name_ == other.gcn_arch_name_;
+  }
+
  private:
-  std::string gcn_arch_name_;
-  std::set<std::string> supported_gfx_versions() {
-    return {
-        "gfx900",  // MI25
-        "gfx906",  // MI50 / MI60
-        "gfx908",  // MI100
-        "gfx90a",  // MI200
-        "gfx1030"  // Navi21
-    };
-  }
-  std::set<std::string> gfx_versions_with_nhwc_layout_support() {
-    return {"gfx908", "gfx90a"};
-  }
-  std::set<std::string> gfx_versions_with_fast_bf16_support() {
-    return {"gfx908", "gfx90a"};
-  }
-  std::set<std::string> gfx_versions_with_fast_fp16_support() {
-    return {"gfx906", "gfx908", "gfx90a", "gfx1030"};
-  }
-  std::set<std::string> gfx_versions_with_mfma_instr_support() {
-    return {"gfx908", "gfx90a"};
-  }
-  std::set<std::string> gfx_versions_with_fp16_atomics_support() {
-    // TODO(rocm): Check. This should be the same as
-    // gfx_versions_with_fast_fp16_support.
-    return {"gfx90a"};
-  }
+  std::string gcn_arch_name_ = "gfx000";  // default to invalid arch.
+
+  static constexpr absl::string_view kSupportedGfxVersions[]{
+      "gfx900",  // MI25
+      "gfx906",  // MI50 / MI60
+      "gfx908",  // MI100
+      "gfx90a",  // MI200
+      "gfx1030"  // Navi21
+  };
 };
 
 // Data that describes the execution target of the StreamExecutor, in terms of
@@ -396,7 +391,7 @@ class DeviceDescription {
   CudaComputeCapability cuda_compute_capability_{-1, -1};
 
   // ROCm gfx arch,  "gfx000" if not available.
-  RocmComputeCapability rocm_compute_capability_{"gfx000"};
+  RocmComputeCapability rocm_compute_capability_;
 
   int numa_node_;
   int core_count_;

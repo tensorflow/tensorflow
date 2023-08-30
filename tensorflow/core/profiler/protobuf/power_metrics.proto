@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+message PowerComponentMetrics {
+  // power rail or component name, e.g. HBM, Core.
+  string component_name = 1;
+  // maximum watts monitored.
+  double max_power = 2;
+  // average watts monitored.
+  double avg_power = 3;
+}
+
+message PowerMetrics {
+  repeated PowerComponentMetrics power_component_metrics = 1;
+}

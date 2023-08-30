@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "FunctionType"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "GenericFunction"
     mtype: "<type \'type\'>"
   }
@@ -22,10 +26,6 @@ tf_module {
   }
   member {
     name: "TraceType"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "TracingContext"
     mtype: "<type \'type\'>"
   }
   member {

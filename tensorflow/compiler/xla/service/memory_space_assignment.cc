@@ -5386,7 +5386,7 @@ AlternateMemoryBestFitHeap::GetRepeatedInstructionList(
   return &repeated_insts_it->second;
 }
 
-void AlternateMemoryBestFitHeap::UpdateReservedScopedVmemSize() {
+void AlternateMemoryBestFitHeap::UpdateReservedScopedAllocationSize() {
   // Check all instructions, if their operands/outputs have been placed in
   // alternate memory, update their scoped allocation size.
   VLOG(2) << "Update scoped allocation size before repacking.";
@@ -5413,8 +5413,8 @@ void AlternateMemoryBestFitHeap::UpdateReservedScopedVmemSize() {
 
 void AlternateMemoryBestFitHeap::ExportAllocationsForRepacking(
     std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*>& allocations) {
-  if (options_.reduce_scoped_vmem_limit) {
-    UpdateReservedScopedVmemSize();
+  if (options_.reduce_scoped_memory_limit) {
+    UpdateReservedScopedAllocationSize();
   }
   for (RepackAllocationBlock& allocation_block : repack_allocation_blocks_) {
     allocations.push_back(&allocation_block);

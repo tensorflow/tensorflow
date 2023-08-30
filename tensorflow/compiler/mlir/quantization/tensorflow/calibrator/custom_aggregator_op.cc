@@ -15,16 +15,21 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using ::tensorflow::quantization::CalibrationOptions;
 
 REGISTER_OP("CustomAggregator")
     .Input("input: float")
     .Output("output: float")
     .Attr("id: string")
+    .Attr("serialized_calibration_options: string = ''")
     .SetIsStateful()
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
@@ -36,10 +41,14 @@ class CustomAggregatorOp : public OpKernel {
   explicit CustomAggregatorOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("id", &id_));
+
+    std::string serialized_calibration_options;
+    OP_REQUIRES_OK(context, context->GetAttr("serialized_calibration_options",
+                                             &serialized_calibration_options));
+    calib_opts_.ParseFromString(serialized_calibration_options);
   }
 
   void Compute(OpKernelContext* context) override {
-    // Grab the input tensor
     const Tensor& input_tensor = context->input(0);
 
     auto input_flat = input_tensor.flat<float>();
@@ -51,7 +60,9 @@ class CustomAggregatorOp : public OpKernel {
       return;
     }
 
-    calibrator::CalibratorSingleton::Report(id_, input_tensor);
+    // By passing calib_opts_ and input_tensor to CalibratorSingleton,
+    // CalibrationStatisticsCollector can calculate statistics for calibration.
+    calibrator::CalibratorSingleton::Report(id_, input_tensor, calib_opts_);
 
     // Use the same input for the output.
     context->set_output(0, input_tensor);
@@ -59,6 +70,7 @@ class CustomAggregatorOp : public OpKernel {
 
  private:
   std::string id_;
+  CalibrationOptions calib_opts_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CustomAggregator").Device(DEVICE_CPU),

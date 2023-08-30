@@ -782,7 +782,9 @@ cc_library(
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/utility",
     ],
 )
@@ -1026,6 +1028,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
@@ -1049,6 +1052,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:platform_port",
@@ -1102,6 +1106,7 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo_module_group",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
@@ -1505,6 +1510,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",
         "//tensorflow/tsl/platform:logging",
     ],
 )
@@ -3753,6 +3759,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
     ],
@@ -5318,7 +5325,10 @@ cc_library(
     name = "stream_pool",
     srcs = ["stream_pool.cc"],
     hdrs = ["stream_pool.h"],
-    deps = ["//tensorflow/compiler/xla/stream_executor"],
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",
+    ],
 )
 
 xla_cc_test(

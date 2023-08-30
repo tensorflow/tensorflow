@@ -67,6 +67,21 @@ AotOptions::AotOptions() : graph_execution_options(nullptr) {}
 Status AotCompileSavedModel(absl::string_view input_model_dir,
                             AotOptions aot_options,
                             absl::string_view output_model_dir) {
+  // Create aot_packages directory.
+  Env* env = Env::Default();
+  const bool new_directory = !output_model_dir.empty();
+  std::string output_dir;
+  if (!new_directory) {
+    output_dir = std::string(input_model_dir);
+  } else {
+    // TODO(chrisminge) modify to copy everything in input directory
+    output_dir = std::string(output_model_dir);
+    TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(output_dir, {}));
+  }
+  const std::string aot_directory =
+      io::JoinPath(output_dir, kAoTPackagesDirectory);
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(aot_directory));
+
   if (aot_options.graph_execution_options == nullptr) {
     // Since we are not going to actually run the model during AoT
     // compilation and optimization, we choose a value of 4 inter_op_threads
@@ -81,6 +96,10 @@ Status AotCompileSavedModel(absl::string_view input_model_dir,
     graph_execution_options.compile_options.device_target =
         TfrtDeviceInfraTarget::kGpu;
     graph_execution_options.compile_options.hoist_invariant_ops = true;
+    graph_execution_options.compile_options
+        .serialize_mlir_module_to_aot_packages = true;
+    graph_execution_options.compile_options.aot_mlir_module_file =
+        io::JoinPath(aot_directory, kMLIRModuleFilename);
 
     aot_options.graph_execution_options =
         std::make_shared<GraphExecutionOptions>(graph_execution_options);
@@ -149,7 +168,6 @@ Status AotCompileSavedModel(absl::string_view input_model_dir,
     return absl::InternalError("BefBuffer is empty.");
   }
 
-  Env* env = Env::Default();
   const std::string warmup_requests_path = io::JoinPath(
       input_model_dir, "assets.extra", "tf_serving_warmup_requests");
   TF_RETURN_IF_ERROR(env->FileExists(warmup_requests_path));
@@ -164,26 +182,6 @@ Status AotCompileSavedModel(absl::string_view input_model_dir,
     return absl::NotFoundError(absl::StrCat(
         "saved_model not found in input directory: ", input_model_dir));
   }
-
-  const bool new_directory = !output_model_dir.empty();
-  std::string output_dir;
-  if (!new_directory) {
-    output_dir = std::string(input_model_dir);
-  } else {
-    // TODO(chrisminge) modify to copy everything in input directory
-    output_dir = std::string(output_model_dir);
-    TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(output_dir, {}));
-  }
-  const std::string aot_directory =
-      io::JoinPath(output_dir, kAoTPackagesDirectory);
-  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(aot_directory));
-
-  // Serialize MLIR to a file under aot_packages
-  const std::string mlir_module_file =
-      io::JoinPath(aot_directory, kMLIRModuleFilename);
-  std::string mlir_module_string = SerializeMlirModule(mlir_module.get());
-  TF_RETURN_IF_ERROR(
-      WriteStringToFile(env, mlir_module_file, mlir_module_string));
 
   // Serialize BEF buffer to a file under aot_packages
   const std::string serialized_bef_path =

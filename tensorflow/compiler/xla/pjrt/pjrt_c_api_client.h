@@ -261,7 +261,8 @@ class PjRtCApiClient : public PjRtClient {
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
-      std::function<void()> on_delete_callback) override {
+      std::function<void()> on_delete_callback,
+      std::optional<std::intptr_t> stream) override {
     return Unimplemented(
         "PJRT C API does not support CreateViewOfDeviceBuffer");
   }
@@ -365,7 +366,9 @@ class PjRtCApiBuffer : public PjRtBuffer {
   // PJRT C API doesn't support tuple buffers.
   bool IsTuple() const override { return false; }
 
-  const Shape& on_device_shape() const override;
+  const Shape& on_device_shape() const override {
+    LOG(FATAL) << "PjRtBuffer::on_device_shape() not implemented in PJRT C API";
+  }
 
   bool has_dynamic_dimensions() const override;
 
@@ -377,7 +380,10 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   StatusOr<std::vector<int64_t>> logical_dimensions() override;
 
-  StatusOr<Shape> logical_on_device_shape() override;
+  StatusOr<Shape> logical_on_device_shape() override {
+    LOG(FATAL) << "PjRtBuffer::on_logical_device_shape() not implemented in "
+                  "PJRT C API";
+  }
 
   PjRtMemorySpace* memory_space() const override;
 
@@ -433,9 +439,6 @@ class PjRtCApiBuffer : public PjRtBuffer {
   const PJRT_Api* pjrt_c_api() const { return client_->pjrt_c_api(); }
 
  private:
-  // TODO(b/238999986): Refactor or Remove.
-  void set_shape();
-
   // Gets the raw pointer to `readiness_event_`. If `readiness_event_` has not
   // yet been initialized, this function does so before returning the pointer.
   PJRT_Event* GetReadyEvent();
@@ -447,7 +450,6 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   PjRtCApiClient* client_;
   std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer_;
-  std::optional<xla::Shape> shape_;
   std::unique_ptr<PJRT_Event, ::pjrt::PJRT_EventDeleter> readiness_event_;
   // This is a shared_ptr to keep the underlying future alive even if
   // `readiness_promise` is destroyed before `readiness_event`, and the callback

@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -293,8 +294,8 @@ std::optional<TransposeDescription> FindConsistentTransposeHero(
 
 // static
 StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
-    const HloFusionInstruction* fusion, const GpuDeviceInfo* device_info,
-    se::CudaComputeCapability compute_capability) {
+    const HloFusionInstruction* fusion, const GpuDeviceInfo* device_info) {
+  CHECK(device_info != nullptr);
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       fusion->backend_config<FusionBackendConfig>());
 
@@ -310,7 +311,7 @@ StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
 
   return HloFusionAnalysis(fusion, std::move(backend_config),
                            std::move(hlo_roots), std::move(heroes), device_info,
-                           compute_capability, tiled_transpose_hero);
+                           tiled_transpose_hero);
 }
 
 // Returns true if the fusion has consistent transpose heros.
@@ -722,11 +723,11 @@ bool HloFusionAnalysis::CanVectorizeReduction(
     return false;
   }
 
-  if (compute_capability_.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
-    return true;
-  }
-
-  if (compute_capability_.IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
+  const auto* cuda_cc =
+      std::get_if<se::CudaComputeCapability>(&device_info_->compute_capability);
+  if (cuda_cc == nullptr) return false;
+  if (cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) return true;
+  if (cuda_cc->IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
     return SmallestInputDtypeBits() <= 32 &&
            reduction_dimensions.dimensions[kDimX] %
                    (reduction_tiling[2] * num_threads_x) ==
@@ -740,7 +741,10 @@ int HloFusionAnalysis::CalculateVirtualThreadScalingFactorForReduction(
   int64_t dimx = reduction_dimensions.dimensions[kDimX];
   if (reduction_dimensions.is_row_reduction && dimx <= 128) {
     int rows_per_warp = RowReductionGetRowsPerWarp(dimx);
-    if (compute_capability_.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
+        &device_info_->compute_capability);
+    if (cuda_cc != nullptr &&
+        cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) {
       return rows_per_warp * 3;
     }
     return rows_per_warp * 5;

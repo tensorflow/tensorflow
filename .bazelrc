@@ -568,12 +568,10 @@ build:release_gpu_linux --action_env=LD_LIBRARY_PATH="/usr/local/cuda:/usr/local
 build:release_gpu_linux --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
 build:release_gpu_linux --crosstool_top=@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain
 
+# TODO(kanglan): Update windows configs after b/289091160 is fixed
 build:release_cpu_windows --config=release_base
 build:release_cpu_windows --config=avx_win
 build:release_cpu_windows --define=no_tensorflow_py_deps=true
-
-build:release_gpu_windows --config=release_cpu_windows
-build:release_gpu_windows --config=release_gpu_base
 
 # Exclude TFRT integration for anything but Linux.
 build:android --config=no_tfrt

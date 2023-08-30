@@ -38,56 +38,70 @@ void CalibrationStatisticsCollector::ClearData() {
   average_min_max_statistics_.set_min_sum(0.0);
   average_min_max_statistics_.set_max_sum(0.0);
   average_min_max_statistics_.set_num_samples(0);
+
+  num_data_ = 0;
 }
 
 void CalibrationStatisticsCollector::Collect(
-    const std::vector<float>& data_vec) {
-  Collect(data_vec.data(), data_vec.size());
+    const std::vector<float>& data_vec, const CalibrationOptions& calib_opts) {
+  Collect(data_vec.data(), data_vec.size(), calib_opts);
 }
 
-void CalibrationStatisticsCollector::Collect(absl::Span<float> data_span) {
-  Collect(data_span.data(), data_span.size());
+void CalibrationStatisticsCollector::Collect(
+    absl::Span<float> data_span, const CalibrationOptions& calib_opts) {
+  Collect(data_span.data(), data_span.size(), calib_opts);
 }
 
-void CalibrationStatisticsCollector::Collect(const Tensor& data_tensor) {
+void CalibrationStatisticsCollector::Collect(
+    const Tensor& data_tensor, const CalibrationOptions& calib_opts) {
   auto data_flat = data_tensor.flat<float>();
-  Collect(data_flat.data(), data_flat.size());
+  Collect(data_flat.data(), data_flat.size(), calib_opts);
 }
 
-// TODO - b/295125836 : Collects statistics required to calibration method
-void CalibrationStatisticsCollector::Collect(const float* data,
-                                             const unsigned int N) {
+void CalibrationStatisticsCollector::Collect(
+    const float* data, const unsigned int N,
+    const CalibrationOptions& calib_opts) {
   if (N == 0) return;
 
-  float input_min = std::numeric_limits<float>::max(),
-        input_max = std::numeric_limits<float>::lowest();
+  num_data_ += N;
+  CalibrationOptions::CalibrationMethod calib_method =
+      calib_opts.calibration_method();
 
-  for (int i = 0; i < N; i++) {
-    input_min = std::min(input_min, data[i]);
-    input_max = std::max(input_max, data[i]);
+  // TODO - b/295125836 : Collects statistics required to calibration method
+  if (calib_method == CalibrationOptions::CALIBRATION_METHOD_MIN_MAX ||
+      calib_method == CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX) {
+    float input_min = std::numeric_limits<float>::max(),
+          input_max = std::numeric_limits<float>::lowest();
+
+    for (int i = 0; i < N; i++) {
+      input_min = std::min(input_min, data[i]);
+      input_max = std::max(input_max, data[i]);
+    }
+
+    float current_global_min = min_max_statistics_.global_min();
+    float current_global_max = min_max_statistics_.global_max();
+
+    min_max_statistics_.set_global_min(std::min(current_global_min, input_min));
+    min_max_statistics_.set_global_max(std::max(current_global_max, input_max));
+
+    float current_min_sum = average_min_max_statistics_.min_sum();
+    float current_max_sum = average_min_max_statistics_.max_sum();
+    float current_num_samples = average_min_max_statistics_.num_samples();
+
+    average_min_max_statistics_.set_min_sum(current_min_sum + input_min);
+    average_min_max_statistics_.set_max_sum(current_max_sum + input_max);
+    average_min_max_statistics_.set_num_samples(current_num_samples + 1);
   }
-
-  float current_global_min = min_max_statistics_.global_min();
-  float current_global_max = min_max_statistics_.global_max();
-
-  min_max_statistics_.set_global_min(std::min(current_global_min, input_min));
-  min_max_statistics_.set_global_max(std::max(current_global_max, input_max));
-
-  float current_min_sum = average_min_max_statistics_.min_sum();
-  float current_max_sum = average_min_max_statistics_.max_sum();
-  float current_num_samples = average_min_max_statistics_.num_samples();
-
-  average_min_max_statistics_.set_min_sum(current_min_sum + input_min);
-  average_min_max_statistics_.set_max_sum(current_max_sum + input_max);
-  average_min_max_statistics_.set_num_samples(current_num_samples + 1);
 }
 
 std::optional<CalibrationStatistics>
 CalibrationStatisticsCollector::GetStatistics() {
-  if (average_min_max_statistics_.num_samples() == 0) return std::nullopt;
+  if (num_data_ == 0) return std::nullopt;
 
   CalibrationStatistics statistics;
 
+  // TODO - b/295721740 : Split CalibrationStatisticsCollector to small
+  // collectors.
   *(statistics.mutable_min_max_statistics()) = min_max_statistics_;
 
   *(statistics.mutable_average_min_max_statistics()) =

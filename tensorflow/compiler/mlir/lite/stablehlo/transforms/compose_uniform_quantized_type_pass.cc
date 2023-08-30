@@ -1316,122 +1316,16 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
 
   LogicalResult match(stablehlo::DotGeneralOp op) const final {
     // q1 - z1
-    auto input1_zero_point_subtract_op = TryCast<stablehlo::SubtractOp>(
-        op.getOperand(0).getDefiningOp(),
-        /*name=*/"input1_zero_point_subtract_op");
-    if (failed(input1_zero_point_subtract_op)) return failure();
-
-    // z1
-    auto input1_zero_point_broadcast_in_dim_op =
-        TryCast<stablehlo::BroadcastInDimOp>(
-            input1_zero_point_subtract_op->getOperand(1).getDefiningOp(),
-            /*name=*/"input1_zero_point_broadcast_in_dim_op");
-    if (failed(input1_zero_point_broadcast_in_dim_op)) return failure();
-
-    Value input1_zero_point_constant_value =
-        input1_zero_point_broadcast_in_dim_op->getOperand();
-    // Match optional i8->i32 convert for z1.
-    if (auto input1_zero_point_i8_to_i32_convert_op =
-            TryCast<stablehlo::ConvertOp>(
-                input1_zero_point_constant_value.getDefiningOp(),
-                /*name=*/"input1_zero_point_i8_to_i32_convert_op");
-        succeeded(input1_zero_point_i8_to_i32_convert_op)) {
-      if (!IsI8ToI32Cast(*input1_zero_point_i8_to_i32_convert_op)) {
-        return failure();
-      }
-      input1_zero_point_constant_value =
-          input1_zero_point_i8_to_i32_convert_op->getOperand();
-    }
-
-    auto input1_zero_point_constant_op = TryCast<stablehlo::ConstantOp>(
-        input1_zero_point_constant_value.getDefiningOp(),
-        /*name=*/"input1_zero_point_constant_op");
-    if (failed(input1_zero_point_constant_op)) return failure();
-
-    // q1
-    auto input1_i8_to_i32_convert_op = TryCast<stablehlo::ConvertOp>(
-        input1_zero_point_subtract_op->getOperand(0).getDefiningOp(),
-        /*name=*/"input1_i8_to_i32_convert_op");
-    if (failed(input1_i8_to_i32_convert_op)) return failure();
-
-    if (!IsI8ToI32Cast(*input1_i8_to_i32_convert_op)) {
-      LLVM_DEBUG(
-          llvm::dbgs()
-          << "Failed to match. The ConvertOp is not an i8->i32 type cast.\n");
-      return failure();
-    }
-
-    auto input1_uniform_quantize_call_op = TryCast<func::CallOp>(
-        input1_i8_to_i32_convert_op->getOperand().getDefiningOp(),
-        /*name=*/"input1_uniform_quantize_call_op");
-    if (failed(input1_uniform_quantize_call_op)) return failure();
-
-    auto input1_uniform_quantize_call_pattern =
-        UniformQuantizeFunctionCallPattern::Match(
-            *input1_uniform_quantize_call_op);
-    if (failed(input1_uniform_quantize_call_pattern)) {
+    if (failed(MatchQuantizedOperand(op.getOperand(0)))) {
       LLVM_DEBUG(llvm::dbgs()
-                 << "Failed to match input 1 uniform quantize call pattern.\n");
+                 << "Failed to match quantized operand pattern for LHS.\n");
       return failure();
     }
 
     // q2 - z2
-    auto input2_zero_point_subtract_op = TryCast<stablehlo::SubtractOp>(
-        op.getOperand(1).getDefiningOp(),
-        /*name=*/"input2_zero_point_subtract_op");
-    if (failed(input2_zero_point_subtract_op)) return failure();
-
-    // z2
-    auto input2_zero_point_broadcast_in_dim_op =
-        TryCast<stablehlo::BroadcastInDimOp>(
-            input2_zero_point_subtract_op->getOperand(1).getDefiningOp(),
-            /*name=*/"input2_zero_point_broadcast_in_dim_op");
-    if (failed(input2_zero_point_broadcast_in_dim_op)) return failure();
-
-    Value input2_zero_point_constant_value =
-        input2_zero_point_broadcast_in_dim_op->getOperand();
-    // Match optional i8->i32 convert for z2.
-    if (auto input2_zero_point_i8_to_i32_convert_op =
-            TryCast<stablehlo::ConvertOp>(
-                input2_zero_point_constant_value.getDefiningOp(),
-                /*name=*/"input2_zero_point_i8_to_i32_convert_op");
-        succeeded(input2_zero_point_i8_to_i32_convert_op)) {
-      if (!IsI8ToI32Cast(*input2_zero_point_i8_to_i32_convert_op)) {
-        return failure();
-      }
-      input2_zero_point_constant_value =
-          input2_zero_point_i8_to_i32_convert_op->getOperand();
-    }
-
-    auto input2_zero_point_constant_op = TryCast<stablehlo::ConstantOp>(
-        input2_zero_point_constant_value.getDefiningOp(),
-        /*name=*/"input2_zero_point_constant_op");
-    if (failed(input2_zero_point_constant_op)) return failure();
-
-    // q2
-    auto input2_i8_to_i32_convert_op = TryCast<stablehlo::ConvertOp>(
-        input2_zero_point_subtract_op->getOperand(0).getDefiningOp(),
-        /*name=*/"input2_i8_to_i32_convert_op");
-    if (failed(input2_i8_to_i32_convert_op)) return failure();
-
-    if (!IsI8ToI32Cast(*input2_i8_to_i32_convert_op)) {
-      LLVM_DEBUG(
-          llvm::dbgs()
-          << "Failed to match. The ConvertOp is not an i8->i32 type cast.\n");
-      return failure();
-    }
-
-    auto input2_uniform_quantize_call_op = TryCast<func::CallOp>(
-        input2_i8_to_i32_convert_op->getOperand().getDefiningOp(),
-        /*name=*/"input2_uniform_quantize_call_op");
-    if (failed(input2_uniform_quantize_call_op)) return failure();
-
-    auto input2_uniform_quantize_call_pattern =
-        UniformQuantizeFunctionCallPattern::Match(
-            *input2_uniform_quantize_call_op);
-    if (failed(input2_uniform_quantize_call_pattern)) {
+    if (failed(MatchQuantizedOperand(op.getOperand(1)))) {
       LLVM_DEBUG(llvm::dbgs()
-                 << "Failed to match input 2 uniform quantize call pattern.\n");
+                 << "Failed to match quantized operand pattern for RHS.\n");
       return failure();
     }
 
@@ -1627,6 +1521,75 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
     rewriter.eraseOp(input2_zero_point_subtract_op);
     rewriter.eraseOp(input2_i8_to_i32_convert_op);
     rewriter.eraseOp(input2_uniform_quantize_call_pattern->GetCallOp());
+  }
+
+ private:
+  // Determines whether the `operand` is a result of quantized operand pattern,
+  // represented as `(q - z)` where `q` is the quantized value and `z` is the
+  // zero point. Returns `success()` iff `operand` matches the pattern,
+  // `failure()` otherwise.
+  LogicalResult MatchQuantizedOperand(Value operand) const {
+    // q - z
+    auto input_zero_point_subtract_op =
+        TryCast<stablehlo::SubtractOp>(operand.getDefiningOp(),
+                                       /*name=*/"input_zero_point_subtract_op");
+    if (failed(input_zero_point_subtract_op)) return failure();
+
+    // z
+    auto input_zero_point_broadcast_in_dim_op =
+        TryCast<stablehlo::BroadcastInDimOp>(
+            input_zero_point_subtract_op->getOperand(1).getDefiningOp(),
+            /*name=*/"input_zero_point_broadcast_in_dim_op");
+    if (failed(input_zero_point_broadcast_in_dim_op)) return failure();
+
+    Value input_zero_point_constant_value =
+        input_zero_point_broadcast_in_dim_op->getOperand();
+    // Match optional i8->i32 conversion for z.
+    if (auto input_zero_point_i8_to_i32_convert_op =
+            TryCast<stablehlo::ConvertOp>(
+                input_zero_point_constant_value.getDefiningOp(),
+                /*name=*/"input_zero_point_i8_to_i32_convert_op");
+        succeeded(input_zero_point_i8_to_i32_convert_op)) {
+      if (!IsI8ToI32Cast(*input_zero_point_i8_to_i32_convert_op)) {
+        return failure();
+      }
+      input_zero_point_constant_value =
+          input_zero_point_i8_to_i32_convert_op->getOperand();
+    }
+
+    auto input_zero_point_constant_op = TryCast<stablehlo::ConstantOp>(
+        input_zero_point_constant_value.getDefiningOp(),
+        /*name=*/"input_zero_point_constant_op");
+    if (failed(input_zero_point_constant_op)) return failure();
+
+    // q
+    auto input_i8_to_i32_convert_op = TryCast<stablehlo::ConvertOp>(
+        input_zero_point_subtract_op->getOperand(0).getDefiningOp(),
+        /*name=*/"input_i8_to_i32_convert_op");
+    if (failed(input_i8_to_i32_convert_op)) return failure();
+
+    if (!IsI8ToI32Cast(*input_i8_to_i32_convert_op)) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "Failed to match. The ConvertOp is not an i8->i32 type cast.\n");
+      return failure();
+    }
+
+    auto input_uniform_quantize_call_op = TryCast<func::CallOp>(
+        input_i8_to_i32_convert_op->getOperand().getDefiningOp(),
+        /*name=*/"input_uniform_quantize_call_op");
+    if (failed(input_uniform_quantize_call_op)) return failure();
+
+    auto input_uniform_quantize_call_pattern =
+        UniformQuantizeFunctionCallPattern::Match(
+            *input_uniform_quantize_call_op);
+    if (failed(input_uniform_quantize_call_pattern)) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Failed to match input uniform quantize call pattern.\n");
+      return failure();
+    }
+
+    return success();
   }
 };
 

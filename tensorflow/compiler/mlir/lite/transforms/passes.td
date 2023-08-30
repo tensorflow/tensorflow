@@ -194,8 +194,13 @@ def OptimizePass : Pass<"tfl-optimize", "mlir::func::FuncOp"> {
       Option<"disable_fuse_mul_and_fc_", "disable-fuse-mul-and-fc",
              "bool", "false",
              "Disable folding mul and fully connected ops during optimization pass.">,
-
   ];
+}
+
+def OptimizeBatchMatmulPass : Pass<"tfl-optimize-batch-matmul", "mlir::func::FuncOp"> {
+  let summary = "Optimize FC with BatchMatmul within the TensorFlow Lite dialect";
+  let constructor = "CreateOptimizeBatchMatmulPass()";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
 }
 
 def OptimizeFunctionalOpsPass : Pass<"tfl-optimize-functional-ops", "mlir::ModuleOp"> {

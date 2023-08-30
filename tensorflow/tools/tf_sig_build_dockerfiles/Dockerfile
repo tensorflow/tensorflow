@@ -34,12 +34,18 @@ RUN /setup.sources.sh && /setup.packages.sh /devel.packages.txt && /setup.cuda.s
 # - buildifier: clean bazel build deps
 # - buildozer: clean bazel build deps
 # - gcloud SDK: communicate with Google Cloud Platform (GCP) for RBE, CI
+# - patchelf: Utility tool to modify existing ELF executables and libraries
 RUN git clone --branch v1.7.0 https://github.com/bats-core/bats-core.git && bats-core/install.sh /usr/local && rm -rf bats-core
 RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-linux-amd64 -O /usr/local/bin/bazel && chmod +x /usr/local/bin/bazel
 RUN wget https://github.com/bazelbuild/buildtools/releases/download/3.5.0/buildifier -O /usr/local/bin/buildifier && chmod +x /usr/local/bin/buildifier
 RUN wget https://github.com/bazelbuild/buildtools/releases/download/3.5.0/buildozer -O /usr/local/bin/buildozer && chmod +x /usr/local/bin/buildozer
 RUN curl -sSL https://sdk.cloud.google.com > /tmp/gcloud && bash /tmp/gcloud --install-dir=~/usr/local/bin --disable-prompts
-
+# Download and install patchelf v0.18.0 from GitHub. The default Ubuntu focal
+# packages only provide the "0.10-2build1" version. We use patchelf to manipulate
+# certain shared libraries during the wheel building process (https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/pip_package/build_pip_package.sh#L255-L262).
+# When we use Patchelf versions <0.12, those shared libraries end up with a
+# corrupted PT_NOTE program header. This was fixed in v0.12, see https://github.com/NixOS/patchelf/commit/43a33482b501b0f5ee9da312aabfca3806570cc9.
+RUN wget https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0-x86_64.tar.gz && tar -zxvf patchelf-0.18.0-x86_64.tar.gz -C /usr && rm -rf patchelf-0.18.0-x86_64.tar.gz
 
 # All lines past this point are reset when $CACHEBUSTER is set. We need this
 # for Python specifically because we install some nightly packages which are

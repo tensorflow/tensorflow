@@ -92,6 +92,13 @@ tf_proto {
       type: TYPE_MESSAGE
       type_name: ".tensorflow.quantization.CalibrationOptions"
     }
+    field {
+      name: "debugger_options"
+      number: 16
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.quantization.DebuggerOptions"
+    }
     nested_type {
       name: "RepresentativeDatasetsEntry"
       field {

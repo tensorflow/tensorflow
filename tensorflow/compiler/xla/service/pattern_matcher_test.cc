@@ -95,11 +95,29 @@ TEST_F(PatternMatcherTest, DenseArrayShape) {
   EXPECT_TRUE(Match(&array_shape, match::Shape().WithRank(3)));
   EXPECT_FALSE(
       Match(&array_shape, match::Shape().WithSubshape({0}, match::Shape())));
+  EXPECT_TRUE(Match(&array_shape, match::Shape().WithLayout({2, 1, 0})));
+  EXPECT_FALSE(Match(&array_shape, match::Shape().WithLayout({0, 1, 2})));
   Layout* matched_layout;
   EXPECT_TRUE(Match(&array_shape,
                     match::Shape().WithLayout(match::Layout(&matched_layout))));
   EXPECT_EQ(matched_layout, &array_shape.layout());
   EXPECT_TRUE(Match(&array_shape, match::Shape().IsDenseArray()));
+}
+
+TEST_F(PatternMatcherTest, DenseArrayShapeWithLayout) {
+  auto array_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 2, 3}, {1, 2, 0});
+  Shape* matched_shape;
+  EXPECT_TRUE(
+      Match(&array_shape, match::Shape(&matched_shape).WithLayout({1, 2, 0})));
+  EXPECT_EQ(matched_shape, &array_shape);
+  EXPECT_FALSE(Match(&array_shape, match::Shape().WithLayout({2, 0, 1})));
+  Layout* matched_layout;
+  EXPECT_TRUE(
+      Match(&array_shape,
+            match::Shape().WithLayout(
+                match::Layout(&matched_layout).WithMinorToMajor({1, 2, 0}))));
+  EXPECT_EQ(matched_layout, &array_shape.layout());
 }
 
 TEST_F(PatternMatcherTest, TupleShape) {

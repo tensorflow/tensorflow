@@ -1,5 +1,9 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "get_compatible_with_portable",
+    "tf_kernel_library",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -43,5 +47,21 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_kernel_library(
+    name = "dump_tensor_op",
+    srcs = ["dump_tensor_op.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
     ],
 )

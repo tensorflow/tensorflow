@@ -49,7 +49,7 @@ struct MemRefElementCastOpLowering
       ConversionPatternRewriter &rewriter) const override {
     auto target_memref_ty = cast_op.getDst().getType().cast<MemRefType>();
 
-    LLVMTypeConverter type_converter = *getTypeConverter();
+    const LLVMTypeConverter &type_converter = *getTypeConverter();
     auto target_desc_ty = type_converter.convertType(target_memref_ty)
                               .dyn_cast_or_null<LLVM::LLVMStructType>();
     if (!target_desc_ty) {

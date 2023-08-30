@@ -258,6 +258,7 @@ void AllocateAndParseFlags() {
   // Dump graphs in TFG dialect.
   bool use_tfg_graph_dumper = false;
   bool enable_mlir_generic_outside_compilation = false;
+  bool enable_tpu_variable_runtime_reformatting_pass = true;
 
   flag_list = new std::vector<Flag>(
       {Flag("tf_xla_enable_lazy_compilation",
@@ -354,7 +355,12 @@ void AllocateAndParseFlags() {
        Flag("tf_mlir_enable_generic_outside_compilation",
             &enable_mlir_generic_outside_compilation,
             "Enables OutsideCompilation passes for MLIR-Based TensorFlow "
-            "Generic Compiler Bridge.")});
+            "Generic Compiler Bridge."),
+       Flag("tf_mlir_enable_tpu_variable_runtime_reformatting_pass",
+            &enable_tpu_variable_runtime_reformatting_pass,
+            "Enables TPUVariableRuntimeReformatting pass for MLIR-Based "
+            "TensorFlow Compiler Bridge. This enables weight update sharding "
+            "and creates TPUReshardVariables ops.")});
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
@@ -377,6 +383,8 @@ void AllocateAndParseFlags() {
   mlir_flags->tf_mlir_enable_strict_clusters = enable_mlir_strict_clusters;
   mlir_flags->tf_mlir_enable_generic_outside_compilation =
       enable_mlir_generic_outside_compilation;
+  mlir_flags->tf_mlir_enable_tpu_variable_runtime_reformatting_pass =
+      enable_tpu_variable_runtime_reformatting_pass;
 
   if (use_tfg_graph_dumper) {
     UseMlirForGraphDump(MlirDumpConfig{}.elide_large_attributes().emit_dialect(

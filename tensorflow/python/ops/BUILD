@@ -1380,6 +1380,7 @@ py_strict_library(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:indexed_slices",
+        "//tensorflow/python/framework:none_tensor",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
@@ -1627,6 +1628,7 @@ py_strict_library(
         ":manip_grad",
         ":math_grad",
         ":math_ops",
+        ":nn_grad",
         ":optional_grad",
         ":random_grad",
         ":rnn_grad",
@@ -2173,9 +2175,7 @@ py_strict_library(
 
 py_strict_library(
     name = "nn",
-    srcs = [
-        "nn.py",
-    ],
+    srcs = ["nn.py"],
     srcs_version = "PY3",
     deps = [
         ":candidate_sampling_ops",
@@ -2184,6 +2184,7 @@ py_strict_library(
         ":math_ops",
         ":nn_grad",
         ":nn_impl",
+        ":nn_impl_distribute",
         ":nn_ops",
     ],
 )
@@ -3743,7 +3744,7 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":array_ops",
-        ":nn_impl",
+        ":nn_impl_distribute",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:context",
@@ -4302,14 +4303,27 @@ cuda_py_strict_test(
 )
 
 py_strict_library(
+    name = "nn_impl_distribute",
+    srcs = ["nn_impl_distribute.py"],
+    deps = [
+        ":array_ops",
+        ":check_ops",
+        ":math_ops",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops/losses:util",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
     name = "nn_impl",
     srcs = ["nn_impl.py"],
     deps = [
         ":array_ops",
-        ":array_ops_gen",
         ":array_ops_stack",
         ":candidate_sampling_ops",
-        ":check_ops",
         ":cond",
         ":custom_gradient",
         ":embedding_ops",
@@ -4319,11 +4333,9 @@ py_strict_library(
         ":nn_ops_gen",
         ":sparse_ops_gen",
         ":variables",
-        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops/losses:util",
         "//tensorflow/python/platform:device_context",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
@@ -4366,9 +4378,10 @@ py_strict_library(
         ":control_flow_ops",
         ":image_ops_gen",
         ":math_ops",
-        ":nn",
+        ":nn_impl",
         ":nn_ops",
         ":random_ops",
+        ":ref_variable",
         ":sort_ops",
         ":stateless_random_ops",
         ":string_ops",

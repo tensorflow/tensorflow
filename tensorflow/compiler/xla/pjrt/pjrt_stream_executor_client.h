@@ -161,6 +161,8 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   StatusOr<PjRtMemorySpace*> default_memory_space() const override;
 
+  StatusOr<std::intptr_t> GetStreamForExternalReadyEvents() const override;
+
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {
     return nullptr;
@@ -298,7 +300,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
-      std::function<void()> on_delete_callback) override;
+      std::function<void()> on_delete_callback,
+      std::optional<std::intptr_t> stream) override;
 
   StatusOr<ChannelHandle> CreateChannelHandle() override {
     return client()->CreateChannelHandle();

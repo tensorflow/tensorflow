@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -76,9 +77,10 @@ void CheckParsePointerParams(const Operator* op, ErrorReporter* error_reporter,
 // Copies the contents from the flatbuffer int vector `flatbuffer` into the
 // int array `buffer`. `flat_vector` and `buffer` represent the same
 // configuration operation for a given operation.
-TfLiteStatus FlatBufferIntVectorToArray(
-    int max_size_of_buffer, const flatbuffers::Vector<int32_t>* flat_vector,
-    int* buffer, ErrorReporter* error_reporter, const char* op_name) {
+template <typename DataType = int32_t>
+static TfLiteStatus FlatBufferIntVectorToArray(
+    int max_size_of_buffer, const flatbuffers::Vector<DataType>* flat_vector,
+    DataType* buffer, ErrorReporter* error_reporter, const char* op_name) {
   if (!flat_vector) {
     TF_LITE_REPORT_ERROR(error_reporter,
                          "Input array not provided for operation '%s'.\n",
@@ -86,7 +88,7 @@ TfLiteStatus FlatBufferIntVectorToArray(
     return kTfLiteError;
   } else {
     size_t num_dimensions = flat_vector->size();
-    if (num_dimensions > max_size_of_buffer / sizeof(int)) {
+    if (num_dimensions > max_size_of_buffer / sizeof(DataType)) {
       TF_LITE_REPORT_ERROR(
           error_reporter,
           "Found too many dimensions in the input array of operation '%s'.\n",
@@ -857,6 +859,46 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_STABLEHLO_SCATTER: {
+      auto params = safe_allocator.Allocate<TfLiteStablehloScatterParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* shlo_scatter_params =
+              op->builtin_options_2_as_StablehloScatterOptions()) {
+        params->indices_are_sorted = shlo_scatter_params->indices_are_sorted();
+
+        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+            shlo_scatter_params->update_window_dims()->size() * sizeof(int64_t),
+            shlo_scatter_params->update_window_dims(),
+            params->update_window_dims, error_reporter, "stablehlo_scatter"));
+        params->num_update_window_dims =
+            shlo_scatter_params->update_window_dims()->size();
+
+        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+            shlo_scatter_params->inserted_window_dims()->size() *
+                sizeof(int64_t),
+            shlo_scatter_params->inserted_window_dims(),
+            params->inserted_window_dims, error_reporter, "stablehlo_scatter"));
+        params->num_inserted_window_dims =
+            shlo_scatter_params->inserted_window_dims()->size();
+
+        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+            shlo_scatter_params->scatter_dims_to_operand_dims()->size() *
+                sizeof(int64_t),
+            shlo_scatter_params->scatter_dims_to_operand_dims(),
+            params->scatter_dims_to_operand_dims, error_reporter,
+            "stablehlo_scatter"));
+        params->num_scatter_dims_to_operand_dims =
+            shlo_scatter_params->scatter_dims_to_operand_dims()->size();
+
+        params->index_vector_dim = shlo_scatter_params->index_vector_dim();
+        params->unique_indices = shlo_scatter_params->unique_indices();
+        params->update_computation_subgraph_index =
+            shlo_scatter_params->update_computation_subgraph_index();
+      }
+
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
 
     // TODO: skip param parsing for now since ops below don't have kernels
     case BuiltinOperator_STABLEHLO_SLICE:
@@ -887,6 +929,16 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_SELECT:
     case BuiltinOperator_STABLEHLO_SUBTRACT:
     case BuiltinOperator_STABLEHLO_TANH:
+    case BuiltinOperator_STABLEHLO_DYNAMIC_SLICE:
+    case BuiltinOperator_STABLEHLO_DYNAMIC_UPDATE_SLICE:
+    case BuiltinOperator_STABLEHLO_IOTA:
+    case BuiltinOperator_STABLEHLO_COMPARE:
+    case BuiltinOperator_STABLEHLO_CONVERT:
+    case BuiltinOperator_STABLEHLO_PAD:
+    case BuiltinOperator_STABLEHLO_DOT_GENERAL:
+    case BuiltinOperator_STABLEHLO_REDUCE_WINDOW:
+    case BuiltinOperator_STABLEHLO_SORT:
+    case BuiltinOperator_STABLEHLO_WHILE:
 
     // Below are the ops with no builtin_data structure.
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are

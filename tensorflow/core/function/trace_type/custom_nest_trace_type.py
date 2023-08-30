@@ -90,27 +90,27 @@ class CustomNestTraceType(trace.TraceType):
         self.metadata, components_placeholder_value
     )
 
-  def _to_tensors(self, value: Any) -> PythonList[Any]:
+  def to_tensors(self, value: Any) -> PythonList[Any]:
     if not isinstance(value, self.value_type):
       raise TypeError(f"{value!r} is not of type {self.value_type}.")
     _, value_components = value.__tf_flatten__()
     flattened_values = []
     for value_comp, type_comp in zip(value_components, self.components):
-      flattened_values.extend(type_comp._to_tensors(value_comp))  # pylint: disable=protected-access
+      flattened_values.extend(type_comp.to_tensors(value_comp))
     return flattened_values
 
-  def _from_tensors(self, tensors: Iterator[Any]) -> Any:
+  def from_tensors(self, tensors: Iterator[Any]) -> Any:
     return self.value_type.__tf_unflatten__(
-        self.metadata, tuple(c._from_tensors(tensors) for c in self.components)  # pylint: disable=protected-access
+        self.metadata, tuple(c.from_tensors(tensors) for c in self.components)
     )
 
-  def _flatten(self) -> PythonList[trace.TraceType]:
+  def flatten(self) -> PythonList[trace.TraceType]:
     flat_list = []
     for c in self.components:
-      flat_list.extend(c._flatten())  # pylint: disable=protected-access
+      flat_list.extend(c.flatten())
     return flat_list
 
-  def _cast(self, value: Any, casting_context: Any) -> Any:
+  def cast(self, value: Any, casting_context: Any) -> Any:
     if not isinstance(value, self.value_type):
       raise TypeError(f"[{value!r}] is not of type {self.value_type}.")
     value_metadata, value_components = value.__tf_flatten__()

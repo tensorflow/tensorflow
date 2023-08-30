@@ -84,6 +84,7 @@ class GPUDeviceTest : public ::testing::Test {
       const std::vector<std::vector<float>>& memory_limit_mb = {},
       const std::vector<std::vector<int32>>& priority = {},
       const std::vector<std::vector<int32>>& device_ordinal = {},
+      const int32 num_virtual_devices = 0,
       const bool use_cuda_malloc_async = false) {
     SessionOptions options;
     ConfigProto* config = &options.config;
@@ -94,22 +95,27 @@ class GPUDeviceTest : public ::testing::Test {
         per_process_gpu_memory_fraction);
     gpu_options->mutable_experimental()->set_use_cuda_malloc_async(
         use_cuda_malloc_async);
-    for (int i = 0; i < memory_limit_mb.size(); ++i) {
-      auto virtual_devices =
-          gpu_options->mutable_experimental()->add_virtual_devices();
-      for (float mb : memory_limit_mb[i]) {
-        virtual_devices->add_memory_limit_mb(mb);
-      }
-      if (i < device_ordinal.size()) {
-        for (int o : device_ordinal[i]) {
-          virtual_devices->add_device_ordinal(o);
+    if (!memory_limit_mb.empty()) {
+      for (int i = 0; i < memory_limit_mb.size(); ++i) {
+        auto virtual_devices =
+            gpu_options->mutable_experimental()->add_virtual_devices();
+        for (float mb : memory_limit_mb[i]) {
+          virtual_devices->add_memory_limit_mb(mb);
+        }
+        if (i < device_ordinal.size()) {
+          for (int o : device_ordinal[i]) {
+            virtual_devices->add_device_ordinal(o);
+          }
+        }
+        if (i < priority.size()) {
+          for (int p : priority[i]) {
+            virtual_devices->add_priority(p);
+          }
         }
       }
-      if (i < priority.size()) {
-        for (int p : priority[i]) {
-          virtual_devices->add_priority(p);
-        }
-      }
+    } else if (num_virtual_devices > 0) {
+      gpu_options->mutable_experimental()->set_num_virtual_devices_per_gpu(
+          num_virtual_devices);
     }
     return options;
   }
@@ -153,7 +159,7 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
   }
 #endif
 
-  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {},
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {}, 0,
                                            /*use_cuda_malloc_async=*/true);
   std::vector<std::unique_ptr<Device>> devices;
   Status status;
@@ -180,7 +186,7 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
 }
 
 TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsyncPreallocate)) {
-  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {},
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {}, 0,
                                            /*use_cuda_malloc_async=*/true);
   setenv("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC", "2048", 1);
   std::vector<std::unique_ptr<Device>> devices;
@@ -484,6 +490,29 @@ TEST_F(GPUDeviceTest,
   EXPECT_EQ(devices[1]->attributes().memory_limit(), 3 << 20);
   EXPECT_EQ(devices[2]->attributes().memory_limit(), 2 << 20);
   EXPECT_EQ(devices[3]->attributes().memory_limit(), 4 << 20);
+}
+
+TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithSpecifiedNumber) {
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {}, 2);
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      opts, kDeviceNamePrefix, &devices));
+  EXPECT_THAT(devices, SizeIs(2));
+  // The two virtual devices have the same memory size.
+  EXPECT_EQ(devices[0]->attributes().memory_limit(),
+            devices[1]->attributes().memory_limit());
+  ASSERT_EQ(devices[0]->attributes().locality().links().link_size(), 1);
+  ASSERT_EQ(devices[1]->attributes().locality().links().link_size(), 1);
+  EXPECT_EQ(devices[0]->attributes().locality().links().link(0).device_id(), 1);
+  EXPECT_EQ(devices[0]->attributes().locality().links().link(0).type(),
+            "SAME_DEVICE");
+  EXPECT_EQ(BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength,
+            devices[0]->attributes().locality().links().link(0).strength());
+  EXPECT_EQ(devices[1]->attributes().locality().links().link(0).device_id(), 0);
+  EXPECT_EQ(devices[1]->attributes().locality().links().link(0).type(),
+            "SAME_DEVICE");
+  EXPECT_EQ(BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength,
+            devices[1]->attributes().locality().links().link(0).strength());
 }
 
 // Enabling unified memory on pre-Pascal GPUs results in an initialization

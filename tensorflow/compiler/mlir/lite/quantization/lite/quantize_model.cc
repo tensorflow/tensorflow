@@ -108,7 +108,7 @@ TfLiteStatus QuantizeModel(
     output_mlir_type = input_mlir_type;
   }
 
-  tensorflow::AddQuantizationPasses(quant_specs, pm);
+  tensorflow::AddQuantizationPasses(mlir::TFL::PassConfig(quant_specs), pm);
   pm.addPass(TFL::CreateModifyIONodesPass(input_mlir_type, output_mlir_type));
   // If the first or final ops are not quantized, remove QDQ.
   pm.addPass(TFL::CreatePostQuantizeRemoveQDQPass());

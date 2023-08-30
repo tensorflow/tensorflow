@@ -31,15 +31,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -111,11 +110,11 @@ bool IsTpuUsed(int64_t pid) {
 // permission to processes owned by another user.
 // TODO (shahrokhi) use tensorflow/core/platform/filesystem (GetChildren) for
 // this.
-tsl::StatusOr<int64_t> FindLibtpuProcess() {
+absl::StatusOr<int64_t> FindLibtpuProcess() {
   DIR* proc = opendir("/proc");
 
   if (proc == nullptr) {
-    return tsl::errors::Unavailable("was not able to open /proc");
+    return absl::UnavailableError("was not able to open /proc");
   }
   std::unique_ptr<DIR, int (*)(DIR*)> proc_dir(proc, closedir);
   struct dirent* ent;
@@ -128,12 +127,12 @@ tsl::StatusOr<int64_t> FindLibtpuProcess() {
       return pid;
     }
   }
-  return tsl::errors::NotFound("did not find which pid uses the libtpu.so");
+  return absl::NotFoundError("did not find which pid uses the libtpu.so");
 }
 
 }  // namespace
 
-tsl::Status TryAcquireTpuLock() {
+absl::Status TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
   absl::MutexLock l(mu);
 
@@ -141,9 +140,9 @@ tsl::Status TryAcquireTpuLock() {
 
   if (load_library_override == "1") {
     VLOG(1) << "TPU_LOAD_LIBRARY=1, force loading libtpu";
-    return ::tsl::OkStatus();
+    return absl::OkStatus();
   } else if (load_library_override == "0") {
-    return tsl::errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "TPU_LOAD_LIBRARY=0, not loading libtpu");
   }
 
@@ -153,7 +152,7 @@ tsl::Status TryAcquireTpuLock() {
   if (allow_multiple_libtpu_load) {
     VLOG(1) << "ALLOW_MULTIPLE_LIBTPU_LOAD is set to True, "
                "allowing multiple concurrent libtpu.so loads.";
-    return ::tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   std::string chips_per_process_bounds =
@@ -171,7 +170,7 @@ tsl::Status TryAcquireTpuLock() {
   if (!use_all_tpus) {
     VLOG(1) << "TPU_CHIPS_PER_PROCESS_BOUNDS is a subset of host's TPU "
                "devices, allowing multiple libtpu.so loads.";
-    return ::tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   static constexpr char libtpu_lockfn[] = "/tmp/libtpu_lockfile";
@@ -188,12 +187,12 @@ tsl::Status TryAcquireTpuLock() {
   int fd = open(libtpu_lockfn, O_CREAT | O_RDWR, 0600);
   if (fd == -1) {
     // File open permission locks multi-user access by default.
-    return tsl::errors::Aborted(
+    return absl::AbortedError(absl::StrCat(
         "The TPU is already in use by another process probably owned by "
         "another user. Run \"$ sudo lsof -w ",
         GetTpuDriverFile(),
         "\" to figure out which process is using the TPU. If you still get "
-        "this message, run \"$ sudo rm /tmp/libtpu_lockfile\".");
+        "this message, run \"$ sudo rm /tmp/libtpu_lockfile\"."));
   }
 
   // lockf() holds the lock until the process exits to guard the underlying
@@ -201,17 +200,17 @@ tsl::Status TryAcquireTpuLock() {
   if (lockf(fd, F_TLOCK, 0) != 0) {
     auto pid = FindLibtpuProcess();
     if (pid.ok()) {
-      return tsl::errors::Aborted(absl::StrCat(
+      return absl::AbortedError(absl::StrCat(
           "The TPU is already in use by process with pid ", pid.value(),
           ". Not attempting to load libtpu.so in this process."));
     } else {
-      return tsl::errors::Aborted(
+      return absl::AbortedError(
           "Internal error when accessing libtpu multi-process lockfile. "
           "Run \"$ sudo rm /tmp/libtpu_lockfile\".");
     }
   }
   libtpu_acquired = true;
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 std::pair<std::vector<std::string>, std::vector<const char*>>

@@ -349,6 +349,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "passes/add_dump_tensor_op.cc",
         "passes/cast_bf16_ops_to_f32.cc",
         "passes/cast_bf16_ops_to_f32.inc",
         "passes/convert_custom_aggregation_op_to_quant_stats.cc",
@@ -425,6 +426,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/ops:tf_op_quant_spec",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/ops:tf_quantize_op",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:fake_quant_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:tf_to_uniform_attribute_utils",
@@ -445,6 +447,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/ir/importexport:mangling",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:path",

@@ -32,6 +32,7 @@ extern "C" {
 // TfLiteReshapeParams can't have dynamic data so we fix the maximum possible
 // number of dimensions.
 #define TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT 8
+#define TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT 8
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
@@ -538,6 +539,24 @@ typedef struct {
 typedef struct {
   int64_t dimension;
 } TfLiteStablehloConcatenateParams;
+
+typedef struct {
+  // See the stablehlo spec for the explanation of the attributes:
+  // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#scatter
+  bool indices_are_sorted;
+  int64_t
+      update_window_dims[TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_update_window_dims;
+  int64_t
+      inserted_window_dims[TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_inserted_window_dims;
+  int64_t scatter_dims_to_operand_dims
+      [TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_scatter_dims_to_operand_dims;
+  int64_t index_vector_dim;
+  bool unique_indices;
+  int update_computation_subgraph_index;
+} TfLiteStablehloScatterParams;
 
 #ifdef __cplusplus
 }  // extern "C"

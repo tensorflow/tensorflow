@@ -140,6 +140,7 @@ cc_library(
         ":platform_id",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:executor_cache",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/strings:str_format",

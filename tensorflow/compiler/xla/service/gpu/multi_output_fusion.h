@@ -93,10 +93,10 @@ namespace gpu {
 
 class GpuMultiOutputFusion : public HloModulePass {
  public:
-  explicit GpuMultiOutputFusion(const GpuDeviceInfo& d,
-                                se::CudaComputeCapability cc,
-                                HloCostAnalysis::ShapeSizeFunction f)
-      : device_info_(d), compute_capability_(cc), shape_size_function_(f) {}
+  explicit GpuMultiOutputFusion(
+      const GpuDeviceInfo& device_info,
+      HloCostAnalysis::ShapeSizeFunction shape_size_function)
+      : device_info_(device_info), shape_size_function_(shape_size_function) {}
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
@@ -124,7 +124,6 @@ class GpuMultiOutputFusion : public HloModulePass {
   std::unique_ptr<HloReachabilityMap> reachability_;
 
   const GpuDeviceInfo device_info_;
-  se::CudaComputeCapability compute_capability_;
   HloCostAnalysis::ShapeSizeFunction shape_size_function_;
 };
 

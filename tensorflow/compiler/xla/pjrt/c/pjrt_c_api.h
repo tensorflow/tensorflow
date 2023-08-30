@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 24
+#define PJRT_API_MINOR 26
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1441,80 +1441,6 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_GetMemoryLayout_Args, layout);
 typedef PJRT_Error* PJRT_Buffer_GetMemoryLayout(
     PJRT_Buffer_GetMemoryLayout_Args* args);
 
-// Maximum number of array elements to inline into structs for performance.
-#define PJRT_C_API_MAX_INLINED 6
-
-typedef struct PJRT_IntList {
-  union {
-    int* heap;  // owned
-    int inlined[PJRT_C_API_MAX_INLINED];
-  };
-  int64_t size;
-} PJRT_IntList;
-
-typedef struct PJRT_Int64List {
-  union {
-    int64_t* heap;  // owned
-    int64_t inlined[PJRT_C_API_MAX_INLINED];
-  };
-  int64_t size;
-} PJRT_Int64List;
-
-typedef struct PJRT_BoolList {
-  union {
-    bool* heap;  // owned
-    bool inlined[PJRT_C_API_MAX_INLINED];
-  };
-  int64_t size;
-} PJRT_BoolList;
-
-typedef struct PJRT_XLA_Tile {
-  PJRT_Int64List dimensions;
-} PJRT_XLA_Tile;
-
-typedef struct PJRT_XLA_TileList {
-  union {
-    PJRT_XLA_Tile* heap;  // owned
-    PJRT_XLA_Tile inlined[PJRT_C_API_MAX_INLINED];
-  };
-  int64_t size;
-} PJRT_XLA_TileList;
-
-typedef struct PJRT_XLA_Layout {
-  PJRT_Int64List minor_to_major;
-  PJRT_IntList dim_level_types;
-  PJRT_IntList dim_unique;
-  PJRT_IntList dim_ordered;
-  PJRT_XLA_TileList tiles;
-  int index_primitive_type;
-  int pointer_primitive_type;
-  int64_t element_size_in_bits;
-  int64_t memory_space;
-  int64_t dynamic_shape_metadata_prefix_bytes;
-} PJRT_XLA_Layout;
-
-// This trimmed shape doesn't have any Tuple information. In case of Tuple,
-// assert is triggered from the C API  Client.
-// TODO(b/238999986): This is a temporary solution. Remove this later.
-struct PJRT_Buffer_OnDeviceTrimmedShape_Args {
-  size_t struct_size;
-  void* priv;
-  PJRT_Buffer* buffer;
-  int element_type;                  // out
-  PJRT_Int64List dimensions;         // out
-  PJRT_BoolList dynamic_dimensions;  // out
-  bool has_layout;
-  // Whether it calls logical_on_device_shape.
-  bool is_logical_on_device_shape;
-  PJRT_XLA_Layout layout;  // out
-};
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_OnDeviceTrimmedShape_Args, layout);
-
-// Return the trimmed shape from PjRtBuffer.
-// TODO(b/238999986): Replace this with decomposed shape methods.
-typedef PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
-    PJRT_Buffer_OnDeviceTrimmedShape_Args* args);
-
 struct PJRT_Buffer_ToHostBuffer_Args {
   size_t struct_size;
   void* priv;
@@ -1991,9 +1917,9 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnpaddedDimensions);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_DynamicDimensionIndices);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_GetMemoryLayout);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Device);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Memory);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToDevice);
@@ -2019,15 +1945,9 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Serialize);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Compile);
-
-  // Always add new fields to the end of the struct.
-  // TODO(skyewm, jieying): Move fields below to their corresponding places
-  // after each major version bump.
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Memory);
 } PJRT_Api;
 
-const size_t PJRT_Api_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_Memory);
+const size_t PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Compile);
 
 #undef _PJRT_API_STRUCT_FIELD
 #undef PJRT_DEFINE_STRUCT_TRAITS

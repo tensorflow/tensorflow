@@ -11,6 +11,7 @@ package(
 )
 
 glob_lit_tests(
+    name = "all_lit_tests",
     data = [":filecheck_test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     tags_override = {

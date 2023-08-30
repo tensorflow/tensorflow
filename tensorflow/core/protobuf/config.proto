@@ -106,8 +106,8 @@ message GPUOptions {
       // Per "virtual" device memory limit, in MB. The number of elements in
       // the list is the number of virtual devices to create on the
       // corresponding visible GPU (see "virtual_devices" below).
-      // If empty, it will create single virtual device taking all available
-      // memory from the device.
+      // If empty and `num_virtual_devices_per_gpu` is not set, it will create
+      // single virtual device taking all available memory from the device.
       //
       // For the concept of "visible" and "virtual" GPU, see the comments for
       // "visible_device_list" above for more information.
@@ -171,6 +171,12 @@ message GPUOptions {
     //    different settings in different sessions within same process will
     //    result in undefined behavior.
     repeated VirtualDevices virtual_devices = 1;
+
+    // The number of virtual devices to create on each visible GPU. The
+    // available memory will be split equally among all virtual devices. If the
+    // field `memory_limit_mb` in `VirtualDevices` is not empty, this field will
+    // be ignored.
+    int32 num_virtual_devices_per_gpu = 15;
 
     // If true, uses CUDA unified memory for memory allocations. If
     // per_process_gpu_memory_fraction option is greater than 1.0, then unified
@@ -691,9 +697,14 @@ message ConfigProto {
     // aims to negate its value.
     bool disable_optimize_for_static_graph = 24;
 
+    // Whether eager remote execution will stream all the function calls or
+    // allow them to happen in parallel. When true, streaming execution is
+    // disabled, and parallel execution is allowed.
+    bool disable_eager_executor_streaming_enqueue = 26;
+
     reserved 25;
 
-    // Next: 26
+    // Next: 27
   }
 
   Experimental experimental = 16;

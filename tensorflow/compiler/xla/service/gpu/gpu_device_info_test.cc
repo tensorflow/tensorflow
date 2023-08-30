@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -26,7 +28,7 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #endif
 
-namespace stream_executor {
+namespace xla {
 namespace gpu {
 namespace {
 
@@ -37,18 +39,18 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
 #if TENSORFLOW_USE_ROCM
   test_platform = "rocm";
 #endif
+
   se::Platform* platform =
       se::MultiPlatformManager::PlatformWithName(test_platform).value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
-  const xla::gpu::GpuDeviceInfo dev_info = xla::gpu::GetGpuDeviceInfo(executor);
-  absl::string_view name(dev_info.name);
+  const GpuDeviceInfo dev_info = GetGpuDeviceInfo(executor);
+  absl::string_view name(executor->GetDeviceDescription().name());
   if (name == "NVIDIA RTX A6000") {
-    xla::gpu::GpuDeviceInfo test_info =
-        xla::gpu::TestGpuDeviceInfo::RTXA6000DeviceInfo();
+    GpuDeviceInfo test_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
     EXPECT_THAT(
         dev_info,
         ::testing::FieldsAre(
-            test_info.name, test_info.threads_per_block_limit,
+            test_info.compute_capability, test_info.threads_per_block_limit,
             test_info.threads_per_warp, test_info.shared_memory_per_block,
             test_info.shared_memory_per_block_optin,
             test_info.shared_memory_per_core, test_info.threads_per_core_limit,
@@ -63,7 +65,8 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
     EXPECT_THAT(
         dev_info,
         ::testing::FieldsAre(
-            name, /*threads_per_block_limit=*/1024,
+            GpuVersion(se::CudaComputeCapability(6, 1)),
+            /*threads_per_block_limit=*/1024,
             /*threads_per_warp=*/32, /*shared_memory_per_block=*/48 * 1024,
             /*shared_memory_per_block_optin=*/48 * 1024,
             /*shared_memory_per_core=*/96 * 1024,
@@ -78,7 +81,8 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
   } else if (name == "Tesla P100-SXM2-16GB") {
     EXPECT_THAT(
         dev_info,
-        ::testing::FieldsAre(name, /*threads_per_block_limit=*/1024,
+        ::testing::FieldsAre(GpuVersion(se::CudaComputeCapability(6, 0)),
+                             /*threads_per_block_limit=*/1024,
                              /*threads_per_warp=*/32,
                              /*shared_memory_per_block=*/48 * 1024,
                              /*shared_memory_per_block_optin=*/48 * 1024,
@@ -95,12 +99,11 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
   }
 #if TF_ROCM_VERSION >= 50500
   else if (name == "AMD Instinct MI210") {  // NOLINT
-    xla::gpu::GpuDeviceInfo test_info =
-        xla::gpu::TestGpuDeviceInfo::AMDMI210DeviceInfo();
+    GpuDeviceInfo test_info = TestGpuDeviceInfo::AMDMI210DeviceInfo();
     EXPECT_THAT(
         dev_info,
         ::testing::FieldsAre(
-            test_info.name, test_info.threads_per_block_limit,
+            test_info.compute_capability, test_info.threads_per_block_limit,
             test_info.threads_per_warp, test_info.shared_memory_per_block,
             test_info.shared_memory_per_block_optin,
             test_info.shared_memory_per_core, test_info.threads_per_core_limit,
@@ -113,7 +116,8 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
     EXPECT_THAT(
         dev_info,
         ::testing::FieldsAre(
-            name, /*threads_per_block_limit=*/1024,
+            GpuVersion(se::RocmComputeCapability("gfx908")),
+            /*threads_per_block_limit=*/1024,
             /*threads_per_warp=*/64, /*shared_memory_per_block=*/64 * 1024,
             /*shared_memory_per_block_optin=*/0,
             /*shared_memory_per_core=*/64 * 1024,
@@ -129,7 +133,8 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
     EXPECT_THAT(
         dev_info,
         ::testing::FieldsAre(
-            name, /*threads_per_block_limit=*/1024,
+            GpuVersion(se::RocmComputeCapability("gfx906")),
+            /*threads_per_block_limit=*/1024,
             /*threads_per_warp=*/64, /*shared_memory_per_block=*/64 * 1024,
             /*shared_memory_per_block_optin=*/0,
             /*shared_memory_per_core=*/64 * 1024,
@@ -150,4 +155,4 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
 
 }  // namespace
 }  // namespace gpu
-}  // namespace stream_executor
+}  // namespace xla

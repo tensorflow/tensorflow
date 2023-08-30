@@ -447,6 +447,7 @@ void CreateConvertMlirToXlaHloPipeline(
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   }
 
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::CreateConvertTFQuantTypesPass());
 

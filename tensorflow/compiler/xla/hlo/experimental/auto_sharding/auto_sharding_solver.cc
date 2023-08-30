@@ -117,11 +117,15 @@ void PrintLargestInstructions(
   }
 }
 
-// Adds deterministic noise to the coefficient using the name & salt multiplier.
+// Applies deterministic noise to the coefficient using the name & saltiplier,
+// so that ties between equal terms can be broken in the solver's objective
+// function.  We include both a multiplicative term (in case the coefficient is
+// large) and an additive term (in case the coefficient is zero).
 void AddSalt(const std::string& name, double saltiplier, double* coeff) {
   if (saltiplier <= 0.0) return;
   const tsl::uint64 hash = tsl::Hash64(name);  // stable across runs & platforms
-  *coeff *= 1.0 + saltiplier * hash / std::numeric_limits<tsl::uint64>::max();
+  double salt = saltiplier * hash / std::numeric_limits<tsl::uint64>::max();
+  *coeff = *coeff * (1.0 + salt) + salt;
 }
 
 // We formulate the auto sharding process as the following ILP problem:

@@ -14,14 +14,17 @@
 # ==============================================================================
 """Core TensorFlow types."""
 
+import abc
+import inspect
 import sys
 import textwrap
-
 from typing import Union
 
 import numpy as np
 
 from tensorflow.python.types import doc_typealias
+
+
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import, g-bad-import-order
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
@@ -85,6 +88,27 @@ class Value(Tensor):
     pass
 
 
+@tf_export("types.experimental.FunctionType")
+class FunctionType(inspect.Signature, metaclass=abc.ABCMeta):
+  """Represents the type of a TensorFlow callable.
+
+  FunctionType inherits from inspect.Signature which canonically represents the
+  structure (and optionally type) information of input parameters and output of
+  a Python function. Additionally, it integrates with the tf.function type
+  system (`tf.types.experimental.TraceType`) to provide a holistic
+  representation of the the I/O contract of the callable. It is used for:
+    - Canonicalization and type-checking of Python input arguments
+    - Type-based dispatch to concrete functions
+    - Packing/unpacking structured python values to Tensors
+    - Generation of structured placeholder values for tracing
+  """
+
+  # The signature of this method changes in Py3.10 so we override to enforce it.
+  @classmethod
+  def from_callable(cls, obj, *, follow_wrapped=True):
+    return super().from_callable(obj, follow_wrapped=follow_wrapped)
+
+
 @tf_export("types.experimental.Callable", v1=[])
 class Callable:
   """Base class for TF callables like those created by tf.function.
@@ -92,6 +116,10 @@ class Callable:
   Note: Callables are conceptually very similar to `tf.Operation`: a
   `tf.Operation` is a kind of callable.
   """
+
+  @property
+  def function_type(self) -> FunctionType:
+    """Returns a FunctionType describing this callable."""
 
   def __call__(self, *args, **kwargs):
     """Executes this callable.

@@ -235,8 +235,12 @@ table Tensor {
   // represented with -1.
   shape_signature:[int]; // Optional.
 
-  // If false, the rank or the number of tensor dimensions is unknown.
-  // If false, "shape" must be [].
+  // This field is added to distinguish between scalars and tensors of unknown
+  // ranks (both of which shape is []).
+  // For scalars (rank = 0), shape = [] and has_rank = true.
+  // For tensors with known rank (rank > 0) and shape, shape = [...] and
+  // has_rank = true.
+  // For tensors with unknown rank and shape, shape = [] and has_rank = false.
   has_rank: bool = false;
 
   // The nested Tensor types for VARIANT type. This is always empty for
@@ -450,6 +454,17 @@ enum BuiltinOperator : int32 {
   STABLEHLO_SELECT = 187, // WARNING: No runtime support
   STABLEHLO_SUBTRACT = 188, // WARNING: No runtime support
   STABLEHLO_TANH = 189, // WARNING: No runtime support
+  STABLEHLO_SCATTER = 190,
+  STABLEHLO_COMPARE = 191, // WARNING: No runtime support
+  STABLEHLO_CONVERT = 192, // WARNING: No runtime support
+  STABLEHLO_DYNAMIC_SLICE = 193, // WARNING: No runtime support
+  STABLEHLO_DYNAMIC_UPDATE_SLICE = 194, // WARNING: No runtime support
+  STABLEHLO_PAD = 195, // WARNING: No runtime support
+  STABLEHLO_IOTA = 196, // WARNING: No runtime support
+  STABLEHLO_DOT_GENERAL = 197, // WARNING: No runtime support
+  STABLEHLO_REDUCE_WINDOW = 198, // WARNING: No runtime support
+  STABLEHLO_SORT = 199, // WARNING: No runtime support
+  STABLEHLO_WHILE = 200, // WARNING: No runtime support
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -593,12 +608,49 @@ union BuiltinOptions2{
   StablehloConvolutionOptions,
   StablehloCustomCallOptions,
   StablehloReduceOptions,
+  StablehloScatterOptions,
+  StablehloCompareOptions,
+  StablehloDynamicSliceOptions,
+  StablehloPadOptions,
+  StablehloIotaOptions,
+  StablehloDotGeneralOptions,
+  StablehloReduceWindowOptions,
+  StablehloSortOptions,
+  StablehloWhileOptions,
 }
 
 enum StablehloPrecisionConfig : uint {
   DEFAULT,
   HIGH,
   HIGHEST,
+}
+
+table StablehloDotGeneralOptions{
+  lhs_batching_dimensions : [long];
+  rhs_batching_dimensions : [long];
+  lhs_contracting_dimensions : [long];
+  rhs_contracting_dimensions : [long];
+  precision_config : [StablehloPrecisionConfig];
+}
+
+table StablehloReduceWindowOptions{
+  window_dimensions : [long];
+  window_strides : [long];
+  base_dilations : [long];
+  window_dilations : [long];
+  padding : [long];
+  body_subgraph_index : int;
+}
+
+table StablehloWhileOptions{
+  cond_subgraph_index : int;
+  body_subgraph_index : int;
+}
+
+table StablehloSortOptions{
+  dimension : long;
+  is_stable : bool;
+  comparator_subgraph_index : int;
 }
 
 table StablehloConcatenateOptions {
@@ -609,11 +661,48 @@ table StablehloBroadcastInDimOptions{
   broadcast_dimensions : [long];
 }
 
+enum StablehloComparisonDirection : uint {
+  STABLEHLO_COMPARISON_DIRECTION_EQ,
+  STABLEHLO_COMPARISON_DIRECTION_NE,
+  STABLEHLO_COMPARISON_DIRECTION_GE,
+  STABLEHLO_COMPARISON_DIRECTION_GT,
+  STABLEHLO_COMPARISON_DIRECTION_LE,
+  STABLEHLO_COMPARISON_DIRECTION_LT,
+
+}
+
+enum StablehloComparisonType : uint {
+  STABLEHLO_COMPARISON_TYPE_NOTYPE,
+  STABLEHLO_COMPARISON_TYPE_FLOAT,
+  STABLEHLO_COMPARISON_TYPE_FLOAT_TOTAL_ORDER,
+  STABLEHLO_COMPARISON_TYPE_SIGNED,
+  STABLEHLO_COMPARISON_TYPE_UNSIGNED,
+}
+
+table StablehloCompareOptions{
+  comparison_direction : StablehloComparisonDirection;
+  compare_type : StablehloComparisonType;
+}
+
+table StablehloDynamicSliceOptions{
+  slice_sizes : [long];
+}
+
+table StablehloPadOptions{
+  edge_padding_low : [long];
+  edge_padding_high : [long];
+  interior_padding : [long];
+}
+
+table StablehloIotaOptions{
+  iota_dimension : long;
+}
+
 table StablehloCustomCallOptions {
   call_target_name : string;
   has_side_effect : bool;
   backend_config: string;
-  api_version : int; // will be decprecated b/189822916
+  api_version : int; // will be decprecated
   called_computations: [int]; // should point to subgraphs of the computations
   custom_attributes : [ubyte];
 }
@@ -647,6 +736,16 @@ table StablehloConvolutionOptions{
   feature_group_count : long;
   batch_group_count : long;
   precision_config : [StablehloPrecisionConfig];
+}
+
+table StablehloScatterOptions {
+  indices_are_sorted: bool;
+  update_window_dims: [long];
+  inserted_window_dims: [long];
+  scatter_dims_to_operand_dims: [long];
+  index_vector_dim: long;
+  unique_indices: bool;
+  update_computation_subgraph_index: int;
 }
 
 // LINT.IfChange

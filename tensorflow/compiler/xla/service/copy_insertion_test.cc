@@ -3388,6 +3388,35 @@ ROOT %arg_tuple.1 = (f32[]{:T(256)}, f32[]{:T(256)}) parameter(0), parameter_rep
   VLOG(2) << module->ToString();
 }
 
+TEST_F(CopyInsertionTest, AddControlDependencyForInputOutputAlias) {
+  const char* const kModuleString = R"(
+  HloModule test, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias) }
+
+  ENTRY test {
+    x = f32[3] parameter(0)
+    y = f32[3] parameter(1)
+    add = f32[3] add(x, y)
+    mul = f32[3] multiply(x, y)
+    ROOT result = (f32[3], f32[3]) tuple(add, mul)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  EXPECT_EQ(CountCopies(*module), 1);
+  EXPECT_EQ(CountControlEdges(*module), 2);
+
+  HloInstruction* add_instr = FindInstruction(module.get(), HloOpcode::kAdd);
+  HloInstruction* mul_instr =
+      FindInstruction(module.get(), HloOpcode::kMultiply);
+  HloInstruction* copy_instr = FindInstruction(module.get(), HloOpcode::kCopy);
+  EXPECT_TRUE(add_instr->control_predecessors()[0] == mul_instr);
+  EXPECT_TRUE(copy_instr->control_predecessors()[0] == add_instr);
+}
+
 TEST_F(CopyInsertionTest, AsyncCallDUSNoCopy) {
   const char* const kModuleString = R"(
 HloModule async_call

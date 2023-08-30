@@ -35,3 +35,12 @@ def SameElementType : Constraint<
 def OpHasSameStaticShapesPred : CPred<"OpHasSameStaticShapes($0.getDefiningOp())">;
 def OpHasSameStaticShapes : Constraint<OpHasSameStaticShapesPred, "op must have static same input shapes">;
 def OpHasNotSameStaticShapes : Constraint<Neg<OpHasSameStaticShapesPred>, "op must have not static same input shapes">;
+
+def TransposeFCLastTwoDims:
+  NativeCodeCall<"TransposeLastTwoDims($0[0].getType())">;
+
+def AreLastTwoDimsTransposed : Constraint<CPred<
+  "TFL::AreLastTwoDimsTransposed($0)">>;
+
+// Checks if the param passed is of NoneType.
+def IsNoneType : Constraint<CPred<"$0.getType().isa<NoneType>()">>;

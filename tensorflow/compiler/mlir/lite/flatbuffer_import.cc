@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "llvm/ADT/APFloat.h"
@@ -60,10 +61,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -91,7 +94,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/string_util.h"
 
@@ -118,6 +121,9 @@ namespace errors = tensorflow::errors;
 namespace tfl = mlir::TFL;
 
 namespace {
+
+constexpr absl::string_view kScatterRegionFuncName =
+    "update_computation_func_name";
 
 using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
@@ -859,7 +865,7 @@ ConvertSubgraphIdxsToFunctionAttrs(tflite::BuiltinOptionsUnion options,
   return llvm::SmallVector<mlir::NamedAttribute, 4>{};
 }
 
-Status ConvertSubgraphIdxToReduceRegion(
+Status ConvertSubgraphIdxToStablehloRegion(
     const tflite::OperatorT& op, const std::vector<std::string>& func_names,
     Builder builder, OperationState& op_state) {
   if (auto* opts = op.builtin_options_2.AsStablehloReduceOptions()) {
@@ -872,6 +878,67 @@ Status ConvertSubgraphIdxToReduceRegion(
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
 
     op_state.addAttribute("body", body_attr);
+
+    return ::tensorflow::OkStatus();
+  }
+  if (auto* opts = op.builtin_options_2.AsStablehloReduceWindowOptions()) {
+    int32_t body_idx = opts->body_subgraph_index;
+    if (body_idx >= func_names.size()) {
+      return absl::AbortedError("subgraph with index not found: " +
+                                std::to_string(body_idx));
+    }
+    auto body_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
+
+    op_state.addAttribute("body", body_attr);
+
+    return ::tensorflow::OkStatus();
+  }
+  if (auto* opts = op.builtin_options_2.AsStablehloSortOptions()) {
+    int32_t comparator_idx = opts->comparator_subgraph_index;
+    if (comparator_idx >= func_names.size()) {
+      return absl::AbortedError("subgraph with index not found: " +
+                                std::to_string(comparator_idx));
+    }
+    auto comparator_attr = mlir::SymbolRefAttr::get(
+        builder.getContext(), func_names.at(comparator_idx));
+
+    op_state.addAttribute("comparator", comparator_attr);
+
+    return ::tensorflow::OkStatus();
+  }
+  if (auto* opts = op.builtin_options_2.AsStablehloWhileOptions()) {
+    int32_t body_idx = opts->body_subgraph_index;
+    int32_t cond_idx = opts->cond_subgraph_index;
+    if (body_idx >= func_names.size()) {
+      return absl::AbortedError("subgraph with index not found: " +
+                                std::to_string(body_idx));
+    }
+    if (cond_idx >= func_names.size()) {
+      return absl::AbortedError("subgraph with index not found: " +
+                                std::to_string(cond_idx));
+    }
+    auto body_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
+    auto cond_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(cond_idx));
+
+    op_state.addAttribute("body", body_attr);
+    op_state.addAttribute("cond", cond_attr);
+
+    return ::tensorflow::OkStatus();
+  }
+  if (auto* opts = op.builtin_options_2.AsStablehloScatterOptions()) {
+    uint32_t subgraph_idx = opts->update_computation_subgraph_index;
+
+    if (subgraph_idx >= func_names.size()) {
+      return absl::AbortedError(
+          absl::StrCat("subgraph with index not found: ", subgraph_idx));
+    }
+    mlir::FlatSymbolRefAttr subgraph_attr = mlir::SymbolRefAttr::get(
+        builder.getContext(), func_names.at(subgraph_idx));
+
+    op_state.addAttribute(kScatterRegionFuncName, subgraph_attr);
 
     return ::tensorflow::OkStatus();
   }
@@ -1028,7 +1095,12 @@ StatusOr<Operation*> ConvertOp(
       }
     }
   }
-  if (op_name == "stablehlo.reduce") {
+  if (op_name == "stablehlo.reduce" || op_name == "stablehlo.reduce_window" ||
+      op_name == "stablehlo.sort" || op_name == "stablehlo.scatter") {
+    op_state.addRegion();
+  }
+  if (op_name == "stablehlo.while") {
+    op_state.addRegion();
     op_state.addRegion();
   }
 
@@ -1068,7 +1140,7 @@ StatusOr<Operation*> ConvertOp(
   op_state.addAttributes(function_ref_attrs);
   // Handle conversion from subgraph to regions in StableHLO ops.
   auto status =
-      ConvertSubgraphIdxToReduceRegion(op, func_names, builder, op_state);
+      ConvertSubgraphIdxToStablehloRegion(op, func_names, builder, op_state);
   if (!status.ok()) {
     return emitError(loc, status.ToString()), status;
   }
@@ -1715,6 +1787,47 @@ void AddRegionsForStableHLOOp(mlir::ModuleOp module) {
         reduce_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
     InlineStablehloOpRegion(reduce_op.getBody(), body);
     reduce_op->removeAttr("body");
+    to_delete_funcs.push_back(body);
+  });
+  module.walk([&](mlir::stablehlo::ReduceWindowOp reduce_window_op) {
+    auto body = symbol_table.lookup<mlir::func::FuncOp>(
+        reduce_window_op->getAttr("body")
+            .cast<mlir::FlatSymbolRefAttr>()
+            .getValue());
+    InlineStablehloOpRegion(reduce_window_op.getBody(), body);
+    reduce_window_op->removeAttr("body");
+    to_delete_funcs.push_back(body);
+  });
+  module.walk([&](mlir::stablehlo::SortOp sort_op) {
+    auto comparator = symbol_table.lookup<mlir::func::FuncOp>(
+        sort_op->getAttr("comparator")
+            .cast<mlir::FlatSymbolRefAttr>()
+            .getValue());
+    InlineStablehloOpRegion(sort_op.getComparator(), comparator);
+    sort_op->removeAttr("comparator");
+    to_delete_funcs.push_back(comparator);
+  });
+  module.walk([&](mlir::stablehlo::WhileOp while_op) {
+    auto cond = symbol_table.lookup<mlir::func::FuncOp>(
+        while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
+    InlineStablehloOpRegion(while_op.getCond(), cond);
+    while_op->removeAttr("cond");
+    auto body = symbol_table.lookup<mlir::func::FuncOp>(
+        while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
+    InlineStablehloOpRegion(while_op.getBody(), body);
+    while_op->removeAttr("body");
+    to_delete_funcs.push_back(body);
+    to_delete_funcs.push_back(cond);
+  });
+  module.walk([&](mlir::stablehlo::ScatterOp scatter_op) {
+    auto update_computation = symbol_table.lookup<mlir::func::FuncOp>(
+        scatter_op->getAttr(kScatterRegionFuncName)
+            .cast<mlir::FlatSymbolRefAttr>()
+            .getValue());
+    InlineStablehloOpRegion(scatter_op.getUpdateComputation(),
+                            update_computation);
+    scatter_op->removeAttr(kScatterRegionFuncName);
+    to_delete_funcs.push_back(update_computation);
   });
   for (auto& func : to_delete_funcs) {
     func.erase();

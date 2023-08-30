@@ -19,14 +19,20 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace calibrator {
 namespace {
 
+using tensorflow::quantization::CalibrationOptions;
+
 TEST(CalibrationStatisticsCollectorTest, SimpleMinMax) {
   CalibrationStatisticsCollector calibration_statistics_collector;
+  CalibrationOptions calib_opts;
+  calib_opts.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
 
   std::vector<std::vector<float>> collect_vec;
 
@@ -36,7 +42,7 @@ TEST(CalibrationStatisticsCollectorTest, SimpleMinMax) {
 
   for (auto data_vec : collect_vec) {
     calibration_statistics_collector.Collect(
-        /*data_vec=*/data_vec);
+        /*data_vec=*/data_vec, /*calib_opts=*/calib_opts);
   }
 
   std::optional<CalibrationStatistics> statistics =
@@ -49,6 +55,9 @@ TEST(CalibrationStatisticsCollectorTest, SimpleMinMax) {
 
 TEST(CalibrationStatisticsCollectorTest, SimpleAverageMinMax) {
   CalibrationStatisticsCollector calibration_statistics_collector;
+  CalibrationOptions calib_opts;
+  calib_opts.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX);
 
   std::vector<std::vector<float>> collect_vec;
 
@@ -60,7 +69,7 @@ TEST(CalibrationStatisticsCollectorTest, SimpleAverageMinMax) {
 
   for (auto data_vec : collect_vec) {
     calibration_statistics_collector.Collect(
-        /*data_vec=*/data_vec);
+        /*data_vec=*/data_vec, /*calib_opts=*/calib_opts);
   }
   std::optional<CalibrationStatistics> statistics =
       calibration_statistics_collector.GetStatistics();
@@ -74,8 +83,11 @@ TEST(CalibrationStatisticsCollectorTest, SimpleAverageMinMax) {
   EXPECT_EQ(statistics.value().average_min_max_statistics().num_samples(), 3);
 }
 
-TEST(CalibrationStatisticsCollectorTest, ClearDataAndGetResults) {
+TEST(CalibrationStatisticsCollectorTest, ClearDataAndGetResultsMinMax) {
   CalibrationStatisticsCollector calibration_statistics_collector;
+  CalibrationOptions calib_opts;
+  calib_opts.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
 
   std::vector<std::vector<float>> collect_vec;
 
@@ -85,7 +97,7 @@ TEST(CalibrationStatisticsCollectorTest, ClearDataAndGetResults) {
 
   for (auto data_vec : collect_vec) {
     calibration_statistics_collector.Collect(
-        /*data_vec=*/data_vec);
+        /*data_vec=*/data_vec, /*calib_opts=*/calib_opts);
   }
 
   std::optional<CalibrationStatistics> statistics =
@@ -103,7 +115,7 @@ TEST(CalibrationStatisticsCollectorTest, ClearDataAndGetResults) {
 
   for (auto data_vec : collect_vec) {
     calibration_statistics_collector.Collect(
-        /*data_vec=*/data_vec);
+        /*data_vec=*/data_vec, /*calib_opts=*/calib_opts);
   }
 
   statistics = calibration_statistics_collector.GetStatistics();
@@ -113,6 +125,49 @@ TEST(CalibrationStatisticsCollectorTest, ClearDataAndGetResults) {
   EXPECT_EQ(statistics.value().min_max_statistics().global_max(), 10.0f);
 }
 
+TEST(CalibrationStatisticsCollectorTest, ClearDataAndGetResultsAverageMinMax) {
+  CalibrationStatisticsCollector calibration_statistics_collector;
+  CalibrationOptions calib_opts;
+  calib_opts.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX);
+
+  std::vector<std::vector<float>> collect_vec;
+
+  collect_vec.push_back({1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
+  collect_vec.push_back({1.0f, 2.0f, 3.0f, 4.0f, 20.0f});
+  collect_vec.push_back({-5.0f, 2.0f, 3.0f, 4.0f, 5.0f});
+
+  for (auto data_vec : collect_vec) {
+    calibration_statistics_collector.Collect(
+        /*data_vec=*/data_vec, /*calib_opts=*/calib_opts);
+  }
+
+  std::optional<CalibrationStatistics> statistics =
+      calibration_statistics_collector.GetStatistics();
+
+  EXPECT_TRUE(statistics.has_value());
+  EXPECT_EQ(statistics.value().average_min_max_statistics().min_sum(), -3.0f);
+  EXPECT_EQ(statistics.value().average_min_max_statistics().max_sum(), 30.0f);
+  EXPECT_EQ(statistics.value().average_min_max_statistics().num_samples(), 3);
+
+  calibration_statistics_collector.ClearData();
+  collect_vec.pop_back();  // pop last element
+
+  statistics = calibration_statistics_collector.GetStatistics();
+  EXPECT_FALSE(statistics.has_value());
+
+  for (auto data_vec : collect_vec) {
+    calibration_statistics_collector.Collect(
+        /*data_vec=*/data_vec, /*calib_opts=*/calib_opts);
+  }
+
+  statistics = calibration_statistics_collector.GetStatistics();
+
+  EXPECT_TRUE(statistics.has_value());
+  EXPECT_EQ(statistics.value().average_min_max_statistics().min_sum(), 2.0f);
+  EXPECT_EQ(statistics.value().average_min_max_statistics().max_sum(), 25.0f);
+  EXPECT_EQ(statistics.value().average_min_max_statistics().num_samples(), 2);
+}
 }  // namespace
 }  // namespace calibrator
 }  // namespace tensorflow

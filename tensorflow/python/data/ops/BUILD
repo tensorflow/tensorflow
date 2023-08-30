@@ -115,6 +115,7 @@ py_strict_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:function",
+        "//tensorflow/python/framework:none_tensor",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/framework:smart_cond",

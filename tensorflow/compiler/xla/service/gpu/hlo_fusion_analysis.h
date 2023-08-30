@@ -47,9 +47,8 @@ class HloFusionAnalysis {
     kScatter,
   };
 
-  static StatusOr<HloFusionAnalysis> Create(
-      const HloFusionInstruction* fusion, const GpuDeviceInfo* device_info,
-      se::CudaComputeCapability compute_capability);
+  static StatusOr<HloFusionAnalysis> Create(const HloFusionInstruction* fusion,
+                                            const GpuDeviceInfo* device_info);
 
   const HloComputation* fused_computation() const { return fused_computation_; }
   const std::vector<HloInstruction*>& fusion_roots() const {
@@ -81,7 +80,6 @@ class HloFusionAnalysis {
                     std::vector<HloInstruction*> fusion_roots,
                     std::vector<const HloInstruction*> fusion_heroes,
                     const GpuDeviceInfo* device_info,
-                    se::CudaComputeCapability compute_capability,
                     std::optional<TransposeDescription> tiled_transpose)
       : fusion_(fusion),
         fusion_backend_config_(std::move(fusion_backend_config)),
@@ -89,7 +87,6 @@ class HloFusionAnalysis {
         fusion_roots_(std::move(fusion_roots)),
         fusion_heroes_(std::move(fusion_heroes)),
         device_info_(device_info),
-        compute_capability_(compute_capability),
         tiled_transpose_(tiled_transpose) {}
 
   const Shape& GetElementShape() const;
@@ -115,7 +112,6 @@ class HloFusionAnalysis {
   std::vector<HloInstruction*> fusion_roots_;
   std::vector<const HloInstruction*> fusion_heroes_;
   const GpuDeviceInfo* device_info_;
-  se::CudaComputeCapability compute_capability_;
   std::optional<TransposeDescription> tiled_transpose_;
 
   std::optional<ReductionCodegenInfo> reduction_codegen_info_;

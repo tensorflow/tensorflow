@@ -2003,8 +2003,6 @@ build_test(
 # these BUILD targets in a follow up.
 aliased_targets = [
     "tensorflow_passes",
-    "tf_saved_model_freeze_variables",
-    "tf_dialect_passes",
 ]
 
 [

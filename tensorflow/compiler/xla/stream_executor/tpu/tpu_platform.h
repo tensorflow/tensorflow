@@ -65,8 +65,6 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   int VisibleDeviceCount() const override;
 
-  int64_t TpuMemoryLimit() override;
-
   bool ShouldRegisterTpuDeviceToDeviceCopy() override;
 
   const tensorflow::tpu::TpuTopologyPtr GetTopologyPtr() override;

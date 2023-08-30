@@ -19,8 +19,8 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
-#include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputDialect.h"
-#include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputOps.h"
+#include "iree-dialects/Dialect/Input/InputDialect.h"
+#include "iree-dialects/Dialect/Input/InputOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -38,7 +38,6 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_case_op.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_compiled_ops.h"
-#include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_graph_region_op.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_library_ops.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_memref_ops.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_while_op.h"
@@ -189,7 +188,6 @@ class ConvertToXlaGpuRuntimePass
 
     populateLibraryOpsConversionPatterns(patterns, converter, state, api);
     populateMemrefConversionPatterns(patterns, converter, state);
-    populateGraphRegionConversionPatterns(patterns, converter, state);
 
     // Ensure all HLO and memref operations get lowered to IREEInput and XLA:GPU
     // runtime. For this we have to de-bufferize the IR and correctly tie

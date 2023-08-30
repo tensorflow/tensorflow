@@ -81,6 +81,7 @@ tf_proto_library(
     protodeps = [
         ":diagnostics_proto",
         ":input_pipeline_proto",
+        ":power_metrics_proto",
     ],
     visibility = [
         ":friends",
@@ -90,6 +91,13 @@ tf_proto_library(
 tf_proto_library(
     name = "op_metrics_proto",
     srcs = ["op_metrics.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "power_metrics_proto",
+    srcs = ["power_metrics.proto"],
     cc_api_version = 2,
     visibility = [":friends"],
 )
@@ -141,6 +149,7 @@ tf_proto_library(
         ":diagnostics_proto",
         ":kernel_stats_proto",
         ":op_metrics_proto",
+        ":power_metrics_proto",
         ":steps_db_proto",
         ":tf_function_proto",
     ],
