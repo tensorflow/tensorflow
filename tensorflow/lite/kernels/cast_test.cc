@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/kernels/cast_test_common.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -31,28 +32,6 @@ namespace tflite {
 namespace {
 
 using ::testing::ElementsAreArray;
-
-class CastOpModel : public SingleOpModel {
- public:
-  CastOpModel(const TensorData& input, const TensorData& output) {
-    input_ = AddInput(input);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_CAST, BuiltinOptions_CastOptions,
-                 CreateCastOptions(builder_).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-
-  void Set4BitInput(absl::Span<const int8_t> f) {
-    PopulateTensor4bit(input_, 0, f.data(), f.data() + f.size());
-  }
-
-  int input() const { return input_; }
-  int output() const { return output_; }
-
- protected:
-  int input_;
-  int output_;
-};
 
 TEST(CastOpModel, CastInt4ToFloat) {
   CastOpModel m({TensorType_INT4, {2, 3}}, {TensorType_FLOAT32, {2, 3}});

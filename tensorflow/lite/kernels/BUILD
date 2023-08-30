@@ -1292,12 +1292,28 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "cast_test_common",
+    testonly = 1,
+    hdrs = [
+        "cast_test_common.h",
+    ],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/types:span",
+        "@flatbuffers",
+    ],
+)
+
 cc_test(
     name = "cast_test",
     size = "small",
     srcs = ["cast_test.cc"],
     tags = ["tflite_nnapi"],
     deps = [
+        ":cast_test_common",
         ":test_main",
         ":test_util",
         "//tensorflow/lite/core/c:c_api_types",
