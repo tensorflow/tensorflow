@@ -426,6 +426,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/ops:tf_op_quant_spec",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/ops:tf_quantize_op",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:fake_quant_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:tf_to_uniform_attribute_utils",

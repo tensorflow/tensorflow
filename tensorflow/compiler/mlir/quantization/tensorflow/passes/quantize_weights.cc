@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_quantize_op.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -218,16 +219,10 @@ class QuantizeConstWeights : public OpRewritePattern<TF::ConstOp> {
         tensorflow::quantization::QuantizationComponentSpec::TENSORTYPE_INT_8) {
       // TODO - b/296535985: [Converter Component][TF-Quantizer] Factor out
       // quant/dequant in QuantizeWeightsPass
-      QuantizedType quant_type =
-          calculateUniformQuantParams(rewriter, op, weight_component_spec);
-      std::optional<Value> quantized_val =
-          addUniformQuantizeOps(rewriter, op, quant_type);
-      if (!quantized_val.has_value()) return failure();
-      std::optional<Value> dequantized_val =
-          addUniformDequantizeOps(rewriter, quant_type, quantized_val.value(),
-                                  op.getType().cast<ShapedType>());
+      auto dequantized_val =
+          ApplyUniformQuantization(rewriter, op, weight_component_spec);
       if (!dequantized_val.has_value()) return failure();
-      op.getOutput().replaceAllUsesWith(dequantized_val.value());
+      op.getOutput().replaceAllUsesWith(dequantized_val.value().getResult(0));
       return success();
     }
 

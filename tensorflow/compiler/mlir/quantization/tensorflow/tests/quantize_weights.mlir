@@ -23,12 +23,16 @@ module {
 
 // CHECK-LABEL: func @matmul
 // CHECK-DAG: %[[W:.*]] = "tf.Const"() {value = dense<127> : tensor<2x1024xi8>
-// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0157480314> : tensor<f32>
 // CHECK: %[[PRESERVE_W:.*]] = "tf.Identity"(%[[W]]) : (tensor<2x1024xi8>) -> tensor<2x1024xi8>
-// CHECK: %[[CASTED_W:.*]] = "tf.Cast"(%[[PRESERVE_W]]) {Truncate = false} : (tensor<2x1024xi8>) -> tensor<2x1024xf32>
-// CHECK: %[[DEQUANTIZED:.*]] = "tf.Mul"(%[[CASTED_W]], %[[SCALE]]) : (tensor<2x1024xf32>, tensor<f32>) -> tensor<2x1024xf32>
+// CHECK: %[[DEQUANTIZED:.*]] = "tf.PartitionedCall"(%[[PRESERVE_W]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_uniform} : (tensor<2x1024xi8>) -> tensor<2x1024xf32>
 // CHECK: %[[MATMUL:.*]] = "tf.MatMul"(%arg0, %[[DEQUANTIZED]]) {attr_map = "0:transpose_a,1:transpose_a", device = "", transpose_a = false, transpose_b = false} : (tensor<1x2x2x2xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
 // CHECK: return %[[MATMUL]] : tensor<*xf32>
+
+// CHECK-LABEL: func.func private @dequantize_uniform(%arg0: tensor<2x1024xi8>) -> tensor<2x1024xf32>
+// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0157480314> : tensor<f32>
+// CHECK: %[[CASTED_W:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<2x1024xi8>) -> tensor<2x1024xf32>
+// CHECK: %[[DEQUANTIZED:.*]] = "tf.Mul"(%[[CASTED_W]], %[[SCALE]]) : (tensor<2x1024xf32>, tensor<f32>) -> tensor<2x1024xf32>
+// CHECK: return %[[DEQUANTIZED]] : tensor<2x1024xf32>
 }
 
 // -----
@@ -60,12 +64,13 @@ module {
 
 // CHECK-LABEL: func @quantize_xladotv2_bf16
 // CHECK-DAG: %[[W:.*]] = "tf.Const"() {value = dense<127> : tensor<2x1024xi8>
-// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<1.574710e-02> : tensor<bf16>
 // CHECK: %[[IDENTITY:.*]] = "tf.Identity"(%[[W]]) : (tensor<2x1024xi8>) -> tensor<2x1024xi8>
-// CHECK: %[[CAST:.*]] = "tf.Cast"(%[[IDENTITY]]) {Truncate = false} : (tensor<2x1024xi8>) -> tensor<2x1024xbf16>
-// CHECK: %[[DEQUANTIZED:.*]] = "tf.Mul"(%[[CAST]], %[[SCALE]]) : (tensor<2x1024xbf16>, tensor<bf16>) -> tensor<2x1024xbf16>
+// CHECK: %[[DEQUANTIZED:.*]] = "tf.PartitionedCall"(%[[IDENTITY]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_uniform} : (tensor<2x1024xi8>) -> tensor<2x1024xbf16>
 // CHECK: %[[MATMUL:.*]] = "tf.XlaDotV2"(%arg0, %[[DEQUANTIZED]]) {device = "", dimension_numbers = "\12\01\00\0A\01\03", precision_config = ""} : (tensor<1x2x2x2xbf16>, tensor<2x1024xbf16>) -> tensor<1x2x2x1024xbf16>
 // CHECK: return %[[MATMUL]] : tensor<1x2x2x1024xbf16>
+
+// CHECK-LABEL: func.func private @dequantize_uniform(%arg0: tensor<2x1024xi8>) -> tensor<2x1024xbf16>
+// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<1.574710e-02> : tensor<bf16>
 }
 
 // -----
@@ -83,15 +88,16 @@ module {
 
 // CHECK-LABEL: func @matmul_with_identity_and_reshape
 // CHECK-DAG: %[[W:.*]] = "tf.Const"() {value = dense<127> : tensor<1024x2xi8>
-// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0157480314> : tensor<f32>
 // CHECK-DAG: %[[SHAPE:.*]] = "tf.Const"() {value = dense<[2, 1024]> : tensor<2xi32>
 // CHECK: %[[PRESERVE_W:.*]] = "tf.Identity"(%[[W]]) : (tensor<1024x2xi8>) -> tensor<1024x2xi8>
-// CHECK: %[[CASTED_W:.*]] = "tf.Cast"(%[[PRESERVE_W]]) {Truncate = false} : (tensor<1024x2xi8>) -> tensor<1024x2xf32>
-// CHECK: %[[DEQUANTIZED:.*]] = "tf.Mul"(%[[CASTED_W]], %[[SCALE]]) : (tensor<1024x2xf32>, tensor<f32>) -> tensor<1024x2xf32>
+// CHECK: %[[DEQUANTIZED:.*]] = "tf.PartitionedCall"(%[[PRESERVE_W]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_uniform} : (tensor<1024x2xi8>) -> tensor<1024x2xf32>
 // CHECK: %[[ORIGINAL_IDENTITY:.*]] = "tf.Identity"(%[[DEQUANTIZED]]) {device = ""} : (tensor<1024x2xf32>) -> tensor<1024x2xf32>
 // CHECK: %[[RESHAPED_W:.*]] = "tf.Reshape"(%[[ORIGINAL_IDENTITY]], %[[SHAPE]]) : (tensor<1024x2xf32>, tensor<2xi32>) -> tensor<2x1024xf32>
 // CHECK: %[[MATMUL:.*]] = "tf.MatMul"(%arg0, %[[RESHAPED_W]]) {attr_map = "0:transpose_a,1:transpose_a", device = "", transpose_a = false, transpose_b = false} : (tensor<1x2x2x2xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
 // CHECK: return %[[MATMUL]] : tensor<*xf32>
+
+// CHECK-LABEL: func.func private @dequantize_uniform(%arg0: tensor<1024x2xi8>) -> tensor<1024x2xf32>
+// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0157480314> : tensor<f32>
 }
 
 // -----
@@ -109,13 +115,14 @@ module {
 // CHECK-LABEL: func @conv2d
 // CHECK-DAG: %[[W:.*]] = "tf.Const"() {value = dense<127> : tensor<2x3x3x512xi8>
 // CHECK-DAG: %[[BIAS:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>
-// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0236220472> : tensor<f32>
 // CHECK: %[[PRESERVE_W:.*]] = "tf.Identity"(%[[W]]) : (tensor<2x3x3x512xi8>) -> tensor<2x3x3x512xi8>
-// CHECK: %[[CASTED_W:.*]] = "tf.Cast"(%[[PRESERVE_W]]) {Truncate = false} : (tensor<2x3x3x512xi8>) -> tensor<2x3x3x512xf32>
-// CHECK: %[[DEQUANTIZED:.*]] = "tf.Mul"(%[[CASTED_W]], %[[SCALE]]) : (tensor<2x3x3x512xf32>, tensor<f32>) -> tensor<2x3x3x512xf32>
+// CHECK: %[[DEQUANTIZED:.*]] = "tf.PartitionedCall"(%[[PRESERVE_W]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_uniform} : (tensor<2x3x3x512xi8>) -> tensor<2x3x3x512xf32>
 // CHECK: %[[CONV2D:.*]] = "tf.Conv2D"(%arg0, %[[DEQUANTIZED:.*]]) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x3x4x3xf32>, tensor<2x3x3x512xf32>) -> tensor<*xf32>
 // CHECK: %[[BIASADD:.*]] = "tf.BiasAdd"(%[[CONV2D]], %[[BIAS]]) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
 // CHECK: return %[[BIASADD]] : tensor<*xf32>
+
+// CHECK-LABEL: func.func private @dequantize_uniform(%arg0: tensor<2x3x3x512xi8>) -> tensor<2x3x3x512xf32>
+// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0236220472> : tensor<f32>
 }
 
 // -----
@@ -132,12 +139,13 @@ module {
 
 // CHECK-LABEL: func @depthwise_conv
 // CHECK-DAG: %[[W:.*]] = "tf.Const"() {value = dense<127> : tensor<2x3x3x512xi8>
-// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.00787401571> : tensor<f32>}
 // CHECK: %[[PRESERVE_W:.*]] = "tf.Identity"(%[[W]]) : (tensor<2x3x3x512xi8>) -> tensor<2x3x3x512xi8>
-// CHECK: %[[CASTED_W:.*]] = "tf.Cast"(%[[PRESERVE_W]]) {Truncate = false} : (tensor<2x3x3x512xi8>) -> tensor<2x3x3x512xf32>
-// CHECK: %[[DEQUANTIZED:.*]] = "tf.Mul"(%[[CASTED_W]], %[[SCALE]]) : (tensor<2x3x3x512xf32>, tensor<f32>) -> tensor<2x3x3x512xf32>
+// CHECK: %[[DEQUANTIZED:.*]] = "tf.PartitionedCall"(%[[PRESERVE_W]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_uniform} : (tensor<2x3x3x512xi8>) -> tensor<2x3x3x512xf32>
 // CHECK: %[[DEPTHWISE_CONV2D:.*]] = "tf.DepthwiseConv2dNative"(%arg0, %[[DEQUANTIZED]]) {attr_map = "0:strides,1:padding,2:explicit_paddings,3:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1]} : (tensor<1x3x4x512xf32>, tensor<2x3x3x512xf32>) -> tensor<*xf32>
 // CHECK: return %[[DEPTHWISE_CONV2D]] : tensor<*xf32>
+
+// CHECK-LABEL: func.func private @dequantize_uniform(%arg0: tensor<2x3x3x512xi8>) -> tensor<2x3x3x512xf32>
+// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.00787401571> : tensor<f32>
 }
 
 // -----
@@ -150,18 +158,19 @@ module {
     %2 = "tf.Cast"(%1) {Truncate = false} : (tensor<?x?x?x?xf32>) -> tensor<?x?x?x?xbf16>
     return %2 : tensor<?x?x?x?xbf16>
   }
-}
 
 // CHECK-LABEL: func @quantize_sharded_weights_with_xladot
 // CHECK-DAG: %[[W:.*]] = "tf.Const"() {value = dense<127> : tensor<512x512xi8>
-// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0787401571> : tensor<f32>
 // CHECK: %[[PRESERVE_W:.*]] = "tf.Identity"(%[[W]]) : (tensor<512x512xi8>) -> tensor<512x512xi8>
-// CHECK: %[[CASTED_W:.*]] = "tf.Cast"(%[[PRESERVE_W]]) {Truncate = false} : (tensor<512x512xi8>) -> tensor<512x512xf32>
-// CHECK: %[[DEQUANTIZED:.*]] = "tf.Mul"(%[[CASTED_W]], %[[SCALE]]) : (tensor<512x512xf32>, tensor<f32>) -> tensor<512x512xf32>
+// CHECK: %[[DEQUANTIZED:.*]] = "tf.PartitionedCall"(%[[PRESERVE_W]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_uniform} : (tensor<512x512xi8>) -> tensor<512x512xf32>
 // CHECK: %[[SHARDED_W:.*]] = "tf.XlaSharding"(%[[DEQUANTIZED]]) {_XlaSharding = "\08\03\1A\03\01\04\02\22\08\00\04\01\05\02\06\03\070\01", device = "", sharding = "\08\03\1A\03\01\04\02\22\08\00\04\01\05\02\06\03\070\01", unspecified_dims = []} : (tensor<512x512xf32>) -> tensor<512x512xf32>
 // CHECK: %[[XLADOT:.*]] = "tf.XlaDotV2"(%arg0, %[[SHARDED_W]]) {device = "", dimension_numbers = "\12\01\00\0A\01\03", precision_config = ""} : (tensor<?x?x?x?xf32>, tensor<512x512xf32>) -> tensor<?x?x?x?xf32>
 // CHECK: %[[ORIGINAL_CAST:.*]] = "tf.Cast"(%[[XLADOT]]) {Truncate = false} : (tensor<?x?x?x?xf32>) -> tensor<?x?x?x?xbf16>
 // CHECK: return %[[ORIGINAL_CAST]] : tensor<?x?x?x?xbf16>
+
+// CHECK-LABEL: func.func private @dequantize_uniform(%arg0: tensor<512x512xi8>) -> tensor<512x512xf32>
+// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0787401571> : tensor<f32>
+}
 
 // -----
 
@@ -173,19 +182,19 @@ module {
     %1 = "tf.XlaDotV2"(%arg0, %cst_sharded) {device = "", dimension_numbers = "\12\01\00\0A\01\03", precision_config = ""} : (tensor<?x?x?x?xf32>, tensor<512x512xf32>) -> tensor<?x?x?x?xf32>
     return %1 : tensor<?x?x?x?xf32>
   }
-}
 
 // CHECK-LABEL: func @quantize_sharded_weights_with_xladot_with_identity
 // CHECK-DAG: %[[W:.*]] = "tf.Const"() {value = dense<127> : tensor<512x512xi8>
-// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0787401571> : tensor<f32>
 // CHECK: %[[PRESERVE_W:.*]] = "tf.Identity"(%[[W]]) : (tensor<512x512xi8>) -> tensor<512x512xi8>
-// CHECK: %[[CASTED_W:.*]] = "tf.Cast"(%[[PRESERVE_W]]) {Truncate = false} : (tensor<512x512xi8>) -> tensor<512x512xf32>
-// CHECK: %[[DEQUANTIZED:.*]] = "tf.Mul"(%[[CASTED_W]], %[[SCALE]]) : (tensor<512x512xf32>, tensor<f32>) -> tensor<512x512xf32>
+// CHECK: %[[DEQUANTIZED:.*]] = "tf.PartitionedCall"(%[[PRESERVE_W]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_uniform} : (tensor<512x512xi8>) -> tensor<512x512xf32>
 // CHECK: %[[IDENTITY_W:.*]] = "tf.Identity"(%[[DEQUANTIZED]]) {device = ""} : (tensor<512x512xf32>) -> tensor<512x512xf32>
 // CHECK: %[[SHARDED_W:.*]] = "tf.XlaSharding"(%[[IDENTITY_W]]) {_XlaSharding = "\08\03\1A\03\01\04\02\22\08\00\04\01\05\02\06\03\070\01", device = "", sharding = "\08\03\1A\03\01\04\02\22\08\00\04\01\05\02\06\03\070\01", unspecified_dims = []} : (tensor<512x512xf32>) -> tensor<512x512xf32>
 // CHECK: %[[XLADOT:.*]] = "tf.XlaDotV2"(%arg0, %[[SHARDED_W]]) {device = "", dimension_numbers = "\12\01\00\0A\01\03", precision_config = ""} : (tensor<?x?x?x?xf32>, tensor<512x512xf32>) -> tensor<?x?x?x?xf32>
 // CHECK: return %[[XLADOT]] : tensor<?x?x?x?xf32>
 
+// CHECK-LABEL: func.func private @dequantize_uniform(%arg0: tensor<512x512xi8>) -> tensor<512x512xf32>
+// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0787401571> : tensor<f32>
+}
 
 // -----
 
@@ -196,13 +205,13 @@ module {
     %0 = "tf.XlaGather"(%cst_0, %arg0, %cst) {dimension_numbers = "\0A\02\00\01\12\01\00\1A\02\00\01\20\01", indices_are_sorted = true} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<3xi64>) -> tensor<1x300x10xf32>
     func.return %0 : tensor<1x300x10xf32>
   }
-}
 
 // CHECK-LABEL: func @not_quantize_xlagather
 // CHECK-DAG: %[[W:.*]] = "tf.Const"() {device = "", value = dense<1.000000e+01> : tensor<200x100x300xf32>} : () -> tensor<200x100x300xf32>
 // CHECK-DAG: %[[IDX:.*]] = "tf.Const"() {value = dense<[1, 1, 300]> : tensor<3xi64>
 // CHECK-DAG: %[[GATHER:.*]] = "tf.XlaGather"(%cst, %arg0, %cst_0) {dimension_numbers = "\0A\02\00\01\12\01\00\1A\02\00\01 \01", indices_are_sorted = true} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<3xi64>) -> tensor<1x300x10xf32>
 // CHECK: return %[[GATHER]] : tensor<1x300x10xf32>
+}
 
 // -----
 
@@ -212,6 +221,7 @@ module {
     %1 = "tf.PartitionedCall"(%arg0, %cst_0) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn} : (tensor<1x2x2x3xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
     func.return %1: tensor<*xf32>
   }
+
   func.func private @composite_matmul_fn(%arg0: tensor<1x2x2x3xf32>, %arg1: tensor<2x1024xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
     %0 = "tf.MatMul"(%arg0, %arg1) {attr_map = "0:transpose_a,1:transpose_a", device = "", transpose_a = false, transpose_b = false} : (tensor<1x2x2x3xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
     // Dequantization performed here
@@ -220,12 +230,13 @@ module {
 
 // CHECK-LABEL: func @partitioned_call
 // CHECK-DAG: %[[W:.*]] = "tf.Const"() {value = dense<127> : tensor<2x1024xi8>
-// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0314960629> : tensor<f32>
 // CHECK: %[[PRESERVE_W:.*]] = "tf.Identity"(%[[W]]) : (tensor<2x1024xi8>) -> tensor<2x1024xi8>
-// CHECK: %[[CASTED_W:.*]] = "tf.Cast"(%[[PRESERVE_W]]) {Truncate = false} : (tensor<2x1024xi8>) -> tensor<2x1024xf32>
-// CHECK: %[[DEQUANTIZED:.*]] = "tf.Mul"(%[[CASTED_W]], %[[SCALE]]) : (tensor<2x1024xf32>, tensor<f32>) -> tensor<2x1024xf32>
+// CHECK: %[[DEQUANTIZED:.*]] = "tf.PartitionedCall"(%[[PRESERVE_W]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_uniform} : (tensor<2x1024xi8>) -> tensor<2x1024xf32>
 // CHECK: %[[OUTPUT:.*]] = "tf.PartitionedCall"(%arg0, %[[DEQUANTIZED]]) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn} : (tensor<1x2x2x3xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
 // CHECK: return %[[OUTPUT]] : tensor<*xf32>
+
+// CHECK-LABEL: func.func private @dequantize_uniform(%arg0: tensor<2x1024xi8>) -> tensor<2x1024xf32>
+// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0314960629> : tensor<f32>
 
 // CHECK-LABEL: func private @composite_matmul_fn
 // CHECK: %[[MATMUL:.*]] = "tf.MatMul"(%arg0, %arg1) {attr_map = "0:transpose_a,1:transpose_a", device = "", transpose_a = false, transpose_b = false} : (tensor<1x2x2x3xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
@@ -240,6 +251,7 @@ module {
     %1 = "tf.PartitionedCall"(%arg0, %cst_0) {config = "", config_proto = "", executor_type = "", f = @outer_fn} : (tensor<1x2x2x3xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
     func.return %1: tensor<*xf32>
   }
+
   func.func private @outer_fn(%arg0: tensor<1x2x2x3xf32>, %arg1: tensor<2x1024xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
     %0 = "tf.PartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @inner_fn} : (tensor<1x2x2x3xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
     return %0 : tensor<*xf32>
@@ -250,15 +262,17 @@ module {
     // Dequantization performed here
     return %0 : tensor<*xf32>
   }
+}
 
-// CHECK-LABEL: func @recursive_partitioned_call
+// CHECK-LABEL: func @recursive_partitioned_call(%arg0: tensor<1x2x2x3xf32>) -> tensor<*xf32>
 // CHECK-DAG: %[[W:.*]] = "tf.Const"() {value = dense<127> : tensor<2x1024xi8>
-// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0314960629> : tensor<f32>
 // CHECK: %[[PRESERVE_W:.*]] = "tf.Identity"(%[[W]]) : (tensor<2x1024xi8>) -> tensor<2x1024xi8>
-// CHECK: %[[CASTED_W:.*]] = "tf.Cast"(%[[PRESERVE_W]]) {Truncate = false} : (tensor<2x1024xi8>) -> tensor<2x1024xf32>
-// CHECK: %[[DEQUANTIZED:.*]] = "tf.Mul"(%[[CASTED_W]], %[[SCALE]]) : (tensor<2x1024xf32>, tensor<f32>) -> tensor<2x1024xf32>
+// CHECK: %[[DEQUANTIZED:.*]] = "tf.PartitionedCall"(%[[PRESERVE_W]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_uniform} : (tensor<2x1024xi8>) -> tensor<2x1024xf32>
 // CHECK: %[[OUTPUT:.*]] = "tf.PartitionedCall"(%arg0, %[[DEQUANTIZED]]) {config = "", config_proto = "", executor_type = "", f = @outer_fn} : (tensor<1x2x2x3xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
 // CHECK: return %[[OUTPUT]] : tensor<*xf32>
+
+// CHECK-LABEL: func private @dequantize_uniform(%arg0: tensor<2x1024xi8>) -> tensor<2x1024xf32>
+// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0314960629> : tensor<f32>
 
 // CHECK-LABEL: func private @outer_fn
 // CHECK: %[[OUTER_OUTPUT:.*]] = "tf.PartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @inner_fn} : (tensor<1x2x2x3xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
@@ -267,7 +281,6 @@ module {
 // CHECK-LABEL: func private @inner_fn
 // CHECK: %[[MATMUL:.*]] = "tf.MatMul"(%arg0, %arg1) {attr_map = "0:transpose_a,1:transpose_a", device = "", transpose_a = false, transpose_b = false} : (tensor<1x2x2x3xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
 // CHECK: return %[[MATMUL]] : tensor<*xf32>
-}
 
 // -----
 
@@ -283,15 +296,16 @@ module {
 
 // CHECK-LABEL: func @matmul_multiuses
 // CHECK-DAG: %[[W:.*]] = "tf.Const"() {value = dense<127> : tensor<2x1024xi8>
-// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0157480314> : tensor<f32>
 // CHECK: %[[PRESERVE_W:.*]] = "tf.Identity"(%[[W]]) : (tensor<2x1024xi8>) -> tensor<2x1024xi8>
-// CHECK: %[[CASTED_W:.*]] = "tf.Cast"(%[[PRESERVE_W]]) {Truncate = false} : (tensor<2x1024xi8>) -> tensor<2x1024xf32>
-// CHECK: %[[DEQUANTIZED:.*]] = "tf.Mul"(%[[CASTED_W]], %[[SCALE]]) : (tensor<2x1024xf32>, tensor<f32>) -> tensor<2x1024xf32>
+// CHECK: %[[DEQUANTIZED:.*]] = "tf.PartitionedCall"(%[[PRESERVE_W]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_uniform} : (tensor<2x1024xi8>) -> tensor<2x1024xf32>
 // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %[[DEQUANTIZED]]) {attr_map = "0:transpose_a,1:transpose_a", device = "", transpose_a = false, transpose_b = false} : (tensor<1x2x2x2xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
 // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%arg1, %[[DEQUANTIZED]]) {attr_map = "0:transpose_a,1:transpose_a", device = "", transpose_a = false, transpose_b = false} : (tensor<1x2x2x2xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
 // CHECK: %[[ORIGINAL_IDENTITY:.*]] = "tf.Identity"(%[[DEQUANTIZED]]) {device = ""} : (tensor<2x1024xf32>) -> tensor<2x1024xf32>
 // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%arg0, %[[ORIGINAL_IDENTITY]]) {attr_map = "0:transpose_a,1:transpose_a", device = "", transpose_a = false, transpose_b = false} : (tensor<1x2x2x2xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
 // CHECK: return %[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]] : tensor<*xf32>, tensor<*xf32>, tensor<*xf32>
+
+// CHECK-LABEL: func.func private @dequantize_uniform(%arg0: tensor<2x1024xi8>) -> tensor<2x1024xf32>
+// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0157480314> : tensor<f32>
 }
 
 // -----
@@ -307,13 +321,14 @@ module {
 
 // CHECK-LABEL: func @matmul_multiuses
 // CHECK-DAG: %[[W:.*]] = "tf.Const"() {value = dense<127> : tensor<2x1024xi8>
-// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0157480314> : tensor<f32>
 // CHECK: %[[PRESERVE_W:.*]] = "tf.Identity"(%[[W]]) : (tensor<2x1024xi8>) -> tensor<2x1024xi8>
-// CHECK: %[[CASTED_W:.*]] = "tf.Cast"(%[[PRESERVE_W]]) {Truncate = false} : (tensor<2x1024xi8>) -> tensor<2x1024xf32>
-// CHECK: %[[DEQUANTIZED:.*]] = "tf.Mul"(%[[CASTED_W]], %[[SCALE]]) : (tensor<2x1024xf32>, tensor<f32>) -> tensor<2x1024xf32>
+// CHECK: %[[DEQUANTIZED:.*]] = "tf.PartitionedCall"(%[[PRESERVE_W]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_uniform} : (tensor<2x1024xi8>) -> tensor<2x1024xf32>
 // CHECK: %[[MATMUL:.*]] = "tf.MatMul"(%arg0, %[[DEQUANTIZED]]) {attr_map = "0:transpose_a,1:transpose_a", device = "", transpose_a = false, transpose_b = false} : (tensor<1x2x2x2xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
 // CHECK: %[[ADD:.*]] = "tf.AddV2"(%arg1, %[[DEQUANTIZED]]) {device = ""} : (tensor<2x1024xf32>, tensor<2x1024xf32>) -> tensor<2x1024xf32>
 // CHECK: return %[[MATMUL]], %[[ADD]] : tensor<*xf32>, tensor<2x1024xf32>
+
+// CHECK-LABEL: func.func private @dequantize_uniform(%arg0: tensor<2x1024xi8>) -> tensor<2x1024xf32>
+// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.0157480314> : tensor<f32>
 }
 
 // -----
@@ -354,14 +369,15 @@ module {
 
 // CHECK-LABEL: func @matmul_with_while
 // CHECK-DAG: %[[W:.*]] = "tf.Const"() {value = dense<127> : tensor<1024x1024xi8>
-// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.00787401571> : tensor<f32>
 // CHECK-DAG: %[[CNT:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
 // CHECK: %[[PRESERVE_W:.*]] = "tf.Identity"(%[[W]]) : (tensor<1024x1024xi8>) -> tensor<1024x1024xi8>
-// CHECK: %[[CASTED_W:.*]] = "tf.Cast"(%[[PRESERVE_W]]) {Truncate = false} : (tensor<1024x1024xi8>) -> tensor<1024x1024xf32>
-// CHECK: %[[DEQUANTIZED:.*]] = "tf.Mul"(%[[CASTED_W]], %[[SCALE]]) : (tensor<1024x1024xf32>, tensor<f32>) -> tensor<1024x1024xf32>
+// CHECK: %[[DEQUANTIZED:.*]] = "tf.PartitionedCall"(%[[PRESERVE_W]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_uniform} : (tensor<1024x1024xi8>) -> tensor<1024x1024xf32>
 // CHECK: %[[WHILE:.*]] = "tf.While"(%[[CNT]], %[[CNT]], %[[CNT]], %arg0, %[[DEQUANTIZED]]) {T = [i32, i32, i32, f32, f32], _lower_using_switch_merge = true, _num_original_outputs = 5 : i64, _read_only_resource_inputs = [], body = @while_body, cond = @while_cond, device = "", is_stateless = true, output_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<1x1024>, #tf_type.shape<1024x1024>], parallel_iterations = 10 : i64, shape_invariant} : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x1024xf32>, tensor<1024x1024xf32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x1024xf32>, tensor<1024x1024xf32>)
 // CHECK: %[[IDENTITY:.*]] = "tf.Identity"(%[[WHILE:.*]]) {device = ""} : (tensor<1x1024xf32>) -> tensor<1x1024xf32>
 // CHECK: return %[[IDENTITY]] : tensor<1x1024xf32>
+
+// CHECK-LABEL: func.func private @dequantize_uniform(%arg0: tensor<1024x1024xi8>) -> tensor<1024x1024xf32>
+// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<0.00787401571> : tensor<f32>
 
 // CHECK-LABEL: func private @while_body(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<1x1024xf32>, %arg4: tensor<1024x1024xf32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x1024xf32>, tensor<1024x1024xf32>)
 // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg3, %arg4) {device = "", transpose_a = false, transpose_b = false} : (tensor<1x1024xf32>, tensor<1024x1024xf32>) -> tensor<1x1024xf32>
@@ -410,13 +426,14 @@ module {
 
 // CHECK-LABEL: func @matmul_with_while_bf16
 // CHECK-DAG: %[[W:.*]] = "tf.Const"() {value = dense<127> : tensor<1024x1024xi8>
-// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<7.873530e-03> : tensor<bf16>
 // CHECK-DAG: %[[CNT:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
 // CHECK: %[[IDENTITY:.*]] = "tf.Identity"(%[[W]]) : (tensor<1024x1024xi8>) -> tensor<1024x1024xi8>
-// CHECK: %[[CAST:.*]] = "tf.Cast"(%[[IDENTITY]]) {Truncate = false} : (tensor<1024x1024xi8>) -> tensor<1024x1024xbf16>
-// CHECK: %[[DEQUANTIZED:.*]] = "tf.Mul"(%[[CAST]], %[[SCALE]]) : (tensor<1024x1024xbf16>, tensor<bf16>) -> tensor<1024x1024xbf16>
+// CHECK: %[[DEQUANTIZED:.*]] = "tf.PartitionedCall"(%[[IDENTITY]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_uniform} : (tensor<1024x1024xi8>) -> tensor<1024x1024xbf16>
 // CHECK: %[[WHILE:.*]] = "tf.While"(%[[CNT]], %[[CNT]], %[[CNT]], %arg0, %[[DEQUANTIZED]]) {T = [i32, i32, i32, bf16, bf16], _lower_using_switch_merge = true, _num_original_outputs = 5 : i64, _read_only_resource_inputs = [], body = @while_body, cond = @while_cond, device = "", is_stateless = true, output_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<1x1024>, #tf_type.shape<1024x1024>], parallel_iterations = 10 : i64, shape_invariant} : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x1024xbf16>, tensor<1024x1024xbf16>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x1024xbf16>, tensor<1024x1024xbf16>)
 // CHECK: %[[ORIGIANL_IDENTITY:.*]] = "tf.Identity"(%[[WHILE:.*]]) {device = ""} : (tensor<1x1024xbf16>) -> tensor<1x1024xbf16>
+
+// CHECK-LABEL: func.func private @dequantize_uniform(%arg0: tensor<1024x1024xi8>) -> tensor<1024x1024xbf16>
+// CHECK-DAG: %[[SCALE:.*]] = "tf.Const"() {value = dense<7.873530e-03> : tensor<bf16>
 
 // CHECK-LABEL: func private @while_body(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<1x1024xbf16>, %arg4: tensor<1024x1024xbf16>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x1024xbf16>, tensor<1024x1024xbf16>) {
 // CHECK: %[[MATMUL_1:.*]] = "tf.XlaDotV2"(%arg3, %arg4) {device = "", dimension_numbers = "\12\01\00\0A\01\03", precision_config = ""} : (tensor<1x1024xbf16>, tensor<1024x1024xbf16>) -> tensor<1x1024xbf16>
