@@ -702,7 +702,7 @@ tf_cc_test(
     name = "verify_no_outside_compilation_markers_pass_test",
     srcs = ["verify_no_outside_compilation_markers_pass_test.cc"],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        ":tensorflow_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:test_utils",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/strings",

@@ -121,7 +121,7 @@ cc_library(
         "//tensorflow/compiler/mlir:register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/platform:errors",
         "//tensorflow/tsl/lib/core:status_test_util",
