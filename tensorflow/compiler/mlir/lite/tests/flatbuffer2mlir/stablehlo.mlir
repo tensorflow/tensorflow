@@ -425,3 +425,81 @@ func.func @while(%init_i: tensor<i64>, %init_sum: tensor<i64>) -> tensor<i64>{
 //CHECK-NEXT: }
 //CHECK-NEXT: return %0#0 : tensor<i64>
 //CHECK-NEXT:}
+
+func.func @scatter(%input_tensor: tensor<200x100x300xf32>,
+    %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
+      tensor<200x100x300xf32> {
+  %0 = "stablehlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    "stablehlo.return"(%lhs) : (tensor<f32>) -> ()
+  }) {
+    scatter_dimension_numbers = #stablehlo.scatter<
+      update_window_dims = [1],
+      inserted_window_dims = [0, 1],
+      scatter_dims_to_operand_dims = [0, 1],
+      index_vector_dim = 1
+    >,
+    indices_are_sorted = true,
+    unique_indices = true
+  } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
+      tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
+}
+
+// CHECK-LABEL: func.func private @scatter(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>, %arg2: tensor<10x300xf32>) -> tensor<200x100x300xf32> {
+// CHECK-NEXT:  %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) ({
+// CHECK-NEXT:  ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+// CHECK-NEXT:     stablehlo.return %arg3 : tensor<f32>
+// CHECK-NEXT:  }) {scatter_dimension_numbers = #stablehlo.scatter<update_window_dims = [1], inserted_window_dims = [0, 1], scatter_dims_to_operand_dims = [0, 1], index_vector_dim = 1>} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) -> tensor<200x100x300xf32>
+// CHECK-NEXT:  return %0 : tensor<200x100x300xf32>
+// CHECK-NEXT: }
+
+func.func @scatter_multiple_ops(%input_tensor: tensor<200x100x300xf32>,
+    %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
+      tensor<200x100x300xf32> {
+  %0 = "stablehlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %res = stablehlo.add %lhs, %rhs : tensor<f32>
+    "stablehlo.return"(%res) : (tensor<f32>) -> ()
+  }) {
+    scatter_dimension_numbers = #stablehlo.scatter<
+      update_window_dims = [1],
+      inserted_window_dims = [0, 1],
+      scatter_dims_to_operand_dims = [0, 1],
+      index_vector_dim = 1
+    >,
+    indices_are_sorted = true,
+    unique_indices = true
+  } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
+      tensor<200x100x300xf32>
+  %1 = "stablehlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %res = stablehlo.multiply %lhs, %rhs : tensor<f32>
+    "stablehlo.return"(%res) : (tensor<f32>) -> ()
+  }) {
+    scatter_dimension_numbers = #stablehlo.scatter<
+      update_window_dims = [1],
+      inserted_window_dims = [0, 1],
+      scatter_dims_to_operand_dims = [0, 1],
+      index_vector_dim = 1
+    >,
+    indices_are_sorted = true,
+    unique_indices = true
+  } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
+      tensor<200x100x300xf32>
+  func.return %1 : tensor<200x100x300xf32>
+}
+
+// CHECK-LABEL: func.func private @scatter_multiple_ops(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>, %arg2: tensor<10x300xf32>) -> tensor<200x100x300xf32> {
+// CHECK-NEXT:   %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) ({
+// CHECK-NEXT:   ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+// CHECK-NEXT:     %2 = stablehlo.add %arg3, %arg4 : tensor<f32>
+// CHECK-NEXT:     stablehlo.return %2 : tensor<f32>
+// CHECK-NEXT:   }) {scatter_dimension_numbers = #stablehlo.scatter<update_window_dims = [1], inserted_window_dims = [0, 1], scatter_dims_to_operand_dims = [0, 1], index_vector_dim = 1>} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) -> tensor<200x100x300xf32>
+// CHECK-NEXT:   %1 = "stablehlo.scatter"(%arg0, %arg1, %arg2) ({
+// CHECK-NEXT:   ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+// CHECK-NEXT:     %2 = stablehlo.multiply %arg3, %arg4 : tensor<f32>
+// CHECK-NEXT:     stablehlo.return %2 : tensor<f32>
+// CHECK-NEXT:   }) {scatter_dimension_numbers = #stablehlo.scatter<update_window_dims = [1], inserted_window_dims = [0, 1], scatter_dims_to_operand_dims = [0, 1], index_vector_dim = 1>} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) -> tensor<200x100x300xf32>
+// CHECK-NEXT:   return %1 : tensor<200x100x300xf32>
+// CHECK-NEXT: }

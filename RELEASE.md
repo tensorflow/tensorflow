@@ -78,6 +78,9 @@
   around parallel remote function invocations; when set to `True`, the eager
   runtime will be allowed to execute multiple function invocations in parallel.
 
+* `tf.lite`
+    * Added support for `stablehlo.scatter`.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:

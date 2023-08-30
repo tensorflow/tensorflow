@@ -1112,7 +1112,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/experimental/remat:metadata_util",
-        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/schema:schema_utils",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",

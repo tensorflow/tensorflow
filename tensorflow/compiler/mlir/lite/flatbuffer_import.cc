@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "llvm/ADT/APFloat.h"
@@ -60,10 +61,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -91,7 +94,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/string_util.h"
 
@@ -118,6 +121,9 @@ namespace errors = tensorflow::errors;
 namespace tfl = mlir::TFL;
 
 namespace {
+
+constexpr absl::string_view kScatterRegionFuncName =
+    "update_computation_func_name";
 
 using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
@@ -922,6 +928,20 @@ Status ConvertSubgraphIdxToStablehloRegion(
 
     return ::tensorflow::OkStatus();
   }
+  if (auto* opts = op.builtin_options_2.AsStablehloScatterOptions()) {
+    uint32_t subgraph_idx = opts->update_computation_subgraph_index;
+
+    if (subgraph_idx >= func_names.size()) {
+      return absl::AbortedError(
+          absl::StrCat("subgraph with index not found: ", subgraph_idx));
+    }
+    mlir::FlatSymbolRefAttr subgraph_attr = mlir::SymbolRefAttr::get(
+        builder.getContext(), func_names.at(subgraph_idx));
+
+    op_state.addAttribute(kScatterRegionFuncName, subgraph_attr);
+
+    return ::tensorflow::OkStatus();
+  }
   // skip if not supported
   return ::tensorflow::OkStatus();
 }
@@ -1076,7 +1096,7 @@ StatusOr<Operation*> ConvertOp(
     }
   }
   if (op_name == "stablehlo.reduce" || op_name == "stablehlo.reduce_window" ||
-      op_name == "stablehlo.sort") {
+      op_name == "stablehlo.sort" || op_name == "stablehlo.scatter") {
     op_state.addRegion();
   }
   if (op_name == "stablehlo.while") {
@@ -1799,7 +1819,16 @@ void AddRegionsForStableHLOOp(mlir::ModuleOp module) {
     to_delete_funcs.push_back(body);
     to_delete_funcs.push_back(cond);
   });
-
+  module.walk([&](mlir::stablehlo::ScatterOp scatter_op) {
+    auto update_computation = symbol_table.lookup<mlir::func::FuncOp>(
+        scatter_op->getAttr(kScatterRegionFuncName)
+            .cast<mlir::FlatSymbolRefAttr>()
+            .getValue());
+    InlineStablehloOpRegion(scatter_op.getUpdateComputation(),
+                            update_computation);
+    scatter_op->removeAttr(kScatterRegionFuncName);
+    to_delete_funcs.push_back(update_computation);
+  });
   for (auto& func : to_delete_funcs) {
     func.erase();
   }

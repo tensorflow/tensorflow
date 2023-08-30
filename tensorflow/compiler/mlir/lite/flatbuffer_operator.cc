@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 
 namespace {
@@ -70,6 +70,12 @@ StatusOr<mlir::StringAttr> GetPaddingAttr(TfLitePadding pad_params,
 
 }  // namespace
 
+bool mlir::IsStablehloOp(const tflite::OperatorCodeT& op_code) {
+  llvm::StringRef op_name(
+      tflite::EnumNameBuiltinOperator(tflite::GetBuiltinCode(&op_code)));
+  return op_name.startswith("STABLEHLO_");
+}
+
 std::string mlir::GetMlirOpNameFromOpCode(
     const tflite::OperatorCodeT& op_code) {
   auto builtin_code = tflite::GetBuiltinCode(&op_code);
@@ -86,7 +92,7 @@ std::string mlir::GetMlirOpNameFromOpCode(
   llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));
 
   // If the Op name contains stablehlo
-  if (op_name.startswith("STABLEHLO_")) {
+  if (IsStablehloOp(op_code)) {
     return llvm::Twine("stablehlo.", op_name.drop_front(10).lower()).str();
   }
   return llvm::Twine("tfl.", op_name.lower()).str();
@@ -593,6 +599,15 @@ void mlir::BuiltinOptions2ToAttributes(
         "dimension", BuildI64Attr(op->dimension, builder)));
     attributes.emplace_back(builder.getNamedAttr(
         "is_stable", BuildBoolAttr(op->is_stable, builder)));
+    return;
+  }
+  if (const auto* options = op_union.AsStablehloScatterOptions()) {
+    auto attr = mlir::stablehlo::ScatterDimensionNumbersAttr::get(
+        builder.getContext(), options->update_window_dims,
+        options->inserted_window_dims, options->scatter_dims_to_operand_dims,
+        options->index_vector_dim);
+    attributes.emplace_back(
+        builder.getNamedAttr("scatter_dimension_numbers", attr));
     return;
   }
 }
