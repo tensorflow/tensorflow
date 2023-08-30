@@ -201,6 +201,8 @@ cc_library(
         "lib/ldap.c",
         "lib/llist.c",
         "lib/llist.h",
+        "lib/macos.c",
+        "lib/macos.h",
         "lib/md4.c",
         "lib/md5.c",
         "lib/memdebug.c",
