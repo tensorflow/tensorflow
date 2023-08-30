@@ -544,6 +544,7 @@ try-import %workspace%/.tf_configure.bazelrc
 try-import %workspace%/.bazelrc.user
 
 # Here are bazelrc configs for release builds
+build:release_base --config=v2
 test:release_base --test_size_filters=small,medium
 
 build:release_cpu_linux --config=release_base
