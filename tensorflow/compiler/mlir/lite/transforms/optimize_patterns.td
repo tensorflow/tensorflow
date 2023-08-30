@@ -742,26 +742,26 @@ def ConvertTrasposeReshapeTransposeToReshape : Pat<
 // TODO(b/294385379): This pattern only appears when we convert
 // from shlo due to differences in broadcasting behavior
 def UndoBroadcastFullyConnectedBiasAdd : Pat<
-  (TFL_AddOp $rhs, (Arith_ConstantOp:$const_op $bias), TFL_AF_None),
-  (TFL_AddOp $rhs, (Arith_ConstantOp (FlattenTo1D $bias)), TFL_AF_None),
-  [(AnyStaticShapeTensor $rhs),
+  (TFL_AddOp $lhs, (Arith_ConstantOp:$const_op $bias), TFL_AF_None),
+  (TFL_AddOp $lhs, (Arith_ConstantOp (FlattenTo1D $bias)), TFL_AF_None),
+  [(AnyStaticShapeTensor $lhs),
    (IsLastDimEqualToNumElements $bias, $bias),
    (HasOneUse $const_op),
    (HasRankAtMost<4> $bias),
    (HasRankAtLeast<2> $bias),
-   (IsDefinedByFullyConnectedOp $rhs)]>;
+   (IsDefinedByFullyConnectedOp $lhs)]>;
 
 // TODO(b/294385379): This pattern only appears when we convert
 // from shlo due to differences in broadcasting behavior.
 def UndoBroadcastConvBiasAdd : Pat<
-  (TFL_AddOp $rhs, (Arith_ConstantOp:$const_op $bias), TFL_AF_None),
-  (TFL_AddOp $rhs, (Arith_ConstantOp (FlattenTo1D $bias)), TFL_AF_None),
-  [(AnyStaticShapeTensor $rhs),
+  (TFL_AddOp $lhs, (Arith_ConstantOp:$const_op $bias), TFL_AF_None),
+  (TFL_AddOp $lhs, (Arith_ConstantOp (FlattenTo1D $bias)), TFL_AF_None),
+  [(AnyStaticShapeTensor $lhs),
    (IsLastDimEqualToNumElements $bias, $bias),
    (HasOneUse $const_op),
    (HasRankAtMost<4> $bias),
    (HasRankAtLeast<2> $bias),
-   (IsDefinedByConv2DOp $rhs)]>;
+   (IsDefinedByConv2DOp $lhs)]>;
 
 // Function to map final permutation to initial permutation
 // initial -> permutation1 -> permutation2 -> final
