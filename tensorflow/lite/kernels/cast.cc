@@ -124,14 +124,14 @@ TfLiteStatus castInt4ToFloat(TfLiteContext* context, const TfLiteTensor* in,
     const int16x8_t v16_23 = vmovl_s8(vget_low_s8(vzipped.val[1]));
     const int16x8_t v24_31 = vmovl_s8(vget_high_s8(vzipped.val[1]));
 
-    const int32x4_t v0_3 = vmovl_s8(vget_low_u16(v0_8));
-    const int32x4_t v4_7 = vmovl_s8(vget_high_u16(v0_8));
-    const int32x4_t v8_11 = vmovl_s8(vget_low_u16(v8_15));
-    const int32x4_t v12_15 = vmovl_s8(vget_high_u16(v8_15));
-    const int32x4_t v16_19 = vmovl_s8(vget_low_u16(v16_23));
-    const int32x4_t v20_23 = vmovl_s8(vget_high_u16(v16_23));
-    const int32x4_t v24_27 = vmovl_s8(vget_low_u16(v24_31));
-    const int32x4_t v28_31 = vmovl_s8(vget_high_u16(v24_31));
+    const int32x4_t v0_3 = vmovl_s16(vget_low_s16(v0_8));
+    const int32x4_t v4_7 = vmovl_s16(vget_high_s16(v0_8));
+    const int32x4_t v8_11 = vmovl_s16(vget_low_s16(v8_15));
+    const int32x4_t v12_15 = vmovl_s16(vget_high_s16(v8_15));
+    const int32x4_t v16_19 = vmovl_s16(vget_low_s16(v16_23));
+    const int32x4_t v20_23 = vmovl_s16(vget_high_s16(v16_23));
+    const int32x4_t v24_27 = vmovl_s16(vget_low_s16(v24_31));
+    const int32x4_t v28_31 = vmovl_s16(vget_high_s16(v24_31));
 
     const float32x4_t v0_3_f = vcvtq_f32_s32(v0_3);
     const float32x4_t v4_7_f = vcvtq_f32_s32(v4_7);
