@@ -145,7 +145,8 @@ void AddQuantizePtqPreCalibrationPasses(
       quantization_options.enable_two_input_tensors()));
   // TODO: b/295140328 - Add debugger support for weight only
   if (quantization_options.has_debugger_options()) {
-    pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateAddDumpTensorOpPass(
+    pm.addPass(mlir::quant::CreateAddDumpTensorOpPass(
+        quantization_options.debugger_options().debugger_type(),
         quantization_options.debugger_options().log_dir_path()));
   }
   pm.addNestedPass<mlir::func::FuncOp>(

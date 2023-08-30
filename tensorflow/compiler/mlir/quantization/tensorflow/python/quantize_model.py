@@ -1294,12 +1294,6 @@ def _populate_quantization_options_default_values(
   _populate_calibration_options(quantization_options)
 
   if quantization_options.HasField('debugger_options'):
-    if (
-        quantization_options.debugger_options.debugger_type
-        == quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_PER_LAYER
-    ):
-      raise ValueError('Currently, only whole model debugger is supported.')
-
     if not quantization_options.debugger_options.log_dir_path:
       quantization_options.debugger_options.log_dir_path = '/tmp/dumps'
 
