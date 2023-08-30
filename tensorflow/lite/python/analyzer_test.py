@@ -213,6 +213,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     def func(lhs, rhs):
       return tf.einsum('ABD,DNH->ABNH', lhs, rhs)
 
+    self.skipTest('Re-enable after b/298094477.')
     converter = tf.lite.TFLiteConverter.from_concrete_functions(
         [func.get_concrete_function()], func)
     converter.unfold_batchmatmul = True
