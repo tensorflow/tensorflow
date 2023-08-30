@@ -86,6 +86,11 @@ _MODULE_PREFIX = flags.DEFINE_string(
     '',
     'Prefix to append to all imported modules.'
 )
+_ROOT_FILE_PATH = flags.DEFINE_string(
+    'root_file_name',
+    '__init__.py',
+    'The file name that should be generated for the top level API.',
+)
 
 
 def main(argv: Sequence[str]) -> None:
@@ -110,7 +115,8 @@ def main(argv: Sequence[str]) -> None:
       _FILE_PREFIXES_TO_STRIP.value,
       argv[1:],
       _PACKAGES_TO_IGNORE.value,
-      _MODULE_PREFIX.value
+      _MODULE_PREFIX.value,
+      _ROOT_FILE_PATH.value,
   )
 
 

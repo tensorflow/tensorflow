@@ -173,6 +173,8 @@ def _generate_api_impl(ctx):
     if ctx.attr.proxy_module_root:
         args.add("--proxy_module_root", ctx.attr.proxy_module_root)
     args.add_joined("--file_prefixes_to_strip", [ctx.bin_dir.path, ctx.genfiles_dir.path], join_with = ",")
+    if ctx.attr.root_file_name:
+        args.add("--root_file_name", ctx.attr.root_file_name)
 
     inputs = depset(transitive = [
         dep[ApiInfo].transitive_api
@@ -248,6 +250,9 @@ generate_api = rule(
         "packages_to_ignore": attr.string_list(
             doc = "List of packages to ignore tf_exports from.",
         ),
+        "root_file_name": attr.string(
+            doc = "The file name that should be generated for the top level API.",
+        ),
         "_generator_bin": attr.label(
             default = Label("//tensorflow/python/tools/api/generator2/generator:main"),
             executable = True,
@@ -275,6 +280,7 @@ def generate_apis(
         output_dir = "",
         proxy_module_root = None,
         packages_to_ignore = [],
+        root_file_name = "__init__.py",
         visibility = ["//visibility:private"]):
     """Generate TensorFlow APIs for a set of libraries.
 
@@ -296,6 +302,7 @@ def generate_apis(
             `from proxy_module_root.proxy_module import *` will be created to enable import
             resolution under TensorFlow.
         packages_to_ignore: List of packages to ignore tf_exports from.
+        root_file_name: The file name that should be generated for the top level API.
         visibility: Visibility of the target containing the generated files.
     """
     extract_api_targets = []
@@ -337,4 +344,5 @@ def generate_apis(
         use_lazy_loading = False,
         # copybara:comment_end
         output_package = output_package,
+        root_file_name = root_file_name,
     )
