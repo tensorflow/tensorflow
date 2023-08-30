@@ -145,6 +145,7 @@ cc_library(
 cc_library(
     name = "saved_model_cpu",
     hdrs = ["saved_model.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":saved_model_lib",
         ":saved_model_util",
@@ -167,6 +168,7 @@ cc_library(
 cc_library(
     name = "saved_model",
     hdrs = ["saved_model.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":saved_model_lib",
         ":saved_model_util",

@@ -85,6 +85,7 @@ cc_library(
         "dtype.def",
         "tensor_util.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/framework:types_proto_cc",

@@ -17,6 +17,7 @@ package_group(
         # copybara:uncomment "//smartass/brain/inference/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/graph_executor/python/...",
+        # copybara:uncomment "//tensorflow_serving/servables/tensorflow/...",
         # copybara:uncomment "//tensorflow_serving/servables/tensorflow/google/...",
     ],
 )
