@@ -382,5 +382,5 @@ py_library(
 
 alias(
     name = "expect_tensorflow_estimator_installed",
-    actual = "@pypi_tf_estimator_nightly//:pkg",
+    actual = "@pypi_tensorflow_estimator//:pkg",
 )
