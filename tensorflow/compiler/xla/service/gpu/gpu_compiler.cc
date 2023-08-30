@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/transforms/hlo_constant_splitter.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
@@ -134,6 +135,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation_deduplicator.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
@@ -1107,6 +1109,51 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPassesWithoutDevice(
   return std::move(module);
 }
 
+namespace {
+Status RunPostSchedulingCopyInsertion(
+    HloModule* module,
+    const HloDataflowAnalysis::CanShareBuffer& can_share_buffer) {
+  // We run a separate pass of copy elision here because the sequential ordering
+  // from the HLO schedule potentially allows for more copies to be eliminated.
+  constexpr int64_t kRegionBasedLiveRangeAnalysisLimit = -1;
+  const int64_t kUseRegionBasedLiveRangeAnalysis =
+      module->config()
+              .debug_options()
+              .xla_gpu_copy_insertion_use_region_analysis()
+          ? kRegionBasedLiveRangeAnalysisLimit
+          : 0;
+  CopyInsertion copy_insertion(can_share_buffer,
+                               kUseRegionBasedLiveRangeAnalysis);
+  TF_RETURN_IF_ERROR(copy_insertion.RemoveUnnecessaryCopies(module));
+
+  // Stash away the schedule during copy insertion, to avoid validation failures
+  // while the module is in flux.
+  HloSchedule saved_schedule = module->schedule();
+  module->clear_schedule();
+
+  // RemoveUnnecessaryCopies only considers interference when determining
+  // whether it is legal to remove a copy. However, copies in the graph may be
+  // necessary for other reason such as preventing a constant from being live
+  // out of the graph. So run AddSpecialCaseCopies to re-insert these copies.
+  TF_RETURN_IF_ERROR(
+      copy_insertion.CopyInsertion::AddSpecialCaseCopies(module));
+
+  TF_RETURN_IF_ERROR(HloDCE().Run(module).status());
+
+  // The passes above can add and remove copies, update the schedule to
+  // account for these transformations. Newly added instructions will be
+  // placed ASAP in the schedule.
+
+  // Update and restore the schedule. The saved schedule has a reference to the
+  // updated HLO module. The saved schedule needs to be updated before restoring
+  // it to the module to avoid validation failures.
+  TF_RETURN_IF_ERROR(saved_schedule.Update());
+  TF_RETURN_IF_ERROR(module->set_schedule(std::move(saved_schedule)));
+
+  return OkStatus();
+}
+}  // namespace
+
 StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
     HloModule* hlo_module, se::StreamExecutor* stream_exec) {
   const GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
@@ -1114,6 +1161,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
       GetSchedulerMemoryLimit(hlo_module, gpu_device_info, pointer_size_);
   TF_RETURN_IF_ERROR(
       ScheduleGpuModule(hlo_module, pointer_size_, scheduler_mem_limit));
+  TF_RETURN_IF_ERROR(
+      RunPostSchedulingCopyInsertion(hlo_module, GetCanShareBuffer()));
 
   auto buffer_size_bytes_function =
       [this](const BufferValue& buffer_value) -> int64_t {
