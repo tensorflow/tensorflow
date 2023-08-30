@@ -727,6 +727,10 @@ class Translator {
   BufferOffset<flatbuffers::Vector<unsigned int>> BuildStablehloPrecisionConfig(
       ::mlir::ArrayAttr precisionConfig);
 
+  std::optional<BufferOffset<tflite::Operator>> BuildStablehloScatterOp(
+      mlir::stablehlo::ScatterOp shlo_op, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
   // create a subgraph given a unnamed mlir region, return the corresponding
   // subgraph index
   int32_t UnnamedRegionToSubgraph(mlir::Region* region,
@@ -1422,6 +1426,58 @@ Translator::BuildStablehloPrecisionConfig(::mlir::ArrayAttr precisionConfig) {
   return builder_.CreateVector(precision_config_vec);
 }
 
+std::optional<BufferOffset<tflite::Operator>>
+Translator::BuildStablehloScatterOp(mlir::stablehlo::ScatterOp scatter_op,
+                                    const std::vector<int32_t>& operands,
+                                    const std::vector<int32_t>& results) {
+  std::string op_name =
+      scatter_op.getOperation()->getName().getStringRef().str();
+  uint32_t opcode_index =
+      GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_SCATTER);
+
+  Region& body = scatter_op.getUpdateComputation();
+  int32_t subgraph_index =
+      UnnamedRegionToSubgraph(&body, tflite::BuiltinOperator_STABLEHLO_SCATTER);
+  if (subgraph_index < 0) return std::nullopt;
+
+  mlir::stablehlo::ScatterDimensionNumbersAttr scatter_dimension_numbers =
+      scatter_op.getScatterDimensionNumbers();
+  llvm::ArrayRef<int64_t> update_window_dims_mlir =
+      scatter_dimension_numbers.getUpdateWindowDims();
+  llvm::ArrayRef<int64_t> inserted_window_dims_mlir =
+      scatter_dimension_numbers.getInsertedWindowDims();
+  llvm::ArrayRef<int64_t> scatter_dims_to_operand_dims_mlir =
+      scatter_dimension_numbers.getScatterDimsToOperandDims();
+
+  std::vector<int64_t> update_window_dims_vec(update_window_dims_mlir.begin(),
+                                              update_window_dims_mlir.end());
+  std::vector<int64_t> inserted_window_dims_vec(
+      inserted_window_dims_mlir.begin(), inserted_window_dims_mlir.end());
+  std::vector<int64_t> scatter_dims_to_operand_dims_vec(
+      scatter_dims_to_operand_dims_mlir.begin(),
+      scatter_dims_to_operand_dims_mlir.end());
+
+  int64_t index_vector_dim = scatter_dimension_numbers.getIndexVectorDim();
+  bool unique_indices = scatter_op.getUniqueIndices();
+  bool indices_are_sorted = scatter_op.getIndicesAreSorted();
+
+  auto update_window_dims = builder_.CreateVector(update_window_dims_vec);
+  auto inserted_window_dims = builder_.CreateVector(inserted_window_dims_vec);
+  auto scatter_dims_to_operand_dims =
+      builder_.CreateVector(scatter_dims_to_operand_dims_vec);
+
+  auto options = tflite::CreateStablehloScatterOptions(
+      builder_, indices_are_sorted, update_window_dims, inserted_window_dims,
+      scatter_dims_to_operand_dims, index_vector_dim, unique_indices,
+      subgraph_index);
+
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+      tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+      tflite::BuiltinOptions2_StablehloScatterOptions, options.Union());
+}
+
 std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     Operation* inst, std::vector<int32_t> operands,
     const std::vector<int32_t>& results,
@@ -1984,6 +2040,12 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
           tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
           tflite::BuiltinOptions2_StablehloWhileOptions, while_option.Union());
     }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ScatterOp>(inst)) {
+      return BuildStablehloScatterOp(shlo_op, operands, results);
+    }
+
+    return inst->emitOpError("is not part of the stablehlo support yet."),
+           std::nullopt;
   }
 
   if (dialect == tf_dialect_) {
