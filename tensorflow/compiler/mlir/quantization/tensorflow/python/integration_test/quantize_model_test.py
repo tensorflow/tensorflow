@@ -2127,7 +2127,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           {
               'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
               'has_bias': [True, False],
-              'batch_sizes': [([], []), ([2, 3], [2, 3])],
+              'batch_sizes': [([], []), ([10], [10]), ([2, 3], [2, 3])],
               'target_opset': [quant_opts_pb2.XLA],
           },
           # Test broadcastable batch sizes.
@@ -2145,7 +2145,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           {
               'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
               'has_bias': [True, False],
-              'batch_sizes': [([], [])],
+              'batch_sizes': [([], []), ([10], [10]), ([2, 3], [2, 3])],
               'target_opset': [quant_opts_pb2.UNIFORM_QUANTIZED],
           },
       ])
@@ -2223,7 +2223,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     # The difference between TF and target path is expected to be small.
     # The atol value is arbitrary.
-    self.assertAllClose(new_outputs, expected_outputs, atol=0.13)
+    # Currently, Uniform Quantized Opset are producing non-optimal graphs:
+    # unnecessary requantization followed by dequantization, so the error will
+    # be higher.
+    if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      self.assertAllClose(new_outputs, expected_outputs, atol=0.25)
+    else:
+      self.assertAllClose(new_outputs, expected_outputs, atol=0.13)
 
   @parameterized.named_parameters(
       {
