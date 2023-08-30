@@ -136,3 +136,27 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "yuv_to_rgb",
+    srcs = ["yuv_to_rgb.cc"],
+    hdrs = [
+        "image_utils.h",
+        "yuv_to_rgb.h",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/ml_adjacent:lib",
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ],
+)
+
+cc_test(
+    name = "yuv_to_rgb_test",
+    srcs = ["yuv_to_rgb_test.cc"],
+    deps = [
+        ":yuv_to_rgb",
+        "//tensorflow/lite/experimental/ml_adjacent:lib",
+        "//tensorflow/lite/experimental/ml_adjacent/data:owning_vector_ref",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
