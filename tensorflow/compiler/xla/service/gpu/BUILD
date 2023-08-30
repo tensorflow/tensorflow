@@ -298,6 +298,7 @@ cc_library(
         ":gpu_executable",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:name_uniquer",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
     ],

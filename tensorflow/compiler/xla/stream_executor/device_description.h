@@ -184,7 +184,7 @@ class RocmComputeCapability {
   }
 
  private:
-  std::string gcn_arch_name_;
+  std::string gcn_arch_name_ = "gfx000";  // default to invalid arch.
 
   static constexpr absl::string_view kSupportedGfxVersions[]{
       "gfx900",  // MI25
@@ -391,7 +391,7 @@ class DeviceDescription {
   CudaComputeCapability cuda_compute_capability_{-1, -1};
 
   // ROCm gfx arch,  "gfx000" if not available.
-  RocmComputeCapability rocm_compute_capability_{"gfx000"};
+  RocmComputeCapability rocm_compute_capability_;
 
   int numa_node_;
   int core_count_;

@@ -65,7 +65,6 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   tensorflow::se::CudaComputeCapability cuda_compute_capability;
   cuda_compute_capability.major = sm / 10;
   cuda_compute_capability.minor = sm % 10;
-  tensorflow::se::RocmComputeCapability rocm_compute_capability("gfx90a");
 
 #if GOOGLE_CUDA
   xla::gpu::GpuDeviceInfo gpu_device_info =
@@ -88,11 +87,10 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::Module> llvm_module,
-      xla::gpu::CompileModuleToLlvmIr(
-          hlo_module.get(), &llvm_context, target_triple, data_layout,
-          platform_name, platform_id, gpu_device_info, cuda_compute_capability,
-          rocm_compute_capability,
-          /*pointer_size=*/8));
+      xla::gpu::CompileModuleToLlvmIr(hlo_module.get(), &llvm_context,
+                                      target_triple, data_layout, platform_name,
+                                      platform_id, gpu_device_info,
+                                      /*pointer_size=*/8));
 
   if (!generate_ptx) {
     llvm_module->print(llvm::outs(), nullptr);

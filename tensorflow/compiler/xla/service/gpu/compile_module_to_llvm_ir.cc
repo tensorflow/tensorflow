@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -255,14 +256,11 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, const se::Platform::Id platform_id,
-    GpuDeviceInfo gpu_device_info,
-    se::CudaComputeCapability cuda_compute_capability,
-    se::RocmComputeCapability rocm_compute_capability, int pointer_size) {
+    GpuDeviceInfo gpu_device_info, int pointer_size) {
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
-      platform_id, gpu_device_info, cuda_compute_capability,
-      rocm_compute_capability, DummyCanShareBufferFunction, pointer_size,
+      platform_id, gpu_device_info, DummyCanShareBufferFunction, pointer_size,
       &results));
   return std::move(results.llvm_module);
 }
@@ -349,8 +347,6 @@ Status CompileModuleToLlvmIrImpl(
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
-    se::CudaComputeCapability cuda_compute_capability,
-    se::RocmComputeCapability rocm_compute_capability,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     int pointer_size, CompileModuleResults* results,
     se::StreamExecutor* stream_exec) {
@@ -426,9 +422,18 @@ Status CompileModuleToLlvmIrImpl(
 
   VLOG(1) << "Buffer Assignment Stats for " << hlo_module->name() << "\n"
           << results->buffer_assignment->GetStats().ToString();
-  DumpHloModuleIfEnabled(*hlo_module, *results->buffer_assignment,
-                         absl::StrCat("sm_", cuda_compute_capability.ToString(),
-                                      "_gpu_", kAfterOptimizationsDumpName));
+  struct GetCcStr {
+    std::string operator()(const se::CudaComputeCapability& cc) const {
+      return absl::StrCat("sm_", cc.ToString());
+    }
+    std::string operator()(const se::RocmComputeCapability& cc) const {
+      return cc.gfx_version();
+    }
+  };
+  DumpHloModuleIfEnabled(
+      *hlo_module, *results->buffer_assignment,
+      absl::StrCat(std::visit(GetCcStr(), gpu_device_info.compute_capability),
+                   "_gpu_", kAfterOptimizationsDumpName));
 
   VLOG(1) << "After optimization module fingerprint for " << hlo_module->name()
           << ": " << hlo_module->GetFingerprint128();
@@ -467,8 +472,7 @@ Status CompileModuleToLlvmIrImpl(
 
   IrEmitterContext ir_emitter_context(
       hlo_module, /*buffer_assignment=*/nullptr, platform_name, gpu_device_info,
-      cuda_compute_capability, rocm_compute_capability, mlir_context.get(),
-      results->llvm_module.get());
+      mlir_context.get(), results->llvm_module.get());
 
   ir_emitter_context.set_allocations(results->allocations);
 

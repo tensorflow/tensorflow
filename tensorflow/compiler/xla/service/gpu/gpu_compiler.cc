@@ -1450,11 +1450,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       module.get(), &llvm_context, target_triple_, data_layout_,
       stream_exec->platform()->Name(), stream_exec->platform()->id(),
-      gpu_device_info,
-      stream_exec->GetDeviceDescription().cuda_compute_capability(),
-      stream_exec->GetDeviceDescription().rocm_compute_capability(),
-      GetCanShareBuffer(), pointer_size_, &compile_module_results,
-      stream_exec));
+      gpu_device_info, GetCanShareBuffer(), pointer_size_,
+      &compile_module_results, stream_exec));
 
   if (user_pre_optimization_hook_) {
     user_pre_optimization_hook_(*compile_module_results.llvm_module);
@@ -1565,45 +1562,21 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     // Compile the module
     CompileModuleResults compile_module_results;
 
-    const std::any& target_config = options.target_config();
-    auto* gpu_target_config = std::any_cast<GpuTargetConfig>(&target_config);
-
     if (gpu_target_config) {
-      GpuVersion gpu_version =
-          gpu_target_config->gpu_device_info.compute_capability;
-      // CUDA "CC" major value, -1 if not available.
-      se::CudaComputeCapability cuda_compute_capability{-1, -1};
-      if (auto* cuda_cc =
-              std::get_if<se::CudaComputeCapability>(&gpu_version)) {
-        cuda_compute_capability = *cuda_cc;
-      }
-      // ROCm gfx arch,  "gfx000" if not available.
-      se::RocmComputeCapability rocm_compute_capability{"gfx000"};
-      if (auto* rocm_cc =
-              std::get_if<se::RocmComputeCapability>(&gpu_version)) {
-        rocm_compute_capability = *rocm_cc;
-      }
-
       TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
           module.get(), &llvm_context, target_triple_, data_layout_,
           gpu_target_config->platform_name, options.PlatformId(),
-          gpu_target_config->gpu_device_info, cuda_compute_capability,
-          rocm_compute_capability, GetCanShareBuffer(), pointer_size_,
-          &compile_module_results));
+          gpu_target_config->gpu_device_info, GetCanShareBuffer(),
+          pointer_size_, &compile_module_results));
     } else {
       CHECK(options.executor() != nullptr);
       auto stream_exec = options.executor();
-      const stream_executor::DeviceDescription& device_description =
-          stream_exec->GetDeviceDescription();
       TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
           module.get(), &llvm_context, target_triple_, data_layout_,
           stream_exec->platform()->Name(), options.PlatformId(),
-          GetGpuDeviceInfo(stream_exec),
-          device_description.cuda_compute_capability(),
-          device_description.rocm_compute_capability(), GetCanShareBuffer(),
-          pointer_size_, &compile_module_results));
+          GetGpuDeviceInfo(stream_exec), GetCanShareBuffer(), pointer_size_,
+          &compile_module_results));
     }
-
     if (user_pre_optimization_hook_) {
       user_pre_optimization_hook_(*compile_module_results.llvm_module);
     }
