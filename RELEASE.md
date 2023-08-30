@@ -203,6 +203,10 @@ This release contains contributions from many people at Google, as well as:
 * `tf.ones`, `tf.zeros`, `tf.fill`, `tf.ones_like`, `tf.zeros_like` now take an
     additional Layout argument that controls the output layout of their results.
 
+*  Limited support of unified n-d FFT Ops: `tf.signal.fftn`,
+   `tf.signal.ifftn`, `tf.signal.rfftn`, `tf.signal.irfftn`.
+   Note that they only support up to 3d and gradients are unsupported.
+
 * `tf.nest` and `tf.data` now support user defined classes implementing
   `__tf_flatten__` and `__tf_unflatten__` methods. See [
   nest_util code examples](https://github.com/tensorflow/tensorflow/blob/04869b4e63bfc03cb13627b3e1b879fdd0f69e34/tensorflow/python/util/nest_util.py#L97)
