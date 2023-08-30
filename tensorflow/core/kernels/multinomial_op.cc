@@ -318,6 +318,7 @@ class StatelessMultinomialOp : public MultinomialOp<Device, T, OutputType> {
                           StatelessMultinomialOp<CPUDevice, TYPE, int64>);
 
 TF_CALL_half(REGISTER);
+TF_CALL_bfloat16(REGISTER);
 TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 #undef REGISTER
