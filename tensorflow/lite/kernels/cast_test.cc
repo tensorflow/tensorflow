@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
+#include <algorithm>
 #include <complex>
+#include <random>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -58,6 +60,23 @@ TEST(CastOpModel, CastInt4ToFloat) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray({1.f, 2.f, 3.f, 4.f, 5.f, 6.f}));
+}
+
+TEST(CastOpModel, CastInt4ToFloatLarge) {
+  int num_elements = 40;
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  std::uniform_int_distribution<int8_t> i8dist(-8, 7);
+  auto i8rng = [&] { return i8dist(rng); };
+  std::vector<int8_t> input(num_elements);
+  std::generate(input.begin(), input.end(), i8rng);
+  CastOpModel m({TensorType_INT4, {num_elements}},
+                {TensorType_FLOAT32, {num_elements}});
+  m.Set4BitInput(input);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  for (int i = 0; i < input.size(); ++i) {
+    EXPECT_EQ(m.ExtractVector<float>(m.output())[i], input[i]);
+  }
 }
 
 TEST(CastOpModel, CastInt16ToFloat) {
