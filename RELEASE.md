@@ -73,6 +73,10 @@
     * It now takes in a new argument called `experimental_write_callbacks`.
     These are callbacks that will be executed after a saving event finishes
     writing the checkpoint file.
+* Add an option `disable_eager_executer_streaming_enqueue` to
+  `tensorflow.ConfigProto.Experimental` to control the eager runtime's behavior
+  around parallel remote function invocations; when set to `True`, the eager
+  runtime will be allowed to execute multiple function invocations in parallel.
 
 ## Thanks to our Contributors
 
