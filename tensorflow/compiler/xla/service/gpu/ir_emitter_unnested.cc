@@ -1809,9 +1809,7 @@ Status IrEmitterUnnested::EmitFusion(
   // Create HloFusionAnalysis instance.
   GpuDeviceInfo device_info = ir_emitter_context_->gpu_device_info();
   TF_ASSIGN_OR_RETURN(auto fusion_analysis,
-                      HloFusionAnalysis::Create(
-                          fusion, &device_info,
-                          ir_emitter_context_->cuda_compute_capability()));
+                      HloFusionAnalysis::Create(fusion, &device_info));
 
   auto emitter = GetFusionEmitter(
       fusion_analysis, ir_emitter_context_->allocations(), fusion_op);

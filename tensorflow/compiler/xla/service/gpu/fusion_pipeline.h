@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
-#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
@@ -29,8 +28,7 @@ namespace gpu {
 HloPassPipeline FusionPipeline(
     const DebugOptions& debug_options,
     HloCostAnalysis::ShapeSizeFunction shape_size_bytes_function,
-    const GpuDeviceInfo& gpu_device_info,
-    const se::CudaComputeCapability& compute_capability);
+    const GpuDeviceInfo& gpu_device_info);
 
 // Function wrapper around the horizontal XLA GPU fusion pipeline.
 HloPassPipeline HorizontalFusionPipeline(const GpuDeviceInfo& gpu_device_info);

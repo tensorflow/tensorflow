@@ -41,7 +41,6 @@ class MultiOutputFusionTest : public HloTestBase {
  public:
   GpuMultiOutputFusion mof_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-      se::CudaComputeCapability({se::CudaComputeCapability::AMPERE, 0}),
       ShapeSizeBytesFunction()};
 
   void CheckGpuMultiOutputFusion(absl::string_view hlo,
@@ -50,7 +49,6 @@ class MultiOutputFusionTest : public HloTestBase {
         hlo,
         GpuMultiOutputFusion{
             TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-            se::CudaComputeCapability({se::CudaComputeCapability::AMPERE, 0}),
             ShapeSizeBytesFunction()},
         expected);
   }

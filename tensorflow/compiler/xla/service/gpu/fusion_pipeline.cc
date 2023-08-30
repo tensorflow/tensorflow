@@ -44,8 +44,7 @@ namespace gpu {
 HloPassPipeline FusionPipeline(
     const DebugOptions& debug_options,
     HloCostAnalysis::ShapeSizeFunction shape_size_bytes_function,
-    const GpuDeviceInfo& gpu_device_info,
-    const se::CudaComputeCapability& compute_capability) {
+    const GpuDeviceInfo& gpu_device_info) {
   HloPassFix<HloPassPipeline> fusion("fusion");
   // We try to split variadic ops with many parameters into several such ops
   // to avoid exceeding the parameter space.
@@ -70,14 +69,13 @@ HloPassPipeline FusionPipeline(
                                          gpu_device_info);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true,
                                          gpu_device_info);
-    fusion.AddPass<FusionMerger>(gpu_device_info, compute_capability,
-                                 shape_size_bytes_function);
+    fusion.AddPass<FusionMerger>(gpu_device_info, shape_size_bytes_function);
   }
   // Running CSE affects how many users an op has. This plays a role in what
   // we detect as a tiled transpose fusion.
   fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                          /*only_fusion_computations=*/true);
-  fusion.AddPass<GpuMultiOutputFusion>(gpu_device_info, compute_capability,
+  fusion.AddPass<GpuMultiOutputFusion>(gpu_device_info,
                                        shape_size_bytes_function);
   fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                          /*only_fusion_computations=*/true);

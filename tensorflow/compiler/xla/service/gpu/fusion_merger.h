@@ -61,9 +61,9 @@ namespace gpu {
 
 class FusionMerger : public HloModulePass {
  public:
-  explicit FusionMerger(const GpuDeviceInfo& d, se::CudaComputeCapability cc,
+  explicit FusionMerger(const GpuDeviceInfo& d,
                         HloCostAnalysis::ShapeSizeFunction f)
-      : gpu_device_info_(d), compute_capability_(cc), shape_size_function_(f) {}
+      : gpu_device_info_(d), shape_size_function_(f) {}
   absl::string_view name() const override { return "fusion_merger"; }
 
   using HloPassInterface::Run;
@@ -73,7 +73,6 @@ class FusionMerger : public HloModulePass {
 
  private:
   const GpuDeviceInfo gpu_device_info_;
-  se::CudaComputeCapability compute_capability_;
   HloCostAnalysis::ShapeSizeFunction shape_size_function_;
 };
 

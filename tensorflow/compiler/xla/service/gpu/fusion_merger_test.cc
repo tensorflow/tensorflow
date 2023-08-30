@@ -39,10 +39,8 @@ class FusionMergerTest : public HloTestBase {
   }
 
  public:
-  FusionMerger fusion_merger_{
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-      se::CudaComputeCapability({se::CudaComputeCapability::AMPERE, 0}),
-      ShapeSizeBytesFunction()};
+  FusionMerger fusion_merger_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                              ShapeSizeBytesFunction()};
   FusionMergerTest() : HloTestBase() {}
 };
 

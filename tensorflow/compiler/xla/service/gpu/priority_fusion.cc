@@ -237,7 +237,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
 
     GpuPerformanceModel::RunTimes run_times =
         GpuPerformanceModel::EstimateRunTimes(producer, cost_analysis_,
-                                              std::nullopt, fusible_users);
+                                              fusible_users);
     return absl::ToInt64Nanoseconds(run_times.time_unfused -
                                     run_times.time_fused);
   }

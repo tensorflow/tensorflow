@@ -33,7 +33,6 @@ class GpuPerformanceModel {
   };
   static RunTimes EstimateRunTimes(
       const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
-      std::optional<se::CudaComputeCapability> cc = std::nullopt,
       std::vector<HloInstruction*> fused_users = {}, bool multi_output = false);
 
   // Writes estimated execution time to FusionBackendConfig.reification_cost.
