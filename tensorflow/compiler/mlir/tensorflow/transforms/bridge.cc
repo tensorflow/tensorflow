@@ -256,7 +256,10 @@ void CreateTPUBridgePipelineImpl(
   pm.addNestedPass<func::FuncOp>(
       TF::CreateHoistReplicateInvariantResourceWritesPass());
   pm.addNestedPass<func::FuncOp>(CreateTPUColocateCompositeResourceOps());
-  pm.addPass(CreateTPUVariableRuntimeReformattingPass());
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_tpu_variable_runtime_reformatting_pass) {
+    pm.addPass(CreateTPUVariableRuntimeReformattingPass());
+  }
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 }  // namespace
