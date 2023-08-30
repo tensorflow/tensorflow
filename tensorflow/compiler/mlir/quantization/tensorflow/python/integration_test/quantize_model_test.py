@@ -30,6 +30,7 @@ from tensorflow.compiler.mlir.quantization.tensorflow.python.integration_test im
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
@@ -5543,6 +5544,131 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             attr_val=attr_value_pb2.AttrValue(type=types_pb2.DT_FLOAT),
         )
     )
+
+
+class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
+
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'none',
+          'activation_fn': None,
+          'has_bias': False,
+      },
+      {
+          'testcase_name': 'relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': False,
+      },
+      {
+          'testcase_name': 'with_bias',
+          'activation_fn': None,
+          'has_bias': True,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': True,
+      },
+  )
+  def test_conv2d_ptq_model_whole_model_verify(self, activation_fn, has_bias):
+    input_shape = [None, None, None, 3]
+    filter_shape = [2, 3, 3, 2]
+
+    model = self._create_conv2d_model(
+        input_shape,
+        filter_shape,
+        activation_fn=activation_fn,
+        has_bias=has_bias,
+    )
+    saved_model_save.save(model, self._input_saved_model_path)
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(8):
+        yield {
+            'input_tensor': ops.convert_to_tensor(
+                np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype(
+                    'f4'
+                )
+            ),
+        }
+
+    tags = {tag_constants.SERVING}
+
+    unquantized_dump_model_path = self.create_tempdir().full_path
+    log_dir_path = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        ),
+        op_set=quant_opts_pb2.XLA,
+        debugger_options=quant_opts_pb2.DebuggerOptions(
+            debugger_type=quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL,
+            unquantized_dump_model_path=unquantized_dump_model_path,
+            log_dir_path=log_dir_path,
+        ),
+        tags=tags,
+        signature_keys=['serving_default'],
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        quantization_options,
+        representative_dataset=data_gen(),
+    )
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {'serving_default'}
+    )
+
+    sample_input = {
+        'input_tensor': np.random.uniform(low=0, high=1, size=(16, 3, 4, 3))
+    }
+
+    # Check if output of the model and value saved by DumpTensorOp matches.
+    # Verify for both unquantized model and quantized model.
+    for model_path, file_name in [
+        [unquantized_dump_model_path, 'unquantized_tensor_data.pb'],
+        [self._output_saved_model_path, 'quantized_tensor_data.pb'],
+    ]:
+      with tensorflow.compat.v1.Session(graph=tensorflow.Graph()) as sess:
+        meta_graph = saved_model_loader.load(sess, tags, export_dir=model_path)
+        signature_def = meta_graph.signature_def['serving_default']
+
+        # Verify that DumpTensor exists
+        self.assertTrue(self._contains_op(meta_graph.graph_def, 'DumpTensor'))
+
+        # DumpTensorOp only works in graph mode.
+        # Execute the model using session to run DumpTensorOp.
+        output_tensor_names = [
+            output_tensor_info.name
+            for output_tensor_info in signature_def.outputs.values()
+        ]
+
+        feed_dict = {}
+        for input_key, input_value in sample_input.items():
+          input_tensor_name = signature_def.inputs[input_key].name
+          feed_dict[input_tensor_name] = input_value
+
+        # Obtain the output of the model.
+        output_value = sess.run(output_tensor_names, feed_dict=feed_dict)[0]
+
+        # Find the dump file and parse it.
+        folder = os.path.join(log_dir_path, os.listdir(log_dir_path)[0])
+        dump_file_path = os.path.join(log_dir_path, folder, file_name)
+
+        dump_file_proto = tensor_pb2.TensorProto.FromString(
+            open(dump_file_path, 'rb').read()
+        )
+
+        dump_file_numpy = tensorflow.make_ndarray(dump_file_proto)
+
+        # Since the model only has one conv2d and its output is directly used as
+        # the output of the model, output of the model and conv2d's dump value
+        # should be the same.
+        self.assertAllEqual(output_value, dump_file_numpy)
 
 
 @test_util.run_all_in_graph_and_eager_modes
