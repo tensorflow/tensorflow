@@ -181,7 +181,7 @@ message Options {
   oneof optional_deterministic {
     bool deterministic = 1;
   }
-  // The distribution strategy options associated with the dataset.
+  // The autotune options associated with the dataset.
   AutotuneOptions autotune_options = 7;
   // The distribution strategy options associated with the dataset.
   DistributeOptions distribute_options = 2;
