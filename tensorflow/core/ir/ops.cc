@@ -1151,7 +1151,7 @@ static LogicalResult VerifyPreservedAttrs(Operation* op,
       num_rets = 1;
     } else {
       num_rets = cast<RegionBranchTerminatorOpInterface>(terminator)
-                     .getMutableSuccessorOperands(region.getRegionNumber())
+                     .getMutableSuccessorOperands(region)
                      .size();
     }
     if (num_rets != attrs.getResAttrs().size()) {
@@ -1167,7 +1167,7 @@ static LogicalResult VerifyPreservedAttrs(Operation* op,
 // YieldOp
 
 MutableOperandRange YieldOp::getMutableSuccessorOperands(
-    std::optional<unsigned> index) {
+    RegionBranchPoint point) {
   // Get the subrange of non-control operands.
   return getArgsMutable();
 }
@@ -1206,10 +1206,10 @@ static std::optional<bool> GetStaticallyKnownBranch(Attribute cond_attr) {
 // Get the successor of the regions of an if-like op.
 template <typename IfLikeRegionOp>
 void GetIfLikeRegionOpSuccessorRegions(
-    IfLikeRegionOp op, std::optional<unsigned> index,
+    IfLikeRegionOp op, RegionBranchPoint point,
     SmallVectorImpl<RegionSuccessor>& regions) {
   // Both regions branch back to the parent op.
-  if (index.has_value()) {
+  if (!point.isParent()) {
     // Ignore the control token.
     regions.emplace_back(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
@@ -1286,10 +1286,10 @@ static std::optional<unsigned> GetStaticallyKnownCaseBranch(
 // Get the successor of the regions of a case-like op.
 template <typename CaseLikeRegionOp>
 void GetCaseLikeRegionOpSuccessorRegions(
-    CaseLikeRegionOp op, std::optional<unsigned> index,
+    CaseLikeRegionOp op, RegionBranchPoint point,
     SmallVectorImpl<RegionSuccessor>& regions) {
   // All branch regions branch back to the parent op.
-  if (index.has_value()) {
+  if (!point.isParent()) {
     // Ignore the control token.
     regions.emplace_back(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
@@ -1321,7 +1321,7 @@ void GetCaseLikeRegionOpEntrySuccessorRegions(
 // ConditionOp
 
 MutableOperandRange ConditionOp::getMutableSuccessorOperands(
-    std::optional<unsigned> index) {
+    RegionBranchPoint point) {
   // Get the subrange of non-control operands that are forwarded to the
   // successor region.
   return getArgsMutable();
@@ -1373,15 +1373,15 @@ static LogicalResult VerifyWhileLikeRegionOp(WhileLikeRegionOp op) {
 
 template <typename WhileLikeRegionOp>
 static void GetWhileLikeRegionOpSuccessorRegions(
-    WhileLikeRegionOp op, std::optional<unsigned> index,
+    WhileLikeRegionOp op, RegionBranchPoint point ,
     SmallVectorImpl<RegionSuccessor>& regions) {
-  // The parent op and the body region always branch to the condion region.
-  if (!index || *index == 1) {
+  // The parent op and the body region always branch to the condition region.
+  if (point.isParent() || point == op.getRegion(1)) {
     regions.emplace_back(&op.getCondRegion(),
                          GetLoopRegionDataArgs(op.getCondRegion()));
     return;
   }
-  assert(*index == 0 && "invalid region index");
+  assert(point == op->getRegion(0) && "invalid region index");
   // The condition regions branches to the loop body or back to the parent.
   // Try to narrow the condition value to a constant.
   auto condition =
@@ -1424,17 +1424,17 @@ LogicalResult ForRegionOp::verify() {
 }
 
 OperandRange ForRegionOp::getEntrySuccessorOperands(
-    std::optional<unsigned> index) {
+    RegionBranchPoint point) {
   return getInit();
 }
 
 void ForRegionOp::getSuccessorRegions(
-    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor>& regions) {
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
   // Both the parent op and the body region branch to the body. Ignore the loop
   // index block argument, as it is not modified by the loop body itself.
   regions.emplace_back(&getBodyRegion(),
                        GetLoopRegionDataArgs(getBodyRegion()).drop_front());
-  if (!index) return;
+  if (point.isParent()) return;
   // The body might branch back to the parent. Drop the control token.
   regions.emplace_back((*this)->getResults().drop_back());
 }

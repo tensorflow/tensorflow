@@ -602,9 +602,9 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     void $cppClass::getSuccessorRegions(
-        std::optional<unsigned> index,
+         ::mlir::RegionBranchPoint point,
         SmallVectorImpl<RegionSuccessor> &regions) {
-      GetIfLikeRegionOpSuccessorRegions(*this, index, regions);
+      GetIfLikeRegionOpSuccessorRegions(*this, point, regions);
     }
     void $cppClass::getEntrySuccessorRegions(
         ArrayRef<Attribute> operands,
@@ -721,9 +721,9 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     void $cppClass::getSuccessorRegions(
-        std::optional<unsigned> index,
+        mlir::RegionBranchPoint point,
         SmallVectorImpl<RegionSuccessor> &regions) {
-      GetCaseLikeRegionOpSuccessorRegions(*this, index, regions);
+      GetCaseLikeRegionOpSuccessorRegions(*this, point, regions);
     }
     void $cppClass::getEntrySuccessorRegions(
         ArrayRef<Attribute> operands,
@@ -880,13 +880,13 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     OperandRange $cppClass::getEntrySuccessorOperands(
-        std::optional<unsigned> index) {
+         ::mlir::RegionBranchPoint point) {
       return getInit();
     }
     void $cppClass::getSuccessorRegions(
-        std::optional<unsigned> index,
+        ::mlir::RegionBranchPoint point,
         SmallVectorImpl<RegionSuccessor> &regions) {
-      return GetWhileLikeRegionOpSuccessorRegions(*this, index, regions);
+      return GetWhileLikeRegionOpSuccessorRegions(*this, point, regions);
     }
 
     LogicalResult $cppClass::verify() { return VerifyWhileLikeRegionOp(*this); }

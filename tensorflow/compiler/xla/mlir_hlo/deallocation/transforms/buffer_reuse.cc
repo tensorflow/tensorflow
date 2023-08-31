@@ -425,8 +425,8 @@ bool simplifyLoopDeallocs(Block& block) {
     }
 
     breaks_if_you_move_ops::ValueEquivalenceClasses eq;
-    auto getAliases = [&](std::optional<unsigned> index) {
-      for (const auto& edge : getSuccessorRegions(rbi, index)) {
+    auto getAliases = [&](RegionBranchPoint point) {
+      for (const auto& edge : getSuccessorRegions(rbi, point)) {
         for (auto [pred, succ] : llvm::zip(edge.getPredecessorOperands(),
                                            edge.getSuccessorValues())) {
           eq.unionSets(pred, succ);
@@ -434,9 +434,9 @@ bool simplifyLoopDeallocs(Block& block) {
       }
     };
 
-    getAliases(std::nullopt);
+    getAliases(RegionBranchPoint::parent());
     for (auto& region : rbi->getRegions()) {
-      getAliases(region.getRegionNumber());
+      getAliases(region);
     }
 
     for (auto it = eq.begin(), e = eq.end(); it != e; ++it) {

@@ -580,8 +580,7 @@ StringAttr BasePattern::TryFindName(Value value,
     return TryFindName(for_op.getInit()[arg_idx - 1], {});
   }
   auto branch = cast<RegionBranchOpInterface>(parent);
-  ValueRange inputs = branch.getEntrySuccessorOperands(
-      arg.getParentRegion()->getRegionNumber());
+  ValueRange inputs = branch.getEntrySuccessorOperands(arg.getParentRegion());
   return TryFindName(inputs[arg.getArgNumber()], {});
 }
 

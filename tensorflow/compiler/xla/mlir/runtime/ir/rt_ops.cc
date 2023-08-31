@@ -72,10 +72,10 @@ FunctionOpInterface ExportOp::exported(mlir::SymbolTable &sym_table) {
 // TraceOp
 //===----------------------------------------------------------------------===//
 
-void TraceOp::getSuccessorRegions(std::optional<unsigned> index,
+void TraceOp::getSuccessorRegions(RegionBranchPoint point,
                                   SmallVectorImpl<RegionSuccessor> &regions) {
   // If the predecessor is the TraceOp, branch into the body.
-  if (!index) {
+  if (point.isParent()) {
     regions.push_back(RegionSuccessor(&getRegion()));
     return;
   }
@@ -119,7 +119,7 @@ void TraceOp::build(OpBuilder &builder, OperationState &result,
 //===----------------------------------------------------------------------===//
 
 MutableOperandRange YieldOp::getMutableSuccessorOperands(
-    std::optional<unsigned> index) {
+    RegionBranchPoint point) {
   return getArgumentsMutable();
 }
 

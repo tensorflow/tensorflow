@@ -121,10 +121,10 @@ LogicalResult AbsOp::verify() {
 // CaseOp
 //===----------------------------------------------------------------------===//
 
-void CaseOp::getSuccessorRegions(std::optional<unsigned> index,
+void CaseOp::getSuccessorRegions(RegionBranchPoint point,
                                  SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the CaseOp, branch to all other branches.
-  if (!index.has_value()) {
+  if (point.isParent()) {
     for (auto& branch : getBranches())
       regions.push_back(RegionSuccessor(&branch, branch.getArguments()));
   }
@@ -348,11 +348,11 @@ LogicalResult ReduceWindowOp::verify() {
 // WhileOp
 //===----------------------------------------------------------------------===//
 
-void WhileOp::getSuccessorRegions(std::optional<unsigned> index,
+void WhileOp::getSuccessorRegions(RegionBranchPoint point,
                                   SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the WhileOp or the body region, branch into the
   // cond region.
-  if (!index.has_value() || index.value() == 1) {
+  if (point.isParent() || point == (*this)->getRegion(1)) {
     regions.push_back(RegionSuccessor(&getCond(), getCond().getArguments()));
     return;
   }
@@ -387,11 +387,11 @@ void FusionOp::build(OpBuilder& builder, OperationState& result,
   FusionOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 
-void FusionOp::getSuccessorRegions(std::optional<unsigned> index,
+void FusionOp::getSuccessorRegions(RegionBranchPoint point,
                                    SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the fusion region, jump back to the parent op.
-  if (index.has_value()) {
-    assert(index.value() == 0 && "expected fusion region");
+  if (!point.isParent()) {
+    assert(point == (*this)->getRegion(0) && "expected fusion region");
     regions.push_back(RegionSuccessor());
   } else {
     // If the predecessor is the FusionOp, branch into the region.
