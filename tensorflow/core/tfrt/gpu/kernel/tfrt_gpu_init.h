@@ -12,31 +12,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SERVING_DEVICE_SELECTOR_POLICIES_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_SERVING_DEVICE_SELECTOR_POLICIES_H_
-
-#include <atomic>
-
-#include "tensorflow/core/common_runtime/serving_device_selector.h"
+#ifndef TENSORFLOW_CORE_TFRT_GPU_KERNEL_TFRT_GPU_INIT_H_
+#define TENSORFLOW_CORE_TFRT_GPU_KERNEL_TFRT_GPU_INIT_H_
+#include "tensorflow/core/common_runtime/serving_device_selector_policies.h"
+#include "tensorflow/core/tfrt/runtime/runtime.h"
 
 namespace tensorflow {
+namespace gpu {
 
-enum class ServingDeviceSelectorPolicy {
-  kRoundRobin,
+struct GpuRunnerOptions {
+  int num_gpu_streams = 1;
+  ServingDeviceSelectorPolicy serving_selector_policy =
+      ServingDeviceSelectorPolicy::kRoundRobin;
 };
 
-class RoundRobinPolicy : public ServingDeviceSelector::Policy {
- public:
-  RoundRobinPolicy() : ordinal_(0) {}
+Status InitTfrtGpu(const GpuRunnerOptions& options,
+                   tensorflow::tfrt_stub::Runtime& runtime);
 
-  int SelectDevice(
-      absl::string_view program_fingerprint,
-      const ServingDeviceSelector::DeviceStates& device_states) override;
-
- private:
-  std::atomic<uint64_t> ordinal_;
-};
-
+}  // namespace gpu
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_SERVING_DEVICE_SELECTOR_POLICIES_H_
+#endif  // TENSORFLOW_CORE_TFRT_GPU_KERNEL_TFRT_GPU_INIT_H_

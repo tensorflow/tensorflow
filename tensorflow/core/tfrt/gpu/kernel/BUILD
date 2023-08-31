@@ -107,3 +107,18 @@ tf_cuda_cc_test(
         "@tf_runtime//:tensor",
     ],
 )
+
+cc_library(
+    name = "tfrt_gpu_init",
+    srcs = ["tfrt_gpu_init.cc"],
+    hdrs = ["tfrt_gpu_init.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gpu_runner",
+        "//tensorflow/core/common_runtime:serving_device_selector_policies",
+        "//tensorflow/core/common_runtime/gpu:gpu_serving_device_selector",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/tfrt/runtime",
+        "@tf_runtime//:hostcontext",
+    ],
+)
