@@ -344,6 +344,49 @@ module @jit_f.0 {
     )
     self._assertOpOutputMatchesExpected(f, (x,), (expected_value,))
 
+  def test_platforms_unknown_custom_call(self):
+    # One of the platform branches ("ROCM") has custom call unknown to other
+    # platforms.
+    if self.testing_platform() == 'ROCM':
+      raise unittest.SkipTest('Not intended for ROCM')
+    x = np.float32(0.)
+
+    #  returns x + 2. on CPU, x + 3. on GPU, and x + 4. on TPU
+    module, version = serialize("""
+module @jit_f.0 {
+  func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
+    %to_add = "stablehlo.case"(%arg_platform_idx) ({
+      %cpu_val = stablehlo.constant dense<2.> : tensor<f32>
+      stablehlo.return %cpu_val : tensor<f32>
+    }, {
+      %gpu_val = stablehlo.constant dense<3.> : tensor<f32>
+      stablehlo.return %gpu_val : tensor<f32>
+    }, {
+      %tpu_val = stablehlo.constant dense<4.> : tensor<f32>
+      stablehlo.return %tpu_val : tensor<f32>
+    }, {
+      %rocm_val = stablehlo.custom_call @non_existent_target(%arg0) : (tensor<f32>) -> tensor<f32>
+      stablehlo.return %rocm_val : tensor<f32>
+    }) : (tensor<i32>) -> tensor<f32>
+    %0 = stablehlo.add %arg0, %to_add : tensor<f32>
+    return %0 : tensor<f32>
+  }
+}
+""")
+
+    platforms = ['CPU', 'CUDA', 'TPU', 'ROCM']
+    def f(x):
+      return xla.call_module([x], version=version,
+                             module=module,
+                             Tout=[np.float32],
+                             Sout=[()],
+                             platforms=platforms)
+
+    expected_value = (
+        x + dict(CPU=2.0, CUDA=3.0, TPU=4.0)[self.testing_platform()]
+    )
+    self._assertOpOutputMatchesExpected(f, (x,), (expected_value,))
+
   def test_platforms_and_poly(self):
     x = np.arange(6, dtype=np.float32)
     #  returns x + 2. on CPU, x + 3. on GPU (CUDA or ROCM) and x + 4. on TPU
