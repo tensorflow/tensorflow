@@ -2452,17 +2452,20 @@ AutoShardingSolverResult CallSolver(
   if (result.status.ok()) {
     const AutoShardingEvaluation evaluation = Evaluate(request, result);
     LOG(INFO) << "Total Communication Cost: "
-              << evaluation.total_communication_cost
-              << " (lower bound: " << evaluation.lower_bound_communication_cost
+              << evaluation.total.communication_cost
+              << " (lower bound: " << evaluation.lower_bound.communication_cost
               << ")";
-    LOG(INFO) << "Total Computation Cost: " << evaluation.total_computation_cost
-              << " (lower bound: " << evaluation.lower_bound_computation_cost
+    LOG(INFO) << "Total Computation Cost: " << evaluation.total.computation_cost
+              << " (lower bound: " << evaluation.lower_bound.computation_cost
               << ")";
-    LOG(INFO) << "Total Resharding Cost: " << evaluation.total_resharding_cost
-              << " (lower bound: " << evaluation.lower_bound_resharding_cost
+    LOG(INFO) << "Total Resharding Cost: " << evaluation.total.resharding_cost
+              << " (lower bound: " << evaluation.lower_bound.resharding_cost
               << ")";
-    LOG(INFO) << "Total Cost: " << evaluation.total_cost
-              << " (lower bound: " << evaluation.lower_bound_cost << ")";
+    LOG(INFO) << "Total Overbudget Cost: " << evaluation.total.overbudget_cost
+              << " (lower bound: " << evaluation.lower_bound.overbudget_cost
+              << ")";
+    LOG(INFO) << "Total Cost: " << evaluation.total.cost()
+              << " (lower bound: " << evaluation.lower_bound.cost() << ")";
     LOG(INFO) << "Total Violations: " << evaluation.violation_codes.size();
   }
   return result;

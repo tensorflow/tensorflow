@@ -194,6 +194,8 @@ AutoShardingSolverResult CallORToolsSolver(
   // Create variables
   std::vector<std::vector<MPVariable*>> s(request.num_nodes);
   std::vector<std::vector<MPVariable*>> e(num_edges);
+  MPVariable* overbudget_var = solver->MakeNumVar(
+      0.0, request.overbudget_coeff ? MPSolver::infinity() : 0.0, "overbudget");
 
   size_t var_vector_cnt = 0;
   for (NodeIdx i = 0; i < request.num_nodes; ++i) {
@@ -330,6 +332,7 @@ AutoShardingSolverResult CallORToolsSolver(
           -MPSolver::infinity(),
           request.memory_budget - total_fixed_memory_cost,
           absl::StrCat("mem[", t, "] = ", str));
+      constraint->SetCoefficient(overbudget_var, -1.0);
       for (NodeIdx i : request.live[t]) {
         auto fixed_memory_cost =
             *std::min_element(request.m[i].begin(), request.m[i].end());
@@ -344,6 +347,10 @@ AutoShardingSolverResult CallORToolsSolver(
       minimum_memory_budget_required_estimate =
           std::max(minimum_memory_budget_required_estimate,
                    minimum_memory_budget_required_estimate_local);
+    }
+    if (request.overbudget_coeff) {
+      solver->MutableObjective()->SetCoefficient(overbudget_var,
+                                                 *request.overbudget_coeff);
     }
     LOG(INFO) << "Minimum memory budget estimate: "
               << minimum_memory_budget_required_estimate;
@@ -535,6 +542,10 @@ AutoShardingSolverResult CallORToolsSolver(
       }
     }
   }
+  if (request.memory_budget > 0 && request.overbudget_coeff) {
+    unsalted_objective +=
+        *request.overbudget_coeff * overbudget_var->solution_value();
+  }
 
   LOG(INFO) << "Unsalted objective value: " << unsalted_objective;
   LOG(INFO) << "N = " << request.num_nodes;
@@ -552,18 +563,22 @@ AutoShardingSolverResult CallORToolsSolver(
       false);
 }
 
+bool CostComponents::operator==(const CostComponents& other) const {
+  return communication_cost == other.communication_cost &&
+         computation_cost == other.computation_cost &&
+         resharding_cost == other.resharding_cost &&
+         overbudget_cost == other.overbudget_cost;
+}
+
+double CostComponents::cost() const {
+  return communication_cost + computation_cost + resharding_cost +
+         overbudget_cost;
+}
+
 bool AutoShardingEvaluation::operator==(
     const AutoShardingEvaluation& other) const {
-  return violation_codes == other.violation_codes &&
-         total_communication_cost == other.total_communication_cost &&
-         total_computation_cost == other.total_computation_cost &&
-         total_resharding_cost == other.total_resharding_cost &&
-         total_cost == other.total_cost &&
-         lower_bound_communication_cost ==
-             other.lower_bound_communication_cost &&
-         lower_bound_computation_cost == other.lower_bound_computation_cost &&
-         lower_bound_resharding_cost == other.lower_bound_resharding_cost &&
-         lower_bound_cost == other.lower_bound_cost;
+  return violation_codes == other.violation_codes && total == other.total &&
+         lower_bound == other.lower_bound;
 }
 
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
@@ -595,36 +610,47 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
     }
   }
   if (request.memory_budget > 0) {
+    double total_overbudget = 0.0;
+    double lower_bound_overbudget = 0.0;
     for (LivenessIdx t = 0; t < request.live.size(); ++t) {
       double total_memory_cost = 0.0;
+      double lower_bound_memory_cost = 0.0;
       for (NodeIdx i : request.live[t]) {
         total_memory_cost += request.m[i][s_val[i]];
+        lower_bound_memory_cost +=
+            *std::min_element(request.m[i].begin(), request.m[i].end());
       }
-      if (total_memory_cost > request.memory_budget) {
+      if (request.overbudget_coeff) {
+        total_overbudget = std::max(total_overbudget,
+                                    total_memory_cost - request.memory_budget);
+        lower_bound_overbudget =
+            std::max(lower_bound_overbudget,
+                     lower_bound_memory_cost - request.memory_budget);
+      } else if (total_memory_cost > request.memory_budget) {
         evaluation.violation_codes.insert(kMemoryViolationCode);
       }
+    }
+    if (request.overbudget_coeff) {
+      evaluation.total.overbudget_cost =
+          *request.overbudget_coeff * total_overbudget;
+      evaluation.lower_bound.overbudget_cost =
+          *request.overbudget_coeff * lower_bound_overbudget;
     }
   }
   // Compute metrics & lower bounds.
   for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-    evaluation.total_communication_cost += request.d[i][s_val[i]];
-    evaluation.total_computation_cost += request.c[i][s_val[i]];
-    evaluation.lower_bound_communication_cost +=
+    evaluation.total.communication_cost += request.d[i][s_val[i]];
+    evaluation.total.computation_cost += request.c[i][s_val[i]];
+    evaluation.lower_bound.communication_cost +=
         *std::min_element(request.d[i].begin(), request.d[i].end());
-    evaluation.lower_bound_computation_cost +=
+    evaluation.lower_bound.computation_cost +=
         *std::min_element(request.c[i].begin(), request.c[i].end());
   }
   for (EdgeIdx i = 0; i < request.e.size(); ++i) {
-    evaluation.total_resharding_cost += request.r[i][e_val[i]];
-    evaluation.lower_bound_resharding_cost +=
+    evaluation.total.resharding_cost += request.r[i][e_val[i]];
+    evaluation.lower_bound.resharding_cost +=
         *std::min_element(request.r[i].begin(), request.r[i].end());
   }
-  evaluation.total_cost += evaluation.total_communication_cost;
-  evaluation.total_cost += evaluation.total_computation_cost;
-  evaluation.total_cost += evaluation.total_resharding_cost;
-  evaluation.lower_bound_cost += evaluation.lower_bound_communication_cost;
-  evaluation.lower_bound_cost += evaluation.lower_bound_computation_cost;
-  evaluation.lower_bound_cost += evaluation.lower_bound_resharding_cost;
   return evaluation;
 }
 
