@@ -337,7 +337,18 @@ def main():
                             "-dev" + time.strftime("%Y%m%d"),
                             NIGHTLY_VERSION)
   else:
-    new_version = Version.parse_from_string(args.version, REGULAR_VERSION)
+    if args.version:
+      new_version = Version.parse_from_string(args.version, REGULAR_VERSION)
+      if args.rocm_version:
+          new_version.set_identifier_string("." + str(_rocm_version(_get_rocm_install_path()).replace('.', '')) + old_version.identifier_string)
+    else:
+      if args.rocm_version:
+          new_version = Version(old_version.major,
+                            str(old_version.minor),
+                            old_version.patch,
+                            "." + str(_rocm_version(_get_rocm_install_path()).replace('.', '')) + old_version.identifier_string,
+                            REGULAR_VERSION)
+
 
   update_version_h(old_version, new_version)
   update_setup_dot_py(old_version, new_version)
@@ -347,7 +358,8 @@ def main():
   # Print transition details.
   print("Major: %s -> %s" % (old_version.major, new_version.major))
   print("Minor: %s -> %s" % (old_version.minor, new_version.minor))
-  print("Patch: %s -> %s\n" % (old_version.patch, new_version.patch))
+  print("Patch: %s -> %s" % (old_version.patch, new_version.patch))
+  print("Identifier String: %s -> %s\n" % (old_version.identifier_string, new_version.identifier_string))
 
   check_for_old_version(old_version, new_version)
 
