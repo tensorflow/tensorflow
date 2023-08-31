@@ -200,12 +200,12 @@ inline void Add(const ArithmeticParams& params,
 The real BroadcastAdd6DFast
 ==============================================================================*/
 template <typename T>
-inline void AddBroadcast(const T* broadcast_data, const T* input_data,
+inline void AddBroadcast(const T* input_data, const T* broadcast_data,
                          T* output_data, size_t size, T activation_min,
                          T activation_max) {
   for (size_t c = 0; c < size; ++c) {
     output_data[c] = ActivationFunctionWithMinMax<T>(
-        broadcast_data[0] + input_data[c], activation_min, activation_max);
+        input_data[c] + broadcast_data[0], activation_min, activation_max);
   }
 }
 
@@ -248,13 +248,13 @@ inline void BroadcastAddRecursiveDimensions(
     T* output_data_ptr = output_data + *output_offset;
     if (input1_is_broadcast) {
       // input1 is broadcast.
-      AddBroadcast<T>(input1_data_ptr, input2_data_ptr, output_data_ptr,
+      AddBroadcast<T>(input2_data_ptr, input1_data_ptr, output_data_ptr,
                       compressed_output_shape[dimension], activation_min,
                       activation_max);
       *input2_offset_p += compressed_output_shape[dimension];
     } else if (input2_is_broadcast) {
       // input2 is broadcast.
-      AddBroadcast<T>(input2_data_ptr, input1_data_ptr, output_data_ptr,
+      AddBroadcast<T>(input1_data_ptr, input2_data_ptr, output_data_ptr,
                       compressed_output_shape[dimension], activation_min,
                       activation_max);
       *input1_offset_p += compressed_output_shape[dimension];
