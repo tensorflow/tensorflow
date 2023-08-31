@@ -24,6 +24,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tf_quantize_op_utils",
+    srcs = ["tf_quantize_op_utils.cc"],
+    hdrs = ["tf_quantize_op_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 td_library(
     name = "lift_as_function_call_utils_td_files",
     srcs = [

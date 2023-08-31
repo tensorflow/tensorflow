@@ -385,6 +385,7 @@ cc_library(
         "passes/prepare_quantize_drq.cc",
         "passes/preprocess_op.cc",
         "passes/preprocess_op.inc",
+        "passes/propagate_quantize_type.cc",
         "passes/quantize.cc",
         "passes/quantize_composite_functions.cc",
         "passes/quantize_composite_functions.inc",

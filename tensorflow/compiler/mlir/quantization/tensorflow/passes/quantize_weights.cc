@@ -175,12 +175,14 @@ class QuantizeConstWeights : public OpRewritePattern<TF::ConstOp> {
             if (checkIfAnyUserIsConnectedToTermiantor(func_argument))
               next_values_to_visit.push_back(
                   func.getArgument(next_op_operand_num));
+          } else if (IsOpWithQuantizableTrait(next_op)) {
+            // Check this before IsOpWithDataMovementTrait since some data
+            // movement ops are also quantizable ops.
+            return true;
           } else if (IsOpWithDataMovementTrait(next_op)) {
             next_values_to_visit.insert(next_values_to_visit.end(),
                                         next_op->getResults().begin(),
                                         next_op->getResults().end());
-          } else if (IsOpWithQuantizableTrait(next_op)) {
-            return true;
           }
         }
       }
