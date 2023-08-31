@@ -104,7 +104,7 @@ class ConcatOpTest(test.TestCase):
     self.assertAllEqual(result[:2, :], p1)
     self.assertAllEqual(result[2:, :], p2)
 
-  def testFloat16E5M2GPU(self):
+  def testFloat8E5M2GPU(self):
     with test_util.use_gpu():
       p1 = np.random.rand(2, 3).astype(dtypes.float8_e5m2.as_numpy_dtype)
       p2 = np.random.rand(2, 3).astype(dtypes.float8_e5m2.as_numpy_dtype)

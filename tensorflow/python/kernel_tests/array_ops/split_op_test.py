@@ -326,7 +326,8 @@ class SplitOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testGradientsAll(self):
     for dtype in _TEST_DTYPES:
-      if not dtype.is_integer and dtype not in [dtypes.float8_e5m2, dtypes.float8_e4m3fn]:
+      if (not dtype.is_integer and
+          dtype not in [dtypes.float8_e5m2, dtypes.float8_e4m3fn]):
         self._testGradientsSimple(dtype)
         self._testGradientsSimpleVariable(dtype)
 

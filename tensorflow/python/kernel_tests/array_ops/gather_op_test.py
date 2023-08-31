@@ -160,7 +160,8 @@ class GatherTest(test.TestCase, parameterized.TestCase):
               )
               self.assertIsNone(indices_grad)
               self.assertIsNone(axis_grad)
-              if dtype.is_integer or dtype in [dtypes.float8_e5m2, dtypes.float8_e4m3fn]:
+              if (dtype.is_integer or
+                  dtype in [dtypes.float8_e5m2, dtypes.float8_e4m3fn]):
                 self.assertIsNone(params_grad)
                 continue
               # For axis 0, we are able to create an efficient IndexedSlices
@@ -245,7 +246,8 @@ class GatherTest(test.TestCase, parameterized.TestCase):
             )
             self.assertIsNone(indices_grad)
             self.assertIsNone(axis_grad)
-            if dtype.is_integer or dtype in [dtypes.float8_e5m2, dtypes.float8_e4m3fn]:
+            if (dtype.is_integer or
+                dtype in [dtypes.float8_e5m2, dtypes.float8_e4m3fn]):
               self.assertIsNone(params_grad)
               continue
             # For axis 0, we are able to create an efficient IndexedSlices for
