@@ -140,9 +140,9 @@ struct ConvertGemmOp : public OpConversionPattern<lmhlo_gpu::GEMMOp> {
     auto trace = getTrace(api, b, module, op);
 
     // Export arguments to buffer views.
-    auto lhs = state.remapped[block][op.getA()];
-    auto rhs = state.remapped[block][op.getB()];
-    auto out = state.remapped[block][op.getC()];
+    auto lhs = state.remapped(block, op.getA());
+    auto rhs = state.remapped(block, op.getB());
+    auto out = state.remapped(block, op.getC());
 
     if (!lhs || !rhs || !out) {
       return rewriter.notifyMatchFailure(

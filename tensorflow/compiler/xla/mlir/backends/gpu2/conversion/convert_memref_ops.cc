@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "iree-dialects/Dialect/Input/InputDialect.h"
 #include "iree-dialects/Dialect/Input/InputOps.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -128,9 +127,9 @@ struct ConvertMemrefViewOp : public OpConversionPattern<memref::ViewOp> {
     rewriter.replaceOp(op, tensor_import->getResult());
 
     // Update de-bufferization state to track imported memref and a tensor.
-    state.imported[source].push_back(op.getResult());
-    state.remapped[op->getBlock()][op.getResult()] =
-        cast<TypedValue<TensorType>>(tensor_import->getResult());
+    state.addImportedMemref(source, op.getResult());
+    state.remap(op->getBlock(), op.getResult(),
+                cast<TypedValue<TensorType>>(tensor_import->getResult()));
 
     return success();
   }
@@ -217,9 +216,9 @@ struct ConvertMemrefGetGlobalOp
       rewriter.replaceOp(op, tensor_import->getResult());
 
       // Update de-bufferization state to track imported memref and a tensor.
-      state.imported[*arg].push_back(op.getResult());
-      state.remapped[op->getBlock()][op.getResult()] =
-          cast<TypedValue<TensorType>>(tensor_import->getResult());
+      state.addImportedMemref(*arg, op.getResult());
+      state.remap(op->getBlock(), op.getResult(),
+                  cast<TypedValue<TensorType>>(tensor_import->getResult()));
 
       return success();
     }

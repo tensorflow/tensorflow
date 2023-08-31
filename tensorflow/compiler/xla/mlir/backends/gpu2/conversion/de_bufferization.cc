@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/de_bufferization.h"
 
+#include <cassert>
+
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -35,6 +37,34 @@ TypedValue<MemRefType> stripReinterpretCast(TypedValue<MemRefType> value) {
 
 TypedValue<MemRefType> stripReinterpretCast(TypedValue<BaseMemRefType> value) {
   return stripReinterpretCast(cast<TypedValue<MemRefType>>(value));
+}
+
+//===----------------------------------------------------------------------===//
+// DeBufferization implementation
+//===----------------------------------------------------------------------===//
+
+void DeBufferization::addImportedMemref(
+    mlir::BlockArgument arg, mlir::TypedValue<mlir::MemRefType> memref) {
+  imported_[arg].push_back(memref);
+}
+
+llvm::ArrayRef<mlir::TypedValue<mlir::MemRefType>>
+DeBufferization::getImportedMemrefs(mlir::BlockArgument arg) {
+  return imported_[arg];
+}
+
+void DeBufferization::remap(mlir::Block *block,
+                            mlir::TypedValue<mlir::MemRefType> memref,
+                            mlir::TypedValue<mlir::TensorType> tensor) {
+  assert(block && memref && tensor && "values must be not null");
+  remapped_[block][stripReinterpretCast(memref)] = tensor;
+}
+
+mlir::TypedValue<mlir::TensorType> DeBufferization::remapped(
+    mlir::Block *block, mlir::TypedValue<mlir::MemRefType> memref) {
+  assert(block && memref && "values must be not null");
+  auto it = remapped_[block].find(stripReinterpretCast(memref));
+  return it == remapped_[block].end() ? nullptr : it->second;
 }
 
 //===----------------------------------------------------------------------===//

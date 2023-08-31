@@ -83,21 +83,21 @@ struct ConvertCaseOpToHal : public OpConversionPattern<lmhlo::CaseOp> {
     // Tensors updated in all case op branches.
     SmallVector<Value> updated_tensors =
         llvm::to_vector(llvm::map_range(bufs.write, [&](auto memref) -> Value {
-          return state.remapped[block][memref];
+          return state.remapped(block, memref);
         }));
 
     // Sets up buffer to tensor remapping inside branch regions.
     auto remap_branch_tensors = [&](Block *branch_block) {
       for (auto r : bufs.read)
-        state.remapped[branch_block][r] = state.remapped[block][r];
+        state.remap(branch_block, r, state.remapped(block, r));
       for (auto w : bufs.write)
-        state.remapped[branch_block][w] = state.remapped[block][w];
+        state.remap(branch_block, w, state.remapped(block, w));
     };
 
     // Load branch index from the argument.
     Value offset = b.create<arith::ConstantIndexOp>(0);
     Value index = b.create<IREE::Input::TensorLoadOp>(
-        state.remapped[block][op.getIndex()], /*source_dims=*/ValueRange(),
+        state.remapped(block, op.getIndex()), /*source_dims=*/ValueRange(),
         /*indices=*/offset);
 
     bool is_predicate = index.getType().isInteger(1);
@@ -186,7 +186,7 @@ struct ConvertCaseOpToHal : public OpConversionPattern<lmhlo::CaseOp> {
     // Use replacement op results to remap buffers in the parent block.
     for (auto [from, to] :
          llvm::zip_equal(bufs.write, replacement->getResults()))
-      state.remapped[block][from] = cast<TypedValue<TensorType>>(to);
+      state.remap(block, from, cast<TypedValue<TensorType>>(to));
 
     (*converted)[replacement] = ConvertedCaseOp{std::move(bufs)};
 
@@ -230,7 +230,7 @@ struct ConvertTerminatorOpToHal
 
     auto updated_tensors = llvm::to_vector(
         llvm::map_range(it->second.buffers.write, [&](auto memref) -> Value {
-          return state.remapped[op->getBlock()][memref];
+          return state.remapped(op->getBlock(), memref);
         }));
 
     // Convert lmhlo.terminator in the branch block to scf.yield operation

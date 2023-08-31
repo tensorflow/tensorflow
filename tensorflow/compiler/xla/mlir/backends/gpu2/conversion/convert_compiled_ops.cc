@@ -206,7 +206,7 @@ DispatchArguments getDispatchArguments(KernelThunk *kernel,
 
   for (auto arg : kernel->values()) {
     args.first.push_back(cast<TypedValue<MemRefType>>(arg));
-    args.second.push_back(state.remapped[block][args.first.back()]);
+    args.second.push_back(state.remapped(block, args.first.back()));
     assert(args.second.back() && "missing memref to tensor mapping");
   }
 
@@ -377,8 +377,8 @@ LogicalResult ConvertCompiledOpToHal<OpTy>::matchAndRewrite(
     auto src_memref = cast<TypedValue<MemRefType>>(copy->source_value());
     auto dst_memref = cast<TypedValue<MemRefType>>(copy->destination_value());
 
-    auto src = state.remapped[block][stripReinterpretCast(src_memref)];
-    auto dst = state.remapped[block][stripReinterpretCast(dst_memref)];
+    auto src = state.remapped(block, src_memref);
+    auto dst = state.remapped(block, dst_memref);
 
     assert(src && "unknown mapping from `src` memref to a tensor");
     assert(dst && "unknown mapping from `dst` memref to a tensor");
@@ -402,7 +402,7 @@ LogicalResult ConvertCompiledOpToHal<OpTy>::matchAndRewrite(
     Value updated = b.create<IREE::Input::TensorUpdateOp>(
         dst, ValueRange(), start_indices, dyn_src, dims);
 
-    state.remapped[block][dst_memref] = cast<TypedValue<TensorType>>(updated);
+    state.remap(block, dst_memref, cast<TypedValue<TensorType>>(updated));
   }
 
   // Compiled operation was a plain copy.
@@ -483,7 +483,7 @@ LogicalResult ConvertCompiledOpToHal<OpTy>::matchAndRewrite(
     // Keep track of all tensors updated inplace.
     for (auto result : llvm::enumerate(dispatch.getResults())) {
       auto arg = memrefs[tied_operands[result.index()]];
-      state.remapped[block][arg] = cast<TypedValue<TensorType>>(result.value());
+      state.remap(block, arg, cast<TypedValue<TensorType>>(result.value()));
     }
   }
 
@@ -572,8 +572,8 @@ LogicalResult ConvertCompiledOpToApiCall<OpTy>::matchAndRewrite(
     auto src_memref = cast<TypedValue<MemRefType>>(copy->source_value());
     auto dst_memref = cast<TypedValue<MemRefType>>(copy->destination_value());
 
-    auto src = state.remapped[block][stripReinterpretCast(src_memref)];
-    auto dst = state.remapped[block][stripReinterpretCast(dst_memref)];
+    auto src = state.remapped(block, src_memref);
+    auto dst = state.remapped(block, dst_memref);
 
     assert(src && "unknown mapping from `src` memref to a tensor");
     assert(dst && "unknown mapping from `dst` memref to a tensor");
@@ -743,13 +743,13 @@ DispatchArguments getDispatchArguments(lmhlo::FusionOp op,
 
   for (auto to_tensor : body->getOps<bufferization::ToTensorOp>()) {
     args.first.push_back(stripReinterpretCast(to_tensor.getMemref()));
-    args.second.push_back(state.remapped[block][args.first.back()]);
+    args.second.push_back(state.remapped(block, args.first.back()));
     assert(args.second.back() && "missing memref to tensor mapping");
   }
 
   for (auto store : body->getOps<memref::TensorStoreOp>()) {
     args.first.push_back(stripReinterpretCast(store.getMemref()));
-    args.second.push_back(state.remapped[block][args.first.back()]);
+    args.second.push_back(state.remapped(block, args.first.back()));
     assert(args.second.back() && "missing memref to tensor mapping");
   }
 
@@ -795,13 +795,13 @@ DispatchArguments getDispatchArguments(lmhlo::SortOp op,
 
   for (auto input : op.getInputs()) {
     args.first.push_back(cast<TypedValue<MemRefType>>(input));
-    args.second.push_back(state.remapped[block][args.first.back()]);
+    args.second.push_back(state.remapped(block, args.first.back()));
     assert(args.second.back() && "missing memref to tensor mapping");
   }
 
   for (auto output : op.getOutput()) {
     args.first.push_back(cast<TypedValue<MemRefType>>(output));
-    args.second.push_back(state.remapped[block][args.first.back()]);
+    args.second.push_back(state.remapped(block, args.first.back()));
     assert(args.second.back() && "missing memref to tensor mapping");
   }
 
@@ -852,11 +852,11 @@ struct TerminatorOpLowering : public OpConversionPattern<lmhlo::TerminatorOp> {
     // passing style arguments.
     llvm::SetVector<Value> updated_tensors;
     for (auto result : results) {
-      for (auto memref : state.imported[result]) {
+      for (auto memref : state.getImportedMemrefs(result)) {
         // Check that we have tensors imported from a memref.
-        auto it = state.remapped[block].find(memref);
-        if (it != state.remapped[block].end() && it->second.use_empty()) {
-          updated_tensors.insert(it->second);
+        if (auto remapped = state.remapped(block, memref);
+            remapped && remapped.use_empty()) {
+          updated_tensors.insert(remapped);
         }
       }
     }

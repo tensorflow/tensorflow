@@ -67,13 +67,31 @@ namespace gpu {
 // Conversion implementation is a bit more complicated because we have to handle
 // memref.view and memref.reinterpret_cast operations, but all conversions
 // conceptually are doing the same transformation as in example above.
-struct DeBufferization {
+class DeBufferization {
+ public:
+  // Adds a memref constructed from a block argument to a state tracking.
+  void addImportedMemref(mlir::BlockArgument arg,
+                         mlir::TypedValue<mlir::MemRefType> memref);
+
+  // Returns memrefs imported from a block argument.
+  llvm::ArrayRef<mlir::TypedValue<mlir::MemRefType>> getImportedMemrefs(
+      mlir::BlockArgument arg);
+
+  // Remaps `memref` to a `tensor` inside a `block`.
+  void remap(mlir::Block *block, mlir::TypedValue<mlir::MemRefType> memref,
+             mlir::TypedValue<mlir::TensorType> tensor);
+
+  // Returns `memref` remapping to a tensor inside a `block`.
+  mlir::TypedValue<mlir::TensorType> remapped(
+      mlir::Block *block, mlir::TypedValue<mlir::MemRefType> memref);
+
+ private:
   // Mapping block block arguments to memref views constructed from them. We'll
   // need it at the very end to tie all inplace updates to the optimization
   // barrier to prevent dead code elimination.
   llvm::DenseMap<mlir::BlockArgument,
                  llvm::SmallVector<mlir::TypedValue<mlir::MemRefType>>>
-      imported;
+      imported_;
 
   // Mapping from the memref view to the last tensor that is tied to the same
   // underlying storage. We use this mapping to thread inplace tensor updates
@@ -81,7 +99,7 @@ struct DeBufferization {
   llvm::DenseMap<mlir::Block *,
                  llvm::DenseMap<mlir::TypedValue<mlir::MemRefType>,
                                 mlir::TypedValue<mlir::TensorType>>>
-      remapped;
+      remapped_;
 };
 
 // We only pass around tensors constructed from a row major memrefs because

@@ -39,8 +39,8 @@ void populateGpu2RuntimePasses(mlir::OpPassManager& pm,
   pm.addPass(createConvertToGpu2RuntimePass(thunk_sequence, backend));
 
   // Clean up IR before passing it to IREE compiler.
-  pm.addPass(createCSEPass());
-  pm.addPass(createCanonicalizerPass());
+  // pm.addPass(createCSEPass());
+  // pm.addPass(createCanonicalizerPass());
 }
 
 }  // namespace xla::gpu

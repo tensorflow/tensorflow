@@ -83,18 +83,18 @@ struct ConvertWhileOpToHal : public OpConversionPattern<lmhlo::WhileOp> {
     // Pass updated tensors as loop iteration argument.
     SmallVector<Value> iter_args =
         llvm::to_vector(llvm::map_range(bufs.write, [&](auto memref) -> Value {
-          return state.remapped[block][memref];
+          return state.remapped(block, memref);
         }));
 
     // Set up buffer to tensor remapping inside nested regions.
     auto remap_iteration_args = [&](Block *nested_block, ValueRange iter_args) {
       // Read-only buffers remapped to tensors defined in the parent block.
       for (auto r : bufs.read)
-        state.remapped[nested_block][r] = state.remapped[block][r];
+        state.remap(nested_block, r, state.remapped(block, r));
 
       // Written-to buffers remapped to iteration arguments.
       for (auto [from, to] : llvm::zip_equal(bufs.write, iter_args))
-        state.remapped[nested_block][from] = cast<TypedValue<TensorType>>(to);
+        state.remap(nested_block, from, cast<TypedValue<TensorType>>(to));
     };
 
     // Create an `scf.while` loop in place of `lmhlo.while` loop.
@@ -113,7 +113,7 @@ struct ConvertWhileOpToHal : public OpConversionPattern<lmhlo::WhileOp> {
 
     // Use loop results to remap buffers in the parent block.
     for (auto [from, to] : llvm::zip_equal(bufs.write, loop.getResults()))
-      state.remapped[block][from] = cast<TypedValue<TensorType>>(to);
+      state.remap(block, from, cast<TypedValue<TensorType>>(to));
 
     // Predicate buffer placed on the device.
     auto predicate = cast<TypedValue<MemRefType>>(op.getOperand(0));
@@ -157,14 +157,14 @@ struct ConvertTerminatorOpToHal
 
     auto iter_args = llvm::to_vector(llvm::map_range(
         (*converted)[loop].buffers.write, [&](auto memref) -> Value {
-          return state.remapped[op->getBlock()][memref];
+          return state.remapped(op->getBlock(), memref);
         }));
 
     // Convert lmhlo.terminator in the before block to scf.condition operation
     if (auto *cond = op->getBlock(); cond == &loop.getBefore().front()) {
       Value offset = b.create<arith::ConstantIndexOp>(0);
       auto predicate = b.create<IREE::Input::TensorLoadOp>(
-          state.remapped[cond][it->second.predicate],
+          state.remapped(cond, it->second.predicate),
           /*source_dims=*/ValueRange(), /*indices=*/offset);
 
       rewriter.replaceOpWithNewOp<scf::ConditionOp>(op, predicate, iter_args);
@@ -210,9 +210,9 @@ struct ConvertWhileOpToApiCall : public OpConversionPattern<lmhlo::WhileOp> {
     // Set up buffer to tensor remapping inside nested regions.
     auto remap_iteration_args = [&](Block *nested_block) {
       for (auto r : bufs.read)
-        state.remapped[nested_block][r] = state.remapped[block][r];
+        state.remap(nested_block, r, state.remapped(block, r));
       for (auto w : bufs.write)
-        state.remapped[nested_block][w] = state.remapped[block][w];
+        state.remap(nested_block, w, state.remapped(block, w));
     };
 
     // Create an `scf.while` loop in place of `lmhlo.while` loop.
@@ -273,7 +273,7 @@ struct ConvertTerminatorOpToApiCall
 
     // Convert lmhlo.terminator in the before block to scf.condition operation
     if (auto *cond = op->getBlock(); cond == &loop.getBefore().front()) {
-      auto predicate = state.remapped[cond][(*converted)[loop].predicate];
+      auto predicate = state.remapped(cond, (*converted)[loop].predicate);
       SmallVector<Value> args = {getExecutionContext(op),
                                  api.getBufferView(b, predicate),
                                  b.create<arith::ConstantIntOp>(0, 32)};
