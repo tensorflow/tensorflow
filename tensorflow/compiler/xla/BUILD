@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load(

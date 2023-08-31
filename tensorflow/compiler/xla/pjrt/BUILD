@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load(
