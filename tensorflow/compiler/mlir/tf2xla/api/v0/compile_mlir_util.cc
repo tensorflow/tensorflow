@@ -569,7 +569,8 @@ Status CreateAndRunMlirBridge(mlir::ModuleOp module_op,
     module_op.getContext()->disableMultithreading();
     tf2xla.enableIRPrinting(
         std::make_unique<::tensorflow::DataDumperLoggerConfig>(
-            [module_name](const std::string& pass_tag_name) {
+            [module_name](const std::string& pass_tag_name,
+                          mlir::Operation* op) {
               return DEBUG_DATA_DUMPER()->GetDumpFilename(
                   module_name.str(), kDebugGroupBridgePhase2, pass_tag_name);
             },

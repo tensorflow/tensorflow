@@ -246,6 +246,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:constants",
         "//tensorflow/dtensor/cc:dtensor_utils",
@@ -328,6 +329,7 @@ cc_library(
     hdrs = ["op_utils.h"],
     deps = [
         ":tf_dtensor_dialect",
+        "//tensorflow/dtensor/cc:constants",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
