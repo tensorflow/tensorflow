@@ -55,6 +55,16 @@ StatusOr<bool> ShardingRemover::Run(
       TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(
           instruction->mutable_operand(0), name()));
       changed = true;
+
+      // We do not DCE sharding custom-call, so replace sharding custom-call
+      // with a copy instead, so that it can be DCE-ed in later passes.
+      if (instruction->custom_call_target() == "Sharding") {
+        auto copy = computation->AddInstruction(
+            HloInstruction::CreateUnary(instruction->shape(), HloOpcode::kCopy,
+                                        instruction->mutable_operand(0)));
+        TF_RETURN_IF_ERROR(computation->ReplaceInstruction(instruction, copy));
+        instruction = copy;
+      }
     }
   }
 

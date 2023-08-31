@@ -15,14 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 
+#include <cstdint>
 #include <memory>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -123,6 +126,59 @@ TEST_F(HloDceTest, CustomCallInstructionsWithoutSideEffect) {
   HloDCE dce;
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
   EXPECT_TRUE(result);
+}
+
+TEST_F(HloDceTest, ShardingCustomCallInstruction) {
+  // Verify that sharding custom call instruction is not removed.
+  auto builder = HloComputation::Builder(TestName());
+  auto p0 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {10, 10}), "p0"));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(p0->shape(), HloOpcode::kAdd, p0, p0));
+  // This is a dangling sharding custom-call to annotate add without any users.
+  auto dangling_sharding = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(p0->shape(),
+                                       /*operands=*/{add},
+                                       /*custom_call_target=*/"Sharding"));
+  dangling_sharding->set_sharding(
+      HloSharding::Tile(TileAssignment((absl::Span<const int64_t>){2, 1})));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      p0->shape(), HloOpcode::kMultiply, add, add));
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(HloDceTest, ShardingCustomCallInstructionWithDeadOperand) {
+  // Verify that sharding custom call instruction is removed if its operand is
+  // already dead.
+  auto builder = HloComputation::Builder(TestName());
+  auto p0 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {10, 10}), "p0"));
+  // This add is dead.
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(p0->shape(), HloOpcode::kAdd, p0, p0));
+  // This is a dangling sharding custom-call to annotate add without any users.
+  auto dangling_sharding = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(p0->shape(),
+                                       /*operands=*/{add},
+                                       /*custom_call_target=*/"Sharding"));
+  dangling_sharding->set_sharding(
+      HloSharding::Tile(TileAssignment((absl::Span<const int64_t>){2, 1})));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(p0->shape(), HloOpcode::kMultiply, p0, p0));
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(4, computation->instruction_count());
+
+  HloDCE dce;
+  EXPECT_TRUE(dce.Run(module.get()).value());
+
+  EXPECT_EQ(2, computation->instruction_count());
 }
 
 TEST_F(HloDceTest, DeadParameters) {

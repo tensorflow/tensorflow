@@ -663,6 +663,7 @@ xla_cc_test(
         "sharding_propagation_test.cc",
     ],
     deps = [
+        ":hlo_dce",
         ":hlo_parser",
         ":sharding_propagation",
         "//tensorflow/compiler/xla:protobuf_util",
@@ -702,9 +703,11 @@ xla_cc_test(
         ":hlo_parser",
         ":sharding_remover",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -4747,6 +4750,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
