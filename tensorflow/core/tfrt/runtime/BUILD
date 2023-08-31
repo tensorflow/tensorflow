@@ -29,6 +29,7 @@ cc_library(
     name = "runtime",
     srcs = ["runtime.cc"],
     hdrs = ["runtime.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":work_queue_interface",
         "//tensorflow/core:core_cpu_base",
