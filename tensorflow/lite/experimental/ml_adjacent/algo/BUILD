@@ -7,7 +7,9 @@ package(
 cc_library(
     name = "crop",
     srcs = ["crop.cc"],
-    hdrs = ["crop.h"],
+    hdrs = [
+        "crop.h",
+    ],
     deps = [
         "//tensorflow/lite/experimental/ml_adjacent:lib",
         "//tensorflow/lite/kernels/internal:compatibility",
