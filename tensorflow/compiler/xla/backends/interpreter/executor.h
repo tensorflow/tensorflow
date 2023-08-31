@@ -147,8 +147,6 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status BlockHostUntilDone(Stream *stream) override;
 
-  int PlatformDeviceCount() override { return 1; }
-
   bool DeviceMemoryUsage(int64_t *free, int64_t *total) const override {
     return false;
   }

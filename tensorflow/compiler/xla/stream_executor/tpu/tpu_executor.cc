@@ -61,10 +61,6 @@ Status TpuExecutor::Init(int device_ordinal,
   return status.status();
 }
 
-int TpuExecutor::PlatformDeviceCount() {
-  return ExecutorApiFn()->TpuExecutor_PlatformDeviceCountFn(executor_);
-}
-
 bool TpuExecutor::SynchronizeAllActivity() {
   return ExecutorApiFn()->TpuExecutor_SynchronizeAllActivityFn(executor_);
 }

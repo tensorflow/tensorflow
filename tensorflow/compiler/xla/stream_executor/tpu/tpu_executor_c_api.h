@@ -44,8 +44,6 @@ void TpuExecutor_Init(SE_StreamExecutor* executor, int device_ordinal,
                       SE_DeviceOptions* device_options, TF_Status* status);
 void TpuExecutor_Free(SE_StreamExecutor* executor);
 
-int TpuExecutor_PlatformDeviceCount(SE_StreamExecutor* executor);
-
 SE_DeviceMemoryBase TpuExecutor_Allocate(SE_StreamExecutor* executor,
                                          uint64_t size, int64_t memory_space);
 void TpuExecutor_Deallocate(SE_StreamExecutor* executor,
@@ -394,7 +392,6 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_Init);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_Free);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_PlatformDeviceCount);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_Allocate);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_Deallocate);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_GetAllocatorStats);

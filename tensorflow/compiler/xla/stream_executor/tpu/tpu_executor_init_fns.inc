@@ -17,7 +17,6 @@ tsl::Status SetExecutorStructFn(void* library_handle) {  // TENSORFLOW_STATUS_OK
 
   TFTPU_SET_FN(executor_fn, TpuExecutor_Init);
   TFTPU_SET_FN(executor_fn, TpuExecutor_Free);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_PlatformDeviceCount);
   TFTPU_SET_FN(executor_fn, TpuExecutor_Allocate);
   TFTPU_SET_FN(executor_fn, TpuExecutor_Deallocate);
   TFTPU_SET_FN(executor_fn, TpuExecutor_GetAllocatorStats);

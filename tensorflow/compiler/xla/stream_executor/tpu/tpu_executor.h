@@ -137,8 +137,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
       const ::stream_executor::DeviceMemoryBase& device_src,
       uint64_t size) override;
 
-  int PlatformDeviceCount() override;
-
   Event::Status PollForEventStatus(Event* event) override;
   tsl::Status RecordEvent(Stream* stream,
                           ::stream_executor::Event* event) override;

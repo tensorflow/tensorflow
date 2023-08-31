@@ -520,7 +520,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
                                         c_status.get());
     return StatusFromTF_Status(c_status.get());
   }
-  int PlatformDeviceCount() override { return visible_device_count_; }
+
   tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
     return tsl::errors::Unimplemented(
         "EnablePeerAccessTo is not supported by pluggable device.");
