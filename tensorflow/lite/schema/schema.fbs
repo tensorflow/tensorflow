@@ -465,6 +465,8 @@ enum BuiltinOperator : int32 {
   STABLEHLO_REDUCE_WINDOW = 198, // WARNING: No runtime support
   STABLEHLO_SORT = 199, // WARNING: No runtime support
   STABLEHLO_WHILE = 200, // WARNING: No runtime support
+  STABLEHLO_GATHER = 201, // WARNING: No runtime support
+  STABLEHLO_TRANSPOSE = 202, // WARNING: No runtime support
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -617,6 +619,21 @@ union BuiltinOptions2{
   StablehloReduceWindowOptions,
   StablehloSortOptions,
   StablehloWhileOptions,
+  StablehloGatherOptions,
+  StablehloTransposeOptions,
+}
+
+table StablehloGatherOptions{
+  offset_dims : [long];
+  collapsed_slice_dims : [long];
+  start_index_map : [long];
+  index_vector_dim : long;
+  slice_sizes : [long];
+  indices_are_sorted : bool;
+}
+
+table StablehloTransposeOptions{
+  permutation : [long];
 }
 
 enum StablehloPrecisionConfig : uint {

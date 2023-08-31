@@ -2043,6 +2043,56 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ScatterOp>(inst)) {
       return BuildStablehloScatterOp(shlo_op, operands, results);
     }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::GatherOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_GATHER);
+
+      std::vector<int64_t> offset_dims_vec(
+          shlo_op.getDimensionNumbers().getOffsetDims().begin(),
+          shlo_op.getDimensionNumbers().getOffsetDims().end());
+      std::vector<int64_t> collapsed_slice_dims_vec(
+          shlo_op.getDimensionNumbers().getCollapsedSliceDims().begin(),
+          shlo_op.getDimensionNumbers().getCollapsedSliceDims().end());
+      std::vector<int64_t> start_index_map_vec(
+          shlo_op.getDimensionNumbers().getStartIndexMap().begin(),
+          shlo_op.getDimensionNumbers().getStartIndexMap().end());
+
+      auto offset_dims = builder_.CreateVector(offset_dims_vec);
+      auto collapsed_slice_dims =
+          builder_.CreateVector(collapsed_slice_dims_vec);
+      auto start_index_map = builder_.CreateVector(start_index_map_vec);
+      auto slice_sizes = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getSliceSizes()));
+
+      auto gather_option = tflite::CreateStablehloGatherOptions(
+          builder_, offset_dims, collapsed_slice_dims, start_index_map,
+          shlo_op.getDimensionNumbers().getIndexVectorDim(), slice_sizes,
+          shlo_op.getIndicesAreSorted());
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloGatherOptions,
+          gather_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::TransposeOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_TRANSPOSE);
+
+      auto transpose_option = tflite::CreateStablehloTransposeOptions(
+          builder_, builder_.CreateVector(mlir::GetOptionalVector<int64_t>(
+                        shlo_op.getPermutation())));
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloTransposeOptions,
+          transpose_option.Union());
+    }
 
     return inst->emitOpError("is not part of the stablehlo support yet."),
            std::nullopt;

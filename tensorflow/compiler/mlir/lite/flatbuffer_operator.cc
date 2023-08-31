@@ -601,13 +601,38 @@ void mlir::BuiltinOptions2ToAttributes(
         "is_stable", BuildBoolAttr(op->is_stable, builder)));
     return;
   }
-  if (const auto* options = op_union.AsStablehloScatterOptions()) {
+  if (const auto* op = op_union.AsStablehloScatterOptions()) {
     auto attr = mlir::stablehlo::ScatterDimensionNumbersAttr::get(
-        builder.getContext(), options->update_window_dims,
-        options->inserted_window_dims, options->scatter_dims_to_operand_dims,
-        options->index_vector_dim);
+        builder.getContext(), op->update_window_dims, op->inserted_window_dims,
+        op->scatter_dims_to_operand_dims, op->index_vector_dim);
     attributes.emplace_back(
         builder.getNamedAttr("scatter_dimension_numbers", attr));
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloGatherOptions()) {
+    auto gather_dim = mlir::stablehlo::GatherDimensionNumbersAttr::get(
+        builder.getContext(), op->offset_dims, op->collapsed_slice_dims,
+        op->start_index_map, op->index_vector_dim);
+    attributes.emplace_back(
+        builder.getNamedAttr("dimension_numbers", gather_dim));
+    if (!op->slice_sizes.empty()) {
+      attributes.emplace_back(builder.getNamedAttr(
+          "slice_sizes",
+          BuildRankedTensorAttr({static_cast<int64_t>(op->slice_sizes.size())},
+                                op->slice_sizes, builder)));
+    }
+    attributes.emplace_back(builder.getNamedAttr(
+        "indices_are_sorted", BuildBoolAttr(op->indices_are_sorted, builder)));
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloTransposeOptions()) {
+    if (!op->permutation.empty()) {
+      attributes.emplace_back(builder.getNamedAttr(
+          "permutation",
+          BuildRankedTensorAttr({static_cast<int64_t>(op->permutation.size())},
+                                op->permutation, builder)));
+    }
+
     return;
   }
 }
