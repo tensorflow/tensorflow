@@ -530,8 +530,6 @@ def register_custom_call_target(
                                    xla_platform_names.get(platform, platform))
 
 
-# Deprecated. Use register_custom_call_target instead.
-register_cpu_custom_call_target = register_custom_call_target
 register_custom_call_partitioner = _xla.register_custom_call_partitioner
 encode_inspect_sharding_callback = _xla.encode_inspect_sharding_callback
 hlo_sharding_util = _xla.hlo_sharding_util

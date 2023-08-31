@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "pybind11/attr.h"  // from @pybind11
@@ -249,10 +250,7 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
                                   py::capsule capsule,
                                   const std::string& platform) {
   static const char* const kName = "xla._CUSTOM_CALL_TARGET";
-  // TODO(phawkins): remove old name after fixing users.
-  static const char* const kOldCpuName = "xla._CPU_CUSTOM_CALL_TARGET";
-  if (absl::string_view(capsule.name()) != kName &&
-      absl::string_view(capsule.name()) != kOldCpuName) {
+  if (absl::string_view(capsule.name()) != kName) {
     return InvalidArgument(
         "Argument to RegisterCustomCallTargetRegistry was not a "
         "xla._CUSTOM_CALL_TARGET capsule.");
