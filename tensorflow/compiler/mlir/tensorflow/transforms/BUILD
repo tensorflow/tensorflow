@@ -676,6 +676,29 @@ cc_library(
 )
 
 cc_library(
+    name = "bridge",
+    srcs = ["bridge.cc"],
+    hdrs = ["bridge.h"],
+    deps = [
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core/platform:error_payloads",
+        "//tensorflow/core/platform:stacktrace",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "verify_no_outside_compilation_markers_pass",
     srcs = ["verify_no_outside_compilation_markers_pass.cc"],
     hdrs = ["passes.h"],
