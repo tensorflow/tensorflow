@@ -650,24 +650,26 @@ static absl::Status LaunchGraph(
   absl::WriterMutexLock lock(instance->mutex.get());
 
   // Update captured graph executable.
-  auto update = instance->exec.Update(std::move(g));
-  if (!update.ok()) {
-    // TODO(b/297051365): We currently fallback to op-by-op mode because CUBLAS
-    // sometimes cause graph update to fail. We should remove the fallback
-    // mechanism once cuBLAS completely works in gpu graphs.
-    LOG(WARNING) << "Failed to update graph instance. Run graph op-by-op";
-    return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
+  TF_ASSIGN_OR_RETURN(se::gpu::OwnedGpuGraphExec::UpdateResult update_result,
+                      instance->exec.Update(std::move(g)));
+
+  switch (update_result) {
+    case se::gpu::OwnedGpuGraphExec::UpdateResult::kFallback:
+      LOG(WARNING) << "Fallback to op-by-op mode because memset node breaks "
+                      "graph update";
+      return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
+    case se::gpu::OwnedGpuGraphExec::UpdateResult::kSuccess:
+      // Update captured pointer hash.
+      instance->ptr_hash = ptrs_hash;
+
+      TraceMe trace([&] {
+        return TraceMeEncode("gpu.graph.launch_updated",
+                             {{"ordinal", capture.ordinal}});
+      });
+
+      return instance->exec.Launch(run_options->stream());
   }
 
-  // Update captured graph pointers hash.
-  instance->ptr_hash = ptrs_hash;
-
-  TraceMe trace([&] {
-    return TraceMeEncode("gpu.graph.launch_updated",
-                         {{"ordinal", capture.ordinal}});
-  });
-
-  return instance->exec.Launch(run_options->stream());
 #else  // #if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
 
   return absl::InternalError("GPU graphs are not supported");
