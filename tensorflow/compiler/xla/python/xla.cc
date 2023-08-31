@@ -1039,9 +1039,22 @@ static void Init(py::module_& m) {
                              [](PjRtTopologyDescription& topology) {
                                return topology.platform_version();
                              })
-      .def("serialize", [](PjRtTopologyDescription& topology) -> py::bytes {
-        return py::bytes(ValueOrThrow(topology.Serialize()));
-      });
+      .def("serialize",
+           [](PjRtTopologyDescription& topology) -> py::bytes {
+             return py::bytes(ValueOrThrow(topology.Serialize()));
+           })
+      .def(
+          "__getattr__",
+          [](PjRtTopologyDescription& topology,
+             std::string name) -> py::object {
+            const auto& attrs = topology.Attributes();
+            auto it = attrs.find(name);
+            if (it != attrs.end()) {
+              return std::visit([](auto&& v) { return py::cast(v); },
+                                it->second);
+            }
+            throw py::attribute_error(absl::StrCat("Unknown attribute ", name));
+          });
 
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")
       .def("hlo_modules",

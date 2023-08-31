@@ -1806,6 +1806,16 @@ PJRT_Error* PJRT_TopologyDescription_Serialize(
   return nullptr;
 }
 
+PJRT_Error* PJRT_TopologyDescription_Attributes(
+    PJRT_TopologyDescription_Attributes_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_TopologyDescription_Attributes_Args",
+      PJRT_TopologyDescription_Attributes_Args_STRUCT_SIZE, args->struct_size));
+  args->attributes = args->topology->attributes.data();
+  args->num_attributes = args->topology->attributes.size();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Compile_Args", PJRT_Compile_Args_STRUCT_SIZE, args->struct_size));
@@ -1836,22 +1846,16 @@ PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args) {
   return nullptr;
 }
 
-// Populates `c_device_description->attributes` with shallow copy of the vendor
-// specific attributes about the device.
-static void PopulatePjrtDeviceDescriptionAttributes(
-    PJRT_DeviceDescription* c_device_description) {
-  CHECK(c_device_description->device_description != nullptr)
-      << ": cpp device description is null";
-
-  const absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>& attributes =
-      c_device_description->device_description->Attributes();
-
-  c_device_description->attributes.resize(attributes.size());
+static std::vector<PJRT_NamedValue> PopulatePjrtAttributes(
+    const absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>&
+        attributes) {
+  std::vector<PJRT_NamedValue> c_attributes;
+  c_attributes.resize(attributes.size());
   int ind = 0;
   // Doing shallow copy of attribute names and values when it's string or an
   // array.
   for (auto const& [name, value] : attributes) {
-    PJRT_NamedValue& cur_attribute = c_device_description->attributes[ind];
+    PJRT_NamedValue& cur_attribute = c_attributes[ind];
     cur_attribute.struct_size = PJRT_NamedValue_STRUCT_SIZE;
     cur_attribute.priv = nullptr;
     cur_attribute.name = name.c_str();
@@ -1878,6 +1882,7 @@ static void PopulatePjrtDeviceDescriptionAttributes(
     }
     ++ind;
   }
+  return c_attributes;
 }
 
 static void PopulatePjrtClientDevices(PJRT_Client* c_client) {
@@ -1893,7 +1898,8 @@ static void PopulatePjrtClientDevices(PJRT_Client* c_client) {
         PJRT_Device{device, {&device->description()}});
     PJRT_Device* c_device = &c_client->owned_devices.back();
     c_device->client = c_client;
-    PopulatePjrtDeviceDescriptionAttributes(&c_device->description);
+    c_device->description.attributes =
+        PopulatePjrtAttributes(device->description().Attributes());
     c_client->devices.push_back(c_device);
     if (device->IsAddressable()) {
       c_client->addressable_devices.push_back(c_device);
@@ -1967,8 +1973,11 @@ PJRT_TopologyDescription* CreateWrapperDeviceTopology(
         PJRT_DeviceDescription{description.get()});
     c_topology->description_pointers.emplace_back(
         &c_topology->descriptions.back());
-    PopulatePjrtDeviceDescriptionAttributes(&c_topology->descriptions.back());
+    c_topology->descriptions.back().attributes =
+        PopulatePjrtAttributes(description->Attributes());
   }
+  c_topology->attributes =
+      PopulatePjrtAttributes(c_topology->topology->Attributes());
   return c_topology;
 }
 

@@ -1831,7 +1831,9 @@ PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
     const PJRT_Api* c_api, PJRT_TopologyDescription* c_topology)
     : compiler_(std::make_unique<PjRtCApiCompiler>(c_api)),
       c_api_(c_api),
-      c_topology_(c_topology, ::pjrt::MakeTopologyDescriptionDeleter(c_api)) {}
+      c_topology_(c_topology, ::pjrt::MakeTopologyDescriptionDeleter(c_api)) {
+  InitAttributes();
+}
 
 absl::string_view PjRtCApiTopologyDescription::platform_name() const {
   PJRT_TopologyDescription_PlatformName_Args args;
@@ -1883,6 +1885,17 @@ StatusOr<std::string> PjRtCApiTopologyDescription::Serialize() const {
   auto out = std::string(args.serialized_bytes, args.serialized_bytes_size);
   args.serialized_topology_deleter(args.serialized_topology);
   return out;
+}
+
+void PjRtCApiTopologyDescription::InitAttributes() {
+  PJRT_TopologyDescription_Attributes_Args args;
+  args.struct_size = PJRT_TopologyDescription_Attributes_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.topology = c_topology_.get();
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_TopologyDescription_Attributes(&args),
+                            c_api_);
+  attributes_ =
+      pjrt::ConvertFromPjRtNamedValueList(args.attributes, args.num_attributes);
 }
 
 // Initializes `PJRT_Compile_Args`, which will be used to call

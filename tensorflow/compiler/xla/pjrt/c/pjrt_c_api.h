@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 26
+#define PJRT_API_MINOR 27
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1811,6 +1811,22 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Serialize_Args,
 typedef PJRT_Error* PJRT_TopologyDescription_Serialize(
     PJRT_TopologyDescription_Serialize_Args* args);
 
+struct PJRT_TopologyDescription_Attributes_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_TopologyDescription* topology;
+
+  // Only lives as long as topology.
+  PJRT_NamedValue* attributes;  // out
+  size_t num_attributes;        // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Attributes_Args,
+                          num_attributes);
+
+// Returns platform-specific topology attributes.
+typedef PJRT_Error* PJRT_TopologyDescription_Attributes(
+    PJRT_TopologyDescription_Attributes_Args* args);
+
 struct PJRT_Compile_Args {
   size_t struct_size;
   void* priv;
@@ -1943,6 +1959,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_PlatformVersion);
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_GetDeviceDescriptions);
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Serialize);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Attributes);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Compile);
 } PJRT_Api;

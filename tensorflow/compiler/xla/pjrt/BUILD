@@ -1,10 +1,10 @@
 # Placeholder: load py_proto_library
-load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -295,7 +295,9 @@ xla_cc_test(
     deps = [
         ":pjrt_client",
         ":pjrt_compiler",
+        ":pjrt_device_description",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],

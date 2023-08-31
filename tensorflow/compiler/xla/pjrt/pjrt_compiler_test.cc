@@ -21,9 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_device_description.h"
 
 namespace xla {
 
@@ -43,6 +45,10 @@ TEST(PjRtCompilerTest, CompilerNotRegistered) {
     }
     absl::StatusOr<std::string> Serialize() const override {
       return "test_topo";
+    }
+    const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+        const override {
+      LOG(FATAL) << "Unused";
     }
   };
   PjRtTestTopology topology;
@@ -66,6 +72,10 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
     }
     absl::StatusOr<std::string> Serialize() const override {
       return "test_topo";
+    }
+    const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+        const override {
+      LOG(FATAL) << "Unused";
     }
   };
   PjRtTestTopology topology;

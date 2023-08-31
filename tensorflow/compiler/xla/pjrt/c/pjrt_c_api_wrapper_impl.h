@@ -168,6 +168,7 @@ struct PJRT_TopologyDescription {
       cpp_descriptions;
   std::vector<PJRT_DeviceDescription> descriptions;
   std::vector<PJRT_DeviceDescription*> description_pointers;
+  std::vector<PJRT_NamedValue> attributes;
 };
 
 struct PJRT_TransferMetadata {
@@ -318,6 +319,8 @@ PJRT_Error* PJRT_TopologyDescription_GetDeviceDescriptions(
     PJRT_TopologyDescription_GetDeviceDescriptions_Args* args);
 PJRT_Error* PJRT_TopologyDescription_Serialize(
     PJRT_TopologyDescription_Serialize_Args* args);
+PJRT_Error* PJRT_TopologyDescription_Attributes(
+    PJRT_TopologyDescription_Attributes_Args* args);
 
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 
@@ -524,6 +527,8 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_TopologyDescription_GetDeviceDescriptions,
       /*PJRT_TopologyDescription_Serialize=*/
       pjrt::PJRT_TopologyDescription_Serialize,
+      /*PJRT_TopologyDescription_Attributes=*/
+      pjrt::PJRT_TopologyDescription_Attributes,
 
       /*PJRT_Compile=*/pjrt::PJRT_Compile,
   };

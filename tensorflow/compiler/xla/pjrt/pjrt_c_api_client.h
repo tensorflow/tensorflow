@@ -669,12 +669,23 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
 
   absl::StatusOr<std::string> Serialize() const override;
 
+  // Returns vendor specific attributes about the topology.
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
  private:
   std::unique_ptr<PjRtCApiCompiler> compiler_;
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_TopologyDescription,
                   ::pjrt::PJRT_TopologyDescriptionDeleter>
       c_topology_;
+  // Device specific attributes with corresponding values.
+  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
+
+  // Initializes device specific attributes.
+  void InitAttributes();
 };
 
 class CApiCopyToDeviceStream : public CopyToDeviceStream {
