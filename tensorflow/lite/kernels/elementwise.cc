@@ -34,6 +34,7 @@ limitations under the License.
 #ifdef TFLITE_KERNEL_USE_XNNPACK
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #endif  // TFLITE_KERNEL_USE_XNNPACK
 
@@ -120,14 +121,6 @@ void LogLUTPrepare(TfLiteType type, OpData* op_data, float input_scale,
                          output_zero_point, lut_func, lut_func_params,
                          op_data->lut_int16);
   }
-}
-
-size_t MultiplyNonChannelDims(TfLiteIntArray* shape) {
-  size_t batch_size = 1;
-  for (int i = 0; i < shape->size - 1; ++i) {
-    batch_size *= shape->data[i];
-  }
-  return batch_size;
 }
 
 typedef bool (*IsSupportedType)(TfLiteType);
@@ -344,10 +337,8 @@ TfLiteStatus SqrtEval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
   if (input->type == kTfLiteFloat32) {
     xnn_status status;
-    const size_t num_input_dims = input->dims->size;
-    const size_t channel_dim =
-        num_input_dims == 0 ? 1 : input->dims->data[num_input_dims - 1];
-    const size_t batch_size = MultiplyNonChannelDims(input->dims);
+    const size_t channel_dim = 1;
+    const size_t batch_size = NumElements(input->dims);
     TfLiteTensor* output;
     TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
     CpuBackendContext* cpu_backend_context =
@@ -361,7 +352,7 @@ TfLiteStatus SqrtEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     TFLITE_LOG(TFLITE_LOG_INFO,
-               "Failed to run xnnpack xnn_run_sqrt_nd_x32. Error code: %d",
+               "Failed to run xnnpack xnn_run_sqrt_nc_f32. Error code: %d",
                status);
   }
 #endif  // TFLITE_KERNEL_USE_XNNPACK
@@ -418,6 +409,29 @@ TfLiteStatus RsqrtEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus SquareEval(TfLiteContext* context, TfLiteNode* node) {
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  if (input->type == kTfLiteFloat32) {
+    const size_t channel_dim = 1;
+    const size_t batch_size = NumElements(input->dims);
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+    CpuBackendContext* cpu_backend_context =
+        CpuBackendContext::GetFromContext(context);
+    pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+    xnn_status status = xnn_run_square_nc_f32(
+        channel_dim, channel_dim, channel_dim, batch_size,
+        GetTensorData<float>(input), GetTensorData<float>(output),
+        /*flags*/ XNN_FLAG_YIELD_WORKERS, threadpool);
+    if (status == xnn_status_success) {
+      return kTfLiteOk;
+    }
+    TFLITE_LOG(TFLITE_LOG_INFO,
+               "Failed to run xnnpack xnn_run_square_nc_f32. Error code: %d",
+               status);
+  }
+#endif  // TFLITE_KERNEL_USE_XNNPACK
   return EvalNumeric(context, node, [](float f) { return f * f; });
 }
 
