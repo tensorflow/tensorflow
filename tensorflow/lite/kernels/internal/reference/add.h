@@ -296,9 +296,13 @@ BroadcastAdd6DSlow(const ArithmeticParams& params,
   size_t compressed_input1_stride[kMaxBroadcastDim];
   size_t compressed_input2_stride[kMaxBroadcastDim];
   size_t compressed_output_shape[kMaxBroadcastDim];
-  ReduceDimensionsForBroadcast<kMaxBroadcastDim>(
+  bool broadcastable_shape = ReduceDimensionsForBroadcast<kMaxBroadcastDim>(
       input1_shape, input2_shape, compressed_input1_stride,
       compressed_input2_stride, compressed_output_shape);
+  // Skip broadcasting for degenerate shapes.
+  if (!broadcastable_shape) {
+    return;
+  }
 
   size_t input1_offset = 0;
   size_t input2_offset = 0;
@@ -474,9 +478,13 @@ BroadcastAdd6DSlow(const ArithmeticParams& params,
   size_t compressed_input1_stride[kMaxBroadcastDim];
   size_t compressed_input2_stride[kMaxBroadcastDim];
   size_t compressed_output_shape[kMaxBroadcastDim];
-  ReduceDimensionsForBroadcast<kMaxBroadcastDim>(
+  bool broadcastable_shape = ReduceDimensionsForBroadcast<kMaxBroadcastDim>(
       input1_shape, input2_shape, compressed_input1_stride,
       compressed_input2_stride, compressed_output_shape);
+  // Skip broadcasting for degenerate shapes.
+  if (!broadcastable_shape) {
+    return;
+  }
 
   size_t input1_offset = 0;
   size_t input2_offset = 0;
