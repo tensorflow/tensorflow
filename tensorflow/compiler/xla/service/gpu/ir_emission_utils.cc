@@ -791,7 +791,7 @@ const HloInstruction& FindNonTrivialHero(
     }
     return TraversalResult::kVisitOperands;
   };
-  HloBfsConsumersFirstTraversal(*idx, is_boundary, visit);
+  HloBfsConsumersFirstTraversal({idx}, is_boundary, visit);
   return transpose ? *transpose : *idx;
 }
 

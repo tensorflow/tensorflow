@@ -56,17 +56,12 @@ const char kTestModule[] = R"(
       ROOT difference = f32[] subtract(fusion, p0)
     })";
 
-bool FusionInstructionBoundary(const HloInstruction& producer,
-                               const HloInstruction& consumer) {
-  return consumer.opcode() == HloOpcode::kParameter;
-}
-
 TEST_F(HloTraversalTest, TraverseFusion) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   std::vector<std::string> visited_nodes;
   HloBfsConsumersFirstTraversal(
-      *module->GetComputationWithName("fused_computation")->root_instruction(),
-      FusionInstructionBoundary, [&](const HloInstruction& node) {
+      {module->GetComputationWithName("fused_computation")->root_instruction()},
+      DefaultFusionBoundaryFn, [&](const HloInstruction& node) {
         visited_nodes.push_back(std::string(node.name()));
         return TraversalResult::kVisitOperands;
       });
@@ -78,8 +73,8 @@ TEST_F(HloTraversalTest, TraverseFusionPartially) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   std::vector<std::string> visited_nodes;
   HloBfsConsumersFirstTraversal(
-      *module->GetComputationWithName("fused_computation")->root_instruction(),
-      FusionInstructionBoundary, [&](const HloInstruction& node) {
+      {module->GetComputationWithName("fused_computation")->root_instruction()},
+      DefaultFusionBoundaryFn, [&](const HloInstruction& node) {
         visited_nodes.push_back(std::string(node.name()));
         return node.opcode() == HloOpcode::kReduce
                    ? TraversalResult::kVisitOperands
@@ -93,8 +88,8 @@ TEST_F(HloTraversalTest, AbortTraversal) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   std::vector<std::string> visited_nodes;
   HloBfsConsumersFirstTraversal(
-      *module->GetComputationWithName("fused_computation")->root_instruction(),
-      FusionInstructionBoundary, [&](const HloInstruction& node) {
+      {module->GetComputationWithName("fused_computation")->root_instruction()},
+      DefaultFusionBoundaryFn, [&](const HloInstruction& node) {
         visited_nodes.push_back(std::string(node.name()));
         return node.opcode() == HloOpcode::kReduce
                    ? TraversalResult::kVisitOperands
@@ -112,7 +107,7 @@ TEST_F(HloTraversalTest, TraversePartialFusion) {
 
   auto* fused_computation = module->GetComputationWithName("fused_computation");
   HloBfsConsumersFirstTraversal(
-      *fused_computation->root_instruction(),
+      {fused_computation->root_instruction()},
       [&](const HloInstruction& producer, const HloInstruction& consumer) {
         return &consumer == fused_computation->parameter_instruction(0) ||
                consumer.opcode() == HloOpcode::kNegate;
@@ -130,8 +125,8 @@ TEST_F(HloTraversalTest, FindParameters) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   std::vector<std::string> producers;
   FindFusionParameters(
-      *module->GetComputationWithName("fused_computation")->root_instruction(),
-      FusionInstructionBoundary, [&](const HloInstruction& producer) {
+      {module->GetComputationWithName("fused_computation")->root_instruction()},
+      DefaultFusionBoundaryFn, [&](const HloInstruction& producer) {
         producers.push_back(std::string(producer.name()));
       });
   EXPECT_THAT(producers, ElementsAre("p0", "negate"));
@@ -143,7 +138,7 @@ TEST_F(HloTraversalTest, FindParametersAfterFusion) {
   std::vector<std::string> producers;
   auto* fused_computation = module->GetComputationWithName("fused_computation");
   FindFusionParameters(
-      *fused_computation->root_instruction(),
+      {fused_computation->root_instruction()},
       [&](const HloInstruction& producer, const HloInstruction& consumer) {
         return &consumer == fused_computation->parameter_instruction(0) ||
                consumer.opcode() == HloOpcode::kNegate;
@@ -159,7 +154,7 @@ TEST_F(HloTraversalTest, FuseEverything) {
   std::vector<std::string> producers;
   auto* fused_computation = module->GetComputationWithName("fused_computation");
   FindFusionParameters(
-      *fused_computation->root_instruction(),
+      {fused_computation->root_instruction()},
       [&](const HloInstruction& producer, const HloInstruction& consumer) {
         return producer.opcode() == HloOpcode::kParameter &&
                producer.parent()->IsEntryComputation();
@@ -174,7 +169,7 @@ TEST_F(HloTraversalTest, FuseConsumer) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   std::vector<std::string> visited_nodes;
   HloBfsConsumersFirstTraversal(
-      *module->entry_computation()->root_instruction(),
+      {module->entry_computation()->root_instruction()},
       [](const HloInstruction& producer, const HloInstruction& consumer) {
         return consumer.opcode() == HloOpcode::kParameter ||
                (producer.opcode() == HloOpcode::kParameter &&
