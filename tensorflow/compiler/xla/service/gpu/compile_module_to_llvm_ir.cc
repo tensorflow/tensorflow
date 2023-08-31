@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -28,6 +29,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
@@ -69,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/optimization_barrier_expander.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
@@ -110,11 +113,11 @@ static bool HasFp8(const HloModule& hlo_module) {
 }
 
 // Lowers MLIR module to the XLA Gpu runtime custom calls.
-static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
-                                   llvm::StringRef entry_function_name,
-                                   llvm::ArrayRef<int64_t> buffer_sizes,
-                                   ThunkSequence* thunk_sequence,
-                                   const DebugOptions& debug_options) {
+static Status LowerToXlaGpuRuntime(
+    mlir::ModuleOp module, llvm::StringRef entry_function_name,
+    llvm::ArrayRef<int64_t> buffer_sizes, ThunkSequence* thunk_sequence,
+    const DebugOptions& debug_options,
+    stream_executor::CudaComputeCapability cuda_compute_capability) {
   if (!module) {
     return InternalError("No MLIR module to lower.");
   }
@@ -126,6 +129,7 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
   opts.min_graph_size = debug_options.xla_gpu_graph_min_graph_size();
   opts.enable_concurrent_region =
       debug_options.xla_gpu_graph_enable_concurrent_region();
+  opts.compute_capability = cuda_compute_capability;
   populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
 
   if (pm.run(module).failed()) {
@@ -204,14 +208,16 @@ StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, const HloModuleConfig& module_config,
     std::unique_ptr<ThunkSequence> thunk_sequence,
-    const HloModule* hlo_module_for_dump) {
+    const HloModule* hlo_module_for_dump,
+    stream_executor::CudaComputeCapability cuda_compute_capability) {
   // Forward collective (NCCL) attributes for use by the lowering pipeline.
   ForwardCollectiveAttrs(mlir_module, entry_function_name, module_config);
 
   // Lower LMHLO operations to the XLA:GPU runtime custom calls.
   TF_RETURN_IF_ERROR(LowerToXlaGpuRuntime(
       mlir_module, {entry_function_name.data(), entry_function_name.size()},
-      buffer_sizes, thunk_sequence.get(), module_config.debug_options()));
+      buffer_sizes, thunk_sequence.get(), module_config.debug_options(),
+      cuda_compute_capability));
 
   // TODO(b/232033540): Pass MLIR module directly to Gpu runtime executable
   // without forcing serialization.
@@ -518,7 +524,9 @@ Status CompileModuleToLlvmIrImpl(
         results->executable,
         LowerToJitRt(*mlir_module, entry_function.getName(), buffer_sizes,
                      hlo_module->config(), ir_emitter->ConsumeThunkSequence(),
-                     /*hlo_module_for_dump=*/hlo_module));
+                     /*hlo_module_for_dump=*/hlo_module,
+                     std::get<se::CudaComputeCapability>(
+                         gpu_device_info.compute_capability)));
     return OkStatus();
   }
 
