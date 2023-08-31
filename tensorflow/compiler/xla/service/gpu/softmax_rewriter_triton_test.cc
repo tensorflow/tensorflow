@@ -18,6 +18,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -40,10 +41,11 @@ namespace m = ::xla::match;
 // cost analysis.
 StatusOr<bool> SoftmaxRewriterTritonMatchAndRewrite(GpuVersion gpu_version,
                                                     HloModule* module) {
+  CHECK_NE(module, nullptr);
   SoftmaxRewriterTriton softmax_rewriter_triton(gpu_version);
   std::vector<DiamondChainDescriptor> diamond_chains =
       softmax_rewriter_triton.FindAllFusibleDiamondChains(
-          module, /*execution_threads=*/{});
+          *module, /*execution_threads=*/{});
 
   for (auto diamond_chain = diamond_chains.rbegin();
        diamond_chain != diamond_chains.rend(); ++diamond_chain) {

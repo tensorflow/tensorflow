@@ -30,12 +30,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct DiamondDescriptor {
-  HloInstruction* root;
-  HloInstruction* producer;
+struct DiamondChainDescriptor {
+  HloInstruction* root = nullptr;
+  HloInstruction* producer = nullptr;
 };
-
-using DiamondChainDescriptor = DiamondDescriptor;
 
 // Rewrite compatible Softmax into a custom fusion region to be code-generated
 // with the Triton-based Softmax emitter.
@@ -54,7 +52,7 @@ class SoftmaxRewriterTriton : public HloModulePass {
   // resulting vector is sorted according to a post-order matching (i.e. within
   // the same computation, producer diamonds appear before consumer diamonds).
   std::vector<DiamondChainDescriptor> FindAllFusibleDiamondChains(
-      HloModule* module,
+      HloModule& module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
   // Constructs a Softmax fusion containing all the instructions between the

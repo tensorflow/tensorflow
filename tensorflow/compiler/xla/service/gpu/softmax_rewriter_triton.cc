@@ -354,16 +354,18 @@ Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
   return OkStatus();
 }
 
+using DiamondDescriptor = DiamondChainDescriptor;
+
 }  // anonymous namespace
 
 std::vector<DiamondChainDescriptor>
 SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
-    HloModule* module,
+    HloModule& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) const {
   std::vector<DiamondDescriptor> matched_diamonds;
 
   for (HloComputation* comp :
-       module->MakeNonfusionComputations(execution_threads)) {
+       module.MakeNonfusionComputations(execution_threads)) {
     if (comp->IsCustomCallComputation()) {
       continue;
     }
@@ -497,7 +499,7 @@ StatusOr<bool> SoftmaxRewriterTriton::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<DiamondChainDescriptor> diamond_chains =
-      FindAllFusibleDiamondChains(module, execution_threads);
+      FindAllFusibleDiamondChains(*module, execution_threads);
 
   // The diamond chains must be emitted in reverse order, to make sure that
   // producer instructions are emitted correctly when the root of
