@@ -149,8 +149,9 @@ HloInstruction *PadOperandToMultipleOf16(absl::Span<const int64_t> batch_dims,
 }
 
 // Recursively collects unary, divide, dynamic-slice, pad, multiply or select
-// operands of instr until an instruction with FP8 element type is reached.
-// Returns an empty vector when no FP8 instruction is reached.
+// operands of instr and the index of the operand identifying the next op in the
+// sequence until an instruction with FP8 element type is reached. Returns an
+// empty vector when no FP8 instruction is reached.
 std::vector<std::pair<HloInstruction *, int>> FindF8SubgraphRecursive(
     HloInstruction *instr, absl::flat_hash_set<int> &visited_instrs,
     std::vector<std::pair<HloInstruction *, int>> subgraph) {
@@ -170,6 +171,8 @@ std::vector<std::pair<HloInstruction *, int>> FindF8SubgraphRecursive(
   } else if (instr->opcode() == HloOpcode::kMultiply ||
              instr->opcode() == HloOpcode::kSelect) {
     for (int k = 0; k < 2; ++k) {
+      // Iterate over operands 0 and 1 for multiply and operands 1 and 2 for
+      // select.
       int operand_idx = k + (instr->opcode() == HloOpcode::kSelect);
       subgraph.back().second = operand_idx;
       auto binary_subgraph = FindF8SubgraphRecursive(
@@ -252,6 +255,17 @@ bool IsSupportedF8Pattern(
       VLOG(1) << "Possible intended FP8 GEMM operating on "
               << instr->ToShortString()
               << " not rewritten into FP8 Custom Call.";
+      return false;
+    }
+    // One of the operands of select must be zero for the op to be commutative
+    // with dequantization.
+    if (Match(subgraph[i].first, m::Select()) &&
+        !Match(subgraph[i].first->operand(subgraph[i].second == 2 ? 1 : 2),
+               m::Broadcast(m::ConstantScalar(0)))) {
+      VLOG(1) << "Possible intended FP8 GEMM operating on "
+              << instr->ToShortString()
+              << " not rewritten into FP8 Custom Call. Select requires a zero "
+                 "operand to be exchanged with dequantization.";
       return false;
     }
   }
