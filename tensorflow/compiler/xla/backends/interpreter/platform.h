@@ -51,10 +51,6 @@ class XlaInterpreterPlatform : public Platform {
   tsl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) override;
 
-  void RegisterTraceListener(std::unique_ptr<TraceListener> listener) override;
-
-  void UnregisterTraceListener(TraceListener* listener) override;
-
  private:
   // This platform's name.
   std::string name_;

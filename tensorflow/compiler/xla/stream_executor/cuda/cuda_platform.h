@@ -75,10 +75,6 @@ class CudaPlatform : public Platform {
   tsl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) override;
 
-  void RegisterTraceListener(std::unique_ptr<TraceListener> listener) override;
-
-  void UnregisterTraceListener(TraceListener* listener) override;
-
  private:
   // Determines the number of NUMA nodes and the assignment of executor to each.
   void InspectNumaNodes();

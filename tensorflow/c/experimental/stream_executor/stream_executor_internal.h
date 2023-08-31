@@ -77,12 +77,6 @@ class CPlatform : public Platform {
   tsl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) override;
 
-  // Trace listener is not supported
-  void RegisterTraceListener(std::unique_ptr<TraceListener> listener) override {
-    LOG(FATAL) << "RegisterTraceListener is not supported by pluggable device";
-  }
-  void UnregisterTraceListener(TraceListener* listener) override {}
-
   void DestroyAllExecutors() { executor_cache_.DestroyAllExecutors(); }
 
  private:

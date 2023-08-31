@@ -311,11 +311,6 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
       return std::unique_ptr<se::StreamExecutor>(nullptr);
     }
 
-    void RegisterTraceListener(
-        std::unique_ptr<se::TraceListener> listener) override {}
-
-    void UnregisterTraceListener(se::TraceListener* listener) override {}
-
    private:
     string name_;
   };

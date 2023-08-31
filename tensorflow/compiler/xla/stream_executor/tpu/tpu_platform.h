@@ -102,16 +102,6 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   GetUncachedExecutor(
       const ::stream_executor::StreamExecutorConfig& config) override;
 
-  void RegisterTraceListener(
-      std::unique_ptr<stream_executor::TraceListener> listener) override {
-    LOG(FATAL) << "Not yet implemented";
-  }
-
-  void UnregisterTraceListener(
-      stream_executor::TraceListener* listener) override {
-    LOG(FATAL) << "Not yet implemented";
-  }
-
   StreamMap* stream_map() { return &stream_map_; }
 
   void InsertEvent(stream_executor::internal::EventInterface* key,
