@@ -45,8 +45,14 @@ struct DcnOpState {
   // subtracted from the total duration
   uint64_t overlapping_duration = 0;
   std::string rendezvous_name;
+  std::string transfer_type;
   uint64_t stall_duration_ns = 0;
   std::string send_op_name;
+
+  OpInstance send;
+  OpInstance send_done;
+  OpInstance recv;
+  OpInstance recv_done;
 };
 
 struct InstrMetadata {
@@ -54,6 +60,7 @@ struct InstrMetadata {
   uint64_t channel_id;
   std::optional<std::string> rendezvous_name;
   int64_t size = 0;
+  std::optional<std::string> transfer_type;
 };
 
 class DcnTracker {
