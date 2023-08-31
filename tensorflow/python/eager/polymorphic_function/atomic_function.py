@@ -63,7 +63,7 @@ class CallOptions:
 RUNTIME_FUNCTION_REFS = {}
 
 
-class AtomicFunction:
+class AtomicFunction(core.AtomicFunction):
   """A Python callable for functions in the TF Runtime.
 
   Provides core functionality for tf.function including:

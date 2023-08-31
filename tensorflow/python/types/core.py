@@ -139,13 +139,46 @@ class Callable:
     """
 
 
-@tf_export("types.experimental.ConcreteFunction", v1=[])
-class ConcreteFunction(Callable):
+@tf_export("types.experimental.AtomicFunction", v1=[])
+class AtomicFunction(Callable):
   """Base class for graph functions.
 
-  A `ConcreteFunction` encapsulates a single graph function definition and
-  is differentiable under `tf.GradientTape` contexts.
+  An `AtomicFunction` encapsulates a single graph function definition.
+
+  `AtomicFunction` can be called directly only if no captures are needed
+  according to the `FunctionType`. If captures are present, please use
+  `call_with_captures` instead.
+
+  `AtomicFunction` does not support gradients. Please use the parent
+  `ConcreteFunction` if you need gradient support.
   """
+
+  def call_with_captures(self, args, kwargs, captures):
+    """Calls this AtomicFunction with captures as defined by its FunctionType.
+
+    Args:
+      args: Tuple containing positional arguments
+      kwargs: Dict containing keyword arguments
+      captures: Tuple of tensors supplying captured tensor values.
+
+    Returns:
+      A structured output value based on the inputs.
+    """
+
+
+@tf_export("types.experimental.ConcreteFunction", v1=[])
+class ConcreteFunction(Callable):
+  """Base class for differentiable graph functions.
+
+  A `ConcreteFunction` encapsulates the original graph function definition with
+  support for differentiability under `tf.GradientTape` contexts. In the
+  process, it may generate new graph functions (using the original) to
+  efficiently perform forwards and backwards passes.
+  """
+
+  @property
+  def inference_fn(self) -> AtomicFunction:
+    """Returns the original `AtomicFunction` owned by this ConcreteFunction."""
 
 
 # TODO(mdan): Name just `types.Function`, for historic continuity?

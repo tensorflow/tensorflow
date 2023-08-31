@@ -28,6 +28,12 @@
       accessed through the `function_type` property of `tf.function`s and
       `ConcreteFunction`s. See the `tf.types.experimental.FunctionType`
       documentation for more details.
+* Introducing `tf.types.experimental.AtomicFunction` as the fastest way to
+  perform TF computations in Python.
+    * Can be accessed through `inference_fn` property of `ConcreteFunction`s
+    * Does not support gradients.
+    * See `tf.types.experimental.AtomicFunction` documentation for how to call
+      and use it.
 
 *   `tf.data`:
 

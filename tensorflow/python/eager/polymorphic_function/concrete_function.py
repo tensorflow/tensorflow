@@ -1084,6 +1084,11 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     """Return the FunctionType associated with this ConcreteFunction."""
     return self._function_type
 
+  @property
+  def inference_fn(self):
+    """Return the inference function associated with this ConcreteFunction."""
+    return self._inference_function
+
   # TODO(fmuham): Remove this property.
   @property
   def _function_spec(self):

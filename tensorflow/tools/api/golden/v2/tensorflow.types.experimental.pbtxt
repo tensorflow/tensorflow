@@ -1,6 +1,10 @@
 path: "tensorflow.types.experimental"
 tf_module {
   member {
+    name: "AtomicFunction"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Callable"
     mtype: "<type \'type\'>"
   }
