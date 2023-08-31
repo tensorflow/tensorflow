@@ -37,7 +37,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
+#include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/util.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace jax {
@@ -338,9 +340,13 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
     }
     const py::object& arg = arguments.flat_dynamic_args[i];
 
+    auto transfer_guard_formatter = [] { return std::string(""); };
+
     if (arg.get_type() != xla::PyArray::type()) {
       if (data_device != nullptr) {
         py::handle arg = arguments.flat_dynamic_args[i];
+        TF_RETURN_IF_ERROR(
+            jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
         TF_ASSIGN_OR_RETURN(
             xla::DevicePutResult on_device,
             DevicePut(arg, executable.ifrt_loaded_executable()->client(),
