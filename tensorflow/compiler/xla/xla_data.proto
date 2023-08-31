@@ -841,6 +841,27 @@ message OpSharding {
   // Dimension permutations to transposed the iota array reshaped to
   // iota_reshape_dims. This must have the same size as iota_reshape_dims.
   repeated int32 iota_transpose_perm = 10;
+
+  // This field decides whether this op is in a shard group.
+  bool is_shard_group = 11;
+
+  // This field is used to store the unique id of the shard group.
+  int64 shard_group_id = 12;
+
+  // Used to decide whether this op is to be sharded like some other ops, or to
+  // which other ops will be sharded like.
+  enum ShardGroupType {
+    // This op will be sharded exactly the same as the other op. (hard
+    // restriction)
+    AS = 0;
+    // This op will try to allow sharding propagation within the same group even
+    // there is no data dependencies among them, but there is no guarantee that
+    // the final shardings within the same group will be exactly the same. (soft
+    // restriction)
+    LIKE = 1;
+  }
+
+  ShardGroupType shard_group_type = 13;
 }
 // LINT.ThenChange()
 

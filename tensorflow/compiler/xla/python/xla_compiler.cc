@@ -938,11 +938,21 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .value("TUPLE", OpSharding::TUPLE)
       .value("OTHER", OpSharding::OTHER);
 
+  py::enum_<OpSharding::ShardGroupType> op_sharding_shard_group_type(
+      m, "OpSharding_ShardGroupType");
+  op_sharding_shard_group_type.value("AS", OpSharding::AS)
+      .value("LIKE", OpSharding::LIKE);
+
   py::class_<OpSharding> op_sharding(m, "OpSharding");
   op_sharding
       .def_property_readonly_static(
           "Type",
           [op_sharding_type](const py::object&) { return op_sharding_type; })
+      .def_property_readonly_static(
+          "ShardGroupType",
+          [op_sharding_shard_group_type](const py::object&) {
+            return op_sharding_shard_group_type;
+          })
       .def(py::init<>())
       .def(py::pickle(
           [](const OpSharding& self) {
@@ -957,6 +967,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("replicate_on_last_tile_dim",
                     &xla::OpSharding::replicate_on_last_tile_dim,
                     &xla::OpSharding::set_replicate_on_last_tile_dim)
+      .def_property("is_shard_group", &xla::OpSharding::is_shard_group,
+                    &xla::OpSharding::set_is_shard_group)
+      .def_property("shard_group_id", &xla::OpSharding::shard_group_id,
+                    &xla::OpSharding::set_shard_group_id)
+      .def_property("shard_group_type", &xla::OpSharding::shard_group_type,
+                    &xla::OpSharding::set_shard_group_type)
       .def("__repr__", &xla::OpSharding::DebugString)
       .def("ParseFromString",
            [](OpSharding& sharding, const std::string& s) {

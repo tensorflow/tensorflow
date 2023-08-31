@@ -5879,6 +5879,7 @@ xla_cc_test(
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )
 
