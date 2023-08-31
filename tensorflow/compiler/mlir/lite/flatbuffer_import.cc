@@ -122,8 +122,7 @@ namespace tfl = mlir::TFL;
 
 namespace {
 
-constexpr absl::string_view kScatterRegionFuncName =
-    "update_computation_func_name";
+constexpr char kScatterRegionFuncName[] = "update_computation_func_name";
 
 using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
