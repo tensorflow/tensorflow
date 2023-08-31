@@ -23,6 +23,13 @@ load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependen
 
 default_python_version = "3.10"
 
+load(
+    "//:updater_config_repository.bzl",
+    "updater_config_repository",  # @unused
+)
+
+updater_config_repository(name = "updater_config_repository")
+
 python_register_multi_toolchains(
     name = "python",
     default_version = default_python_version,

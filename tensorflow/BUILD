@@ -1675,6 +1675,7 @@ gen_api_init_files(
         "compat_template.__init__.py",
         "compat_template_v1.__init__.py",
     ],
+    api_packages_file_name = "api_packages.txt",
     api_version = 2,
     compat_api_versions = [
         1,
@@ -1689,6 +1690,7 @@ gen_api_init_files(
     output_package = "tensorflow._api.v2",
     root_file_name = "v2.py",
     root_init_template = "$(location api_template.__init__.py)",
+    visibility = ["//visibility:public"],
 )
 
 py_library(
