@@ -1039,8 +1039,8 @@ static void Init(py::module_& m) {
                              [](PjRtTopologyDescription& topology) {
                                return topology.platform_version();
                              })
-      .def("serialize", [](PjRtTopologyDescription& topology) {
-        return ValueOrThrow(topology.Serialize());
+      .def("serialize", [](PjRtTopologyDescription& topology) -> py::bytes {
+        return py::bytes(ValueOrThrow(topology.Serialize()));
       });
 
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")
