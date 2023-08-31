@@ -116,6 +116,27 @@ cc_test(
 )
 
 cc_library(
+    name = "per_image_standardization",
+    srcs = ["per_image_standardization.cc"],
+    hdrs = ["per_image_standardization.h"],
+    deps = [
+        "//tensorflow/lite/experimental/ml_adjacent:lib",
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ],
+)
+
+cc_test(
+    name = "per_image_standardization_test",
+    srcs = ["per_image_standardization_test.cc"],
+    deps = [
+        ":per_image_standardization",
+        "//tensorflow/lite/experimental/ml_adjacent:lib",
+        "//tensorflow/lite/experimental/ml_adjacent/data:owning_vector_ref",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "rgb_to_grayscale",
     srcs = ["rgb_to_grayscale.cc"],
     hdrs = ["rgb_to_grayscale.h"],
