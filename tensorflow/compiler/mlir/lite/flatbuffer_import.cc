@@ -603,11 +603,9 @@ static mlir::ElementsAttr GetSplat(RankedTensorType type, int unique_index,
   llvm_unreachable("unhandled element type");
 }
 
-// TODO(b/172664358): Creates a new op instead of reusing constant op.
-// Creates a constant op to represent stateful variable. The function static
-// variable `stateful_variable_idx` is used as a unique value for each constant
-// to avoid CSEed. `tensor` is the data structure of flatbuffer. `shaped_type`
-// is the ShapedType for the const op.
+// TODO(b/172664358): Creates a new op instead of reusing constant op. Creates a
+// constant op to represent stateful variable. `tensor` is the data structure of
+// flatbuffer. `shaped_type` is the ShapedType for the const op.
 StatusOr<Operation*> BuildVariableOp(const tflite::TensorT& tensor,
                                      OpBuilder builder, Location loc) {
   TF_ASSIGN_OR_RETURN(auto type, GetTensorType(tensor, builder,
@@ -617,9 +615,7 @@ StatusOr<Operation*> BuildVariableOp(const tflite::TensorT& tensor,
     return errors::Internal("Constant doesn't have a shape");
   }
 
-  static int stateful_variable_idx = 0;
-  mlir::ElementsAttr value =
-      GetSplat(shaped_type, stateful_variable_idx++, builder);
+  mlir::ElementsAttr value = GetSplat(shaped_type, 0, builder);
   if (IsQuantized(tensor)) {
     auto op = builder.create<tfl::QConstOp>(
         loc, mlir::TypeAttr::get(shaped_type), value);

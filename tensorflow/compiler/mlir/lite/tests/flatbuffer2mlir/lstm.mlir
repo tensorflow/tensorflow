@@ -39,6 +39,42 @@ func.func @testUnidirectionalSequenceLstmWithIntermediates(%arg0: tensor<? x ? x
 
 // -----
 
+// CHECK-LABEL:     testUnidirectionalSequenceLstmStatefulVariables
+func.func @testUnidirectionalSequenceLstmStatefulVariables(%arg0: tensor<1x5x3xf32>) -> (tensor<1x5x10xf32>) {
+  // CHECK-DAG:       %[[RES1:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<10x3xf32>} : () -> tensor<10x3xf32>
+  // CHECK-DAG:       %[[RES2:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<10x3xf32>} : () -> tensor<10x3xf32>
+  // CHECK-DAG:       %[[RES3:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<10x3xf32>} : () -> tensor<10x3xf32>
+  // CHECK-DAG:       %[[RES4:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<10x3xf32>} : () -> tensor<10x3xf32>
+  // CHECK-DAG:       %[[RES5:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<10x10xf32>} : () -> tensor<10x10xf32>
+  // CHECK-DAG:       %[[RES6:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<10x10xf32>} : () -> tensor<10x10xf32>
+  // CHECK-DAG:       %[[RES7:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<10x10xf32>} : () -> tensor<10x10xf32>
+  // CHECK-DAG:       %[[RES8:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<10x10xf32>} : () -> tensor<10x10xf32>
+  // CHECK-DAG:       %[[RES9:.*]] = "tfl.no_value"() {value} : () -> none
+  // CHECK-DAG:       %[[RES10:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<10xf32>} : () -> tensor<10xf32>
+  // CHECK-DAG:       %[[RES11:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<10xf32>} : () -> tensor<10xf32>
+  // CHECK-DAG:       %[[RES12:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<1x10xf32>} : () -> tensor<1x10xf32>
+  // CHECK-DAG:       %[[RES13:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<1x10xf32>} : () -> tensor<1x10xf32>
+  // CHECK:           %[[RES14:.*]] = "tfl.unidirectional_sequence_lstm"(%arg0, %[[RES1]], %[[RES2]], %[[RES3]], %[[RES4]], %[[RES5]], %[[RES6]], %[[RES7]], %[[RES8]], %[[RES9]], %[[RES9]], %[[RES9]], %[[RES10]], %[[RES11]], %[[RES10]], %[[RES10]], %[[RES9]], %[[RES9]], %[[RES12]], %[[RES13]], %[[RES9]], %[[RES9]], %[[RES9]], %[[RES9]]) {asymmetric_quantize_inputs = false, cell_clip = 1.000000e+01 : f32, diagonal_recurrent_tensors = false, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = false} : (tensor<1x5x3xf32>, tensor<10x3xf32>, tensor<10x3xf32>, tensor<10x3xf32>, tensor<10x3xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<1x10xf32>, tensor<1x10xf32>, none, none, none, none) -> tensor<1x5x10xf32>
+  // CHECK:           return %[[RES14]]
+  %0 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<10x3xf32>} : () -> tensor<10x3xf32>
+  %1 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<10x3xf32>} : () -> tensor<10x3xf32>
+  %2 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<10x3xf32>} : () -> tensor<10x3xf32>
+  %3 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<10x3xf32>} : () -> tensor<10x3xf32>
+  %4 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<10x10xf32>} : () -> tensor<10x10xf32>
+  %5 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<10x10xf32>} : () -> tensor<10x10xf32>
+  %6 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<10x10xf32>} : () -> tensor<10x10xf32>
+  %7 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<10x10xf32>} : () -> tensor<10x10xf32>
+  %8 = "tfl.no_value"() {value} : () -> none
+  %9 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<10xf32>} : () -> tensor<10xf32>
+  %10 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<10xf32>} : () -> tensor<10xf32>
+  %11 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<1x10xf32>} : () -> tensor<1x10xf32>
+  %12 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<1x10xf32>} : () -> tensor<1x10xf32>
+  %13 = "tfl.unidirectional_sequence_lstm"(%arg0, %0, %1, %2, %3, %4, %5, %6, %7, %8, %8, %8, %9, %10, %9, %9, %8, %8, %11, %12, %8, %8, %8, %8) {asymmetric_quantize_inputs = false, cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = false} : (tensor<1x5x3xf32>, tensor<10x3xf32>, tensor<10x3xf32>, tensor<10x3xf32>, tensor<10x3xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<1x10xf32>, tensor<1x10xf32>, none, none, none, none) -> tensor<1x5x10xf32>
+  return %13 : tensor<1x5x10xf32>
+}
+
+// -----
+
 // CHECK-LABEL: testLSTMAsymAttributeTrue
 func.func @testLSTMAsymAttributeTrue(%arg0: tensor<1x4xf32>, %arg1: tensor<4x4xf32>, %arg2: tensor<4x4xf32>, %arg3: tensor<4x4xf32>, %arg4: tensor<4x4xf32>, %arg5: tensor<4x4xf32>, %arg6: tensor<4x4xf32>, %arg7: tensor<4x4xf32>, %arg8: tensor<4x4xf32>, %arg9: tensor<4xf32>, %arg10: tensor<4xf32>, %arg11: tensor<4xf32>, %arg12: tensor<1x4xf32>, %arg13: tensor<4xf32>, %arg14: tensor<4xf32>, %arg15: tensor<4xf32>, %arg16: tensor<4x4xf32>, %arg17: tensor<4xf32>, %arg18: tensor<4xf32>, %arg19: tensor<4xf32>, %arg20: tensor<4xf32>, %arg21: tensor<4xf32>) -> tensor<1x4xf32> {
   %cst0 = "tfl.pseudo_const" () {value = dense<0.0> : tensor<1x4xf32>} : () -> tensor<1x4xf32> loc("Const")
