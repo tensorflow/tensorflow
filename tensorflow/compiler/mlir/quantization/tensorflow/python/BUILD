@@ -168,6 +168,7 @@ pytype_strict_library(
         ":save_model",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_algorithm",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",

@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
+from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_algorithm
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2 as calib_stats_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
@@ -645,26 +646,9 @@ def _get_min_max_from_calibrator(
   statistics: calib_stats_pb2.CalibrationStatistics = (
       pywrap_quantize_model.get_statistics_from_calibrator(node_id)
   )
-  calib_method = calib_opts.calibration_method
-  if calib_method == _CalibrationMethod.CALIBRATION_METHOD_MIN_MAX:
-    min_max_statistics = statistics.min_max_statistics
-    min_value = min_max_statistics.global_min
-    max_value = min_max_statistics.global_max
-  elif calib_method == _CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX:
-    average_min_max_statistics = statistics.average_min_max_statistics
-    # num_samples is guaranteed to be larger than 0 because
-    # get_statistics_from_calibrator throws an exception if num_samples == 0.
-    min_value = (
-        average_min_max_statistics.min_sum
-        / average_min_max_statistics.num_samples
-    )
-    max_value = (
-        average_min_max_statistics.max_sum
-        / average_min_max_statistics.num_samples
-    )
-  else:
-    raise ValueError('Unsupported calibration method.')
-
+  min_value, max_value = calibration_algorithm.get_min_max_value(
+      statistics, calib_opts
+  )
   return min_value, max_value
 
 
@@ -1210,7 +1194,7 @@ def _populate_calibration_options(
     quantization_options: quant_opts_pb2.QuantizationOptions,
 ):
   """Populates default values for CalibrationOptions.
-  
+
   Args:
     quantization_options: An instance of QuantizationOptions with a field
       specifying CalibrationOptions

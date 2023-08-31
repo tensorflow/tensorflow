@@ -1,8 +1,11 @@
-# Placeholder: load py_proto_library
+load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+# Placeholder: load py_proto_library
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "if_static",
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+    "tf_gen_op_wrapper_py",
 )
 load(
     "//tensorflow:tensorflow.default.bzl",
@@ -10,12 +13,11 @@ load(
     "tf_kernel_library",
     "tf_py_strict_test",
 )
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-    "tf_gen_op_wrapper_py",
-)
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -61,6 +63,26 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+pytype_strict_library(
+    name = "calibration_algorithm",
+    srcs = ["calibration_algorithm.py"],
+    deps = [
+        ":calibration_statistics_proto_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
+    ],
+)
+
+pytype_strict_contrib_test(
+    name = "calibration_algorithm_test",
+    srcs = ["calibration_algorithm_test.py"],
+    deps = [
+        ":calibration_algorithm",
+        ":calibration_statistics_proto_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
