@@ -69,13 +69,15 @@ class GpuPriorityFusionQueue : public FusionQueue {
 
  public:
   GpuPriorityFusionQueue(
-      HloComputation* computation, GpuHloCostAnalysis* cost_analysis,
+      HloComputation* computation,
+      const GpuHloCostAnalysis::Options& cost_analysis_options,
+      const GpuDeviceInfo* device_info,
       const std::function<bool(HloInstruction*, int64_t)>& can_fuse)
       : computation_(computation),
-        cost_analysis_(cost_analysis),
+        cost_analysis_(cost_analysis_options, device_info),
         can_fuse_(can_fuse) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
-    TF_CHECK_OK(computation_->Accept(cost_analysis_));
+    TF_CHECK_OK(computation_->Accept(&cost_analysis_));
 
     // Initializes the priority queue.
     for (auto instruction : computation->MakeInstructionPostOrder()) {
@@ -182,7 +184,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
       // Revisit costs of all updated ops. It's important to update cost
       // analysis before recalculating priorities.
       for (auto instruction : to_update_priority_) {
-        TF_CHECK_OK(cost_analysis_->RevisitInstruction(instruction));
+        TF_CHECK_OK(cost_analysis_.RevisitInstruction(instruction));
       }
 
       for (auto instruction : to_update_priority_) {
@@ -236,7 +238,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
     }
 
     GpuPerformanceModel::RunTimes run_times =
-        GpuPerformanceModel::EstimateRunTimes(producer, cost_analysis_,
+        GpuPerformanceModel::EstimateRunTimes(producer, &cost_analysis_,
                                               fusible_users);
     return absl::ToInt64Nanoseconds(run_times.time_unfused -
                                     run_times.time_fused);
@@ -259,7 +261,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
   HloComputation* computation_;
 
   // Reference to cost model that defines priorities in the queue.
-  GpuHloCostAnalysis* cost_analysis_;
+  GpuHloCostAnalysis cost_analysis_;
 
   // The priority queue of producers, implemented as an ordered map, where a
   // key is a pair: the first element is the priority and the second element is
@@ -356,8 +358,7 @@ FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
   auto producer = consumer->operand(operand_index);
 
   // The following checks are potentially expensive.
-  if (auto fusible = FusionFitsInBudget(*consumer, *producer,
-                                        *cost_analysis_->device_info_,
+  if (auto fusible = FusionFitsInBudget(*consumer, *producer, device_info_,
                                         /*is_consumer_producer_fusion=*/true);
       !fusible) {
     return fusible;
@@ -396,7 +397,7 @@ HloInstruction* GpuPriorityFusion::FuseInstruction(
 std::unique_ptr<FusionQueue> GpuPriorityFusion::GetFusionQueue(
     HloComputation* computation) {
   return std::unique_ptr<FusionQueue>(new GpuPriorityFusionQueue(
-      computation, &*cost_analysis_,
+      computation, cost_analysis_options_, &device_info_,
       [this](HloInstruction* consumer, int64_t operand_index) {
         return ShouldFuse(consumer, operand_index).CanFuse();
       }));
