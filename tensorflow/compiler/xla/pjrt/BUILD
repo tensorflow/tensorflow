@@ -427,37 +427,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "tpu_client",
-    srcs = ["tpu_client.cc"],
-    hdrs = ["tpu_client.h"],
-    visibility = ["//tensorflow/compiler/xla:friends"],
-    deps = [
-        ":local_device_state",
-        ":pjrt_stream_executor_client",
-        ":utils",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xla/service:tpu_computation_placer",
-        "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor:device_memory",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executable",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executable_interface",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_interface",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_on_demand_compiler",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_interface",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_topology_external",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_transfer_manager",
-        "//tensorflow/tsl/platform:casts",
-        "//tensorflow/tsl/platform:errors",
-    ],
-)
-
-cc_library(
     name = "interpreter_device",
     srcs = ["interpreter_device.cc"],
     hdrs = ["interpreter_device.h"],
