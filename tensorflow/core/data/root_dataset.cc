@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -68,33 +69,31 @@ void SetRootDatasetParams(const Options& options, RootDataset::Params* params) {
         options.threading_options().private_threadpool_size();
   }
   params->autotune = ShouldUseAutotuning(options);
-  if (params->autotune) {
-    params->autotune_algorithm = model::AutotuneAlgorithm::DEFAULT;
-    auto experiments = GetExperiments();
-    if (experiments.contains("stage_based_autotune") ||
-        experiments.contains("stage_based_autotune_v2")) {
-      params->autotune_algorithm = model::AutotuneAlgorithm::STAGE_BASED;
-    }
-    if (options.autotune_options().optional_autotune_algorithm_case() ==
-        AutotuneOptions::kAutotuneAlgorithm) {
-      params->autotune_algorithm =
-          options.autotune_options().autotune_algorithm();
-    }
-    params->autotune_cpu_budget = value_or_default(
-        options.autotune_options().cpu_budget(), 0, GetCpuBudget());
-    if (experiments.contains("autotune_buffer_optimization")) {
-      // When running this experiment, increase the ram_budget since it already
-      // takes into account the ram usage in buffer sizing, which is not the
-      // case for prefetch autotuner. Without this, we see degradation in some
-      // jobs for lack of buffers while ram usage is low.
-      params->autotune_ram_budget =
-          value_or_default(options.autotune_options().ram_budget(), 0,
-                           0.90 * port::AvailableRam());
-    } else {
-      params->autotune_ram_budget =
-          value_or_default(options.autotune_options().ram_budget(), 0,
-                           model::kRamBudgetShare * port::AvailableRam());
-    }
+  params->autotune_algorithm = model::AutotuneAlgorithm::DEFAULT;
+  auto experiments = GetExperiments();
+  if (experiments.contains("stage_based_autotune") ||
+      experiments.contains("stage_based_autotune_v2")) {
+    params->autotune_algorithm = model::AutotuneAlgorithm::STAGE_BASED;
+  }
+  if (options.autotune_options().optional_autotune_algorithm_case() ==
+      AutotuneOptions::kAutotuneAlgorithm) {
+    params->autotune_algorithm =
+        options.autotune_options().autotune_algorithm();
+  }
+  params->autotune_cpu_budget = value_or_default(
+      options.autotune_options().cpu_budget(), 0, GetCpuBudget());
+  if (experiments.contains("autotune_buffer_optimization")) {
+    // When running this experiment, increase the ram_budget since it already
+    // takes into account the ram usage in buffer sizing, which is not the
+    // case for prefetch autotuner. Without this, we see degradation in some
+    // jobs for lack of buffers while ram usage is low.
+    params->autotune_ram_budget =
+        value_or_default(options.autotune_options().ram_budget(), 0,
+                         0.90 * port::AvailableRam());
+  } else {
+    params->autotune_ram_budget =
+        value_or_default(options.autotune_options().ram_budget(), 0,
+                         model::kRamBudgetShare * port::AvailableRam());
   }
 }
 
