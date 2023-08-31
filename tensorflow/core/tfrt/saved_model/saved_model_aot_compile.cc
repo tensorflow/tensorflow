@@ -134,7 +134,7 @@ Status AotCompileSavedModel(absl::string_view input_model_dir,
       meta_graph_def.graph_def().library();
   ASSIGN_OR_RETURN_IN_IMPORT(
       std::unique_ptr<tensorflow::tfrt_stub::FallbackState> fallback_state,
-      FallbackState::Create(session_options, fdef_lib));
+      FallbackState::CreateWithMockGpuDevice(session_options, fdef_lib));
   ASSIGN_OR_RETURN_IN_IMPORT(
       mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
       ImportSavedModel(&context, meta_graph_def, *fallback_state,
