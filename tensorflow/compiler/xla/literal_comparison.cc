@@ -362,8 +362,11 @@ class NearComparator {
       abs_error = 0;
       rel_error = 0;
     } else if (IsNan(expected) || IsNan(actual)) {
-      if ((!error_.relaxed_nans && IsNan(expected) != IsNan(actual)) ||
-          (error_.relaxed_nans && !IsNan(expected) && IsNan(actual))) {
+      if (error_.all_nans_are_equivalent && IsNan(expected) && IsNan(actual)) {
+        abs_error = 0;
+        rel_error = 0;
+      } else if ((!error_.relaxed_nans && IsNan(expected) != IsNan(actual)) ||
+                 (error_.relaxed_nans && !IsNan(expected) && IsNan(actual))) {
         num_nan_mismatches_++;
         // A nan mismatch is considered to have infinite error. rel_error is
         // used for sorting a std::set of the top mismatches, and a nan value
