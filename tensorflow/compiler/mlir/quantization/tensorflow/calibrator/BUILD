@@ -37,7 +37,9 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
     deps = [
-        ":calibration_statistics_collector",
+        ":calibration_statistics_collector_average_min_max",
+        ":calibration_statistics_collector_base",
+        ":calibration_statistics_collector_min_max",
         ":calibration_statistics_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:framework",
@@ -55,8 +57,9 @@ cc_library(
     hdrs = ["calibrator_singleton.h"],
     compatible_with = get_compatible_with_portable(),
     deps = if_static([":calibrator_singleton_impl"]) + [
-        ":calibration_statistics_collector",
+        ":calibration_statistics_collector_base",
         ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -66,12 +69,48 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "calibration_statistics_collector_base",
+    hdrs = ["calibration_statistics_collector_base.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":calibration_statistics_proto_cc",
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "calibration_statistics_collector_min_max",
+    srcs = ["calibration_statistics_collector_min_max.cc"],
+    hdrs = ["calibration_statistics_collector_min_max.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":calibration_statistics_collector_base",
+        ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "calibration_statistics_collector_average_min_max",
+    srcs = ["calibration_statistics_collector_average_min_max.cc"],
+    hdrs = ["calibration_statistics_collector_average_min_max.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":calibration_statistics_collector_base",
+        ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+    ],
+)
+
 pytype_strict_library(
     name = "calibration_algorithm",
     srcs = ["calibration_algorithm.py"],
     deps = [
         ":calibration_statistics_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -103,27 +142,15 @@ tf_proto_library(
 # )
 # copybara:uncomment_end
 
-cc_library(
-    name = "calibration_statistics_collector",
-    srcs = ["calibration_statistics_collector.cc"],
-    hdrs = ["calibration_statistics_collector.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":calibration_statistics_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        "//tensorflow/core:framework",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
 tf_cc_test(
     name = "calibration_statistics_collector_test",
     size = "small",
     srcs = ["calibration_statistics_collector_test.cc"],
     deps = [
-        ":calibration_statistics_collector",
+        ":calibration_statistics_collector_average_min_max",
+        ":calibration_statistics_collector_base",
+        ":calibration_statistics_collector_min_max",
         ":calibration_statistics_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_googletest//:gtest_main",
