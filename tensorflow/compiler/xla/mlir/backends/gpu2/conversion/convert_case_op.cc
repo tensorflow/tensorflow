@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/de_bufferization.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 
@@ -78,7 +79,11 @@ struct ConvertCaseOpToHal : public OpConversionPattern<lmhlo::CaseOp> {
     for (auto &branch : op.getBranches()) {
       for (auto &block : branch.getBlocks()) blocks.push_back(&block);
     }
-    auto bufs = getUsedBuffers(blocks);
+    auto bufs = getUsedBuffers(blocks, [&](TypedValue<MemRefType> memref) {
+      return llvm::all_of(op.getBranches(), [&](Region &branch) {
+        return areValuesDefinedAbove(ValueRange(memref), branch);
+      });
+    });
 
     // Tensors updated in all case op branches.
     SmallVector<Value> updated_tensors =

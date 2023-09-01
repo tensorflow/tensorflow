@@ -20,12 +20,10 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <optional>
-#include <string_view>
 
 #include "iree-dialects/Dialect/Input/InputDialect.h"
 #include "iree-dialects/Dialect/Input/InputOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -112,6 +110,13 @@ struct ConvertMemrefViewOp : public OpConversionPattern<memref::ViewOp> {
       return rewriter.notifyMatchFailure(op, msg);
     };
 
+    // Check if we already have a remapped tensor for a slice.
+    if (auto remapped = state.remapped(b, op.getResult())) {
+      rewriter.replaceOp(op, remapped);
+      return success();
+    }
+
+    // Otherwise reinterpret cast source memref into the correct type.
     auto memref = op.getType().dyn_cast<MemRefType>();
     if (!memref)
       return rewriter.notifyMatchFailure(op, "expected a memref result");
@@ -126,8 +131,6 @@ struct ConvertMemrefViewOp : public OpConversionPattern<memref::ViewOp> {
     if (failed(tensor_import)) return failure();
     rewriter.replaceOp(op, tensor_import->getResult());
 
-    // Update de-bufferization state to track imported memref and a tensor.
-    state.addImportedMemref(source, op.getResult());
     state.remap(op->getBlock(), op.getResult(),
                 cast<TypedValue<TensorType>>(tensor_import->getResult()));
 
@@ -153,6 +156,9 @@ struct ConvertMemrefReinterpretCastOp
   LogicalResult matchAndRewrite(
       memref::ReinterpretCastOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
+    // When we do memref -> tensor remapping in DeBufferization we strip all
+    // reinterpret casts and always return a tensor in row-major format, so it's
+    // perfectly safe to erase all casts from the IR here.
     rewriter.eraseOp(op);
     return success();
   }
@@ -161,25 +167,6 @@ struct ConvertMemrefReinterpretCastOp
 //===----------------------------------------------------------------------===//
 // Converts memref.get_global op to memref.view op
 //===----------------------------------------------------------------------===//
-
-// Returns a function argument corresponding to the constant name.
-//
-// Example:
-//
-//   memref.global "private" constant @cst : memref<2x3xf32>
-//   func @get_global(%arg0: memref<24xi8> {lmhlo.constant_name = "cst"})
-//
-// All memref.get_global operations will be replaced by constant arguments
-// corresponding to the global constant.
-std::optional<BlockArgument> getConstantArg(func::FuncOp func,
-                                            std::string_view constant_name) {
-  for (unsigned i = 0; i < func.getNumArguments(); ++i) {
-    if (auto cst = func.getArgAttrOfType<StringAttr>(i, "lmhlo.constant_name");
-        cst && cst.getValue().equals(constant_name))
-      return func.getArgument(i);
-  }
-  return std::nullopt;
-}
 
 struct ConvertMemrefGetGlobalOp
     : public OpConversionPattern<memref::GetGlobalOp> {
@@ -196,12 +183,17 @@ struct ConvertMemrefGetGlobalOp
       return rewriter.notifyMatchFailure(op, msg);
     };
 
-    // Find function argument corresponding to the global.
-    auto func = op->getParentOfType<func::FuncOp>();
-    auto arg = getConstantArg(func, op.getName());
-    if (!arg.has_value())
+    // Find argument corresponding to the loaded memref.
+    auto slice = state.getSlice(op.getResult());
+    if (!slice.has_value())
       return rewriter.notifyMatchFailure(
           op, "can't find a constant argument corresponding to the global");
+
+    // Get memref argument remapped to a tensor argument.
+    auto arg = dyn_cast<BlockArgument>(rewriter.getRemappedValue(slice->arg()));
+    if (!arg)
+      return rewriter.notifyMatchFailure(
+          op, "can't find remapped block argument corresponding to a slice");
 
     MemRefType memref = op.getResult().getType();
 
@@ -209,14 +201,13 @@ struct ConvertMemrefGetGlobalOp
     // operation from the corresponding argument.
     if (memref.getLayout().isIdentity()) {
       auto tensor_import =
-          reinterpretCastTensor(b, *getTypeConverter(), *arg,
+          reinterpretCastTensor(b, *getTypeConverter(), arg,
                                 /*offset=*/0, memref, match_failure);
       if (failed(tensor_import)) return failure();
 
       rewriter.replaceOp(op, tensor_import->getResult());
 
       // Update de-bufferization state to track imported memref and a tensor.
-      state.addImportedMemref(*arg, op.getResult());
       state.remap(op->getBlock(), op.getResult(),
                   cast<TypedValue<TensorType>>(tensor_import->getResult()));
 

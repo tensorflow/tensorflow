@@ -132,16 +132,18 @@ package(
 #
 # cc_library(
 #     name = "de_bufferization",
-#     srcs = ["de_bufferization.cc"],
-#     hdrs = ["de_bufferization.h"],
+#     srcs = if_gpu2(["de_bufferization.cc"]),
+#     hdrs = if_gpu2(["de_bufferization.h"]),
 #     deps = [
 #         "@llvm-project//llvm:Support",
 #         "@llvm-project//mlir:BufferizationDialect",
+#         "@llvm-project//mlir:FuncDialect",
 #         "@llvm-project//mlir:IR",
 #         "@llvm-project//mlir:MemRefDialect",
 #         "@llvm-project//mlir:Support",
+#         "@llvm-project//mlir:Transforms",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
-#     ],
+#     ] + if_gpu2(["//third_party/iree/llvm-external-projects/iree-dialects/google_internal:IREEInputDialect"]),
 # )
 #
 # cc_library(

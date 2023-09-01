@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/de_bufferization.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/xla_gpu_api.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/ir/xla_gpu_dialect.h"
@@ -76,7 +77,12 @@ struct ConvertWhileOpToHal : public OpConversionPattern<lmhlo::WhileOp> {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     // Collect all buffers accessed in the loop condition and loop body.
-    auto bufs = getUsedBuffers({&op.getCond().front(), &op.getBody().front()});
+    auto bufs = getUsedBuffers(
+        {&op.getCond().front(), &op.getBody().front()},
+        [&](TypedValue<MemRefType> memref) {
+          return areValuesDefinedAbove(ValueRange(memref), op.getBody()) &&
+                 areValuesDefinedAbove(ValueRange(memref), op.getCond());
+        });
 
     Block *block = op->getBlock();
 

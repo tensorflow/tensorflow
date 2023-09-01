@@ -841,23 +841,13 @@ struct TerminatorOpLowering : public OpConversionPattern<lmhlo::TerminatorOp> {
       return success();
     }
 
-    // Collect block arguments corresponding to output buffers.
-    SmallVector<BlockArgument> results;
-    for (unsigned i = 0; i < func.getFunctionType().getNumInputs(); ++i) {
-      if (func.getArgAttr(i, "lmhlo.output_index"))
-        results.push_back(func.getArgument(i));
-    }
-
     // Find the latest tensors sharing underlying storage with destination
     // passing style arguments.
     llvm::SetVector<Value> updated_tensors;
-    for (auto result : results) {
-      for (auto memref : state.getImportedMemrefs(result)) {
-        // Check that we have tensors imported from a memref.
-        if (auto remapped = state.remapped(block, memref);
-            remapped && remapped.use_empty()) {
-          updated_tensors.insert(remapped);
-        }
+    for (auto memref : state.getOutputs(func)) {
+      if (auto remapped = state.remapped(block, memref);
+          remapped && remapped.use_empty()) {
+        updated_tensors.insert(remapped);
       }
     }
 
