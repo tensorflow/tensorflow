@@ -255,6 +255,23 @@ class DebugOptions:
   xla_test_all_input_layouts: bool
   xla_disable_hlo_passes: str
   xla_enable_hlo_passes_only: str
+  xla_force_host_platform_device_count: int
+  xla_dump_to: str
+  xla_dump_hlo_module_re: str
+  xla_dump_hlo_pass_re: str
+  xla_dump_hlo_as_text: bool
+  xla_dump_hlo_as_proto: bool
+  xla_dump_hlo_as_dot: bool
+  xla_dump_hlo_as_url: bool
+  xla_dump_hlo_as_html: bool
+  xla_dump_fusion_visualization: bool
+  xla_dump_hlo_snapshots: bool
+  xla_dump_max_hlo_modules: bool
+  xla_dump_module_metadata: bool
+  xla_dump_compress_protos: bool
+  xla_dump_hlo_as_long_text: bool
+  xla_dump_disable_metadata: bool
+  xla_dump_hlo_pipeline_re: str
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int

@@ -871,7 +871,60 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           })
       .def_property("xla_test_all_input_layouts",
                     &DebugOptions::xla_test_all_input_layouts,
-                    &DebugOptions::set_xla_test_all_input_layouts);
+                    &DebugOptions::set_xla_test_all_input_layouts)
+      .def_property("xla_force_host_platform_device_count",
+                    &DebugOptions::xla_force_host_platform_device_count,
+                    &DebugOptions::set_xla_force_host_platform_device_count)
+      .def_property("xla_dump_to", &DebugOptions::xla_dump_to,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_dump_to(value);
+                    })
+      .def_property("xla_dump_hlo_module_re",
+                    &DebugOptions::xla_dump_hlo_module_re,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_dump_hlo_module_re(value);
+                    })
+      .def_property("xla_dump_hlo_pass_re", &DebugOptions::xla_dump_hlo_pass_re,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_dump_hlo_pass_re(value);
+                    })
+      .def_property("xla_dump_hlo_as_text", &DebugOptions::xla_dump_hlo_as_text,
+                    &DebugOptions::set_xla_dump_hlo_as_text)
+      .def_property("xla_dump_hlo_as_proto",
+                    &DebugOptions::xla_dump_hlo_as_proto,
+                    &DebugOptions::set_xla_dump_hlo_as_proto)
+      .def_property("xla_dump_hlo_as_dot", &DebugOptions::xla_dump_hlo_as_dot,
+                    &DebugOptions::set_xla_dump_hlo_as_dot)
+      .def_property("xla_dump_hlo_as_url", &DebugOptions::xla_dump_hlo_as_url,
+                    &DebugOptions::set_xla_dump_hlo_as_url)
+      .def_property("xla_dump_hlo_as_html", &DebugOptions::xla_dump_hlo_as_html,
+                    &DebugOptions::set_xla_dump_hlo_as_html)
+      .def_property("xla_dump_fusion_visualization",
+                    &DebugOptions::xla_dump_fusion_visualization,
+                    &DebugOptions::set_xla_dump_fusion_visualization)
+      .def_property("xla_dump_hlo_snapshots",
+                    &DebugOptions::xla_dump_hlo_snapshots,
+                    &DebugOptions::set_xla_dump_hlo_snapshots)
+      .def_property("xla_dump_max_hlo_modules",
+                    &DebugOptions::xla_dump_max_hlo_modules,
+                    &DebugOptions::set_xla_dump_max_hlo_modules)
+      .def_property("xla_dump_module_metadata",
+                    &DebugOptions::xla_dump_module_metadata,
+                    &DebugOptions::set_xla_dump_module_metadata)
+      .def_property("xla_dump_compress_protos",
+                    &DebugOptions::xla_dump_compress_protos,
+                    &DebugOptions::set_xla_dump_compress_protos)
+      .def_property("xla_dump_hlo_as_long_text",
+                    &DebugOptions::xla_dump_hlo_as_long_text,
+                    &DebugOptions::set_xla_dump_hlo_as_long_text)
+      .def_property("xla_dump_disable_metadata",
+                    &DebugOptions::xla_dump_disable_metadata,
+                    &DebugOptions::set_xla_dump_disable_metadata)
+      .def_property("xla_dump_hlo_pipeline_re",
+                    &DebugOptions::xla_dump_hlo_pipeline_re,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_dump_hlo_pipeline_re(value);
+                    });
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
