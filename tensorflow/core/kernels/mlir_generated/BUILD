@@ -2,16 +2,16 @@
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load(
+    "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
+)
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test", "tf_kernel_library")
+load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
     "gpu_kernel_library",
     "if_mlir_generated_experimental_kernels_enabled",
     "if_mlir_generated_gpu_kernels_enabled",
 )
-load(
-    "//tensorflow:tensorflow.bzl",
-    "if_cuda_or_rocm",
-)
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -779,6 +779,10 @@ gpu_kernel_library(
         "f16": "floor_mod_float",
         "f32": "floor_mod_float",
         "f64": "floor_mod_float",
+        "ui8": "floor_mod_unsigned",
+        "ui16": "floor_mod_unsigned",
+        "ui32": "floor_mod_unsigned",
+        "ui64": "floor_mod_unsigned",
     },
     jit_types = [
         "i8",
