@@ -505,6 +505,7 @@ cc_library(
     hdrs = ["standalone.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":dataset_utils",
         ":root_dataset",
         ":unbounded_thread_pool",
         "//tensorflow/core:all_kernels",
