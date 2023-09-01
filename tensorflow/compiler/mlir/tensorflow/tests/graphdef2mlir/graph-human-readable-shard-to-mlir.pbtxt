@@ -1,0 +1,105 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
+
+node {
+  name: "arg"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "_XlaSharding"
+    value {
+      s: "\010\001\032\001\001\"\001\000"
+    }
+  }
+}
+# CHECK:      func @main()
+# CHECK:      tf_executor.island wraps "tf._Arg"()
+# CHECK-SAME: _XlaSharding = "{maximal device=0}"
+
+node {
+  name: "arg2"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "_XlaSharding"
+    value {
+      s: "\010\004"
+    }
+  }
+}
+# CHECK:      tf_executor.island wraps "tf._Arg"()
+# CHECK-SAME: _XlaSharding = "{manual}"
+
+node {
+  name: "arg3"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "_XlaSharding"
+    value {
+      s: "\010\003\032\002\001\002\"\002\000\001"
+    }
+  }
+}
+# CHECK:      tf_executor.island wraps "tf._Arg"()
+# CHECK-SAME: _XlaSharding = "{devices=[1,2]0,1}"
+
+node {
+  name: "arg4"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "_XlaSharding"
+    value {
+      s: ""
+    }
+  }
+}
+
+# CHECK:      tf_executor.island wraps "tf._Arg"()
+# CHECK-SAME: _XlaSharding = "{replicated}"
+# CHECK:      tf_executor.fetch
+# CHECK:      return
