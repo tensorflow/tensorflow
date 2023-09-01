@@ -30,11 +30,11 @@ struct TF_DeviceContext_Deleter {
   void operator()(TF_DeviceContext* c_device_context);
 };
 
-TF_DeviceContext* ToC(DeviceContext* device_context);
+TF_DeviceContext* DeviceContext_ToC(DeviceContext* device_context);
 
-DeviceContext* FromC(TF_DeviceContext* c_device_context);
+DeviceContext* DeviceContext_FromC(TF_DeviceContext* c_device_context);
 
-void Destroy(TF_DeviceContext* c_device_context);
+void DeviceContext_Destroy(TF_DeviceContext* c_device_context);
 
 }  // namespace tensorflow
 

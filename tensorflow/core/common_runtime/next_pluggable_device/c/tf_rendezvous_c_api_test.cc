@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_conversions.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -26,7 +26,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_helper.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_internal.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
@@ -153,23 +154,6 @@ std::string CreateRendezvousKey(bool to_host) {
                                rendezvous_key_base, FrameAndIter(0, 0));
 }
 
-TEST(AllocatorAttributes, ToAndFromC) {
-  constexpr uint32_t kValue = 0x1234'5678;
-  constexpr int32_t kScopeId = 1;
-
-  tsl::AllocatorAttributes in_attributes;
-  in_attributes.value = kValue;
-  in_attributes.scope_id = kScopeId;
-
-  TFDevice_AllocatorAttributes c_attributes = ToC(in_attributes);
-  EXPECT_EQ(kValue, c_attributes.value);
-  EXPECT_EQ(kScopeId, c_attributes.scope_id);
-
-  tsl::AllocatorAttributes out_attributes = FromC(c_attributes);
-  EXPECT_EQ(kValue, out_attributes.value);
-  EXPECT_EQ(kScopeId, out_attributes.scope_id);
-}
-
 TEST(RendezvousCAPI, DeviceToHost) {
   auto device_manager = std::make_unique<FakeDeviceManager>();
   core::RefCountPtr<Rendezvous> rendezvous = core::RefCountPtr<Rendezvous>(
@@ -181,7 +165,7 @@ TEST(RendezvousCAPI, DeviceToHost) {
   Rendezvous::ParsedKey parsed_key;
   TF_ASSERT_OK(Rendezvous::ParseKey(key, &parsed_key));
   TF_RendezvousThunk* thunk = ToC(rendezvous.get());
-  std::unique_ptr<tensorflow::c_api::TfCThunkRendezvous> thunk_rendezvous =
+  std::unique_ptr<tensorflow::RendezvousInterface> thunk_rendezvous =
       FromC(thunk);
 
   Rendezvous::Args send_args;
@@ -221,7 +205,7 @@ TEST(RendezvousCAPI, HostToDevice) {
   Rendezvous::ParsedKey parsed_key;
   TF_ASSERT_OK(Rendezvous::ParseKey(key, &parsed_key));
   TF_RendezvousThunk* thunk = ToC(rendezvous.get());
-  std::unique_ptr<tensorflow::c_api::TfCThunkRendezvous> thunk_rendezvous =
+  std::unique_ptr<tensorflow::RendezvousInterface> thunk_rendezvous =
       FromC(thunk);
 
   Rendezvous::Args recv_args;

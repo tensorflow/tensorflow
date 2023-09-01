@@ -302,14 +302,14 @@ void SameDeviceThunk(void* context,
 
 }  // namespace
 
-void Destroy(TF_DeviceContext* c_device_context) {}
+void DeviceContext_Destroy(TF_DeviceContext* c_device_context) {}
 
 void TF_DeviceContext_Deleter::operator()(TF_DeviceContext* c_device_context) {
-  Destroy(c_device_context);
+  DeviceContext_Destroy(c_device_context);
   delete c_device_context;
 }
 
-TF_DeviceContext* ToC(DeviceContext* device_context) {
+TF_DeviceContext* DeviceContext_ToC(DeviceContext* device_context) {
   TF_DeviceContext* c_device_context = new TF_DeviceContext();
   c_device_context->device_context = static_cast<void*>(device_context);
   c_device_context->cpu_to_device_func = CpuToDeviceThunk;
@@ -318,7 +318,7 @@ TF_DeviceContext* ToC(DeviceContext* device_context) {
   return c_device_context;
 }
 
-DeviceContext* FromC(TF_DeviceContext* c_device_context) {
+DeviceContext* DeviceContext_FromC(TF_DeviceContext* c_device_context) {
   if (c_device_context == nullptr) {
     return nullptr;
   }
