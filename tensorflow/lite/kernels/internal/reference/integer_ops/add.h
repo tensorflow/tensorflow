@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_ADD_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <limits>
 
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -79,7 +80,7 @@ inline void BroadcastAddRecursiveDimensions(
     T* output_data, void (*check_arithmetic_params)(const ArithmeticParams&),
     T (*binary_func)(T, T, const ArithmeticParams&)) {
   if (dimension > 0) {
-    for (int c = 0; c < compressed_output_shape[dimension]; ++c) {
+    for (size_t c = 0; c < compressed_output_shape[dimension]; ++c) {
       size_t input1_offset_c = *input1_offset_p;
       size_t input2_offset_c = *input2_offset_p;
       BroadcastAddRecursiveDimensions(
