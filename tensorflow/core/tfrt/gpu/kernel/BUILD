@@ -14,6 +14,7 @@ cc_library(
     name = "gpurt_kernels",
     srcs = ["gpurt_kernels.cc"],
     deps = [
+        ":gpu_runner",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:copy_tensor",
         "//tensorflow/core/framework:tensor",
@@ -27,6 +28,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
