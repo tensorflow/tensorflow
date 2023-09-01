@@ -330,6 +330,8 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
                           SplitOpCPU<type>)
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT);
+TF_CALL_float8_e5m2(REGISTER_SPLIT);
+TF_CALL_float8_e4m3fn(REGISTER_SPLIT);
 REGISTER_SPLIT(quint8);
 
 #undef REGISTER_SPLIT

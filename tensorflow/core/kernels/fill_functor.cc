@@ -65,7 +65,6 @@ DEFINE_SETZERO_CPU(float8_e5m2);
 DEFINE_SETZERO_CPU(float8_e4m3fn);
 #undef DEFINE_SETZERO_CPU
 
-
 template <typename T>
 void SetOneFunctor<Eigen::ThreadPoolDevice, T>::operator()(
     const Eigen::ThreadPoolDevice& d, typename TTypes<T>::Flat out) {
@@ -126,8 +125,9 @@ DEFINE_FILL_CPU(quint16);
 DEFINE_FILL_CPU(qint8);
 DEFINE_FILL_CPU(qint16);
 DEFINE_FILL_CPU(qint32);
+DEFINE_FILL_CPU(float8_e5m2);
+DEFINE_FILL_CPU(float8_e4m3fn);
 #undef DEFINE_FILL_CPU
-
 
 }  // namespace functor
 }  // namespace tensorflow
