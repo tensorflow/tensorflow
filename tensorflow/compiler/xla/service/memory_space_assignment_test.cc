@@ -6362,7 +6362,7 @@ ENTRY entry {
                   .memory_space() == kAlternateMemorySpace);
 }
 
-// A mock MemorySpaceAssignmentRepacker class that accepst a map of
+// A mock MemorySpaceAssignmentRepacker class that accepts a map of
 // (start_time,offset) -> new_offset values. Using this map, the repacker
 // repacks the allocations to the new_offset.
 class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {

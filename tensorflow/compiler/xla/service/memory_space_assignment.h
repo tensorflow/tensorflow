@@ -936,8 +936,8 @@ class MemorySpaceAssignment {
 
     void ReplaceOffset(int64_t offset) override;
 
-    const std::vector<SliceDetail>& sorted_slice_details() const;
-    std::vector<SliceDetail>& mutable_sorted_slice_details();
+    const std::vector<SliceDetail>& slice_details_sorted_by_start_time() const;
+    std::vector<SliceDetail>& mutable_slice_details_sorted_by_start_time();
     HloInstruction* concat() const { return concat_; }
 
     std::tuple<const Allocation&, const std::vector<SliceDetail>&,
