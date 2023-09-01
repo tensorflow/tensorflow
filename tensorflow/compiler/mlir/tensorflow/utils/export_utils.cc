@@ -79,7 +79,7 @@ std::set<std::string>* GlobalOpPrefixes() {
   return global_op_prefixes;
 }
 
-bool HasShardingAttribute(absl::string_view name_strref) {
+bool HasShardingAttribute(const std::string& name_strref) {
   return (!mlir::TF::kXlaShardingAttrName.compare(name_strref) ||
           !mlir::TF::kShardingAttrName.compare(name_strref) ||
           !mlir::TF::kManualShardingAttrName.compare(name_strref));
