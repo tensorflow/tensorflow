@@ -307,6 +307,8 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
       (options.device_target == TfrtDeviceInfraTarget::kTpurt);
   pipeline_options->target_gpu =
       (options.device_target == TfrtDeviceInfraTarget::kGpu);
+  pipeline_options->use_gpu_compile_and_execute_op =
+      options.use_gpu_compile_and_execute_op;
   pipeline_options->tpu_fuse_ops = options.tpu_fuse_ops;
   pipeline_options->use_tpu_host_allocator_for_inputs =
       options.use_tpu_host_allocator_for_inputs;
