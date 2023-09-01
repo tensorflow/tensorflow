@@ -366,6 +366,27 @@ PJRT_Error* PJRT_Client_LookupAddressableDevice(
   return nullptr;
 }
 
+PJRT_Error* PJRT_LoadedExecutable_Fingerprint(
+    PJRT_LoadedExecutable_Fingerprint_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_LoadedExecutable_Fingerprint_Args",
+      PJRT_LoadedExecutable_Fingerprint_Args_STRUCT_SIZE, args->struct_size));
+  const xla::Status& status = args->executable->fingerprint.status();
+  if (!status.ok()) {
+    return new PJRT_Error{status};
+  }
+  if (args->executable->fingerprint.value().has_value()) {
+    args->executable_fingerprint =
+        args->executable->fingerprint.value()->c_str();
+    args->executable_fingerprint_size =
+        args->executable->fingerprint.value()->size();
+  } else {
+    args->executable_fingerprint = nullptr;
+    args->executable_fingerprint_size = 0;
+  }
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Client_AddressableMemories(
     PJRT_Client_AddressableMemories_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
@@ -1989,6 +2010,8 @@ PJRT_Executable::PJRT_Executable(
 
 PJRT_LoadedExecutable::PJRT_LoadedExecutable(
     std::shared_ptr<xla::PjRtLoadedExecutable> executable, PJRT_Client* client)
-    : executable(std::move(executable)), client(client) {
+    : executable(std::move(executable)),
+      client(client),
+      fingerprint(client->client->ExecutableFingerprint(*this->executable)) {
   pjrt::PopulatePjrtExecutableAddressableDevices(this);
 }

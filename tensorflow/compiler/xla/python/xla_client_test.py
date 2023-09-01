@@ -215,8 +215,6 @@ def TestFactory(xla_backend,
           self.backend, computation.as_hlo_module())
       self.assertEqual(properties["flops"], 8.0)
 
-    # TODO(b/264472335): implement fingerprint for PJRT C API
-    @unittest.skipIf(pjrt_c_api, "not implemented")
     def testFingerprint(self):
       computation = self.ExampleComputation()
       executable = self.backend.compile(
