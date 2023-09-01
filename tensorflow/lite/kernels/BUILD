@@ -1895,6 +1895,7 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
