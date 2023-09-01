@@ -55,7 +55,6 @@ cc_library_with_tflite_with_c_headers_test(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     generate_opaque_delegate_target = True,
-    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
         ":c_api_without_op_resolver",
         "//tensorflow/lite/core/async/c:types",
