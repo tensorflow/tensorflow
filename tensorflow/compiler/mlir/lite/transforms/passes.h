@@ -229,6 +229,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePinOpsWithSideEffectsPass();
 // Legalize TensorList Ops iff all of them are supported.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTensorListPass();
 
+// Reduce the type precision of some tensor types if all values within that
+// tensor are within the range of the reduced precision.
+std::unique_ptr<OperationPass<ModuleOp>> CreateReduceTypePrecisionPass();
+
 // Creates a pass that brings operations into the same order as graph_info.cc.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePartitionedTopologicalSortPass();

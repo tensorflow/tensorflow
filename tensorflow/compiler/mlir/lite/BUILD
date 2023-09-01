@@ -652,6 +652,7 @@ cc_library(
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
         "transforms/raise_custom_ops.cc",
+        "transforms/reduce_type_precision.cc",
         "transforms/reduce_while_operands.cc",
         "transforms/runtime_verify.cc",
         "transforms/split_merged_operands.cc",

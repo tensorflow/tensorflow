@@ -47,7 +47,8 @@ struct PassConfig {
         enable_dynamic_update_slice(false),
         preserve_assert_op(false),
         enable_stablehlo_conversion(false),
-        legalize_custom_tensor_list_ops(false) {}
+        legalize_custom_tensor_list_ops(false),
+        reduce_type_precision(false) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -97,6 +98,11 @@ struct PassConfig {
   // Whether to convert `tf.TensorList*` to `tfl.custom_op` if they can all
   // be supported.
   bool legalize_custom_tensor_list_ops;
+  // Whether to convert some tensor types to a lower precision if all values
+  // within that tensor are within the range of the lower precision. This could
+  // have side effects e.g. reduced flatbuffer size. Only certain type
+  // conversions are supported.
+  bool reduce_type_precision;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -124,7 +130,9 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << "\nenable_stablehlo_conversion: "
             << pass_config.enable_stablehlo_conversion
             << "\nlegalize_custom_tensor_list_ops: "
-            << pass_config.legalize_custom_tensor_list_ops << "\n";
+            << pass_config.legalize_custom_tensor_list_ops
+            << "\nreduce_type_precision: " << pass_config.reduce_type_precision
+            << "\n";
 }
 
 }  // namespace TFL

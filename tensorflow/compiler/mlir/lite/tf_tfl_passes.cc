@@ -434,6 +434,11 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     }
     pass_manager->addPass(mlir::createCanonicalizerPass());
 
+    if (pass_config.reduce_type_precision ||
+        toco_flags.reduce_type_precision()) {
+      pass_manager->addPass(mlir::TFL::CreateReduceTypePrecisionPass());
+    }
+
     // This pass should be always at the end of the model
     // conversion (even after quantization). Some TFL ops like unidirectional
     // sequence lstm will have stateful operands and some optimization passes

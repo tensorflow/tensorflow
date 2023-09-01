@@ -216,6 +216,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_GATHER: {
+      if (op_sig.inputs.at(0).type == kTfLiteInt4) {
+        return 7;
+      }
       if (op_sig.inputs.at(1).type == kTfLiteInt16) {
         return 6;
       }
@@ -224,7 +227,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (gather_params && gather_params->batch_dims != 0) {
         return 5;
       }
-
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 4;
       }
@@ -1000,10 +1002,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 2;
     case BuiltinOperator_CAST:
-      if (op_sig.inputs.at(0).type == kTfLiteFloat64 ||
-          op_sig.outputs.at(0).type == kTfLiteFloat64 ||
-          op_sig.inputs.at(0).type == kTfLiteFloat16 ||
-          op_sig.outputs.at(0).type == kTfLiteFloat16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt4 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32) {
+        return 6;
+      } else if (op_sig.inputs.at(0).type == kTfLiteFloat64 ||
+                 op_sig.outputs.at(0).type == kTfLiteFloat64 ||
+                 op_sig.inputs.at(0).type == kTfLiteFloat16 ||
+                 op_sig.outputs.at(0).type == kTfLiteFloat16) {
         return 5;
       } else if (op_sig.inputs.at(0).type == kTfLiteUInt16 ||
                  op_sig.outputs.at(0).type == kTfLiteUInt16) {

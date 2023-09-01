@@ -659,6 +659,7 @@ class TFLiteConverterBase:
     self._experimental_variable_quantization = False
     self._experimental_disable_fuse_mul_and_fc = False
     self._experimental_use_buffer_offset = False
+    self._experimental_reduce_type_precision = False
 
     # Debug parameters
     self.mlir_dump_dir = None
@@ -810,6 +811,7 @@ class TFLiteConverterBase:
             self.mlir_elide_elementsattrs_if_larger
         ),
         "use_buffer_offset": self._experimental_use_buffer_offset,
+        "reduce_type_precision": self._experimental_reduce_type_precision,
     }
 
     if self.saved_model_dir:
