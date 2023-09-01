@@ -134,6 +134,9 @@ cc_library_with_tflite_with_c_headers_test(
     ],
     copts = tflite_copts() + tflite_copts_warnings(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    tflite_deps = [
+        ":c_api_without_op_resolver",
+    ],
     deps = ["//tensorflow/lite/core/c:c_api_experimental_without_op_resolver"],
 )
 
@@ -147,6 +150,9 @@ cc_library_with_tflite_with_c_headers_test(
     ],
     copts = tflite_copts() + tflite_copts_warnings(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    tflite_deps = [
+        ":c_api_without_op_resolver_without_alwayslink",
+    ],
     deps = ["//tensorflow/lite/core/c:c_api_experimental_without_op_resolver_without_alwayslink"],
 )
 
