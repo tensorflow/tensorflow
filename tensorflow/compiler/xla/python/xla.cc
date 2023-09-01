@@ -454,13 +454,7 @@ static void Init(py::module_& m) {
                &PyClient::MakePythonCallbackUsingHostSendAndRecv),
            py::arg("callable"), py::arg("operand_shapes"),
            py::arg("result_shapes"), py::arg("send_channel_ids"),
-           py::arg("recv_channel_ids"), py::arg("serializer") = py::none())
-      // Deprecated: please use `get_emit_python_callback_descriptor` instead.
-      .def("emit_python_callback",
-           xla::ValueOrThrowWrapper(&PyClient::EmitPythonCallback),
-           py::arg("callable"), py::arg("builder"), py::arg("operands"),
-           py::arg("result_shapes"), py::arg("operand_layouts") = std::nullopt,
-           py::arg("has_side_effects") = false);
+           py::arg("recv_channel_ids"), py::arg("serializer") = py::none());
 
   m.def(
       "get_tfrt_cpu_client",
