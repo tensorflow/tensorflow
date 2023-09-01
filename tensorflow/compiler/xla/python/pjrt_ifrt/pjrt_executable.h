@@ -16,21 +16,37 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_PJRT_IFRT_PJRT_EXECUTABLE_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PJRT_IFRT_PJRT_EXECUTABLE_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
+#include "tensorflow/compiler/xla/python/ifrt/device.h"
+#include "tensorflow/compiler/xla/python/ifrt/dtype.h"
 #include "tensorflow/compiler/xla/python/ifrt/executable.h"
+#include "tensorflow/compiler/xla/python/ifrt/future.h"
 #include "tensorflow/compiler/xla/python/ifrt/host_callback.h"
+#include "tensorflow/compiler/xla/python/ifrt/shape.h"
+#include "tensorflow/compiler/xla/python/ifrt/sharding.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_host_callback.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
@@ -262,7 +278,8 @@ class PjRtLoadedExecutable final
   static StatusOr<std::unique_ptr<LoadedExecutable>> CreateInternal(
       PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-      const xla::Shape& result_shape,
+      absl::Span<const xla::PrimitiveType> result_element_types,
+      absl::Span<const xla::DimensionVector> result_dimensions,
       const std::optional<xla::HloSharding>& result_hlo_sharding,
       const std::optional<std::vector<absl::string_view>>& result_memory_kinds,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);

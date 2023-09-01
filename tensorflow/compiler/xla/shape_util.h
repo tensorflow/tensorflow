@@ -272,6 +272,9 @@ class ShapeUtil {
   static bool IsScalarWithElementType(const Shape& shape,
                                       PrimitiveType element_type);
 
+  // Creates a `DimensionVector` by copying dimensions from a given shape.
+  static DimensionVector CreateDimensionVectorFromShape(const Shape& shape);
+
   // Extracts the size of the shape's dimension at dimension number
   // GetDimensionNumber(dimension_number).
   static int64_t GetDimension(const Shape& shape, int64_t dimension_number);
