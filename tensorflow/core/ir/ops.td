@@ -21,12 +21,12 @@ include "tensorflow/core/ir/interfaces.td"
 include "tensorflow/core/ir/types/attributes.td"
 include "tensorflow/core/ir/types/types.td"
 
-include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 //===----------------------------------------------------------------------===//
@@ -87,7 +87,7 @@ def TFGraph_GraphOp : TFG_IntrinsicOp<"graph",
 
 
 def TFGraph_GraphFuncOp : TFG_IntrinsicOp<"func", [
-    RegionKindInterface, HasOnlyGraphRegion, SingleBlock, CallableOpInterface,
+    RegionKindInterface, HasOnlyGraphRegion, SingleBlock,
     FunctionOpInterface, IsolatedFromAbove, Symbol, OpAsmOpInterface,
     DeclareOpInterfaceMethods<ControlArgumentInterface>]> {
   let summary = "Define a function as modeled by FunctionDef.";
@@ -182,31 +182,15 @@ def TFGraph_GraphFuncOp : TFG_IntrinsicOp<"func", [
       return isExternal() ? nullptr : &this->getRegion();
     }
 
-    // Returns the results types that the callable region produces when
-    // executed.
-    ArrayRef<Type> getCallableResults() { return getFunctionType().getResults(); }
-
-    /// Returns the argument attributes for all callable region arguments or
-    /// null if there are none.
-    ::mlir::ArrayAttr getCallableArgAttrs() {
-      return getArgAttrs().value_or(nullptr);
-    }
-
-    /// Returns the result attributes for all callable region results or
-    /// null if there are none.
-    ::mlir::ArrayAttr getCallableResAttrs() {
-      return getResAttrs().value_or(nullptr);
-    }
-
-    //===------------------------------------------------------------------===//
-    // FunctionOpInterface Methods
-    //===------------------------------------------------------------------===//
-
     /// Returns the argument types of this function.
     ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
 
     /// Returns the result types of this function.
     ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
+
+    //===------------------------------------------------------------------===//
+    // FunctionOpInterface Methods
+    //===------------------------------------------------------------------===//
 
     LogicalResult verifyType();
     LogicalResult verifyBody();

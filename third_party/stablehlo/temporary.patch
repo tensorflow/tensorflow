@@ -997,6 +997,55 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +}  // namespace mlir
 +
 +#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -56,7 +56,6 @@
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/Dialect.h"
+-#include "mlir/IR/FunctionInterfaces.h"
+ #include "mlir/IR/Location.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/Matchers.h"
+@@ -68,6 +67,7 @@
+ #include "mlir/IR/TypeUtilities.h"
+ #include "mlir/IR/Types.h"
+ #include "mlir/IR/Value.h"
++#include "mlir/Interfaces/FunctionInterfaces.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/InliningUtils.h"
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.cpp b/stablehlo/stablehlo/dialect/VhloOps.cpp
+--- stablehlo/stablehlo/dialect/VhloOps.cpp
++++ stablehlo/stablehlo/dialect/VhloOps.cpp
+@@ -29,11 +29,11 @@
+ #include "mlir/IR/BuiltinAttributeInterfaces.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinTypes.h"
+-#include "mlir/IR/FunctionImplementation.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/OpImplementation.h"
+ #include "mlir/IR/TypeUtilities.h"
+ #include "mlir/IR/Value.h"
++#include "mlir/Interfaces/FunctionImplementation.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/AssemblyFormat.h"
+ #include "stablehlo/dialect/VhloBytecode.h"
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.h b/stablehlo/stablehlo/dialect/VhloOps.h
+--- stablehlo/stablehlo/dialect/VhloOps.h
++++ stablehlo/stablehlo/dialect/VhloOps.h
+@@ -20,9 +20,9 @@
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Dialect.h"
+ #include "mlir/IR/DialectImplementation.h"
+-#include "mlir/IR/FunctionInterfaces.h"
+ #include "mlir/IR/Location.h"
+ #include "mlir/IR/MLIRContext.h"
++#include "mlir/Interfaces/FunctionInterfaces.h"
+ #include "stablehlo/dialect/Version.h"
+ #include "stablehlo/dialect/VhloTypes.h"
+ 
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 --- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
