@@ -138,7 +138,7 @@ message FreezeAllVariables {
 }
 
 // Defines various calibration options.
-// NEXT ID: 2
+// NEXT ID: 3
 message CalibrationOptions {
   // Configurations for calibration methods.
   // NEXT ID: 3
@@ -150,9 +150,30 @@ message CalibrationOptions {
     CALIBRATION_METHOD_AVERAGE_MIN_MAX = 2;
   }
 
+  // Parameters required for calibration.
+  // NEXT ID: 4
+  message CalibrationParameters {
+    // The number of bins when histogram is initialized. It can be increased
+    // because histogram is dynamically expanded by sample inputs.
+    // initial_num_bins is default set to 256
+    int32 initial_num_bins = 1;
+    // min_percentile is only used in HISTOGRAM_PERCENTILE.
+    // min_percentile default set to 0.001
+    float min_percentile = 2;
+    // max_percentile is only used in HISTOGRAM_PERCENTILE.
+    // max_percentile is default set to 99.999
+    float max_percentile = 3;
+  }
+
   // Determines how to calibrate.
   // The default calibration method is MIN_MAX.
   CalibrationMethod calibration_method = 1;
+
+  // Defines the parameters required for calibration. Parameters such as the
+  // number of bins in the histogram and percentile belong to it.
+  // MIN_MAX and AVERAGE_MIN_MAX don't require this parameter and methods
+  // starting with HISTOGRAM require this parameter.
+  CalibrationParameters calibration_parameters = 2;
 }
 
 // The data format of each sample in the representative dataset.

@@ -141,11 +141,23 @@ class AddCustomAggregationOp : public RewritePattern {
       }
 
       // ID attribute will have empty value for now.
-      SmallVector<NamedAttribute, 2> attributes{
+      SmallVector<NamedAttribute, 5> attributes{
           rewriter.getNamedAttr("id", rewriter.getStringAttr("")),
           rewriter.getNamedAttr(
-              "serialized_calibration_options",
-              rewriter.getStringAttr(calib_opts_.SerializeAsString())),
+              "calibration_method",
+              rewriter.getI32IntegerAttr(calib_opts_.calibration_method())),
+          rewriter.getNamedAttr(
+              "initial_num_bins",
+              rewriter.getI32IntegerAttr(
+                  calib_opts_.calibration_parameters().initial_num_bins())),
+          rewriter.getNamedAttr(
+              "min_percentile",
+              rewriter.getF32FloatAttr(
+                  calib_opts_.calibration_parameters().min_percentile())),
+          rewriter.getNamedAttr(
+              "max_percentile",
+              rewriter.getF32FloatAttr(
+                  calib_opts_.calibration_parameters().max_percentile())),
       };
 
       // Insert custom aggregation op between operand and operator.
