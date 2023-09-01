@@ -660,7 +660,8 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
     xla::PyArray py_array(
         result_spec.out_aval, result_spec.weak_type, cache_entry.out_dtypes[i],
         cache_entry.out_shapes[i], cache_entry.out_array_shardings[i], client,
-        traceback, std::move(output_arrays[i]), cache_entry.out_committed[i]);
+        traceback, std::move(output_arrays[i]), cache_entry.out_committed[i],
+        /*skip_checks=*/true);
 
     flat_sharded_device_arrays.push_back(std::move(py_array));
   }
