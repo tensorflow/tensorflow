@@ -61,7 +61,7 @@ fi
 # Never useful for outside users. Requires that the Kokoro job define a gfile
 # resource pointing to copybara.sh, which is then loaded into the GFILE_DIR.
 # See: cs/official/copybara.sh
-if [[ "$TFCI_COPYBARA_ENABLE" == 1 && "$TFCI_COPYBARA_COMPLETE" != 1 ]]; then
+if [[ "$TFCI_COPYBARA_ENABLE" == 1 && "${TFCI_COPYBARA_COMPLETE:-}" != 1 ]]; then
   if [[ -e "$KOKORO_GFILE_DIR/copybara.sh" ]]; then
     source "$KOKORO_GFILE_DIR/copybara.sh"
   else
