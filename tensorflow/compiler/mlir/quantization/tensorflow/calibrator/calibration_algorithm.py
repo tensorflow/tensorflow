@@ -15,6 +15,8 @@
 """Defines CalibrationAlgorithm for calculating min and max values calculated by calibration method."""
 import abc
 
+import numpy as np
+
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2 as calib_stats_pb2
 
@@ -46,6 +48,40 @@ class _CalibrationAlgorithmBase(abc.ABC):
   @abc.abstractmethod
   def get_min_max_value(self) -> tuple[float, float]:
     pass
+
+
+class _HistogramCalibrationAlgorithmBase(_CalibrationAlgorithmBase):
+  """Base class for histogram calibrators."""
+
+  def __init__(
+      self,
+      statistics: calib_stats_pb2.CalibrationStatistics,
+      calib_opts: quant_opts_pb2.CalibrationOptions,
+  ):
+    """Builds histogram using statistics.histogram_statistics.
+
+    lower_bound                                    hist_mid
+         v                                            v
+         |=========|=========|=========|=========|=========|
+                    bin width
+
+    Args:
+      statistics: Collected calibration statistics.
+      calib_opts: Calibration options used for calculating min and max.
+    """
+    super().__init__(statistics, calib_opts)
+    hist_stats = statistics.histogram_statistics
+    self._bin_width = hist_stats.bin_width
+    self._lower_bound = hist_stats.lower_bound
+    self._hist_freq = np.array(hist_stats.hist_freq)
+    self._num_bins = len(self._hist_freq)
+    # i-th bin has a range [bins[i], bins[i + 1]).
+    # bins[i] = lower_bound + i * bin_width
+    # bins[i + 1] = lower_bound + (i + 1) * bin_width
+    # So hist_mids[i] = (lower_bound + bin_width / 2) + bin_width * i
+    first_mid = self._lower_bound + self._bin_width / 2
+    last_mid = first_mid + (self._num_bins - 1) * self._bin_width
+    self._hist_mids = np.linspace(first_mid, last_mid, self._num_bins)
 
 
 @_implements(_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX)
@@ -100,6 +136,55 @@ class _AverageMinMax(_CalibrationAlgorithmBase):
     min_value, max_value = (
         average_min_max_statistics.min_sum / num_samples,
         average_min_max_statistics.max_sum / num_samples,
+    )
+
+    return min_value, max_value
+
+
+@_implements(_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE)
+class _HistogramPercentile(_HistogramCalibrationAlgorithmBase):
+  """HistogramPercentile for calculating min and max values of calibration result."""
+
+  def get_min_max_value(self) -> tuple[float, float]:
+    """Calculates min and max from statistics using calibration options.
+
+    A "percentile" is a statistical concept that represents the value below
+    which a given percentage of data falls in a dataset. It involves sorting the
+    data from smallest to largest and then finding the value at a specified
+    percentage position. For example, the 0.01 percentile represents the value
+    in a given data set that corresponds to the lowest 0.01% of the data.
+
+    HistogramPercentile calibration uses min_percentile and max_percentile to
+    find min and max.
+
+    min_percentile and max_percentile must be in range [0, 100].
+    min_percentile is 0.001 by default.
+    max_percentile is 99.999 by default.
+
+    Returns:
+      (min_value, max_value): Min and max calculated using HistogramPercentile
+    """
+    total_freq = sum(self._hist_freq)
+    # hist_freq_cumsum is dividing cumulative sum of hist_freq by total_freq
+    # hist_freq_cumsum's value is in range [0, 1] by its definition
+    hist_freq_cumsum = np.cumsum(self._hist_freq) / total_freq
+
+    # min_percentile and max_percentile are converted from [0, 100] to [0, 1].
+    min_quantile, max_quantile = (
+        self._calib_opts.calibration_parameters.min_percentile / 100.0,
+        self._calib_opts.calibration_parameters.max_percentile / 100.0,
+    )
+
+    # Get index of min/max quantile.
+    min_quantile_idx, max_quantile_idx = (
+        np.searchsorted(hist_freq_cumsum, min_quantile, side='right'),
+        np.searchsorted(hist_freq_cumsum, max_quantile, side='left'),
+    )
+
+    # Get value of min/max quantile index.
+    min_value, max_value = (
+        self._hist_mids[min_quantile_idx],
+        self._hist_mids[max_quantile_idx],
     )
 
     return min_value, max_value

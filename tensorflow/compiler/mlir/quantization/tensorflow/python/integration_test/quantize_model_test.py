@@ -2209,9 +2209,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(
         converted_model.signatures._signatures.keys(), {'serving_default'}
     )
-    loader = saved_model_loader.SavedModelLoader(
-        self._output_saved_model_path
-    )
+    loader = saved_model_loader.SavedModelLoader(self._output_saved_model_path)
     output_graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
     if target_opset == quant_opts_pb2.XLA:
       self.assertTrue(self._contains_op(output_graphdef, 'XlaDotV2'))
@@ -5843,6 +5841,36 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
           ),
       },
+      {
+          'testcase_name': 'with_histogram_percentile',
+          'target_opset': quant_opts_pb2.TF,
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=10,
+              ),
+          ),
+      },
+      {
+          'testcase_name': 'with_histogram_percentile_to_xla',
+          'target_opset': quant_opts_pb2.XLA,
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=10,
+              ),
+          ),
+      },
+      {
+          'testcase_name': 'with_histogram_percentile_to_uq',
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=10,
+              ),
+          ),
+      },
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model_by_calibration_options(
@@ -5864,14 +5892,11 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
     saved_model_save.save(model, self._input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(8):
-        yield {
-            'input_tensor': ops.convert_to_tensor(
-                np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype(
-                    'f4'
-                )
-            ),
-        }
+      yield {
+          'input_tensor': ops.convert_to_tensor(
+              np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype('f4')
+          ),
+      }
 
     tags = {tag_constants.SERVING}
 
@@ -5970,109 +5995,48 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
           ),
       },
+      {
+          'testcase_name': 'with_histogram_percentile',
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE
+          ),
+          'default_calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=256,
+                  min_percentile=0.001,
+                  max_percentile=99.999,
+              ),
+          ),
+      },
   )
   @test_util.run_in_graph_and_eager_modes
-  def test_conv_ptq_model_default_calibration_options(
+  def test_default_calibration_options(
       self,
       calibration_options: quant_opts_pb2.CalibrationOptions,
       default_calibration_options: quant_opts_pb2.CalibrationOptions,
   ):
-    input_shape = [1, 3, 4, 3]
-    filter_shape = [2, 3, 3, 2]
-    activation_fn = nn_ops.relu
-    has_bias = True
-    has_batch_norm = True
-    target_opset = quant_opts_pb2.XLA
-    model = self._create_conv2d_model(
-        input_shape, filter_shape, has_bias, has_batch_norm, activation_fn
+    quant_opts = quant_opts_pb2.QuantizationOptions(
+        calibration_options=calibration_options
     )
-    saved_model_save.save(model, self._input_saved_model_path)
+    quantize_model._populate_calibration_options(quant_opts)
 
-    def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(8):
-        yield {
-            'input_tensor': ops.convert_to_tensor(
-                np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype(
-                    'f4'
-                )
-            ),
-        }
-
-    tags = {tag_constants.SERVING}
-
-    quantization_options = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.STATIC_RANGE
-        ),
-        tags=tags,
-        signature_keys=['serving_default'],
-        op_set=target_opset,
-        enable_per_channel_quantization=False,
-        calibration_options=calibration_options,
+    self.assertEqual(
+        quant_opts.calibration_options.calibration_method,
+        default_calibration_options.calibration_method,
     )
-
-    converted_model = quantize_model.quantize(
-        self._input_saved_model_path,
-        self._output_saved_model_path,
-        quantization_options,
-        representative_dataset=data_gen(),
-        overwrite_output_directory=True,
+    self.assertEqual(
+        quant_opts.calibration_options.calibration_parameters.initial_num_bins,
+        default_calibration_options.calibration_parameters.initial_num_bins,
     )
-
-    self.assertIsNotNone(converted_model)
-    self.assertCountEqual(
-        converted_model.signatures._signatures.keys(),
-        {'serving_default'},
+    self.assertEqual(
+        quant_opts.calibration_options.calibration_parameters.min_percentile,
+        default_calibration_options.calibration_parameters.min_percentile,
     )
-
-    quantization_options_default = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.STATIC_RANGE
-        ),
-        tags=tags,
-        signature_keys=['serving_default'],
-        op_set=target_opset,
-        enable_per_channel_quantization=False,
-        calibration_options=default_calibration_options,
+    self.assertEqual(
+        quant_opts.calibration_options.calibration_parameters.max_percentile,
+        default_calibration_options.calibration_parameters.max_percentile,
     )
-
-    converted_model_default = quantize_model.quantize(
-        self._input_saved_model_path,
-        self._output_saved_model_path,
-        quantization_options_default,
-        representative_dataset=data_gen(),
-        overwrite_output_directory=True,
-    )
-
-    self.assertIsNotNone(converted_model_default)
-    self.assertCountEqual(
-        converted_model_default.signatures._signatures.keys(),
-        {'serving_default'},
-    )
-
-    sample_input = ops.convert_to_tensor(
-        np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype('f4')
-    )
-
-    original_output = converted_model.signatures['serving_default'](
-        input_tensor=sample_input
-    )['output']
-    default_output = converted_model_default.signatures['serving_default'](
-        input_tensor=sample_input
-    )['output']
-
-    def get_mean_square_error(x, y):
-      ret = tensorflow.reduce_mean(tensorflow.square(tensorflow.subtract(x, y)))
-      try:
-        ret = ret.numpy()
-      except AttributeError:
-        ret = ret.eval()
-      return ret
-
-    original_mse = get_mean_square_error(original_output, default_output)
-    average_min_max_mse = get_mean_square_error(original_output, default_output)
-
-    self.assertEqual(original_mse, average_min_max_mse)
 
   @parameterized.named_parameters(
       {

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_average_min_max.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_histogram.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_min_max.h"
 #include "tensorflow/core/framework/tensor.h"
 
@@ -118,6 +119,11 @@ void CalibratorSingleton::AssignIfNotExists(
       case CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX:
         instance.id_to_collector_[id_str] =
             std::make_unique<CalibrationStatisticsCollectorAverageMinMax>();
+        break;
+      case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE:
+        instance.id_to_collector_[id_str] =
+            std::make_unique<CalibrationStatisticsCollectorHistogram>(
+                calib_opts);
         break;
       case CalibrationOptions::CALIBRATION_METHOD_MIN_MAX:
       default:

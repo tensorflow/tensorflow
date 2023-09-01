@@ -1209,6 +1209,17 @@ def _populate_calibration_options(
         _CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
     )
 
+  if (
+      calib_opts.calibration_method
+      == _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE
+  ):
+    if not calib_opts.calibration_parameters.initial_num_bins:
+      calib_opts.calibration_parameters.initial_num_bins = 256
+    if not calib_opts.calibration_parameters.min_percentile:
+      calib_opts.calibration_parameters.min_percentile = 0.001
+    if not calib_opts.calibration_parameters.max_percentile:
+      calib_opts.calibration_parameters.max_percentile = 99.999
+
 
 def _populate_quantization_options_default_values(
     quantization_options: _QuantizationOptions,

@@ -39,6 +39,7 @@ cc_library(
     deps = [
         ":calibration_statistics_collector_average_min_max",
         ":calibration_statistics_collector_base",
+        ":calibration_statistics_collector_histogram",
         ":calibration_statistics_collector_min_max",
         ":calibration_statistics_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -104,6 +105,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "calibration_statistics_collector_histogram",
+    srcs = ["calibration_statistics_collector_histogram.cc"],
+    hdrs = ["calibration_statistics_collector_histogram.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":calibration_statistics_collector_base",
+        ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+    ],
+)
+
 pytype_strict_library(
     name = "calibration_algorithm",
     srcs = ["calibration_algorithm.py"],
@@ -122,6 +135,8 @@ pytype_strict_contrib_test(
         ":calibration_statistics_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

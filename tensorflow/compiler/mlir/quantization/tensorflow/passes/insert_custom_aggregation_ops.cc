@@ -83,6 +83,7 @@ class InsertCustomAggregationOpsPass
   enum TestCase {
     TEST_CASE_MIN_MAX,
     TEST_CASE_AVERAGE_MIN_MAX,
+    TEST_CASE_HISTOGRAM_PERCENTILE,
   };
 
   bool test_mode_;
@@ -93,10 +94,13 @@ class InsertCustomAggregationOpsPass
           "Select a the test case for testing various calibration methods. It "
           "sets the value of calib_opts_ when test_mode_ is true."),
       llvm::cl::init(TEST_CASE_MIN_MAX),
-      llvm::cl::values(clEnumValN(TEST_CASE_MIN_MAX, "MIN_MAX",
-                                  "Uses MIN_MAX calibration method"),
-                       clEnumValN(TEST_CASE_AVERAGE_MIN_MAX, "AVERAGE_MIN_MAX",
-                                  "Uses AVERAGE_MIN_MAX calibration method"))};
+      llvm::cl::values(
+          clEnumValN(TEST_CASE_MIN_MAX, "MIN_MAX",
+                     "Uses MIN_MAX calibration method"),
+          clEnumValN(TEST_CASE_AVERAGE_MIN_MAX, "AVERAGE_MIN_MAX",
+                     "Uses AVERAGE_MIN_MAX calibration method"),
+          clEnumValN(TEST_CASE_HISTOGRAM_PERCENTILE, "HISTOGRAM_PERCENTILE",
+                     "Uses HISTOGRAM_PERCENTILE calibration method"))};
 };
 
 static PassRegistration<InsertCustomAggregationOpsPass> pass;
@@ -195,6 +199,17 @@ void InsertCustomAggregationOpsPass::runOnOperation() {
       case TEST_CASE_AVERAGE_MIN_MAX:
         calib_opts_.set_calibration_method(
             CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX);
+        break;
+      case TEST_CASE_HISTOGRAM_PERCENTILE:
+        calib_opts_.set_calibration_method(
+            CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE);
+        auto calibration_parameters =
+            CalibrationOptions::CalibrationParameters();
+        calibration_parameters.set_initial_num_bins(256);
+        calibration_parameters.set_min_percentile(0.001);
+        calibration_parameters.set_max_percentile(99.999);
+        calib_opts_.mutable_calibration_parameters()->CopyFrom(
+            calibration_parameters);
         break;
     }
   }
