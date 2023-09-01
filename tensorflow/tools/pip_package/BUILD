@@ -170,6 +170,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/summary:summary_py",
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
+    "//tensorflow/python/tools/api/generator2/extractor:extractor",
     "//tensorflow/python/tpu",
     "//tensorflow/python/util:deprecated_module",
     "//tensorflow/python/util:deprecated_module_new",

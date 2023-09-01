@@ -12,16 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-from tensorflow.python.platform import test
-from tensorflow.python.tools.api.generator2.extractor import parser
+from absl.testing import absltest
+
+from tensorflow.python.tools.api.generator2.extractor import extractor
 from tensorflow.python.tools.api.generator2.shared import exported_api
 
 
-class ParserTest(test.TestCase):
+class ParserTest(absltest.TestCase):
 
   def test_exported_docstring(self):
     exporter = exported_api.ExportedApi()
-    p = parser.Parser(
+    p = extractor.Parser(
         exporter,
         decorator='tf.tf_export',
         api_name='tf',
@@ -58,13 +59,13 @@ API docstring: tf_estimator.test2
 
   def test_exported_docstring_not_at_top_level(self):
     exporter = exported_api.ExportedApi()
-    p = parser.Parser(
+    p = extractor.Parser(
         exporter,
         decorator='tf.tf_export',
         api_name='tf',
     )
     self.assertRaisesRegex(
-        parser.BadExportError,
+        extractor.BadExportError,
         'test.py:3',
         lambda: p.process(  # pylint: disable=g-long-lambda
             'test.py',
@@ -79,7 +80,7 @@ def a():  # 2
 
   def test_exported_symbol(self):
     exporter = exported_api.ExportedApi()
-    p = parser.Parser(
+    p = extractor.Parser(
         exporter,
         decorator='extractor.api_export.tf_export',
         api_name='tf',
@@ -164,13 +165,13 @@ def _not_exported():  # 23
 
   def test_exported_symbol_not_at_top_level(self):
     exporter = exported_api.ExportedApi()
-    p = parser.Parser(
+    p = extractor.Parser(
         exporter,
         decorator='tf.tf_export',
         api_name='tf',
     )
     self.assertRaisesRegex(
-        parser.BadExportError,
+        extractor.BadExportError,
         'test.py:4',
         lambda: p.process(  # pylint: disable=g-long-lambda
             'test.py',
@@ -184,13 +185,13 @@ def method():  # 3
 
   def test_exported_symbol_not_applied(self):
     exporter = exported_api.ExportedApi()
-    p = parser.Parser(
+    p = extractor.Parser(
         exporter,
         decorator='tf.tf_export',
         api_name='tf',
     )
     self.assertRaisesRegex(
-        parser.BadExportError,
+        extractor.BadExportError,
         'test.py:3',
         lambda: p.process(  # pylint: disable=g-long-lambda
             'test.py',
@@ -203,13 +204,13 @@ tf_export("a")  # 3
 
   def test_exported_symbol_non_literal_args(self):
     exporter = exported_api.ExportedApi()
-    p = parser.Parser(
+    p = extractor.Parser(
         exporter,
         decorator='tf.tf_export',
         api_name='tf',
     )
     self.assertRaisesRegex(
-        parser.BadExportError,
+        extractor.BadExportError,
         'test.py:3',
         lambda: p.process(  # pylint: disable=g-long-lambda
             'test.py',
@@ -222,13 +223,13 @@ tf_export(a)(b)  # 3
 
   def test_exported_symbol_unknown_args(self):
     exporter = exported_api.ExportedApi()
-    p = parser.Parser(
+    p = extractor.Parser(
         exporter,
         decorator='tf.tf_export',
         api_name='tf',
     )
     self.assertRaisesRegex(
-        parser.BadExportError,
+        extractor.BadExportError,
         'test.py:3',
         lambda: p.process(  # pylint: disable=g-long-lambda
             'test.py',
@@ -241,13 +242,13 @@ tf_export(a)(b)  # 3
 
   def test_exported_symbol_includes_module(self):
     exporter = exported_api.ExportedApi()
-    p = parser.Parser(
+    p = extractor.Parser(
         exporter,
         decorator='tf.tf_export',
         api_name='tf',
     )
     self.assertRaisesRegex(
-        parser.BadExportError,
+        extractor.BadExportError,
         'test.py:3',
         lambda: p.process(  # pylint: disable=g-long-lambda
             'test.py',
@@ -260,4 +261,4 @@ tf_export(a)(x.b)  # 3
 
 
 if __name__ == '__main__':
-  test.main()
+  absltest.main()

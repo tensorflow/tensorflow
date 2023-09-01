@@ -112,7 +112,7 @@ api_extractor = aspect(
     # required_providers = [PyInfo],
     attrs = {
         "_extractor_bin": attr.label(
-            default = Label("//tensorflow/python/tools/api/generator2/extractor:extractor"),
+            default = Label("//tensorflow/python/tools/api/generator2/extractor:main"),
             executable = True,
             cfg = "exec",
         ),
