@@ -13,29 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_TF_DEVICE_CONTEXT_C_API_CONVERSIONS_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_TF_DEVICE_CONTEXT_C_API_CONVERSIONS_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_TF_DEVICE_CONTEXT_C_API_INTERNAL_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_TF_DEVICE_CONTEXT_C_API_INTERNAL_H_
 
 #include <memory>
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_device_context_c_api.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/rendezvous.h"
 
 namespace tensorflow {
 
-void CopyTF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
-TF_Tensor* CopyTensorToTF_Tensor(const Tensor& src);
-
-struct TF_DeviceContext_Deleter {
-  void operator()(TF_DeviceContext* c_device_context);
-};
-
-TF_DeviceContext* DeviceContext_ToC(DeviceContext* device_context);
-
 DeviceContext* DeviceContext_FromC(TF_DeviceContext* c_device_context);
-
-void DeviceContext_Destroy(TF_DeviceContext* c_device_context);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_TF_DEVICE_CONTEXT_C_API_CONVERSIONS_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_TF_DEVICE_CONTEXT_C_API_INTERNAL_H_

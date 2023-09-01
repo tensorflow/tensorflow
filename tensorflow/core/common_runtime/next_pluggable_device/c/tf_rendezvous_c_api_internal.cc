@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_device_context_c_api.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_device_context_c_api_conversions.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_device_context_c_api_internal.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device_base.h"
