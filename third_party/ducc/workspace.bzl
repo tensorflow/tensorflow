@@ -10,10 +10,10 @@ def repo():
         strip_prefix = "ducc-{commit}".format(commit = DUCC_COMMIT),
         sha256 = DUCC_SHA256,
         urls = tf_mirror_urls("https://gitlab.mpcdf.mpg.de/mtr/ducc/-/archive/{commit}/ducc-{commit}.tar.gz".format(commit = DUCC_COMMIT)),
-        build_file = "@//third_party/ducc:ducc.BUILD",
+        build_file = "//third_party/ducc:ducc.BUILD",
         link_files = {
-            "@//third_party/ducc:ducc0_custom_lowlevel_threading.h": "google/ducc0_custom_lowlevel_threading.h",
-            "@//third_party/ducc:threading.h": "google/threading.h",
-            "@//third_party/ducc:threading.cc": "google/threading.cc",
+            "//third_party/ducc:ducc0_custom_lowlevel_threading.h": "google/ducc0_custom_lowlevel_threading.h",
+            "//third_party/ducc:threading.h": "google/threading.h",
+            "//third_party/ducc:threading.cc": "google/threading.cc",
         },
     )
