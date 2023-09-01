@@ -52,8 +52,12 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
   tsl::OneDnnThreadPool thread_pool(
       run_options->intra_op_thread_pool()->getPool(), false);
   engine cpu_engine(engine::kind::cpu, 0);
-  auto tp_stream =
+#ifndef ENABLE_ONEDNN_OPENMP
+  auto onednn_stream =
       stream(dnnl::threadpool_interop::make_stream(cpu_engine, &thread_pool));
+#else
+  auto onednn_stream = stream(cpu_engine);
+#endif  // ENABLE_ONEDNN_OPENMP
 
   MemrefInfo lhs_minfo(lhs);
   MemrefInfo rhs_minfo(rhs);
@@ -84,7 +88,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
   matmul_args.insert({DNNL_ARG_WEIGHTS, weights_mem});
   matmul_args.insert({DNNL_ARG_DST, dst_mem});
 
-  matmul_prim.execute(tp_stream, matmul_args);
+  matmul_prim.execute(onednn_stream, matmul_args);
 }
 
 }  // namespace cpu
