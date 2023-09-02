@@ -65,14 +65,14 @@ class CUDABlas : public blas::BlasSupport {
 
   BlasLt &blas_lt() { return blas_lt_; }
 
+ private:
   // Tells cuBLAS to enqueue the BLAS operation onto a particular Stream.
   //
   // cuBLAS is stateful, and only be associated with one stream (in order to
   // enqueue dispatch) at a given time. As a result, this generally must be
   // invoked before calling into cuBLAS.
-  bool SetStream(Stream *stream) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) override;
+  bool SetStream(Stream *stream) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
- private:
   // Returns the underlying CUDA stream.
   cudaStream_t CUDAStream(Stream *stream);
 

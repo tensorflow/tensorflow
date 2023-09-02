@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
-#include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/tsl/profiler/lib/profiler_lock.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 #include "tensorflow/tsl/profiler/lib/traceme_encode.h"
@@ -435,6 +434,14 @@ static absl::StatusOr<OwnedGpuGraph> CaptureGraph(
   // executables.
   se::StreamExecutor* executor = run_options->stream()->parent();
 
+  // Initialize (with memoization) BlasSupport here because cublasCreate fails
+  // during gpu graph capturing.
+  if (function_ref.RequiresBlas()) {
+    if (!executor->AsBlas()) {
+      return absl::InternalError("Failed to initialize BLAS support");
+    }
+  }
+
   StatusOr<StreamPool::Ptr> capture_stream =
       run_options->BorrowStream(executor->device_ordinal());
 
@@ -442,20 +449,6 @@ static absl::StatusOr<OwnedGpuGraph> CaptureGraph(
     return absl::InternalError(
         absl::StrFormat("Failed to borrow a stream for graph capture: %s",
                         capture_stream.status().message()));
-
-  // Initialize (with memoization) BlasSupport here because cublasCreate fails
-  // during gpu graph capturing.
-  if (function_ref.RequiresBlas()) {
-    // Initialize BlasSupport if not yet initialized.
-    se::blas::BlasSupport* blas_support = executor->AsBlas();
-    if (!blas_support) {
-      return absl::InternalError("Failed to initialize BLAS support");
-    }
-
-    // Set stream for cublas here to avoid calling cublasSetStream for every
-    // gemm call.
-    blas_support->SetStream(capture_stream->get());
-  }
 
   TraceMe trace([&] {
     return TraceMeEncode("gpu.graph.capture",

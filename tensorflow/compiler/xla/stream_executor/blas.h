@@ -484,8 +484,6 @@ class BlasSupport {
                                  DeviceMemory<std::complex<double> *> *bs,
                                  int ldb, int batch_count) = 0;
 
-  virtual bool SetStream(Stream *stream) = 0;
-
   virtual tsl::Status GetVersion(std::string *version) = 0;
 
  protected:

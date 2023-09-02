@@ -23,7 +23,6 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/driver_types.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.h"
@@ -226,29 +225,6 @@ bool CUDABlas::SetStream(Stream *stream) {
   CHECK(AsGpuStreamValue(stream) != nullptr);
   CHECK(blas_ != nullptr);
   gpu::ScopedActivateExecutorContext sac{parent_};
-
-  cudaStream_t current_stream;
-  cublasStatus_t get_current_stream = cublasGetStream(blas_, &current_stream);
-  if (get_current_stream != CUBLAS_STATUS_SUCCESS) {
-    LOG(ERROR) << "failed to get current stream for cuBLAS calls: "
-               << ToString(get_current_stream);
-    return false;
-  }
-
-  if (current_stream == CUDAStream(stream)) {
-    // Do not set stream if it is already set.
-    return true;
-  }
-
-  // Check the set stream is not in capture mode.
-  CUstreamCaptureStatus capture_status;
-  cuStreamIsCapturing(CUDAStream(stream), &capture_status);
-  if (capture_status == CU_STREAM_CAPTURE_STATUS_ACTIVE) {
-    LOG(ERROR) << "cublasSetStream should not be called during graph capture, "
-                  "since it will reset cuBLAS workspace";
-    return false;
-  }
-
   cublasStatus_t ret = cublasSetStream(blas_, AsGpuStreamValue(stream));
   if (ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to set stream for cuBLAS calls: " << ToString(ret);
