@@ -17,6 +17,10 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_FULLY_CONNECTED_4BIT_H_
 #include <stdint.h>
 
+#ifndef TFLITE_MMAP_DISABLED
+#include <sys/mman.h>
+#endif
+
 #include <cstdlib>
 #include <memory>
 
@@ -36,19 +40,49 @@ constexpr int FilterWidth = 4;
 constexpr int FilterDepth = 32;
 constexpr int kDefaultAlignmentPadding = 63;
 
+struct Deleter {
+  explicit Deleter(size_t size = 0) : size(size) {}
+  void operator()(uint8_t* memory) {
+    if (!memory) {
+      return;
+    }
+#ifdef TFLITE_MMAP_DISABLED
+    delete[] memory;
+#else
+    munmap(memory, size);
+#endif
+  }
+  size_t size;
+};
+
 struct OpData4Bit {
   int rows_right = 1;
   int batch_size = 0;
   bool needs_prepack = true;
   uint8_t* prepacked_cache = nullptr;
-  std::unique_ptr<uint8_t[]> prepacked_cache_buffer;
+  std::unique_ptr<uint8_t[], Deleter> prepacked_cache_buffer;
+  size_t prepacked_cache_buffer_size = 0;
 
   void AllocatePackedRegion(size_t required_size) {
-    prepacked_cache_buffer = std::make_unique<uint8_t[]>(required_size);
+#ifdef TFLITE_MMAP_DISABLED
+    uint8_t* region = new uint8_t[required_size];
+    prepacked_cache_buffer =
+        std::unique_ptr<uint8_t[], Deleter>(region, Deleter());
+#else
+    uint8_t* region = reinterpret_cast<uint8_t*>(
+        mmap(nullptr, required_size, PROT_READ | PROT_WRITE,
+             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+    prepacked_cache_buffer =
+        std::unique_ptr<uint8_t[], Deleter>(region, Deleter(required_size));
+#ifdef MADV_MERGEABLE
+    madvise(region, required_size, MADV_MERGEABLE);
+#endif
+#endif
     prepacked_cache = reinterpret_cast<uint8_t*>(
         (reinterpret_cast<uintptr_t>(prepacked_cache_buffer.get()) +
          kDefaultAlignmentPadding) &
         ~kDefaultAlignmentPadding);
+    prepacked_cache_buffer_size = required_size;
   }
 };
 
