@@ -40,6 +40,10 @@
     *   Moved option `warm_start` from
         `tf.data.experimental.OptimizationOptions` to `tf.data.Options`.
 
+*   `tf.lite`:
+
+    *   `mul_op` supports broadcasting up to 6 dimensions.
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
