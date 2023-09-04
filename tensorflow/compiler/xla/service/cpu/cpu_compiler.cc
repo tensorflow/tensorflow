@@ -1404,9 +1404,12 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
                                                  std::move(llvm_context));
   cantFail((*jit)->AddModule(std::move(thread_safe_module)));
 
-  auto cpu_executable = std::make_unique<CpuExecutable>(
-      std::move(*jit), std::move(assignment), std::move(module), function_name,
-      std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map));
+  TF_ASSIGN_OR_RETURN(
+      auto cpu_executable,
+      CpuExecutable::Create(std::move(*jit), std::move(assignment),
+                            std::move(module), function_name,
+                            std::move(hlo_profile_printer_data),
+                            std::move(hlo_profile_index_map)));
 
   if (embed_ir_in_executable) {
     cpu_executable->set_ir_module_string(ir_module_string);
@@ -1508,7 +1511,7 @@ CpuCompiler::CompileXlaRuntimeCpuExecutable(
                     obj_file);
   }
 
-  return std::make_unique<CpuExecutable>(
+  return CpuExecutable::Create(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
       std::move(hlo_profile_index_map), std::move(assignment),
       std::move(xla_runtime_executable));
