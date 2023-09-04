@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 #include <queue>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -1467,12 +1468,14 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   llvm_ir::DumpIrIfEnabled(*module, *compile_module_results.llvm_module,
                            /*optimized=*/false);
 
-  using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
+  std::string asm_text;
+  std::vector<uint8_t> binary;
   TF_ASSIGN_OR_RETURN(
-      BackendCompileResult backend_result,
+      std::tie(asm_text, binary),
       CompileToTargetBinary(
           module->config(), std::move(compile_module_results.llvm_module),
           GetGpuVersion(stream_exec), stream_exec, options, module.get()));
+
   if (DumpingEnabledForHloModule(*module) &&
       std::holds_alternative<GpuExecutable::OwnedThunkSequence>(
           compile_module_results.executable)) {
@@ -1501,8 +1504,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   TF_ASSIGN_OR_RETURN(
       auto gpu_executable,
       GpuExecutable::Create(GpuExecutable::Params{
-          /*asm_text=*/std::move(backend_result.first),
-          /*binary=*/std::move(backend_result.second),
+          /*asm_text=*/(options.is_autotuning_compilation && !binary.empty())
+              ? std::string()
+              : std::move(asm_text),
+          /*binary=*/std::move(binary),
           /*gpu_version=*/GetGpuVersion(stream_exec),
           /*executable=*/std::move(compile_module_results.executable),
           /*entry_func_attrs=*/
