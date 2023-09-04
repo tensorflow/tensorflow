@@ -387,9 +387,14 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
   }
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("AdjustContrastv2").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    AdjustContrastOpv2<CPUDevice, float>);
+#define REGISTER_KERNEL(T)                                                 \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("AdjustContrastv2").Device(DEVICE_CPU).TypeConstraint<T>("T"),  \
+      AdjustContrastOpv2<CPUDevice, T>);
+
+REGISTER_KERNEL(float);
+REGISTER_KERNEL(Eigen::half);
+#undef REGISTER_KERNEL
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
