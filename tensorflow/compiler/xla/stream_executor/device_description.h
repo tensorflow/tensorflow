@@ -147,29 +147,34 @@ class RocmComputeCapability {
   }
 
   bool has_nhwc_layout_support() const {
-    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a"};
+    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a", "gfx940",
+                                                  "gfx941", "gfx942"};
     return absl::c_count(kList, gfx_version()) != 0;
   }
 
   bool has_bf16_dtype_support() const {
-    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a"};
+    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a", "gfx940",
+                                                  "gfx941", "gfx942"};
     return absl::c_count(kList, gfx_version()) != 0;
   }
 
   bool has_fast_fp16_support() const {
     static constexpr absl::string_view kList[] = {"gfx906", "gfx908", "gfx90a",
-                                                  "gfx1030"};
+                                                  "gfx940", "gfx941", "gfx942",
+                                                  "gfx1030", "gfx1100"};
     return absl::c_count(kList, gfx_version()) != 0;
   }
 
   bool has_mfma_instr_support() const {
-    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a"};
+    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a", "gfx940",
+                                                  "gfx941", "gfx942"};
     return absl::c_count(kList, gfx_version()) != 0;
   }
 
   bool has_fp16_atomics_support() const {
     // TODO(rocm): Check. This should be the same as has_fast_fp16_support().
-    static constexpr absl::string_view kList[] = {"gfx90a"};
+    static constexpr absl::string_view kList[] = {"gfx90a", "gfx940", "gfx941",
+                                                  "gfx942"};
     return absl::c_count(kList, gfx_version()) != 0;
   }
 
@@ -179,11 +184,14 @@ class RocmComputeCapability {
     return proto;
   }
 
-<<<<<<< HEAD
+  bool operator==(const RocmComputeCapability &other) const {
+    return gcn_arch_name_ == other.gcn_arch_name_;
+  }
+
  private:
-  std::string gcn_arch_name_;
-  std::set<std::string> supported_gfx_versions() {
-    return {
+  std::string gcn_arch_name_ = "gfx000";  // default to invalid arch.
+
+  static constexpr absl::string_view kSupportedGfxVersions[]{
         "gfx900",  // MI25
         "gfx906",  // MI50 / MI60
         "gfx908",  // MI100
@@ -193,39 +201,6 @@ class RocmComputeCapability {
         "gfx942",  // MI300
         "gfx1030", // Navi21
         "gfx1100"  // Navi31
-    };
-  }
-  std::set<std::string> gfx_versions_with_nhwc_layout_support() {
-    return {"gfx908", "gfx90a", "gfx940", "gfx941", "gfx942"};
-  }
-  std::set<std::string> gfx_versions_with_fast_bf16_support() {
-    return {"gfx908", "gfx90a", "gfx940", "gfx941", "gfx942"};
-  }
-  std::set<std::string> gfx_versions_with_fast_fp16_support() {
-    return {"gfx906", "gfx908", "gfx90a", "gfx940", "gfx941", "gfx942", "gfx1030", "gfx1100"};
-  }
-  std::set<std::string> gfx_versions_with_mfma_instr_support() {
-    return {"gfx908", "gfx90a", "gfx940", "gfx941", "gfx942"};
-  }
-  std::set<std::string> gfx_versions_with_fp16_atomics_support() {
-    // TODO(rocm): Check. This should be the same as
-    // gfx_versions_with_fast_fp16_support.
-    return {"gfx90a", "gfx940", "gfx941", "gfx942"};
-=======
-  bool operator==(const RocmComputeCapability &other) const {
-    return gcn_arch_name_ == other.gcn_arch_name_;
->>>>>>> upstream/master
-  }
-
- private:
-  std::string gcn_arch_name_ = "gfx000";  // default to invalid arch.
-
-  static constexpr absl::string_view kSupportedGfxVersions[]{
-      "gfx900",  // MI25
-      "gfx906",  // MI50 / MI60
-      "gfx908",  // MI100
-      "gfx90a",  // MI200
-      "gfx1030"  // Navi21
   };
 };
 

@@ -904,10 +904,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
-    auto compute_capability = 
-      std::get<ComputeCap>(gpu_target_config.gpu_version);
-
-#if GOOGLE_CUDA
     // Rewrite GEMMs into custom calls.
     GpuVersion gpu_version =
         gpu_target_config.gpu_device_info.compute_capability;
@@ -916,13 +912,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
         cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) {
       pipeline.AddPass<GemmRewriterTriton>(gpu_version);
     }
-<<<<<<< HEAD
-#endif    
-    pipeline.AddPass<GemmRewriter>(gpu_target_config.gpu_version);
-=======
     pipeline.AddPass<GemmRewriter>(gpu_version);
 
->>>>>>> upstream/master
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
     if (debug_options.xla_gpu_normalize_layouts()) {

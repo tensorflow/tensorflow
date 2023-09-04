@@ -1274,10 +1274,6 @@ xla_test(
         "interpreter",
     ],
     shard_count = 40,
-<<<<<<< HEAD
-    tags = [],
-=======
->>>>>>> upstream/master
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
