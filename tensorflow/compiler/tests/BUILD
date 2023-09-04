@@ -2116,6 +2116,7 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:client_testlib",
     ],
 )

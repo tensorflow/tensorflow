@@ -138,14 +138,15 @@ class XlaRuntimeCpuExecutable {
 // architecture, so JIT-ed code and host code share the same ABI.
 class CpuExecutable : public Executable {
  public:
-  CpuExecutable(std::unique_ptr<SimpleOrcJIT> jit,
-                std::unique_ptr<const BufferAssignment> assignment,
-                std::unique_ptr<HloModule> hlo_module,
-                const std::string& entry_function_name,
-                std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-                std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
-  // XLA Runtime constructor.
-  CpuExecutable(
+  static StatusOr<std::unique_ptr<CpuExecutable>> Create(
+      std::unique_ptr<SimpleOrcJIT> jit,
+      std::unique_ptr<const BufferAssignment> assignment,
+      std::unique_ptr<HloModule> hlo_module,
+      const std::string& entry_function_name,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
+  // XLA Runtime factory method.
+  static StatusOr<std::unique_ptr<CpuExecutable>> Create(
       std::unique_ptr<HloModule> hlo_module,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
       std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
@@ -257,7 +258,7 @@ class CpuExecutable : public Executable {
   const InstructionValueSet& GetRootValueSet() const;
 
   // The JIT containing compiled modules.
-  const std::unique_ptr<SimpleOrcJIT> jit_;
+  std::unique_ptr<SimpleOrcJIT> jit_;
 
   // Buffer assignment for the buffers we need to allocate.
   const std::unique_ptr<const BufferAssignment> assignment_;
@@ -281,6 +282,10 @@ class CpuExecutable : public Executable {
   // If not null, XLA Runtime is enabled.
   std::unique_ptr<XlaRuntimeCpuExecutable> xla_runtime_executable_;
 
+  CpuExecutable(std::unique_ptr<HloModule> hlo_module,
+                std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+                std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+                std::unique_ptr<const BufferAssignment> assignment);
   CpuExecutable(const CpuExecutable&) = delete;
   CpuExecutable& operator=(const CpuExecutable&) = delete;
 };
