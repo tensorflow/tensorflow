@@ -50,6 +50,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/mlir/lite/offset_buffer.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/kernels/register.h"
@@ -180,13 +181,6 @@ std::optional<std::vector<int>> ConvertInputShapeToVector(
   }
   return dims;
 }
-
-// A buffer offset of 0 means the buffer data is stored along with
-// `tflite::Tensor`, not in the offset buffer. The flatbuffer exporter always
-// sets the offset value to 1 to avoid the confusion btw. unset value and
-// default value, but it is also not a valid offset value, so the valid value
-// should always be greater than 1.
-bool IsValidBufferOffset(const int64_t val) { return val > 1; }
 
 // Finds the starting position of the offset buffer within `model_buffer` if the
 // `model_buffer` can be split into base buffer and offset buffer. Returns

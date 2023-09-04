@@ -1096,6 +1096,7 @@ cc_library(
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
         ":low_bit_utils",
+        ":offset_buffer",
         ":size_utils",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -1410,6 +1411,21 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "offset_buffer",
+    hdrs = ["offset_buffer.h"],
+)
+
+tf_cc_test(
+    name = "offset_buffer_test",
+    srcs = ["offset_buffer_test.cc"],
+    deps = [
+        ":offset_buffer",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
