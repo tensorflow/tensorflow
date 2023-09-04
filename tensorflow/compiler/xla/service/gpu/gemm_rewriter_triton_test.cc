@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
@@ -35,6 +36,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
@@ -125,23 +128,6 @@ ENTRY e {
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
-TEST_F(GemmRewriterTritonTest, DoNotFuseVectorConstants) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-ENTRY e {
-  p0 = s8[60,5] parameter(0)
-  c0 = f16[60,5] convert(p0)
-  cst1 = f16[5] constant({...})
-  r1 = f16[5,120] broadcast(cst1), dimensions={0}
-  ROOT d = f16[60,120] dot(c0, r1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})"));
-  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Fusion(m::Parameter(), m::Broadcast())));
-}
 
 TEST_F(GemmRewriterTritonTest, DoNotTriggerOnUnsupportedOutputConversions) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -657,6 +643,45 @@ ENTRY e {
                                     /*subfragments=*/ElementsAre(30))));
 }
 
+using TritonSoftmaxAnalysisTest = HloTestBase;
+
+TEST_F(TritonSoftmaxAnalysisTest, DegenerateBatchDimensionIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+max {
+  p1 = f32[] parameter(1)
+  p0 = f32[] parameter(0)
+  ROOT m = f32[] maximum(p0, p1)
+}
+
+triton_softmax_computation {
+  p0 = f32[1,97]{1,0} parameter(0)
+  bitcast = f32[97]{0} bitcast(p0)
+  constant = f32[] constant(-inf)
+  reduce = f32[] reduce(bitcast, constant), dimensions={0}, to_apply=max
+  broadcast = f32[1,97]{1,0} broadcast(reduce), dimensions={}
+  ROOT subtract = f32[1,97]{1,0} subtract(p0, broadcast)
+}
+
+ENTRY e {
+  p0 = f32[1,97]{1,0} parameter(0)
+  ROOT r = f32[1,97]{1,0} fusion(p0), kind=kCustom,
+    calls=triton_softmax_computation,
+    backend_config={"kind":"__triton_softmax"}
+})"));
+  const HloComputation* computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*computation));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                                 computation->root_instruction(), 0),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/97,
+                                    /*subfragments=*/ElementsAre(97))));
+  EXPECT_EQ(analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                              computation->root_instruction(), 1),
+            nullptr);
+}
+
 using SplitKTest = HloTestBase;
 
 class SplitKTestWithMorePreciseReduction
@@ -778,6 +803,42 @@ ENTRY e {
           tsl::error::CANCELLED,
           absl::StrFormat(
               "Operation non-distributive over addition after dot.")));
+}
+
+TEST_F(SplitKTest, AvoidSplitKWithNonDivisibleDimensionSize) {
+  const std::string hlo_text = R"(
+t {
+  c1 = s32[] constant(1)
+  bc1 = s32[31]{0} broadcast(c1), dimensions={}
+  p0 = s32[31]{0} parameter(0)
+  cmp = pred[31]{0} compare(bc1, p0), direction=EQ
+  cvt = f32[31]{0} convert(cmp)
+  bc2 = f32[3,31]{1,0} broadcast(cvt), dimensions={1}
+  c0 = f32[] constant(0)
+  bc0 = f32[3,16]{1,0} broadcast(c0), dimensions={}
+  ROOT dot = f32[31,16]{1,0} dot(bc2, bc0),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = s32[31]{0} parameter(0)
+  ROOT r = f32[31,16]{1,0} fusion(p0),
+    kind=kCustom, calls=t, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(2);
+  key.set_num_stages(1);
+  key.set_num_warps(2);
+  EXPECT_THAT(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
+      tsl::testing::StatusIs(
+          tsl::error::CANCELLED,
+          absl::StrFormat("Contracting dimension is too fragmented.")));
 }
 
 TEST_F(SplitKTest, MakeSplitKWithNonStandardOutputLayout) {
@@ -1164,25 +1225,45 @@ class GemmRewriterTritonLevel2Test : public GemmRewriterTritonTest {
   }
 };
 
-TEST_F(GemmRewriterTritonLevel2Test, DoNotFuseIncompatibleDimOrders) {
+TEST_F(GemmRewriterTritonLevel2Test, ReshapeToScalarIsHandled) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-HloModule m
-
 ENTRY e {
-  p0 = f16[5,3] parameter(0)
-  p1 = f16[5,7] parameter(1)
-  p2 = f16[7,5] parameter(2)
-  t = f16[5,7] transpose(p2), dimensions={1,0}
-  a = f16[5,7] add(t, p1)
-  ROOT d = f16[3,7] dot(p0, a),
+  p0 = s8[5,3] parameter(0)
+  c = f16[5,3] convert(p0)
+  p1 = f16[1] parameter(1)
+  r = f16[] reshape(p1)
+  b = f16[5,7] broadcast(r)
+  ROOT d = f16[3,7] dot(c, b),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+})"));
+
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+}
+
+TEST_F(GemmRewriterTritonLevel2Test, DoNotFuseIncompatibleDimensionSplits) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p1 = s8[5,7,2,3]{3,2,1,0} parameter(1)
+  t1 = s8[7,5,2,3]{3,2,1,0} transpose(p1), dimensions={1,0,2,3}
+  r1 = s8[7,30]{1,0} reshape(t1)
+  cvt = f16[7,30]{1,0} convert(r1)
+  p2 = f16[2,7,5,3]{3,2,1,0} parameter(2)
+  t2 = f16[7,2,5,3]{3,2,1,0} transpose(p2), dimensions={1,0,2,3}
+  r2 = f16[7,30]{1,0} reshape(t2)
+  a = f16[7,30]{1,0} add(cvt, r2)
+  p0 = f16[7,79]{1,0} parameter(0)
+  ROOT dot = f16[30,79]{1,0} dot(a, p0),
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
 
   EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Transpose())));
+      GmockMatch(m::Fusion(m::Parameter(), m::Transpose(), m::Parameter())));
 }
 
 TEST_F(GemmRewriterTritonLevel2Test, DoNotFuseTooManyParameters) {

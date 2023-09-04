@@ -458,22 +458,58 @@ Value EmitConstant(ImplicitLocOpBuilder& b, const HloInstruction& constant) {
   return CreateConst(b, ty, ScalarConstantValue<double>(constant));
 }
 
-Value EmitBroadcast(ImplicitLocOpBuilder& b, const HloInstruction& broadcast,
-                    Value input, ArrayRef<int64_t> tile_shape) {
-  if (!input.dyn_cast<TensorValue>()) {
-    return Splat(b, input, tile_shape);
+struct DimProperties {
+  int64_t index;
+  Value offset;
+  int block_size;
+};
+
+Value EmitBroadcast(ImplicitLocOpBuilder& b,
+                    const TritonFusionAnalysis* analysis,
+                    TritonFusionAnalysis::Scope scope,
+                    absl::Span<const DimProperties> tiled_dimensions,
+                    const HloInstruction& broadcast, Value input) {
+  CHECK(analysis != nullptr);
+  std::vector<int64_t> out_shape;
+  for (const DimProperties& dim : tiled_dimensions) {
+    const TensorIterationSpec::DimIterationSpec* spec =
+        analysis->IterSpec(scope, &broadcast, dim.index);
+    if (spec != nullptr && spec->at(0).stride > 0) {
+      out_shape.push_back(dim.block_size);
+    }
   }
-  // The only other kind of broadcast that can happen currently is a
-  // broadcast into the split-K batch dimension which requires
-  // no action here.
-  return input;
+  auto tensor_input = input.dyn_cast<TensorValue>();
+  if (!tensor_input) {
+    // Input is scalar.
+    return Splat(b, input, out_shape);
+  }
+  if (tensor_input.getType().getRank() == out_shape.size()) {
+    // No dimensions to broadcast.
+    return input;
+  }
+  // Add broadcasted dimensions one by one.
+  Value expanded_input = tensor_input;
+  int dim_idx = 0;
+  for (const DimProperties& dim : tiled_dimensions) {
+    if (analysis->IterSpec(scope, &broadcast, dim.index) != nullptr &&
+        analysis->IterSpec(scope, &broadcast, dim.index)->at(0).stride > 0) {
+      if (analysis->IterSpec(scope, broadcast.operand(0), dim.index) ==
+          nullptr) {
+        // Broadcasted dimension.
+        expanded_input = b.create<mt::ExpandDimsOp>(expanded_input, dim_idx);
+      }
+      ++dim_idx;
+    }
+  }
+  return Broadcast(b, expanded_input.cast<TensorValue>(), out_shape);
 }
 
 StatusOr<Value> EmitScope(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    const TritonFusionAnalysis* analysis, TritonFusionAnalysis::Scope scope,
+    absl::Span<const DimProperties> tiled_dimensions,
     absl::Span<const HloInstruction* const> instructions,
-    absl::flat_hash_map<const HloInstruction*, Value>& values,
-    ArrayRef<int64_t> tile_shape);
+    absl::flat_hash_map<const HloInstruction*, Value>& values);
 
 StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
                            absl::string_view libdevice_path,
@@ -542,8 +578,9 @@ StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
 
     b.setInsertionPointToStart(reducer);
     TF_ASSIGN_OR_RETURN(Value result,
-                        EmitScope(b, libdevice_path, to_emit, region_values,
-                                  /*tile_shape=*/{}));
+                        EmitScope(b, libdevice_path, /*analysis=*/nullptr,
+                                  TritonFusionAnalysis::Scope::OUTPUT, {},
+                                  to_emit, region_values));
     b.create<mt::ReduceReturnOp>(SmallVector<Value>({result}));
     b.setInsertionPointAfter(reduction);
   }
@@ -556,9 +593,10 @@ StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
 // before consumers.
 StatusOr<Value> EmitScope(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    const TritonFusionAnalysis* analysis, TritonFusionAnalysis::Scope scope,
+    absl::Span<const DimProperties> tiled_dimensions,
     absl::Span<const HloInstruction* const> instructions,
-    absl::flat_hash_map<const HloInstruction*, Value>& values,
-    ArrayRef<int64_t> tile_shape) {
+    absl::flat_hash_map<const HloInstruction*, Value>& values) {
   for (const HloInstruction* hlo : instructions) {
     Value result;
     if (hlo->opcode() == HloOpcode::kParameter) {
@@ -568,7 +606,8 @@ StatusOr<Value> EmitScope(
     } else if (hlo->opcode() == HloOpcode::kConstant) {
       result = EmitConstant(b, *hlo);
     } else if (hlo->opcode() == HloOpcode::kBroadcast) {
-      result = EmitBroadcast(b, *hlo, values[hlo->operand(0)], tile_shape);
+      result = EmitBroadcast(b, analysis, scope, tiled_dimensions, *hlo,
+                             values[hlo->operand(0)]);
     } else if (hlo->opcode() == HloOpcode::kReduce) {
       TF_ASSIGN_OR_RETURN(
           result, EmitReduce(b, libdevice_path, *hlo, values[hlo->operand(0)]));
@@ -907,12 +946,6 @@ StatusOr<LaunchDimensions> MatMulImpl(
   auto pid_k_offset =
       b.create<ma::MulIOp>(pid_k, CreateConst(b, i32_ty, block_k));
 
-  struct DimProperties {
-    int64_t index;
-    Value offset;
-    int block_size;
-  };
-
   std::vector<DimProperties> lhs_tiled_dims = {
       {lhs_noncontracting_dim_idx, pid_m_offset, block_m},
       {dims.lhs_contracting_dimensions(0), pid_k_offset, block_k}};
@@ -993,16 +1026,18 @@ StatusOr<LaunchDimensions> MatMulImpl(
 
     // Emit all operations of LHS and RHS scopes.
     Value dot_input_lhs =
-        EmitScope(b, libdevice_path,
+        EmitScope(b, libdevice_path, &analysis,
+                  TritonFusionAnalysis::Scope::LHS, lhs_tiled_dims,
                   dot_instr->parent()->MakeInstructionPostOrderFrom(
                       const_cast<HloInstruction&>(*dot_instr->operand(0))),
-                  values_lhs, {block_m, block_k})
+                  values_lhs)
             .value();
     Value dot_input_rhs =
-        EmitScope(b, libdevice_path,
+        EmitScope(b, libdevice_path, &analysis,
+                  TritonFusionAnalysis::Scope::RHS, rhs_tiled_dims,
                   dot_instr->parent()->MakeInstructionPostOrderFrom(
                       const_cast<HloInstruction&>(*dot_instr->operand(1))),
-                  values_rhs, {block_k, block_n})
+                  values_rhs)
             .value();
 
     // Operation in the fusion before the dot can alter the elements of the
@@ -1224,9 +1259,10 @@ StatusOr<LaunchDimensions> MatMulImpl(
                          EmitParameterLoad(b, tensor_pointer, boundary_checks)})
                 .second);
     }
-    TF_RETURN_IF_ERROR(
-        EmitScope(b, libdevice_path, to_emit, values_out, {block_m, block_n})
-            .status());
+    TF_RETURN_IF_ERROR(EmitScope(b, libdevice_path, &analysis,
+                                 TritonFusionAnalysis::Scope::OUTPUT,
+                                 out_tiled_dims, to_emit, values_out)
+                           .status());
   }
 
   // Emit tensor store operations for all outputs.
@@ -1343,10 +1379,16 @@ StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
   }
   values_out[computation->parameter_instruction(0)] = EmitParameterLoad(
       b, make_tensor_pointer(fn.getArgument(0)), boundary_checks);
+  TF_ASSIGN_OR_RETURN(const auto analysis,
+                      TritonFusionAnalysis::Execute(*computation));
+  // Dimension 0 is the reduced one by construction and it's the only one
+  // present in the tile shapes.
+  std::vector<DimProperties> tiled_dims = {{0, row_index, block_row}};
   TF_ASSIGN_OR_RETURN(
       Value result,
-      EmitScope(b, libdevice_path, computation->MakeInstructionPostOrder(),
-                values_out, {block_row}));
+      EmitScope(b, libdevice_path, &analysis,
+                TritonFusionAnalysis::Scope::OUTPUT, tiled_dims,
+                computation->MakeInstructionPostOrder(), values_out));
 
   b.create<mt::StoreOp>(make_tensor_pointer(fn.getArgument(1)), result,
                         std::vector<int32_t>{0}, mt::CacheModifier::NONE,
