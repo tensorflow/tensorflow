@@ -406,12 +406,13 @@ void ConvertControlToDataOutputs(
     for (Operation* op : chain_resource_to_ops_map[kUnknownResourceId]) {
       std::string op_name = op->getName().getStringRef().str();
       if (blocking_ops.insert(op_name).second) {
-        LOG(INFO) << "[`tf-executor-convert-control-to-data-outputs` disabled] "
-                     "Op type '"
-                  << op_name
-                  << "' has unknown side effects and blocks inter iteration "
-                     "parallelism for the while loop. Consider modeling side "
-                     "effects of this op.";
+        LOG(WARNING)
+            << "[`tf-executor-convert-control-to-data-outputs` disabled] "
+               "Op type '"
+            << op_name
+            << "' has unknown side effects and blocks inter iteration "
+               "parallelism for the while loop. Consider modeling side "
+               "effects of this op.";
       }
     }
     return;

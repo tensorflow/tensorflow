@@ -55,16 +55,6 @@ tsl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
   return GetExecutor(config);
 }
 
-tsl::StatusOr<StreamExecutor*>
-XlaInterpreterPlatform::ExecutorForDeviceWithPluginConfig(
-    int device_ordinal, const PluginConfig& plugin_config) {
-  StreamExecutorConfig config;
-  config.ordinal = device_ordinal;
-  config.plugin_config = plugin_config;
-  config.device_options = DeviceOptions::Default();
-  return GetExecutor(config);
-}
-
 tsl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
@@ -87,15 +77,6 @@ XlaInterpreterPlatform::GetUncachedExecutor(
   }
 
   return std::move(executor);
-}
-
-void XlaInterpreterPlatform::RegisterTraceListener(
-    std::unique_ptr<TraceListener> listener) {
-  LOG(FATAL) << "not yet implemented: register executor trace listener";
-}
-
-void XlaInterpreterPlatform::UnregisterTraceListener(TraceListener* listener) {
-  LOG(FATAL) << "not yet implemented: unregister executor trace listener";
 }
 
 static void InitializeXlaInterpreterPlatform() {

@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
+#include <vector>
+
+#include "absl/strings/substitute.h"
+#include "tensorflow/compiler/xla/error_spec.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -922,39 +928,98 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest,
-           DISABLED_ON_CPU(TensorFlowScatter_Max_F32_Negative_NaN)) {
-  const std::string hlo_text = R"(
-HloModule TensorFlowScatter_Max_F32_Negative_NaN
+// Test min/max/add scatters with edge-case values.
+class ScatterEdgeCaseTestP
+    : public ScatterTest,
+      public ::testing::WithParamInterface<absl::string_view /*operator*/> {};
 
-max_f32 (lhs: f32[], rhs: f32[]) -> f32[] {
+XLA_TEST_P(ScatterEdgeCaseTestP, DoIt) {
+  using L = std::numeric_limits<float>;
+  std::vector<float> edge_cases = {
+      0.f,
+      -1.f,
+      1.f,
+      L::min(),
+      -L::min(),
+      L::max(),
+      L::lowest(),
+      L::epsilon(),
+      L::infinity(),
+      -L::infinity(),
+      L::quiet_NaN(),
+      -L::quiet_NaN(),
+  };
+  int n = edge_cases.size();
+
+  float init_value;
+  absl::string_view operation = GetParam();
+  if (operation == "minimum") {
+    init_value = L::infinity();
+  } else if (operation == "maximum") {
+    init_value = -L::infinity();
+  } else if (operation == "add") {
+    init_value = 0;
+  } else {
+    FAIL() << "Invalid operation " << operation;
+  }
+
+  // For each pair of values (x,y) in edge_cases, let the initial value be
+  // init_value.  Scatter x and y into the same location.
+  const std::string hlo_text = absl::Substitute(R"(
+HloModule test
+
+max_f32 {
   lhs = f32[] parameter(0)
   rhs = f32[] parameter(1)
-  ROOT max = f32[] maximum(f32[] lhs, f32[] rhs)
+  ROOT max = maximum(lhs, rhs)
 }
 
 ENTRY main {
-  indices = s32[2] parameter(0)
-  constant_with_nans = f32[3] constant({-nan, 2.5, nan})
-  operand = f32[3,3] broadcast(constant_with_nans), dimensions={1}
-  updates = f32[2,3] constant({{4.6, -nan, 1}, {2.3, 3.1, 1.6}})
-  scatter = f32[3,3] scatter(operand, indices, updates),
+  init = f32[$0, $0] broadcast(f32[] constant($2))
+  indices = s32[$1] parameter(0)
+  updates = f32[$1, $0] parameter(1)
+  ROOT scatter = f32[$0, $0] scatter(init, indices, updates),
       to_apply=max_f32,
       update_window_dims={1},
       inserted_window_dims={0},
       scatter_dims_to_operand_dims={0},
       index_vector_dim=1
-  scatter_as_int = s32[3,3] bitcast-convert(scatter)
-  constant_7fffffff = s32[3] constant({2147483647, 2147483647, 2147483647})
-  broadcast_7fffffff = s32[3,3] broadcast(constant_7fffffff), dimensions={1}
-  canonical_nan = s32[3,3] and(scatter_as_int, broadcast_7fffffff)
-  ROOT result = f32[3,3] bitcast-convert(canonical_nan)
 }
-)";
+)",
+                                                n, 2 * n, init_value);
 
-  Literal scatter_indices = LiteralUtil::CreateR1<int32_t>({2, 1});
-  RunTest(hlo_text, {&scatter_indices});
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_cpu_enable_fast_min_max(false);
+
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+
+  Literal scatter_indices(ShapeUtil::MakeShape(S32, {2 * n}));
+  Literal updates(ShapeUtil::MakeShape(F32, {2 * n, n}));
+  for (int i = 0; i < n; i++) {
+    scatter_indices.Set({i}, i);
+    scatter_indices.Set({i + n}, i);
+    for (int j = 0; j < n; j++) {
+      updates.Set({i, j}, edge_cases[i]);
+      updates.Set({i + n, j}, edge_cases[j]);
+    }
+  }
+
+  // Expect exact numerical matches.
+  ErrorSpec spec(/*aabs=*/0);
+
+  // We pass -NaN in the input, but the output might contain +NaN instead.  This
+  // is fine; we don't gurantee that XLA preserves the body of NaNs.
+  spec.all_nans_are_equivalent = true;
+
+  EXPECT_TRUE(
+      RunAndCompare(std::move(module), {&scatter_indices, &updates}, spec));
 }
+
+INSTANTIATE_TEST_SUITE_P(EdgeCases, ScatterEdgeCaseTestP,
+                         ::testing::Values("minimum", "maximum", "add"));
 
 }  // namespace
 }  // namespace xla

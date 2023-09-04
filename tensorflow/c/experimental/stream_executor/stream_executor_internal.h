@@ -72,18 +72,10 @@ class CPlatform : public Platform {
   tsl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
   tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
-  tsl::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
-      int ordinal, const PluginConfig& plugin_config) override;
   tsl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;
   tsl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) override;
-
-  // Trace listener is not supported
-  void RegisterTraceListener(std::unique_ptr<TraceListener> listener) override {
-    LOG(FATAL) << "RegisterTraceListener is not supported by pluggable device";
-  }
-  void UnregisterTraceListener(TraceListener* listener) override {}
 
   void DestroyAllExecutors() { executor_cache_.DestroyAllExecutors(); }
 

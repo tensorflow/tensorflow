@@ -526,6 +526,347 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
   CustomCallDeclarations& custom_calls_;
 };
 
+using mlir::lmhlo_gpu::fusedMHAOp;
+using mlir::lmhlo_gpu::fusedMHAWithScaledBiasOp;
+using mlir::lmhlo_gpu::fusedMHAWithScaledMaskOp;
+
+template <typename FusedDotAttentionForward>
+class FusedAttentionForwardLowering
+    : public OpRewritePattern<FusedDotAttentionForward> {
+ private:
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.fused.attention.";
+
+ public:
+  explicit FusedAttentionForwardLowering(MLIRContext* ctx, UidGenerator& uid,
+                                         CustomCallDeclarations& custom_calls)
+      : OpRewritePattern<FusedDotAttentionForward>(ctx),
+        uid_(uid),
+        custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(FusedDotAttentionForward op,
+                                PatternRewriter& rewriter) const override {
+    // Get the custom call target.
+    std::string fused_attention = kCustomCallTarget;
+    auto num_operands = op.getNumOperands();
+    switch (op.getFusedMhaDag()) {
+      case mlir::lmhlo_gpu::FusedMhaDagSignature::Default:
+        if (num_operands == 5) {
+          fused_attention += "bmm.bmm.inference";
+        } else if (num_operands == 6) {
+          fused_attention += "bmm.bmm.forward";
+        } else {
+          return op.emitOpError(
+              "unexpected number of operands for fused dot attention - BMMBMM");
+        }
+        break;
+      case mlir::lmhlo_gpu::FusedMhaDagSignature::Softmax:
+        if (num_operands == 5) {
+          fused_attention += "softmax.inference";
+        } else if (num_operands == 6) {
+          fused_attention += "softmax.forward";
+        } else {
+          return op.emitOpError(
+              "unexpected number of operands for fused dot attention - "
+              "BMM_Softmax_BMM");
+        }
+        break;
+      case mlir::lmhlo_gpu::FusedMhaDagSignature::SoftmaxDropout:
+        if (num_operands == 5) {
+          fused_attention += "softmax.dropout.inference";
+        } else if (num_operands == 6) {
+          fused_attention += "softmax.dropout.forward";
+        } else {
+          return op.emitOpError(
+              "unexpected number of operands for fused dot attention - "
+              "BMM_Softmax_Dropout_BMM");
+        }
+        break;
+
+      case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleBiasMaskSoftmax:
+        if (num_operands == 7) {
+          fused_attention += "scale.bias.mask.softmax.inference";
+        } else if (num_operands == 8) {
+          fused_attention += "scale.bias.mask.softmax.forward";
+        } else {
+          return op.emitOpError(
+              "unexpected number of operands for fused dot attention - "
+              "BMM_Bias_Mask_Softmax_BMM");
+        }
+        break;
+
+      case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleBiasMaskSoftmaxDropout:
+        if (num_operands == 7) {
+          fused_attention += "scale.bias.mask.softmax.dropout.inference";
+        } else if (num_operands == 8) {
+          fused_attention += "scale.bias.mask.softmax.dropout.forward";
+        } else {
+          return op.emitOpError(
+              "unexpected number of operands for fused dot attention - "
+              "BMM_Bias_Mask_Softmax_Dropout_BMM");
+        }
+        break;
+
+      case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleMaskSoftmax:
+        if (num_operands == 6) {
+          fused_attention += "scale.mask.softmax.inference";
+        } else if (num_operands == 7) {
+          fused_attention += "scale.mask.softmax.forward";
+        } else {
+          return op.emitOpError(
+              "unexpected number of operands for fused dot attention - "
+              "BMM_mask_Softmax_BMM");
+        }
+        break;
+
+      case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleMaskSoftmaxDropout:
+        if (num_operands == 6) {
+          fused_attention += "scale.mask.softmax.dropout.inference";
+        } else if (num_operands == 7) {
+          fused_attention += "scale.mask.softmax.dropout.forward";
+        } else {
+          return op.emitOpError(
+              "unexpected number of operands for fused dot attention - "
+              "BMM_mask_Softmax_Dropout_BMM");
+        }
+        break;
+
+      case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleBiasSoftmax:
+        if (num_operands == 6) {
+          fused_attention += "scale.bias.softmax.inference";
+        } else if (num_operands == 7) {
+          fused_attention += "scale.bias.softmax.forward";
+        } else {
+          return op.emitOpError(
+              "unexpected number of operands for fused dot attention - "
+              "BMM_bias_Softmax_BMM");
+        }
+        break;
+
+      case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleBiasSoftmaxDropout:
+        if (num_operands == 6) {
+          fused_attention += "scale.bias.softmax.dropout.inference";
+        } else if (num_operands == 7) {
+          fused_attention += "scale.bias.softmax.dropout.forward";
+        } else {
+          return op.emitOpError(
+              "unexpected number of operands for fused dot attention - "
+              "BMM_bias_Softmax_Dropout_BMM");
+        }
+        break;
+
+      default:
+        return op.emitOpError("Undefined fused dot attention DAG signature");
+    }
+
+    // Get or create a custom call function declaration.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    func::FuncOp callee = custom_calls_.GetOrCreate(b, fused_attention, op);
+
+    // Convert fused_attention to a function call.
+    auto call = rewriter.create<func::CallOp>(op.getLoc(), callee.getName(),
+                                              TypeRange(), op.getOperands());
+
+    // Assign a unique id to this instance of a fused_attention operation.
+    call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
+
+    // Helper functins to copy attributes from the conv op to the custom call.
+    auto set_attr = [&](StringRef name, Attribute attr) {
+      if (attr) {
+        call->setAttr(b.getStringAttr(name), attr);
+      }
+    };
+
+    set_attr("fmha_scale", op.getFmhaScaleAttr());
+    set_attr("dropout_rate", op.getDropoutRateAttr());
+    set_attr("seed", op.getSeedAttr());
+
+    set_attr("fused_mha_dag", op.getFusedMhaDagAttr());
+    set_attr("algorithm_config", op.getAlgorithmConfigAttr());
+    set_attr("bmm1_dot_dimension_numbers", op.getBmm1DotDimensionNumbers());
+    set_attr("bmm2_dot_dimension_numbers", op.getBmm2DotDimensionNumbers());
+
+    auto set_xi64 = [&](StringRef name, mlir::ArrayAttr array) {
+      int rank = array.size();
+      SmallVector<int64_t> values;
+      for (int i = 0; i < rank; i++) {
+        mlir::IntegerAttr attr = array[i].dyn_cast<mlir::IntegerAttr>();
+        values.push_back(attr.getInt());
+      }
+      set_attr(name, b.getI64TensorAttr(values));
+    };
+
+    set_xi64("intermediate_tensor_dimensions",
+             op.getIntermediateTensorDimensions());
+    set_xi64("intermediate_tensor_layout", op.getIntermediateTensorLayout());
+
+    // Erase the original fused dot attention operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+ private:
+  UidGenerator& uid_;
+  CustomCallDeclarations& custom_calls_;
+};
+
+class FusedAttentionForwardOpLowering
+    : public FusedAttentionForwardLowering<fusedMHAOp> {
+ public:
+  using FusedAttentionForwardLowering::FusedAttentionForwardLowering;
+};
+
+class FusedAttentionScaledMaskForwardOpLowering
+    : public FusedAttentionForwardLowering<fusedMHAWithScaledMaskOp> {
+ public:
+  using FusedAttentionForwardLowering::FusedAttentionForwardLowering;
+};
+
+class FusedAttentionScaledBiasForwardOpLowering
+    : public FusedAttentionForwardLowering<fusedMHAWithScaledBiasOp> {
+ public:
+  using FusedAttentionForwardLowering::FusedAttentionForwardLowering;
+};
+
+using mlir::lmhlo_gpu::fusedMHABackwardOp;
+using mlir::lmhlo_gpu::fusedMHAWithMaskBackwardOp;
+
+template <typename FusedDotAttentionBackward>
+class FusedAttentionBackwardLowering
+    : public OpRewritePattern<FusedDotAttentionBackward> {
+ private:
+  static constexpr const char kCustomCallTarget[] =
+      "xla.gpu.fused.attention.backward.";
+
+ public:
+  explicit FusedAttentionBackwardLowering(MLIRContext* ctx, UidGenerator& uid,
+                                          CustomCallDeclarations& custom_calls)
+      : OpRewritePattern<FusedDotAttentionBackward>(ctx),
+        uid_(uid),
+        custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(FusedDotAttentionBackward op,
+                                PatternRewriter& rewriter) const override {
+    // if (auto bwd_op =
+    // dyn_cast<fusedMHAWithMaskBackwardOp>(op.getOperation())) {
+    //   return op.emitOpError("fusedMHAWithMaskBackwardOp not supported yet.");
+    // }
+    // Get the custom call target.
+    std::string fused_attention = kCustomCallTarget;
+    auto num_operands = op.getNumOperands();
+    switch (op.getFusedMhaDag()) {
+      case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
+          BackwardScaleBiasSoftmax:
+        if (num_operands == 10) {
+          fused_attention += "scale.softmax";
+        } else if (num_operands == 11) {
+          fused_attention += "scale.dbias.softmax";
+        } else {
+          return op.emitOpError(
+              "unexpected number of operands for fused attention backward - "
+              "BMM_Bias_Softmax_BMM");
+        }
+        break;
+
+      case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
+          BackwardScaleBiasSoftmaxDropout:
+        if (num_operands == 10) {
+          fused_attention += "scale.softmax.dropout";
+        } else if (num_operands == 11) {
+          fused_attention += "scale.dbias.softmax.dropout";
+        } else {
+          return op.emitOpError(
+              "unexpected number of operands for fused attention backward - "
+              "BMM_Bias_Softmax_Dropout_BMM");
+        }
+        break;
+
+      case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
+          BackwardScaleBiasMaskSoftmax:
+        if (num_operands == 11) {
+          fused_attention += "scale.mask.softmax";
+        } else if (num_operands == 12) {
+          fused_attention += "scale.dbias.mask.softmax";
+        } else {
+          return op.emitOpError(
+              "unexpected number of operands for fused attention backward - "
+              "BMM_Bias_Mask_Softmax_BMM");
+        }
+        break;
+
+      case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
+          BackwardScaleBiasMaskSoftmaxDropout:
+        if (num_operands == 11) {
+          fused_attention += "scale.mask.softmax.dropout";
+        } else if (num_operands == 12) {
+          fused_attention += "scale.dbias.mask.softmax.dropout";
+        } else {
+          return op.emitOpError(
+              "unexpected number of operands for fused attention backward - "
+              "BMM_Bias_Mask_Softmax_Dropout_BMM");
+        }
+        break;
+
+      default:
+        return op.emitOpError("Undefined fused attention DAG signature");
+    }
+
+    // Get or create a custom call function declaration.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    func::FuncOp callee = custom_calls_.GetOrCreate(b, fused_attention, op);
+
+    // Convert fused_attention to a function call.
+    auto call = rewriter.create<func::CallOp>(op.getLoc(), callee.getName(),
+                                              TypeRange(), op.getOperands());
+
+    // Assign a unique id to this instance of a fused_attention operation.
+    call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
+
+    // Helper functins to copy attributes from the conv op to the custom call.
+    auto set_attr = [&](StringRef name, Attribute attr) {
+      if (attr) {
+        call->setAttr(b.getStringAttr(name), attr);
+      }
+    };
+
+    set_attr("fmha_scale", op.getFmhaScaleAttr());
+    set_attr("dropout_rate", op.getDropoutRateAttr());
+    set_attr("seed", op.getSeedAttr());
+
+    set_attr("fused_mha_dag", op.getFusedMhaDagAttr());
+    set_attr("algorithm_config", op.getAlgorithmConfigAttr());
+    set_attr("bmm1_grad_gemm1_dot_dimension_numbers",
+             op.getBmm1GradGemm1DotDimensionNumbers());
+    set_attr("bmm1_grad_gemm2_dot_dimension_numbers",
+             op.getBmm1GradGemm2DotDimensionNumbers());
+    set_attr("bmm2_grad_gemm1_dot_dimension_numbers",
+             op.getBmm2GradGemm1DotDimensionNumbers());
+    set_attr("bmm2_grad_gemm2_dot_dimension_numbers",
+             op.getBmm2GradGemm2DotDimensionNumbers());
+
+    // Erase the original fused dot attention operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+ private:
+  UidGenerator& uid_;
+  CustomCallDeclarations& custom_calls_;
+};
+
+class FusedAttentionBackwardOpLowering
+    : public FusedAttentionBackwardLowering<fusedMHABackwardOp> {
+ public:
+  using FusedAttentionBackwardLowering::FusedAttentionBackwardLowering;
+};
+
+class FusedAttentionScaledMaskBackwardOpLowering
+    : public FusedAttentionBackwardLowering<fusedMHAWithMaskBackwardOp> {
+ public:
+  using FusedAttentionBackwardLowering::FusedAttentionBackwardLowering;
+};
+
 //===----------------------------------------------------------------------===//
 
 void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
@@ -556,6 +897,21 @@ void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
   patterns.insert<CudnnConvReorderFilterOpLowering>(ctx, custom_calls);
   patterns.insert<CudnnConvReorderFilterAndBiasOpLowering>(ctx, custom_calls);
   patterns.insert<CholeskyOpLowering>(ctx, custom_calls);
+
+  // Each unique fused_attention operation in the module will get assigned a
+  // uid.
+  UidGenerator fused_attention_uid;
+  patterns.insert<FusedAttentionForwardOpLowering,
+                  FusedAttentionScaledMaskForwardOpLowering,
+                  FusedAttentionScaledBiasForwardOpLowering>(
+      ctx, fused_attention_uid, custom_calls);
+
+  // Each unique fused_attention_backward operation in the module will get
+  // assigned a uid.
+  UidGenerator fused_attention_backward_uid;
+  patterns.insert<FusedAttentionBackwardOpLowering,
+                  FusedAttentionScaledMaskBackwardOpLowering>(
+      ctx, fused_attention_backward_uid, custom_calls);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();

@@ -115,11 +115,20 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
     return 1;
   }
 
+  absl::StatusOr<std::string> Serialize() const override;
+
+  // Returns vendor specific attributes about the topology.
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
  private:
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
   const std::string platform_version_;
   const GpuTopology gpu_topology_;
+  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
 };
 
 class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {

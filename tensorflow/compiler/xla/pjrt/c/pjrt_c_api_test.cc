@@ -26,6 +26,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -232,6 +234,7 @@ class PjrtCApiTest : public PjrtCApiTestBase {
       device = GetClientAddressableDevices()[0];
     }
     args.device = device;
+    args.memory = nullptr;
     return args;
   }
 
@@ -290,22 +293,8 @@ class PjrtCApiTest : public PjrtCApiTestBase {
     }
     CHECK_EQ(args.dst_size, sizeof(float));
 
-    PJRT_Buffer_OnDeviceTrimmedShape_Args shape_args{
-        .struct_size = PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE,
-        .priv = nullptr,
-        .buffer = src_buffer,
-        .element_type = -1,
-        .dimensions = {},
-        .dynamic_dimensions = {},
-        .has_layout = false,
-        .layout = {},
-    };
-    error = api_->PJRT_Buffer_OnDeviceTrimmedShape(&shape_args);
-    if (error != nullptr) {
-      return ::pjrt::PjrtErrorToStatus(error, api_);
-    }
-    CHECK_EQ(shape_args.dimensions.size, 0);
-    CHECK_EQ(shape_args.element_type, xla::PrimitiveType::F32);
+    CHECK_EQ(::pjrt::GetDimensions(api_, src_buffer).size(), 0);
+    CHECK_EQ(::pjrt::GetElementType(api_, src_buffer), PJRT_Buffer_Type_F32);
 
     float value;
     args.dst = &value;

@@ -50,12 +50,8 @@ extern const char* const kEigenMatMulS32SymbolName;
 extern const char* const kEigenBatchMatMulF32SymbolName;
 extern const char* const kMKLConv2DF32SymbolName;
 extern const char* const kACLConv2DF32SymbolName;
-extern const char* const kMKLMatMulF32SymbolName;
-extern const char* const kMKLMatMulF64SymbolName;
 extern const char* const kACLMatMulF32SymbolName;
 extern const char* const kACLBatchMatMulF32SymbolName;
-extern const char* const kMKLSingleThreadedMatMulF32SymbolName;
-extern const char* const kMKLSingleThreadedMatMulF64SymbolName;
 extern const char* const kEigenConv2DF16SymbolName;
 extern const char* const kEigenConv2DF32SymbolName;
 extern const char* const kEigenConv3DF16SymbolName;
@@ -88,6 +84,7 @@ extern const char* const kReplicaIdSymbolName;
 extern const char* const kTracingStartSymbolName;
 extern const char* const kTracingEndSymbolName;
 extern const char* const kAllToAllSymbolName;
+extern const char* const kOneDnnMatMulSymbolName;
 
 // All symbol names for XLA CPU runtime functions need to start with this
 // prefix.

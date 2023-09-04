@@ -541,33 +541,6 @@ Stream &Stream::ThenConvolveQuantized(
   return *this;
 }
 
-Stream &Stream::ThenConvolveQuantized(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<float> &input_data,
-    const dnn::FilterDescriptor &filter_descriptor,
-    const DeviceMemory<int16> &filter_coefficients,
-    const DeviceMemory<float> &coefficient_scales,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &output_descriptor,
-    DeviceMemory<float> *output) {
-  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
-            PARAM(filter_descriptor), PARAM(filter_coefficients),
-            PARAM(coefficient_scales), PARAM(convolution_descriptor),
-            PARAM(output_descriptor), PARAM(output));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoConvolveQuantized(
-        this, input_descriptor, input_data, filter_descriptor,
-        filter_coefficients, coefficient_scales, convolution_descriptor,
-        output_descriptor, output));
-  } else {
-    SetError();
-    LOG(WARNING) << "attempting to perform DNN operation using StreamExecutor "
-                    "without DNN support";
-  }
-  return *this;
-}
-
 Stream &Stream::ThenSeparableConvolve(
     const dnn::BatchDescriptor &batch_descriptor,
     const DeviceMemory<float> &input_data,
@@ -757,67 +730,6 @@ Stream &Stream::ThenDepthConcatenate(
   return *this;
 }
 
-Stream &Stream::ThenSpaceConcatenate(
-    absl::Span<const dnn::BatchDescriptor> input_dimensions,
-    absl::Span<const DeviceMemory<float> *const> input_data,
-    DeviceMemory<float> *output_data,
-    dnn::SpaceConcatenateMode concat_direction) {
-  VLOG_CALL(PARAM(input_dimensions), PARAM(input_data), PARAM(output_data));
-
-  // Check that the input dimensions of all the other batches match those of the
-  // first batch.
-  for (size_t i = 1; i < input_dimensions.size(); ++i) {
-    if ((concat_direction == dnn::SpaceConcatenateMode::XDirection) &&
-        (input_dimensions[i].count() != input_dimensions[0].count() ||
-         input_dimensions[i].height() != input_dimensions[0].height() ||
-         input_dimensions[i].feature_map_count() !=
-             input_dimensions[0].feature_map_count())) {
-      SetError();
-      LOG(ERROR) << "Incompatible dimensions for X concatenation.\n"
-                 << "input_dimensions[0]: " << input_dimensions[0].ToString()
-                 << "input_dimensions[" << i
-                 << "]: " << input_dimensions[i].ToString();
-      return *this;
-    }
-
-    if ((concat_direction == dnn::SpaceConcatenateMode::YDirection) &&
-        (input_dimensions[i].count() != input_dimensions[0].count() ||
-         input_dimensions[i].width() != input_dimensions[0].width() ||
-         input_dimensions[i].feature_map_count() !=
-             input_dimensions[0].feature_map_count())) {
-      SetError();
-      LOG(ERROR) << "Incompatible dimensions for Y concatenation.\n"
-                 << "input_dimensions[0]: " << input_dimensions[0].ToString()
-                 << "input_dimensions[" << i
-                 << "]: " << input_dimensions[i].ToString();
-      return *this;
-    }
-  }
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoSpaceConcatenate(this, input_dimensions, input_data,
-                                       output_data, concat_direction));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenReshape(const dnn::BatchDescriptor &input_dimensions,
-                            const DeviceMemory<float> &input_data,
-                            const dnn::BatchDescriptor &output_dimensions,
-                            DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(input_dimensions), PARAM(input_data),
-            PARAM(output_dimensions), PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoReshape(this, input_dimensions, input_data,
-                              output_dimensions, output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
 Stream &Stream::ThenDepthToSpace(
     const dnn::BatchDescriptor &input_dimensions,
     const DeviceMemory<float> &input_data,
@@ -869,27 +781,6 @@ Stream &Stream::ThenElementwiseOperate(
     CheckError(dnn->DoElementwiseOperate(this, operation, input_dimensions,
                                          input_data, output_dimensions,
                                          output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenElementwiseOperateScaledQuantized(
-    dnn::ElementwiseOperation operation,
-    absl::Span<const int> input_multiplicands, int output_divisor,
-    absl::Span<const dnn::BatchDescriptor> input_dimensions,
-    absl::Span<const DeviceMemory<float> *const> input_data,
-    const dnn::BatchDescriptor &output_dimensions,
-    DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(operation), PARAM(input_multiplicands), PARAM(output_divisor),
-            PARAM(input_dimensions), PARAM(input_data),
-            PARAM(output_dimensions), PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoElementwiseOperateScaledQuantized(
-        this, operation, input_multiplicands, output_divisor, input_dimensions,
-        input_data, output_dimensions, output_data));
   } else {
     SetErrorAndLogNoDnnSupport();
   }
@@ -1153,92 +1044,12 @@ Stream &Stream::ThenBlasAxpy(uint64_t elem_count, float alpha,
               y, incy);
 }
 
-Stream &Stream::ThenBlasAxpy(uint64_t elem_count, double alpha,
-                             const DeviceMemory<double> &x, int incx,
-                             DeviceMemory<double> *y, int incy) {
-  VLOG_CALL(PARAM(elem_count), PARAM(alpha), PARAM(x), PARAM(incx), PARAM(y),
-            PARAM(incy));
-
-  ThenBlasImpl<uint64_t, double, const DeviceMemory<double> &, int,
-               DeviceMemory<double> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasAxpy, elem_count, alpha, x, incx,
-              y, incy);
-}
-
-Stream &Stream::ThenBlasAxpy(uint64_t elem_count, std::complex<float> alpha,
-                             const DeviceMemory<std::complex<float>> &x,
-                             int incx, DeviceMemory<std::complex<float>> *y,
-                             int incy) {
-  VLOG_CALL(PARAM(elem_count), PARAM(alpha), PARAM(x), PARAM(incx), PARAM(y),
-            PARAM(incy));
-
-  ThenBlasImpl<uint64_t, std::complex<float>,
-               const DeviceMemory<std::complex<float>> &, int,
-               DeviceMemory<std::complex<float>> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasAxpy, elem_count, alpha, x, incx,
-              y, incy);
-}
-
-Stream &Stream::ThenBlasAxpy(uint64_t elem_count, std::complex<double> alpha,
-                             const DeviceMemory<std::complex<double>> &x,
-                             int incx, DeviceMemory<std::complex<double>> *y,
-                             int incy) {
-  VLOG_CALL(PARAM(elem_count), PARAM(alpha), PARAM(x), PARAM(incx), PARAM(y),
-            PARAM(incy));
-
-  ThenBlasImpl<uint64_t, std::complex<double>,
-               const DeviceMemory<std::complex<double>> &, int,
-               DeviceMemory<std::complex<double>> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasAxpy, elem_count, alpha, x, incx,
-              y, incy);
-}
-
 Stream &Stream::ThenBlasCopy(uint64_t elem_count, const DeviceMemory<float> &x,
                              int incx, DeviceMemory<float> *y, int incy) {
   VLOG_CALL(PARAM(elem_count), PARAM(x), PARAM(incx), PARAM(y), PARAM(incy));
 
   ThenBlasImpl<uint64_t, const DeviceMemory<float> &, int,
                DeviceMemory<float> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasCopy, elem_count, x, incx, y,
-              incy);
-}
-
-Stream &Stream::ThenBlasCopy(uint64_t elem_count, const DeviceMemory<double> &x,
-                             int incx, DeviceMemory<double> *y, int incy) {
-  VLOG_CALL(PARAM(elem_count), PARAM(x), PARAM(incx), PARAM(y), PARAM(incy));
-
-  ThenBlasImpl<uint64_t, const DeviceMemory<double> &, int,
-               DeviceMemory<double> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasCopy, elem_count, x, incx, y,
-              incy);
-}
-
-Stream &Stream::ThenBlasCopy(uint64_t elem_count,
-                             const DeviceMemory<std::complex<float>> &x,
-                             int incx, DeviceMemory<std::complex<float>> *y,
-                             int incy) {
-  VLOG_CALL(PARAM(elem_count), PARAM(x), PARAM(incx), PARAM(y), PARAM(incy));
-
-  ThenBlasImpl<uint64_t, const DeviceMemory<std::complex<float>> &, int,
-               DeviceMemory<std::complex<float>> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasCopy, elem_count, x, incx, y,
-              incy);
-}
-
-Stream &Stream::ThenBlasCopy(uint64_t elem_count,
-                             const DeviceMemory<std::complex<double>> &x,
-                             int incx, DeviceMemory<std::complex<double>> *y,
-                             int incy) {
-  VLOG_CALL(PARAM(elem_count), PARAM(x), PARAM(incx), PARAM(y), PARAM(incy));
-
-  ThenBlasImpl<uint64_t, const DeviceMemory<std::complex<double>> &, int,
-               DeviceMemory<std::complex<double>> *, int>
       impl;
   return impl(this, &blas::BlasSupport::DoBlasCopy, elem_count, x, incx, y,
               incy);
@@ -1379,21 +1190,6 @@ Stream &Stream::ThenBlasSbmv(blas::UpperLower uplo, uint64_t n, uint64 k,
   ThenBlasImpl<blas::UpperLower, uint64_t, uint64_t, float,
                const DeviceMemory<float> &, int, const DeviceMemory<float> &,
                int, float, DeviceMemory<float> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasSbmv, uplo, n, k, alpha, a, lda,
-              x, incx, beta, y, incy);
-}
-
-Stream &Stream::ThenBlasSbmv(blas::UpperLower uplo, uint64_t n, uint64 k,
-                             double alpha, const DeviceMemory<double> &a,
-                             int lda, const DeviceMemory<double> &x, int incx,
-                             double beta, DeviceMemory<double> *y, int incy) {
-  VLOG_CALL(PARAM(uplo), PARAM(n), PARAM(k), PARAM(alpha), PARAM(a), PARAM(lda),
-            PARAM(x), PARAM(incx), PARAM(beta), PARAM(y), PARAM(incy));
-
-  ThenBlasImpl<blas::UpperLower, uint64_t, uint64_t, double,
-               const DeviceMemory<double> &, int, const DeviceMemory<double> &,
-               int, double, DeviceMemory<double> *, int>
       impl;
   return impl(this, &blas::BlasSupport::DoBlasSbmv, uplo, n, k, alpha, a, lda,
               x, incx, beta, y, incy);
@@ -1557,18 +1353,6 @@ Stream &Stream::ThenBlasTrsmBatched(
               diag, m, n, alpha, as, lda, bs, ldb, batch_count);
 }
 
-Stream &Stream::ThenBlasGemmBatched(
-    blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, float alpha, DeviceMemorySlice<Eigen::half> a, int lda,
-    DeviceMemorySlice<Eigen::half> b, int ldb, float beta,
-    DeviceMemorySlice<Eigen::half> c, int ldc, int batch_count,
-    const NumericOptions &numeric_options) {
-  return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
-                                        b, ldb, beta, c, ldc, batch_count,
-                                        numeric_options,
-                                        /*scratch_allocator=*/nullptr);
-}
-
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
     blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
     uint64_t k, float alpha, DeviceMemorySlice<Eigen::half> a, int lda,
@@ -1644,20 +1428,6 @@ Stream &Stream::ThenBlasGemmBatchedWithScratch(
               numeric_options, scratch_allocator);
 }
 
-Stream &Stream::ThenBlasGemmBatched(blas::Transpose transa,
-                                    blas::Transpose transb, uint64_t m,
-                                    uint64 n, uint64_t k, double alpha,
-                                    DeviceMemorySlice<double> a, int lda,
-                                    DeviceMemorySlice<double> b, int ldb,
-                                    double beta, DeviceMemorySlice<double> c,
-                                    int ldc, int batch_count,
-                                    const NumericOptions &numeric_options) {
-  return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
-                                        b, ldb, beta, c, ldc, batch_count,
-                                        numeric_options,
-                                        /*scratch_allocator=*/nullptr);
-}
-
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
     blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
     uint64_t k, double alpha, DeviceMemorySlice<double> a, int lda,
@@ -1714,19 +1484,6 @@ Stream &Stream::ThenBlasGemmBatchedWithScratch(
   return impl(this, &blas::BlasSupport::DoBlasGemmBatched, transa, transb, m, n,
               k, alpha, a, lda, b, ldb, beta, c, ldc, batch_count,
               numeric_options, scratch_allocator);
-}
-
-Stream &Stream::ThenBlasGemmBatched(
-    blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, std::complex<double> alpha,
-    DeviceMemorySlice<std::complex<double>> a, int lda,
-    DeviceMemorySlice<std::complex<double>> b, int ldb,
-    std::complex<double> beta, DeviceMemorySlice<std::complex<double>> c,
-    int ldc, int batch_count, const NumericOptions &numeric_options) {
-  return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
-                                        b, ldb, beta, c, ldc, batch_count,
-                                        numeric_options,
-                                        /*scratch_allocator=*/nullptr);
 }
 
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
@@ -2104,20 +1861,6 @@ Stream &Stream::ThenDoHostCallbackWithStatus(
               << " was in error state before adding host callback";
   }
   CheckError(parent_->HostCallback(this, std::move(callback)));
-  return *this;
-}
-
-Stream &Stream::ThenRunAfterNextBlockHostUntilDone(
-    absl::AnyInvocable<void() &&> callback) {
-  VLOG_CALL(PARAM(callback));
-
-  if (!ok()) {
-    LOG(INFO) << DebugStreamPointers()
-              << " was in error state before adding callback to be run after "
-                 "next block-host-until-done.";
-  }
-  absl::MutexLock lock(&mu_);
-  after_block_host_until_done_callbacks_.push_back(std::move(callback));
   return *this;
 }
 

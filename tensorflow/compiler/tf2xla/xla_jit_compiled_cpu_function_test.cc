@@ -301,11 +301,6 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
       return nullptr;
     }
 
-    tsl::StatusOr<se::StreamExecutor*> ExecutorForDeviceWithPluginConfig(
-        int ordinal, const se::PluginConfig& config) override {
-      return nullptr;
-    }
-
     tsl::StatusOr<se::StreamExecutor*> GetExecutor(
         const se::StreamExecutorConfig& config) override {
       return nullptr;
@@ -315,11 +310,6 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
         const se::StreamExecutorConfig& config) override {
       return std::unique_ptr<se::StreamExecutor>(nullptr);
     }
-
-    void RegisterTraceListener(
-        std::unique_ptr<se::TraceListener> listener) override {}
-
-    void UnregisterTraceListener(se::TraceListener* listener) override {}
 
    private:
     string name_;

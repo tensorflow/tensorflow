@@ -358,7 +358,8 @@ bool MaybeEmitDirectAtomicOperation(llvm::IRBuilder<>* builder,
       // "atom.add.f64 requires sm_60 or higher."
       // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-atom
       bool f64_atomic_add_supported =
-          ir_emitter_context.cuda_compute_capability().IsAtLeast(6);
+          ir_emitter_context.cuda_compute_capability().IsAtLeast(
+              se::CudaComputeCapability::PASCAL_);
       bool atomic_add_supported =
           element_type == F32 ||
           (f64_atomic_add_supported && element_type == F64);

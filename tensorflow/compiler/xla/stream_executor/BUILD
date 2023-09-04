@@ -70,6 +70,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/memory",
@@ -91,10 +92,7 @@ cc_library(
         "gpu_launch_dim.h",
         "launch_dim.h",
     ],
-    deps = [
-        "//tensorflow/compiler/xla/stream_executor/platform",
-        "@com_google_absl//absl/strings",
-    ],
+    deps = ["@com_google_absl//absl/strings"],
 )
 
 cc_library(
@@ -131,7 +129,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/lib/math:math_util",
         "//tensorflow/tsl/platform:numbers",
-        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -324,6 +322,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:dnn_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/memory",
@@ -400,6 +399,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:dnn_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/memory",
@@ -503,6 +503,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:dnn_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/memory",
@@ -537,6 +538,7 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:dnn_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
@@ -617,6 +619,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:dnn_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/memory",

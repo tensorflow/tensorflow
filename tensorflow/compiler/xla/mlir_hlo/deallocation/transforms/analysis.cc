@@ -64,8 +64,8 @@ void DeallocationAnalysis::collectBackingMemory(
       }
     } else if (auto rbi = llvm::dyn_cast<RegionBranchOpInterface>(
                    bbarg.getParentRegion()->getParentOp())) {
-      for (const auto& edge : getPredecessorRegions(
-               rbi, bbarg.getParentRegion()->getRegionNumber())) {
+      for (const auto& edge :
+           getPredecessorRegions(rbi, bbarg.getParentRegion())) {
         if (bbarg.getArgNumber() >= edge.successorValueIndex &&
             static_cast<size_t>(bbarg.getArgNumber() -
                                 edge.successorValueIndex) <=
@@ -80,7 +80,8 @@ void DeallocationAnalysis::collectBackingMemory(
 
   auto result = llvm::cast<OpResult>(source);
   if (auto rbi = llvm::dyn_cast<RegionBranchOpInterface>(result.getOwner())) {
-    for (const auto& edge : getPredecessorRegions(rbi, std::nullopt)) {
+    for (const auto& edge :
+         getPredecessorRegions(rbi, RegionBranchPoint::parent())) {
       collectBackingMemory(edge.getPredecessorOperand(result.getResultNumber()),
                            visited, results);
     }

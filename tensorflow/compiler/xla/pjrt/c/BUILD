@@ -1,7 +1,11 @@
-load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
 load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
+)
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
 )
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -134,6 +138,28 @@ cc_library(
     ],
 )
 
+# PJRT GPU plugin. Can be configured to be built for CUDA or ROCM.
+xla_cc_binary(
+    name = "pjrt_c_api_gpu_plugin.so",
+    linkopts = [
+        "-Wl,--version-script,$(location :pjrt_c_api_gpu_version_script.lds)",
+        "-Wl,--no-undefined",
+    ],
+    linkshared = True,
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":pjrt_c_api_gpu",
+        ":pjrt_c_api_gpu_version_script.lds",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+    ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/stream_executor:cuda_platform",
+    ]),
+)
+
 cc_library(
     name = "pjrt_c_api_test_base",
     testonly = 1,
@@ -220,6 +246,8 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

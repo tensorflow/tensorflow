@@ -100,8 +100,8 @@ compare {
 // CHECK:         %[[VAL_79:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_63]]
 // CHECK:         %[[VAL_80:.*]] = addrspacecast ptr addrspace(3) %[[VAL_79]] to ptr
 // CHECK-GCN:     %[[VAL_5_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_5]] to ptr
-// CHECK-GCN:     call void @[[REGION:region_0_4_.*]](ptr %[[VAL_78]], ptr %[[VAL_80]], ptr %[[VAL_5_2]])
-// CHECK-PTX:     call void @[[REGION:region_0_4_.*]](ptr %[[VAL_78]], ptr %[[VAL_80]], ptr %[[VAL_5]])
+// CHECK-GCN:     call void @[[REGION:compare_.*]](ptr %[[VAL_78]], ptr %[[VAL_80]], ptr %[[VAL_5_2]])
+// CHECK-PTX:     call void @[[REGION:compare_.*]](ptr %[[VAL_78]], ptr %[[VAL_80]], ptr %[[VAL_5]])
 // CHECK:         %[[VAL_81:.*]] = load i8, ptr [[ADDRSPACE_ANNOTATION]]%[[VAL_5]], align 1
 // CHECK:         %[[VAL_82:.*]] = icmp ne i8 %[[VAL_81]], 0
 // CHECK:         br i1 %[[VAL_82]], label %[[VAL_83:.*]], label %[[VAL_69]]
@@ -422,8 +422,8 @@ compare {
 // CHECK:         %[[VAL_293:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_273]]
 // CHECK:         %[[VAL_294:.*]] = addrspacecast ptr addrspace(3) %[[VAL_293]] to ptr
 // CHECK-GCN:     %[[VAL_193_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_193]] to ptr
-// CHECK-PTX:     call void @[[REGION2:region_0_6_.*]](ptr %[[VAL_288]], ptr %[[VAL_290]], ptr %[[VAL_292]], ptr %[[VAL_294]], ptr %[[VAL_193]])
-// CHECK-GCN:     call void @[[REGION2:region_0_6_.*]](ptr %[[VAL_288]], ptr %[[VAL_290]], ptr %[[VAL_292]], ptr %[[VAL_294]], ptr %[[VAL_193_2]])
+// CHECK-PTX:     call void @[[REGION2:compare_.*]](ptr %[[VAL_288]], ptr %[[VAL_290]], ptr %[[VAL_292]], ptr %[[VAL_294]], ptr %[[VAL_193]])
+// CHECK-GCN:     call void @[[REGION2:compare_.*]](ptr %[[VAL_288]], ptr %[[VAL_290]], ptr %[[VAL_292]], ptr %[[VAL_294]], ptr %[[VAL_193_2]])
 // CHECK:         %[[VAL_295:.*]] = load i8, ptr [[ADDRSPACE_ANNOTATION]]%[[VAL_193]], align 1
 // CHECK:         %[[VAL_296:.*]] = icmp ne i8 %[[VAL_295]], 0
 // CHECK:         br i1 %[[VAL_296]], label %[[VAL_297:.*]], label %[[VAL_279]]

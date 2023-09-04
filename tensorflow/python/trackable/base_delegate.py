@@ -131,5 +131,16 @@ class DelegatingTrackableMixin(object):
 
   def _export_to_saved_model_graph(self, *args, **kwargs):
     return self._trackable._export_to_saved_model_graph(*args, **kwargs)
+
+  def _serialize_to_tensors(self, *args, **kwargs):
+    return self._trackable._serialize_to_tensors(*args, **kwargs)
+
+  def _restore_from_tensors(self, *args, **kwargs):
+    return self._trackable._restore_from_tensors(*args, **kwargs)
+
+  def _copy_trackable_to_cpu(self, object_map):
+    self._trackable._copy_trackable_to_cpu(object_map)
+    if self not in object_map:
+      object_map[self] = DelegatingTrackableMixin(object_map[self._trackable])
   # pylint: enable=protected-access
 

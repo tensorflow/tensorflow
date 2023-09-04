@@ -132,6 +132,15 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
         pjrt_device_compiler,
     DeviceCompilationProfiler** profiler);
 
+// Same as the above function but takes the resource manager `rm` instead of an
+// OpKernelContext.
+Status GetOrCreatePjRtDeviceCompilerAndProfiler(
+    const XlaPlatformInfo& platform_info, ResourceMgr* rm,
+    FunctionLibraryRuntime* flr,
+    DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>**
+        pjrt_device_compiler,
+    DeviceCompilationProfiler** profiler);
+
 // Returns information about the platform from kernel context.
 XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device);
 

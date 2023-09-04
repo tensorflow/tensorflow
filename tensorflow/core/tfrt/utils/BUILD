@@ -67,6 +67,7 @@ tf_cc_shared_test(
     tags = ["no_oss"],
     deps = [
         ":utils",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -84,6 +85,7 @@ cc_library(
         "dtype.def",
         "tensor_util.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/framework:types_proto_cc",
@@ -115,6 +117,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":tensor_util",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "@com_google_googletest//:gtest_main",

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -27,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
@@ -46,14 +48,17 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/mlir/utils/error_util.h"
-#include "tensorflow/compiler/xla/mlir_hlo/_virtual_includes/lhlo_gpu/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/backend.h"
@@ -201,59 +206,6 @@ tsl::StatusOr<OpType> LhloDialectEmitter::CreateOpWithoutAttrs(
   return CreateOpWithoutAttrs<OpType>(instr, operands);
 }
 
-tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
-    const HloInstruction* instr, ValueRange buffer_operands,
-    size_t num_arguments, size_t num_results) {
-  Location loc = getLocation(instr);
-  std::vector<Value> buffers(buffer_operands.begin(), buffer_operands.end());
-  absl::Span<Value> arguments =
-      absl::MakeSpan(buffers).subspan(0, num_arguments);
-  absl::Span<Value> results =
-      absl::MakeSpan(buffers).subspan(num_arguments, num_results);
-
-  mlir::lmhlo::FusionOp fusion = builder_.create<mlir::lmhlo::FusionOp>(loc);
-  mlir::OpBuilder b(&fusion.getRegion());
-
-  llvm::SmallVector<mlir::Value, 4> loads;
-  for (Value arg : arguments) {
-    auto load = b.create<mlir::bufferization::ToTensorOp>(loc, arg);
-    Shape shape = xla::TypeToShape(arg.getType());
-    TF_RET_CHECK(shape.IsArray());
-    if (shape.layout() !=
-        xla::LayoutUtil::MakeDescendingLayout(shape.dimensions().size())) {
-      load->setAttr("xla_shape",
-                    b.getStringAttr(shape.ToString(/*print_layout=*/true)));
-    }
-    loads.push_back(load);
-  }
-  TF_ASSIGN_OR_RETURN(mlir::Operation * op,
-                      xla::HloFunctionImporter::ImportInstruction(
-                          instr, loads, symbol_table_, &b,
-                          xla::DynamicShapeHandlingMode::kConvertToStatic));
-  if (llvm::isa<mlir::mhlo::TupleOp>(op)) {
-    auto underlyingOp = op->getPrevNode();
-    op->erase();
-    op = underlyingOp;
-  }
-  TF_RET_CHECK(op->getNumResults() == num_results);
-  for (int i = 0; i < results.size(); i++) {
-    b.create<mlir::memref::TensorStoreOp>(loc, op->getResult(i), results[i]);
-  }
-  return op;
-}
-
-tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
-    const HloInstruction* instr) {
-  llvm::SmallVector<Value, 4> operands;
-  size_t num_arguments, num_results;
-  TF_RETURN_IF_ERROR(CreateOperands(instr, std::nullopt,
-                                    TokenLoweringMode::kFailToLower, operands,
-                                    num_arguments, num_results));
-  TF_ASSIGN_OR_RETURN(
-      auto op, CreateOpInFusion(instr, operands, num_arguments, num_results));
-  return op->getParentOp();
-}
-
 tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
     const HloInstruction* instr) {
   using xla::HloOpcode;
@@ -324,73 +276,10 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitRecvOp(instr);
     case HloOpcode::kRecvDone:
       return EmitRecvDoneOp(instr);
-
-    case HloOpcode::kAbs:
-    case HloOpcode::kAdd:
-    case HloOpcode::kAnd:
-    case HloOpcode::kAtan2:
-    case HloOpcode::kBitcastConvert:
-    case HloOpcode::kBroadcast:
-    case HloOpcode::kCeil:
-    case HloOpcode::kCbrt:
-    case HloOpcode::kClamp:
-    case HloOpcode::kClz:
-    case HloOpcode::kCompare:
-    case HloOpcode::kComplex:
-    case HloOpcode::kConcatenate:
-    case HloOpcode::kConvert:
-    case HloOpcode::kCos:
-    case HloOpcode::kDivide:
-    case HloOpcode::kDot:
-    case HloOpcode::kDynamicSlice:
-    case HloOpcode::kDynamicUpdateSlice:
-    case HloOpcode::kExp:
-    case HloOpcode::kExpm1:
-    case HloOpcode::kFloor:
-    case HloOpcode::kGather:
-    case HloOpcode::kImag:
-    case HloOpcode::kIota:
-    case HloOpcode::kIsFinite:
-    case HloOpcode::kLog:
-    case HloOpcode::kLog1p:
-    case HloOpcode::kMap:
-    case HloOpcode::kMaximum:
-    case HloOpcode::kMinimum:
-    case HloOpcode::kMultiply:
-    case HloOpcode::kNegate:
-    case HloOpcode::kNot:
-    case HloOpcode::kOr:
-    case HloOpcode::kPad:
-    case HloOpcode::kPopulationCount:
-    case HloOpcode::kPower:
-    case HloOpcode::kReal:
-    case HloOpcode::kReshape:
-    case HloOpcode::kReducePrecision:
-    case HloOpcode::kReduceWindow:
-    case HloOpcode::kRemainder:
-    case HloOpcode::kReverse:
-    case HloOpcode::kRoundNearestAfz:
-    case HloOpcode::kRoundNearestEven:
-    case HloOpcode::kRsqrt:
-    case HloOpcode::kSelect:
-    case HloOpcode::kShiftLeft:
-    case HloOpcode::kShiftRightLogical:
-    case HloOpcode::kShiftRightArithmetic:
-    case HloOpcode::kSign:
-    case HloOpcode::kSin:
-    case HloOpcode::kSlice:
-    case HloOpcode::kSqrt:
-    case HloOpcode::kSubtract:
-    case HloOpcode::kStochasticConvert:
-    case HloOpcode::kTan:
-    case HloOpcode::kTanh:
-    case HloOpcode::kTranspose:
-    case HloOpcode::kXor:
-    case HloOpcode::kCopy:
-    case HloOpcode::kReduce:
-      return CreateOpInFusion(instr);
     default:
       llvm::errs() << instr->ToString();
+      llvm::errs() << "\n\nModule:\n"
+                   << instr->GetModule()->ToString() << "\n\n";
       return tsl::errors::Internal(
           absl::StrCat("LHLO opcode ", xla::HloOpcodeString(instr->opcode()),
                        " is not supported."));
@@ -398,7 +287,11 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
 }
 
 tsl::Status LhloDialectEmitter::DefaultAction(const HloInstruction* instr) {
-  return EmitOp(instr).status();
+  TF_ASSIGN_OR_RETURN(auto* op, EmitOp(instr));
+  if (op) {
+    lhlo_to_hlo_[op] = instr;
+  }
+  return tsl::OkStatus();
 }
 
 tsl::StatusOr<lmhlo::SortOp> LhloDialectEmitter::EmitSortOp(
@@ -1445,8 +1338,6 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
         builder_, config.bmm2_grad_gemm2_dot_dimension_numbers()));
 
     op.setFmhaScaleAttr(builder_.getF64FloatAttr(config.fmha_scale()));
-    op.setDropoutRateAttr(builder_.getF64FloatAttr(config.dropout_rate()));
-    op.setSeedAttr(builder_.getI64IntegerAttr(config.seed()));
 
     const auto& algorithm = config.algorithm();
     std::vector<int64_t> knob_ids;
@@ -1473,8 +1364,6 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
   switch (kind) {
     case xla::gpu::CudnnfMHAKind::kBackwardBmmBmm:
     case xla::gpu::CudnnfMHAKind::kBackwardSoftmax:
-    case xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout:
-    case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout:
     case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasSoftmax: {
       TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
       auto fmha_default_backward =
@@ -1482,10 +1371,21 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
                                                               operands);
       return set_common_fmha_backward_attributes(fmha_default_backward);
     }
+    case xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout:
+    case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout: {
+      TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+      auto fmha_default_backward =
+          CreateOpWithoutAttrs<lmhlo_gpu::fusedMHABackwardOp>(custom_call,
+                                                              operands);
+      fmha_default_backward.setDropoutRateAttr(
+          builder_.getF64FloatAttr(config.dropout_rate()));
+      fmha_default_backward.setSeedAttr(
+          builder_.getI64IntegerAttr(config.seed()));
+      return set_common_fmha_backward_attributes(fmha_default_backward);
+    }
+
     case xla::gpu::CudnnfMHAKind::kBackwardScaleMaskSoftmax:
-    case xla::gpu::CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
-    case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax:
-    case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout: {
+    case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax: {
       TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
       TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
 
@@ -1495,6 +1395,23 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
       return set_common_fmha_backward_attributes(
           fmha_scale_mask_softmax_backward);
     }
+
+    case xla::gpu::CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
+    case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout: {
+      TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
+      TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+
+      auto fmha_scale_mask_softmax_backward =
+          CreateOpWithoutAttrs<lmhlo_gpu::fusedMHAWithMaskBackwardOp>(
+              custom_call, operands);
+      fmha_scale_mask_softmax_backward.setDropoutRateAttr(
+          builder_.getF64FloatAttr(config.dropout_rate()));
+      fmha_scale_mask_softmax_backward.setSeedAttr(
+          builder_.getI64IntegerAttr(config.seed()));
+      return set_common_fmha_backward_attributes(
+          fmha_scale_mask_softmax_backward);
+    }
+
     default:
       return xla::InternalError("Unknown backward fused MHA call.");
   }
@@ -2054,6 +1971,27 @@ tsl::StatusOr<lmhlo::RecvDoneOp> LhloDialectEmitter::EmitRecvDoneOp(
   return recv_done_op;
 }
 
+// Sets builder insertion point for a new `memref.view` operation in the parent
+// function. We create just one `memref.view` operation for every unique
+// subspan of allocation, and because first use of the slice can be inside a
+// block nested in a control flow operation, we have to find an insertion point
+// in the parent function. Returns insertion guard for the original insertion
+// point.
+static tsl::StatusOr<OpBuilder::InsertionGuard> SetArrayViewInsertionPoint(
+    OpBuilder& builder) {
+  OpBuilder::InsertionGuard guard(builder);
+
+  Operation* parent = builder.getInsertionBlock()->getParentOp();
+  while (!isa<func::FuncOp>(parent)) {
+    builder.setInsertionPoint(parent);
+    if ((parent = parent->getParentOp()) == nullptr)
+      return absl::InternalError(
+          "Can't find an insertion point for memref.view operation");
+  }
+
+  return guard;
+}
+
 tsl::StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
     const xla::HloInstruction* instr, const xla::Shape& current_shape,
     const xla::ShapeIndex& shape_index) {
@@ -2080,47 +2018,64 @@ tsl::StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
   // but static bounds in MLIR.
   xla::Shape static_shape = xla::ShapeUtil::MakeStaticShape(current_shape);
 
+  // Try to find allocation slice with the same physical shape so that we always
+  // have only one memref.view operation covering the same buffer subspan. All
+  // reinterpret casts into different layouts will use the same source memref.
+  xla::Shape physical_shape =
+      xla::ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+          static_shape);
+
+  // Initialize values in `allocation_slices_` before taking references,
+  // otherwise we can invalidate them and trigger asan errors below.
+  auto static_shape_key = std::make_pair(slice, static_shape);
+  auto physical_shape_key = std::make_pair(slice, physical_shape);
+  allocation_slices_[static_shape_key];
+  allocation_slices_[physical_shape_key];
+
   // Check if we already have a memref.view for a given slice and shape.
-  auto& allocation_slice =
-      allocation_slices_[std::make_pair(slice, static_shape)];
+  auto& allocation_slice = allocation_slices_[static_shape_key];
   if (allocation_slice) {
     return instr_slice = allocation_slice;
   }
 
-  // Because first use of the slice can be inside a block nested in a control
-  // flow operation, we have to find an insertion point at the top level block.
-  OpBuilder::InsertionGuard guard(builder_);
-  Operation* parent = builder_.getInsertionBlock()->getParentOp();
-  while (!isa<func::FuncOp>(parent)) {
-    builder_.setInsertionPoint(parent);
-    if ((parent = parent->getParentOp()) == nullptr)
-      return absl::InternalError(
-          "Can't find an insertion point for memref.view operation");
-  }
-
-  // TODO(timshen): revisit location handling.
-  Location loc = builder_.getUnknownLoc();
-
-  Value alloc = allocations_[slice.allocation()];
-  Value byte_shift =
-      builder_.create<arith::ConstantIndexOp>(alloc.getLoc(), slice.offset());
-
   TF_ASSIGN_OR_RETURN(Type out_type, xla::ConvertShapeToType<MemRefType>(
                                          static_shape, builder_));
-  xla::Shape physical_shape =
-      xla::ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-          static_shape);
   TF_ASSIGN_OR_RETURN(
       Type physical_out_type,
       xla::ConvertShapeToType<MemRefType>(physical_shape, builder_));
 
-  // ViewOp only takes memrefs without affine maps (layouts). Let ViewOp
-  // produce the physical shape (where dimensions are ordered in major to
-  // minor) first, then follow up with a MemRefReinterpretCast to cast the
-  // resulting memref to the original layout.
-  Value result =
-      builder_.create<memref::ViewOp>(loc, physical_out_type, alloc, byte_shift,
-                                      /*sizes=*/ValueRange{});
+  // Try to find an insertion point for a new memref.view operation.
+  TF_ASSIGN_OR_RETURN(auto guard, SetArrayViewInsertionPoint(builder_));
+
+  // TODO(timshen): revisit location handling.
+  Location loc = builder_.getUnknownLoc();
+
+  // Creates new memref.view operation with a `physical_shape`.
+  auto create_physical_slice = [&]() -> Value {
+    Value alloc = allocations_[slice.allocation()];
+    Value byte_shift =
+        builder_.create<arith::ConstantIndexOp>(alloc.getLoc(), slice.offset());
+
+    // ViewOp only takes memrefs without affine maps (layouts). Let ViewOp
+    // produce the physical shape (where dimensions are ordered in major to
+    // minor) first, then follow up with a MemRefReinterpretCast to cast the
+    // resulting memref to the original layout.
+    return builder_.create<memref::ViewOp>(loc, physical_out_type, alloc,
+                                           byte_shift,
+                                           /*sizes=*/ValueRange());
+  };
+
+  // Reuse existing physical slice if it exists, otherwise build a new
+  // memref.view operation and cache it.
+  auto& physical_slice = allocation_slices_[physical_shape_key];
+  if (!physical_slice) {
+    physical_slice = create_physical_slice();
+  }
+
+  // Start from a physical slice as a result, and maybe reinterpret cast it into
+  // logical shape.
+  Value result = physical_slice;
+
   if (result.getType() != out_type) {
     int64_t out_offset;
     SmallVector<int64_t, 4> out_strides;
@@ -2351,8 +2306,11 @@ tsl::Status LhloDialectEmitter::Initialize() {
   return ::tsl::OkStatus();
 }
 
-tsl::Status HloToLhloModule(const BufferAssignment& assignment,
-                            const HloModule& hlo_module, ModuleOp module) {
+tsl::Status HloToLhloModule(
+    const BufferAssignment& assignment, const HloModule& hlo_module,
+    ModuleOp module,
+    absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>*
+        lhlo_to_hlo_map) {
   module.getContext()
       ->loadDialect<arith::ArithDialect, bufferization::BufferizationDialect,
                     func::FuncDialect, memref::MemRefDialect, mhlo::MhloDialect,
@@ -2384,6 +2342,11 @@ tsl::Status HloToLhloModule(const BufferAssignment& assignment,
   TF_RETURN_IF_ERROR(status_handler.ConsumeStatus());
 
   (void)mlir::verify(module);
+
+  if (lhlo_to_hlo_map) {
+    auto map = emitter.ConsumeLhloToHloMap();
+    std::swap(*lhlo_to_hlo_map, map);
+  }
   return status_handler.ConsumeStatus();
 }
 

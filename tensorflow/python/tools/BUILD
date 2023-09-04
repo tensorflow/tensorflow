@@ -229,6 +229,7 @@ py_strict_library(
     deps = [
         ":strip_unused_lib",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:graph_util",
         "//tensorflow/python/framework:tensor_util",

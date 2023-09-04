@@ -58,6 +58,7 @@ bool IsRemovableWhile(HloInstruction* instruction,
   }
   return true;
 }
+
 }  // namespace
 
 /*static*/ StatusOr<bool> HloDCE::RunOnComputation(
@@ -72,6 +73,9 @@ bool IsRemovableWhile(HloInstruction* instruction,
   for (auto* instruction : computation->instructions()) {
     auto maybe_collective_op = DynCast<HloCollectiveInstruction>(instruction);
     if (instruction->IsDead() && computation->IsSafelyRemovable(instruction) &&
+        (!instruction->IsCustomCall("Sharding") ||
+         (!instruction->operand(0)->IsRoot() &&
+          instruction->operand(0)->user_count() == 1)) &&
         (!instruction->HasSideEffect() ||
          (remove_cross_partition_collective_ops && maybe_collective_op &&
           !maybe_collective_op->constrain_layout()) ||

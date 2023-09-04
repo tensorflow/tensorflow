@@ -699,3 +699,37 @@ xla_test(
         "//tensorflow/tsl/platform:test",
     ],
 )
+
+cc_library(
+    name = "tuple",
+    srcs = ["tuple.cc"],
+    hdrs = ["tuple.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_tree",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/container:inlined_vector",
+    ],
+)
+
+xla_test(
+    name = "tuple_test",
+    srcs = ["tuple_test.cc"],
+    deps = [
+        ":tuple",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_tree",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:global_data",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+    ],
+)

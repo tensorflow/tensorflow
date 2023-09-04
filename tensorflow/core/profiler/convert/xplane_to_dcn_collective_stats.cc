@@ -36,19 +36,13 @@ namespace profiler {
 
 namespace {
 
-StatusOr<bool> HasDcnCollectiveStats(const SessionSnapshot& session_snapshot) {
-  for (int idx = 0; idx < session_snapshot.XSpaceSize(); idx++) {
-    std::string hostname = session_snapshot.GetHostname(idx);
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
-                        session_snapshot.GetXSpace(idx));
-
-    if (const tensorflow::profiler::XPlane* xplane = FindPlaneWithName(
-            *xspace, tensorflow::profiler::kHostThreadsPlaneName);
-        xplane != nullptr) {
-      for (const auto& [_, metadata] : xplane->event_metadata()) {
-        if (absl::StartsWith(metadata.name(), "MegaScale:")) {
-          return true;
-        }
+bool HasDcnCollectiveStatsInXSpace(const XSpace& xspace) {
+  if (const tensorflow::profiler::XPlane* xplane = FindPlaneWithName(
+          xspace, tensorflow::profiler::kHostThreadsPlaneName);
+      xplane != nullptr) {
+    for (const auto& [_, metadata] : xplane->event_metadata()) {
+      if (absl::StartsWith(metadata.name(), "MegaScale:")) {
+        return true;
       }
     }
   }
@@ -57,23 +51,20 @@ StatusOr<bool> HasDcnCollectiveStats(const SessionSnapshot& session_snapshot) {
 
 StatusOr<bool> GetDcnCollectiveStatsFromMultiXSpaceAndSaveToFile(
     const SessionSnapshot& session_snapshot) {
-  TF_ASSIGN_OR_RETURN(bool hasDcnCollectiveStats,
-                      HasDcnCollectiveStats(session_snapshot));
-
-  // The profile does not have dcn collective stats.
-  if (!hasDcnCollectiveStats) {
-    DcnSlackAnalysis dcnSlackAnalysis;
-    TF_RETURN_IF_ERROR(WriteBinaryProto(session_snapshot,
-                                        StoredDataType::DCN_COLLECTIVE_STATS,
-                                        kNoHostIdentifier, dcnSlackAnalysis));
-    return false;
-  }
-
   DcnSlackAnalysisCombiner combiner;
   for (int idx = 0; idx < session_snapshot.XSpaceSize(); idx++) {
     std::string hostname = session_snapshot.GetHostname(idx);
     TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
                         session_snapshot.GetXSpace(idx));
+
+    // The profile does not have dcn collective stats.
+    if (!HasDcnCollectiveStatsInXSpace(*xspace)) {
+      DcnSlackAnalysis dcnSlackAnalysis;
+      TF_RETURN_IF_ERROR(WriteBinaryProto(session_snapshot,
+                                          StoredDataType::DCN_COLLECTIVE_STATS,
+                                          kNoHostIdentifier, dcnSlackAnalysis));
+      return false;
+    }
 
     DcnSlackAnalysis dcnSlackAnalysis =
         ConvertXSpaceToDcnSlackAnalysis(*xspace);
@@ -104,7 +95,16 @@ StatusOr<bool> HasDcnCollectiveStatsInMultiXSpace(
 
   // Cache file not present, check if trace contains dcn collective stats.
   if (!hasCacheFile.first) {
-    return HasDcnCollectiveStats(session_snapshot);
+    for (int idx = 0; idx < session_snapshot.XSpaceSize(); idx++) {
+      std::string hostname = session_snapshot.GetHostname(idx);
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                          session_snapshot.GetXSpace(idx));
+
+      if (HasDcnCollectiveStatsInXSpace(*xspace)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   if (hasCacheFile.second.empty()) {
@@ -138,6 +138,21 @@ StatusOr<bool> ConvertMultiXSpaceToDcnCollectiveStats(
     // means dcn collective stats are present in the profile.
     return true;
   }
+}
+
+StatusOr<DcnSlackAnalysis> GetDcnSlackAnalysisByHostName(
+    const SessionSnapshot& session_snapshot, const std::string hostname) {
+  TF_ASSIGN_OR_RETURN(bool hasDcnCollectiveStats,
+                      ConvertMultiXSpaceToDcnCollectiveStats(session_snapshot));
+
+  DcnSlackAnalysis dcnSlackAnalysis;
+  if (hasDcnCollectiveStats) {
+    TF_RETURN_IF_ERROR(ReadBinaryProto(session_snapshot,
+                                       StoredDataType::DCN_COLLECTIVE_STATS,
+                                       hostname, &dcnSlackAnalysis));
+  }
+
+  return dcnSlackAnalysis;
 }
 
 }  // namespace profiler

@@ -497,10 +497,12 @@ cc_library(
         ":status_casters",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
+        "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:custom_call_sharding_helper",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
+        "//tensorflow/tsl/platform:errors",
         "@pybind11",
     ],
 )
@@ -573,10 +575,12 @@ cc_library(
         ":python_utils",
         ":pytree",
         ":status_casters",
+        ":transfer_guard_lib",
         ":util",
         "//tensorflow/compiler/xla/pjrt:lru_cache",
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/python/pjrt_ifrt",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/synchronization",
         "@pybind11",
@@ -870,6 +874,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":exceptions",
         ":py_client",
         ":status_casters",
         ":types",
@@ -932,18 +937,6 @@ config_setting(
     },
 )
 
-bool_flag(
-    name = "enable_tpu",
-    build_setting_default = True,
-)
-
-config_setting(
-    name = "tpu_enabled",
-    flag_values = {
-        ":enable_tpu": "True",
-    },
-)
-
 # If this flag is enabled, it sets RPATH on the xla_extension to values that are suitable for
 # finding NVIDIA's CUDA libraries when they are installed as pip packages.
 bool_flag(
@@ -971,16 +964,7 @@ cc_library(
 
 tsl_pybind_extension(
     name = "xla_extension",
-    srcs = [
-        "xla.cc",
-    ],
-    defines = select({
-        ":gpu_enabled": ["XLA_PYTHON_ENABLE_GPU=1"],
-        "//conditions:default": [],
-    }) + select({
-        ":tpu_enabled": ["XLA_PYTHON_ENABLE_TPU=1"],
-        "//conditions:default": [],
-    }),
+    srcs = ["xla_extension.cc"],
     linkopts = select({
         ":use_jax_cuda_pip_rpaths": [
             "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_cupti/lib",
@@ -997,6 +981,30 @@ tsl_pybind_extension(
     ],
     pytype_srcs = glob(["xla_extension/*.pyi"]),
     visibility = ["//visibility:public"],
+    deps = [
+        ":xla_extension_library",
+        "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "xla_extension_library",
+    srcs = [
+        "xla.cc",
+    ],
+    hdrs = [
+        "xla.h",
+    ],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    defines = select({
+        ":gpu_enabled": ["XLA_PYTHON_ENABLE_GPU=1"],
+        "//conditions:default": [],
+    }),
+    features = ["-use_header_modules"],
     deps = [
         ":custom_call_sharding",
         ":dlpack",
@@ -1034,6 +1042,7 @@ tsl_pybind_extension(
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
         "//tensorflow/compiler/xla/pjrt/distributed",
         "//tensorflow/compiler/xla/pjrt/distributed:client",
+        "//tensorflow/compiler/xla/pjrt/distributed:protocol_proto_cc",
         "//tensorflow/compiler/xla/pjrt/distributed:service",
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/python/pjrt_ifrt",
@@ -1044,6 +1053,7 @@ tsl_pybind_extension(
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ] + select({
@@ -1054,12 +1064,6 @@ tsl_pybind_extension(
     }) + select({
         ":link_gpu_plugin": [
             ":gpu_plugin_deps",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        ":tpu_enabled": [
-            "//tensorflow/compiler/xla/pjrt:tpu_client",
-            "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_framework_helper",
         ],
         "//conditions:default": [],
     }),
@@ -1085,6 +1089,7 @@ cc_library(
         "//tensorflow/tsl/profiler/utils:xplane_utils",
         "//tensorflow/tsl/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",

@@ -117,15 +117,6 @@ tsl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
   return GetExecutor(config);
 }
 
-tsl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDeviceWithPluginConfig(
-    int device_ordinal, const PluginConfig& plugin_config) {
-  StreamExecutorConfig config;
-  config.ordinal = device_ordinal;
-  config.plugin_config = plugin_config;
-  config.device_options = DeviceOptions::Default();
-  return GetExecutor(config);
-}
-
 tsl::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   if (config.gpu_stream) {

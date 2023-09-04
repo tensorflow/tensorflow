@@ -28,6 +28,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
+#include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
+
 namespace xla {
 namespace spmd {
 
@@ -136,15 +140,99 @@ double ClusterEnvironment::DotCost(const Shape& lhs_shape,
   return AllReduceCost(num_bytes, 0) + AllReduceCost(num_bytes, 1);
 }
 
+double ClusterEnvironment::CollectivePermuteCost(
+    double num_bytes,
+    const std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs) const {
+  absl::flat_hash_map<int64_t, std::vector<int64_t>> device_to_index_map;
+  device_mesh_.Each([&](absl::Span<const int64_t> indices, int64_t device) {
+    std::vector<int64_t> indices_vector;
+    for (auto i : indices) {
+      indices_vector.push_back(i);
+    }
+    device_to_index_map[device] = indices_vector;
+  });
+  double max_cost = 0;
+  for (const auto& pair : src_dst_pairs) {
+    auto src_device_indices = device_to_index_map[pair.first];
+    auto dst_device_indices = device_to_index_map[pair.second];
+    CHECK_EQ(src_device_indices.size(), dst_device_indices.size());
+    double pair_cost = 0;
+    for (size_t i = 0; i < src_device_indices.size(); ++i) {
+      pair_cost += (src_device_indices[i] == dst_device_indices[i])
+                       ? 0.0
+                       : (mesh_alpha_[i] + mesh_beta_[i] * num_bytes);
+    }
+    max_cost = std::max(pair_cost, max_cost);
+  }
+  return max_cost;
+}
+
+// Overestimate the cost of replicating a tensor by decomposing the resharding
+// operation as an all-gather on all mesh dimensions.
+double ClusterEnvironment::OverestimateReplicationCost(
+    const Shape& shape, const HloSharding& src_spec) const {
+  if (src_spec.IsTileMaximal() || src_spec.IsManual()) {
+    // TODO(b/238210866) Do not use kInfinityCost.
+    return kInfinityCost;
+  }
+  int64_t bytes_moved = GetBytes(shape) / src_spec.NumTiles();
+  double cost = 0.0;
+  for (size_t i = 0; i < device_mesh_.num_dimensions(); ++i) {
+    auto this_cost = this->AllGatherCost(bytes_moved, i);
+    cost += this_cost;
+    bytes_moved *= device_mesh_.dimensions()[i];
+  }
+  return cost;
+}
+
+double ClusterEnvironment::TryCollectivePermuteForResharding(
+    const Shape& shape, const HloSharding& src_spec,
+    const HloSharding& dst_spec) const {
+  auto reshard_with_collective_permute = [&]() {
+    std::vector<std::pair<int64_t, int64_t>> src_dst_pairs;
+    src_spec.tile_assignment().Each(
+        [&](absl::Span<const int64_t> indices, int64_t src_device) {
+          int64_t dst_device = dst_spec.tile_assignment()(indices);
+          src_dst_pairs.emplace_back(src_device, dst_device);
+        });
+    return this->CollectivePermuteCost(GetBytes(shape) / src_spec.NumTiles(),
+                                       src_dst_pairs);
+  };
+
+  if (CanReshardWithCollectivePermute(src_spec, dst_spec)) {
+    return reshard_with_collective_permute();
+  }
+  if (auto src_tgt_dims =
+          GetReshardAllToAllSourceTargetDims(src_spec, dst_spec)) {
+    if (src_tgt_dims->empty()) {
+      // If the device order is different in the target, fix the order with
+      // ReshardWithCollectivePermute.
+      return reshard_with_collective_permute();
+    }
+  }
+  // We currently do not handle these cases. These cases previously returned an
+  // infinite resharding cost. Instead, we now overestimate the actual
+  // resharding cost by decomposing the resharding operation, say from sharding
+  // s1 to sharding 2, into two steps:
+  // 1. Replicate the tensor,
+  // 2. Use dynamic-slice to extract the portion of the tensor as per sharding
+  // s2.
+  // Since we only estimate communication costs here, we only need to consider
+  // the cost of step 1, ie. replicating the tensor starting from sharding
+  // s2. We estimate this cost by invoking OverestimateReplicationCost.
+  return OverestimateReplicationCost(shape, src_spec);
+}
+
 // The communication cost of resharding a tensor from src to dst
-// TODO(b/238210866) Do not use kInfinityCost.
 double ClusterEnvironment::ReshardingCost(const Shape& shape,
                                           const HloSharding& src_spec,
                                           const HloSharding& dst_spec) const {
   // TODO(zhuohan): This function can be wrong and needs more tests.
-  if (src_spec == dst_spec || IsUndefined(src_spec)) {
+  if (src_spec == dst_spec || IsUndefined(src_spec) ||
+      src_spec.IsReplicated()) {
     return 0.0;
   }
+
   CHECK(!IsUndefined(dst_spec));
   int64_t src_n_dim = NumTileDimensions(src_spec);
   int64_t dst_n_dim = NumTileDimensions(dst_spec);
@@ -152,57 +240,55 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
   // dimensions, which could happen when an instruction follows the sharding
   // of an operand with a different shape, we need to use their
   // TiledDataRank().
-  size_t src_rank = shape.rank();
-  if (src_spec.IsTiled()) {
-    src_rank = src_spec.TiledDataRank();
-  }
-  size_t dst_rank = shape.rank();
-  if (dst_spec.IsTiled()) {
-    dst_rank = dst_spec.TiledDataRank();
-  }
-  std::vector<int64_t> src_tensor_dim_to_mesh_dim;
-  if (VectorGreaterThanOneElementCount(
-          src_spec.tile_assignment().dimensions()) == 1 &&
-      VectorGreaterThanOneElementCount(device_mesh_.dimensions()) > 1) {
-    // src spec is 1D and device_mesh is 2D or 3D
+  size_t src_rank =
+      src_spec.IsTiled() ? src_spec.TiledDataRank() : shape.rank();
+  size_t dst_rank =
+      dst_spec.IsTiled() ? dst_spec.TiledDataRank() : shape.rank();
 
-    auto src_tensor_dim_to_mesh_dim_or =
-        GetTensorDimToMeshDimNoCrash(src_rank, src_spec, device_mesh_1d_);
-    if (!src_tensor_dim_to_mesh_dim_or.ok()) {
-      return kInfinityCost;
+  auto get_tensor_dim_to_mesh_dim = [&](int64_t rank,
+                                        const HloSharding& sharding) {
+    if (VectorGreaterThanOneElementCount(
+            sharding.tile_assignment().dimensions()) == 1 &&
+        VectorGreaterThanOneElementCount(device_mesh_.dimensions()) > 1) {
+      // sharding is 1D and device_mesh is 2D or 3D
+      return GetTensorDimToMeshDimNoCrash(
+          rank, sharding, device_mesh_1d_,
+          /* consider_reverse_device_meshes */ false);
+    } else {
+      return GetTensorDimToMeshDimNoCrash(
+          rank, sharding, device_mesh_,
+          /* consider_reverse_device_meshes */ false);
     }
-    src_tensor_dim_to_mesh_dim = src_tensor_dim_to_mesh_dim_or.value();
-  } else {
-    auto src_tensor_dim_to_mesh_dim_or =
-        GetTensorDimToMeshDimNoCrash(src_rank, src_spec, device_mesh_);
-    if (!src_tensor_dim_to_mesh_dim_or.ok()) {
-      return kInfinityCost;
+  };
+
+  auto src_tensor_dim_to_mesh_dim_or =
+      get_tensor_dim_to_mesh_dim(src_rank, src_spec);
+  auto dst_tensor_dim_to_mesh_dim_or =
+      get_tensor_dim_to_mesh_dim(dst_rank, dst_spec);
+
+  if (!src_tensor_dim_to_mesh_dim_or.ok() && dst_spec.IsReplicated()) {
+    auto equivalent_src_spec = HloSharding::IotaTile(
+        src_spec.tile_assignment().dimensions(), src_spec.metadata());
+    if (auto equivalent_src_tensor_dim_to_mesh_dim_or =
+            get_tensor_dim_to_mesh_dim(src_rank, equivalent_src_spec);
+        equivalent_src_tensor_dim_to_mesh_dim_or.ok()) {
+      src_tensor_dim_to_mesh_dim_or = equivalent_src_tensor_dim_to_mesh_dim_or;
     }
-    src_tensor_dim_to_mesh_dim = src_tensor_dim_to_mesh_dim_or.value();
   }
-  std::vector<int64_t> dst_tensor_dim_to_mesh_dim;
 
   // TODO(pratikf) Currently, we return kInfinityCost when the input mesh shape
   // and mesh shape in the sharding do not match. This can possibly be better
   // handled.
-  if (VectorGreaterThanOneElementCount(
-          dst_spec.tile_assignment().dimensions()) == 1 &&
-      VectorGreaterThanOneElementCount(device_mesh_.dimensions()) > 1) {
-    // src spec is 1D and device_mesh is 2D or 3D
-    auto dst_tensor_dim_to_mesh_dim_or =
-        GetTensorDimToMeshDimNoCrash(dst_rank, dst_spec, device_mesh_1d_);
-    if (!dst_tensor_dim_to_mesh_dim_or.ok()) {
-      return kInfinityCost;
-    }
-    dst_tensor_dim_to_mesh_dim = dst_tensor_dim_to_mesh_dim_or.value();
-  } else {
-    auto dst_tensor_dim_to_mesh_dim_or =
-        GetTensorDimToMeshDimNoCrash(dst_rank, dst_spec, device_mesh_);
-    if (!dst_tensor_dim_to_mesh_dim_or.ok()) {
-      return kInfinityCost;
-    }
-    dst_tensor_dim_to_mesh_dim = dst_tensor_dim_to_mesh_dim_or.value();
+  if (!src_tensor_dim_to_mesh_dim_or.ok() ||
+      !dst_tensor_dim_to_mesh_dim_or.ok()) {
+    return TryCollectivePermuteForResharding(shape, src_spec, dst_spec);
   }
+
+  std::vector<int64_t> src_tensor_dim_to_mesh_dim =
+      src_tensor_dim_to_mesh_dim_or.value();
+  std::vector<int64_t> dst_tensor_dim_to_mesh_dim =
+      dst_tensor_dim_to_mesh_dim_or.value();
+
   if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
     return ReshardingCostMixedMeshShape(
         shape, src_tensor_dim_to_mesh_dim, dst_tensor_dim_to_mesh_dim,
@@ -230,7 +316,7 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
       continue;
     }
     // Do not allow other re-sharding patterns. (e.g., collective-permute)
-    return kInfinityCost;
+    return TryCollectivePermuteForResharding(shape, src_spec, dst_spec);
   }
 
   // Case 1: no communication is required. Only needs dynamic-slice.
@@ -240,13 +326,13 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
 
   // Do not allow some strange re-sharding patterns.
   if (slice_dims.size() > 1 && all_gather_dims.size() > 1) {
-    return kInfinityCost;
+    return TryCollectivePermuteForResharding(shape, src_spec, dst_spec);
   }
 
   // Case 2: all-to-all
   if (slice_dims.size() == 1 && all_gather_dims.size() == 1) {
     if (device_mesh_.dim(0) > 1 && device_mesh_.dim(1) > 1) {
-      return kInfinityCost;
+      return TryCollectivePermuteForResharding(shape, src_spec, dst_spec);
     }
 
     double bytes = GetBytes(shape);
@@ -258,7 +344,7 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
   double cost = 0.0;
   for (int dim : all_gather_dims) {
     if (dim >= device_mesh_.num_dimensions()) {
-      return kInfinityCost;
+      return TryCollectivePermuteForResharding(shape, src_spec, dst_spec);
     }
     bytes *= device_mesh_.dim(dim);
     cost += AllGatherCost(bytes, dim);

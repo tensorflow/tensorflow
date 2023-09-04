@@ -260,31 +260,43 @@ TfLiteStatus PrepareImpl4Bit(TfLiteContext* context, TfLiteNode* node,
       GetTemporarySafe(context, node, kQuantizedInputTensor, &input_quantized));
   input_quantized->type = kTfLiteInt8;
   input_quantized->allocation_type = kTfLiteArenaRw;
-  TfLiteIntArray* input_quantized_size = TfLiteIntArrayCreate(2);
-  input_quantized_size->data[0] = rhs_layout_rows;
-  input_quantized_size->data[1] = rhs_layout_cols;
-  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_quantized,
-                                                   input_quantized_size));
+  const int input_quantized_dims[2] = {rhs_layout_rows, rhs_layout_cols};
+  if (!TfLiteIntArrayEqualsArray(input_quantized->dims, 2,
+                                 input_quantized_dims)) {
+    TfLiteIntArray* input_quantized_size = TfLiteIntArrayCreate(2);
+    input_quantized_size->data[0] = input_quantized_dims[0];
+    input_quantized_size->data[1] = input_quantized_dims[1];
+    TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_quantized,
+                                                     input_quantized_size));
+  }
   TfLiteTensor* scaling_factors;
   TF_LITE_ENSURE_OK(
       context,
       GetTemporarySafe(context, node, kScalingFactorsTensor, &scaling_factors));
   scaling_factors->type = kTfLiteFloat32;
   scaling_factors->allocation_type = kTfLiteArenaRw;
-  TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
-  scaling_factors_size->data[0] = rhs_layout_rows;
-  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
-                                                   scaling_factors_size));
+  const int scaling_factors_dims[1] = {rhs_layout_rows};
+  if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1,
+                                 scaling_factors_dims)) {
+    TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
+    scaling_factors_size->data[0] = scaling_factors_dims[0];
+    TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
+                                                     scaling_factors_size));
+  }
 
   TfLiteTensor* accum_scratch;
   TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, kAccumulatorTensor,
                                               &accum_scratch));
   accum_scratch->type = kTfLiteInt32;
   accum_scratch->allocation_type = kTfLiteArenaRw;
-  TfLiteIntArray* accum_size = TfLiteIntArrayCreate(2);
-  accum_size->data[0] = dst_layout_rows, accum_size->data[1] = dst_layout_cols;
-  TF_LITE_ENSURE_OK(context,
-                    context->ResizeTensor(context, accum_scratch, accum_size));
+  const int accum_scratch_dims[2] = {dst_layout_rows, dst_layout_cols};
+  if (!TfLiteIntArrayEqualsArray(accum_scratch->dims, 2, accum_scratch_dims)) {
+    TfLiteIntArray* accum_size = TfLiteIntArrayCreate(2);
+    accum_size->data[0] = accum_scratch_dims[0];
+    accum_size->data[1] = accum_scratch_dims[1];
+    TF_LITE_ENSURE_OK(
+        context, context->ResizeTensor(context, accum_scratch, accum_size));
+  }
 
   TfLiteTensor* input_offsets;
   TF_LITE_ENSURE_OK(
@@ -292,10 +304,13 @@ TfLiteStatus PrepareImpl4Bit(TfLiteContext* context, TfLiteNode* node,
       GetTemporarySafe(context, node, kInputOffsetsTensor, &input_offsets));
   input_offsets->type = kTfLiteInt32;
   input_offsets->allocation_type = kTfLiteArenaRw;
-  TfLiteIntArray* input_offsets_size = TfLiteIntArrayCreate(1);
-  input_offsets_size->data[0] = rhs_layout_rows;
-  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_offsets,
-                                                   input_offsets_size));
+  const int input_offsets_dims[1] = {rhs_layout_rows};
+  if (!TfLiteIntArrayEqualsArray(input_offsets->dims, 1, input_offsets_dims)) {
+    TfLiteIntArray* input_offsets_size = TfLiteIntArrayCreate(1);
+    input_offsets_size->data[0] = input_offsets_dims[0];
+    TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_offsets,
+                                                     input_offsets_size));
+  }
 
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
@@ -878,11 +893,15 @@ TfLiteStatus EvalHybridDense4Bit(
   const int dst_layout_rows = rhs_layout_rows;
   const int dst_layout_cols = lhs_layout_rows;
   if (data->op_data_4bit->needs_prepack) {
-    optimized_4bit::Prepack(
-        &data->op_data_4bit->prepacked_cache, GetTensorData<int8_t>(filter),
+    const int required_size = optimized_4bit::kDefaultAlignmentPadding +
+                              (lhs_layout_rows * lhs_layout_cols / 2);
+    data->op_data_4bit->AllocatePackedRegion(required_size);
+    optimized_4bit::api::Prepack(
+        data->op_data_4bit->prepacked_cache, GetTensorData<int8_t>(filter),
         lhs_layout_rows, lhs_layout_cols, output_depth, cols, lhs_width, depth);
     data->op_data_4bit->needs_prepack = false;
   }
+
   std::vector<float> filter_scales(lhs_layout_rows, filter->params.scale);
   auto* filter_params =
       reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params);
@@ -896,17 +915,17 @@ TfLiteStatus EvalHybridDense4Bit(
       }
     }
   }
-  optimized_4bit::BatchQuantizeFloats4Bit(
+  optimized_4bit::api::BatchQuantizeFloats4Bit(
       GetTensorData<float>(input), batch_size, cols, quant_data,
       scaling_factors_ptr, rhs_width, depth, input_offset_ptr);
   const float* bias_ptr =
       bias != nullptr ? GetTensorData<float>(bias) : nullptr;
-  optimized_4bit::AssignBiasAndComputeOffsets(
+  optimized_4bit::api::AssignBiasAndComputeOffsets(
       input_offset_ptr, scaling_factors_ptr, filter_scales.data(), bias_ptr,
       GetTensorData<float>(output), output_depth, batch_size);
   const uint8_t* lhs = data->op_data_4bit->prepacked_cache;
   int32_t* dst = GetTensorData<int32_t>(accum_scratch);
-  optimized_4bit::RunAndUnpack(
+  optimized_4bit::api::RunAndUnpack(
       data->op_data_4bit->rows_right, lhs, quant_data, dst, output_depth,
       batch_size, lhs_layout_rows, lhs_layout_cols, rhs_layout_rows,
       rhs_layout_cols, dst_layout_rows, dst_layout_cols,

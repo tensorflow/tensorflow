@@ -634,6 +634,14 @@ class ScopedHoldAsExternalReference : public PjRtBuffer::ExternalReference {
 
   ~ScopedHoldAsExternalReference() override = default;
 
+  Status WaitUntilBufferReadyOnStream(std::intptr_t stream) override {
+    for (const std::shared_ptr<BufferSequencingEvent>& event :
+         external_reference_->definition_events()) {
+      TF_RETURN_IF_ERROR(event->WaitForEventOnExternalStream(stream));
+    }
+    return OkStatus();
+  }
+
  private:
   PjRtStreamExecutorBuffer::ScopedHold external_reference_;
 };
@@ -1099,7 +1107,8 @@ PjRtStreamExecutorClient::MakeCrossHostReceiveBuffersForGather(
 StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtDevice* device,
-    std::function<void()> on_delete_callback) {
+    std::function<void()> on_delete_callback,
+    std::optional<std::intptr_t> stream) {
   se::DeviceMemoryBase buffer(device_ptr, ShapeUtil::ByteSizeOf(shape));
 
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
@@ -1110,11 +1119,19 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
       definition_events;
   definition_events.emplace_back(
       std::make_shared<BufferSequencingEvent>(this->thread_pool()));
-  TF_ASSIGN_OR_RETURN(EventPool::Handle event,
-                      local_device->event_pool().ThenAllocateAndRecordEvent(
-                          local_device->compute_stream()));
+
+  se::Stream* definition_stream;
+  if (!stream) {
+    definition_stream = local_device->compute_stream();
+  } else {
+    TF_ASSIGN_OR_RETURN(definition_stream,
+                        local_device->GetStreamFromExternalStream(*stream));
+  }
+  TF_ASSIGN_OR_RETURN(
+      EventPool::Handle event,
+      local_device->event_pool().ThenAllocateAndRecordEvent(definition_stream));
   definition_events.back()->SetSequencingEvent(std::move(event),
-                                               local_device->compute_stream());
+                                               definition_stream);
 
   auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
       /*allocator=*/nullptr, device->local_hardware_id(),
@@ -1148,6 +1165,19 @@ absl::Span<PjRtMemorySpace* const> PjRtStreamExecutorDevice::memory_spaces()
 StatusOr<PjRtMemorySpace*> PjRtStreamExecutorDevice::default_memory_space()
     const {
   return Unimplemented("default_memory_space is not supported.");
+}
+
+StatusOr<std::intptr_t>
+PjRtStreamExecutorDevice::GetStreamForExternalReadyEvents() const {
+  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
+  se::Stream* stream = local_device->GetExternalReadyEventStream();
+  void* raw_stream = stream->implementation()->GpuStreamHack();
+  if (raw_stream == nullptr) {
+    return Unimplemented(
+        "GetStreamForExternalReadyEvents not implemented for platform '%s'.",
+        platform_name());
+  }
+  return absl::bit_cast<std::intptr_t>(raw_stream);
 }
 
 StatusOr<PjRtDevice*> PjRtStreamExecutorClient::LookupAddressableDevice(

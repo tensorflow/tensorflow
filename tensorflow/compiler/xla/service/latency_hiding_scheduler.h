@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
@@ -96,6 +97,7 @@ struct SchedulerConfig {
   int64_t reduce_scatter_overlap_limit = 1;
   int64_t send_recv_overlap_limit = 1;
   int64_t send_recv_host_overlap_limit = 1;
+  uint64_t memory_limit = UINT64_MAX;
   bool schedule_send_recvs = false;
   // Consider send recv as the same resource. Some platforms do not take well
   // overlapping the send/recv ops between themselves.
@@ -103,8 +105,8 @@ struct SchedulerConfig {
   bool use_real_cost_model = false;
   bool aggressive_scheduling_policies = false;
   bool enable_release_start_policy = false;
-  uint64_t memory_limit = UINT64_MAX;
   bool resource_sharing = false;
+  bool depth_based_memory_pressure_reduction = false;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.
@@ -136,6 +138,10 @@ class LatencyEstimator {
 // Implementation of LatencyEstimator using an approximate cost model.
 class ApproximateLatencyEstimator : public LatencyEstimator {
  public:
+  explicit ApproximateLatencyEstimator(
+      GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
+      : LatencyEstimator(func) {}
+
   // Returns a latency estimation between two instructions.
   // Currently this is in abstract units. When the real/accurate cost model is
   // implemented this will be in cycles.
@@ -305,8 +311,10 @@ class HloGraphNode {
   void SetCost(TimeCost cost) { cost_ = cost; }
   TimeCost GetAsyncDepth() const { return async_depth_; }
   TimeCost GetDepth() const { return depth_; }
+  TimeCost GetGraphDepth() const { return graph_depth_; }
   void SetAsyncDepth(TimeCost async_depth) { async_depth_ = async_depth; }
   void SetDepth(TimeCost depth) { depth_ = depth; }
+  void SetGraphDepth(TimeCost graph_depth) { graph_depth_ = graph_depth; }
   bool GetForceDelay() const { return force_delay_; }
   void SetForceDelay(bool force_delay) { force_delay_ = force_delay; }
   ResourcesVector GetResources() const { return resources_; }
@@ -379,6 +387,7 @@ class HloGraphNode {
     absl::StrAppend(&result, "Cost: ", cost_, "\n");
     absl::StrAppend(&result, "Async Depth: ", async_depth_, "\n");
     absl::StrAppend(&result, "Depth: ", depth_, "\n");
+    absl::StrAppend(&result, "Graph Depth: ", graph_depth_, "\n");
     absl::StrAppend(&result, "Force Delay: ", force_delay_, "\n");
     absl::StrAppend(&result, "Predecessors:\n");
     for (const HloEdge& e : predecessors_) {
@@ -423,8 +432,11 @@ class HloGraphNode {
   TimeCost cost_ = 0.0;
   // Depth in latency terms of a node based on Async operation cost on the path.
   TimeCost async_depth_ = 0.0;
-  // Depth in latency terms of node based on distance to the entry nodes.
+  // Depth in latency terms of node based on operation cost on the path to the
+  // entry node.
   TimeCost depth_ = 0.0;
+  // Depth in latency terms of node based on distance to the entry node.
+  int64_t graph_depth_ = 0;
   // AsyncResources used by the node.
   ResourcesVector resources_;
   // Force the scheduling of the nodes with attribute set as late as possible.

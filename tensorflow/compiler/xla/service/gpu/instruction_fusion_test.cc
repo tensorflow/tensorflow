@@ -18,14 +18,15 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 namespace xla {
 namespace gpu {
@@ -93,7 +94,7 @@ TEST_F(InstructionFusionTest,
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(broadcast2, computation->root_instruction());
   EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
-  EXPECT_THAT(computation->root_instruction(), op::Fusion());
+  EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Fusion()));
 }
 
 TEST_F(InstructionFusionTest,
@@ -110,7 +111,7 @@ TEST_F(InstructionFusionTest,
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape2, computation->root_instruction());
   EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
-  EXPECT_THAT(computation->root_instruction(), op::Fusion());
+  EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Fusion()));
 }
 
 TEST_F(InstructionFusionTest,
@@ -127,7 +128,7 @@ TEST_F(InstructionFusionTest,
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(transpose2, computation->root_instruction());
   EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
-  EXPECT_THAT(computation->root_instruction(), op::Fusion());
+  EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Fusion()));
 }
 
 TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfDotFused) {
@@ -185,9 +186,10 @@ TEST_F(InstructionFusionTest, BroadcastIntoReduce) {
   EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Fusion());
-  EXPECT_THAT(root->fused_expression_root(),
-              op::Reduce(op::Broadcast(op::Constant()), op::Constant()));
+  ASSERT_THAT(root, GmockMatch(m::Fusion()));
+  EXPECT_THAT(
+      root->fused_expression_root(),
+      GmockMatch(m::Reduce(m::Broadcast(m::Constant()), m::Constant())));
 }
 
 TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduce) {
@@ -277,8 +279,9 @@ TEST_F(InstructionFusionTest, FuseLayoutChangingOpWithElementwise) {
   EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Fusion());
-  EXPECT_THAT(root->fused_expression_root(), op::Add(op::Copy(), op::Copy()));
+  ASSERT_THAT(root, GmockMatch(m::Fusion()));
+  EXPECT_THAT(root->fused_expression_root(),
+              GmockMatch(m::Add(m::Copy(), m::Copy())));
 }
 
 TEST_F(InstructionFusionTest, BitcastIntoAdd) {
@@ -296,9 +299,9 @@ TEST_F(InstructionFusionTest, BitcastIntoAdd) {
   EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Fusion());
+  ASSERT_THAT(root, GmockMatch(m::Fusion()));
   EXPECT_THAT(root->fused_expression_root(),
-              op::Add(op::Bitcast(op::Parameter()), op::Parameter()));
+              GmockMatch(m::Add(m::Bitcast(m::Parameter()), m::Parameter())));
 }
 
 TEST_F(InstructionFusionTest, AddIntoBitcast) {
@@ -313,12 +316,21 @@ TEST_F(InstructionFusionTest, AddIntoBitcast) {
     })")
                     .value();
 
-  EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
+  EXPECT_FALSE(duplicating_instruction_fusion_.Run(module.get()).value());
+}
 
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Fusion());
-  EXPECT_THAT(root->fused_expression_root(),
-              op::Bitcast(op::Add(op::Parameter(), op::Parameter())));
+TEST_F(InstructionFusionTest, ConvertIntoBitcastBothConsumedByTuple) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test
+
+  ENTRY main {
+    param_0 = f32[2048,16000]{1,0} parameter(0)
+    convert = bf16[2048,16000]{1,0} convert(param_0)
+    bitcast = bf16[16000,1,2048]{2,1,0} bitcast(convert)
+    ROOT tuple.143 = (bf16[16000,1,2048]{2,1,0}, bf16[2048,16000]{1,0}) tuple(bitcast, convert)
+  })")
+                    .value();
+  EXPECT_FALSE(duplicating_instruction_fusion_.Run(module.get()).value());
 }
 
 TEST_F(InstructionFusionTest, DontFuseGTE) {
@@ -359,7 +371,7 @@ TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
   EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::Fusion(), op::Fusion()))
+  EXPECT_THAT(root, GmockMatch(m::Tuple(m::Fusion(), m::Fusion())))
       << module->ToString();
 }
 
@@ -406,11 +418,12 @@ TEST_F(InstructionFusionTest, DotOutputFusionImpossible) {
   EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Fusion());
+  ASSERT_THAT(root, GmockMatch(m::Fusion()));
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kLoop);
-  EXPECT_THAT(root->fused_expression_root(),
-              op::Multiply(op::Multiply(op::Parameter(), op::Parameter()),
-                           op::Broadcast(op::Constant())));
+  EXPECT_THAT(
+      root->fused_expression_root(),
+      GmockMatch(m::Multiply(m::Multiply(m::Parameter(), m::Parameter()),
+                             m::Broadcast(m::Constant()))));
 }
 
 // Counts the HLO ops with a given op code in the specified module.
@@ -463,10 +476,11 @@ TEST_F(InstructionFusionTest, FuseScalarConstant) {
   EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Fusion());
-  EXPECT_THAT(root->fused_expression_root(),
-              op::Add(op::Broadcast(op::Add(op::Parameter(), op::Constant())),
-                      op::Parameter()));
+  ASSERT_THAT(root, GmockMatch(m::Fusion()));
+  EXPECT_THAT(
+      root->fused_expression_root(),
+      GmockMatch(m::Add(m::Broadcast(m::Add(m::Parameter(), m::Constant())),
+                        m::Parameter())));
 }
 
 // Check that we limit the number of operands to fusions we create.
@@ -526,11 +540,11 @@ TEST_F(InstructionFusionTest, FuseIntoScatter) {
   EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Add(op::Fusion(), op::Fusion()));
-  EXPECT_EQ(root->operand(0)->fusion_kind(),
-            HloInstruction::FusionKind::kInput);
-  EXPECT_THAT(root->operand(0)->fused_expression_root(),
-              op::Scatter(op::Add(), op::Add(), op::Add()));
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root, GmockMatch(m::Add(m::Fusion(&fusion), m::Fusion())));
+  EXPECT_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kInput);
+  EXPECT_THAT(fusion->fused_expression_root(),
+              GmockMatch(m::Scatter(m::Add(), m::Add(), m::Add())));
 }
 
 TEST_F(InstructionFusionTest, NonscalarConstantsNotFused) {
@@ -556,9 +570,10 @@ TEST_F(InstructionFusionTest, NonscalarConstantsNotFused) {
   // The f32[16] constant should not be fused into the reduce, but the f32[]
   // constant should be.
   auto* root = module->entry_computation()->root_instruction();
-  ASSERT_THAT(root, op::Fusion());
-  EXPECT_THAT(root->fused_instructions_computation()->root_instruction(),
-              op::Reduce(op::Broadcast(op::Parameter()), op::Constant()));
+  ASSERT_THAT(root, GmockMatch(m::Fusion()));
+  EXPECT_THAT(
+      root->fused_instructions_computation()->root_instruction(),
+      GmockMatch(m::Reduce(m::Broadcast(m::Parameter()), m::Constant())));
 }
 
 TEST_F(InstructionFusionTest, FuseReverse) {
@@ -575,9 +590,9 @@ TEST_F(InstructionFusionTest, FuseReverse) {
   EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Fusion());
+  ASSERT_THAT(root, GmockMatch(m::Fusion()));
   EXPECT_THAT(root->fused_expression_root(),
-              op::Reverse(op::Add(op::Parameter(), op::Parameter())));
+              GmockMatch(m::Reverse(m::Add(m::Parameter(), m::Parameter()))));
 }
 
 TEST_F(InstructionFusionTest, GpuIsExpensiveF32) {
@@ -694,7 +709,7 @@ TEST_F(InstructionFusionTest, FloatingPointExpIsCheap) {
   EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::Fusion(), op::Fusion()))
+  EXPECT_THAT(root, GmockMatch(m::Tuple(m::Fusion(), m::Fusion())))
       << module->ToString();
 }
 
@@ -720,7 +735,7 @@ TEST_F(InstructionFusionTest, SmallReducedDimensionIsNotLoweredToLoop) {
   EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  ASSERT_THAT(root, op::Fusion());
+  ASSERT_THAT(root, GmockMatch(m::Fusion()));
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kInput);
 }
 
@@ -763,11 +778,12 @@ TEST_F(InstructionFusionTest, IotaIntoVariadicReduction) {
                                    TestGpuDeviceInfo::RTXA6000DeviceInfo())
                   .Run(module.get())
                   .value());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Fusion(op::Parameter()));
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter())));
   EXPECT_THAT(
       module->entry_computation()->root_instruction()->fused_expression_root(),
-      op::Reduce(op::Parameter(), op::Iota(), op::Constant(), op::Constant()));
+      GmockMatch(
+          m::Reduce(m::Parameter(), m::Iota(), m::Constant(), m::Constant())));
 }
 
 TEST_F(InstructionFusionTest, InputReductionFusion) {
@@ -813,7 +829,7 @@ TEST_F(InstructionFusionTest, InputReductionFusion) {
   HloInstruction* fused_convert_fusion =
       module->entry_computation()->root_instruction();
 
-  ASSERT_THAT(fused_convert_fusion, op::Fusion());
+  ASSERT_THAT(fused_convert_fusion, GmockMatch(m::Fusion()));
   SCOPED_TRACE(module->ToString());
   EXPECT_EQ(fused_convert_fusion->fusion_kind(),
             HloInstruction::FusionKind::kInput);
@@ -846,10 +862,10 @@ ENTRY main {
 
   EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
 
-  HloInstruction* fused_convert_fusion =
-      module->entry_computation()->root_instruction();
+  const HloInstruction* fused_convert_fusion =
+      module->entry_computation()->root_instruction()->operand(0);
 
-  ASSERT_THAT(fused_convert_fusion, op::Fusion());
+  ASSERT_THAT(fused_convert_fusion, GmockMatch(m::Fusion()));
   SCOPED_TRACE(module->ToString());
   EXPECT_EQ(fused_convert_fusion->fusion_kind(),
             HloInstruction::FusionKind::kInput);
@@ -880,7 +896,7 @@ ENTRY main {
   HloInstruction* fused_convert_fusion =
       module->entry_computation()->root_instruction();
 
-  ASSERT_THAT(fused_convert_fusion, op::Fusion());
+  ASSERT_THAT(fused_convert_fusion, GmockMatch(m::Fusion()));
   SCOPED_TRACE(module->ToString());
   EXPECT_EQ(fused_convert_fusion->fusion_kind(),
             HloInstruction::FusionKind::kInput);

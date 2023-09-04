@@ -31,6 +31,13 @@
 #               (affects 'source $TFCI')
 set -euxo pipefail -o history -o allexport
 
+# Set TFCI_GIT_DIR, the root directory for all commands, to two directories
+# above the location of this file (setup.sh). We could also use "git rev-parse
+# --show-toplevel", but that wouldn't work for non-git repos (like if someone
+# downloaded TF as a zip archive).
+export TFCI_GIT_DIR=$(cd $(dirname "$0"); realpath ../../)
+cd "$TFCI_GIT_DIR"
+
 # "TFCI" may optionally be set to the name of an env-type file with TFCI
 # variables in it, OR may be left empty if the user has already exported the
 # relevant variables in their environment. Because of 'set -o allexport' above
@@ -50,12 +57,23 @@ else
   echo 'If you have not, you will see a lot of undefined variable errors.'
 fi
 
-# Set TFCI_GIT_DIR, the root directory for all commands, to two directories
-# above the location of this file (setup.sh). We could also use "git rev-parse
-# --show-toplevel", but that wouldn't work for non-git repos (like if someone
-# downloaded TF as a zip archive).
-export TFCI_GIT_DIR=$(cd $(dirname "$0"); realpath ../../)
-cd "$TFCI_GIT_DIR"
+# For Google-internal jobs, run copybara, which will overwrite the source tree.
+# Never useful for outside users. Requires that the Kokoro job define a gfile
+# resource pointing to copybara.sh, which is then loaded into the GFILE_DIR.
+# See: cs/official/copybara.sh
+if [[ "$TFCI_COPYBARA_ENABLE" == 1 && "${TFCI_COPYBARA_COMPLETE:-}" != 1 ]]; then
+  if [[ -e "$KOKORO_GFILE_DIR/copybara.sh" ]]; then
+    source "$KOKORO_GFILE_DIR/copybara.sh"
+  else
+    echo "TF_CI_COPYBARA_ENABLE is 1, but \$KOKORO_GFILE_DIR/copybara.sh"
+    echo "could not be found. If you are an internal user, make sure your"
+    echo "Kokoro job has a gfile_resources item pointing to the right file."
+    echo "If you are an external user, Copybara is useless for you, and you"
+    echo "should set TFCI_COPYBARA_ENABLE=0"
+    exit 1
+  fi
+fi
+
 
 # Create and expand to the full path of TFCI_OUTPUT_DIR
 export TFCI_OUTPUT_DIR=$(realpath "$TFCI_OUTPUT_DIR")
@@ -73,23 +91,6 @@ exec > >(tee "$TFCI_OUTPUT_DIR/script.log") 2>&1
 # well-documented script under utilities/ to encapsulate the functionality
 # instead.
 tfrun() { "$@"; }
-
-# For Google-internal jobs, run copybara, which will overwrite the source tree.
-# Never useful for outside users. Requires that the Kokoro job define a gfile
-# resource pointing to copybara.sh, which is then loaded into the GFILE_DIR.
-# See: cs/official/copybara.sh
-if [[ "$TFCI_COPYBARA_ENABLE" == 1 ]]; then
-  if [[ -e "$KOKORO_GFILE_DIR/copybara.sh" ]]; then
-    source "$KOKORO_GFILE_DIR/copybara.sh"
-  else
-    echo "TF_CI_COPYBARA_ENABLE is 1, but \$KOKORO_GFILE_DIR/copybara.sh"
-    echo "could not be found. If you are an internal user, make sure your"
-    echo "Kokoro job has a gfile_resources item pointing to the right file."
-    echo "If you are an external user, Copybara is useless for you, and you"
-    echo "should set TFCI_COPYBARA_ENABLE=0"
-    exit 1
-  fi
-fi
 
 # Run all "tfrun" commands under Docker. See docker.sh for details
 if [[ "$TFCI_DOCKER_ENABLE" == 1 ]]; then

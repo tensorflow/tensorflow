@@ -30,6 +30,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -651,6 +652,215 @@ TEST_P(MemorySpaceAssignmentTest, NegateChain) {
   EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
   EXPECT_THAT(sequence.instructions()[2], op::CopyStart());
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_P(MemorySpaceAssignmentTest, AlwaysSpillJitPrefetchTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  // For buffers produced in alternate memory spill to default and prefetch
+  // just in time for uses other than immediate use (if any) and make all
+  // prefetches single use for first use and create new prefetches for all
+  // subsequent uses.
+
+  // We expect MSA to start prefetching p1 immediately the parameter(1)
+  // instruction and to finish immediately before add. The
+  // always_spill_to_default_memory option will move the start of the prefetch
+  // from just after parameter(1) to just before its completion.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  negate0 = f32[2,3]{1,0} negate(p0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  negate3 = f32[2,3]{1,0} negate(negate2)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  negate6 = f32[2,3]{1,0} negate(negate5)
+  ROOT add = f32[2,3]{1,0} add(negate6, p1)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.always_spill_to_default_memory = true;
+  AssignMemorySpace(module.get(), options);
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(2) << i << " " << sequence.instructions()[i]->ToString();
+  }
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                          HloAliasAnalysis::Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> live_range,
+                          HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                            module->entry_computation()));
+  const HloInstruction* add = FindInstruction(module.get(), "add");
+  const HloInstruction* cd = add->operand(1);
+  // Check copy made just in time for use and copy is a prefetch.
+  EXPECT_THAT(cd, op::CopyDone());
+  EXPECT_EQ(live_range->instruction_schedule().at(add),
+            live_range->instruction_schedule().at(cd) + 1);
+  const HloInstruction* cs = cd->operand(0);
+  EXPECT_THAT(cs, op::CopyStart());
+  EXPECT_EQ(live_range->instruction_schedule().at(add),
+            live_range->instruction_schedule().at(cs) + 2);
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+}
+
+TEST_P(MemorySpaceAssignmentTest, AlwaysSpillPrefetchForSecondUseTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  //
+  // Setting always_spill_to_default_memory option to true makes sure the
+  // negate0 buffer is copied to default memory between negate0 and negate1,
+  // so that version can be prefetched just before it is used at add0.
+  // Additionally, we leave a copy of negate0 in alternate memory for use at
+  // negate1.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  negate0 = f32[2,3]{1,0} negate(p0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  negate3 = f32[2,3]{1,0} negate(negate2)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  add0 = f32[2,3]{1,0} add(negate5, negate0)
+  ROOT add1 = f32[2,3]{1,0} add(add0, p1)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.always_spill_to_default_memory = true;
+  AssignMemorySpace(module.get(), options);
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(2) << i << " " << sequence.instructions()[i]->ToString();
+  }
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                          HloAliasAnalysis::Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> live_range,
+                          HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                            module->entry_computation()));
+  // Check copies are made just in time for use and copies are prefetches.
+  const HloInstruction* add1 = FindInstruction(module.get(), "add1");
+  const HloInstruction* cd1 = add1->operand(1);
+  EXPECT_THAT(cd1, op::CopyDone());
+  EXPECT_EQ(live_range->instruction_schedule().at(add1),
+            live_range->instruction_schedule().at(cd1) + 1);
+  const HloInstruction* cs1 = cd1->operand(0);
+  EXPECT_THAT(cs1, op::CopyStart());
+  EXPECT_EQ(live_range->instruction_schedule().at(add1),
+            live_range->instruction_schedule().at(cs1) + 2);
+  EXPECT_EQ(cd1->shape().layout().memory_space(), kAlternateMemorySpace);
+  const HloInstruction* add0 = FindInstruction(module.get(), "add0");
+
+  const HloInstruction* cd0 = add0->operand(1);
+  EXPECT_THAT(cd0, op::CopyDone());
+  EXPECT_EQ(live_range->instruction_schedule().at(add0),
+            live_range->instruction_schedule().at(cd0) + 1);
+  const HloInstruction* cs0 = cd0->operand(0);
+  EXPECT_THAT(cs0, op::CopyStart());
+  EXPECT_EQ(live_range->instruction_schedule().at(add0),
+            live_range->instruction_schedule().at(cs0) + 2);
+  EXPECT_EQ(cd0->shape().layout().memory_space(), kAlternateMemorySpace);
+  // Check prefetch was made from an eviction.
+  const HloInstruction* eviction_done = cs0->operand(0);
+  EXPECT_EQ(eviction_done->shape().layout().memory_space(),
+            kDefaultMemorySpace);
+  const HloInstruction* evection_start = eviction_done->operand(0);
+  const HloInstruction* negate0 = evection_start->operand(0);
+  // Check eviction was immediate.
+  EXPECT_EQ(live_range->instruction_schedule().at(evection_start),
+            live_range->instruction_schedule().at(negate0) + 1);
+  EXPECT_EQ(live_range->instruction_schedule().at(eviction_done),
+            live_range->instruction_schedule().at(negate0) + 2);
+  EXPECT_EQ(negate0->name(), "negate0");
+}
+
+TEST_P(MemorySpaceAssignmentTest, AlwaysSpillEvictionTest) {
+  // tanh0 buffer is produced in alternate memory and it has two uses that are
+  // sufficiently far apart for an eviction to be scheduled. When the
+  // always_spill_to_default_memory option is not true, the buffer stays in
+  // alternate memory to serve the first use, is evicted and prefetched again
+  // for second use. Setting always_spill_to_default_memory option to true makes
+  // the eviction immediate, right after tanh0, the first use at add5 and second
+  // use at tuple are served from separate, just-in-time prefetches that copy
+  // from the eviction that previously occurred.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[4,3]{1,0} parameter(0)
+  tanh0 = f32[4,3]{1,0} tanh(p0)
+  add0 = f32[4,3]{1,0} add(p0, p0)
+  add1 = f32[4,3]{1,0} add(add0, p0)
+  add2 = f32[4,3]{1,0} add(add1, p0)
+  add3 = f32[4,3]{1,0} add(add2, p0)
+  add4 = f32[4,3]{1,0} add(add3, p0)
+  add5 = f32[4,3]{1,0} add(add4, tanh0)
+  negate0 = f32[4,3]{1,0} negate(add5)
+  tanh1 = f32[4,3]{1,0} tanh(negate0)
+  negate1 = f32[4,3]{1,0} negate(negate0)
+  tanh2 = f32[4,3]{1,0} tanh(tanh1)
+  negate2 = f32[4,3]{1,0} negate(negate1)
+  ROOT tuple = tuple(tanh0, tanh2, negate2)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.always_spill_to_default_memory = true;
+  AssignMemorySpace(module.get(), options);
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(2) << i << " " << sequence.instructions()[i]->ToString();
+  }
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                          HloAliasAnalysis::Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> live_range,
+                          HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                            module->entry_computation()));
+  // 1. Check tanh0 buffer is short lived.
+  // 2. Check tanh0 eviction is immediate.
+  // 3. Check tuple is served from eviction.
+  // 4. Check add5 is served from a prefetch.
+  // 5. Check prefetch comes from the immediate eviction.
+  const HloInstruction* tuple = FindInstruction(module.get(), "tuple");
+  const HloInstruction* tanh0_eviction_done = tuple->operand(0);
+  const HloInstruction* tanh0_eviction_start = tanh0_eviction_done->operand(0);
+  const HloInstruction* tanh0 = tanh0_eviction_start->operand(0);
+  EXPECT_EQ(tanh0->name(), "tanh0");
+  EXPECT_EQ(tanh0_eviction_done->shape().layout().memory_space(),
+            kDefaultMemorySpace);
+  EXPECT_EQ(live_range->instruction_schedule().at(tanh0_eviction_start),
+            live_range->instruction_schedule().at(tanh0) + 1);
+  EXPECT_EQ(live_range->instruction_schedule().at(tanh0_eviction_done),
+            live_range->instruction_schedule().at(tanh0) + 2);
+  const HloInstruction* add5 = FindInstruction(module.get(), "add5");
+  const HloInstruction* tanh0_prefetch_done = add5->operand(1);
+  const HloInstruction* tanh0_prefetch_start = tanh0_prefetch_done->operand(0);
+  EXPECT_EQ(tanh0_prefetch_done->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(live_range->instruction_schedule().at(add5),
+            live_range->instruction_schedule().at(tanh0_prefetch_done) + 1);
+  EXPECT_EQ(live_range->instruction_schedule().at(add5),
+            live_range->instruction_schedule().at(tanh0_prefetch_start) + 2);
+  EXPECT_EQ(tanh0_eviction_done, tanh0_prefetch_start->operand(0));
 }
 
 TEST_P(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchTest) {
@@ -6063,12 +6273,16 @@ ENTRY entry {
   Options options = DefaultMemorySpaceOptions();
   // Make instruction c reserve 64 bytes in the alternate memory. This should
   // prevent both b and c to put their outputs in the alternate memory.
-  options.reserved_scoped_memory_fn = [&](const HloInstruction* instruction) {
-    if (instruction->name() == "c") {
-      return 100;
-    }
-    return 0;
-  };
+  options.reserved_scoped_memory_fn =
+      [&](const HloInstruction* instruction,
+          const absl::flat_hash_set<std::pair<int, ShapeIndex>>
+              operands_in_alternate_memory,
+          const absl::flat_hash_set<ShapeIndex> outputs_in_alternate_memory) {
+        if (instruction->name() == "c") {
+          return 100;
+        }
+        return 0;
+      };
   AssignMemorySpace(module.get(), options);
   auto get_memory_space = [&](absl::string_view instruction_name) {
     return module->entry_computation()
@@ -6148,7 +6362,7 @@ ENTRY entry {
                   .memory_space() == kAlternateMemorySpace);
 }
 
-// A mock MemorySpaceAssignmentRepacker class that accepst a map of
+// A mock MemorySpaceAssignmentRepacker class that accepts a map of
 // (start_time,offset) -> new_offset values. Using this map, the repacker
 // repacks the allocations to the new_offset.
 class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
@@ -6452,12 +6666,16 @@ ENTRY entry {
   Options options = DefaultMemorySpaceOptions();
   options.max_repacks = 1;
   // Make two instructions reserve scoped memory.
-  options.reserved_scoped_memory_fn = [&](const HloInstruction* instruction) {
-    if (instruction->name() == "c" || instruction->name() == "d") {
-      return 100;
-    }
-    return 0;
-  };
+  options.reserved_scoped_memory_fn =
+      [&](const HloInstruction* instruction,
+          const absl::flat_hash_set<std::pair<int, ShapeIndex>>
+              operands_in_alternate_memory,
+          const absl::flat_hash_set<ShapeIndex> outputs_in_alternate_memory) {
+        if (instruction->name() == "c" || instruction->name() == "d") {
+          return 100;
+        }
+        return 0;
+      };
 
   absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
   bool repacker_ran = false;
@@ -6478,6 +6696,148 @@ ENTRY entry {
   EXPECT_TRUE(repacker_ran);
 }
 
+TEST_P(MemorySpaceAssignmentTest, ReduceReservedScopedVmemIfOperandInVmem) {
+  // This test is designed to test UpdateReservedScopedVmemSize() in MSA, which
+  // will invoke reserved_scoped_memory_fn to update scoped allocation
+  // size. UpdateReservedScopedVmemSize() should iterate through all scheduled
+  // instruction and check if either their operands or outputs has been assigned
+  // in alternate memory. If so, corresponding operand/output will be passed to
+  // reserved_scoped_memory_fn. We isolate UpdateReservedScopedVmemSize() by
+  // constructing a dummy reserved_scoped_memory_fn that return +1 when operand
+  // set is empty, and return +2 when output set is empty, because if either set
+  // of an instruction is empty, it is gureented that some scoped allocation is
+  // required. We use +1/+2 to distinguish the correctness of each set.
+  // Therefore, after MSA pass, for each instruction, there are a few possible
+  // outcomes:
+  // 1. If both operand set and output set are not empty, scoped allocation
+  //    size should be 0, since reserved_scoped_memory_fn will return 0.
+  // 2. If only operand set is empty, scoped allocation size should be 2, since
+  //    reserved_scoped_memory_fn will return 2.
+  // 3. If only output set is empty, scoped allocation size should be 1, since
+  //    reserved_scoped_memory_fn will return 1.
+  // 4. If both sets are empty, scoped allocation size should be 3.
+  // Initially, UpdateReservedScopedVmemSize() will only be invoked after each
+  // MSA repacking, we use a similar test HLO module as used in "Repack" test.
+  // This test is capable of testing if UpdateReservedScopedVmemSize() can
+  // correctly pass operand/output set of all instructions to
+  // reserved_scoped_memory_fn.
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[8,3] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    a = f32[2,4] sine(param1)
+    b = f32[2,4] cosine(param1)
+    c = f32[8,3] negate(param0)
+    j = f32[2,4] negate(a)
+    d = f32[8,3] tanh(param0)
+    k = f32[2,4] negate(j)
+    l = f32[2,4] add(b, k)
+    m = f32[8,3] negate(d)
+    n = f32[2,4] sine(l)
+    o = f32[8,3] negate(m)
+    p = f32[2,4] negate(n)
+    q = f32[8,3] negate(m)
+    ROOT tuple = (f32[2,4], f32[8,3], f32[8,3], f32[8,3]) tuple(p, q, o, c)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
+  Options options = DefaultMemorySpaceOptions();
+  options.max_repacks = 10;
+  options.repack_after_every_allocation = true;
+  options.reduce_scoped_memory_limit = true;
+  options.reserved_scoped_memory_fn =
+      [&](const HloInstruction* instruction,
+          const absl::flat_hash_set<std::pair<int, ShapeIndex>>
+              operands_in_alternate_memory,
+          const absl::flat_hash_set<ShapeIndex> outputs_in_alternate_memory) {
+        int64_t scoped_memory_size = 0;
+        if (operands_in_alternate_memory.empty()) {
+          scoped_memory_size += 1;
+          LOG(INFO) << instruction->name() << " has no operand in vmem";
+        }
+        if (outputs_in_alternate_memory.empty()) {
+          scoped_memory_size += 2;
+          LOG(INFO) << instruction->name() << " has no output in vmem";
+        }
+        return scoped_memory_size;
+      };
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map, nullptr);
+  options.repacker = &repacker;
+  std::unique_ptr<PresetAssignments> assignments =
+      AssignMemorySpace(module.get(), options);
+  // This lambda checks if an instruction's operand has been assigned in
+  // alternate memory.
+  auto instruction_consumes_assignment_fn =
+      [&](absl::string_view instruction_name) -> bool {
+    HloInstruction* instruction =
+        module->entry_computation()->GetInstructionWithName(instruction_name);
+    for (auto& pair : assignments->chunks()) {
+      HloInstruction* consumer = pair.first.instruction;
+      if (absl::c_any_of(instruction->operands(),
+                         [&](const HloInstruction* operand) {
+                           return operand == consumer;
+                         })) {
+        return true;
+      }
+    }
+    return false;
+  };
+  // This lambda checks if an instruction's output has been assigned in
+  // alternate memory.
+  auto instruction_produces_assignment_fn =
+      [&](absl::string_view instruction_name) -> bool {
+    HloInstruction* instruction =
+        module->entry_computation()->GetInstructionWithName(instruction_name);
+    for (auto& pair : assignments->chunks()) {
+      HloInstruction* producer = pair.first.instruction;
+      if (producer == instruction) {
+        return true;
+      }
+    }
+    return false;
+  };
+  auto check_reserved_scoped_memory_fn =
+      [&](absl::string_view instruction_name) -> bool {
+    int64_t scoped_memory_size = -1;
+    for (auto& pair : assignments->scoped_allocation_chunks()) {
+      HloInstruction* instruction = pair.first;
+      if (instruction->name() == instruction_name) {
+        scoped_memory_size = pair.second.size;
+      }
+    }
+    if (!instruction_consumes_assignment_fn(instruction_name)) {
+      scoped_memory_size -= 1;
+    }
+    if (!instruction_produces_assignment_fn(instruction_name)) {
+      scoped_memory_size -= 2;
+    }
+    return scoped_memory_size == 0;
+  };
+  for (auto& pair : assignments->assignment_informations()) {
+    LOG(INFO) << "  space: " << pair.first << ", size: " << pair.second.size;
+  }
+  for (auto& pair : assignments->scoped_allocation_chunks()) {
+    HloInstruction* instruction = pair.first;
+    LOG(INFO) << instruction->name() << ": " << pair.second.size;
+  }
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("a"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("b"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("c"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("j"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("d"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("k"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("l"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("m"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("n"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("o"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("p"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("q"));
+}
 TEST_P(MemorySpaceAssignmentTest,
        RepackShouldntEraseRequiredAssignmentForConditionalOutput) {
   // This is a test case for b/171040271. Repacks erase the required assignments

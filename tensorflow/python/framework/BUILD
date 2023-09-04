@@ -274,6 +274,7 @@ py_strict_library(
         "//tensorflow/python/eager:execute",
         "//tensorflow/security/fuzzing/py:annotation_types",
         "//tensorflow/tools/docs:doc_controls",
+        "@typing_extensions_archive//:typing_extensions",
     ],
 )
 
@@ -1676,6 +1677,21 @@ py_strict_library(
     ],
 )
 
+py_strict_library(
+    name = "none_tensor",
+    srcs = ["none_tensor.py"],
+    srcs_version = "PY3",
+    visibility = visibility + [
+        "//learning/deepmind:__subpackages__",
+        "//third_party/py/tf_keras:__subpackages__",
+    ],
+    deps = [
+        ":composite_tensor",
+        ":type_spec",
+        ":type_spec_registry",
+    ],
+)
+
 py_strict_test(
     name = "composite_tensor_test",
     srcs = ["composite_tensor_test.py"],
@@ -1982,6 +1998,7 @@ py_strict_library(
         "//third_party/py/keras:__subpackages__",
         "//third_party/py/neural_structured_learning:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
+        "//third_party/py/tf_keras:__subpackages__",
     ],
     deps = [
         ":_test_metrics_util",
@@ -2053,6 +2070,7 @@ py_strict_library(
         "//tensorflow_models:__subpackages__",
         "//third_party/py/keras:__subpackages__",
         "//third_party/py/keras_cv:__subpackages__",
+        "//third_party/py/tf_keras:__subpackages__",
     ],
 )
 

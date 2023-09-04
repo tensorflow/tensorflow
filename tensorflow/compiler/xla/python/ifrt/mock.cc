@@ -142,6 +142,10 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, LookupDevice).WillByDefault([this](int device_id) {
     return delegated_->LookupDevice(device_id);
   });
+  ON_CALL(*this, LookupAddressableDevice)
+      .WillByDefault([this](int local_hardware_id) {
+        return delegated_->LookupAddressableDevice(local_hardware_id);
+      });
   ON_CALL(*this, GetDefaultCompiler).WillByDefault([this]() {
     return delegated_->GetDefaultCompiler();
   });

@@ -71,6 +71,7 @@ cc_library(
     ]) + if_not_mobile([
         "//tensorflow/c:c_api_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
     ]),
@@ -424,6 +425,7 @@ cc_library(
     ]) + if_not_mobile([
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/c:tf_tensor_internal",
     ]),
     alwayslink = 1,
 )

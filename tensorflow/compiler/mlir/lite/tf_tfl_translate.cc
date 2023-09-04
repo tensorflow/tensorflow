@@ -293,10 +293,8 @@ int main(int argc, char **argv) {
   pass_config.preserve_assert_op = preserve_assert_op;
   pass_config.enable_stablehlo_conversion = enable_stablehlo_conversion;
   pass_config.legalize_custom_tensor_list_ops = legalize_custom_tensor_list_ops;
-
-  if (enable_hlo_to_tf_conversion) {
-    pass_config.enable_hlo_to_tf_conversion = true;
-  }
+  pass_config.enable_hlo_to_tf_conversion = enable_hlo_to_tf_conversion;
+  pass_config.reduce_type_precision = reduce_type_precision;
 
   toco::TocoFlags toco_flags;
   toco_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
@@ -308,6 +306,7 @@ int main(int argc, char **argv) {
   toco_flags.set_use_buffer_offset(use_buffer_offset);
   toco_flags.set_legalize_custom_tensor_list_ops(
       legalize_custom_tensor_list_ops);
+  toco_flags.set_reduce_type_precision(reduce_type_precision);
   // Read list of user select ops.
   llvm::SmallVector<llvm::StringRef, 2> user_ops;
   (llvm::StringRef(select_user_tf_ops))
@@ -322,8 +321,11 @@ int main(int argc, char **argv) {
   if (bundle) session = bundle->GetSession();
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.value().get(), output_mlir, toco_flags, pass_config, tags,
-      /*saved_model_dir=*/"", session, &result);
-  if (!status.ok()) return kTrFailure;
+      /*saved_model_dir=*/"", session, &result, serialize_stablehlo_ops);
+  if (!status.ok()) {
+    llvm::errs() << status.message() << '\n';
+    return kTrFailure;
+  }
 
   std::string error_msg;
   auto output = mlir::openOutputFile(output_file_name, &error_msg);

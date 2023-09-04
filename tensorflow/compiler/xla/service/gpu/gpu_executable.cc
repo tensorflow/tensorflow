@@ -55,8 +55,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -183,9 +185,9 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     const ServiceExecutableRunOptions* run_options) {
   se::Stream* main_stream = run_options->stream();
 
-  stream_executor::PlatformKind platform_kind =
-      main_stream->parent()->platform_kind();
-  if (platform_kind == stream_executor::PlatformKind::kROCm) {
+  stream_executor::Platform::Id platform_id =
+      main_stream->parent()->platform()->id();
+  if (platform_id == stream_executor::rocm::kROCmPlatformId) {
     auto cc = main_stream->GetRocmComputeCapability();
     std::string stream_arch = cc.gcn_arch_name();
     std::string gpu_exec_arch =
@@ -193,7 +195,7 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     TF_RET_CHECK(stream_arch == gpu_exec_arch)
         << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_arch
         << ", but was " << stream_arch;
-  } else if (platform_kind == stream_executor::PlatformKind::kCuda) {
+  } else if (platform_id == stream_executor::cuda::kCudaPlatformId) {
     GpuVersion cc = main_stream->GetCudaComputeCapability();
     TF_RET_CHECK(std::get<se::CudaComputeCapability>(cc) ==
                  std::get<se::CudaComputeCapability>(gpu_version_))
@@ -202,7 +204,7 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
         << "}, but was {" << std::get<se::CudaComputeCapability>(cc).ToString()
         << "}";
   } else {
-    return InternalError("Unknown platform: %d", platform_kind);
+    return InternalError("Unknown platform");
   }
 
   return OkStatus();
@@ -323,11 +325,11 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
 
   absl::flat_hash_map<int64_t, se::DeviceMemoryBase> globals;
   se::ModuleHandle module_handle;
-  // The CUDA driver isn't able to load empty PTX. It's okay if we skip loading
-  // in this case; if the module isn't loaded, all symbol lookups will fail,
-  // just as they should for an empty module.
-  if (!(executor->platform_kind() == se::PlatformKind::kCuda &&
-        module_spec.cuda_ptx_in_memory() == nullptr)) {
+  // The CUDA driver isn't able to load a PTX and a binary which are both empty.
+  // It's okay if we skip loading in this case; if the module isn't loaded, all
+  // symbol lookups will fail, just as they should for an empty module.
+  if (!(executor->platform()->id() == stream_executor::cuda::kCudaPlatformId &&
+        binary().empty() && text().empty())) {
     TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
   }
 

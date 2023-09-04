@@ -196,8 +196,6 @@ std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
     return std::nullopt;
   }
   const int64_t sort_dim = sort->sort_dimension();
-  const int64_t batch_dim = sort_dim == 1 ? 0 : 1;
-  const bool has_batch = data->shape().rank() == 2;
 
   bool supported = true;
   std::optional<int64_t> k;
@@ -222,10 +220,15 @@ std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
       supported = false;
       break;
     }
-    if (has_batch && slice->slice_limits(batch_dim) !=
-                         slice->operand(0)->shape().dimensions(batch_dim)) {
-      // Slicing along the batch dimension isn't supported.
-      supported = false;
+    for (int64_t i = 0; i < slice->slice_limits().size(); ++i) {
+      if (i != sort_dim &&
+          slice->slice_limits(i) != slice->operand(0)->shape().dimensions(i)) {
+        // Slicing along a non-sort dimension isn't supported.
+        supported = false;
+        break;
+      }
+    }
+    if (!supported) {
       break;
     }
     if (k == std::nullopt) {
@@ -257,29 +260,57 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(
       HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
       HloInstruction* data = sort->mutable_operand(0);
       const PrimitiveType element_type = data->shape().element_type();
+      const Shape data_shape = data->shape();
 
-      if ((data->shape().rank() != 1 && data->shape().rank() != 2) ||
-          (element_type != F32 && element_type != BF16)) {
+      if (element_type != F32 && element_type != BF16) {
         continue;
       }
 
+      // Sort dimension must be the first or last dimension.
       const int64_t sort_dim = sort->sort_dimension();
-      const int64_t batch_dim = sort_dim == 1 ? 0 : 1;
-      const bool has_batch = data->shape().rank() == 2;
+      if (sort_dim != 0 && sort_dim != data_shape.rank() - 1) {
+        continue;
+      }
 
       // Profitability check.
       if (!is_profitable_to_convert_(sort, *k)) {
         continue;
       }
 
-      const int64_t batch_size =
-          has_batch ? sort->operand(0)->shape().dimensions(batch_dim) : 1;
-      const int64_t input_size = sort->operand(0)->shape().dimensions(sort_dim);
-      HloInstruction* input = sort->mutable_operand(0);
-      if (has_batch && sort_dim == 0) {
-        input = comp->AddInstruction(HloInstruction::CreateTranspose(
-            ShapeUtil::MakeShape(element_type, {batch_size, input_size}), input,
-            {1, 0}));
+      HloInstruction* input = data;
+      const bool has_batch = data_shape.rank() >= 2;
+      const int64_t input_size = data_shape.dimensions(sort_dim);
+      int64_t batch_size = 1;
+      Shape topk_input_shape;
+
+      if (has_batch) {
+        // The TopK custom call expects either a 1d tensor or a 2d tensor with
+        // the last dimension being the sort dimension. An input with rank > 2
+        // is reshaped into a 2d tensor by combining non-sort dimensions into a
+        // single batch dimension. The original non-sort dimensions are
+        // restored for the outputs with another reshape after the custom call.
+        batch_size =
+            ShapeUtil::ElementsIn(data_shape) / data_shape.dimensions(sort_dim);
+        topk_input_shape =
+            ShapeUtil::MakeShape(element_type, {batch_size, input_size});
+
+        if (data_shape.rank() > 2) {
+          // Reshape to 2d.
+          input = comp->AddInstruction(HloInstruction::CreateReshape(
+              sort_dim == 0
+                  ? ShapeUtil::MakeShape(element_type, {input_size, batch_size})
+                  : ShapeUtil::MakeShape(element_type,
+                                         {batch_size, input_size}),
+              input));
+        }
+
+        if (sort_dim == 0) {
+          // Transpose for the custom call when sorting the first dimension.
+          input = comp->AddInstruction(
+              HloInstruction::CreateTranspose(topk_input_shape, input, {1, 0}));
+        }
+      } else {
+        topk_input_shape = data_shape;
       }
 
       Shape topk_shape =
@@ -300,13 +331,26 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(
           comp->AddInstruction(HloInstruction::CreateGetTupleElement(
               topk->shape().tuple_shapes(1), topk, 1));
 
-      if (has_batch && sort_dim == 0) {
-        value_gte = comp->AddInstruction(HloInstruction::CreateTranspose(
-            ShapeUtil::MakeShape(element_type, {k.value(), batch_size}),
-            value_gte, {1, 0}));
-        index_gte = comp->AddInstruction(HloInstruction::CreateTranspose(
-            ShapeUtil::MakeShape(S32, {k.value(), batch_size}), index_gte,
-            {1, 0}));
+      if (has_batch) {
+        if (sort_dim == 0) {
+          // Transpose back.
+          value_gte = comp->AddInstruction(HloInstruction::CreateTranspose(
+              ShapeUtil::MakeShape(element_type, {k.value(), batch_size}),
+              value_gte, {1, 0}));
+          index_gte = comp->AddInstruction(HloInstruction::CreateTranspose(
+              ShapeUtil::MakeShape(S32, {k.value(), batch_size}), index_gte,
+              {1, 0}));
+        }
+        if (data_shape.rank() > 2) {
+          // Reshape back.
+          std::vector<int64_t> shape_dim(data_shape.dimensions().begin(),
+                                         data_shape.dimensions().end());
+          shape_dim[sort_dim] = k.value();
+          value_gte = comp->AddInstruction(HloInstruction::CreateReshape(
+              ShapeUtil::MakeShape(element_type, shape_dim), value_gte));
+          index_gte = comp->AddInstruction(HloInstruction::CreateReshape(
+              ShapeUtil::MakeShape(S32, shape_dim), index_gte));
+        }
       }
 
       for (HloInstruction* user : sort->users()) {

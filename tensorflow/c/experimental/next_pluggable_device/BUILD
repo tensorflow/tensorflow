@@ -26,7 +26,6 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_framework_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/next_pluggable_device:plugin_resource",
         "//tensorflow/core/platform:status",

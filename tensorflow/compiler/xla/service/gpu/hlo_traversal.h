@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
@@ -33,14 +34,27 @@ enum class TraversalResult {
   kDoNotVisitOperands,
 };
 
+using FusionBoundaryFn = std::function<bool(const HloInstruction& producer,
+                                            const HloInstruction& consumer)>;
+
+// Boundary function for HloFusionInstructions.
+bool DefaultFusionBoundaryFn(const HloInstruction& producer,
+                             const HloInstruction& consumer);
+
 // Visit the HLO nodes starting from `root` in BFS order (consumers before
 // producers). Each node will be visited exactly once. The graph is not
 // traversed along edges for which `boundary` returns true.
 void HloBfsConsumersFirstTraversal(
-    const HloInstruction& root,
+    absl::Span<const HloInstruction* const> roots,
     const std::function<bool(const HloInstruction& producer,
                              const HloInstruction& consumer)>& boundary,
     const std::function<TraversalResult(const HloInstruction& node)>& visit);
+
+// Visit the producers of all parameters that are needed by the fusion.
+void FindFusionParameters(
+    absl::Span<const HloInstruction* const> roots,
+    const FusionBoundaryFn& boundary,
+    const std::function<void(const HloInstruction& producer)>& visit);
 
 }  // namespace gpu
 }  // namespace xla

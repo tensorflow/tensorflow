@@ -36,8 +36,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
-#include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
@@ -80,6 +78,7 @@ limitations under the License.
 #include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/human_readable_json.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 

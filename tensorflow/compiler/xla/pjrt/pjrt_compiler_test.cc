@@ -16,12 +16,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_device_description.h"
 
 namespace xla {
 
@@ -37,6 +41,13 @@ TEST(PjRtCompilerTest, CompilerNotRegistered) {
     absl::string_view platform_version() const override { return "test"; }
     std::vector<std::unique_ptr<const PjRtDeviceDescription>>
     DeviceDescriptions() const override {
+      LOG(FATAL) << "Unused";
+    }
+    absl::StatusOr<std::string> Serialize() const override {
+      return "test_topo";
+    }
+    const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+        const override {
       LOG(FATAL) << "Unused";
     }
   };
@@ -57,6 +68,13 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
     absl::string_view platform_version() const override { return "test"; }
     std::vector<std::unique_ptr<const PjRtDeviceDescription>>
     DeviceDescriptions() const override {
+      LOG(FATAL) << "Unused";
+    }
+    absl::StatusOr<std::string> Serialize() const override {
+      return "test_topo";
+    }
+    const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+        const override {
       LOG(FATAL) << "Unused";
     }
   };

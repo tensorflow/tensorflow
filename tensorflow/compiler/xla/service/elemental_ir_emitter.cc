@@ -1757,9 +1757,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexPower(
   // Branch Cuts for Complex Elementary Functions or Much Ado About
   // Nothing's Sign Bit, W. Kahan, Section 10.
   return Select(
-      And(And(FCmpOEQ(aa_p_bb, zero), FCmpOEQ(d, zero)), FCmpOLE(zero, c)),
-      EmitComposeComplex(op, Select(FCmpOEQ(zero, c), one, zero), zero),
-      EmitComposeComplex(op, FMul(coeff, cos_q), FMul(coeff, sin_q)));
+      And(FCmpOEQ(a, one), FCmpOEQ(b, zero)), EmitComposeComplex(op, one, zero),
+      Select(
+          And(And(FCmpOEQ(aa_p_bb, zero), FCmpOEQ(d, zero)), FCmpOLE(zero, c)),
+          EmitComposeComplex(op, Select(FCmpOEQ(zero, c), one, zero), zero),
+          EmitComposeComplex(op, FMul(coeff, cos_q), FMul(coeff, sin_q))));
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(

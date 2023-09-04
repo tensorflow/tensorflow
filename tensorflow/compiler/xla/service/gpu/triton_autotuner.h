@@ -52,7 +52,7 @@ class TritonAutotuner : public HloModulePass {
 // Returns a list of possible tilings for a GEMM performed in Triton.
 std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
     const HloInstruction& instr, se::CudaComputeCapability compute_capability,
-    bool exhaustive_tiling_search = false);
+    const DebugOptions& debug_options, bool exhaustive_tiling_search = false);
 
 }  // namespace gpu
 }  // namespace xla

@@ -59,6 +59,17 @@ tensorflow::SessionOptions CreateDefaultSessionOptions(
       ->mutable_rewrite_options()
       ->set_min_graph_nodes(-1);
 
+  if (options.tfrt_gpu_parallelism > 1) {
+    if (!options.compile_options.use_gpu_compile_and_execute_op) {
+      LOG(WARNING)
+          << "tfrt_gpu_parallelism > 1, but fused GPU kernel is not used. "
+             "Non-fused GPU kernel does not support multiple GPU devices.";
+    }
+    config.mutable_gpu_options()
+        ->mutable_experimental()
+        ->set_num_virtual_devices_per_gpu(options.tfrt_gpu_parallelism);
+  }
+
   return session_options;
 }
 

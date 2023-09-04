@@ -109,10 +109,10 @@ AllocInfo getAllocNullabilityImpl(Value v, llvm::DenseSet<Value>& pending) {
   // Returns the nullability of an operand in each of the region's predecessors.
   auto getPredecessorNullability =
       [&](RegionBranchOpInterface rbi,
-          std::optional<int64_t> successorRegionIndex,
+          RegionBranchPoint successorRegionPoint,
           int64_t successorArgIndex) -> AllocInfo {
     AllocNullability nullability = UNDEFINED;
-    for (const auto& pred : getPredecessorRegions(rbi, successorRegionIndex)) {
+    for (const auto& pred : getPredecessorRegions(rbi, successorRegionPoint)) {
       Value operand = pred.getPredecessorOperand(successorArgIndex);
       // It is safe to skip values that are already being considered higher
       // up in the call stack, because we end up taking the maximum of all
@@ -133,14 +133,14 @@ AllocInfo getAllocNullabilityImpl(Value v, llvm::DenseSet<Value>& pending) {
     if (auto rbi = llvm::dyn_cast<RegionBranchOpInterface>(
             bbarg.getParentRegion()->getParentOp())) {
       return getPredecessorNullability(
-          rbi, bbarg.getParentRegion()->getRegionNumber(),
+          rbi, bbarg.getParentRegion(),
           bbarg.getArgNumber());
     }
   }
 
   if (auto rbi =
           llvm::dyn_cast_or_null<RegionBranchOpInterface>(v.getDefiningOp())) {
-    return getPredecessorNullability(rbi, std::nullopt,
+    return getPredecessorNullability(rbi, mlir::RegionBranchPoint::parent(),
                                      llvm::cast<OpResult>(v).getResultNumber());
   }
 
@@ -160,14 +160,14 @@ bool valueIsUnused(Value value) {
   std::function<bool(OpOperand&)> checkUser;
 
   checkUser = [&](OpOperand& user) -> bool {
-    std::optional<unsigned> regionIndex = std::nullopt;
+    RegionBranchPoint regionPoint = mlir::RegionBranchPoint::parent();
     auto rbi = llvm::dyn_cast<RegionBranchOpInterface>(user.getOwner());
     if (user.getOwner()->mightHaveTrait<OpTrait::IsTerminator>()) {
       rbi = llvm::dyn_cast<RegionBranchOpInterface>(
           user.getOwner()->getParentOp());
-      regionIndex = user.getOwner()->getParentRegion()->getRegionNumber();
+      regionPoint = user.getOwner()->getParentRegion();
     }
-    return rbi && llvm::all_of(getSuccessorRegions(rbi, regionIndex),
+    return rbi && llvm::all_of(getSuccessorRegions(rbi, regionPoint),
                                [&](const RegionEdge& edge) {
                                  return checkValue(edge.getSuccessorValue(
                                      user.getOperandNumber()));

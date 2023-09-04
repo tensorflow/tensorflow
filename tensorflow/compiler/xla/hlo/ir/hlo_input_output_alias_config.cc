@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -320,7 +320,6 @@ bool HloBufferDonorConfig::ParameterIsBufferDonor(
 
 Status HloBufferDonorConfig::Verify(const HloModule& module) const {
   const HloComputation* entry = module.entry_computation();
-  const auto& alias_config = module.input_output_alias_config();
   for (const auto& donor : buffer_donor_) {
     TF_RET_CHECK(donor.param_number >= 0);
     TF_RET_CHECK(donor.param_number < entry->num_parameters());
@@ -332,13 +331,6 @@ Status HloBufferDonorConfig::Verify(const HloModule& module) const {
     const Shape& param_subshape =
         ShapeUtil::GetSubshape(param_shape, donor.param_index);
     TF_RET_CHECK(LayoutUtil::IsDenseArray(param_subshape));
-
-    if (alias_config.ParameterHasAlias(donor.param_number, donor.param_index)) {
-      return InternalError(
-          "Input %lld at index %s is registered as a buffer donor. However, it "
-          "is also in the input output alias config.",
-          donor.param_number, donor.param_index.ToString());
-    }
   }
 
   // Since buffer_donor_ is a set, we do not need to check if one input has

@@ -24,6 +24,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tf_quantize_op_utils",
+    srcs = ["tf_quantize_op_utils.cc"],
+    hdrs = ["tf_quantize_op_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 td_library(
     name = "lift_as_function_call_utils_td_files",
     srcs = [
@@ -61,7 +71,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:uniform_op_quant_spec",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/ops:uniform_op_quant_spec",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_map",

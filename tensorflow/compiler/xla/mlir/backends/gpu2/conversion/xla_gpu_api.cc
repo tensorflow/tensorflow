@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string_view>
 
-#include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputDialect.h"
-#include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputOps.h"
+#include "iree-dialects/Dialect/Input/InputDialect.h"
+#include "iree-dialects/Dialect/Input/InputOps.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -101,8 +101,9 @@ func::FuncOp XlaGpuApi::addDecl(OpBuilder &b, ModuleOp module,
   // Skip exporting tensor that was just imported from a buffer view.
   if (auto tensor_import = dyn_cast_or_null<IREE::Input::TensorImportOp>(
           tensor.getDefiningOp())) {
-    return cast<TypedValue<IREE::Input::BufferViewType>>(
-        tensor_import.getSource());
+    if (auto buffer_view = dyn_cast<TypedValue<IREE::Input::BufferViewType>>(
+            tensor_import.getSource()))
+      return buffer_view;
   }
 
   Value view = b.create<IREE::Input::TensorExportOp>(

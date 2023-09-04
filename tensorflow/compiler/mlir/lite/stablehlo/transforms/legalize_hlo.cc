@@ -920,7 +920,7 @@ class ConvertNonTrivialConvOp
     if (dnums.getKernelInputFeatureDimension() != num_spatial_dims + 1 ||
         dnums.getKernelOutputFeatureDimension() != num_spatial_dims)
       return rewriter.notifyMatchFailure(conv_op,
-                                         "requires kernel format [b, 0, 1, f]");
+                                         "requires kernel format [0, 1, o, i]");
     auto kernel_spatial_dimensions = dnums.getKernelSpatialDimensions();
     for (auto p : llvm::enumerate(kernel_spatial_dimensions)) {
       if (p.value() != p.index())
@@ -2084,6 +2084,31 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
   }
 };
 
+class ConvertReduceOpToTfProd
+    : public ConvertReduceOpToTfOp<mhlo::MulOp, TF::ProdOp, TF::MulOp> {
+ public:
+  using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
+
+  LogicalResult MatchInitValue(Value init_value) const override {
+    auto type = init_value.getType().cast<ShapedType>().getElementType();
+    if (type.isa<FloatType>()) {
+      float const_value;
+      if (failed(GetConstantSplatValue<float>(init_value, const_value)) ||
+          const_value != 1.0)
+        return failure();
+    } else if (type.isa<IntegerType>() && type.isSignlessInteger()) {
+      int32_t const_value;
+      if (failed(GetConstantSplatValue<int32_t>(init_value, const_value)) ||
+          const_value != 1)
+        return failure();
+    } else {
+      return failure();
+    }
+
+    return success();
+  }
+};
+
 class ConvertReduceOpToTfSum
     : public ConvertReduceOpToTfOp<mhlo::AddOp, TF::SumOp, TF::AddOp> {
  public:
@@ -2445,17 +2470,17 @@ class ConvertIotaOpToTfRange : public OpConversionPattern<mhlo::IotaOp> {
   }
 };
 
-// A helper function for ConvertMaxPoolOp and ConvertAvgMaxPoolOp. Returns true
+// A helper function for ConvertMaxPoolOp and ConvertAvgPoolOp. Returns true
 // if the given ReduceWindowOp is a spatial pooling without dilation. If returns
 // true, also outputs the window strides and the TF padding mode ("VALID" or
 // "SAME").
 bool IsSpatialPoolingWithoutDilation(
     mhlo::ReduceWindowOp rw, llvm::SmallVectorImpl<int64_t>* window_strides,
-    std::string* padding_mode) {
+    std::string* padding_mode, std::string* data_format) {
   // tf.max_pool or tf.avg_pool need at least 3 dimensions (batch, spatial,
   // channel).
   const uint64_t rank = rw.getWindowDimensions().size();
-  if (rank <= 2) return false;
+  if (rank <= 3 || rank > 5) return false;
 
   if (rw.getWindowStrides().has_value()) {
     window_strides->insert(window_strides->end(),
@@ -2474,17 +2499,27 @@ bool IsSpatialPoolingWithoutDilation(
     padding.resize(2 * rank, 0);
   }
 
-  // Check that we don't do any reduction along the batch (first) and channel
-  // (last) dimensions.
-  const uint64_t batch_dim = 0;
-  const uint64_t channel_dim = rank - 1;
-  if (rw.getWindowDimensions().getValues<int64_t>()[batch_dim] != 1 ||
-      rw.getWindowDimensions().getValues<int64_t>()[channel_dim] != 1 ||
-      (*window_strides)[batch_dim] != 1 ||
-      (*window_strides)[channel_dim] != 1 || padding[2 * batch_dim] != 0 ||
-      padding[2 * batch_dim + 1] != 0 || padding[2 * channel_dim] != 0 ||
-      padding[2 * channel_dim + 1] != 0)
+  // Check that we don't do any reduction along the batch and channel
+  // dimensions.
+  auto verify_batch_channel_dims = [&rw, &window_strides, &padding](
+                                       uint64_t batch_dim,
+                                       uint64_t channel_dim) {
+    return rw.getWindowDimensions().getValues<int64_t>()[batch_dim] == 1 &&
+           rw.getWindowDimensions().getValues<int64_t>()[channel_dim] == 1 &&
+           (*window_strides)[batch_dim] == 1 &&
+           (*window_strides)[channel_dim] == 1 && padding[2 * batch_dim] == 0 &&
+           padding[2 * batch_dim + 1] == 0 && padding[2 * channel_dim] == 0 &&
+           padding[2 * channel_dim + 1] == 0;
+  };
+
+  bool is_pool2d = rank == 4;
+  if (verify_batch_channel_dims(0, rank - 1)) {
+    *data_format = is_pool2d ? "NHWC" : "NDHWC";
+  } else if (verify_batch_channel_dims(0, 1)) {
+    *data_format = is_pool2d ? "NCHW" : "NCDHW";
+  } else {
     return false;
+  }
 
   if (rw.getWindowDilations().has_value() &&
       !(rw.getWindowDilations()->isSplat() &&
@@ -2698,8 +2733,9 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
     if (!isFloatZero(rw.getInitValues()[0])) return failure();
 
     llvm::SmallVector<int64_t, 5> window_strides;
-    std::string padding_mode;
-    if (!IsSpatialPoolingWithoutDilation(rw, &window_strides, &padding_mode)) {
+    std::string padding_mode, data_format;
+    if (!IsSpatialPoolingWithoutDilation(rw, &window_strides, &padding_mode,
+                                         &data_format)) {
       return rewriter.notifyMatchFailure(
           div_op, "not the root of spatial pooling without dilation");
     }
@@ -2723,7 +2759,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       return replaceWithAvgPool(
           div_op, rw.getInputs()[0],
           llvm::to_vector<4>(rw.getWindowDimensions().getValues<int64_t>()),
-          window_strides, "VALID", rewriter);
+          window_strides, "VALID", data_format, rewriter);
     }
 
     Value actual_divisor = recursivelyWalkUpDivisor(div_op.getRhs());
@@ -2754,7 +2790,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       return replaceWithAvgPool(
           div_op, rw.getInputs()[0],
           llvm::to_vector<4>(rw.getWindowDimensions().getValues<int64_t>()),
-          window_strides, padding_mode, rewriter);
+          window_strides, padding_mode, data_format, rewriter);
     }
 
     return failure();
@@ -2772,18 +2808,19 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
                                    llvm::ArrayRef<int64_t> ksizes,
                                    llvm::ArrayRef<int64_t> kstrides,
                                    llvm::StringRef padding,
+                                   llvm::StringRef data_format,
                                    ConversionPatternRewriter& rewriter) const {
     if (ksizes.size() == 4) {
       rewriter.replaceOpWithNewOp<TF::AvgPoolOp>(
           op, op.getType(), input, rewriter.getI64ArrayAttr(ksizes),
           rewriter.getI64ArrayAttr(kstrides), rewriter.getStringAttr(padding),
-          rewriter.getStringAttr("NHWC"));
+          rewriter.getStringAttr(data_format));
       return success();
     } else if (ksizes.size() == 5) {
       rewriter.replaceOpWithNewOp<TF::AvgPool3DOp>(
           op, op.getType(), input, rewriter.getI64ArrayAttr(ksizes),
           rewriter.getI64ArrayAttr(kstrides), rewriter.getStringAttr(padding),
-          rewriter.getStringAttr("NDHWC"));
+          rewriter.getStringAttr(data_format));
       return success();
     }
     return failure();
@@ -2825,8 +2862,9 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     }
 
     llvm::SmallVector<int64_t, 5> window_strides;
-    std::string padding_mode;
-    if (!IsSpatialPoolingWithoutDilation(rw, &window_strides, &padding_mode)) {
+    std::string padding_mode, data_format;
+    if (!IsSpatialPoolingWithoutDilation(rw, &window_strides, &padding_mode,
+                                         &data_format)) {
       return rewriter.notifyMatchFailure(
           rw, "not the root of spatial pooling without dilation");
     }
@@ -2834,7 +2872,7 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     return replaceWithMaxPool(
         rw, rw.getInputs()[0],
         llvm::to_vector<4>(rw.getWindowDimensions().getValues<int64_t>()),
-        window_strides, padding_mode, rewriter);
+        window_strides, padding_mode, data_format, rewriter);
   }
 
  private:
@@ -2863,19 +2901,20 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
                                    llvm::ArrayRef<int64_t> ksizes,
                                    llvm::ArrayRef<int64_t> kstrides,
                                    llvm::StringRef padding,
+                                   llvm::StringRef data_format,
                                    ConversionPatternRewriter& rewriter) const {
     if (ksizes.size() == 4) {
       rewriter.replaceOpWithNewOp<TF::MaxPoolOp>(
           op, op.getType(0), input, rewriter.getI64ArrayAttr(ksizes),
           rewriter.getI64ArrayAttr(kstrides), rewriter.getStringAttr(padding),
           /*explicit_paddings=*/rewriter.getI64ArrayAttr({}),
-          rewriter.getStringAttr("NHWC"));
+          rewriter.getStringAttr(data_format));
       return success();
     } else if (ksizes.size() == 5) {
       rewriter.replaceOpWithNewOp<TF::MaxPool3DOp>(
           op, op.getType(0), input, rewriter.getI64ArrayAttr(ksizes),
           rewriter.getI64ArrayAttr(kstrides), rewriter.getStringAttr(padding),
-          rewriter.getStringAttr("NDHWC"));
+          rewriter.getStringAttr(data_format));
       return success();
     }
     return failure();
@@ -3876,9 +3915,17 @@ class ConvertCustomCallWithApproxTopK
 
 // Removes the `mhlo.custom_call @shape_assertion` custom call which represents
 // an assertion that the first operand (`assert_what`) evaluates to `true`.
+// This is a temporary workaround for unblocking dynamic model conversion
+// because starting from version 7, in presence of shape polymorphism JAX will
+// emit stablehlo.custom_call @shape_assertion to verify at compile time that
+// the code is used with compatible actual shapes.
 // TFLite runtime kernels support shape checking and shape inference to some
-// extent, it is safe to remove this shape assertion for now. We can revisit
-// this when need arises.
+// extent, it is okay to remove the shape assertion in most scenarios. However
+// this is not always the case, JAX may trace the program differently based on
+// the shape polymorphism specification, for example, if the program contains
+// a conditional on "x.shape[0] % 2 == 0" that conditional would evaluate to
+// True with x specified as (2*b, ...) and False otherwise. We can revisit
+// this when need arises. See b/295316438 for details.
 class RemoveCustomCallWithShapeAssertion
     : public OpConversionPattern<mhlo::CustomCallOp> {
  public:
@@ -4112,19 +4159,19 @@ void LegalizeHloToTf::runOnOperation() {
 
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context) {
-  patterns
-      ->add<ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
-            ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
-            ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
-            ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertScatterAddOp,
-            ConvertScatterMaxOp, ConvertScatterMinOp, ConvertScatterSubOp,
-            ConvertScatterUpdateOp, ConvertSliceOp, ConvertReduceOpToTfArgmax,
-            ConvertReduceOpToTfArgmin, ConvertReduceOpToTfMax,
-            ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
-            ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertSortToTfTopk,
-            ConvertIotaOpToTfRange, ConvertWhileOp, ConvertLoweredCumSumOp,
-            ConvertLoweredCumProdOp, ConvertGetDimensionSizeOp,
-            ConvertDynamicIotaOp, ConvertRealDynamicSliceOp>(context);
+  patterns->add<
+      ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
+      ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
+      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
+      ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertScatterAddOp,
+      ConvertScatterMaxOp, ConvertScatterMinOp, ConvertScatterSubOp,
+      ConvertScatterUpdateOp, ConvertSliceOp, ConvertReduceOpToTfArgmax,
+      ConvertReduceOpToTfArgmin, ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
+      ConvertReduceOpToTfAll, ConvertReduceOpToTfProd, ConvertReduceOpToTfAny,
+      ConvertReduceOpToTfSum, ConvertSortToTfTopk, ConvertIotaOpToTfRange,
+      ConvertWhileOp, ConvertLoweredCumSumOp, ConvertLoweredCumProdOp,
+      ConvertGetDimensionSizeOp, ConvertDynamicIotaOp,
+      ConvertRealDynamicSliceOp>(context);
   populateWithGenerated(*patterns);
 }
 

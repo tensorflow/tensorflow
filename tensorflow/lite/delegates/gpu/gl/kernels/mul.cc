@@ -140,10 +140,6 @@ absl::Status GenerateMultiplyConstantTensorCode(
         value_0 = $input_data_0[0, 0, 0]$;
         value_0 = vec4(value_0.x, value_0.x, value_0.x, value_0.x);
       )";
-    } else {
-      source = R"(
-        value_0 = $input_data_0[gid.x, gid.y, gid.z]$;
-      )";
     }
 
     auto param_shape =

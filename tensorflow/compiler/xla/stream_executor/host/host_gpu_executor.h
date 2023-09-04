@@ -118,8 +118,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status BlockHostUntilDone(Stream* stream) override;
 
-  int PlatformDeviceCount() override { return 1; }
-
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
   tsl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
@@ -138,13 +136,10 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return true;
   }
 
-  bool SupportsBlas() const override;
   blas::BlasSupport* CreateBlas() override;
 
-  bool SupportsDnn() const override { return false; }
   dnn::DnnSupport* CreateDnn() override { return nullptr; }
 
-  bool SupportsFft() const override;
   fft::FftSupport* CreateFft() override;
 
   std::unique_ptr<internal::EventInterface> CreateEventImplementation()

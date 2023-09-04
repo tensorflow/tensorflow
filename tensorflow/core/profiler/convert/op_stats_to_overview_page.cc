@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
+#include "tensorflow/core/profiler/protobuf/power_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
@@ -305,6 +306,7 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
   re.set_replica_count(run_environment.replica_count());
   re.set_num_cores_per_replica(run_environment.num_cores_per_replica());
   re.set_is_training(run_environment.is_training());
+  *re.mutable_power_metrics() = run_environment.power_metrics();
   *re.mutable_host_independent_job_info() =
       ToOverviewPageHostIndependentJobInfo(
           run_environment.host_independent_job_info());

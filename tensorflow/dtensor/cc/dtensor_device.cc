@@ -76,6 +76,7 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
@@ -1512,9 +1513,6 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
     }
   }
 
-  VLOG(4) << tensorflow::DumpGraphToFile("selected_graph_to_execute_",
-                                         *new_graph);
-
   return new_graph;
 }
 
@@ -1538,7 +1536,13 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<Graph> new_graph,
         SelectGraphToExecute(function, graph, &selected_call_node_name));
-    VLOG(4) << tensorflow::DumpGraphToFile("selected_graph_", *new_graph);
+
+    if (VLOG_IS_ON(4) || DEBUG_DATA_DUMPER()->ShouldDump(
+                             "selected_graph", kDebugGroupDTensorGraph)) {
+      DEBUG_DATA_DUMPER()->DumpGraph("selected_graph", kDebugGroupDTensorGraph,
+                                     doperation_name, new_graph.get(),
+                                     /*func_lib_def=*/nullptr, true);
+    }
 
     // Add unique identifier based on the function we are executing to the
     // function/graph and convert graph to functiondef.
@@ -1636,9 +1640,13 @@ DTensorDevice::DTensorOperationToModule(
       *module_manager_, inputs, doperation, *flib_def, eager_attributes,
       result.output_layouts, result.graph.get(), &result.global_output_shapes));
 
-  VLOG(4) << tensorflow::DumpGraphToFile("after_prepare_for_mlir",
-                                         *result.graph, flib_def);
-
+  if (VLOG_IS_ON(4) || DEBUG_DATA_DUMPER()->ShouldDump(
+                           "after_prepare_for_mlir", kDebugGroupDTensorGraph)) {
+    DEBUG_DATA_DUMPER()->DumpGraph("after_prepare_for_mlir",
+                                   kDebugGroupDTensorGraph, doperation.name,
+                                   result.graph.get(),
+                                   /*func_lib_def=*/flib_def, true);
+  }
   // Converts Graph to MLIR Module.
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlir_module_ref,
@@ -1712,7 +1720,15 @@ void DTensorDevice::ModuleToExecutionFunctions(
                          &control_ret_nodes),
       status);
   Graph* graph = lowering_context.graph.get();
-  VLOG(4) << DumpGraphToFile("after_dtensor_mlir_pass", *graph, flib_def);
+
+  if (VLOG_IS_ON(4) ||
+      DEBUG_DATA_DUMPER()->ShouldDump("after_dtensor_mlir_pass",
+                                      kDebugGroupDTensorGraph)) {
+    DEBUG_DATA_DUMPER()->DumpGraph("after_dtensor_mlir_pass",
+                                   kDebugGroupDTensorGraph, doperation.name,
+                                   graph,
+                                   /*func_lib_def=*/flib_def, true);
+  }
 
   // After MLIR transformations, exactly one StatefulPartitionedCall op is
   // returned for mesh cluster in computation. Identity all functions to execute
@@ -1728,8 +1744,14 @@ void DTensorDevice::ModuleToExecutionFunctions(
   RETURN_C_STATUS_IF_NOT_OK(MaybeInsertIdentityNodes(function_def, graph),
                             status);
 
-  VLOG(4) << tensorflow::DumpGraphToFile("after_post_processing_graph", *graph,
-                                         flib_def);
+  if (VLOG_IS_ON(4) ||
+      DEBUG_DATA_DUMPER()->ShouldDump("after_post_processing_graph",
+                                      kDebugGroupDTensorGraph)) {
+    DEBUG_DATA_DUMPER()->DumpGraph("after_post_processing_graph",
+                                   kDebugGroupDTensorGraph, doperation.name,
+                                   graph,
+                                   /*func_lib_def=*/flib_def, true);
+  }
 
   RETURN_C_STATUS_IF_NOT_OK(AddExecutionFunctionDefsToFunctionDefLibrary(
                                 doperation.name, doperation.stack_traces,

@@ -66,6 +66,11 @@ std::optional<xla::OpSharding> ConvertSharding(mlir::StringRef sharding);
 DotDimensionNumbers ConvertDotDimensionNumbers(
     mlir::mhlo::DotDimensionNumbersAttr input);
 
+DotDimensionNumbers ConvertDotDimensionNumbers(
+    absl::Span<const int64_t> lhs_batch, absl::Span<const int64_t> lhs_contract,
+    absl::Span<const int64_t> rhs_batch,
+    absl::Span<const int64_t> rhs_contract);
+
 StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
     const mlir::ArrayAttr& array);
 }  // namespace xla

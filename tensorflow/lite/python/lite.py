@@ -263,8 +263,14 @@ class QuantizationMode:
     self._target_spec = target_spec
     self._representative_dataset = representative_dataset
     self._graph_def = graph_def
+    if self._is_int8_target_required():
+      self._validate_int8_required()
 
-    self._validate_int8_required()
+    self.enable_mlir_variable_quantization = (
+        experimental_mlir_variable_quantization
+    )
+    if self._is_float16_target_required():
+      self._validate_float16_required()
     self._disable_per_channel = disable_per_channel
 
     self._enable_new_dynamic_range_quantizer = (
@@ -278,10 +284,6 @@ class QuantizationMode:
         full_integer_quantization_bias_type
     )
     self._validate_full_integer_quantization_bias_type()
-
-    self.enable_mlir_variable_quantization = (
-        experimental_mlir_variable_quantization
-    )
 
   def is_post_training_int8_only_quantization(self):
     return (
@@ -471,9 +473,6 @@ class QuantizationMode:
 
   def _validate_int8_required(self):
     """Int8 mode requires certain parameters to exist and be compatible."""
-    if not self._is_int8_target_required():
-      return
-
     # Validate target_spec attibute.
     if set(self._target_spec.supported_ops) == {
         OpsSet.TFLITE_BUILTINS_INT8
@@ -506,6 +505,14 @@ class QuantizationMode:
         self._representative_dataset = RepresentativeDataset(
             self._representative_dataset
         )
+
+  def _validate_float16_required(self):
+    """Float16 mode requires certain parameters to exist and be compatible."""
+    if self.enable_mlir_variable_quantization:
+      raise ValueError(
+          "`_experimental_variable_quantization` is only supported for full"
+          " integer quantization."
+      )
 
   def _validate_full_integer_quantization_bias_type(self):
     """Validates bias type for full interger quantization."""
@@ -550,6 +557,9 @@ class QuantizationMode:
     return (OpsSet.TFLITE_BUILTINS in set(self._target_spec.supported_ops)) or (
         OpsSet.SELECT_TF_OPS in set(self._target_spec.supported_ops)
     )
+
+  def _is_float16_target_required(self):
+    return _dtypes.float16 in self._target_spec.supported_types
 
   def is_any_optimization_enabled(self):
     return bool(
@@ -649,6 +659,7 @@ class TFLiteConverterBase:
     self._experimental_variable_quantization = False
     self._experimental_disable_fuse_mul_and_fc = False
     self._experimental_use_buffer_offset = False
+    self._experimental_reduce_type_precision = False
 
     # Debug parameters
     self.mlir_dump_dir = None
@@ -800,6 +811,7 @@ class TFLiteConverterBase:
             self.mlir_elide_elementsattrs_if_larger
         ),
         "use_buffer_offset": self._experimental_use_buffer_offset,
+        "reduce_type_precision": self._experimental_reduce_type_precision,
     }
 
     if self.saved_model_dir:

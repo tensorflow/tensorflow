@@ -86,6 +86,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -94,6 +95,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -368,7 +370,7 @@ class ImporterBase {
   // Converts the given function-call AttrValue to MLIR Attributes and pushes
   // them to the given attributes list. For example, if there is a kFunc
   // AttrValue {name : foo, attrs : {k1 : bar, k2 : rfc}}, it will convert it to
-  // a list of MLIR Attributes: [{base_name : foo}, {base_name.k1 : bar},
+  // a list of MLIR Attributes: {{base_name : foo}, {base_name.k1 : bar},
   // {base_name.k2 : rfc}}.
   Status ConvertFunctionCallAttribute(const std::string& base_name,
                                       const AttrValue& value,
@@ -1970,7 +1972,11 @@ mlir::Operation* ImporterBase::CreateOperation(
                                  void>::getResultSegmentSizeAttr());
     }
   }
-
+  inner_op->walk([&](mlir::Operation* op) {
+    EncodeSharding(op, mlir::TF::kXlaShardingAttrName);
+    EncodeSharding(op, mlir::TF::kShardingAttrName);
+    EncodeSharding(op, mlir::TF::kManualShardingAttrName);
+  });
   if (VLOG_IS_ON(1)) {
     mlir::OperationName name = inner_op->getName();
     if (!name.isRegistered() &&

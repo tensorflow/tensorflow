@@ -54,18 +54,11 @@ class HostPlatform : public Platform {
 
   tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
 
-  tsl::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
-      int ordinal, const PluginConfig& config) override;
-
   tsl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;
 
   tsl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) override;
-
-  void RegisterTraceListener(std::unique_ptr<TraceListener> listener) override;
-
-  void UnregisterTraceListener(TraceListener* listener) override;
 
  private:
   // This platform's name.

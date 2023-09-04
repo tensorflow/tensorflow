@@ -15,20 +15,27 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_while_op.h"
 
+#include <cassert>
 #include <memory>
 #include <utility>
 
-#include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputOps.h"
+#include "iree-dialects/Dialect/Input/InputOps.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/de_bufferization.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/xla_gpu_api.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/ir/xla_gpu_dialect.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
@@ -70,26 +77,30 @@ struct ConvertWhileOpToHal : public OpConversionPattern<lmhlo::WhileOp> {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     // Collect all buffers accessed in the loop condition and loop body.
-    auto bufs = getUsedBuffers({&op.getCond().front(), &op.getBody().front()});
+    auto bufs = getUsedBuffers(
+        {&op.getCond().front(), &op.getBody().front()},
+        [&](TypedValue<MemRefType> memref) {
+          return areValuesDefinedAbove(ValueRange(memref), op.getBody()) &&
+                 areValuesDefinedAbove(ValueRange(memref), op.getCond());
+        });
 
     Block *block = op->getBlock();
 
     // Pass updated tensors as loop iteration argument.
     SmallVector<Value> iter_args =
         llvm::to_vector(llvm::map_range(bufs.write, [&](auto memref) -> Value {
-          return state.remapped[block][memref];
+          return state.remapped(block, memref);
         }));
 
     // Set up buffer to tensor remapping inside nested regions.
     auto remap_iteration_args = [&](Block *nested_block, ValueRange iter_args) {
       // Read-only buffers remapped to tensors defined in the parent block.
       for (auto r : bufs.read)
-        state.remapped[nested_block][r] = state.remapped[block][r];
+        state.remap(nested_block, r, state.remapped(block, r));
 
       // Written-to buffers remapped to iteration arguments.
-      for (auto tuple : llvm::zip_equal(bufs.write, iter_args))
-        state.remapped[nested_block][std::get<0>(tuple)] =
-            cast<TypedValue<TensorType>>(std::get<1>(tuple));
+      for (auto [from, to] : llvm::zip_equal(bufs.write, iter_args))
+        state.remap(nested_block, from, cast<TypedValue<TensorType>>(to));
     };
 
     // Create an `scf.while` loop in place of `lmhlo.while` loop.
@@ -107,9 +118,8 @@ struct ConvertWhileOpToHal : public OpConversionPattern<lmhlo::WhileOp> {
         });
 
     // Use loop results to remap buffers in the parent block.
-    for (auto tuple : llvm::zip_equal(bufs.write, loop.getResults()))
-      state.remapped[block][std::get<0>(tuple)] =
-          cast<TypedValue<TensorType>>(std::get<1>(tuple));
+    for (auto [from, to] : llvm::zip_equal(bufs.write, loop.getResults()))
+      state.remap(block, from, cast<TypedValue<TensorType>>(to));
 
     // Predicate buffer placed on the device.
     auto predicate = cast<TypedValue<MemRefType>>(op.getOperand(0));
@@ -142,21 +152,25 @@ struct ConvertTerminatorOpToHal
       lmhlo::TerminatorOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     auto loop = dyn_cast<scf::WhileOp>(op->getParentOp());
-    if (!loop) return failure();
+    if (!loop)
+      return rewriter.notifyMatchFailure(
+          op, "not a terminator inside scf.while operation");
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    assert(converted->contains(loop) && "loop conversion state was not found");
+
+    auto it = converted->find(loop);
+    assert(it != converted->end() && "loop conversion state was not found");
 
     auto iter_args = llvm::to_vector(llvm::map_range(
         (*converted)[loop].buffers.write, [&](auto memref) -> Value {
-          return state.remapped[op->getBlock()][memref];
+          return state.remapped(op->getBlock(), memref);
         }));
 
     // Convert lmhlo.terminator in the before block to scf.condition operation
     if (auto *cond = op->getBlock(); cond == &loop.getBefore().front()) {
       Value offset = b.create<arith::ConstantIndexOp>(0);
       auto predicate = b.create<IREE::Input::TensorLoadOp>(
-          state.remapped[cond][(*converted)[loop].predicate],
+          state.remapped(cond, it->second.predicate),
           /*source_dims=*/ValueRange(), /*indices=*/offset);
 
       rewriter.replaceOpWithNewOp<scf::ConditionOp>(op, predicate, iter_args);
@@ -202,9 +216,9 @@ struct ConvertWhileOpToApiCall : public OpConversionPattern<lmhlo::WhileOp> {
     // Set up buffer to tensor remapping inside nested regions.
     auto remap_iteration_args = [&](Block *nested_block) {
       for (auto r : bufs.read)
-        state.remapped[nested_block][r] = state.remapped[block][r];
+        state.remap(nested_block, r, state.remapped(block, r));
       for (auto w : bufs.write)
-        state.remapped[nested_block][w] = state.remapped[block][w];
+        state.remap(nested_block, w, state.remapped(block, w));
     };
 
     // Create an `scf.while` loop in place of `lmhlo.while` loop.
@@ -265,7 +279,7 @@ struct ConvertTerminatorOpToApiCall
 
     // Convert lmhlo.terminator in the before block to scf.condition operation
     if (auto *cond = op->getBlock(); cond == &loop.getBefore().front()) {
-      auto predicate = state.remapped[cond][(*converted)[loop].predicate];
+      auto predicate = state.remapped(cond, (*converted)[loop].predicate);
       SmallVector<Value> args = {getExecutionContext(op),
                                  api.getBufferView(b, predicate),
                                  b.create<arith::ConstantIntOp>(0, 32)};

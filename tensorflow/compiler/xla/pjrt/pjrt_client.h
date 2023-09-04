@@ -177,6 +177,16 @@ class PjRtDevice {
   // Returns the default memory space attached to this device.
   virtual StatusOr<PjRtMemorySpace*> default_memory_space() const = 0;
 
+  // Returns a platform-specific stream handle that should be used to track when
+  // an externally-managed buffer is ready to use on this device. This is
+  // intended to support dlpack on GPU and is not expected to be implemented for
+  // all hardware platforms.
+  virtual StatusOr<std::intptr_t> GetStreamForExternalReadyEvents() const {
+    return Unimplemented(
+        "PjRtDevice::GetStreamForExternalReadyEvents only implemented for "
+        "GPU");
+  }
+
   // Experimental: Poisons the earliest execution on this device with given
   // launch_id if it's not finished yet, i.e. makes its output buffers error.
   //
@@ -769,12 +779,17 @@ class PjRtClient {
   // on_delete_callback is called when the PjRtBuffer is done with the on-device
   // buffer. The buffer may be mutated, for example, if the buffer is donated
   // to an Execute operation.
-  // TODO(phawkins): Currently this API assumes the buffer is ready to use
-  // immediately on the device. Extend it to support, for example, waiting for a
-  // CUDA stream/event.
+  //
+  // `stream`, if specified, is a platform-specific stream handle that should
+  // contain the work or events needed to materialize the on-device
+  // buffer. CreateViewOfDeviceBuffer will append an event to `stream` that
+  // indicates when the returned buffer is ready to use. This is intended to
+  // support dlpack on GPU and is not expected to be supported on all hardware
+  // platforms.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
-      std::function<void()> on_delete_callback) = 0;
+      std::function<void()> on_delete_callback,
+      std::optional<std::intptr_t> stream = std::nullopt) = 0;
 
   // Returns platform-dependent address for the given buffer that is often but
   // not guaranteed to be the physical/device address.
@@ -932,7 +947,7 @@ class PjRtBuffer {
     return shape;
   }
 
-  virtual PjRtMemorySpace* memory_space() const { return nullptr; }
+  virtual PjRtMemorySpace* memory_space() const = 0;
   // TODO(b/277820585): remove device() after the migration is done.
   virtual PjRtDevice* device() const = 0;
   virtual PjRtClient* client() const = 0;
@@ -949,6 +964,13 @@ class PjRtBuffer {
     virtual ~ExternalReference() = 0;
     // Return opaque device memory pointer to root buffer.
     void* OpaqueDeviceMemoryDataPointer() const { return data_ptr_; }
+
+    // Stream is platform-specific. This is intended to support dlpack on GPU
+    // and is not expected to be implemented for all hardware platforms.
+    virtual Status WaitUntilBufferReadyOnStream(std::intptr_t stream) {
+      return Unimplemented(
+          "WaitUntilBufferReadyOnStream is only implemented for GPU.");
+    }
 
    protected:
     void* data_ptr_;

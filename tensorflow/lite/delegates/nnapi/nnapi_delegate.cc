@@ -2965,7 +2965,7 @@ bool NNAPIDelegateKernel::Validate(
       ExpectIsFloatOperator(context, node, &val_ctx);
     } break;
     case kTfLiteBuiltinTransposeConv: {
-      ExpectMaxOpVersion(version, 3, &val_ctx);
+      ExpectMaxOpVersion(version, 4, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       Expect((node->inputs->size > 1) &&
@@ -4042,8 +4042,7 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       mapping_args.builder->AddScalarInt32Operand(builtin->padding);
       mapping_args.builder->AddScalarInt32Operand(builtin->stride_width);
       mapping_args.builder->AddScalarInt32Operand(builtin->stride_height);
-      mapping_args.builder->AddScalarInt32Operand(
-          /*ANEURALNETWORKS_FUSED_NONE*/ 0);
+      mapping_args.builder->AddScalarInt32Operand(builtin->activation);
       // Use NHWC layout for input and output.
       mapping_args.builder->AddScalarBoolOperand(false);
       *nn_op_type = ANEURALNETWORKS_TRANSPOSE_CONV;

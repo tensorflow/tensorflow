@@ -61,14 +61,6 @@ Status TpuExecutor::Init(int device_ordinal,
   return status.status();
 }
 
-int TpuExecutor::PlatformDeviceCount() {
-  return ExecutorApiFn()->TpuExecutor_PlatformDeviceCountFn(executor_);
-}
-
-void TpuExecutor::SyncAndForgetFailedStreams() {
-  ExecutorApiFn()->TpuExecutor_SyncAndForgetFailedStreamsFn(executor_);
-}
-
 bool TpuExecutor::SynchronizeAllActivity() {
   return ExecutorApiFn()->TpuExecutor_SynchronizeAllActivityFn(executor_);
 }
@@ -77,13 +69,6 @@ Status TpuExecutor::BlockHostUntilDone(Stream* stream) {
   StatusHelper status;
   ExecutorApiFn()->TpuExecutor_BlockHostUntilDoneFn(
       executor_, get_stream(stream->implementation()), status.c_status);
-  return status.status();
-}
-
-Status TpuExecutor::BlockUntilDoneOrFailed() {
-  StatusHelper status;
-  ExecutorApiFn()->TpuExecutor_BlockUntilDoneOrFailedFn(executor_,
-                                                        status.c_status);
   return status.status();
 }
 
@@ -228,20 +213,6 @@ TpuExecutor::GetAllocatorStats() {
     return stats;
   }
   return {};
-}
-
-Status TpuExecutor::WaitForInfeedReady(int32_t infeed_queue_index) {
-  StatusHelper status;
-  ExecutorApiFn()->TpuExecutor_WaitForInfeedReadyFn(
-      executor_, infeed_queue_index, status.c_status);
-  return status.status();
-}
-
-Status TpuExecutor::WaitForOutfeedReady(int32_t outfeed_queue_index) {
-  StatusHelper status;
-  ExecutorApiFn()->TpuExecutor_WaitForOutfeedReadyFn(
-      executor_, outfeed_queue_index, status.c_status);
-  return status.status();
 }
 
 void TpuExecutor::DequeueOutfeed(int32_t outfeed_queue_index,

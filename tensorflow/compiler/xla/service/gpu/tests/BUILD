@@ -98,7 +98,8 @@ xla_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/service/gpu:gpu_reduce_scatter_creator",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -592,7 +593,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_unrolling_test",
     srcs = ["gpu_unrolling_test.cc"],
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/service:hlo_module_config",

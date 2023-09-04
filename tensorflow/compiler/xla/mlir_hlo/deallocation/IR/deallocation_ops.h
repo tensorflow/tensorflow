@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef MLIR_HLO_DEALLOACTION_DEALLOCATION_OPS_H
 #define MLIR_HLO_DEALLOACTION_DEALLOCATION_OPS_H
 
+#include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"

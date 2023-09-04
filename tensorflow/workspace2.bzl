@@ -143,13 +143,15 @@ def _tf_repositories():
     # b) get the sha256 hash of the commit by running:
     #    curl -L <url> | sha256sum
     # and update the sha256 with the result.
+    # c) TF's automation will then upload the mirrored archive. For more information as well as
+    # how to manually upload a mirror if necessary, see go/tf_mirror_md.
 
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "c979b62e8b77af60dfd7567f22ade20d5a9d4d0888f8a2d60d155fc0d31b22ab",
-        strip_prefix = "XNNPACK-b9d4073a6913891ce9cbd8965c8d506075d2a45a",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/b9d4073a6913891ce9cbd8965c8d506075d2a45a.zip"),
+        sha256 = "09acd3e8112421fb7883f1c2966c9abc404349359ff9a18b12884f39dc6177a7",
+        strip_prefix = "XNNPACK-1d5830644349f5c66ddc3846c32b16010ac4cf4f",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/1d5830644349f5c66ddc3846c32b16010ac4cf4f.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -162,16 +164,16 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "f53ff856754a62cfc133aafb50a72d751d720e9eac095bf1d1a5433d5addd41f",
-        strip_prefix = "pthreadpool-82e33475389df5e43d72c064d20546ef26db1594",
-        urls = tf_mirror_urls("https://github.com/Maratyszcza/pthreadpool/archive/82e33475389df5e43d72c064d20546ef26db1594.zip"),
+        sha256 = "a4cf06de57bfdf8d7b537c61f1c3071bce74e57524fe053e0bbd2332feca7f95",
+        strip_prefix = "pthreadpool-4fe0e1e183925bf8cfa6aae24237e724a96479b8",
+        urls = tf_mirror_urls("https://github.com/Maratyszcza/pthreadpool/archive/4fe0e1e183925bf8cfa6aae24237e724a96479b8.zip"),
     )
 
     tf_http_archive(
         name = "cpuinfo",
-        strip_prefix = "cpuinfo-87d8234510367db49a65535021af5e1838a65ac2",
-        sha256 = "609fc42c47482c1fc125dccac65e843f640e792540162581c4b7eb6ff81c826a",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/87d8234510367db49a65535021af5e1838a65ac2.zip"),
+        strip_prefix = "cpuinfo-959002f82d7962a473d8bf301845f2af720e0aa4",
+        sha256 = "a0f53ccfb477c57753c595df02bf79ed67bf092fd9a5c61ec5b8992b81bc1e65",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/959002f82d7962a473d8bf301845f2af720e0aa4.zip"),
     )
 
     tf_http_archive(
@@ -513,10 +515,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "2e5a9b8fcdc095bdd2f079561f369de71c5eb3b80f00a702fbe9a8b8d9897891",
-        strip_prefix = "curl-8.1.2",
+        sha256 = "f98bdb06c0f52bdd19e63c4a77b5eb19b243bcbbd0f5b002b9f3cba7295a3a42",
+        strip_prefix = "curl-8.2.1",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-8.1.2.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-8.2.1.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule

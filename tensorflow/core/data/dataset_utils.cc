@@ -221,14 +221,6 @@ void DefaultOptimizationGraphRewrites(
       optimization_disabled->insert(kInjectPrefetchOpt);
     }
   }
-  if (optimization_options.optional_warm_start_case() ==
-      OptimizationOptions::kWarmStart) {
-    if (optimization_options.warm_start()) {
-      optimization_enabled->insert(kWarmStartOpt);
-    } else {
-      optimization_disabled->insert(kWarmStartOpt);
-    }
-  }
 }
 
 // Returns whether an op has been allowlisted as stateless. Uses a heuristic to
@@ -589,6 +581,13 @@ void GetOptimizations(const Options& options,
       optimizations_enabled->insert(kSlackOpt);
     } else {
       optimizations_disabled->insert(kSlackOpt);
+    }
+  }
+  if (options.optional_warm_start_case() == Options::kWarmStart) {
+    if (options.warm_start()) {
+      optimizations_enabled->insert(kWarmStartOpt);
+    } else {
+      optimizations_disabled->insert(kWarmStartOpt);
     }
   }
 }

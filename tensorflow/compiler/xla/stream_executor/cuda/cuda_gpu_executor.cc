@@ -688,6 +688,18 @@ tsl::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
   }
 }
 
+tsl::Status GpuExecutor::WaitForEventOnExternalStream(std::intptr_t stream,
+                                                      Event* event) {
+  if (GpuDriver::WaitStreamOnEvent(context_,
+                                   absl::bit_cast<GpuStreamHandle>(stream),
+                                   AsGpuEvent(event)->gpu_event())) {
+    return ::tsl::OkStatus();
+  } else {
+    return tsl::Status(absl::StatusCode::kInternal,
+                       "error waiting for CUDA event on external stream");
+  }
+}
+
 Event::Status GpuExecutor::PollForEventStatus(Event* event) {
   return AsGpuEvent(event)->PollForStatus();
 }
@@ -770,9 +782,6 @@ fft::FftSupport* GpuExecutor::CreateFft() {
   return status.value()(this);
 }
 
-// TODO(rspringer): Remove in b/18544742.
-bool GpuExecutor::SupportsDnn() const { return true; }
-
 bool GpuExecutor::CanEnablePeerAccessTo(StreamExecutorInterface* other) {
   GpuExecutor* cuda_other = static_cast<GpuExecutor*>(other);
   return GpuDriver::CanEnablePeerAccess(context_, cuda_other->context_);
@@ -823,10 +832,6 @@ tsl::Status FillBlockDimLimit(GpuDeviceHandle device,
   block_dim_limit->z = z;
   return tsl::OkStatus();
 }
-
-bool GpuExecutor::SupportsBlas() const { return true; }
-
-bool GpuExecutor::SupportsFft() const { return true; }
 
 std::unique_ptr<internal::EventInterface>
 GpuExecutor::CreateEventImplementation() {

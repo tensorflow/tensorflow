@@ -63,13 +63,6 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %output : tensor<3x2xf32>
   }
 
-  // CHECK-LABEL: func @random_uniform_uses_mlir
-  func.func @random_uniform_uses_mlir(%arg0: tensor<3xi32>) -> tensor<12x?x64xf32> {
-    // CHECK-NOT: tf.RandomUniform
-    %0 = "tf.RandomUniform"(%arg0) : (tensor<3xi32>) -> tensor<12x?x64xf32>
-    func.return %0 : tensor<12x?x64xf32>
-  }
-
   // CHECK-LABEL: unknown_op
   func.func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {
     // CHECK: tf.CustomTestOp

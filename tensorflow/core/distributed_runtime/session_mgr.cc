@@ -269,6 +269,7 @@ Status SessionMgr::CreateSession(
   CoordinationServiceConfig coordination_config =
       server_def.default_session_config().experimental().coordination_config();
   if (!coordination_config.service_type().empty() &&
+      !coordination_config.force_disable() &&
       coordination_service_agent_ == nullptr) {
     std::unique_ptr<CoordinationClientCache> client_cache;
     TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&client_cache));

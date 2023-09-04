@@ -48,6 +48,7 @@ TODO: Make invariants more structured so that we can reference them in ops.
   }];
 
   let cppNamespace = "::mlir::TF";
+  let usePropertiesForAttributes = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -190,6 +191,7 @@ def TF_XlaHostComputeResource : TF_ResourceBase<"XlaHostCompute">;
 def TF_WriteTrainingPredictionsResource : TF_ResourceBase<"WriteTrainingPredictions">;
 def TF_CollectiveReduceOrderingResource : TF_ResourceBase<"CollectiveReduceOrdering">;
 def TF_NcclAllReduceOrderingResource : TF_ResourceBase<"NcclAllReduceOrdering">;
+def TF_GlobalIterIdResource : TF_ResourceBase<"GlobalIterId">;
 def TF__XlaRunResource : TF_ResourceBase<"_XlaRun">;
 // Fake resource, see `TF_MustExecute` below.
 def TF_MustExecuteResource : TF_ResourceBase<"MustExecute">;
@@ -258,6 +260,8 @@ def TF_CollectiveReduceOrderingEffect : MemoryEffects<[MemWrite<TF_CollectiveRed
 
 // Special effect for keeping `NcclAllReduce` ops on the same device in order.
 def TF_NcclAllReduceOrderingEffect : MemoryEffects<[MemWrite<TF_NcclAllReduceOrderingResource>]>;
+
+def TF_GlobalIterIdEffect : MemoryEffects<[MemRead<TF_GlobalIterIdResource>]>;
 
 // Trait for enforcing that a side-effecting op is executed, even if it would be
 // considered dead by MLIR (see b/195782952).

@@ -190,6 +190,7 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/activity_watcher",
         "//tensorflow/core/activity_watcher:activity_watcher_utils",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
     ] + if_nccl([
         "//tensorflow/core/nccl:collective_communicator",
@@ -3140,6 +3141,7 @@ SAVE_RESTORE_DEPS = [
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/util/tensor_bundle",
+    "//tensorflow/core/util/tensor_bundle:naming",
 ]
 
 tf_kernel_library(

@@ -95,6 +95,31 @@ cc_library(
 )
 
 cc_library(
+    name = "fused_attention",
+    srcs = ["fused_attention.cc"],
+    hdrs = ["fused_attention.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:custom_call_encoding",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service/gpu:gpu_asm_opts_util",
+        "//tensorflow/compiler/xla/service/gpu:gpu_fused_mha_runner",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:attribute_exporter",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "conv_reorder",
     srcs = ["conv_reorder.cc"],
     hdrs = ["conv_reorder.h"],
@@ -147,6 +172,7 @@ cc_library(
         ":cublas_lt_matmul",
         ":custom_call",
         ":fft",
+        ":fused_attention",
         ":gemm",
         ":graph_launch",
         ":io_feed",
@@ -356,11 +382,9 @@ cc_library(
         ":gemm",
         ":kernel_launch",
         ":support",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
-        "//tensorflow/compiler/xla/runtime:state",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor",
@@ -369,7 +393,8 @@ cc_library(
         "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
     ],
 )

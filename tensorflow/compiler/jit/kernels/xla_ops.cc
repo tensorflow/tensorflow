@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/pjrt_compile_util.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
@@ -366,18 +367,6 @@ GetXlaCompilerArgsAndSnapshotVariables(
   return result;
 }
 
-XlaCompiler::CompileOptions GenerateCompileOptions(
-    bool has_ref_vars, bool may_alias_resource_update) {
-  XlaCompiler::CompileOptions compile_options;
-  compile_options.is_entry_computation = true;
-  // Optimization: where possible, have the computation return a naked array
-  // rather than a one-element tuple.
-  compile_options.always_return_tuple = false;
-  compile_options.alias_resource_update =
-      !has_ref_vars && may_alias_resource_update;
-  return compile_options;
-}
-
 Status CompileToLocalExecutable(
     OpKernelContext* ctx, const NameAttrList& function, bool has_ref_vars,
     const XlaPlatformInfo& platform_info,
@@ -423,39 +412,6 @@ Status CompileToLocalExecutable(
       GenerateCompileOptions(has_ref_vars, may_alias_resource_update);
 
   return xla_device_compiler->CompileIfNeeded(
-      options, function, args, compile_options, compile_mode, profiler,
-      compilation_result, executable);
-}
-
-Status CompileToPjRtLoadedExecutable(
-    const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
-    const NameAttrList& function,
-    const std::vector<XlaCompiler::Argument>& args,
-    DeviceCompileMode compile_mode, bool has_ref_vars,
-    bool may_alias_resource_update,
-    const XlaCompiler::CompilationResult** compilation_result,
-    xla::PjRtClient** client, xla::PjRtLoadedExecutable** executable) {
-  PjRtDeviceCompiler* pjrt_device_compiler;
-  DeviceCompilationProfiler* profiler;
-  TF_RETURN_IF_ERROR(GetOrCreatePjRtDeviceCompilerAndProfiler(
-      ctx, platform_info, ctx.function_library(), &pjrt_device_compiler,
-      &profiler));
-  // Hold the reference to the PJRT device compiler and profiler during
-  // evaluation. (We could probably free them sooner because the ResourceMgr
-  // will retain references, but this is more obviously correct.)
-  core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
-  core::ScopedUnref profiler_ref(profiler);
-
-  *client = pjrt_device_compiler->client();
-
-  XlaCompiler::Options options =
-      GenerateCompilerOptionsForPjRt(*ctx.function_library(), ctx.device(),
-                                     platform_info, pjrt_device_compiler);
-
-  XlaCompiler::CompileOptions compile_options =
-      GenerateCompileOptions(has_ref_vars, may_alias_resource_update);
-
-  return pjrt_device_compiler->CompileIfNeeded(
       options, function, args, compile_options, compile_mode, profiler,
       compilation_result, executable);
 }

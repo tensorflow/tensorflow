@@ -25,6 +25,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
@@ -39,7 +43,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -928,291 +934,305 @@ StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
   return true;
 }
 
-Status ReplaceInputAndMoveIntoBranches(
-    HloInstruction* input, HloInstruction*& user,
-    absl::flat_hash_map<const HloInstruction*, int64_t>& op_map,
-    std::function<HloInstruction*(HloInstruction* branch_input)>
-        insert_into_branch) {
-  VLOG(2) << "MoveIntoBranches: input =" << input->ToString() << "\n";
-  VLOG(2) << "MoveIntoBranches: user =" << user->ToString() << "\n";
-  CHECK(input->user_count() == 1 || input->opcode() == HloOpcode::kBroadcast);
-  // The nested tuple indices leading from input to conditional parameter.
-  std::vector<std::vector<int64_t>> matching_tuple_indices;
-  absl::InlinedVector<HloInstruction*, 4> new_operands;
-  for (int64_t j = 0; j < input->operand_count(); ++j) {
-    VLOG(2) << "Push back input operand index: " << j;
-    auto operand = input->mutable_operand(j);
-    if (std::find(new_operands.begin(), new_operands.end(), operand) ==
-        new_operands.end()) {
-      new_operands.push_back(operand);
+class MoveOperandIntoBranch {
+ public:
+  MoveOperandIntoBranch() = default;
+  Status operator()(HloInstruction* inst, HloInstruction*& user) {
+    VLOG(1) << "operand to move into branch: " << inst->ToString();
+    VLOG(2) << "MoveIntoBranches user =" << user->ToString() << "\n";
+    CHECK(inst->user_count() == 1 || inst->opcode() == HloOpcode::kBroadcast);
+
+    // Remember the new operands of inst (after erasing replicated entries).
+    absl::InlinedVector<HloInstruction*, 4> new_operands;
+    // Mapping from operands to their new locations in branch entry.
+    std::vector<std::vector<int64_t>> matching_tuple_indices;
+    TF_RETURN_IF_ERROR(
+        ReplaceInputInUser(inst, user, new_operands, matching_tuple_indices));
+    TF_RETURN_IF_ERROR(
+        MoveInputIntoBranch(inst, user, new_operands, matching_tuple_indices));
+    if (inst->user_count() == 0) {
+      TF_RETURN_IF_ERROR(inst->parent()->RemoveInstruction(inst));
     }
+    return OkStatus();
   }
-  if (user->opcode() == HloOpcode::kTuple) {
-    // Find the nested tuple indices before reaching the conditional.
-    for (HloInstruction *input_now = input, *user_now = user;
-         user_now->opcode() != HloOpcode::kConditional;
-         input_now = user_now, user_now = user_now->users()[0]) {
-      std::vector<int64_t> matching_tuple_index;
-      for (int64_t i = 0; i < user_now->operand_count(); ++i) {
-        if (user_now->operand(i) != input_now) {
+
+ private:
+  // Push inst inside the branch where branch_input is the input parameter.
+  HloInstruction* InsertIntoBranch(HloInstruction* inst,
+                                   HloInstruction* branch_input) {
+    VLOG(2) << "Branch input=" << branch_input->ToString() << "\n";
+    auto branch_comp = branch_input->parent();
+    std::vector<HloInstruction*> operands(inst->operand_count());
+    for (int64_t i = 0; i < inst->operand_count(); ++i) {
+      VLOG(2) << "processing operand =" << i << "\n";
+      if (branch_input->shape().IsTuple()) {
+        int64_t j = std::find(inst->operands().begin(), inst->operands().end(),
+                              inst->operands()[i]) -
+                    inst->operands().begin();
+        VLOG(2) << "operand index = " << j << "\n";
+        CHECK(j < branch_input->shape().tuple_shapes_size());
+        if (j < i) {
+          operands[i] = operands[j];
+        } else {
+          CHECK(op_map_.contains(inst->operands()[i]));
+          int64_t index = op_map_[inst->operands()[i]];
+          operands[i] =
+              branch_comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+                  branch_input->shape().tuple_shapes(index), branch_input,
+                  index));
+        }
+      } else {
+        CHECK(inst->operands()[i] == inst->operands()[0]);
+        operands[i] = branch_input;
+      }
+    }
+    return branch_comp->AddInstruction(
+        inst->CloneWithNewOperands(inst->shape(), operands));
+  }
+  // Update branch_param and its users to take the new shape given in
+  // param_shape. Update branch_param param_shape and param_tuple to be the
+  // shape and the last tuple instruction updated. Returns whether branch shape
+  // is updated (whether the param is used).
+  bool UpdateParamShape(
+      std::vector<std::vector<int64_t>>& matching_tuple_indices,
+      const Shape* param_shape, HloInstruction*& branch_param,
+      HloInstruction*& param_tuple) {
+    bool used = false;
+    // Update shapes from branch parameter to the immediate tuple user.
+    for (int64_t matching_index = matching_tuple_indices.size() - 1;
+         matching_index >= 0; --matching_index) {
+      auto* new_tuple = CloneNestedTuples(branch_param);
+      CHECK_NE(new_tuple, nullptr);
+      VLOG(5) << "Cloned new tuple:" << new_tuple->parent()->ToString() << "\n";
+      std::vector<std::vector<HloInstruction*>> gte_users;
+      for (int64_t j = 0; j < branch_param->shape().tuple_shapes_size(); ++j) {
+        gte_users.push_back(std::vector<HloInstruction*>());
+      }
+      for (auto* param_user : branch_param->users()) {
+        if (param_user->opcode() == HloOpcode::kGetTupleElement) {
+          CHECK_LT(param_user->tuple_index(), gte_users.size());
+          gte_users[param_user->tuple_index()].push_back(param_user);
+        }
+      }
+      used = false;
+      *branch_param->mutable_shape() = *param_shape;
+      const Shape* new_param_shape = nullptr;
+      for (auto param_users : gte_users) {
+        if (param_users.empty()) continue;
+        CHECK_EQ(param_users[0]->opcode(), HloOpcode::kGetTupleElement);
+        auto tuple_index = param_users[0]->tuple_index();
+        VLOG(1) << "Processing gte users: " << param_users.size() << "\n";
+        VLOG(1) << "tuple_index: " << tuple_index << "\n";
+        VLOG(1) << "matching_tuple_indices: "
+                << matching_tuple_indices[matching_index][0] << "\n";
+        if (matching_tuple_indices[matching_index].end() ==
+            std::find(matching_tuple_indices[matching_index].begin(),
+                      matching_tuple_indices[matching_index].end(),
+                      tuple_index)) {
           continue;
         }
-        matching_tuple_index.push_back(i);
-      }
-      CHECK(!matching_tuple_index.empty());
-      matching_tuple_indices.push_back(matching_tuple_index);
-      CHECK_EQ(user_now->user_count(), 1);
-    }
-    CHECK(!matching_tuple_indices.empty());
-    int64_t repl_count = 0;
-    for (auto opd_index : matching_tuple_indices[0]) {
-      HloInstruction* new_input =
-          (repl_count < new_operands.size())
-              ? new_operands[repl_count++]
-              : input->AddInstruction(HloInstruction::CreateTuple({}));
-      op_map[new_input] = opd_index;
-      VLOG(2) << "Mapping operand " << repl_count << " = "
-              << new_input->ToString() << " to " << opd_index;
-      TF_RETURN_IF_ERROR(
-          user->ReplaceOperandWithDifferentShape(opd_index, new_input));
-      *user->mutable_shape()->mutable_tuple_shapes(opd_index) =
-          new_input->shape();
-    }
-    while (repl_count < new_operands.size()) {
-      HloInstruction* new_input = new_operands[repl_count++];
-      auto new_input_in_user = std::find(user->operands().begin(),
-                                         user->operands().end(), new_input);
-      int64_t opd_index = (new_input_in_user == user->operands().end())
-                              ? user->operand_count()
-                              : new_input_in_user - user->operands().begin();
-      op_map[new_input] = opd_index;
-      CHECK(op_map.contains(new_input));
-      VLOG(2) << "Mapping operand " << new_input->ToString() << " to "
-              << opd_index;
-      user->AppendOperand(new_input);
-      user->mutable_shape()->mutable_tuple_shapes()->push_back(
-          new_input->shape());
-    }
-    int64_t nesting_index = 1;
-    for (auto user_now = user->users()[0];
-         nesting_index < matching_tuple_indices.size() &&
-         user_now->opcode() != HloOpcode::kConditional;
-         user = user_now, user_now = user_now->users()[0], nesting_index++) {
-      VLOG(2) << "Replacing tuple: " << user->ToString();
-      CHECK(user_now->shape().IsTuple());
-      for (auto opd_index : matching_tuple_indices[nesting_index]) {
-        *user_now->mutable_shape()->mutable_tuple_shapes(opd_index) =
-            user->shape();
-      }
-      VLOG(2) << "Done replacing tuple:" << user->ToString();
-      CHECK_EQ(user_now->user_count(), 1);
-    }
-    VLOG(2) << "User: " << user->ToString() << "\n";
-  }
-  HloInstruction* cond =
-      (user->opcode() != HloOpcode::kConditional && user->user_count() == 1)
-          ? user->users()[0]
-          : user;
-  if (user == cond) {
-    auto new_input =
-        input->AddInstruction(HloInstruction::CreateTuple(new_operands));
-    for (int64_t i = 0; i < new_operands.size(); ++i) {
-      op_map[new_operands[i]] = i;
-    }
-    user = new_input;
-    TF_RETURN_IF_ERROR(input->ReplaceUseWithDifferentShape(cond, new_input));
-  }
-  TF_RET_CHECK(cond->opcode() == HloOpcode::kConditional)
-      << "User has non-conditional users";
-  for (int64_t branch = 0; branch < cond->branch_count(); ++branch) {
-    if (cond->operand(branch + 1) != user) {
-      continue;
-    }
-    VLOG(2) << "Modifying conditional branch: " << branch << "\n";
-    auto branch_comp = cond->branch_computation(branch);
-    auto branch_param = branch_comp->parameter_instruction(0);
-    auto* param_shape = &user->shape();
-    VLOG(2) << "param_shape: " << param_shape->ToString() << "\n";
-    VLOG(2) << "branch parameter: " << branch_param->ToString() << "\n";
-    // The surrounding tuple containing the new instruction operands.
-    HloInstruction* param_tuple = branch_param;
-    if (matching_tuple_indices.empty()) {
-      VLOG(2) << "The original input is passed in as conditional parameter "
-                 "directly.";
-      VLOG(5) << branch_comp->ToString() << "\n";
-      *branch_param->mutable_shape() = *param_shape;
-      if (branch_param == branch_comp->root_instruction()) {
-        VLOG(2) << "Cloning root user";
-        auto new_user =
-            branch_comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-                branch_param->shape().tuple_shapes(0), branch_param, 0));
-        VLOG(2) << "new_user: " << new_user->ToString() << "\n";
-        branch_comp->set_root_instruction(new_user,
-                                          /* accept_different_shape =*/true);
-      }
-    } else {
-      bool used = false;
-      // Update shapes from branch parameter to the immediate tuple containing
-      // input.
-      for (int64_t matching_index = matching_tuple_indices.size() - 1;
-           matching_index >= 0; --matching_index) {
-        auto* new_tuple = CloneNestedTuples(branch_param);
-        CHECK_NE(new_tuple, nullptr);
-        VLOG(5) << "Cloned new tuple:" << new_tuple->parent()->ToString()
-                << "\n";
-        std::vector<std::vector<HloInstruction*>> gte_users;
-        for (int64_t j = 0; j < branch_param->shape().tuple_shapes_size();
-             ++j) {
-          gte_users.push_back(std::vector<HloInstruction*>());
-        }
-        for (auto* param_user : branch_param->users()) {
-          if (param_user->opcode() == HloOpcode::kGetTupleElement) {
-            CHECK_LT(param_user->tuple_index(), gte_users.size());
-            gte_users[param_user->tuple_index()].push_back(param_user);
-          }
-        }
-
-        used = false;
-        *branch_param->mutable_shape() = *param_shape;
-        const Shape* new_param_shape = nullptr;
-        for (auto param_users : gte_users) {
-          if (param_users.empty()) continue;
-          CHECK_EQ(param_users[0]->opcode(), HloOpcode::kGetTupleElement);
-          auto tuple_index = param_users[0]->tuple_index();
-          VLOG(1) << "Processing gte users: " << param_users.size() << "\n";
-          VLOG(1) << "tuple_index: " << tuple_index << "\n";
-          VLOG(1) << "matching_tuple_indices: "
-                  << matching_tuple_indices[matching_index][0] << "\n";
-          if (matching_tuple_indices[matching_index].end() ==
-              std::find(matching_tuple_indices[matching_index].begin(),
-                        matching_tuple_indices[matching_index].end(),
-                        tuple_index)) {
-            continue;
-          }
-          for (HloInstruction* param_user : param_users) {
-            VLOG(1) << "param_user: " << param_user->ToString() << "\n";
-            if (new_param_shape == nullptr) {
-              branch_param = param_user;
-              if (matching_index > 0) {
-                param_tuple = branch_param;
-              }
-              CHECK_GT(param_shape->tuple_shapes_size(), tuple_index);
-              new_param_shape = &param_shape->tuple_shapes(tuple_index);
-              param_shape = new_param_shape;
-              VLOG(1) << "new_param_shape: " << param_shape->ToString();
-              *param_user->mutable_shape() = *new_param_shape;
-              VLOG(1) << "branch parameter: " << param_user->ToString();
-              used = true;
-            } else {
-              VLOG(1) << "new_param_shape=" << new_param_shape->ToString();
-              *param_user->mutable_shape() = *new_param_shape;
-              TF_RETURN_IF_ERROR(param_user->ReplaceAllUsesWith(branch_param));
+        for (HloInstruction* param_user : param_users) {
+          VLOG(1) << "param_user: " << param_user->ToString() << "\n";
+          if (new_param_shape == nullptr) {
+            branch_param = param_user;
+            if (matching_index > 0) {
+              param_tuple = branch_param;
             }
+            CHECK_GT(param_shape->tuple_shapes_size(), tuple_index);
+            new_param_shape = &param_shape->tuple_shapes(tuple_index);
+            param_shape = new_param_shape;
+            VLOG(1) << "new_param_shape: " << param_shape->ToString();
+            *param_user->mutable_shape() = *new_param_shape;
+            VLOG(1) << "branch parameter: " << param_user->ToString();
+            used = true;
+          } else {
+            VLOG(1) << "new_param_shape=" << new_param_shape->ToString();
+            *param_user->mutable_shape() = *new_param_shape;
+            TF_CHECK_OK(param_user->ReplaceAllUsesWith(branch_param));
           }
-        }
-        if (!used) {
-          break;
         }
       }
       if (!used) {
-        VLOG(2) << "instruction is not used in this branch.";
-        continue;
+        break;
       }
     }
-    // Insert code and replace the uses of the changed parameter.
-    auto inserted = insert_into_branch(param_tuple);
-    VLOG(2) << "Inserted operands:" << inserted->ToString() << "\n";
-    std::vector<HloInstruction*> tuple_users = branch_param->users();
-    for (auto param_user : tuple_users) {
-      if (param_user == inserted ||
-          (param_user->opcode() == HloOpcode::kGetTupleElement &&
-           param_user != branch_comp->root_instruction())) {
-        continue;
-      }
-      TF_RETURN_IF_ERROR(
-          branch_param->ReplaceUseWithDifferentShape(param_user, inserted));
-
-      std::function<void(HloInstruction*)> UpdateTupleUsers =
-          [&UpdateTupleUsers](HloInstruction* param_user) {
-            for (auto new_user : param_user->users()) {
-              if (new_user->opcode() == HloOpcode::kTuple) {
-                for (int64_t opd_index = 0;
-                     opd_index < new_user->operand_count(); ++opd_index) {
-                  if (new_user->operands()[opd_index] != param_user) {
-                    continue;
-                  }
-                  *new_user->mutable_shape()->mutable_tuple_shapes(opd_index) =
-                      param_user->shape();
-                  UpdateTupleUsers(new_user);
-                  VLOG(2) << "Updated tuple user: " << new_user->ToString()
-                          << "\n";
-                }
-              }
-            }
-          };
-      UpdateTupleUsers(inserted);
-    }
-    // We can create invalid get-tuple-element() instructions when the output
-    // is not a tuple. Clean them away here.
-    // The algorithm creates some get-tuple-element() instructions, then when
-    // instructions are added to the conditional branch the algorithm can
-    // replace the operand of the GTE with an array shape. Because we use
-    // ReplaceWithDifferentShape() that's accepted. We used to rely on the
-    // TupleSimplifier to clean that up, but we shouldn't (because cleaning up
-    // invalid patterns is not the job of the TupleSimplifier).
-    // TODO(b/263496154): Change the algorithm in conditional code motion to
-    // avoid having invalid patterns lingering around at the end of the
-    // algorithm.
-    while (branch_comp->root_instruction()->opcode() ==
-               HloOpcode::kGetTupleElement &&
-           !branch_comp->root_instruction()->operand(0)->shape().IsTuple()) {
-      branch_comp->set_root_instruction(
-          branch_comp->root_instruction()->mutable_operands()[0]);
-    }
+    return used;
   }
-  return OkStatus();
-}
-
-Status MoveIntoBranch(
-    HloInstruction* inst, HloInstruction*& user,
-    absl::flat_hash_map<const HloInstruction*, int64_t>& op_map) {
-  VLOG(1) << "operand to move into branch: " << inst->ToString();
-  TF_CHECK_OK(ReplaceInputAndMoveIntoBranches(
-      inst, user, op_map, [&](HloInstruction* branch_input) {
-        VLOG(2) << "Branch input=" << branch_input->ToString() << "\n";
-        auto branch_comp = branch_input->parent();
-        std::vector<HloInstruction*> operands(inst->operand_count());
-        for (int64_t i = 0; i < inst->operand_count(); ++i) {
-          VLOG(2) << "processing operand =" << i << "\n";
-          if (branch_input->shape().IsTuple()) {
-            int64_t j = std::find(inst->operands().begin(),
-                                  inst->operands().end(), inst->operands()[i]) -
-                        inst->operands().begin();
-            VLOG(2) << "operand index = " << j << "\n";
-            CHECK(j < branch_input->shape().tuple_shapes_size());
-            if (j < i) {
-              operands[i] = operands[j];
-            } else {
-              CHECK(op_map.contains(inst->operands()[i]));
-              int64_t index = op_map[inst->operands()[i]];
-              operands[i] = branch_comp->AddInstruction(
-                  HloInstruction::CreateGetTupleElement(
-                      branch_input->shape().tuple_shapes(index), branch_input,
-                      index));
-            }
-          } else {
-            CHECK(inst->operands()[i] == inst->operands()[0]);
-            operands[i] = branch_input;
+  // Replace input with its operands inside user. Use matching_tuple_indices to
+  // remember which operands of input is matched to which entries in the new
+  // user.
+  Status ReplaceInputInUser(
+      HloInstruction* input, HloInstruction*& user,
+      absl::InlinedVector<HloInstruction*, 4>& new_operands,
+      std::vector<std::vector<int64_t>>& matching_tuple_indices) {
+    for (int64_t j = 0; j < input->operand_count(); ++j) {
+      VLOG(2) << "Push back input operand index: " << j;
+      auto operand = input->mutable_operand(j);
+      if (std::find(new_operands.begin(), new_operands.end(), operand) ==
+          new_operands.end()) {
+        new_operands.push_back(operand);
+      }
+    }
+    if (user->opcode() == HloOpcode::kTuple) {
+      // Find the nested tuple indices before reaching the conditional.
+      for (HloInstruction *input_now = input, *user_now = user;
+           user_now->opcode() != HloOpcode::kConditional;
+           input_now = user_now, user_now = user_now->users()[0]) {
+        std::vector<int64_t> matching_tuple_index;
+        for (int64_t i = 0; i < user_now->operand_count(); ++i) {
+          if (user_now->operand(i) != input_now) {
+            continue;
           }
+          matching_tuple_index.push_back(i);
         }
-        return branch_comp->AddInstruction(
-            inst->CloneWithNewOperands(inst->shape(), operands));
-      }));
-  if (inst->user_count() == 0) {
-    TF_RETURN_IF_ERROR(inst->parent()->RemoveInstruction(inst));
+        CHECK(!matching_tuple_index.empty());
+        matching_tuple_indices.push_back(matching_tuple_index);
+        CHECK_EQ(user_now->user_count(), 1);
+      }
+      CHECK(!matching_tuple_indices.empty());
+      int64_t repl_count = 0;
+      for (auto opd_index : matching_tuple_indices[0]) {
+        HloInstruction* new_input =
+            (repl_count < new_operands.size())
+                ? new_operands[repl_count++]
+                : input->AddInstruction(HloInstruction::CreateTuple({}));
+        op_map_[new_input] = opd_index;
+        VLOG(2) << "Mapping operand " << repl_count << " = "
+                << new_input->ToString() << " to " << opd_index;
+        TF_RETURN_IF_ERROR(
+            user->ReplaceOperandWithDifferentShape(opd_index, new_input));
+        *user->mutable_shape()->mutable_tuple_shapes(opd_index) =
+            new_input->shape();
+      }
+      while (repl_count < new_operands.size()) {
+        HloInstruction* new_input = new_operands[repl_count++];
+        auto new_input_in_user = std::find(user->operands().begin(),
+                                           user->operands().end(), new_input);
+        int64_t opd_index = (new_input_in_user == user->operands().end())
+                                ? user->operand_count()
+                                : new_input_in_user - user->operands().begin();
+        op_map_[new_input] = opd_index;
+        CHECK(op_map_.contains(new_input));
+        VLOG(2) << "Mapping operand " << new_input->ToString() << " to "
+                << opd_index;
+        user->AppendOperand(new_input);
+        user->mutable_shape()->mutable_tuple_shapes()->push_back(
+            new_input->shape());
+      }
+      int64_t nesting_index = 1;
+      for (auto user_now = user->users()[0];
+           nesting_index < matching_tuple_indices.size() &&
+           user_now->opcode() != HloOpcode::kConditional;
+           user = user_now, user_now = user_now->users()[0], nesting_index++) {
+        VLOG(2) << "Replacing tuple: " << user->ToString();
+        CHECK(user_now->shape().IsTuple());
+        for (auto opd_index : matching_tuple_indices[nesting_index]) {
+          *user_now->mutable_shape()->mutable_tuple_shapes(opd_index) =
+              user->shape();
+        }
+        VLOG(2) << "Done replacing tuple:" << user->ToString();
+        CHECK_EQ(user_now->user_count(), 1);
+      }
+      VLOG(2) << "User: " << user->ToString() << "\n";
+    }
+    return OkStatus();
   }
-  return OkStatus();
-}
+  Status MoveInputIntoBranch(
+      HloInstruction* input, HloInstruction*& user,
+      absl::InlinedVector<HloInstruction*, 4>& new_operands,
+      std::vector<std::vector<int64_t>>& matching_tuple_indices) {
+    HloInstruction* cond =
+        (user->opcode() != HloOpcode::kConditional && user->user_count() == 1)
+            ? user->users()[0]
+            : user;
+    if (user == cond) {
+      auto new_input =
+          input->AddInstruction(HloInstruction::CreateTuple(new_operands));
+      for (int64_t i = 0; i < new_operands.size(); ++i) {
+        op_map_[new_operands[i]] = i;
+      }
+      user = new_input;
+      TF_RETURN_IF_ERROR(input->ReplaceUseWithDifferentShape(cond, new_input));
+    }
+    TF_RET_CHECK(cond->opcode() == HloOpcode::kConditional)
+        << "User has non-conditional users";
+    for (int64_t branch = 0; branch < cond->branch_count(); ++branch) {
+      if (cond->operand(branch + 1) != user) {
+        continue;
+      }
+      VLOG(2) << "Modifying conditional branch: " << branch << "\n";
+      auto branch_comp = cond->branch_computation(branch);
+      auto branch_param = branch_comp->parameter_instruction(0);
+      auto* param_shape = &user->shape();
+      VLOG(2) << "param_shape: " << param_shape->ToString() << "\n";
+      VLOG(2) << "branch parameter: " << branch_param->ToString() << "\n";
+      // The surrounding tuple containing the new instruction operands.
+      HloInstruction* param_tuple = branch_param;
+      if (matching_tuple_indices.empty()) {
+        VLOG(2) << "The original input is passed in as conditional parameter "
+                   "directly.";
+        VLOG(5) << branch_comp->ToString() << "\n";
+        *branch_param->mutable_shape() = *param_shape;
+        if (branch_param == branch_comp->root_instruction()) {
+          VLOG(2) << "Cloning root user";
+          auto new_user =
+              branch_comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+                  branch_param->shape().tuple_shapes(0), branch_param, 0));
+          VLOG(2) << "new_user: " << new_user->ToString() << "\n";
+          branch_comp->set_root_instruction(new_user,
+                                            /* accept_different_shape =*/true);
+        }
+      } else {
+        if (!UpdateParamShape(matching_tuple_indices, param_shape, branch_param,
+                              param_tuple)) {
+          VLOG(2) << "instruction is not used in this branch.";
+          continue;
+        }
+      }
+      // Insert code and replace the uses of the changed parameter.
+      auto inserted = InsertIntoBranch(input, param_tuple);
+      VLOG(2) << "Inserted operands:" << inserted->ToString() << "\n";
+      std::vector<HloInstruction*> tuple_users = branch_param->users();
+      for (auto param_user : tuple_users) {
+        if (param_user == inserted ||
+            (param_user->opcode() == HloOpcode::kGetTupleElement &&
+             param_user != branch_comp->root_instruction())) {
+          continue;
+        }
+        TF_RETURN_IF_ERROR(
+            branch_param->ReplaceUseWithDifferentShape(param_user, inserted));
+        // We can create invalid get-tuple-element() instructions when the
+        // output is not a tuple. Clean them away here.
+        if (branch_comp->root_instruction()->opcode() ==
+                HloOpcode::kGetTupleElement &&
+            !branch_comp->root_instruction()->operand(0)->shape().IsTuple()) {
+          branch_comp->set_root_instruction(
+              branch_comp->root_instruction()->mutable_operands()[0]);
+        }
+        UpdateTupleUsers(inserted);
+      }
+    }
+    return OkStatus();
+  }
+  void UpdateTupleUsers(HloInstruction* param_user) {
+    for (auto new_user : param_user->users()) {
+      if (new_user->opcode() == HloOpcode::kTuple) {
+        for (int64_t opd_index = 0; opd_index < new_user->operand_count();
+             ++opd_index) {
+          if (new_user->operands()[opd_index] != param_user) {
+            continue;
+          }
+          *new_user->mutable_shape()->mutable_tuple_shapes(opd_index) =
+              param_user->shape();
+          UpdateTupleUsers(new_user);
+          VLOG(2) << "Updated tuple user: " << new_user->ToString() << "\n";
+        }
+      }
+    }
+  }
+
+  absl::flat_hash_map<const HloInstruction*, int64_t> op_map_;
+};
 
 // Hoist operands of a conditional from outside to inside the branches.
 StatusOr<bool> ConditionalCodeMotion::MoveOperandInstructionsIn(
@@ -1225,7 +1245,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveOperandInstructionsIn(
           << conditional->ToString(HloPrintOptions::Fingerprint()) << "\n";
   HloInstruction* user = conditional;
   int64_t user_index = 0;
-  absl::flat_hash_map<const HloInstruction*, int64_t> op_map;
+  MoveOperandIntoBranch move_into_branch;
   for (int64_t to_move_index = 0; to_move_index < to_move_in_size;
        to_move_index++) {
     Boundary b_to_move = to_move_in[to_move_index];
@@ -1248,7 +1268,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveOperandInstructionsIn(
       users.push_back(std::make_pair(
           user_now->users()[0], user_now->users()[0]->operand_index(user_now)));
     }
-    TF_RETURN_IF_ERROR(MoveIntoBranch(op, user, op_map));
+    TF_RETURN_IF_ERROR(move_into_branch(op, user));
     // Update the user chain of the original op to find the new user.
     for (int64_t i = users.size() - 1; i > 0; --i) {
       CHECK_NE(users[i].first, nullptr);

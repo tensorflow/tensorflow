@@ -73,8 +73,7 @@ class CopyInsertion : public HloModulePass {
   // If check_live_range_ordering is true, check that live ranges are ordered
   // in all the existing aliased buffers.
   Status RemoveUnnecessaryCopies(
-      HloOrdering* ordering, HloModule* module,
-      bool check_live_range_ordering = false,
+      HloModule* module, bool check_live_range_ordering = false,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Add copies to address special constraints on the roots of computations not

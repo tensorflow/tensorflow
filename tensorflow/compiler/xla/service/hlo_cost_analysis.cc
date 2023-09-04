@@ -286,54 +286,65 @@ Status HloCostAnalysis::HandleReverse(const HloInstruction*) {
 }
 
 Status HloCostAnalysis::HandleSlice(const HloInstruction* slice) {
-  current_properties_[kBytesAccessedKey] = GetShapeSize(slice->shape()) * 2;
-  current_properties_.set_output_bytes_accessed(GetShapeSize(slice->shape()));
-  current_properties_.set_operand_bytes_accessed(0,
-                                                 GetShapeSize(slice->shape()));
+  const int64_t output_shape_size = GetShapeSize(slice->shape());
+
+  const int64_t num_input_elements =
+      ShapeUtil::ElementsIn(slice->operand(0)->shape());
+  const int64_t num_output_elements = ShapeUtil::ElementsIn(slice->shape());
+
+  current_properties_[kBytesAccessedKey] = output_shape_size * 2;
+  current_properties_.set_output_bytes_accessed(output_shape_size);
+  current_properties_.set_operand_bytes_accessed(0, output_shape_size);
   current_properties_.set_operand_utilization(
-      0, 1.0 * ShapeUtil::ElementsIn(slice->shape()) /
-             ShapeUtil::ElementsIn(slice->operand(0)->shape()));
+      0, 1.0 * num_output_elements / num_input_elements);
   return OkStatus();
 }
 
 Status HloCostAnalysis::HandleDynamicSlice(
     const HloInstruction* dynamic_slice) {
-  current_properties_[kBytesAccessedKey] =
-      GetShapeSize(dynamic_slice->shape()) * 2 +
+  const int64_t output_shape_size = GetShapeSize(dynamic_slice->shape());
+  const int64_t start_indices_shape_size =
       GetShapeSize(dynamic_slice->operand(1)->shape());
-  current_properties_.set_output_bytes_accessed(
-      GetShapeSize(dynamic_slice->shape()));
-  current_properties_.set_operand_bytes_accessed(
-      0, GetShapeSize(dynamic_slice->shape()));
-  current_properties_.set_operand_bytes_accessed(
-      1, GetShapeSize(dynamic_slice->operand(1)->shape()));
+
+  const int64_t num_input_elements =
+      ShapeUtil::ElementsIn(dynamic_slice->operand(0)->shape());
+  const int64_t num_output_elements =
+      ShapeUtil::ElementsIn(dynamic_slice->shape());
+
+  current_properties_[kBytesAccessedKey] =
+      output_shape_size * 2 + start_indices_shape_size;
+  current_properties_.set_output_bytes_accessed(output_shape_size);
+  current_properties_.set_operand_bytes_accessed(0, output_shape_size);
+  current_properties_.set_operand_bytes_accessed(1, start_indices_shape_size);
   current_properties_.set_operand_utilization(
-      0, 1.0 * ShapeUtil::ElementsIn(dynamic_slice->shape()) /
-             ShapeUtil::ElementsIn(dynamic_slice->operand(0)->shape()));
+      0, 1.0 * num_output_elements / num_input_elements);
   return OkStatus();
 }
 
 Status HloCostAnalysis::HandleDynamicUpdateSlice(
     const HloInstruction* dynamic_update_slice) {
-  current_properties_[kBytesAccessedKey] =
-      GetShapeSize(dynamic_update_slice->operand(1)->shape()) * 2 +
+  const int64_t update_shape_size =
+      GetShapeSize(dynamic_update_slice->operand(1)->shape());
+  const int64_t start_indices_shape_size =
       GetShapeSize(dynamic_update_slice->operand(2)->shape());
+
+  const int64_t num_update_elements =
+      ShapeUtil::ElementsIn(dynamic_update_slice->operand(1)->shape());
+  const int64_t num_output_elements =
+      ShapeUtil::ElementsIn(dynamic_update_slice->shape());
+
+  current_properties_[kBytesAccessedKey] =
+      update_shape_size * 2 + start_indices_shape_size;
   // Operand 0 aliases with the output.
-  current_properties_.set_output_bytes_accessed(
-      GetShapeSize(dynamic_update_slice->operand(1)->shape()));
+  current_properties_.set_output_bytes_accessed(update_shape_size);
   current_properties_.set_operand_bytes_accessed(0, 0);
-  current_properties_.set_operand_bytes_accessed(
-      1, GetShapeSize(dynamic_update_slice->operand(1)->shape()));
-  current_properties_.set_operand_bytes_accessed(
-      2, GetShapeSize(dynamic_update_slice->operand(2)->shape()));
+  current_properties_.set_operand_bytes_accessed(1, update_shape_size);
+  current_properties_.set_operand_bytes_accessed(2, start_indices_shape_size);
   // Part of operand 0 overwritten by operand 1 is not used by the users
   // of the output of this operation.
   current_properties_.set_operand_utilization(
       0,
-      1.0 *
-          (ShapeUtil::ElementsIn(dynamic_update_slice->shape()) -
-           ShapeUtil::ElementsIn(dynamic_update_slice->operand(1)->shape())) /
-          ShapeUtil::ElementsIn(dynamic_update_slice->shape()));
+      1.0 * (num_output_elements - num_update_elements) / num_output_elements);
   return OkStatus();
 }
 
@@ -1000,7 +1011,6 @@ Status HloCostAnalysis::HandleRngGetAndUpdateState(
 
 Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
   VLOG(8) << "Processing fusion " << fusion->ToString();
-  const HloInstruction* root = fusion->fused_expression_root();
 
   if (fusion->IsCustomFusion()) {
     for (const HloInstruction* hlo :
@@ -1023,31 +1033,24 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
   current_properties_[kBytesAccessedKey] = 0;
   ShapeUtil::ForEachSubshape(
       fusion->shape(),
-      [this, root](const Shape& subshape, const ShapeIndex& shape_index) {
+      [this, fusion](const Shape& subshape, const ShapeIndex& shape_index) {
         if (!subshape.IsArray()) {
           return;
         }
-        if (shape_index.empty()) {
-          if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
-            int64_t size = GetShapeSize(root->operand(1)->shape());
-            current_properties_[kBytesAccessedKey] += size;
-            current_properties_.set_output_bytes_accessed(shape_index, size);
-            hlo_properties_[root][GetOperandUtilizationKey(0)] = 0;
-            return;
-          }
-        } else if (shape_index.size() == 1) {
-          if (root->opcode() == HloOpcode::kTuple &&
-              root->operand(shape_index[0])->opcode() ==
-                  HloOpcode::kDynamicUpdateSlice) {
-            int64_t size = GetShapeSize(
-                root->operand(shape_index[0])->operand(1)->shape());
-            current_properties_[kBytesAccessedKey] += size;
-            current_properties_.set_output_bytes_accessed(shape_index, size);
-            hlo_properties_[root->operand(shape_index[0])]
-                           [GetOperandUtilizationKey(0)] = 0;
-            return;
-          }
+
+        const HloInstruction* root = fusion->fused_expression_root();
+        if (shape_index.size() == 1 && root->opcode() == HloOpcode::kTuple) {
+          root = root->operand(shape_index[0]);
         }
+
+        if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
+          int64_t size = GetShapeSize(root->operand(1)->shape());
+          current_properties_[kBytesAccessedKey] += size;
+          current_properties_.set_output_bytes_accessed(shape_index, size);
+          hlo_properties_[root][GetOperandUtilizationKey(0)] = 0;
+          return;
+        }
+
         current_properties_[kBytesAccessedKey] += GetShapeSize(subshape);
         current_properties_.set_output_bytes_accessed(shape_index,
                                                       GetShapeSize(subshape));

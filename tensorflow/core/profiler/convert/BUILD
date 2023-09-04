@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_oss", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
@@ -125,6 +125,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:overview_page_proto_cc",
+        "//tensorflow/core/profiler/protobuf:power_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/protobuf:tf_function_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
@@ -567,6 +568,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:power_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/protobuf:topology_proto_cc",
         "//tensorflow/core/profiler/utils:hardware_type_utils",
@@ -609,6 +611,7 @@ cc_library(
         ":process_megascale_dcn",
         ":repository",
         ":tool_options",
+        ":xplane_to_dcn_collective_stats",
         ":xplane_to_memory_profile",
         ":xplane_to_op_stats",
         ":xplane_to_tf_data_stats",
@@ -617,6 +620,7 @@ cc_library(
         ":xplane_to_trace_container",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/convert/trace_viewer:trace_events_to_json",
+        "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "//tensorflow/core/profiler/protobuf:input_pipeline_proto_cc",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
@@ -630,6 +634,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/tsl/profiler/convert:xplane_to_trace_events",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -703,7 +708,9 @@ cc_library(
     srcs = ["hlo_to_tools_data.cc"],
     hdrs = ["hlo_to_tools_data.h"],
     copts = tf_profiler_copts(),
-    visibility = ["//tensorflow:__pkg__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         ":hlo_proto_to_graph_view",
         ":hlo_proto_to_memory_visualization_utils",
@@ -1037,5 +1044,26 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "xplane_to_dcn_collective_stats_test",
+    size = "small",
+    srcs = ["xplane_to_dcn_collective_stats_test.cc"],
+    deps = [
+        ":repository",
+        ":xplane_to_dcn_collective_stats",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )

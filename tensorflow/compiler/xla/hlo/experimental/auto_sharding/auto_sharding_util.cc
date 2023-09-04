@@ -941,8 +941,10 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
     std::vector<ShardingStrategy> new_vector;
     std::vector<ShardingStrategy> deduped_replicated_strategies;
     absl::flat_hash_set<std::string> added;
+    size_t num_skipped_due_to_infinity_costs = 0;
     for (size_t i = 0; i < strategies->leaf_vector.size(); ++i) {
       if (AllInfinityCosts(strategies->leaf_vector[i].resharding_costs)) {
+        num_skipped_due_to_infinity_costs++;
         continue;
       }
       std::string key = strategies->leaf_vector[i].output_sharding.ToString();
@@ -962,6 +964,8 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
         }
       }
     }
+    CHECK_LT(num_skipped_due_to_infinity_costs, strategies->leaf_vector.size())
+        << "All strategies removed due to infinite resharding costs";
     // Keeps replicated strategies as the last ones.
     if (!deduped_replicated_strategies.empty()) {
       for (size_t i = 0; i < deduped_replicated_strategies.size(); ++i) {
@@ -985,7 +989,6 @@ bool IsDivisible(const HloInstruction* ins, const Array<int64_t>& device_mesh,
   }
   return true;
 }
-
 
 // Set sharding, and apply transpose if necessary.
 void SetSharding(HloInstruction* to_split, const HloSharding& output_spec,
@@ -1015,8 +1018,6 @@ bool IsAlwaysReplicated(const HloInstruction* inst) {
   }
   return false;
 }
-
-
 
 // Try to reduce the boundary set to its common ancestor
 void TryReduceWithCommonAncestor(StableHashSet<HloInstruction*>& replicated_set,
@@ -1244,33 +1245,74 @@ bool TileAssignmentMatchesMesh(const HloSharding& spec,
 
 absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
     int64_t tensor_shape_rank, const HloSharding& spec,
-    const Array<int64_t>& device_mesh) {
+    const Array<int64_t>& device_mesh, bool consider_reverse_device_meshes) {
   if (spec.IsReplicated()) {
     return std::vector<int64_t>(tensor_shape_rank, -1);
   }
   // Check the compatibility of tensor_shape_rank and spec
   CHECK_EQ(tensor_shape_rank, spec.TiledDataRank());
-  Array<int64_t> mesh = device_mesh;
-  // Permute the dimensions (or axes in numpy term), find the transform that
-  // makes tile_assignment == device_mesh.
-  std::vector<int64_t> axes(mesh.num_dimensions());
-  absl::c_iota(axes, 0);
+
+  auto check_mesh =
+      [&](const Array<int64_t>& mesh) -> std::optional<std::vector<int64_t>> {
+    // Permute the dimensions (or axes in numpy term), find the transform that
+    // makes tile_assignment == device_mesh.
+    std::vector<int64_t> axes(mesh.num_dimensions());
+    absl::c_iota(axes, 0);
+    bool found = false;
+    do {
+      auto transposed_mesh = Transpose(mesh, axes);
+      if (std::equal(transposed_mesh.begin(), transposed_mesh.end(),
+                     spec.tile_assignment().array().begin())) {
+        found = true;
+        break;
+      }
+    } while (absl::c_next_permutation(axes));
+    if (found) {
+      return std::optional<std::vector<int64_t>>(axes);
+    } else {
+      return std::nullopt;
+    }
+  };
+
+  // This is an expensive search, as we try all possible meshes obtained by
+  // reversing a subset of the mesh axes. Reversed shardings only occur due to
+  // the somewhat rare kReverse HLO op. The hope therefore is that most calls to
+  // the function that reach here will find a mapping within the first iteration
+  // of the loop below.
   bool found = false;
-  do {
-    auto transposed_mesh = Transpose(mesh, axes);
-    if (std::equal(transposed_mesh.begin(), transposed_mesh.end(),
-                   spec.tile_assignment().array().begin())) {
+  std::vector<int64_t> axes(device_mesh.num_dimensions());
+  size_t num_subsets =
+      consider_reverse_device_meshes ? (1 << device_mesh.num_dimensions()) : 1;
+  std::vector<int64_t> reverse_dimensions;
+  for (size_t i = 0; i < num_subsets; ++i) {
+    reverse_dimensions.clear();
+    for (size_t j = 0; j < device_mesh.num_dimensions(); ++j) {
+      if (i & (1 << j)) {
+        reverse_dimensions.push_back(j);
+      }
+    }
+    Array<int64_t> new_mesh(device_mesh.dimensions());
+    new_mesh.Each([&](absl::Span<const int64_t> indices, int64_t* device) {
+      std::vector<int64_t> original_indices(indices.begin(), indices.end());
+      for (int64_t d : reverse_dimensions) {
+        original_indices[d] = new_mesh.dim(d) - 1 - original_indices[d];
+      }
+      *device = device_mesh(original_indices);
+    });
+    if (auto result = check_mesh(new_mesh); result.has_value()) {
+      axes = result.value();
       found = true;
       break;
     }
-  } while (absl::c_next_permutation(axes));
+  }
+
   if (!found) {
     return absl::NotFoundError(
         absl::StrCat("Could not find mapping for ", spec.ToString(),
                      " with device mesh ", device_mesh.ToString()));
   }
 
-  if (!TileAssignmentMatchesMesh(spec, mesh)) {
+  if (!TileAssignmentMatchesMesh(spec, device_mesh)) {
     return absl::InvalidArgumentError(
         "Device mesh and tile assignment need to have the same number of "
         "sharded dims.");
@@ -1281,7 +1323,7 @@ absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
   int mesh_index = 0;
   for (int i = 0; i < tensor_shape_rank; ++i) {
     if (spec.tile_assignment().dim(i) != 1) {
-      while (mesh.dim(axes[mesh_index]) == 1) {
+      while (device_mesh.dim(axes[mesh_index]) == 1) {
         mesh_index++;
       }
       tensor_dim_to_device_dim[i] = axes[mesh_index];
@@ -1291,11 +1333,11 @@ absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
   return tensor_dim_to_device_dim;
 }
 
-std::vector<int64_t> GetTensorDimToMeshDim(int64_t tensor_shape_rank,
-                                           const HloSharding& spec,
-                                           const Array<int64_t>& device_mesh) {
-  auto mapping_or =
-      GetTensorDimToMeshDimNoCrash(tensor_shape_rank, spec, device_mesh);
+std::vector<int64_t> GetTensorDimToMeshDim(
+    int64_t tensor_shape_rank, const HloSharding& spec,
+    const Array<int64_t>& device_mesh, bool consider_reverse_device_meshes) {
+  auto mapping_or = GetTensorDimToMeshDimNoCrash(
+      tensor_shape_rank, spec, device_mesh, consider_reverse_device_meshes);
   if (mapping_or.ok()) {
     return mapping_or.value();
   } else {
@@ -1490,6 +1532,11 @@ void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
                                  const Array<int64_t>& device_mesh,
                                  ReshardingCache* resharding_cache) {
   HloInstruction* operand = inst->mutable_operand(operand_num);
+  if (operand->opcode() == HloOpcode::kOutfeed) {
+    return;
+  }
+
+  CHECK(operand->has_sharding()) << inst->name() << " " << operand->name();
   if (operand->sharding() == dst_sharding) {
     return;
   }

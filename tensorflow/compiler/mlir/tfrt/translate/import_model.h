@@ -67,11 +67,9 @@ Status ConvertTfMlirToRuntimeExecutable(
 std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
     const TfrtCompileOptions& options);
 
-// TODO(b/295241000): Remove bridge run After MLIR can be deserialized.
-// AddXLAFunctions will still be needed.
-tensorflow::Status RunTFXLABridgeAndAddXlaFunctions(
-    const TfrtCompileOptions& options, tfrt_stub::FallbackState* fallback_state,
-    mlir::ModuleOp mlir_module);
+// Adds MLIR functions for XLA clusters to the function library.
+tensorflow::Status AddXlaFunctions(tfrt_stub::FallbackState* fallback_state,
+                                   mlir::ModuleOp mlir_module);
 
 }  // namespace tensorflow
 

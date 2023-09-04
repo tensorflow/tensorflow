@@ -45,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_key_value_sort.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_acl.h"
-#include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_pow.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv3d.h"
@@ -56,6 +55,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/platform/logging.h"
+
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#include "tensorflow/compiler/xla/service/cpu/onednn_matmul.h"
+#endif
 
 // Provided by compiler-rt and MLIR.
 // Converts an F32 value to a BF16.
@@ -297,10 +300,6 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulC128);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulS32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenBatchMatMulF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF64);
-  REGISTER_CPU_RUNTIME_SYMBOL(MKLSingleThreadedMatMulF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(MKLSingleThreadedMatMulF64);
   REGISTER_CPU_RUNTIME_SYMBOL(ACLMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(ACLBatchMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(ACLConv2DF32);
@@ -324,6 +323,9 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(TopKF32);
   REGISTER_CPU_RUNTIME_SYMBOL(TracingStart);
   REGISTER_CPU_RUNTIME_SYMBOL(TracingEnd);
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+  REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMul);
+#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
   registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee),
                      "Host");

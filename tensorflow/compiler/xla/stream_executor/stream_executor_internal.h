@@ -248,6 +248,12 @@ class StreamExecutorInterface {
   virtual tsl::Status DeallocateEvent(Event* event) = 0;
   virtual tsl::Status RecordEvent(Stream* stream, Event* event) = 0;
   virtual tsl::Status WaitForEvent(Stream* stream, Event* event) = 0;
+  virtual tsl::Status WaitForEventOnExternalStream(std::intptr_t stream,
+                                                   Event* event) {
+    return tsl::Status(
+        absl::StatusCode::kUnimplemented,
+        "WaitForEventOnExternalStream not supported on this executor.");
+  }
   virtual Event::Status PollForEventStatus(Event* event) = 0;
   virtual bool AllocateStream(Stream* stream) = 0;
   virtual void DeallocateStream(Stream* stream) = 0;
@@ -257,7 +263,6 @@ class StreamExecutorInterface {
     return tsl::Status(absl::StatusCode::kUnimplemented,
                        "GetStatus is not supported on this executor.");
   }
-  virtual int PlatformDeviceCount() = 0;
   virtual tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface* other) = 0;
 
@@ -303,39 +308,21 @@ class StreamExecutorInterface {
     return false;
   }
 
-  // Returns whether this StreamExecutor has BLAS support for its underlying
-  // platform.
-  virtual bool SupportsBlas() const { return false; }
-
   // Creates a new BlasSupport object, ownership is transferred to the caller.
-  // If SupportsBlas() is false, this will always return null.
   //
-  // If SupportsBlas() is true, this may return null, for example, if the BLAS
-  // initialization fails.
+  // This may return null if the BLAS initialization fails or this object does
+  // not support BLAS.
   virtual blas::BlasSupport* CreateBlas() { return nullptr; }
-
-  // Returns whether this StreamExecutor has FFT support for its underlying
-  // platform.
-  virtual bool SupportsFft() const { return false; }
 
   // Creates a new fft::FftSupport object, ownership is transferred to the
   // caller.
-  // If SupportsFft() is false, this will always return null.
-  //
-  // If SupportsFft() is true, this may return null, for example, if the FFT
-  // initialization fails.
+  // This may return null if the FFT initialization fails or this object does
+  // not support FFT.
   virtual fft::FftSupport* CreateFft() { return nullptr; }
 
-  // Returns whether this StreamExecutor has neural net support for its
-  // underlying
-  // platform.
-  virtual bool SupportsDnn() const { return false; }
-
   // Creates a new DnnSupport object, ownership is transferred to the caller.
-  // If SupportsDnn() is false, this will always return null.
-  //
-  // If SupportsDnn() is true, this may return null, for example, if the DNN
-  // initialization fails.
+  // This may return null if the DNN initialization fails or this object does
+  // not support Dnns.
   virtual dnn::DnnSupport* CreateDnn() { return nullptr; }
 
   // Each call creates a new instance of the platform-specific implementation of

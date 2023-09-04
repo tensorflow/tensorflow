@@ -47,5 +47,13 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
                  params.stream);
 }
 
+Status GemmThunk::Initialize(const GpuExecutable& executable,
+                             se::StreamExecutor* executor) {
+  if (!executor->AsBlas()) {
+    return absl::InternalError("Failed to initialize BLAS support");
+  }
+  return OkStatus();
+}
+
 }  // namespace gpu
 }  // namespace xla

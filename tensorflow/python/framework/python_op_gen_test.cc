@@ -74,10 +74,10 @@ TEST(PythonOpGen, TypeAnnotateAllOps) {
       "TV_FakeParam_dtype = TypeVar(\"TV_FakeParam_dtype\"" + all_types;
   const string fake_param =
       "def fake_param_eager_fallback(dtype: TV_FakeParam_dtype, shape, name, "
-      "ctx) -> _atypes.TensorFuzzingAnnotation[TV_FakeParam_dtype]:";
+      "ctx) -> Annotated[Any, TV_FakeParam_dtype]:";
   const string fake_param_fallback =
       "def fake_param_eager_fallback(dtype: TV_FakeParam_dtype, shape, name, "
-      "ctx) -> _atypes.TensorFuzzingAnnotation[TV_FakeParam_dtype]:";
+      "ctx) -> Annotated[Any, TV_FakeParam_dtype]:";
 
   ExpectHasSubstr(code, fake_param_typevar);
   ExpectHasSubstr(code, fake_param);
@@ -86,13 +86,13 @@ TEST(PythonOpGen, TypeAnnotateAllOps) {
   const string to_bool_typevar =
       "TV_ToBool_T = TypeVar(\"TV_ToBool_T\"" + all_types;
   const string to_bool_ =
-      "def to_bool(input: _atypes.TensorFuzzingAnnotation[TV_ToBool_T], "
+      "def to_bool(input: Annotated[Any, TV_ToBool_T], "
       "name=None) -> "
-      "_atypes.TensorFuzzingAnnotation[_atypes.Bool]:";
+      "Annotated[Any, _atypes.Bool]:";
   const string to_bool_fallback =
       "def to_bool_eager_fallback(input: "
-      "_atypes.TensorFuzzingAnnotation[TV_ToBool_T], name, ctx) "
-      "-> _atypes.TensorFuzzingAnnotation[_atypes.Bool]:";
+      "Annotated[Any, TV_ToBool_T], name, ctx) "
+      "-> Annotated[Any, _atypes.Bool]:";
 
   ExpectHasSubstr(code, to_bool_typevar);
   ExpectHasSubstr(code, to_bool_);
@@ -130,9 +130,9 @@ TEST(PythonOpGen, TypeAnnotateSingleTypeTensor) {
                    /* source_file_list= */ {});
 
   const string typed_bar =
-      "def bar(x: _atypes.TensorFuzzingAnnotation[_atypes.String], y: "
-      "_atypes.TensorFuzzingAnnotation[_atypes.QInt8], "
-      "name=None) -> _atypes.TensorFuzzingAnnotation[_atypes.Bool]:";
+      "def bar(x: Annotated[Any, _atypes.String], y: "
+      "Annotated[Any, _atypes.QInt8], "
+      "name=None) -> Annotated[Any, _atypes.Bool]:";
   ExpectHasSubstr(code, typed_bar);
 
   const string untyped_bar = "def bar(x, y, name=None):";
@@ -191,9 +191,9 @@ TEST(PythonOpGen, TypeAnnotateMultiTypeTensor) {
                    /* source_file_list= */ {});
 
   const string typed_foo =
-      "def foo(x: _atypes.TensorFuzzingAnnotation[TV_Foo_T], y: "
-      "_atypes.TensorFuzzingAnnotation[TV_Foo_T2], name=None) "
-      "-> _atypes.TensorFuzzingAnnotation[TV_Foo_T]:";
+      "def foo(x: Annotated[Any, TV_Foo_T], y: "
+      "Annotated[Any, TV_Foo_T2], name=None) "
+      "-> Annotated[Any, TV_Foo_T]:";
   ExpectHasSubstr(code, typed_foo);
 }
 
@@ -308,9 +308,9 @@ TEST(PythonOpGen, TypeAnnotateFallback) {
                    /* source_file_list= */ {});
 
   const string typed_foo_fallback =
-      "def foo_eager_fallback(x: _atypes.TensorFuzzingAnnotation[TV_Foo_T], y: "
-      "_atypes.TensorFuzzingAnnotation[TV_Foo_T2], name, ctx) -> "
-      "_atypes.TensorFuzzingAnnotation[TV_Foo_T]:";
+      "def foo_eager_fallback(x: Annotated[Any, TV_Foo_T], y: "
+      "Annotated[Any, TV_Foo_T2], name, ctx) -> "
+      "Annotated[Any, TV_Foo_T]:";
   ExpectHasSubstr(code, typed_foo_fallback);
 }
 
@@ -421,12 +421,12 @@ TEST(PythonOpGen, TypeAnnotateDefaultParams) {
                    /* source_file_list= */ {});
 
   const string params =
-      "def foo_bar(x: _atypes.TensorFuzzingAnnotation[_atypes.Float32], t: "
+      "def foo_bar(x: Annotated[Any, _atypes.Float32], t: "
       "TV_FooBar_t, "
       "var1:bool=False, var2:int=0, name=None)";
   const string params_fallback =
       "def foo_bar_eager_fallback(x: "
-      "_atypes.TensorFuzzingAnnotation[_atypes.Float32], t: "
+      "Annotated[Any, _atypes.Float32], t: "
       "TV_FooBar_t, var1: bool, var2: int, name, ctx)";
   ExpectHasSubstr(code, params);
   ExpectHasSubstr(code, params_fallback);

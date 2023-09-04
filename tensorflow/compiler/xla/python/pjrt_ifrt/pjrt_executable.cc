@@ -21,23 +21,44 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/pjrt/host_callback.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/dtype.h"
+#include "tensorflow/compiler/xla/python/ifrt/executable.h"
+#include "tensorflow/compiler/xla/python/ifrt/future.h"
+#include "tensorflow/compiler/xla/python/ifrt/host_callback.h"
+#include "tensorflow/compiler/xla/python/ifrt/memory.h"
+#include "tensorflow/compiler/xla/python/ifrt/shape.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
@@ -59,15 +80,28 @@ StatusOr<const xla::HloInstructionProto*> FindRootInstruction(
   return InvalidArgument("Entry computation not found");
 }
 
-// Returns the output shape of the first module in a `PjRtLoadedExecutable`.
-StatusOr<xla::Shape> GetFirstModuleOutputShape(
+// Returns the output element types of the first module in a
+// `PjRtLoadedExecutable`.
+StatusOr<std::vector<xla::PrimitiveType>> GetFirstModuleOutputElementTypes(
     xla::PjRtLoadedExecutable* pjrt_loaded_executable) {
-  auto shapes = pjrt_loaded_executable->GetOutputShapes();
-  TF_RETURN_IF_ERROR(shapes.status());
-  if (shapes->empty()) {
-    return FailedPrecondition("No output shape found");
+  auto element_types = pjrt_loaded_executable->GetOutputElementTypes();
+  TF_RETURN_IF_ERROR(element_types.status());
+  if (element_types->empty()) {
+    return FailedPrecondition("No output element types found");
   }
-  return shapes->front();
+  return element_types->front();
+}
+
+// Returns the output dimensions of the first module in a
+// `PjRtLoadedExecutable`.
+StatusOr<std::vector<xla::DimensionVector>> GetFirstModuleOutputDimensions(
+    xla::PjRtLoadedExecutable* pjrt_loaded_executable) {
+  auto dimensions = pjrt_loaded_executable->GetOutputDimensions();
+  TF_RETURN_IF_ERROR(dimensions.status());
+  if (dimensions->empty()) {
+    return FailedPrecondition("No output dimensions found");
+  }
+  return dimensions->front();
 }
 
 // Returns the output shardings of the first module in a
@@ -110,6 +144,29 @@ GetFirstModuleOutputMemoryKinds(
     return FailedPrecondition("No output memory kinds found");
   }
   return std::move(output_memory_kinds)->front();
+}
+
+struct ShapePartialInfo {
+  std::vector<xla::PrimitiveType> element_types;
+  std::vector<xla::DimensionVector> dimensions;
+};
+
+StatusOr<ShapePartialInfo> CreateShapePartialInfo(
+    absl::Span<const xla::Shape> shapes) {
+  ShapePartialInfo partial_info;
+  partial_info.element_types.reserve(shapes.size());
+  partial_info.dimensions.reserve(shapes.size());
+  for (const auto& shape : shapes) {
+    if (shape.IsTuple()) {
+      return FailedPrecondition(
+          "Tupled shape is not supported in `CreateShapePartialInfo`.");
+    }
+    partial_info.element_types.push_back(shape.element_type());
+    partial_info.dimensions.push_back(
+        xla::ShapeUtil::CreateDimensionVectorFromShape(shape));
+  }
+
+  return partial_info;
 }
 
 }  // namespace
@@ -159,12 +216,17 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
   // shape.
   VLOG(3) << "PjRtLoadedExecutable::Create";
   VLOG(3) << "Using per-shard shape";
-  TF_ASSIGN_OR_RETURN(auto result_shape,
-                      GetFirstModuleOutputShape(pjrt_loaded_executable.get()));
+  TF_ASSIGN_OR_RETURN(
+      auto result_element_types,
+      GetFirstModuleOutputElementTypes(pjrt_loaded_executable.get()));
+  TF_ASSIGN_OR_RETURN(
+      auto result_dimensions,
+      GetFirstModuleOutputDimensions(pjrt_loaded_executable.get()));
   TF_ASSIGN_OR_RETURN(
       auto result_memory_kinds,
       GetFirstModuleOutputMemoryKinds(pjrt_loaded_executable.get()));
-  return CreateInternal(client, std::move(pjrt_loaded_executable), result_shape,
+  return CreateInternal(client, std::move(pjrt_loaded_executable),
+                        result_element_types, result_dimensions,
                         /*result_hlo_sharding=*/std::nullopt,
                         result_memory_kinds, loaded_host_callbacks);
 }
@@ -208,26 +270,39 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard
     // shape.
     VLOG(3) << "Using per-shard shape";
-    TF_ASSIGN_OR_RETURN(auto result_shape, GetFirstModuleOutputShape(
-                                               pjrt_loaded_executable.get()));
+    TF_ASSIGN_OR_RETURN(
+        auto result_element_types,
+        GetFirstModuleOutputElementTypes(pjrt_loaded_executable.get()));
+    TF_ASSIGN_OR_RETURN(
+        auto result_dimensions,
+        GetFirstModuleOutputDimensions(pjrt_loaded_executable.get()));
     TF_ASSIGN_OR_RETURN(
         auto result_memory_kinds,
         GetFirstModuleOutputMemoryKinds(pjrt_loaded_executable.get()));
-    return CreateInternal(
-        client, std::move(pjrt_loaded_executable), result_shape,
-        /*result_hlo_sharding=*/std::nullopt, result_memory_kinds,
-        std::move(loaded_host_callbacks));
+    return CreateInternal(client, std::move(pjrt_loaded_executable),
+                          result_element_types, result_dimensions,
+                          /*result_hlo_sharding=*/std::nullopt,
+                          result_memory_kinds,
+                          std::move(loaded_host_callbacks));
   } else {
     VLOG(3) << "Using full shape";
+    // TODO(yueshengys): Consider getting element types and dimensions directly
+    // from module.
     TF_ASSIGN_OR_RETURN(auto result_shapes, ResultShapesOfModule(module));
     bool tuple_output = result_shapes.size() != 1;
     xla::Shape result_shape;
+    std::vector<xla::Shape> output_shapes;
     if (tuple_output) {
       result_shape = xla::ShapeUtil::MakeTupleShape(result_shapes);
+      output_shapes = std::move(result_shapes);
     } else {
       result_shape = result_shapes.front();
+      output_shapes = result_shape.IsTuple()
+                          ? result_shape.tuple_shapes()
+                          : std::vector<xla::Shape>{result_shape};
     }
-
+    TF_ASSIGN_OR_RETURN(auto shape_partial_info,
+                        CreateShapePartialInfo(output_shapes));
     TF_ASSIGN_OR_RETURN(auto result_hlo_sharding,
                         GetFirstModuleOutputSharding(
                             pjrt_loaded_executable.get(), result_shape));
@@ -235,7 +310,8 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
         auto result_memory_kinds,
         GetFirstModuleOutputMemoryKinds(pjrt_loaded_executable.get()));
     return CreateInternal(client, std::move(pjrt_loaded_executable),
-                          result_shape, result_hlo_sharding,
+                          shape_partial_info.element_types,
+                          shape_partial_info.dimensions, result_hlo_sharding,
                           result_memory_kinds,
                           std::move(loaded_host_callbacks));
   }
@@ -245,7 +321,8 @@ StatusOr<std::unique_ptr<LoadedExecutable>>
 PjRtLoadedExecutable::CreateInternal(
     PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-    const xla::Shape& result_shape,
+    absl::Span<const xla::PrimitiveType> result_element_types,
+    absl::Span<const xla::DimensionVector> result_dimensions,
     const std::optional<xla::HloSharding>& result_hlo_sharding,
     const std::optional<std::vector<absl::string_view>>& result_memory_kinds,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
@@ -259,26 +336,29 @@ PjRtLoadedExecutable::CreateInternal(
   std::vector<Shape> output_shapes;
   std::vector<std::shared_ptr<const Sharding>> output_shardings;
 
-  auto append_arg = [&](const xla::Shape& shape,
+  auto append_arg = [&](const xla::PrimitiveType& element_type,
+                        const xla::DimensionVector& dimensions,
                         const xla::HloSharding* sharding,
                         MemoryKind memory_kind) -> Status {
-    TF_ASSIGN_OR_RETURN(auto dtype, ToDType(shape.element_type()));
+    TF_ASSIGN_OR_RETURN(auto dtype, ToDType(element_type));
     output_dtypes.push_back(dtype);
-    output_shapes.push_back(Shape(shape.dimensions()));
+    output_shapes.push_back(Shape(dimensions));
 
-    CHECK(shape.IsArray());
+    CHECK(xla::primitive_util::IsArrayType(element_type));
 
-    xla::Shape tile_shape;
+    xla::DimensionVector tile_shape_dimensions = dimensions;
     if (sharding != nullptr) {
       CHECK(!sharding->IsTuple());
-      tile_shape = sharding->TileShape(shape);
-    } else {
-      tile_shape = shape;
+      // TODO(yueshengys): Consider overloading `HloSharding::TileShape` to
+      // directly take `xla::DimensionVector` as inputs.
+      tile_shape_dimensions =
+          xla::ShapeUtil::CreateDimensionVectorFromShape(sharding->TileShape(
+              xla::ShapeUtil::MakeShape(element_type, dimensions)));
     }
     output_shardings.push_back(ifrt::ConcreteEvenSharding::Create(
         devices, memory_kind,
-        /*shape=*/ifrt::Shape(shape.dimensions()),
-        /*shard_shape=*/ifrt::Shape(tile_shape.dimensions())));
+        /*shape=*/ifrt::Shape(dimensions),
+        /*shard_shape=*/ifrt::Shape(tile_shape_dimensions)));
     return OkStatus();
   };
   auto append_token = [&] {
@@ -286,71 +366,63 @@ PjRtLoadedExecutable::CreateInternal(
     output_shapes.push_back(Shape({}));
     output_shardings.push_back(OpaqueSharding::Create(devices, MemoryKind()));
   };
+  auto check_output_sharding_condition =
+      [](absl::Span<const xla::PrimitiveType> element_types,
+         const xla::HloSharding& sharding) {
+        if (sharding.IsTuple()) {
+          // Check that the HLO sharding of the result has the same number of
+          // elements as the output tuple shape. If the output is an empty tuple
+          // then the output sharding will have a single element for the tuple
+          // as a special case, so we will have to allow that by checking this
+          // condition specifically.
+          return element_types.size() == sharding.tuple_elements().size() ||
+                 (element_types.empty() &&
+                  sharding.tuple_elements().size() == 1);
+        }
+        return element_types.size() == 1;
+      };
 
-  if (result_shape.IsArray()) {
-    output_dtypes.reserve(1);
-    output_shapes.reserve(1);
-    output_shardings.reserve(1);
-    const xla::HloSharding* element_hlo_sharding =
-        result_hlo_sharding.has_value() ? &*result_hlo_sharding : nullptr;
-    MemoryKind element_memory_kind;
-    if (result_memory_kinds.has_value()) {
-      if (result_memory_kinds->size() != 1) {
-        return FailedPrecondition(
-            "Output memory kinds are inconsistent with the non-tuple result");
-      }
-      element_memory_kind = MemoryKind(result_memory_kinds->front());
-    }
-    TF_RETURN_IF_ERROR(
-        append_arg(result_shape, element_hlo_sharding, element_memory_kind));
-  } else if (result_shape.IsToken()) {
-    output_dtypes.reserve(1);
-    output_shapes.reserve(1);
-    output_shardings.reserve(1);
-    append_token();
-  } else if (result_shape.IsTuple()) {
-    output_dtypes.reserve(result_shape.tuple_shapes().size());
-    output_shapes.reserve(result_shape.tuple_shapes().size());
-    output_shardings.reserve(result_shape.tuple_shapes().size());
-    if (result_hlo_sharding.has_value() &&
-        (!result_hlo_sharding->IsTuple() ||
-         result_hlo_sharding->tuple_elements().size() !=
-             result_shape.tuple_shapes().size())) {
-      return FailedPrecondition(
-          "Output sharding is inconsistent with the tuple result");
-    }
-    if (result_memory_kinds.has_value() &&
-        result_memory_kinds->size() != result_shape.tuple_shapes().size()) {
-      return FailedPrecondition(
-          "Output memory kinds are inconsistent with the tuple result");
-    }
-    for (int i = 0; i < result_shape.tuple_shapes().size(); ++i) {
-      const auto& element_shape = result_shape.tuple_shapes(i);
-      if (element_shape.IsArray()) {
-        const xla::HloSharding* element_hlo_sharding = nullptr;
-        if (result_hlo_sharding.has_value()) {
-          element_hlo_sharding = &result_hlo_sharding->tuple_elements()[i];
-          if (element_hlo_sharding->IsTuple()) {
-            return FailedPrecondition(
-                "Output sharding is inconsistent with the tuple result");
-          }
-        }
-        MemoryKind element_memory_kind;
-        if (result_memory_kinds.has_value()) {
-          element_memory_kind = MemoryKind((*result_memory_kinds)[i]);
-        }
-        TF_RETURN_IF_ERROR(append_arg(element_shape, element_hlo_sharding,
-                                      element_memory_kind));
-      } else if (element_shape.IsToken()) {
-        append_token();
-      } else {
-        return FailedPrecondition(
-            "The tuple element is not a supported type (array, token)");
-      }
-    }
-  } else {
+  if (result_memory_kinds.has_value() &&
+      result_memory_kinds->size() != result_element_types.size()) {
     return FailedPrecondition(
-        "The computation result is not a support type (array, token, tuple)");
+        "Output memory kinds are inconsistent with the output shape");
+  }
+  if (result_hlo_sharding.has_value() &&
+      !check_output_sharding_condition(result_element_types,
+                                       *result_hlo_sharding)) {
+    return FailedPrecondition(
+        "Output sharding is inconsistent with the output shape");
+  }
+
+  CHECK_EQ(result_element_types.size(), result_dimensions.size());
+  output_dtypes.reserve(result_element_types.size());
+  output_shapes.reserve(result_element_types.size());
+  output_shardings.reserve(result_element_types.size());
+  for (int i = 0; i < result_element_types.size(); ++i) {
+    const auto& element_type = result_element_types[i];
+    if (xla::primitive_util::IsArrayType(element_type)) {
+      const xla::HloSharding* element_hlo_sharding = nullptr;
+      if (result_hlo_sharding.has_value()) {
+        element_hlo_sharding = result_hlo_sharding->IsTuple()
+                                   ? &result_hlo_sharding->tuple_elements()[i]
+                                   : &*result_hlo_sharding;
+        if (element_hlo_sharding->IsTuple()) {
+          return FailedPrecondition(
+              "Nested-tupled output sharding is not supported");
+        }
+      }
+      MemoryKind element_memory_kind;
+      if (result_memory_kinds.has_value()) {
+        element_memory_kind = MemoryKind((*result_memory_kinds)[i]);
+      }
+      TF_RETURN_IF_ERROR(append_arg(element_type, result_dimensions[i],
+                                    element_hlo_sharding, element_memory_kind));
+    } else if (element_type == TOKEN) {
+      append_token();
+    } else {
+      return FailedPrecondition(
+          "The element type is not a supported type (array, token)");
+    }
   }
 
   std::vector<PjRtHostSendAndRecvLoadedHostCallback*>

@@ -29,6 +29,7 @@ void AddQuantizationLoweringPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(
       createConvertMHLOQuantToIntPass(/*legalize_chlo=*/false));
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateVerifyQuantLegalizationPass());
 }
 
 }  // namespace stablehlo

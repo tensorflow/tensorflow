@@ -45,10 +45,9 @@ class GpuFusionPipelineTest : public GpuCodegenTest {
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false,
                                            device_info);
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true, device_info);
-    pipeline.AddPass<FusionMerger>(device_info, se::CudaComputeCapability(),
-                                   ShapeSizeBytesFunction());
-    pipeline.AddPass<GpuMultiOutputFusion>(
-        device_info, se::CudaComputeCapability(), ShapeSizeBytesFunction());
+    pipeline.AddPass<FusionMerger>(device_info, ShapeSizeBytesFunction());
+    pipeline.AddPass<GpuMultiOutputFusion>(device_info,
+                                           ShapeSizeBytesFunction());
 
     RunAndFilecheckHloRewrite(hlo, std::move(pipeline), expected);
   }

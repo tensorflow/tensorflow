@@ -29,6 +29,7 @@ cc_library(
     name = "runtime",
     srcs = ["runtime.cc"],
     hdrs = ["runtime.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":work_queue_interface",
         "//tensorflow/core:core_cpu_base",
@@ -51,6 +52,7 @@ tf_cc_shared_test(
     tags = ["no_oss"],
     deps = [
         ":runtime",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:test",
         "@com_google_googletest//:gtest_main",
         "@tf_runtime//cpp_tests:common",

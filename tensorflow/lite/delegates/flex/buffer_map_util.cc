@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/buffer_map_util.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <utility>
 
+#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/typed_allocator.h"
@@ -32,7 +36,7 @@ namespace {
 // Returns a boolean to indicate whether we should reuse memory from the
 // TfLiteTensor.
 inline bool ShouldReuseTensorMemory(const TfLiteTensor* tensor) {
-  // TODO(b/205153246): Currently arena-alloated memory could not be reused
+  // TODO(b/205153246): Currently arena-allocated memory could not be reused
   // since it might be invalid after the original arena grow in size and copied
   // over to a new memory block.
   // First check alignment is consistent with Tensorflow.

@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -141,7 +142,7 @@ std::pair<bool /*enabled*/, int> RowVectorizationEnabled(
   int num_big_inputs = 0;
   bool some_row_broadcasting = false;
   HloBfsConsumersFirstTraversal(
-      *fusion_roots.front(),
+      {fusion_roots.front()},
       [&](const HloInstruction& producer, const HloInstruction& consumer) {
         return consumer.opcode() == HloOpcode::kParameter;
       },
@@ -218,18 +219,6 @@ int64_t ProjectedShmemUsageBytes(
   return out;
 }
 
-// Returns true if all the transitive users of hlo before hitting users in
-// use_chain_endings are elementwise operations.
-bool AreUsersElementwise(
-    const HloInstruction* instruction,
-    const absl::flat_hash_set<HloInstruction*>& use_chain_endings) {
-  return absl::c_all_of(instruction->users(), [&](const HloInstruction* user) {
-    return use_chain_endings.count(user) ||
-           (HloInstruction::IsOpElementwise(user->opcode()) &&
-            AreUsersElementwise(user, use_chain_endings));
-  });
-}
-
 // For a row reduction, returns the number of rows we can process in parallel
 // per warp.
 int RowReductionGetRowsPerWarp(int reduced_dimension_size) {
@@ -293,8 +282,8 @@ std::optional<TransposeDescription> FindConsistentTransposeHero(
 
 // static
 StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
-    const HloFusionInstruction* fusion, const GpuDeviceInfo* device_info,
-    se::CudaComputeCapability compute_capability) {
+    const HloFusionInstruction* fusion, const GpuDeviceInfo* device_info) {
+  CHECK(device_info != nullptr);
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       fusion->backend_config<FusionBackendConfig>());
 
@@ -305,12 +294,19 @@ StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
     heroes.push_back(&FindNonTrivialHero(*root));
   }
 
+  std::vector<const HloInstruction*> fusion_parameter_inputs;
+  FindFusionParameters(hlo_roots, DefaultFusionBoundaryFn,
+                       [&](const HloInstruction& parameter) {
+                         fusion_parameter_inputs.push_back(&parameter);
+                       });
+
   std::optional<TransposeDescription> tiled_transpose_hero =
       FindConsistentTransposeHero(hlo_roots, heroes);
 
-  return HloFusionAnalysis(fusion, std::move(backend_config),
-                           std::move(hlo_roots), std::move(heroes), device_info,
-                           compute_capability, tiled_transpose_hero);
+  return HloFusionAnalysis(
+      fusion, std::move(backend_config), std::move(hlo_roots),
+      std::move(fusion_parameter_inputs), std::move(heroes), device_info,
+      tiled_transpose_hero);
 }
 
 // Returns true if the fusion has consistent transpose heros.
@@ -381,7 +377,6 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions() {
     }
     case EmitterFusionKind::kInputSlices: {
       auto* root = fusion_roots().front();
-      fusion_->fused_instructions_computation()->root_instruction();
       const auto& shape = root->operands()[0]->shape();
       constexpr int kUnrollFactor = 1;
       return CalculateLaunchDimensions(shape, *device_info_, {kUnrollFactor});
@@ -540,7 +535,7 @@ const Shape& HloFusionAnalysis::GetElementShape() const {
 
 int HloFusionAnalysis::SmallestInputDtypeBits() const {
   int bits = std::numeric_limits<int>::max();
-  for (const HloInstruction* operand : fusion_->fused_parameters()) {
+  for (const HloInstruction* operand : fusion_parameter_inputs_) {
     bits = std::min(bits,
                     primitive_util::BitWidth(operand->shape().element_type()));
   }
@@ -677,13 +672,34 @@ bool HloFusionAnalysis::IsUnrollingColumnReductionBeneficial(
     }
     use_chain_endings.insert(fusion_root);
   }
+
   // Fusion inputs that have the same dimension as the reduce input and
-  // only involve in elementwise operations can be vectorized.
-  can_be_vectorized += absl::c_count_if(
-      fusion_->fused_parameters(), [&](HloInstruction* parameter) {
-        return ShapeUtil::SameDimensions(input_shape, parameter->shape()) &&
-               AreUsersElementwise(parameter, use_chain_endings);
+  // only involve in element-wise operations can be vectorized.
+  absl::flat_hash_set<const HloInstruction*> reachable_through_non_elementwise;
+  HloBfsConsumersFirstTraversal(
+      fusion_roots_,
+      [&](const HloInstruction& producer, const HloInstruction& consumer) {
+        if (reachable_through_non_elementwise.contains(&consumer) ||
+            (consumer.opcode() != HloOpcode::kParameter &&
+             consumer.opcode() != HloOpcode::kFusion &&
+             !use_chain_endings.contains(&consumer) &&
+             !consumer.IsElementwise())) {
+          reachable_through_non_elementwise.insert(&producer);
+        }
+
+        return DefaultFusionBoundaryFn(producer, consumer);
+      },
+      [&](const HloInstruction& node) {
+        return TraversalResult::kVisitOperands;
       });
+
+  for (auto* param : fusion_parameter_inputs_) {
+    if (!reachable_through_non_elementwise.contains(param) &&
+        ShapeUtil::SameDimensions(input_shape, param->shape())) {
+      ++can_be_vectorized;
+    }
+  }
+
   // Fusion inputs with more elements than the reduce op input must participate
   // in non-elementwise operations and we assume that they are not vectorizable
   // for the purpose of estimating the benefit of unrolling. If the kernel is
@@ -691,7 +707,7 @@ bool HloFusionAnalysis::IsUnrollingColumnReductionBeneficial(
   // turn out to be vectorizable, the compiler will still vectorize them.
   int64_t num_elements = ShapeUtil::ElementsIn(input_shape);
   cannot_be_vectorized += absl::c_count_if(
-      fusion_->fused_parameters(), [&](HloInstruction* parameter) {
+      fusion_parameter_inputs_, [&](const HloInstruction* parameter) {
         return ShapeUtil::ElementsIn(parameter->shape()) > num_elements;
       });
   if (can_be_vectorized < cannot_be_vectorized) {
@@ -722,11 +738,11 @@ bool HloFusionAnalysis::CanVectorizeReduction(
     return false;
   }
 
-  if (compute_capability_.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
-    return true;
-  }
-
-  if (compute_capability_.IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
+  const auto* cuda_cc =
+      std::get_if<se::CudaComputeCapability>(&device_info_->compute_capability);
+  if (cuda_cc == nullptr) return false;
+  if (cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) return true;
+  if (cuda_cc->IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
     return SmallestInputDtypeBits() <= 32 &&
            reduction_dimensions.dimensions[kDimX] %
                    (reduction_tiling[2] * num_threads_x) ==
@@ -740,7 +756,10 @@ int HloFusionAnalysis::CalculateVirtualThreadScalingFactorForReduction(
   int64_t dimx = reduction_dimensions.dimensions[kDimX];
   if (reduction_dimensions.is_row_reduction && dimx <= 128) {
     int rows_per_warp = RowReductionGetRowsPerWarp(dimx);
-    if (compute_capability_.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
+        &device_info_->compute_capability);
+    if (cuda_cc != nullptr &&
+        cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) {
       return rows_per_warp * 3;
     }
     return rows_per_warp * 5;

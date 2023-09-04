@@ -18,6 +18,7 @@ limitations under the License.
 #include <queue>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
@@ -25,25 +26,27 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+bool DefaultFusionBoundaryFn(const HloInstruction&,
+                             const HloInstruction& consumer) {
+  return consumer.opcode() == HloOpcode::kParameter;
+}
+
 void HloBfsConsumersFirstTraversal(
-    const HloInstruction& root,
-    const std::function<bool(const HloInstruction& producer,
-                             const HloInstruction& consumer)>& boundary,
+    absl::Span<const HloInstruction* const> roots,
+    const FusionBoundaryFn& boundary,
     const std::function<TraversalResult(const HloInstruction& node)>& visit) {
   absl::flat_hash_set<const HloInstruction*> visited;
   std::queue<const HloInstruction*> q;
   auto enqueue_operands = [&](const HloInstruction& node) {
     if (node.opcode() == HloOpcode::kParameter) {
       auto* fusion = node.parent()->FusionInstruction();
-      // ir_emitter_unnested creates fusion instructions without parameters. We
-      // can't (and don't want to) follow edges outside of the fusion in this
-      // case.
-      if (fusion != nullptr &&
-          fusion->operand_count() > node.parameter_number()) {
-        auto* operand = fusion->operand(node.parameter_number());
-        if (!boundary(*operand, node) && visited.insert(operand).second) {
-          q.push(operand);
-        }
+      // If the parent is the entry computation, there's no producer.
+      if (!fusion) {
+        return;
+      }
+      auto* operand = fusion->operand(node.parameter_number());
+      if (!boundary(*operand, node) && visited.insert(operand).second) {
+        q.push(operand);
       }
       return;
     }
@@ -63,7 +66,9 @@ void HloBfsConsumersFirstTraversal(
     }
   };
 
-  q.push(&root);
+  for (auto* root : roots) {
+    q.push(root);
+  }
   while (!q.empty()) {
     const HloInstruction* node = q.front();
     q.pop();
@@ -77,6 +82,25 @@ void HloBfsConsumersFirstTraversal(
         break;
     }
   }
+}
+
+void FindFusionParameters(
+    absl::Span<const HloInstruction* const> roots,
+    const FusionBoundaryFn& boundary,
+    const std::function<void(const HloInstruction& param)>& visit) {
+  absl::flat_hash_set<const HloInstruction*> visited;
+  HloBfsConsumersFirstTraversal(
+      roots,
+      [&](const HloInstruction& producer, const HloInstruction& consumer) {
+        auto is_boundary = boundary(producer, consumer);
+        if (is_boundary) {
+          if (visited.insert(&producer).second) {
+            visit(producer);
+          }
+        }
+        return is_boundary;
+      },
+      [&](const HloInstruction&) { return TraversalResult::kVisitOperands; });
 }
 
 }  // namespace gpu

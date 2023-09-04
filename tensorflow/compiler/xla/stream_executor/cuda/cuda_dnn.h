@@ -56,7 +56,7 @@ class CudnnSupport : public dnn::DnnSupport {
   explicit CudnnSupport(GpuExecutor* parent);
 
   tsl::Status Init() override;
-  tsl::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
+  tsl::StatusOr<stream_executor::dnn::VersionInfo> GetVersion() override;
 
   tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
       int num_layers, int hidden_size, int input_size, int cell_size,

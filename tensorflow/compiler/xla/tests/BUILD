@@ -13,6 +13,7 @@ load(
     "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
+load("//tensorflow/tsl:tsl.bzl", "tsl_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -954,8 +955,11 @@ xla_test(
         ":hlo_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1188,7 +1192,6 @@ xla_test(
     backends = ["gpu"],
     shard_count = 50,
     tags = [
-        "no_rocm",
         "nozapfhahn",
         "optonly",
     ],
@@ -1270,7 +1273,6 @@ xla_test(
         "interpreter",
     ],
     shard_count = 40,
-    tags = ["no_rocm"],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -2776,5 +2778,24 @@ xla_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/hlo/ir:tile_assignment",
         "@com_google_absl//absl/hash",
+    ],
+)
+
+xla_test(
+    name = "onednn_matmul_test",
+    srcs = ["onednn_matmul_test.cc"],
+    backends = [
+        "cpu",
+    ],
+    copts = tsl_copts(),
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/tsl/platform:platform_port",
     ],
 )

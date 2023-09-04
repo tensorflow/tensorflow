@@ -134,20 +134,14 @@ absl::Duration ProducerInputAccessTime(
 // Use HloFusionAnalysis for computing the actual number of threads that the
 // IR emitter will use. Return std::nullopt if this data is not available.
 std::optional<int64_t> EstimateThreadCount(
-    const HloInstruction* instr, const GpuDeviceInfo& gpu_device_info,
-    std::optional<se::CudaComputeCapability> cc) {
+    const HloInstruction* instr, const GpuDeviceInfo& gpu_device_info) {
   auto fusion = DynCast<const HloFusionInstruction>(instr);
-  if (fusion != nullptr && cc.has_value()) {
-    auto analysis =
-        HloFusionAnalysis::Create(fusion, &gpu_device_info, cc.value());
-    if (analysis.ok()) {
-      auto launch_dimensions = analysis->GetLaunchDimensions();
-      if (launch_dimensions.ok()) {
-        return launch_dimensions->launch_bound();
-      }
-    }
-  }
-  return std::nullopt;
+  if (fusion == nullptr) return std::nullopt;
+  auto analysis = HloFusionAnalysis::Create(fusion, &gpu_device_info);
+  if (!analysis.ok()) return std::nullopt;
+  auto launch_dimensions = analysis->GetLaunchDimensions();
+  if (!launch_dimensions.ok()) return std::nullopt;
+  return launch_dimensions->launch_bound();
 }
 
 absl::Duration ComputeTime(const GpuDeviceInfo& gpu_device_info,
@@ -199,7 +193,6 @@ EstimateRunTimeData EstimateRunTimeImpl(
 
 GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
-    std::optional<se::CudaComputeCapability> cc,
     std::vector<HloInstruction*> fused_users, bool multi_output) {
   VLOG(8) << "Producer: " << producer->name();
   if (producer->opcode() == HloOpcode::kFusion) {
@@ -219,8 +212,7 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
         cost_analysis->operand_utilization(*u, u->operand_index(producer));
     total_producer_utilization += utilization_by_this_consumer;
 
-    auto thread_count =
-        EstimateThreadCount(u, *cost_analysis->device_info_, cc);
+    auto thread_count = EstimateThreadCount(u, *cost_analysis->device_info_);
     int64_t upper_bound =
         producer_data.elements_out * utilization_by_this_consumer;
     absl::Duration compute_time_by_this_consumer = ComputeTime(

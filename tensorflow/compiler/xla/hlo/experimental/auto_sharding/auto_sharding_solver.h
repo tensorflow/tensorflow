@@ -46,6 +46,7 @@ struct AutoShardingSolverRequest {
   std::vector<std::vector<double>> v;
   std::vector<std::string> instruction_names;
   std::optional<int64_t> solver_timeout_in_seconds;
+  std::optional<double> overbudget_coeff;
   bool crash_at_infinity_costs_check = false;
   bool compute_iis = true;
   double saltiplier = 0.0001;  // Modifies each objective term by at most 0.01%
@@ -75,27 +76,26 @@ enum AutoShardingViolationCode {
   kMemoryViolationCode,        // The solution eclipses the memory budget
 };
 
+struct CostComponents {
+  double communication_cost = 0.0;
+  double computation_cost = 0.0;
+  double resharding_cost = 0.0;
+  double overbudget_cost = 0.0;
+
+  double cost() const;
+
+  bool operator==(const CostComponents& other) const;
+};
+
 // Captures the metrics, lower bounds, and constraint violations for the
 // sharding result.
 struct AutoShardingEvaluation {
   // A set of constraint violations; should be empty for any viable solution.
   absl::flat_hash_set<AutoShardingViolationCode> violation_codes;
 
-  // A breakdown of each individual cost component.
-  double total_communication_cost = 0.0;
-  double total_computation_cost = 0.0;
-  double total_resharding_cost = 0.0;
-
-  // The total (global) objective cost.
-  double total_cost = 0.0;
-
-  // A lower bound for each individual cost component.
-  double lower_bound_communication_cost = 0.0;
-  double lower_bound_computation_cost = 0.0;
-  double lower_bound_resharding_cost = 0.0;
-
-  // A lower bound on the total (global) objective cost.
-  double lower_bound_cost = 0.0;
+  // A breakdown & lower bound for each individual cost component.
+  CostComponents total;
+  CostComponents lower_bound;
 
   bool operator==(const AutoShardingEvaluation& other) const;
 };

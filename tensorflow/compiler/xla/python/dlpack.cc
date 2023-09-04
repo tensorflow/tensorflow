@@ -267,8 +267,9 @@ StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
 
 }  // namespace
 
-StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
-                                                  bool take_ownership) {
+StatusOr<py::capsule> BufferToDLPackManagedTensor(
+    py::handle py_buffer, bool take_ownership,
+    std::optional<std::intptr_t> stream) {
   ifrt::Array* ifrt_array = py::cast<xla::PyArray>(py_buffer).ifrt_array();
   auto pack = std::make_unique<DLPackTensor>();
   if (ifrt_array == nullptr) {
@@ -303,16 +304,20 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
           "Cannot convert deleted/invalid buffer to DLPack tensor.");
     }
   } else {
-    // Block on outstanding operations, so that it is safe to read or mutate the
-    // returned buffer.
     {
+      // AcquireExternalReference may block; there are no API guarantees.
       GlobalPyRefManager()->CollectGarbage();
       py::gil_scoped_release gil_release;
-      TF_RETURN_IF_ERROR(AwaitBuffersReady(ifrt_array));
+      TF_ASSIGN_OR_RETURN(pack->external_reference,
+                          pjrt_buffer->AcquireExternalReference());
+      if (stream) {
+        TF_RETURN_IF_ERROR(
+            pack->external_reference->WaitUntilBufferReadyOnStream(*stream));
+      } else {
+        TF_RETURN_IF_ERROR(AwaitBuffersReady(ifrt_array));
+      }
     }
     pack->buffer_reference = py::reinterpret_borrow<py::object>(py_buffer);
-    TF_ASSIGN_OR_RETURN(pack->external_reference,
-                        pjrt_buffer->AcquireExternalReference());
   }
   dt.data = pack->external_reference->OpaqueDeviceMemoryDataPointer();
   pack->tensor.manager_ctx = pack.get();
@@ -419,6 +424,66 @@ StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
   auto client = (cpu_client && device->client() == cpu_pjrt_client)
                     ? std::move(cpu_client)
                     : std::move(gpu_client);
+  auto* ifrt_client =
+      llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(client->ifrt_client());
+  if (ifrt_client == nullptr) {
+    throw XlaRuntimeError(
+        "This operation is implemented for a PjRt-compatible backend only.");
+  }
+  TF_ASSIGN_OR_RETURN(auto ifrt_array,
+                      ifrt_client->CreatePjRtArray(std::move(pjrt_buffer)));
+  return PyArray::MakeFromSingleDeviceArray(std::move(client), Traceback::Get(),
+                                            std::move(ifrt_array), false, true);
+}
+
+StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
+    const pybind11::capsule& tensor, PjRtDevice* device,
+    std::shared_ptr<PyClient> client, std::optional<std::intptr_t> stream) {
+  if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
+    return InvalidArgument(
+        "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
+        "Note that a DLPack tensor may be consumed at most once.",
+        absl::string_view(tensor.name()));
+  }
+  DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(tensor);
+  if (dlmt->dl_tensor.ndim < 0) {
+    return InvalidArgument(
+        "Number of dimensions in DLManagedTensor must be nonnegative, got %d",
+        dlmt->dl_tensor.ndim);
+  }
+  absl::Span<int64_t const> dimensions(
+      reinterpret_cast<int64_t*>(dlmt->dl_tensor.shape), dlmt->dl_tensor.ndim);
+  TF_ASSIGN_OR_RETURN(PrimitiveType element_type,
+                      DLDataTypeToPrimitiveType(dlmt->dl_tensor.dtype));
+
+  std::vector<int64_t> minor_to_major;
+  if (dlmt->dl_tensor.strides &&
+      absl::c_find(dimensions, 0) == dimensions.end()) {
+    absl::Span<int64_t const> strides(
+        reinterpret_cast<int64_t*>(dlmt->dl_tensor.strides),
+        dlmt->dl_tensor.ndim);
+    TF_ASSIGN_OR_RETURN(minor_to_major, StridesToLayout(dimensions, strides));
+  } else {
+    minor_to_major.resize(dlmt->dl_tensor.ndim);
+    std::iota(minor_to_major.rbegin(), minor_to_major.rend(), 0);
+  }
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(element_type, dimensions,
+                                                    minor_to_major);
+
+  std::function<void()> on_delete_callback;
+  if (dlmt->deleter) {
+    on_delete_callback = [dlmt]() { dlmt->deleter(dlmt); };
+  }
+  TF_ASSIGN_OR_RETURN(auto pjrt_buffer,
+                      device->client()->CreateViewOfDeviceBuffer(
+                          static_cast<char*>(dlmt->dl_tensor.data) +
+                              dlmt->dl_tensor.byte_offset,
+                          shape, device, on_delete_callback, stream));
+  // We have taken ownership of the array inside the capsule; make sure the
+  // capsule it cannot be used again.
+  PyCapsule_SetName(tensor.ptr(), "used_dltensor");
+  PyCapsule_SetDestructor(tensor.ptr(), nullptr);
+
   auto* ifrt_client =
       llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(client->ifrt_client());
   if (ifrt_client == nullptr) {

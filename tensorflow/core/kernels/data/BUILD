@@ -66,6 +66,7 @@ tf_kernel_library(
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/framework:dataset_options_proto_cc",
         "//tensorflow/core/util/tensor_bundle",
+        "//tensorflow/core/util/tensor_bundle:naming",
     ],
 )
 
@@ -911,6 +912,8 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/data:dataset_utils",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

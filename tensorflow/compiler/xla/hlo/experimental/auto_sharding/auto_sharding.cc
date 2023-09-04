@@ -2452,17 +2452,20 @@ AutoShardingSolverResult CallSolver(
   if (result.status.ok()) {
     const AutoShardingEvaluation evaluation = Evaluate(request, result);
     LOG(INFO) << "Total Communication Cost: "
-              << evaluation.total_communication_cost
-              << " (lower bound: " << evaluation.lower_bound_communication_cost
+              << evaluation.total.communication_cost
+              << " (lower bound: " << evaluation.lower_bound.communication_cost
               << ")";
-    LOG(INFO) << "Total Computation Cost: " << evaluation.total_computation_cost
-              << " (lower bound: " << evaluation.lower_bound_computation_cost
+    LOG(INFO) << "Total Computation Cost: " << evaluation.total.computation_cost
+              << " (lower bound: " << evaluation.lower_bound.computation_cost
               << ")";
-    LOG(INFO) << "Total Resharding Cost: " << evaluation.total_resharding_cost
-              << " (lower bound: " << evaluation.lower_bound_resharding_cost
+    LOG(INFO) << "Total Resharding Cost: " << evaluation.total.resharding_cost
+              << " (lower bound: " << evaluation.lower_bound.resharding_cost
               << ")";
-    LOG(INFO) << "Total Cost: " << evaluation.total_cost
-              << " (lower bound: " << evaluation.lower_bound_cost << ")";
+    LOG(INFO) << "Total Overbudget Cost: " << evaluation.total.overbudget_cost
+              << " (lower bound: " << evaluation.lower_bound.overbudget_cost
+              << ")";
+    LOG(INFO) << "Total Cost: " << evaluation.total.cost()
+              << " (lower bound: " << evaluation.lower_bound.cost() << ")";
     LOG(INFO) << "Total Violations: " << evaluation.violation_codes.size();
   }
   return result;
@@ -2649,9 +2652,13 @@ void SetHloShardingPostProcessing(
       const auto& rhs_con_dims = dot_dnums.rhs_contracting_dimensions();
 
       const auto& lhs_tensor_dim_to_mesh_dim =
-          cluster_env.GetTensorDimToMeshDimWrapper(lhs->shape(), lhs_sharding);
+          cluster_env.GetTensorDimToMeshDimWrapper(
+              lhs->shape(), lhs_sharding,
+              /* consider_reverse_device_meshes */ true);
       const auto& rhs_tensor_dim_to_mesh_dim =
-          cluster_env.GetTensorDimToMeshDimWrapper(rhs->shape(), rhs_sharding);
+          cluster_env.GetTensorDimToMeshDimWrapper(
+              rhs->shape(), rhs_sharding,
+              /* consider_reverse_device_meshes */ true);
 
       if (absl::StrContains(stra.name, "allreduce") &&
           lhs_tensor_dim_to_mesh_dim[lhs_con_dims[0]] == -1 &&
@@ -2686,9 +2693,13 @@ void SetHloShardingPostProcessing(
           conv_dnums.kernel_input_feature_dimension();
 
       const auto& lhs_tensor_dim_to_mesh_dim =
-          cluster_env.GetTensorDimToMeshDimWrapper(lhs->shape(), lhs_sharding);
+          cluster_env.GetTensorDimToMeshDimWrapper(
+              lhs->shape(), lhs_sharding,
+              /* consider_reverse_device_meshes */ true);
       const auto& rhs_tensor_dim_to_mesh_dim =
-          cluster_env.GetTensorDimToMeshDimWrapper(rhs->shape(), rhs_sharding);
+          cluster_env.GetTensorDimToMeshDimWrapper(
+              rhs->shape(), rhs_sharding,
+              /* consider_reverse_device_meshes */ true);
 
       if (absl::StrContains(stra.name, "allreduce") &&
           lhs_tensor_dim_to_mesh_dim[lhs_in_channel_dim] == -1 &&
@@ -2707,7 +2718,31 @@ void SetHloShardingPostProcessing(
       }
     } else if (inst->opcode() == HloOpcode::kOutfeed) {
       // Outfeed operand shardings are handled in downstream passes and so we
-      // ignore outfeed ops here.
+      // ignore outfeed ops here. However, we need to ensure that outfeed ops
+      // which have user shardings have their shardings restored at the end. If
+      // not, this can lead to errors downstream in the spmd_partitioner pass.
+      auto preserved_sharding_iter = preserve_shardings->find(inst->name());
+      if (preserved_sharding_iter != preserve_shardings->end()) {
+        const auto& preserved_sharding = preserved_sharding_iter->second;
+        if (preserved_sharding.size() > 1) {
+          std::vector<Shape> tuple_elements_shape(
+              inst->operand(0)->shape().tuple_shapes().begin(),
+              inst->operand(0)->shape().tuple_shapes().end());
+          tuple_elements_shape.push_back(inst->operand(1)->shape());
+          Shape output_tuple_sharding_shape =
+              ShapeUtil::MakeTupleShape(tuple_elements_shape);
+          ShapeTree<HloSharding> output_tuple_sharding(
+              output_tuple_sharding_shape, Undefined());
+          size_t i = 0;
+          for (auto& leaf : output_tuple_sharding.leaves()) {
+            leaf.second = preserved_sharding.at(i++);
+          }
+          inst->set_sharding(HloSharding::Tuple(output_tuple_sharding));
+        } else {
+          inst->set_sharding(preserved_sharding.at(0));
+        }
+      }
+
       continue;
     } else {
       if (inst->shape().IsTuple()) {
@@ -2977,7 +3012,9 @@ void SaveShardingForInstruction(
 // Saves the user shardings that need to be preserved, and check whether they
 // are preserved after this pass.
 absl::flat_hash_map<std::string, std::vector<HloSharding>> SaveUserShardings(
-    HloModule* module, AutoShardingOption::PreserveShardingsType type) {
+    HloModule* module,
+    const absl::flat_hash_set<std::string>& replicated_small_tensors,
+    AutoShardingOption::PreserveShardingsType type) {
   absl::flat_hash_map<std::string, std::vector<HloSharding>> preserve_shardings;
   if (type == AutoShardingOption::PreserveShardingsType::kKeepAllShardings) {
     // Saves shardings for all instructions.
@@ -3007,10 +3044,19 @@ absl::flat_hash_map<std::string, std::vector<HloSharding>> SaveUserShardings(
         }
       }
     }
+    for (const auto computation : module->computations()) {
+      for (const auto inst : computation->instructions()) {
+        if (inst->opcode() == HloOpcode::kOutfeed ||
+            replicated_small_tensors.count(inst->name())) {
+          SaveShardingForInstruction(preserve_shardings, inst);
+        }
+      }
+    }
     // Saves output shardings
     auto inst = module->entry_computation()->root_instruction();
     SaveShardingForInstruction(preserve_shardings, inst);
   }
+
   if (VLOG_IS_ON(1)) {
     LOG(INFO) << "User shardings that need to be kept (printing only the 1st "
                  "elemenet of tuples): ";
@@ -3138,30 +3184,30 @@ void RecoverShardingsFromPartialMesh(
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
 
   for (HloInstruction* ins : instructions) {
-    if (preserve_shardings.find(ins->name()) != preserve_shardings.end()) {
-      if (ins->shape().IsTuple()) {
-        ShapeTree<HloSharding> output_tuple_sharding(ins->shape(), Undefined());
-        size_t i = 0;
-        for (auto& leaf : output_tuple_sharding.leaves()) {
-          leaf.second = preserve_shardings.at(ins->name()).at(i++);
+    auto preserved_sharding_iter = preserve_shardings.find(ins->name());
+    if (preserved_sharding_iter != preserve_shardings.end()) {
+      const auto& preserved_sharding = preserved_sharding_iter->second;
+
+      if (ins->shape().IsTuple() || (ins->opcode() == HloOpcode::kOutfeed &&
+                                     preserved_sharding.size() > 1)) {
+        Shape output_tuple_sharding_shape = ins->shape();
+        if (ins->opcode() == HloOpcode::kOutfeed) {
+          std::vector<Shape> tuple_elements_shape(
+              ins->operand(0)->shape().tuple_shapes().begin(),
+              ins->operand(0)->shape().tuple_shapes().end());
+          tuple_elements_shape.push_back(ins->operand(1)->shape());
+          output_tuple_sharding_shape =
+              ShapeUtil::MakeTupleShape(tuple_elements_shape);
         }
-        ins->set_sharding(HloSharding::Tuple(output_tuple_sharding));
-      } else if (ins->opcode() == HloOpcode::kOutfeed &&
-                 ins->sharding().IsTuple()) {
-        std::vector<Shape> tuple_elements_shape(
-            ins->operand(0)->shape().tuple_shapes().begin(),
-            ins->operand(0)->shape().tuple_shapes().end());
-        tuple_elements_shape.push_back(ins->operand(1)->shape());
-        Shape sharding_shape = ShapeUtil::MakeTupleShape(tuple_elements_shape);
-        ShapeTree<HloSharding> output_tuple_sharding(sharding_shape,
-                                                     Undefined());
+        ShapeTree<HloSharding> output_tuple_sharding(
+            output_tuple_sharding_shape, Undefined());
         size_t i = 0;
         for (auto& leaf : output_tuple_sharding.leaves()) {
-          leaf.second = preserve_shardings.at(ins->name()).at(i++);
+          leaf.second = preserved_sharding.at(i++);
         }
         ins->set_sharding(HloSharding::Tuple(output_tuple_sharding));
       } else {
-        ins->set_sharding(preserve_shardings.at(ins->name()).at(0));
+        ins->set_sharding(preserved_sharding.at(0));
       }
     }
   }
@@ -3832,6 +3878,7 @@ bool HasReduceScatterOpportunity(
 
 StatusOr<bool> AutoShardingImplementation::RemoveShardingAnnotation(
     HloModule* module,
+    const absl::flat_hash_set<std::string>& replicated_small_tensors,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (option_.preserve_shardings ==
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings) {
@@ -3844,6 +3891,13 @@ StatusOr<bool> AutoShardingImplementation::RemoveShardingAnnotation(
     bool is_entry_computation = computation->IsEntryComputation();
 
     for (HloInstruction* ins : computation->instructions()) {
+      // Do not remove sharding annotations from instructions replicated as they
+      // are small tensors
+      if (replicated_small_tensors.count(ins->name())) {
+        keep_inst.insert(ins);
+        continue;
+      }
+
       // Do not remove entry computation's parameter and root instruction's
       // sharding if preserve_shardings is kKeepInputOutputShardings.
       if (option_.preserve_shardings ==
@@ -3898,6 +3952,7 @@ AutoShardingImplementation::AutoShardingImplementation(
 
 StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     HloModule* module,
+    const absl::flat_hash_set<std::string>& replicated_small_tensors,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!option_.enable) {
     return AutoShardingResult::kModuleUnchanged;
@@ -3969,14 +4024,14 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   }
 
   absl::flat_hash_map<std::string, std::vector<HloSharding>>
-      preserve_shardings =
-          spmd::SaveUserShardings(module, option_.preserve_shardings);
+      preserve_shardings = spmd::SaveUserShardings(
+          module, replicated_small_tensors, option_.preserve_shardings);
 
   // Remove xla sharding annotations, if there is any.
   if (option_.preserve_shardings !=
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings) {
-    StatusOr<bool> status_or_changed =
-        RemoveShardingAnnotation(module, execution_threads);
+    StatusOr<bool> status_or_changed = RemoveShardingAnnotation(
+        module, replicated_small_tensors, execution_threads);
     if (!status_or_changed.ok()) {
       return status_or_changed.status();
     }
@@ -4223,8 +4278,8 @@ AutoSharding::AutoSharding(const AutoShardingOption& option)
 
 bool IsSmallTensor(const HloInstruction* ins,
                    const AutoShardingOption& option) {
-  return !ins->shape().IsTuple() &&
-         ShapeUtil::ByteSizeOf(ins->shape()) <= option.small_tensor_byte_size;
+  return spmd::GetInstructionSize(ins->shape()) <=
+         option.small_tensor_byte_size;
 }
 
 StatusOr<bool> AutoSharding::Run(
@@ -4248,14 +4303,19 @@ StatusOr<bool> AutoSharding::Run(
   TF_RETURN_IF_ERROR(option_.CheckAndSetup());
   VLOG(1) << "AutoShardingOptions:\n" << option_.ToString();
 
+  absl::flat_hash_set<std::string> replicated_small_tensors;
   if (option_.small_tensor_byte_size > 0) {
     for (auto computation : module->computations()) {
       for (auto instruction : computation->instructions()) {
-        if (!instruction->has_sharding() && !instruction->shape().IsTuple() &&
+        if (!instruction->has_sharding() &&
             IsSmallTensor(instruction, option_)) {
-          VLOG(1) << "Replicated small tensor: " << instruction->name()
-                  << "                     " << module->name();
-          instruction->set_sharding(HloSharding::Replicate());
+          VLOG(1) << "Replicated small tensor: " << instruction->name();
+          instruction->set_sharding(
+              instruction->shape().IsTuple()
+                  ? HloSharding::SingleTuple(instruction->shape(),
+                                             HloSharding::Replicate())
+                  : HloSharding::Replicate());
+          replicated_small_tensors.insert(std::string(instruction->name()));
         }
       }
     }
@@ -4300,8 +4360,8 @@ StatusOr<bool> AutoSharding::Run(
     auto module_clone = module->Clone("");
     module_clone->set_layout_canonicalization_callback(
         module->layout_canonicalization_callback());
-    auto pass_result =
-        pass->RunAutoSharding(module_clone.get(), execution_threads);
+    auto pass_result = pass->RunAutoSharding(
+        module_clone.get(), replicated_small_tensors, execution_threads);
 
     changed[i] = pass_result;
     objective_values[i] = pass->GetSolverOptimalObjectiveValue();

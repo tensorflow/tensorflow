@@ -41,10 +41,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/util/env_var.h"
 
-namespace {
-bool FLAGS_check_device_leaks = false;
-}  // namespace
-
 namespace stream_executor {
 namespace {
 
@@ -147,22 +143,8 @@ StreamExecutor::StreamExecutor(
           tsl::Env::Default(), "stream_executor", kNumBackgroundThreads)),
       live_stream_count_(0),
       tracing_enabled_(false),
-      mem_alloc_bytes_(0),
       memory_limit_bytes_(GetMemoryLimitBytes()),
-      allocator_(this) {
-  std::string name = absl::AsciiStrToLower(platform_->Name());
-  if (name == "cuda") {
-    platform_kind_ = PlatformKind::kCuda;
-  } else if (name == "rocm") {
-    platform_kind_ = PlatformKind::kROCm;
-  } else if (name == "opencl") {
-    platform_kind_ = PlatformKind::kOpenCL;
-  } else if (name == "host") {
-    platform_kind_ = PlatformKind::kHost;
-  } else {
-    platform_kind_ = PlatformKind::kInvalid;
-  }
-}
+      allocator_(this) {}
 
 StreamExecutor::~StreamExecutor() {
   BlockOnThreadExecutor(background_threads_.get());
@@ -171,15 +153,6 @@ StreamExecutor::~StreamExecutor() {
     LOG(WARNING) << "Not all streams were deallocated at executor destruction "
                  << "time. This may lead to unexpected/bad behavior - "
                  << "especially if any stream is still active!";
-  }
-
-  if (FLAGS_check_device_leaks) {
-    for (const auto& it : mem_allocs_) {
-      LOG(INFO) << "Memory alloced at executor exit: addr: "
-                << absl::StrFormat("%p", it.first)
-                << ", bytes: " << it.second.bytes << ", trace: \n"
-                << it.second.stack_trace;
-    }
   }
 }
 
@@ -219,16 +192,8 @@ void StreamExecutor::Deallocate(DeviceMemoryBase* mem) {
   VLOG(1) << "Called StreamExecutor::Deallocate(mem=" << mem->opaque()
           << ") mem->size()=" << mem->size() << StackTraceIfVLOG10();
 
-  if (mem->opaque() != nullptr) {
-    EraseAllocRecord(mem->opaque());
-  }
   implementation_->Deallocate(mem);
   mem->Reset(nullptr, 0);
-}
-
-void StreamExecutor::GetMemAllocs(std::map<void*, AllocRecord>* records_out) {
-  absl::ReaderMutexLock lock(&mu_);
-  *records_out = mem_allocs_;
 }
 
 bool StreamExecutor::CanEnablePeerAccessTo(StreamExecutor* other) {
@@ -251,18 +216,6 @@ const DeviceDescription& StreamExecutor::GetDeviceDescription() const {
 
 int64_t StreamExecutor::GetDeviceLoad() const {
   return implementation_->GetDeviceLoad();
-}
-
-int StreamExecutor::PlatformDeviceCount() const {
-  return implementation_->PlatformDeviceCount();
-}
-
-bool StreamExecutor::SupportsBlas() const {
-  return implementation_->SupportsBlas();
-}
-
-bool StreamExecutor::SupportsDnn() const {
-  return implementation_->SupportsDnn();
 }
 
 tsl::Status StreamExecutor::GetConvolveRunners(
@@ -500,18 +453,17 @@ tsl::Status StreamExecutor::GetStatus(Stream* stream) {
 
 DeviceMemoryBase StreamExecutor::Allocate(uint64_t size, int64_t memory_space) {
   if (memory_limit_bytes_ > 0 &&
-      static_cast<int64_t>(mem_alloc_bytes_ + size) > memory_limit_bytes_) {
+      static_cast<int64_t>(size) > memory_limit_bytes_) {
     LOG(WARNING) << "Not enough memory to allocate " << size << " on device "
                  << device_ordinal_
-                 << " within provided limit. [used=" << mem_alloc_bytes_
-                 << ", limit=" << memory_limit_bytes_ << "]";
+                 << " within provided limit.  limit=" << memory_limit_bytes_
+                 << "]";
     return DeviceMemoryBase();
   }
   DeviceMemoryBase buf = implementation_->Allocate(size, memory_space);
   VLOG(1) << "Called StreamExecutor::Allocate(size=" << size
           << ", memory_space=" << memory_space << ") returns " << buf.opaque()
           << StackTraceIfVLOG10();
-  CreateAllocRecord(buf.opaque(), size);
 
   return buf;
 }
@@ -567,22 +519,6 @@ void StreamExecutor::HostMemoryDeallocate(void* location) {
   return implementation_->HostMemoryDeallocate(location);
 }
 
-bool StreamExecutor::HostMemoryRegister(void* location, uint64_t size) {
-  VLOG(1) << "Called StreamExecutor::HostMemoryRegister(location=" << location
-          << ", size=" << size << ")" << StackTraceIfVLOG10();
-  if (location == nullptr || size == 0) {
-    LOG(WARNING) << "attempting to register null or zero-sized memory: "
-                 << location << "; size " << size;
-  }
-  return implementation_->HostMemoryRegister(location, size);
-}
-
-bool StreamExecutor::HostMemoryUnregister(void* location) {
-  VLOG(1) << "Called StreamExecutor::HostMemoryUnregister(location=" << location
-          << ")" << StackTraceIfVLOG10();
-  return implementation_->HostMemoryUnregister(location);
-}
-
 bool StreamExecutor::SynchronizeAllActivity() {
   VLOG(1) << "Called StreamExecutor::SynchronizeAllActivity()"
           << StackTraceIfVLOG10();
@@ -601,47 +537,6 @@ tsl::Status StreamExecutor::SynchronousMemZero(DeviceMemoryBase* location,
           << ", size=" << size << ")" << StackTraceIfVLOG10();
 
   return implementation_->SynchronousMemZero(location, size);
-}
-
-tsl::Status StreamExecutor::SynchronousMemSet(DeviceMemoryBase* location,
-                                              int value, uint64_t size) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemSet(location=" << location
-          << ", value=" << value << ", size=" << size << ")"
-          << StackTraceIfVLOG10();
-
-  return implementation_->SynchronousMemSet(location, value, size);
-}
-
-bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase* device_dst,
-                                       const void* host_src, uint64_t size) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(device_dst="
-          << device_dst->opaque() << ", host_src=" << host_src
-          << ", size=" << size << ") H2D" << StackTraceIfVLOG10();
-
-  // Tracing overloaded methods is very difficult due to issues with type
-  // inference on template args. Since use of these overloaded methods is
-  // discouraged anyway, this isn't a huge deal.
-  tsl::Status status =
-      implementation_->SynchronousMemcpy(device_dst, host_src, size);
-  if (!status.ok()) {
-    LOG(ERROR) << "synchronous memcpy: " << status;
-  }
-  return status.ok();
-}
-
-bool StreamExecutor::SynchronousMemcpy(void* host_dst,
-                                       const DeviceMemoryBase& device_src,
-                                       uint64_t size) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(host_dst=" << host_dst
-          << ", device_src=" << device_src.opaque() << ", size=" << size
-          << ") D2H" << StackTraceIfVLOG10();
-
-  tsl::Status status =
-      implementation_->SynchronousMemcpy(host_dst, device_src, size);
-  if (!status.ok()) {
-    LOG(ERROR) << "synchronous memcpy: " << status;
-  }
-  return status.ok();
 }
 
 bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase* device_dst,
@@ -757,6 +652,11 @@ tsl::Status StreamExecutor::WaitForEvent(Stream* stream, Event* event) {
   return implementation_->WaitForEvent(stream, event);
 }
 
+tsl::Status StreamExecutor::WaitForEventOnExternalStream(std::intptr_t stream,
+                                                         Event* event) {
+  return implementation_->WaitForEventOnExternalStream(stream, event);
+}
+
 Event::Status StreamExecutor::PollForEventStatus(Event* event) {
   return implementation_->PollForEventStatus(event);
 }
@@ -803,28 +703,6 @@ bool StreamExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
 void StreamExecutor::EnqueueOnBackgroundThread(std::function<void()> task) {
   background_threads_->Schedule(std::move(task));
 }
-
-void StreamExecutor::CreateAllocRecord(void* opaque, uint64_t bytes) {
-  if (FLAGS_check_device_leaks && opaque != nullptr && bytes != 0) {
-    absl::MutexLock lock(&mu_);
-    mem_allocs_[opaque] = AllocRecord{bytes, ""};
-    mem_alloc_bytes_ += bytes;
-  }
-}
-
-void StreamExecutor::EraseAllocRecord(void* opaque) {
-  if (FLAGS_check_device_leaks && opaque != nullptr) {
-    absl::MutexLock lock(&mu_);
-    if (mem_allocs_.find(opaque) == mem_allocs_.end()) {
-      LOG(ERROR) << "Deallocating unknown pointer: " << opaque;
-    } else {
-      mem_alloc_bytes_ -= mem_allocs_[opaque].bytes;
-      mem_allocs_.erase(opaque);
-    }
-  }
-}
-
-void StreamExecutor::EnableTracing(bool enabled) { tracing_enabled_ = enabled; }
 
 void StreamExecutor::RegisterTraceListener(TraceListener* listener) {
   {

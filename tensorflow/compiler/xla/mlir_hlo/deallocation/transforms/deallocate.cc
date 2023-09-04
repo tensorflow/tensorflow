@@ -339,7 +339,7 @@ FailureOr<TransformResult> Deallocator::transformOp(
   for (auto [index, region] : llvm::enumerate(op->getRegions())) {
     assert(region.getBlocks().size() <= 1 &&
            "expected regions to have at most one block");
-    auto edges = getSuccessorRegions(op, index);
+    auto edges = getSuccessorRegions(op, region);
     originalNumArgsByRegion.push_back(region.getNumArguments());
 
     auto& result = transformResultsByRegion.emplace_back();
@@ -426,8 +426,8 @@ FailureOr<TransformResult> Deallocator::transformOp(
     setOwnershipIndicator(result, indicator);
   }
 
-  auto setupAliases = [&](std::optional<unsigned> index) {
-    for (auto& region : getSuccessorRegions(newOp, index)) {
+  auto setupAliases = [&](RegionBranchPoint point) {
+    for (auto& region : getSuccessorRegions(newOp, point)) {
       for (auto [pred, succ] : llvm::zip(region.getPredecessorOperands(),
                                          region.getSuccessorValues())) {
         aliasOverapprox.unionSets(pred, succ);
@@ -439,9 +439,9 @@ FailureOr<TransformResult> Deallocator::transformOp(
       aliasOverapprox.unionSets(aa, bb);
     }
   };
-  setupAliases(std::nullopt);
+  setupAliases(RegionBranchPoint::parent());
   for (uint32_t i = 0; i < newOp->getNumRegions(); ++i) {
-    setupAliases(i);
+    setupAliases(newOp->getRegion(i));
     auto args = newOp->getRegion(i).getArguments();
     auto n = originalNumArgsByRegion[i];
     setMemrefAliases(args.take_front(n), args.drop_front(n));

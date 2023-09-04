@@ -16,13 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
 
 GpuDeviceInfo TestGpuDeviceInfo::RTXA6000DeviceInfo() {
   GpuDeviceInfo info;
-  info.name = "NVIDIA RTX A6000";
+  info.compute_capability = stream_executor::CudaComputeCapability(8, 9);
   info.threads_per_block_limit = 1024;
   info.threads_per_warp = 32;
   info.shared_memory_per_block = 48 * 1024;
@@ -43,7 +44,7 @@ GpuDeviceInfo TestGpuDeviceInfo::RTXA6000DeviceInfo() {
 
 GpuDeviceInfo TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   GpuDeviceInfo info;
-  info.name = "AMD Instinct MI210";
+  info.compute_capability = stream_executor::RocmComputeCapability("gfx90a");
   info.threads_per_block_limit = 1024;
   info.threads_per_warp = 64;
   info.shared_memory_per_block = 64 * 1024;

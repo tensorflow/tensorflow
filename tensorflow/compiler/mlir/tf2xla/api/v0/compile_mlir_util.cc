@@ -392,8 +392,10 @@ void CreateConvertMlirToXlaHloPipeline(
   // identify the shapes of TensorList initialization ops.
   // This pass requires CanonicalizerPass before
   // CreateTensorListOpsDecompositionPass for clean-ups.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateReplicateTensorListInitOpsPass());
+  if (lower_to_xla_hlo) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::TF::CreateReplicateTensorListInitOpsPass());
+  }
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   // The SCCP pass performs constant propagation across the IR, which, for
   // example, propagates constant arguments into callee functions.
@@ -413,9 +415,13 @@ void CreateConvertMlirToXlaHloPipeline(
   // legalization passes.
   pm.addPass(mlir::createSCCPPass());
 
-  pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
+  if (lower_to_xla_hlo) {
+    pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
+  }
   pm.addPass(mlir::TF::CreateStackOpsDecompositionPass());
-  pm.addPass(mlir::TF::CreateTensorArrayOpsDecompositionPass());
+  if (lower_to_xla_hlo) {
+    pm.addPass(mlir::TF::CreateTensorArrayOpsDecompositionPass());
+  }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
   pm.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
@@ -441,6 +447,7 @@ void CreateConvertMlirToXlaHloPipeline(
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   }
 
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::CreateConvertTFQuantTypesPass());
 
@@ -562,7 +569,8 @@ Status CreateAndRunMlirBridge(mlir::ModuleOp module_op,
     module_op.getContext()->disableMultithreading();
     tf2xla.enableIRPrinting(
         std::make_unique<::tensorflow::DataDumperLoggerConfig>(
-            [module_name](const std::string& pass_tag_name) {
+            [module_name](const std::string& pass_tag_name,
+                          mlir::Operation* op) {
               return DEBUG_DATA_DUMPER()->GetDumpFilename(
                   module_name.str(), kDebugGroupBridgePhase2, pass_tag_name);
             },
@@ -782,14 +790,17 @@ StatusOr<std::string> CompileMlirToXlaHlo(
 
   auto mlir_compilation = SerializeMlirModule(module_op);
 
-  TF_RETURN_IF_ERROR(PopulateCollectiveInfo(module_op, compilation_result));
+  // Only attempt to fill in the compilation result's IO info if lowering.
+  if (lower_to_xla_hlo) {
+    TF_RETURN_IF_ERROR(PopulateCollectiveInfo(module_op, compilation_result));
 
-  auto populate_result = PopulateResultIOInfo(
-      module_op, arg_shapes, use_tuple_args, use_resource_updates_for_aliases,
-      shape_determination_fns, compilation_result);
-  if (!populate_result.ok()) {
-    llvm::errs() << "Failed to populate result io info";
-    return populate_result;
+    auto populate_result = PopulateResultIOInfo(
+        module_op, arg_shapes, use_tuple_args, use_resource_updates_for_aliases,
+        shape_determination_fns, compilation_result);
+    if (!populate_result.ok()) {
+      llvm::errs() << "Failed to populate result io info";
+      return populate_result;
+    }
   }
   return mlir_compilation;
 }

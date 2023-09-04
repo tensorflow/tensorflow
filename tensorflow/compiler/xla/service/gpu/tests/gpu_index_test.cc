@@ -112,8 +112,6 @@ TEST_F(GpuIndexTest,
 ; CHECK: %[[tmp2:.*]] = udiv i32 %[[linear_index]], 15
 ; CHECK: %[[dim2:.*]] = urem i32 %[[tmp2]], 2
 ; CHECK: %[[tmp1:.*]] = udiv i32 %[[linear_index]], 30
-; CHECK: %[[dim1:.*]] = urem i32 %[[tmp1]], 7
-; CHECK: %[[dim0:.*]] = udiv i32 %[[linear_index]], 210
 ; CHECK: %{{.*}} = getelementptr inbounds [2 x [1 x [3 x float]]], ptr %{{.*}}, i32 0, i32 %[[dim2]], i32 0, i32 %[[dim4]]
       )",
                      /*match_optimized_ir=*/false);
@@ -163,7 +161,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
 
     ENTRY CompatibleUseLinearIndexWithSizeOneDimensions  {
       x = f32[1,1024,1,256]{3,2,1,0} parameter(0)
-      ROOT y = f16[1,1024,1,256]{2,3,1,0} convert(x)
+      ROOT y = f16[1,1024,1,256]{3,2,1,0} convert(x)
     })",
                                              config)
                     .value();
@@ -171,8 +169,8 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
   // Check that the unoptimized IR reuses the linear index.
   CompileAndVerifyIr(std::move(module),
                      R"(
-; CHECK-LABEL: @fusion
-; CHECK: udiv i32 %[[linear_index:.*]], 262144
+; CHECK-LABEL: @wrapped_convert
+; CHECK: icmp ult i32 %[[linear_index:.*]], 262144
 ; CHECK: %[[ld_addr:.*]] = getelementptr inbounds float, ptr {{.*}}, i32 %[[linear_index]]
 ; CHECK: load float, ptr %[[ld_addr]]
 ; CHECK: %[[st_addr:.*]] = getelementptr inbounds half, ptr {{.*}}, i32 %[[linear_index]]

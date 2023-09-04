@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/status/status.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"
 
 // Reminder: Update tpu_api_dlsym_initializer_windows.cc if you are adding new
 // publicly visible methods.

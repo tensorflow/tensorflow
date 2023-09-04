@@ -45,6 +45,7 @@ limitations under the License.
 //   (use_locking=false), we never copy even if the variable's
 //   reference count is >1.
 
+#include "tensorflow/core/framework/op_requires.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -125,6 +126,8 @@ Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
     output->flat<type>() = t->flat<type>(); \
     break;
       TF_CALL_ALL_TYPES(HANDLER);
+      TF_CALL_float8_e5m2(HANDLER);
+      TF_CALL_float8_e4m3fn(HANDLER);
 #undef HANDLER
       default:
         return errors::Internal("Unsupported dtype", t->dtype());
@@ -231,6 +234,7 @@ REGISTER_KERNEL_BUILDER(
 VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
   OP_REQUIRES_OK(context, context->GetAttr("shared_name", &name_));
+  OP_REQUIRES_OK(context, context->GetAttr("debug_name", &debug_name_));
 
   OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_and_shape_.dtype));
   OP_REQUIRES_OK(context, context->GetAttr("shape", &dtype_and_shape_.shape));
@@ -251,7 +255,7 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
 
 void VarHandleOp::Compute(OpKernelContext* ctx) {
   if (is_anonymous_) {
-    Var* resource = new Var(dtype_and_shape_.dtype);
+    Var* resource = new Var(dtype_and_shape_.dtype, debug_name_);
     ResourceMgr* mgr = ctx->resource_manager();
     ResourceHandle handle = ResourceHandle::MakeRefCountingHandle<Var>(
         resource, ctx->device()->name(),
@@ -551,6 +555,8 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
+TF_CALL_float8_e5m2(REGISTER_KERNELS);
+TF_CALL_float8_e4m3fn(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -563,6 +569,8 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
+TF_CALL_float8_e5m2(REGISTER_GPU_KERNELS);
+TF_CALL_float8_e4m3fn(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -639,6 +647,21 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#define REGISTER_KERNELS(type)                                           \
+  REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")                    \
+                              .Device(DEVICE_DEFAULT)                    \
+                              .TypeConstraint<type>("dtype")             \
+                              .HostMemory("resource"),                   \
+                          AssignUpdateVariableOp<CPUDevice, type, ADD>); \
+  REGISTER_KERNEL_BUILDER(Name("AssignSubVariableOp")                    \
+                              .Device(DEVICE_DEFAULT)                    \
+                              .TypeConstraint<type>("dtype")             \
+                              .HostMemory("resource"),                   \
+                          AssignUpdateVariableOp<CPUDevice, type, SUB>);
+
+TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
 
 class VarIsInitializedOp : public OpKernel {
  public:

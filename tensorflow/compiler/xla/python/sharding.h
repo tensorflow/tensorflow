@@ -54,10 +54,7 @@ class Sharding {
   std::optional<int> num_devices_;
 };
 
-// Returns if the environment variable "JAX_ENABLE_MEMORY_KIND" has
-// a non-empty string, indicating that JAX should get the memory_kind from the
-// executable and apply it to output arrays from executions.
-bool GetJaxEnableMemoryKind();
+extern bool (*GetEnableMemories)();
 
 // Checks if the memory kind is valid, and canonicalizes the
 // memory kind to default memory on backends that support memories.
@@ -84,12 +81,14 @@ class XLACompatibleSharding : public Sharding {
 class NamedSharding : public XLACompatibleSharding {
  public:
   NamedSharding(pybind11::object mesh, pybind11::object spec,
-                pybind11::object memory_kind, pybind11::object parsed_pspec);
+                pybind11::object memory_kind, pybind11::object parsed_pspec,
+                pybind11::object manual_axes);
 
   const pybind11::object& mesh() const { return mesh_; }
   const pybind11::object& spec() const { return spec_; }
   const pybind11::object& memory_kind() const { return memory_kind_; }
   const pybind11::object& parsed_pspec() const { return parsed_pspec_; }
+  const pybind11::object& manual_axes() const { return manual_axes_; }
   void set_parsed_pspec(pybind11::object parsed_pspec) {
     parsed_pspec_ = std::move(parsed_pspec);
   }
@@ -99,7 +98,7 @@ class NamedSharding : public XLACompatibleSharding {
     return type;
   }
 
-  std::shared_ptr<PyDeviceList> internal_device_list() {
+  std::shared_ptr<PyDeviceList> internal_device_list() const {
     return internal_device_list_;
   }
 
@@ -108,6 +107,7 @@ class NamedSharding : public XLACompatibleSharding {
   pybind11::object spec_;
   pybind11::object memory_kind_;
   pybind11::object parsed_pspec_;
+  pybind11::object manual_axes_;
   std::shared_ptr<PyDeviceList> internal_device_list_;
 };
 
@@ -129,7 +129,7 @@ class SingleDeviceSharding : public XLACompatibleSharding {
     return type;
   }
 
-  std::shared_ptr<PyDeviceList> internal_device_list() {
+  std::shared_ptr<PyDeviceList> internal_device_list() const {
     return internal_device_list_;
   }
 
@@ -156,7 +156,7 @@ class PmapSharding : public XLACompatibleSharding {
     return type;
   }
 
-  std::shared_ptr<PyDeviceList> internal_device_list() {
+  std::shared_ptr<PyDeviceList> internal_device_list() const {
     return internal_device_list_;
   }
 
@@ -213,7 +213,7 @@ class GSPMDSharding : public XLACompatibleSharding {
            this->memory_kind().equal(other.memory_kind());
   }
 
-  std::shared_ptr<PyDeviceList> internal_device_list() {
+  std::shared_ptr<PyDeviceList> internal_device_list() const {
     return internal_device_list_;
   }
 

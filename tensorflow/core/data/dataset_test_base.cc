@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
+#include <cstdint>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -45,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op.h"
@@ -383,6 +386,8 @@ Status DatasetOpsTestBase::CreateIteratorContext(
   function_handle_cache_ = std::make_unique<FunctionHandleCache>(flr_);
   params.function_handle_cache = function_handle_cache_.get();
   params.cancellation_manager = cancellation_manager_.get();
+  params.ram_budget_manager = std::make_shared<model::RamBudgetManager>(
+      /*budget*/ std::numeric_limits<int64_t>::max());
   *iterator_context = std::make_unique<IteratorContext>(params);
   return OkStatus();
 }

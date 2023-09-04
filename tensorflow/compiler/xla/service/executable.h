@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -29,9 +30,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
@@ -230,10 +233,14 @@ class ExecutionOutput {
 // interface that is used for launching compiled programs across platforms.
 class Executable {
  public:
+  // The hlo_module parameter may be nullptr, if the given executable type
+  // doesn't need it for execution.
   explicit Executable(std::shared_ptr<HloModule> hlo_module)
       : hlo_module_(std::move(hlo_module)) {}
 
   // TODO(b/172012028): Remove this constructor.
+  // The hlo_module parameter may be nullptr, if the given executable type
+  // doesn't need it for execution.
   explicit Executable(
       std::shared_ptr<HloModule> hlo_module,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
@@ -301,16 +308,6 @@ class Executable {
       absl::Span<const ServiceExecutableRunOptions> run_options,
       absl::Span<const absl::Span<const ShapedBuffer* const>> arguments);
 
-  // Populates `hlo_execution_profile` from `executor`. This is implicit in any
-  // Execute* API call that takes a hlo_execution_profile argument, but must be
-  // called explicitly for other (async, for example) variants after the stream
-  // has completed.
-  virtual Status PopulateExecutionProfile(
-      ExecutionProfile* execution_profile,
-      HloExecutionProfile* hlo_execution_profile, se::Stream* stream) {
-    return OkStatus();
-  }
-
   // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a
   // timer for the execution, sets up HLO profiling if enabled, and fills in the
   // given ExecutionProfile if non-null.
@@ -347,16 +344,23 @@ class Executable {
     return hlo_profile_printer_data_ != nullptr;
   }
 
-  HloModule& module() const { return *hlo_module_; }
+  HloModule& module() const {
+    CHECK(hlo_module_ != nullptr);
+    return *hlo_module_;
+  }
   std::shared_ptr<HloModule> shared_module() const { return hlo_module_; }
 
-  const bool has_module() const { return hlo_module_ != nullptr; }
+  bool has_module() const { return hlo_module_ != nullptr; }
 
-  const HloModuleConfig& module_config() const { return hlo_module_->config(); }
+  const HloModuleConfig& module_config() const {
+    CHECK(hlo_module_ != nullptr);
+    return hlo_module_->config();
+  }
 
   // The shape (including layout) that results from this execution. This is the
   // shape of the DeviceMemoryBase result value in ExecuteOnStream above.
   const Shape& result_shape() const {
+    CHECK(hlo_module_ != nullptr);
     return hlo_module_->config().entry_computation_layout().result_shape();
   }
 
@@ -371,7 +375,9 @@ class Executable {
     hlo_proto_ = std::move(hlo_proto);
   }
   bool dumping_snapshot() const {
-    return module_config().debug_options().xla_dump_hlo_snapshots();
+    return has_module()
+               ? module_config().debug_options().xla_dump_hlo_snapshots()
+               : false;
   }
   HloProto const* hlo_proto() const { return hlo_proto_.get(); }
 
@@ -391,7 +397,10 @@ class Executable {
  protected:
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule
-  // around.
+  // around if we keep the BufferAssignment around.
+  //
+  // This member may be nullptr, if the given executable type doesn't need it
+  // for execution.
   const std::shared_ptr<HloModule> hlo_module_;
 
   // The serialized HLO proto. Non-null only if dumping snapshots is enabled.

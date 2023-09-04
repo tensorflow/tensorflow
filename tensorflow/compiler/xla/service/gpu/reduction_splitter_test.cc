@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/reduction_splitter.h"
 
-#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -26,7 +27,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 class ReductionSplitterTest : public HloTestBase {};
 
@@ -54,7 +55,8 @@ TEST_F(ReductionSplitterTest, SplitReductionAtDimensionTwo) {
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root_reduction =
       module->entry_computation()->root_instruction();
-  ASSERT_THAT(root_reduction, op::Reduce(op::Reduce(), op::Constant()));
+  ASSERT_THAT(root_reduction,
+              GmockMatch(m::Reduce(m::Reduce(), m::Constant())));
 
   auto* pre_reduction = root_reduction->operand(0);
   EXPECT_THAT(pre_reduction->dimensions(), std::vector<int64_t>({2}));
@@ -84,7 +86,8 @@ TEST_F(ReductionSplitterTest, SplitReductionAtDimensionZero) {
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root_reduction =
       module->entry_computation()->root_instruction();
-  ASSERT_THAT(root_reduction, op::Reduce(op::Reduce(), op::Constant()));
+  ASSERT_THAT(root_reduction,
+              GmockMatch(m::Reduce(m::Reduce(), m::Constant())));
 
   auto* pre_reduction = root_reduction->operand(0);
   EXPECT_THAT(pre_reduction->dimensions(), std::vector<int64_t>({0}));

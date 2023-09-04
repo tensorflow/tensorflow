@@ -36,7 +36,7 @@ struct PassConfig {
         trim_functions_allowlist({}),
         quant_specs(std::move(specs)),
         form_clusters(false),
-        unfold_batch_matmul(true),
+        unfold_batch_matmul(false),
         shape_inference(true),
         runtime_verification(true),
         enable_tflite_variables(false),
@@ -47,7 +47,8 @@ struct PassConfig {
         enable_dynamic_update_slice(false),
         preserve_assert_op(false),
         enable_stablehlo_conversion(false),
-        legalize_custom_tensor_list_ops(false) {}
+        legalize_custom_tensor_list_ops(false),
+        reduce_type_precision(false) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -62,8 +63,8 @@ struct PassConfig {
   // If `form_clusters` is true , clusters are formed by grouping consecutive
   // ops of the same device, under a `tf_device.launch` op.
   bool form_clusters;
-  // if `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
-  // of tfl.fully_connected ops.
+  // If `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
+  // of tfl.fully_connected ops. Default value is false.
   bool unfold_batch_matmul;
   // Whether to outline WhileOp at the end of the pipeline.
   bool outline_tf_while = false;
@@ -97,6 +98,11 @@ struct PassConfig {
   // Whether to convert `tf.TensorList*` to `tfl.custom_op` if they can all
   // be supported.
   bool legalize_custom_tensor_list_ops;
+  // Whether to convert some tensor types to a lower precision if all values
+  // within that tensor are within the range of the lower precision. This could
+  // have side effects e.g. reduced flatbuffer size. Only certain type
+  // conversions are supported.
+  bool reduce_type_precision;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -124,7 +130,9 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << "\nenable_stablehlo_conversion: "
             << pass_config.enable_stablehlo_conversion
             << "\nlegalize_custom_tensor_list_ops: "
-            << pass_config.legalize_custom_tensor_list_ops << "\n";
+            << pass_config.legalize_custom_tensor_list_ops
+            << "\nreduce_type_precision: " << pass_config.reduce_type_precision
+            << "\n";
 }
 
 }  // namespace TFL

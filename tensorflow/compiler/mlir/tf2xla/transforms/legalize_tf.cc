@@ -54,6 +54,7 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
 #include "tensorflow/compiler/xla/client/lib/conv_grad_size_util.h"
@@ -5325,9 +5326,11 @@ class ConvertInfeedDequeueTupleOp
       // _XlaSharding attribute in TF is a serialized string of the OpSharding
       // proto, so convert to a text form here.
       ::xla::OpSharding sharding_proto;
-      if (!sharding_proto.ParseFromString(op.get_XlaSharding().value().str()))
+      if (tensorflow::DecodeShardingAttribute(
+              op.get_XlaSharding().value().str(), sharding_proto)
+              .failed()) {
         return failure();
-
+      }
       // Token is a control signal and not a real data, so arbitrarily assign
       // the token to device 0.
       if (sharding_proto.type() == ::xla::OpSharding::TUPLE) {

@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -27,6 +28,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -62,7 +66,8 @@ class AutotunerCompileUtil {
   // `Status` otherwise.
   StatusOr<std::optional<ProfilingOutput>> ProfileExecutable(
       Executable* executable, se::Stream* stream,
-      absl::Span<se::DeviceMemoryBase const> input_buffers);
+      absl::Span<se::DeviceMemoryBase const> input_buffers,
+      absl::Span<Shape const> input_shapes);
 
   // Generic method to compile a generated module from `extractor` in isolation.
   //

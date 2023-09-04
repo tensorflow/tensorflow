@@ -48,15 +48,6 @@ limitations under the License.
 
 namespace stream_executor {
 
-namespace host {
-class HostBlas;
-class HostFft;
-}  // namespace host
-
-namespace ocl {
-class CLBlas;
-}  // namespace ocl
-
 namespace internal {
 class StreamInterface;
 }  // namespace internal
@@ -77,15 +68,6 @@ class StreamExecutor;
 class ScratchAllocator;
 
 namespace detail {
-
-// Helper class to prevent a template function argument from being deduced. This
-// is identical to std::type_identity in C++20.
-template <typename T>
-struct NonDeduced {
-  using type = T;
-};
-template <typename T>
-using NonDeducedType = typename NonDeduced<T>::type;
 
 // Helper to return if `T` is the same type as `First` or any or `Rest`.
 template <typename T>
@@ -186,13 +168,6 @@ class Stream {
   template <typename... Params, typename... Args>
   tsl::Status ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
                          const TypedKernel<Params...> &kernel, Args... args);
-
-  // TODO(leary) If work is added to the stream that is being depended upon,
-  //              then what? Have to describe what happens.
-  template <typename... Params>
-  Stream &ThenWaitFor(Stream *other, Params... more_streams) {
-    return ThenWaitFor(more_streams...).ThenWaitFor(other);
-  }
 
   // Create a dependency for this stream's next work on the other stream
   // completing. Does not take ownership of other, and other must not be
@@ -333,16 +308,6 @@ class Stream {
       const DeviceMemory<float> &input_data,
       const dnn::FilterDescriptor &filter_descriptor,
       const DeviceMemory<int8_t> &filter_coefficients,
-      const DeviceMemory<float> &coefficient_scales,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output_data);
-
-  Stream &ThenConvolveQuantized(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<float> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int16> &filter_coefficients,
       const DeviceMemory<float> &coefficient_scales,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
@@ -690,25 +655,6 @@ class Stream {
   template <typename ElementType>
   tsl::Status ThenPoolBackward(
       const dnn::PoolingDescriptor &pooling_dimensions,
-      const dnn::BatchDescriptor &input_dimensions,
-      const DeviceMemory<ElementType> &input_data,
-      const dnn::BatchDescriptor &output_dimensions,
-      const DeviceMemory<ElementType> &output_data,
-      const DeviceMemory<ElementType> &input_diff_data,
-      DeviceMemory<ElementType> *output_diff_data,
-      ScratchAllocator *workspace_allocator = nullptr) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      return dnn->DoPoolBackward(
-          dnn::ToDataType<ElementType>::value, this, pooling_dimensions,
-          input_dimensions, input_data, output_dimensions, output_data,
-          input_diff_data, *output_diff_data, workspace_allocator);
-    }
-    return tsl::errors::Unimplemented("DNN library is not found.");
-  }
-
-  template <typename ElementType>
-  tsl::Status ThenPoolBackward(
-      const dnn::PoolingDescriptor &pooling_dimensions,
       const NumericOptions &numeric_options,
       const dnn::BatchDescriptor &input_dimensions,
       const DeviceMemory<ElementType> &input_data,
@@ -758,21 +704,6 @@ class Stream {
       absl::Span<const DeviceMemory<float> *const> input_data,
       DeviceMemory<float> *output_data);
 
-  Stream &ThenSpaceConcatenate(
-      absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float> *const> input_data,
-      DeviceMemory<float> *output_data,
-      dnn::SpaceConcatenateMode concat_direction);
-
-  // Change the layout of the data by shrinking one dimension (or set of
-  // dimensions) and growing another dimension (or set of dimensions), while
-  // keeping the total number of data elements constant, and maintaining the
-  // current data ordering.
-  Stream &ThenReshape(const dnn::BatchDescriptor &input_dimensions,
-                      const DeviceMemory<float> &input_data,
-                      const dnn::BatchDescriptor &output_dimensions,
-                      DeviceMemory<float> *output_data);
-
   // Depth to space takes an X by Y image with depth D*M² and changes it to an
   // MX x MY image with depth D. Each input location (x,y) with depth D*M² in
   // the input image is changed to an MxM contiguous area in the output image,
@@ -798,14 +729,6 @@ class Stream {
 
   Stream &ThenElementwiseOperate(
       dnn::ElementwiseOperation operation,
-      absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float> *const> input_data,
-      const dnn::BatchDescriptor &output_dimensions,
-      DeviceMemory<float> *output_data);
-
-  Stream &ThenElementwiseOperateScaledQuantized(
-      dnn::ElementwiseOperation operation,
-      absl::Span<const int> input_multiplicands, int output_divisor,
       absl::Span<const dnn::BatchDescriptor> input_dimensions,
       absl::Span<const DeviceMemory<float> *const> input_data,
       const dnn::BatchDescriptor &output_dimensions,
@@ -861,14 +784,6 @@ class Stream {
         Quantization<ElementType>::kModeId, gpu_unquantized_dst);
   }
 
-  // See DnnSupport::DoCopyHostBuffer2Device.
-  Stream &ThenCopyHostBuffer2Device(HostBuffer *buffer_src,
-                                    DeviceMemory<float> *gpu_unquantized_dst);
-
-  // See DnnSupport::DoCopyDevice2HostBuffer.
-  Stream &ThenCopyDevice2HostBuffer(
-      const DeviceMemory<float> &gpu_unquantized_src, HostBuffer *buffer_dst);
-
   /////////////////
   // BLAS support
 
@@ -880,27 +795,10 @@ class Stream {
   Stream &ThenBlasAxpy(uint64_t elem_count, float alpha,
                        const DeviceMemory<float> &x, int incx,
                        DeviceMemory<float> *y, int incy);
-  Stream &ThenBlasAxpy(uint64_t elem_count, double alpha,
-                       const DeviceMemory<double> &x, int incx,
-                       DeviceMemory<double> *y, int incy);
-  Stream &ThenBlasAxpy(uint64_t elem_count, std::complex<float> alpha,
-                       const DeviceMemory<std::complex<float>> &x, int incx,
-                       DeviceMemory<std::complex<float>> *y, int incy);
-  Stream &ThenBlasAxpy(uint64_t elem_count, std::complex<double> alpha,
-                       const DeviceMemory<std::complex<double>> &x, int incx,
-                       DeviceMemory<std::complex<double>> *y, int incy);
 
   // See BlasSupport::DoBlasCopy.
   Stream &ThenBlasCopy(uint64_t elem_count, const DeviceMemory<float> &x,
                        int incx, DeviceMemory<float> *y, int incy);
-  Stream &ThenBlasCopy(uint64_t elem_count, const DeviceMemory<double> &x,
-                       int incx, DeviceMemory<double> *y, int incy);
-  Stream &ThenBlasCopy(uint64_t elem_count,
-                       const DeviceMemory<std::complex<float>> &x, int incx,
-                       DeviceMemory<std::complex<float>> *y, int incy);
-  Stream &ThenBlasCopy(uint64_t elem_count,
-                       const DeviceMemory<std::complex<double>> &x, int incx,
-                       DeviceMemory<std::complex<double>> *y, int incy);
 
   // See BlasSupport::DoBlasScal.
   Stream &ThenBlasScal(uint64_t elem_count, float alpha, DeviceMemory<float> *x,
@@ -943,10 +841,6 @@ class Stream {
                        const DeviceMemory<float> &a, int lda,
                        const DeviceMemory<float> &x, int incx, float beta,
                        DeviceMemory<float> *y, int incy);
-  Stream &ThenBlasSbmv(blas::UpperLower uplo, uint64_t n, uint64 k,
-                       double alpha, const DeviceMemory<double> &a, int lda,
-                       const DeviceMemory<double> &x, int incx, double beta,
-                       DeviceMemory<double> *y, int incy);
 
   template <typename InputType, typename OutputType>
   tsl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
@@ -959,18 +853,6 @@ class Stream {
     InputType beta{0.0};
     return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
                         ldc, numeric_options);
-  }
-
-  // TODO(reedwm): Update all callers (if there are any) to pass correct
-  // NumericOptions.
-  template <typename InputType, typename OutputType>
-  tsl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                           uint64_t m, uint64 n, uint64 k,
-                           const DeviceMemory<InputType> &a, int lda,
-                           const DeviceMemory<InputType> &b, int ldb,
-                           DeviceMemory<OutputType> *c, int ldc) {
-    return ThenBlasGemm(transa, transb, m, n, k, a, lda, b, ldb, c, ldc,
-                        NumericOptions{});
   }
 
   template <typename InputType, typename OutputType, typename ConstantType>
@@ -1121,24 +1003,10 @@ class Stream {
 
   // See BlasSupport::DoBlasGemmBatched.
   Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
-                              uint64_t m, uint64 n, uint64_t k, float alpha,
-                              DeviceMemorySlice<Eigen::half> a, int lda,
-                              DeviceMemorySlice<Eigen::half> b, int ldb,
-                              float beta, DeviceMemorySlice<Eigen::half> c,
-                              int ldc, int batch_count,
-                              const NumericOptions &numeric_options);
-  Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
                               uint64_t m, uint64 n, uint64 k, float alpha,
                               DeviceMemorySlice<float> a, int lda,
                               DeviceMemorySlice<float> b, int ldb, float beta,
                               DeviceMemorySlice<float> c, int ldc,
-                              int batch_count,
-                              const NumericOptions &numeric_options);
-  Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
-                              uint64_t m, uint64 n, uint64 k, double alpha,
-                              DeviceMemorySlice<double> a, int lda,
-                              DeviceMemorySlice<double> b, int ldb, double beta,
-                              DeviceMemorySlice<double> c, int ldc,
                               int batch_count,
                               const NumericOptions &numeric_options);
   Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
@@ -1150,13 +1018,6 @@ class Stream {
                               DeviceMemorySlice<std::complex<float>> c, int ldc,
                               int batch_count,
                               const NumericOptions &numeric_options);
-  Stream &ThenBlasGemmBatched(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, std::complex<double> alpha,
-      DeviceMemorySlice<std::complex<double>> a, int lda,
-      DeviceMemorySlice<std::complex<double>> b, int ldb,
-      std::complex<double> beta, DeviceMemorySlice<std::complex<double>> c,
-      int ldc, int batch_count, const NumericOptions &numeric_options);
   Stream &ThenBlasGemmBatchedWithScratch(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
       uint64_t k, float alpha, DeviceMemorySlice<Eigen::half> a, int lda,
@@ -1528,18 +1389,6 @@ class Stream {
                               dnn::DataType output_type, float scale,
                               DeviceMemoryBase *output_data);
 
-  // The templated version of the above ThenTransformTensor. Useful when the
-  // input and output types are statically known.
-  template <typename InElemT, typename OutElemT>
-  Stream &ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
-                              const DeviceMemory<InElemT> &input_data,
-                              const dnn::BatchDescriptor &output_desc,
-                              DeviceMemory<OutElemT> *output_data) {
-    return ThenTransformTensor(input_desc, dnn::ToDataType<InElemT>(),
-                               input_data, output_desc,
-                               dnn::ToDataType<OutElemT>(), output_data);
-  }
-
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program
   // execution) to complete.
@@ -1595,13 +1444,6 @@ class Stream {
   Stream &ThenDoHostCallbackWithStatus(
       absl::AnyInvocable<tsl::Status() &&> callback);
 
-  // Runs the given callback after the next call to BlockHostUntilDone on this
-  // stream (or after the Stream does BlockHostUntilDone in its destructor).
-  // This can act as a faster alternative to ThenDoHostCallbackWithStatus for
-  // some use cases.
-  Stream &ThenRunAfterNextBlockHostUntilDone(
-      absl::AnyInvocable<void() &&> callback);
-
   // Returns the StreamExecutor (parent object) associated with this stream.
   StreamExecutor *parent() const {
     CHECK(parent_ != nullptr);
@@ -1624,11 +1466,8 @@ class Stream {
   std::string DebugStreamPointers() const;
 
  private:
-  friend class host::HostBlas;  // for parent_.
-  friend class host::HostFft;   // for parent_.
   template <typename... Args>
   friend struct ThenBlasImpl;  // for implementing ThenBlasXXX.
-  friend class ocl::CLBlas;    // for parent_.
 
   // Checks whether types match before a call to extended BLAS version.
   template <typename ABType, typename CType, typename ScaleType>

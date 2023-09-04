@@ -304,6 +304,15 @@ StatusOr<bool> ReshapeMover::SinkRearrangeOperands(
     default:
       LOG(FATAL) << "Bad opcode";
   }
+
+  // Sinking the rearrange ops can change the shape of the elementwise op. This
+  // may make any sharding annotations (which, as of now, can only be present if
+  // auto-sharding is turned on) on the instruction out of sync. We therefore
+  // drop any shardings here.
+  if (instruction->has_sharding()) {
+    new_elementwise->clear_sharding();
+  }
+
   TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
       instruction, std::move(new_rearrange)));
   return true;

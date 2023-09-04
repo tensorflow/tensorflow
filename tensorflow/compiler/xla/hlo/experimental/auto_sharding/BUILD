@@ -169,8 +169,11 @@ cc_library(
     hdrs = ["cluster_environment.h"],
     deps = [
         ":auto_sharding_solver_option",
+        ":auto_sharding_strategy",
         ":auto_sharding_util",
         ":profiling_result",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
     ],
 )
 
@@ -245,6 +248,7 @@ xla_cc_test(
     srcs = ["auto_sharding_test.cc"],
     deps = [
         ":auto_sharding",
+        ":auto_sharding_option",
         ":auto_sharding_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",

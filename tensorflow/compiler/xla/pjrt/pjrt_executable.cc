@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -22,10 +23,25 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/pjrt/compile_options.pb.h"
 #include "tensorflow/compiler/xla/pjrt/execute_options.pb.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_common.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
@@ -142,6 +158,8 @@ absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
     return absl::UnimplementedError(
         "ExecuteOptions with send/recv calbacks is not serializable");
   }
+  proto.set_use_major_to_minor_data_layout_for_callbacks(
+      use_major_to_minor_data_layout_for_callbacks);
 
   switch (execution_mode) {
     case ExecutionMode::kDefault:
@@ -168,6 +186,9 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
   options.arguments_are_tupled = proto.arguments_are_tupled();
   options.untuple_result = proto.untuple_result();
   options.launch_id = proto.launch_id();
+  options.strict_shape_checking = proto.strict_shape_checking();
+  options.use_major_to_minor_data_layout_for_callbacks =
+      proto.use_major_to_minor_data_layout_for_callbacks();
 
   switch (proto.execution_mode()) {
     case EXECUTION_MODE_DEFAULT:
@@ -237,6 +258,64 @@ StatusOr<std::vector<Shape>> PjRtExecutable::GetOutputShapes() const {
     output_shapes.push_back(module->result_shape());
   }
   return output_shapes;
+}
+
+StatusOr<std::vector<std::vector<PrimitiveType>>>
+PjRtExecutable::GetOutputElementTypes() const {
+  TF_ASSIGN_OR_RETURN(auto output_shapes, GetOutputShapes());
+  std::vector<std::vector<PrimitiveType>> output_element_types;
+  output_element_types.reserve(output_shapes.size());
+  for (int i = 0; i < output_shapes.size(); ++i) {
+    const Shape& output_shape = output_shapes[i];
+    std::vector<PrimitiveType> element_types;
+    if (output_shape.IsTuple()) {
+      const auto& tuple_shapes = output_shape.tuple_shapes();
+      element_types.reserve(tuple_shapes.size());
+      for (int j = 0; j < tuple_shapes.size(); ++j) {
+        if (tuple_shapes[j].IsTuple()) {
+          return Unimplemented(
+              "GetOutputElementTypes() doesn't support programs with "
+              "nested-tupled outputs.");
+        }
+        element_types.push_back(tuple_shapes[j].element_type());
+      }
+    } else {
+      element_types.reserve(1);
+      element_types.push_back(output_shape.element_type());
+    }
+    output_element_types.push_back(std::move(element_types));
+  }
+  return output_element_types;
+}
+
+StatusOr<std::vector<std::vector<DimensionVector>>>
+PjRtExecutable::GetOutputDimensions() const {
+  TF_ASSIGN_OR_RETURN(auto output_shapes, GetOutputShapes());
+  std::vector<std::vector<DimensionVector>> output_dimensions;
+  output_dimensions.reserve(output_shapes.size());
+  for (int i = 0; i < output_shapes.size(); ++i) {
+    const Shape& output_shape = output_shapes[i];
+    std::vector<DimensionVector> dimensions;
+    if (output_shape.IsTuple()) {
+      const auto& tuple_shapes = output_shape.tuple_shapes();
+      dimensions.reserve(tuple_shapes.size());
+      for (int j = 0; j < tuple_shapes.size(); ++j) {
+        if (tuple_shapes[j].IsTuple()) {
+          return Unimplemented(
+              "GetOutputDimensions() doesn't support programs with "
+              "nested-tupled outputs.");
+        }
+        dimensions.push_back(
+            ShapeUtil::CreateDimensionVectorFromShape(tuple_shapes[j]));
+      }
+    } else {
+      dimensions.reserve(1);
+      dimensions.push_back(
+          ShapeUtil::CreateDimensionVectorFromShape(output_shape));
+    }
+    output_dimensions.push_back(std::move(dimensions));
+  }
+  return output_dimensions;
 }
 
 StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>

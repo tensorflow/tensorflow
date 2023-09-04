@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/next_pluggable_device/c_api.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::LoadTpuLibraryAndInitializeTpuStructFns
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
@@ -204,19 +204,21 @@ bool TF_CoordinationServiceIsInitialized(TF_CoordinationServiceAgent* agent) {
   return cc_agent->IsInitialized();
 }
 
-void TF_CoordinationServiceInsertKeyValue(const char* key, const char* value,
+void TF_CoordinationServiceInsertKeyValue(const char* key, int64_t key_size,
+                                          const char* value, int64_t value_size,
                                           TF_CoordinationServiceAgent* agent,
                                           TF_Status* status) {
   auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
-  tsl::Status cc_status = cc_agent->InsertKeyValue(key, value);
+  absl::Status cc_status =
+      cc_agent->InsertKeyValue(key, key_size, value, value_size);
   tsl::Set_TF_Status_from_Status(status, cc_status);
 }
 
-TF_Buffer* TF_CoordinationServiceGetKeyValue(const char* key,
+TF_Buffer* TF_CoordinationServiceGetKeyValue(const char* key, int64_t key_size,
                                              TF_CoordinationServiceAgent* agent,
                                              TF_Status* status) {
   auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
-  auto value = cc_agent->GetKeyValue(key);
+  auto value = cc_agent->GetKeyValue(key, key_size);
   tsl::Set_TF_Status_from_Status(status, value.status());
   if (!value.ok()) {
     return nullptr;
@@ -232,11 +234,11 @@ TF_Buffer* TF_CoordinationServiceGetKeyValue(const char* key,
   return result;
 }
 
-void TF_CoordinationServiceDeleteKeyValue(const char* key,
+void TF_CoordinationServiceDeleteKeyValue(const char* key, int64_t key_size,
                                           TF_CoordinationServiceAgent* agent,
                                           TF_Status* status) {
   auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
-  tsl::Status cc_status = cc_agent->DeleteKeyValue(key);
+  absl::Status cc_status = cc_agent->DeleteKeyValue(key, key_size);
   tsl::Set_TF_Status_from_Status(status, cc_status);
 }
 
@@ -244,17 +246,6 @@ void TF_CoordinationServiceDeleteKeyValue(const char* key,
 void TF_CreateAndSetPjRtCApiClient(const char* device_type, TF_Status* status,
                                    PJRT_NamedValue* create_options,
                                    int num_options) {
-#if !defined(PLATFORM_GOOGLE)
-  if (absl::AsciiStrToLower(device_type) == "tpu") {
-    // TODO(b/261484192): handle device specific initialization.
-    tsl::Status tpu_status =
-        tensorflow::tpu::LoadTpuLibraryAndInitializeTpuStructFns();
-    if (!tpu_status.ok()) {
-      tensorflow::Set_TF_Status_from_Status(status, tpu_status);
-      return;
-    }
-  }
-#endif  // PLATFORM_GOOGLE
   tsl::StatusOr<std::unique_ptr<xla::PjRtClient>> pjrt_client =
       xla::GetCApiClient(device_type, pjrt::ConvertFromPjRtNamedValueList(
                                           create_options, num_options));

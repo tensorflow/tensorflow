@@ -23,8 +23,10 @@ limitations under the License.
 #include "absl/log/scoped_mock_log.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
-#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/metrics.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -33,13 +35,41 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::TempDir;
 
-using GpuCompilerTest = HloTestBase;
+class GpuCompilerTest : public HloTestBase {
+ public:
+  StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(HloModule* module) {
+    auto compiler = backend().compiler();
+    return compiler->AssignBuffers(module, backend().default_stream_executor());
+  }
+};
+
+TEST_F(GpuCompilerTest, CompiledProgramsCount) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  p = f32[10]{0} parameter(0)
+  ROOT neg = f32[10]{0} negate(p)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+  std::unique_ptr<Executable> executable =
+      backend()
+          .compiler()
+          ->RunBackend(std::move(module), backend().default_stream_executor(),
+                       {/*device_allocator=*/nullptr,
+                        /*thread_pool=*/nullptr,
+                        /*layout_canonicalization_callback=*/{},
+                        /*is_autotuning_compilation=*/false})
+          .value();
+  EXPECT_EQ(GetCompiledProgramsCount(), 1);
+}
 
 TEST_F(GpuCompilerTest, GenerateDebugInfoForNonAutotuningCompilations) {
   const char* hlo_text = R"(
@@ -74,6 +104,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+  int module_id = module->unique_id();
   std::unique_ptr<Executable> executable =
       backend()
           .compiler()
@@ -83,8 +114,7 @@ ENTRY main {
                         /*layout_canonicalization_callback=*/{},
                         /*is_autotuning_compilation=*/true})
           .value();
-  EXPECT_FALSE(XlaDebugInfoManager::Get()->TracksModule(
-      executable->module().unique_id()));
+  EXPECT_FALSE(XlaDebugInfoManager::Get()->TracksModule(module_id));
 }
 
 TEST_F(GpuCompilerTest, CopyInsertionFusion) {
@@ -120,10 +150,11 @@ ENTRY main {
   const HloInstruction* entry_root =
       compiled_module->entry_computation()->root_instruction();
   // Check that we add bitcast when needed.
-  EXPECT_THAT(entry_root, op::Tuple(op::GetTupleElement(op::Fusion()),
-                                    op::GetTupleElement(op::Fusion()),
-                                    op::GetTupleElement(op::Fusion()),
-                                    op::GetTupleElement(op::Fusion())));
+  EXPECT_THAT(
+      entry_root,
+      GmockMatch(m::Tuple(
+          m::GetTupleElement(m::Fusion()), m::GetTupleElement(m::Fusion()),
+          m::GetTupleElement(m::Fusion()), m::GetTupleElement(m::Fusion()))));
 }
 
 class PersistedAutotuningTest : public HloTestBase {
@@ -195,6 +226,85 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
                                                            &results));
   }
+}
+
+int64_t CountCopies(const HloComputation& computation) {
+  int64_t count = 0;
+  for (const auto& instruction : computation.instructions()) {
+    if (instruction->opcode() == HloOpcode::kCopy) {
+      count++;
+    }
+  }
+  return count;
+}
+
+int64_t CountCopies(const HloModule& module) {
+  int64_t count = 0;
+  for (const auto& computation : module.computations()) {
+    count += CountCopies(*computation);
+  }
+  return count;
+}
+
+TEST_F(GpuCompilerTest, RemovesUnnecessaryCopyAfterScheduling) {
+  const absl::string_view hlo_string = R"(
+HloModule all_gather_overlapping
+condition {
+  input_tuple = (f32[1,128], f32[2,128], pred[]) parameter(0)
+  ROOT cond = pred[] get-tuple-element(input_tuple), index=2
+}
+
+body {
+  input_tuple = (f32[1,128], f32[2,128], pred[]) parameter(0)
+  param_0 = f32[1,128] get-tuple-element(input_tuple), index=0
+  param_1 = f32[2,128] get-tuple-element(input_tuple), index=1
+  cond = pred[] get-tuple-element(input_tuple), index=2
+
+  c0 = f32[] constant(0)
+  splat_c0 = f32[1,128] broadcast(c0), dimensions={}
+  add = f32[1,128] add(splat_c0, param_0)
+
+  // Start all-gather communication
+  all-gather-start = (f32[1,128], f32[2,128]) all-gather-start(add), channel_id=1337, replica_groups={{0,1}}, dimensions={0}, use_global_device_ids=true
+
+  // Intertwined with the all-gather communication, an operation happens which
+  // depends on param_1, but crucially has a different output shape (which
+  // excludes reusing param_1's buffer for its output).
+  c1_s32 = s32[] constant(1)
+  c0_s32 = s32[] constant(0)
+  dynamic-slice = f32[1,128] dynamic-slice(param_1, c1_s32, c0_s32), dynamic_slice_sizes={1,128}
+
+  // The all-gather communication finishes
+  all-gather-done = f32[2,128] all-gather-done(all-gather-start)
+
+  ROOT output_tuple = (f32[1,128], f32[2,128], pred[]) tuple(dynamic-slice, all-gather-done, cond)
+}
+
+ENTRY main {
+  param_0 = f32[1,128] parameter(0)
+  param_1 = f32[2,128] parameter(1)
+  param_2 = pred[] parameter(2)
+  tuple = (f32[1,128], f32[2,128], pred[]) tuple(param_0, param_1, param_2)
+  ROOT while = (f32[1,128], f32[2,128], pred[]) while(tuple), condition=condition, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(hlo_string));
+
+  EXPECT_EQ(CountCopies(*module), 5);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* while_op = root->operand(0)->operand(0);
+  EXPECT_EQ(while_op->while_body()->root_instruction()->operand(1)->opcode(),
+            HloOpcode::kCopy);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, AssignBuffers(module.get()));
+  EXPECT_EQ(CountCopies(*module), 4);
+  module->entry_computation()->root_instruction();
+  while_op = root->operand(0)->operand(0);
+  // Make sure that the copy of AllGatherDone has been removed.
+  EXPECT_EQ(while_op->while_body()->root_instruction()->operand(1)->opcode(),
+            HloOpcode::kAllGatherDone);
 }
 
 }  // namespace
