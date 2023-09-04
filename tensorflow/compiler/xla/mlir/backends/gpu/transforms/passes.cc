@@ -44,7 +44,9 @@ void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
     // Concurrent regions create repeated-fork-join topology inside CUDA graphs,
     // which is not optimized by architectures prior to Ampere and may cause
     // regression. So we enable concurrent regions only on Ampere GPUs.
-    if (opts.compute_capability.IsAtLeast(8, 0)) {
+    if (auto cc = std::get_if<stream_executor::CudaComputeCapability>(
+            &opts.compute_capability);
+        !cc || cc->IsAtLeast(8, 0)) {
       pm.addPass(createAddConcurrentRegionsPass());
     } else {
       LOG(WARNING)
