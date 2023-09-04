@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -132,6 +133,12 @@ class AddCustomAggregationOp : public RewritePattern {
       if (!element_type.isF32()) {
         continue;
       }
+
+      // Skip when the given operator is under the quantizable spot.
+      if (IsInLiftedFunc(op)) {
+        continue;
+      }
+
       // Skip when there is any already existing CustomAggregatorOp found.
       Operation *defining_op = input.getDefiningOp();
       if (dyn_cast_or_null<TF::CustomAggregatorOp>(defining_op)) {

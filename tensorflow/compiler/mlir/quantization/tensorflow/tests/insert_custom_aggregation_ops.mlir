@@ -12,6 +12,13 @@ module {
     %add = "tf.AddV2"(%arg0, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
     func.return %add : tensor<*xi32>
   }
+
+  func.func @composite_conv2d_with_bias_and_relu6_fn(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
+    %0 = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %1 = "tf.BiasAdd"(%0, %arg2) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %2 = "tf.Relu6"(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    func.return %2 : tensor<*xf32>
+  }
 }
 
 // CalibrationOptions(calibration_method=CALIBRATION_METHOD_MIN_MAX)
@@ -26,6 +33,12 @@ module {
 // MIN-MAX-CHECK-NEXT:  "tf.AddV2"
 // MIN-MAX-CHECK-NEXT:  return
 
+// MIN-MAX-CHECK: func @composite_conv2d_with_bias_and_relu6_fn
+// MIN-MAX-CHECK-NEXT:  "tf.Conv2D"
+// MIN-MAX-CHECK-NEXT:  "tf.BiasAdd"
+// MIN-MAX-CHECK-NEXT:  "tf.Relu6"
+// MIN-MAX-CHECK-NEXT:  return
+
 // CalibrationOptions(calibration_method=CALIBRATION_METHOD_AVERAGE_MIN_MAX)
 // AVERAGE-MIN-MAX-CHECK: func @add_custom_ops
 // AVERAGE-MIN-MAX-CHECK-NEXT:  [[rhs:%.*]] = "tf.CustomAggregator"(%arg1) {calibration_method = 2 : i32, id = "", initial_num_bins = 0 : i32, max_percentile = 0.000000e+00 : f32, min_percentile = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
@@ -36,6 +49,12 @@ module {
 
 // AVERAGE-MIN-MAX-CHECK: func @no_custom_ops_on_non_f32_type
 // AVERAGE-MIN-MAX-CHECK-NEXT:  "tf.AddV2"
+// AVERAGE-MIN-MAX-CHECK-NEXT:  return
+
+// AVERAGE-MIN-MAX-CHECK: func @composite_conv2d_with_bias_and_relu6_fn
+// AVERAGE-MIN-MAX-CHECK-NEXT:  "tf.Conv2D"
+// AVERAGE-MIN-MAX-CHECK-NEXT:  "tf.BiasAdd"
+// AVERAGE-MIN-MAX-CHECK-NEXT:  "tf.Relu6"
 // AVERAGE-MIN-MAX-CHECK-NEXT:  return
 
 // CalibrationOptions(
@@ -51,4 +70,10 @@ module {
 
 // HISTOGRAM-PERCENTILE-CHECK: func @no_custom_ops_on_non_f32_type
 // HISTOGRAM-PERCENTILE-CHECK-NEXT:  "tf.AddV2"
+// HISTOGRAM-PERCENTILE-CHECK-NEXT:  return
+
+// HISTOGRAM-PERCENTILE-CHECK: func @composite_conv2d_with_bias_and_relu6_fn
+// HISTOGRAM-PERCENTILE-CHECK-NEXT:  "tf.Conv2D"
+// HISTOGRAM-PERCENTILE-CHECK-NEXT:  "tf.BiasAdd"
+// HISTOGRAM-PERCENTILE-CHECK-NEXT:  "tf.Relu6"
 // HISTOGRAM-PERCENTILE-CHECK-NEXT:  return

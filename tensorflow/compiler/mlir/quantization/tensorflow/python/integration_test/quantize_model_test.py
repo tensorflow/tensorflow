@@ -3050,9 +3050,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         logging.set_verbosity(prev_log_level)
 
       self.assertNotEmpty(warning_logs.records)
-
-      # Warning message should contain the function name.
-      self.assertTrue(self._any_log_contains('matmul', warning_logs.records))
       self.assertTrue(
           self._any_log_contains(
               'does not have min or max values', warning_logs.records
