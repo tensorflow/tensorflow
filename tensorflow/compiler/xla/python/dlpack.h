@@ -39,6 +39,10 @@ StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
     const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
     std::shared_ptr<PyClient> gpu_client);
 
+StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
+    const pybind11::capsule& tensor, PjRtDevice* device,
+    std::shared_ptr<PyClient> client, std::optional<std::intptr_t> stream);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_

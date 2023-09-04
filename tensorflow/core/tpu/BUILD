@@ -285,7 +285,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:outside_compilation_params",
-        "//tensorflow/core/common_runtime/next_pluggable_device/c:tf_rendezvous_c_api_conversions",
+        "//tensorflow/core/common_runtime/next_pluggable_device/c:tf_rendezvous_c_api_internal",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tpu/kernels:tpu_executable_info_proto_cc",
         "//tensorflow/tsl/platform:logging",

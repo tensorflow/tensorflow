@@ -65,6 +65,222 @@ ENTRY main {
   ROOT %fusion.3 = f32[10000, 10000]{1,0} fusion(%param_0, %param_1), kind=kLoop, calls=%fused_computation.3
 }
 
+// -----
+
+// This tests that we enable few_waves in a simple fusion. It is the baseline
+// for the tests below.
+
+// CHECK-LABEL: entry:
+// CHECK-PTX:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
+// CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
+// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
+
+HloModule SimpleFusion
+
+%fused_computation (param_0: f32[], param_1: f32[10000, 10000]) -> f32[10000, 10000] {
+  %param_0 = f32[10000,10000] parameter(0)
+  %param_1 = f32[10000, 10000]{1,0} parameter(1)
+  ROOT %add = f32[10000, 10000]{1,0} add(%param_0, %param_1)
+}
+
+ENTRY main {
+  %param_0 = f32[10000, 10000]{1,0} parameter(0)
+  %param_1 = f32[10000, 10000]{1,0} parameter(1)
+
+  ROOT %fusion = f32[10000, 10000]{1,0} fusion(%param_0, %param_1), kind=kLoop, calls=%fused_computation
+}
+
+// -----
+
+// This tests that we keep few_waves enabled for large constants.
+
+// CHECK-LABEL: entry:
+// CHECK-PTX:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
+// CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
+// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
+
+HloModule LargeConstant
+
+%fused_computation (param_0: f32[], param_1: f32[10000, 10000]) -> f32[10000, 10000] {
+  %param_0 = f32[10000,10000] parameter(0)
+  %c0 = f32[10000,10000] constant(0)
+  ROOT %add = f32[10000, 10000]{1,0} add(%param_0, %c0)
+}
+
+ENTRY main {
+  %param_0 = f32[10000, 10000] parameter(0)
+
+  ROOT %fusion = f32[10000, 10000]{1,0} fusion(%param_0), kind=kLoop, calls=%fused_computation
+}
+
+// -----
+
+// This tests that we disable few_waves if a non-elementwise op is present.
+
+// CHECK-LABEL: entry:
+// CHECK-PTX:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 195313}
+// CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 195313}
+// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
+
+HloModule NonElementwise
+
+%fused_computation (param_0: f32[], param_1: f32[10000, 10000]) -> f32[10000, 10000] {
+  %param_0 = f32[10000,10000] parameter(0)
+  %reverse = f32[10000,10000]{1,0} reverse(%param_0), dimensions={0,1}
+  %param_1 = f32[10000, 10000]{1,0} parameter(1)
+  ROOT %add = f32[10000, 10000]{1,0} add(%reverse, %param_1)
+}
+
+ENTRY main {
+  %param_0 = f32[10000, 10000]{1,0} parameter(0)
+  %param_1 = f32[10000, 10000]{1,0} parameter(1)
+
+  ROOT %fusion = f32[10000, 10000]{1,0} fusion(%param_0, %param_1), kind=kLoop, calls=%fused_computation
+}
+
+// -----
+
+// This tests that we disable few_waves if
+// - a tensor broadcast is present
+// - at least four big inputs are present
+// - the fusion is not row-vectorizable
+// It serves as a baseline for the tests below.
+
+// CHECK-LABEL: entry:
+// CHECK-PTX:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 7813}
+// CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 7813}
+// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
+
+HloModule NoFewWaves
+
+%fused_computation (param_0: f32[], param_1: f32[2000, 2000]) -> f32[2000, 2000] {
+  %param_0 = f32[2000] parameter(0)
+  %broadcast = f32[2000, 2000]{1,0} broadcast(%param_0), dimensions={0}
+  %param_1 = f32[2000, 2000]{1,0} parameter(1)
+  %param_2 = f32[2000, 2000]{0,1} parameter(2)
+  %param_3 = f32[2000, 2000]{0,1} parameter(3)
+  %param_4 = f32[2000, 2000]{0,1} parameter(4)
+
+  %sum.0 = f32[2000, 2000] add(%param_1, %param_2)
+  %sum.1 = f32[2000, 2000] add(%sum.0, %param_3)
+  %sum.2 = f32[2000, 2000] add(%sum.1, %param_4)
+  ROOT %add = f32[2000, 2000]{1,0} add(%sum.2, %broadcast)
+}
+
+ENTRY main {
+  %param_0 = f32[2000]{0} parameter(0)
+  %param_1 = f32[2000, 2000]{1,0} parameter(1)
+  %param_2 = f32[2000, 2000]{0,1} parameter(2)
+  %param_3 = f32[2000, 2000]{0,1} parameter(3)
+  %param_4 = f32[2000, 2000]{0,1} parameter(4)
+
+  ROOT %fusion = f32[2000, 2000]{1,0} fusion(%param_0, %param_1, %param_2, %param_3, %param_4), kind=kLoop, calls=%fused_computation
+}
+
+// -----
+
+// This tests that we enable few_waves if
+// - a tensor broadcast is present
+// - THREE big inputs are present
+// - the fusion IS row-vectorizable
+// In this case, the block count is changed from 7813 to 2000.
+
+// CHECK-LABEL: entry:
+// CHECK-PTX:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 2000}
+// CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 500}
+// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 2000}
+// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 500}
+
+HloModule RowVectorizable
+
+%fused_computation (param_0: f32[], param_1: f32[2000, 2000]) -> f32[2000, 2000] {
+  %param_0 = f32[2000] parameter(0)
+  %broadcast = f32[2000, 2000]{1,0} broadcast(%param_0), dimensions={1}
+  %param_1 = f32[2000, 2000]{1,0} parameter(1)
+  %param_2 = f32[2000, 2000]{1,0} parameter(2)
+  %param_3 = f32[2000, 2000]{1,0} parameter(3)
+
+  %sum.0 = f32[2000, 2000] add(%param_1, %param_2)
+  %sum.1 = f32[2000, 2000] add(%sum.0, %param_3)
+  ROOT %add = f32[2000, 2000]{1,0} add(%sum.1, %broadcast)
+}
+
+ENTRY main {
+  %param_0 = f32[2000]{0} parameter(0)
+  %param_1 = f32[2000, 2000]{1,0} parameter(1)
+  %param_2 = f32[2000, 2000]{1,0} parameter(2)
+  %param_3 = f32[2000, 2000]{1,0} parameter(3)
+
+  ROOT %fusion = f32[2000, 2000]{1,0} fusion(%param_0, %param_1, %param_2, %param_3), kind=kLoop, calls=%fused_computation
+}
+
+// -----
+
+// This tests that we enable few_waves if
+// - a SCALAR broadcast is present
+// - four big inputs are present
+// - the fusion is not row-vectorizable
+// In this case, the block count is changed from 7813 to 1008.
+
+// CHECK-LABEL: entry:
+// CHECK-PTX:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
+// CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1008}
+// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
+
+HloModule ScalarBroadcastFourInputs
+
+%fused_computation (param_0: f32[], param_1: f32[2000, 2000]) -> f32[2000, 2000] {
+  %param_0 = f32[] parameter(0)
+  %broadcast = f32[2000, 2000]{1,0} broadcast(%param_0), dimensions={}
+  %param_1 = f32[2000, 2000]{1,0} parameter(1)
+  %param_2 = f32[2000, 2000]{1,0} parameter(2)
+  %param_3 = f32[2000, 2000]{1,0} parameter(3)
+  %param_4 = f32[2000, 2000]{1,0} parameter(4)
+
+  %sum.0 = f32[2000, 2000] add(%param_1, %param_2)
+  %sum.1 = f32[2000, 2000] add(%sum.0, %param_3)
+  %sum.2 = f32[2000, 2000] add(%sum.1, %param_4)
+  ROOT %add = f32[2000, 2000]{1,0} add(%sum.2, %broadcast)
+}
+
+ENTRY main {
+  %param_0 = f32[] parameter(0)
+  %param_1 = f32[2000, 2000]{1,0} parameter(1)
+  %param_2 = f32[2000, 2000]{1,0} parameter(2)
+  %param_3 = f32[2000, 2000]{1,0} parameter(3)
+  %param_4 = f32[2000, 2000]{1,0} parameter(4)
+
+  ROOT %fusion = f32[2000, 2000]{1,0} fusion(%param_0, %param_1, %param_2, %param_3, %param_4), kind=kLoop, calls=%fused_computation
+}
 
 // -----
 // This tests the GELU kernel. The original kernel that

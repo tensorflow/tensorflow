@@ -3178,19 +3178,19 @@ void IfRegionOp::getRegionInvocationBounds(
   invocationBounds.assign(2, {0, 1});
 }
 
-OperandRange IfRegionOp::getEntrySuccessorOperands(
-    std::optional<unsigned> index) {
+OperandRange IfRegionOp::getEntrySuccessorOperands(RegionBranchPoint point) {
   // IfRegionOp currently only allows one op (the condition), so there are no
   // remaining operands for the successor.
-  assert((!index || (index == 0 || index == 1)) &&
+  assert((point.isParent() ||
+          (point == (*this)->getRegion(0) || point == (*this)->getRegion(1))) &&
          "Invalid IfRegionOp region index.");
   auto end = this->getOperation()->operand_end();
   return ::mlir::OperandRange(end, end);
 }
 
 void IfRegionOp::getSuccessorRegions(
-    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor>& regions) {
-  if (index) {
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
+  if (!point.isParent()) {
     // The `then` and the `else` region branch back to the parent operation.
     regions.push_back(RegionSuccessor(getResults()));
     return;

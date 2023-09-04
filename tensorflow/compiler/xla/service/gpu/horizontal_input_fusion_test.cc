@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/horizontal_input_fusion.h"
 
-#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 
@@ -25,7 +26,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 class HorizontalInputFusionTest : public GpuCodegenTest {
  public:
@@ -69,13 +70,13 @@ TEST_F(HorizontalInputFusionTest, BasicTest) {
 
   const HloInstruction* entry_root =
       module->entry_computation()->root_instruction();
-  EXPECT_THAT(entry_root, op::Tuple((op::GetTupleElement(op::Fusion())),
-                                    (op::GetTupleElement(op::Fusion()))));
-
-  const HloInstruction* fusion = entry_root->operand(0)->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(entry_root,
+              GmockMatch(m::Tuple((m::GetTupleElement(m::Fusion(&fusion))),
+                                  (m::GetTupleElement(m::Fusion())))));
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Reduce(), op::Reduce()));
+              GmockMatch(m::Tuple(m::Reduce(), m::Reduce())));
 }
 
 TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
@@ -237,13 +238,13 @@ TEST_F(HorizontalInputFusionTest, NonfusionInstrs) {
 
   const HloInstruction* entry_root =
       module->entry_computation()->root_instruction();
-  EXPECT_THAT(entry_root, op::Tuple((op::GetTupleElement(op::Fusion())),
-                                    (op::GetTupleElement(op::Fusion()))));
-
-  const HloInstruction* fusion = entry_root->operand(0)->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(entry_root,
+              GmockMatch(m::Tuple((m::GetTupleElement(m::Fusion(&fusion))),
+                                  (m::GetTupleElement(m::Fusion())))));
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Reduce(), op::Reduce()));
+              GmockMatch(m::Tuple(m::Reduce(), m::Reduce())));
 }
 
 }  // namespace

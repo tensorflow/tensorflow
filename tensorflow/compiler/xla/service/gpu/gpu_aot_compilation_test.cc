@@ -82,17 +82,9 @@ ENTRY main {
 
   auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
 
-  const stream_executor::DeviceDescription& device_description =
-      stream_exec->GetDeviceDescription();
-  stream_executor::CudaComputeCapability cuda_compute_capability =
-      device_description.cuda_compute_capability();
-  stream_executor::RocmComputeCapability rocm_compute_capability =
-      device_description.rocm_compute_capability();
-
   // Stream executor is not passed as an option.
   GpuTargetConfig gpu_target_config;
   gpu_target_config.gpu_device_info = GetGpuDeviceInfo(stream_exec);
-  gpu_target_config.gpu_version = cuda_compute_capability;
   gpu_target_config.platform_name = stream_exec->platform()->Name();
 
   AotCompilationOptions aot_options(compiler.PlatformId());

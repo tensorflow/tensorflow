@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 
+#include "absl/log/log.h"
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 
@@ -40,7 +41,17 @@ void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
   pm.addPass(
       createOutlineGpuGraphsPass(opts.gpu_graph_level, opts.min_graph_size));
   if (opts.enable_concurrent_region) {
-    pm.addPass(createAddConcurrentRegionsPass());
+    // Concurrent regions create repeated-fork-join topology inside CUDA graphs,
+    // which is not optimized by architectures prior to Ampere and may cause
+    // regression. So we enable concurrent regions only on Ampere GPUs.
+    if (auto cc = std::get_if<stream_executor::CudaComputeCapability>(
+            &opts.compute_capability);
+        !cc || cc->IsAtLeast(8, 0)) {
+      pm.addPass(createAddConcurrentRegionsPass());
+    } else {
+      LOG(WARNING)
+          << "Multi-stream execution disabled on non-ampere architectures";
+    }
   }
 
   // Lower all Gpu operations to the XLA Gpu runtime custom calls.

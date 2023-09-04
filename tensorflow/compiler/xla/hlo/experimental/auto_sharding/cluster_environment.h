@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver_option.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/profiling_result.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 
 namespace xla {
 namespace spmd {
@@ -100,10 +101,11 @@ class ClusterEnvironment {
   // Get the corresponding mesh dimension for every tensor dimension.
   // -1 means replicated on that dimension
   std::vector<int64_t> GetTensorDimToMeshDimWrapper(
-      const Shape& shape, const HloSharding& spec) const {
+      const Shape& shape, const HloSharding& spec,
+      bool consider_reverse_device_meshes = false) const {
     int64_t n_dim = NumTileDimensions(spec);
-    std::vector<int64_t> tensor_dim_to_mesh_dim =
-        GetTensorDimToMeshDim(shape.rank(), spec, device_mesh_);
+    std::vector<int64_t> tensor_dim_to_mesh_dim = GetTensorDimToMeshDim(
+        shape.rank(), spec, device_mesh_, consider_reverse_device_meshes);
     AdjustTensorMeshDimMapping(tensor_dim_to_mesh_dim, n_dim);
     return tensor_dim_to_mesh_dim;
   }
@@ -117,8 +119,21 @@ class ClusterEnvironment {
 
   double AllToAllCost(double num_bytes, int mesh_dim) const;
 
+  double CollectivePermuteCost(
+      double num_bytes,
+      const std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs) const;
+
+  double TryCollectivePermuteForResharding(const Shape& shape,
+                                           const HloSharding& src_spec,
+                                           const HloSharding& dst_spec) const;
+
   double DotCost(const Shape& lhs_shape, const Shape& rhs_shape,
                  const DotDimensionNumbers& dot_dnums) const;
+
+  // This function attempts to overestimate the cost of replicating a tensor of
+  // shape `shape` sharded according to `src_spec`.
+  double OverestimateReplicationCost(const Shape& shape,
+                                     const HloSharding& src_spec) const;
 
   double ReshardingCost(const Shape& shape, const HloSharding& src_spec,
                         const HloSharding& dst_spec) const;

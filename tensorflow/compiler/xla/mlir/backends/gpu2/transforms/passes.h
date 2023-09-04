@@ -28,9 +28,7 @@ class ThunkSequence;  // forward declare
 // (2) Use XLA:GPU StreamExecutor APIs to load and dispatch device kernels
 enum class RuntimeBackend { kHAL, kStreamExecutor };
 
-struct Gpu2PipelineOpts {
-  int32_t graph_level = 0;
-};
+struct Gpu2PipelineOpts {};
 
 }  // namespace xla::gpu
 
@@ -79,16 +77,6 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp> >
 createConvertToGpu2RuntimePass(
     ThunkSequence* thunk_sequence = nullptr,
     std::optional<RuntimeBackend> backend = std::nullopt);
-
-//===----------------------------------------------------------------------===//
-// Transformation passes to support XLA:GPU graphs
-//===----------------------------------------------------------------------===//
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp> >
-createCreateGraphRegionsPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp> >
-createFinalizeGraphDispatchesPass();
 
 //===----------------------------------------------------------------------===//
 // XLA:GPU passes registration

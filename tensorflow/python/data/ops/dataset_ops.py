@@ -45,6 +45,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
+from tensorflow.python.framework import none_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed as core_random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
@@ -618,7 +619,7 @@ class DatasetV2(
       if not isinstance(
           component_spec,
           (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec,
-           sparse_tensor_lib.SparseTensorSpec, structure.NoneTensorSpec)):
+           sparse_tensor_lib.SparseTensorSpec, none_tensor.NoneTensorSpec)):
         raise TypeError(
             f"`tf.data.Dataset.as_numpy_iterator()` is not supported for "
             f"datasets that produce values of type {component_spec.value_type}")

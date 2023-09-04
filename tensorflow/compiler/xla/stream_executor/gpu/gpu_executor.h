@@ -221,8 +221,6 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status BlockHostUntilDone(Stream* stream) override;
 
-  int PlatformDeviceCount() override { return GpuDriver::GetDeviceCount(); }
-
   tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override;
 
   bool CanEnablePeerAccessTo(StreamExecutorInterface* other) override;

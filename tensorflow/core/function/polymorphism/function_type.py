@@ -164,7 +164,7 @@ class Parameter(inspect.Parameter):
                              self.type_constraint))
 
 
-class FunctionType(inspect.Signature):
+class FunctionType(core.FunctionType):
   """Represents the type of a TensorFlow function.
 
   FunctionType is the canonical way to represent the input/output contract of

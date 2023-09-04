@@ -37,8 +37,8 @@ struct RegionEdge {
   // The index in the successor's arguments or op results where `operands`
   // start.
   int64_t successorValueIndex;
-  std::optional<unsigned> predecessorRegionIndex;
-  std::optional<unsigned> successorRegionIndex;
+  RegionBranchPoint predecessorRegionPoint = RegionBranchPoint::parent();
+  RegionBranchPoint successorRegionPoint = RegionBranchPoint::parent();
 
   ValueRange getPredecessorOperands() const {
     return predecessorOp->getOperands().drop_front(predecessorOperandIndex);
@@ -62,13 +62,12 @@ struct RegionEdge {
   }
 };
 
-// Returns predecessors of the given region. Includes nullopt if the region is
-// an entry region. Returns exit regions if index is nullopt.
+// Returns predecessors of the given region.
 SmallVector<RegionEdge> getPredecessorRegions(RegionBranchOpInterface op,
-                                              std::optional<unsigned> index);
+                                              RegionBranchPoint index);
 
 SmallVector<RegionEdge> getSuccessorRegions(RegionBranchOpInterface op,
-                                            std::optional<unsigned> index);
+                                            RegionBranchPoint index);
 
 // Replaces the op with a new op with proper return types. The old op is not
 // removed and it still has uses.

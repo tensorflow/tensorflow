@@ -16,13 +16,17 @@ limitations under the License.
 #include "tensorflow/tsl/framework/device_id_manager.h"
 
 #include <unordered_map>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/tsl/framework/device_id.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tsl {
 namespace {
@@ -72,6 +76,25 @@ class TfToPlatformDeviceIdMap {
     return true;
   }
 
+  StatusOr<std::vector<TfDeviceId>> GetTfDevicesOnPlatform(
+      const DeviceType& type, PlatformDeviceId platform_device_id) const
+      TF_LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock lock(mu_);
+    auto type_id_map_iter = id_map_.find(type.type_string());
+    if (type_id_map_iter == id_map_.end()) {
+      return absl::NotFoundError(
+          absl::StrCat("TensorFlow device type: ", type.type_string(),
+                       " was not registered"));
+    }
+    std::vector<TfDeviceId> tf_device_ids;
+    for (const auto& [tf_device, platform_device] : type_id_map_iter->second) {
+      if (platform_device == platform_device_id.value()) {
+        tf_device_ids.push_back(TfDeviceId(tf_device));
+      }
+    }
+    return tf_device_ids;
+  }
+
  private:
   TfToPlatformDeviceIdMap() = default;
 
@@ -110,6 +133,12 @@ Status DeviceIdManager::TfToPlatformDeviceId(
   }
   return errors::NotFound("TensorFlow device ", type, ":", tf_device_id.value(),
                           " was not registered");
+}
+
+StatusOr<std::vector<TfDeviceId>> DeviceIdManager::GetTfDevicesOnPlatform(
+    const DeviceType& type, PlatformDeviceId platform_device_id) {
+  return TfToPlatformDeviceIdMap::singleton()->GetTfDevicesOnPlatform(
+      type, platform_device_id);
 }
 
 void DeviceIdManager::TestOnlyReset() {

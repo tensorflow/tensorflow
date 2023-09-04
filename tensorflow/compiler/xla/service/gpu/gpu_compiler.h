@@ -103,7 +103,6 @@ struct GpuTargetConfig {
   se::GpuTargetConfigProto ToProto() const;
 
   GpuDeviceInfo gpu_device_info;
-  GpuVersion gpu_version;
   std::string platform_name;
   se::dnn::VersionInfo dnn_version_info;
   std::string device_description_str;
@@ -138,7 +137,6 @@ class GpuCompiler : public LLVMCompiler {
   GpuTargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {
     GpuTargetConfig gpu_target_config;
     gpu_target_config.gpu_device_info = GetGpuDeviceInfo(stream_exec);
-    gpu_target_config.gpu_version = GetGpuVersion(stream_exec);
     gpu_target_config.platform_name = stream_exec->platform()->Name();
 
     return gpu_target_config;

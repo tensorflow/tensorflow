@@ -16,7 +16,7 @@
 
 import os
 import re
-from typing import Tuple
+from typing import Optional, Sequence
 import unittest
 
 import numpy as np
@@ -35,7 +35,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 
 
-def serialize(module_str: str) -> Tuple[str, int]:
+def serialize(module_str: str) -> tuple[str, int]:
   target = stablehlo.get_minimum_version()
   byte_str = stablehlo.serialize_portable_artifact(module_str, target)
   return byte_str, xla.call_module_maximum_supported_version()
@@ -344,110 +344,226 @@ module @jit_f.0 {
     )
     self._assertOpOutputMatchesExpected(f, (x,), (expected_value,))
 
-  def test_platforms_errors(self):
-    """Error reporting for the platforms attribute."""
+  def test_platforms_unknown_custom_call(self):
+    # One of the platform branches ("ROCM") has custom call unknown to other
+    # platforms.
+    if self.testing_platform() == 'ROCM':
+      raise unittest.SkipTest('Not intended for ROCM')
     x = np.float32(0.)
 
-    module_str = """
+    #  returns x + 2. on CPU, x + 3. on GPU, and x + 4. on TPU
+    module, version = serialize("""
 module @jit_f.0 {
   func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
-    return %arg0 : tensor<f32>
+    %to_add = "stablehlo.case"(%arg_platform_idx) ({
+      %cpu_val = stablehlo.constant dense<2.> : tensor<f32>
+      stablehlo.return %cpu_val : tensor<f32>
+    }, {
+      %gpu_val = stablehlo.constant dense<3.> : tensor<f32>
+      stablehlo.return %gpu_val : tensor<f32>
+    }, {
+      %tpu_val = stablehlo.constant dense<4.> : tensor<f32>
+      stablehlo.return %tpu_val : tensor<f32>
+    }, {
+      %rocm_val = stablehlo.custom_call @non_existent_target(%arg0) : (tensor<f32>) -> tensor<f32>
+      stablehlo.return %rocm_val : tensor<f32>
+    }) : (tensor<i32>) -> tensor<f32>
+    %0 = stablehlo.add %arg0, %to_add : tensor<f32>
+    return %0 : tensor<f32>
   }
 }
-"""
-    module_str_no_platform_arg = """
-module @jit_f.0 {
-  func.func public @main(%arg0: tensor<f32>) -> tensor<f32> {
-    return %arg0 : tensor<f32>
-  }
-}
-"""
-    module, version = serialize(module_str)
-    platforms = [self.testing_platform()]
-    disabled_checks = []
+""")
+
+    platforms = ['CPU', 'CUDA', 'TPU', 'ROCM']
     def f(x):
       return xla.call_module([x], version=version,
                              module=module,
                              Tout=[np.float32],
                              Sout=[()],
-                             platforms=platforms,
-                             disabled_checks=disabled_checks)
+                             platforms=platforms)
 
-    # With singleton `platforms`, there should be no platform_index argument
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        'Incorrect number of arguments passed to XlaCallModule: 1. '
-        'The module takes 2 arguments of which 0 platform index arguments, '
-        '0 dimension arguments and 0 token arguments.'):
-      self._assertOpOutputMatchesExpected(f, (x,), (x,))
+    expected_value = (
+        x + dict(CPU=2.0, CUDA=3.0, TPU=4.0)[self.testing_platform()]
+    )
+    self._assertOpOutputMatchesExpected(f, (x,), (expected_value,))
 
-    platform_check_disabled_by_flags = (
-        '--tf_xla_call_module_disabled_checks=platform'
-        in os.getenv('TF_XLA_FLAGS', ''))
-    platforms = ['RANDOM_PLATFORM_1', 'RANDOM_PLATFORM_2']
-    if not platform_check_disabled_by_flags:
-      with self.assertRaisesRegex(
-          errors.NotFoundError,
-          'The current platform .* is not among the platforms'):
-        self._assertOpOutputMatchesExpected(f, (x,), (x,))
-    else:
-      # No error
-      self._assertOpOutputMatchesExpected(f, (x,), (x,))
+  def test_platforms_and_poly(self):
+    x = np.arange(6, dtype=np.float32)
+    #  returns x + 2. on CPU, x + 3. on GPU (CUDA or ROCM) and x + 4. on TPU
 
-    # Disable the check but have two platforms
-    platforms = ['RANDOM_PLATFORM_1', 'RANDOM_PLATFORM_2']
-    disabled_checks = [xla.call_module_disable_check_platform()]
-    # No error
-    self._assertOpOutputMatchesExpected(f, (x,), (x,))
-
-    # Disable the check but have a single platform and hence no platform arg.
-    platforms = ['RANDOM_PLATFORM_1']
-    module, version = serialize(module_str_no_platform_arg)
-    # No error
-    self._assertOpOutputMatchesExpected(f, (x,), (x,))
-    disabled_checks = []
-    module, version = serialize(module_str)
-
-    platforms = []
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        'must have non-empty platforms'):
-      self._assertOpOutputMatchesExpected(f, (x,), (x,))
-
-    platforms = ['CPU', 'CUDA', 'ROCM']
-    if (self.testing_platform() not in platforms
-        and not platform_check_disabled_by_flags):
-      with self.assertRaisesRegex(
-          errors.NotFoundError,
-          'The current platform .* is not among the platforms'):
-        self._assertOpOutputMatchesExpected(f, (x,), (x,))
-    else:
-      # No error
-      self._assertOpOutputMatchesExpected(f, (x,), (x,))
-
-    # The module cannot have i64 %arg_platform_idx
-    module, version = serialize(module_str.replace('i32', 'i64'))
-    platforms = ['CPU', 'CUDA', 'ROCM', 'TPU']
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        'Module argument at index 0 should be a 0-dimensional '
-        '32-bit integer-tensor platform index argument .* has type '
-        'tensor<i64>'):
-      self._assertOpOutputMatchesExpected(f, (x,), (x,))
-
-    # A module without the platform index argument
     module, version = serialize("""
-module @jit_f.0 {
-  func.func public @main(%arg0: tensor<i32>) -> tensor<i32> {
-    return %arg0 : tensor<i32>
+module @jit_f_jax attributes {jax.uses_shape_polymorphism = true} {
+  func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<?xf32>) -> (tensor<?xf32>) {
+    %0 = stablehlo.get_dimension_size %arg0, dim = 0 : (tensor<?xf32>) -> tensor<i32>
+    %5 = call @_wrapped_jax_export_main(%arg_platform_idx, %0, %arg0) : (tensor<i32>, tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
+    return %5 : tensor<?xf32>
+  }
+
+  func.func private @_wrapped_jax_export_main(%arg_platform_idx: tensor<i32>, %arg0: tensor<i32>, %arg1: tensor<?xf32>) -> (tensor<?xf32>) {
+    %to_add = "stablehlo.case"(%arg_platform_idx) ({
+      %cpu_val = stablehlo.constant dense<2.> : tensor<f32>
+      stablehlo.return %cpu_val : tensor<f32>
+    }, {
+      %gpu_val = stablehlo.constant dense<3.> : tensor<f32>
+      stablehlo.return %gpu_val : tensor<f32>
+    }, {
+      %tpu_val = stablehlo.constant dense<4.> : tensor<f32>
+      stablehlo.return %tpu_val : tensor<f32>
+    }) : (tensor<i32>) -> tensor<f32>
+    %1 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
+    %3 = stablehlo.dynamic_broadcast_in_dim %to_add, %1, dims = [] : (tensor<f32>, tensor<1xi32>) -> tensor<?xf32>
+    %4 = stablehlo.add %3, %arg1 : tensor<?xf32>
+    return %4 : tensor<?xf32>
   }
 }
 """)
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        'The module should have 1 platform index arguments and 0 dimension '
-        'arguments, but it has only 1 total arguments'):
+    platforms = ['CPU', 'CUDA', 'ROCM', 'TPU']
+    def f(x):
+      return xla.call_module([x], version=version,
+                             module=module,
+                             Tout=[np.float32],
+                             Sout=[()],
+                             platforms=platforms)
+
+    expected_value = (
+        x + dict(CPU=2.0, CUDA=3.0, ROCM=3.0, TPU=4.0)[self.testing_platform()]
+    )
+    self._assertOpOutputMatchesExpected(f, (x,), (expected_value,))
+
+  # A module used for testing errors related to use of "platforms".
+  platforms_errors_module_str = """
+  module @jit_f.0 {
+    func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
+      return %arg0 : tensor<f32>
+    }
+  }
+"""
+
+  def platforms_errors_helper(
+      self,
+      *,
+      module_str: str,
+      platforms: Sequence[str] = ('CPU', 'CUDA', 'ROCM', 'TPU'),
+      disabled_checks: Sequence[str] = (),
+      expected_error: Optional[Exception] = None,
+      expected_error_message: str = '',
+  ):
+    module, version = serialize(module_str)
+    x = np.float32(0.0)
+
+    def f(x):
+      return xla.call_module(
+          [x],
+          version=version,
+          module=module,
+          Tout=[np.float32],
+          Sout=[()],
+          platforms=platforms,
+          disabled_checks=disabled_checks,
+      )
+
+    if expected_error is None:
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
+    else:
+      with self.assertRaisesRegex(expected_error, expected_error_message):
+        self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+  def platforms_errors_singleton_platform(self):
+    # With singleton `platforms`, there should be no platform_index argument
+    self.platforms_errors_helper(
+        module_str=self.platforms_errors_module_str,
+        platforms=(self.testing_platform(),),
+        expected_error=errors.InvalidArgumentError,
+        expected_error_message=(
+            'Incorrect number of arguments passed to XlaCallModule = 1. The'
+            ' module main function takes 2 arguments of which 0 platform index'
+            ' arguments, 0 dimension arguments and 0 token arguments.'
+        ),
+    )
+
+  def platforms_errors_no_platform_index_arg(self):
+    module_str = self.platforms_errors_module_str.replace(
+        '%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>', ''
+    )
+    self.platforms_errors_helper(
+        module_str=module_str,
+        expected_error=errors.InvalidArgumentError,
+        expected_error_message=(
+            'The module should have a platform index argument but it has no '
+            'arguments'
+        ),
+    )
+
+  def platforms_errors_platform_index_i64(self):
+    module_str = self.platforms_errors_module_str.replace('i32', 'i64')
+    self.platforms_errors_helper(
+        module_str=module_str,
+        expected_error=errors.InvalidArgumentError,
+        expected_error_message=(
+            'Module argument at index 0 should be a 0-dimensional '
+            '32-bit integer-tensor platform index argument .* has type '
+            'tensor<i64>'
+        ),
+    )
+
+  def platforms_errors_platform_index_non_scalar(self):
+    module_str = self.platforms_errors_module_str.replace(
+        'tensor<i32>', 'tensor<1xi32>'
+    )
+    self.platforms_errors_helper(
+        module_str=module_str,
+        expected_error=errors.InvalidArgumentError,
+        expected_error_message=(
+            'Module argument at index 0 should be a 0-dimensional '
+            '32-bit integer-tensor platform index argument .* has type '
+            'tensor<1xi32>'
+        ),
+    )
+
+  def platforms_errors_platform_index_unranked(self):
+    module_str = self.platforms_errors_module_str.replace(
+        'tensor<i32>', 'tensor<*xi32>'
+    )
+    self.platforms_errors_helper(
+        module_str=module_str,
+        expected_error=errors.InvalidArgumentError,
+        expected_error_message=(
+            'Module argument at index 0 should be a 0-dimensional '
+            '32-bit integer-tensor platform index argument'
+        ),
+    )
+
+  def platforms_errors_different_from_current(self):
+    platform_check_disabled_by_flags = (
+        '--tf_xla_call_module_disabled_checks=platform'
+        in os.getenv('TF_XLA_FLAGS', '')
+    )
+    self.platforms_errors_helper(
+        module_str=self.platforms_errors_module_str,
+        platforms=['RANDOM_PLATFORM_1', 'RANDOM_PLATFORM_2'],
+        expected_error=(
+            None if platform_check_disabled_by_flags else errors.NotFoundError
+        ),
+        expected_error_message='current platform .* is not among the platforms'
+    )
+
+  def platforms_errors_dissabled_check(self):
+    self.platforms_errors_helper(
+        module_str=self.platforms_errors_module_str,
+        platforms=('RANDOM_PLATFORM_1', 'RANDOM_PLATFORM_2'),
+        disabled_checks=(xla.call_module_disable_check_platform(),),
+        expected_error=None,
+        expected_error_message='current platform .* is not among the platforms'
+    )
+
+  def platforms_errors_empty(self):
+    self.platforms_errors_helper(
+        module_str=self.platforms_errors_module_str,
+        platforms=[],
+        disabled_checks=[xla.call_module_disable_check_platform()],
+        expected_error=None,
+        expected_error_message='current platform .* is not among the platforms'
+    )
 
   def test_shape_assertion_success(self):
     x = np.ones((3, 5), dtype=np.int32)

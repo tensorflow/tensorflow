@@ -253,7 +253,10 @@ cc_library(
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

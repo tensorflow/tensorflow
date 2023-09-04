@@ -656,6 +656,7 @@ cc_library(
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Parser",
@@ -672,6 +673,29 @@ cc_library(
         "@stablehlo//:stablehlo_portable_api",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:vhlo_ops",
+    ],
+)
+
+cc_library(
+    name = "bridge",
+    srcs = ["bridge.cc"],
+    hdrs = ["bridge.h"],
+    deps = [
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core/platform:error_payloads",
+        "//tensorflow/core/platform:stacktrace",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -702,7 +726,7 @@ tf_cc_test(
     name = "verify_no_outside_compilation_markers_pass_test",
     srcs = ["verify_no_outside_compilation_markers_pass_test.cc"],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        ":tensorflow_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:test_utils",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
@@ -746,6 +770,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Pass",

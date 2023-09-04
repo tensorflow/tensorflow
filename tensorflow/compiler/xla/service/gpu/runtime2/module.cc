@@ -24,7 +24,6 @@ limitations under the License.
 #include "third_party/iree/runtime/src/iree/vm/native_module_cc.h"
 #include "third_party/iree/runtime/src/iree/vm/native_module_packing.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime2/gemm.h"
-#include "tensorflow/compiler/xla/service/gpu/runtime2/graph.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime2/kernel.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime2/memcpy.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime2/vm.h"
@@ -36,7 +35,6 @@ namespace xla::gpu {
 //===-----------------------------------------------------------------------===/
 
 using vm::GemmAPI;
-using vm::GraphAPI;
 using vm::KernelAPI;
 using vm::MemcpyAPI;
 using vm::TraceAPI;
@@ -44,14 +42,12 @@ using vm::TraceAPI;
 class XlaGpuModuleState : public GemmAPI,
                           public KernelAPI,
                           public MemcpyAPI,
-                          public GraphAPI,
                           public TraceAPI {
  public:
   explicit XlaGpuModuleState(iree_hal_allocator_t* device_allocator)
       : GemmAPI(device_allocator),
         KernelAPI(device_allocator),
-        MemcpyAPI(device_allocator),
-        GraphAPI(device_allocator) {}
+        MemcpyAPI(device_allocator) {}
 };
 
 //===----------------------------------------------------------------------===//
@@ -102,6 +98,7 @@ static const iree::vm::NativeFunction<XlaGpuModuleState> kXlaGpuFunctions[] = {
     MakeApiFunction("memcpy.d2d", &MemcpyAPI::MemcpyD2D),
     MakeApiFunction("memcpy.load.i1", &MemcpyAPI::LoadI1),
 
+<<<<<<< HEAD
     // XLA:GPU graph APIs.
     MakeApiFunction("graph.create", &GraphAPI::GraphCreate),
     MakeApiFunction("graph.kernel_node.create",
@@ -112,6 +109,8 @@ static const iree::vm::NativeFunction<XlaGpuModuleState> kXlaGpuFunctions[] = {
 #endif
     MakeApiFunction("graph.execute", &GraphAPI::GraphExecute),
 
+=======
+>>>>>>> upstream/master
     // XLA:GPU tracing APIs
     MakeApiFunction("trace.create", &TraceAPI::TraceCreate),
 };
@@ -195,12 +194,6 @@ iree_status_t RegisterXlaGpuTypes(iree_vm_instance_t* instance) {
   // XLA:GPU kernel dispatch types
   IREE_RETURN_IF_ERROR(RegisterType<vm::Kernel>(instance, "xla_gpu.kernel",
                                                 &kernel_registration));
-
-  // XLA:GPU graph types
-  IREE_RETURN_IF_ERROR(
-      RegisterType<vm::Graph>(instance, "xla_gpu.graph", &graph_registration));
-  IREE_RETURN_IF_ERROR(RegisterType<vm::GraphNode>(
-      instance, "xla_gpu.graph.node", &graph_node_registration));
 
   // XLA:GPU tracing types
   IREE_RETURN_IF_ERROR(

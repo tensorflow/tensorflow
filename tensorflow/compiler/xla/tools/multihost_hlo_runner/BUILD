@@ -20,7 +20,6 @@ build_test(
     name = "hlo_runner_main_build_test",
     tags = [
         "gpu",
-        "no_rocm",
     ],
     targets = [
         ":hlo_runner_main",

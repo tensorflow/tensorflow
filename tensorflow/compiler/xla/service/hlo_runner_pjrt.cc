@@ -90,6 +90,8 @@ StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
       module->config().replica_count());
   compile_options.executable_build_options.set_run_backend_only(
       !run_hlo_passes);
+  *compile_options.executable_build_options.mutable_debug_options() =
+      module->config().debug_options();
 
   std::vector<Shape> parameter_shapes;
   parameter_shapes.reserve(

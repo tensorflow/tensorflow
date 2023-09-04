@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputDialect.h"
-#include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputOps.h"
+#include "iree-dialects/Dialect/Input/InputDialect.h"
+#include "iree-dialects/Dialect/Input/InputOps.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -140,9 +140,9 @@ struct ConvertGemmOp : public OpConversionPattern<lmhlo_gpu::GEMMOp> {
     auto trace = getTrace(api, b, module, op);
 
     // Export arguments to buffer views.
-    auto lhs = state.remapped[block][op.getA()];
-    auto rhs = state.remapped[block][op.getB()];
-    auto out = state.remapped[block][op.getC()];
+    auto lhs = state.remapped(block, op.getA());
+    auto rhs = state.remapped(block, op.getB());
+    auto out = state.remapped(block, op.getC());
 
     if (!lhs || !rhs || !out) {
       return rewriter.notifyMatchFailure(

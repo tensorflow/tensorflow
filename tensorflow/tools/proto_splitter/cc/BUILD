@@ -12,7 +12,7 @@ package(
     default_visibility = [
         "//learning/brain/tfrt/aot:__subpackages__",
         "//learning/brain/tfrt/tf_tpu:__subpackages__",
-        "//tensorflow/cc/experimental/image_format:__subpackages__",
+        "//tensorflow/cc/saved_model/image_format:__subpackages__",
         "//tensorflow/tools/proto_splitter:__subpackages__",
     ],
     licenses = ["notice"],
@@ -102,8 +102,8 @@ cc_library(
     hdrs = ["util.h"],
     visibility = [
         "//learning/brain/tfrt/aot:__subpackages__",
-        "//tensorflow/cc/experimental/image_format:__subpackages__",
         "//tensorflow/cc/saved_model:__subpackages__",
+        "//tensorflow/cc/saved_model/image_format:__subpackages__",
         "//tensorflow/tools/proto_splitter:__subpackages__",
     ],
     deps = [

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -58,6 +59,7 @@ inline int64_t value_or_default(int64_t x, int64_t y, int64_t z) {
 }
 
 void SetRootDatasetParams(const Options& options, RootDataset::Params* params) {
+  LOG(INFO) << "`tf.data.Options` values set are " << options.DebugString();
   if (ShouldConfigureMaxIntraOpParallelism(options)) {
     params->max_intra_op_parallelism =
         options.threading_options().max_intra_op_parallelism();
@@ -67,33 +69,31 @@ void SetRootDatasetParams(const Options& options, RootDataset::Params* params) {
         options.threading_options().private_threadpool_size();
   }
   params->autotune = ShouldUseAutotuning(options);
-  if (params->autotune) {
-    params->autotune_algorithm = model::AutotuneAlgorithm::DEFAULT;
-    auto experiments = GetExperiments();
-    if (experiments.contains("stage_based_autotune") ||
-        experiments.contains("stage_based_autotune_v2")) {
-      params->autotune_algorithm = model::AutotuneAlgorithm::STAGE_BASED;
-    }
-    if (options.autotune_options().optional_autotune_algorithm_case() ==
-        AutotuneOptions::kAutotuneAlgorithm) {
-      params->autotune_algorithm =
-          options.autotune_options().autotune_algorithm();
-    }
-    params->autotune_cpu_budget = value_or_default(
-        options.autotune_options().cpu_budget(), 0, GetCpuBudget());
-    if (experiments.contains("autotune_buffer_optimization")) {
-      // When running this experiment, increase the ram_budget since it already
-      // takes into account the ram usage in buffer sizing, which is not the
-      // case for prefetch autotuner. Without this, we see degradation in some
-      // jobs for lack of buffers while ram usage is low.
-      params->autotune_ram_budget =
-          value_or_default(options.autotune_options().ram_budget(), 0,
-                           0.90 * port::AvailableRam());
-    } else {
-      params->autotune_ram_budget =
-          value_or_default(options.autotune_options().ram_budget(), 0,
-                           model::kRamBudgetShare * port::AvailableRam());
-    }
+  params->autotune_algorithm = model::AutotuneAlgorithm::DEFAULT;
+  auto experiments = GetExperiments();
+  if (experiments.contains("stage_based_autotune") ||
+      experiments.contains("stage_based_autotune_v2")) {
+    params->autotune_algorithm = model::AutotuneAlgorithm::STAGE_BASED;
+  }
+  if (options.autotune_options().optional_autotune_algorithm_case() ==
+      AutotuneOptions::kAutotuneAlgorithm) {
+    params->autotune_algorithm =
+        options.autotune_options().autotune_algorithm();
+  }
+  params->autotune_cpu_budget = value_or_default(
+      options.autotune_options().cpu_budget(), 0, GetCpuBudget());
+  if (experiments.contains("autotune_buffer_optimization")) {
+    // When running this experiment, increase the ram_budget since it already
+    // takes into account the ram usage in buffer sizing, which is not the
+    // case for prefetch autotuner. Without this, we see degradation in some
+    // jobs for lack of buffers while ram usage is low.
+    params->autotune_ram_budget =
+        value_or_default(options.autotune_options().ram_budget(), 0,
+                         0.90 * port::AvailableRam());
+  } else {
+    params->autotune_ram_budget =
+        value_or_default(options.autotune_options().ram_budget(), 0,
+                         model::kRamBudgetShare * port::AvailableRam());
   }
 }
 
@@ -129,9 +129,8 @@ void AddTraceMetadata(const RootDataset::Params& params, const Options& options,
     trace_metadata->push_back(
         std::make_pair(kExperiments, absl::StrJoin(experiments, " ")));
   }
-  trace_metadata->push_back(std::make_pair(
-      kWarmStart,
-      options.optimization_options().warm_start() ? "true" : "false"));
+  trace_metadata->push_back(
+      std::make_pair(kWarmStart, options.warm_start() ? "true" : "false"));
 }
 }  // namespace
 
@@ -281,9 +280,11 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     // so no matter whether dataset()->params_.autotune is on or not
     // we need to pass ram_budget_manager_ to the downstream dataset operations
     params.ram_budget_manager = ram_budget_manager_;
-    if (dataset()->params_.autotune) {
-      params.model = model_;
-    }
+    // After cl/548201925, `ctx->model()` may not be `nullptr` even when
+    // autotuning is off, but `model_` should be `nullptr` and it should have
+    // been set to a valid model in `Initialize()` if autotuning is on. We
+    // should simply set `params.model` to `model_` here.
+    params.model = model_;
     if (dataset()->params_.private_threadpool_size >= 0) {
       params.runner = [pool = thread_pool_.get()](std::function<void()> c) {
         pool->Schedule(std::move(c));

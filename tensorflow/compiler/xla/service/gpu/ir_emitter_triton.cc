@@ -88,6 +88,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -749,8 +750,10 @@ StatusOr<LaunchDimensions> MatMulImpl(
   CHECK_GE(block_n, 16);
 
   const DotDimensionNumbers& dims = dot_instr->dot_dimension_numbers();
-  TF_ASSIGN_OR_RETURN(const auto analysis, TritonFusionAnalysis::Execute(
-                                               *dot_instr->parent(), split_k));
+  TF_ASSIGN_OR_RETURN(
+      const TritonFusionAnalysis analysis,
+      TritonFusionAnalysis::Execute(*dot_instr->parent(), split_k));
+  VLOG(6) << analysis.ToString();
 
   // Rely on dot decomposer: there is just one contracting and one
   // non-contracting dimension on each side + batch ones optionally.
@@ -1472,7 +1475,11 @@ StatusOr<LaunchDimensions> TritonWrapper(
                                 device_info.shared_memory_per_block_optin));
 
   b.create<mt::ReturnOp>(loc);
-  VLOG(6) << llvm_ir::DumpToString(*triton_module);
+  if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
+    DumpToFileInDirOrStdout(*hlo_computation->parent(), "triton_ir", "ttir",
+                            llvm_ir::DumpToString(*triton_module));
+  }
+
   CHECK(mlir::succeeded(mlir::verify(*triton_module)));
 
   // Compile Triton kernel to LLVM.

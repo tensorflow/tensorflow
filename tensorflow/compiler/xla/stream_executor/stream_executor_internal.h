@@ -263,7 +263,6 @@ class StreamExecutorInterface {
     return tsl::Status(absl::StatusCode::kUnimplemented,
                        "GetStatus is not supported on this executor.");
   }
-  virtual int PlatformDeviceCount() = 0;
   virtual tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface* other) = 0;
 

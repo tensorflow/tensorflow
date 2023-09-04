@@ -201,9 +201,9 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
 
 
 def _fftn_wrapper(fft_n, default_name):
-  """Wrapper around gen_spectral_ops.fftn/ifftn."""
+  """Wrapper around gen_spectral_ops.fftn."""
 
-  def _fftn(input_tensor, fft_length=None, axes=None, name=None):
+  def _fftn(input_tensor, fft_length=None, axes=None, norm=None, name=None):
     """Wrapper around gen_spectral_ops.*fft that infers fft_length and axes arguments."""
     with _ops.name_scope(
         name, default_name, [input_tensor, fft_length, axes]
@@ -223,17 +223,65 @@ def _fftn_wrapper(fft_n, default_name):
       fft_length_static = _tensor_util.constant_value(fft_length)
       if fft_length_static is not None:
         fft_length = fft_length_static
-
+      if norm is None:
+        norm = "backward"
+      n = 1
+      if norm != "backward":
+        for fft_length_i in fft_length:
+          n *= fft_length_i
+        if norm == "forward":
+          input_tensor /= n
+        elif norm == "ortho":
+          input_tensor /= np.sqrt(n)  # should be sqrt(N)
       return fft_n(input_tensor, fft_length, axes, name=name)
 
   _fftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", fft_n.__doc__)
   return _fftn
 
 
+def _ifftn_wrapper(ifft_n, default_name):
+  """Wrapper around gen_spectral_ops.ifftn."""
+
+  def _ifftn(input_tensor, fft_length=None, axes=None, norm=None, name=None):
+    """Wrapper around gen_spectral_ops.*fft that infers fft_length and axes arguments."""
+    with _ops.name_scope(
+        name, default_name, [input_tensor, fft_length, axes]
+    ) as name:
+      axes = _process_empty_axes(input_tensor, axes)
+      fft_rank = axes.shape[0]
+      input_tensor = _ops.convert_to_tensor(
+          input_tensor, preferred_dtype=_dtypes.complex64
+      )
+      input_tensor.shape.with_rank_at_least(fft_rank)
+      if fft_length is None:
+        fft_length = _infer_fft_length_for_fftn(input_tensor)
+      else:
+        fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
+
+      fft_length_static = _tensor_util.constant_value(fft_length)
+      if fft_length_static is not None:
+        fft_length = fft_length_static
+      if norm is None:
+        norm = "backward"
+      n = 1
+      if norm != "backward":
+        for fft_length_i in fft_length:
+          n *= fft_length_i
+        if norm == "forward":
+          input_tensor *= n
+        elif norm == "ortho":
+          input_tensor *= np.sqrt(n)  # should be sqrt(N)
+      return ifft_n(input_tensor, fft_length, axes, name=name)
+
+  _ifftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", ifft_n.__doc__)
+  return _ifftn
+
+
 def _rfftn_wrapper(rfft_n, default_name):
   """Wrapper around gen_spectral_ops.rfftn."""
 
-  def _rfftn(input_tensor, fft_length=None, axes=None, name=None):
+  def _rfftn(input_tensor, fft_length=None, axes=None, norm=None, name=None):
     """Wrapper around gen_spectral_ops.*fft that infers fft_length and axes arguments."""
     with _ops.name_scope(
         name, default_name, [input_tensor, fft_length, axes]
@@ -264,8 +312,22 @@ def _rfftn_wrapper(rfft_n, default_name):
       fft_length_static = _tensor_util.constant_value(fft_length)
       if fft_length_static is not None:
         fft_length = fft_length_static
+      if norm is None:
+        norm = "backward"
+      n = 1
+      if norm != "backward":
+        for fft_length_i in fft_length:
+          n *= fft_length_i
+        if norm == "forward":
+          input_tensor /= n
+        elif norm == "ortho":
+          input_tensor /= np.sqrt(n)  # should be sqrt(N)
       return rfft_n(
-          input_tensor, fft_length, axes, Tcomplex=complex_dtype, name=name
+          input_tensor,
+          fft_length,
+          axes,
+          Tcomplex=complex_dtype,
+          name=name,
       )
 
   _rfftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", rfft_n.__doc__)
@@ -275,7 +337,7 @@ def _rfftn_wrapper(rfft_n, default_name):
 def _irfftn_wrapper(irfft_n, default_name):
   """Wrapper around gen_spectral_ops.irfftn."""
 
-  def _irfftn(input_tensor, fft_length=None, axes=None, name=None):
+  def _irfftn(input_tensor, fft_length=None, axes=None, norm=None, name=None):
     """Wrapper irfft* that infers fft_length argument."""
     with _ops.name_scope(
         name, default_name, [input_tensor, fft_length]
@@ -304,6 +366,16 @@ def _irfftn_wrapper(irfft_n, default_name):
       if fft_length_static is not None:
         fft_length = fft_length_static
 
+      if norm is None:
+        norm = "backward"
+      n = 1
+      if norm != "backward":
+        for fft_length_i in fft_length:
+          n *= fft_length_i
+        if norm == "forward":
+          input_tensor *= n
+        elif norm == "ortho":
+          input_tensor *= np.sqrt(n)  # should be sqrt(N)
       return irfft_n(
           input_tensor, fft_length, axes, Treal=real_dtype, name=name
       )
@@ -328,7 +400,7 @@ fftnd = _fftn_wrapper(gen_spectral_ops.fftnd, "fftnd")
 tf_export("signal.fftnd")(
     dispatch.add_dispatch_support(fftnd)
 )
-ifftnd = _fftn_wrapper(gen_spectral_ops.ifftnd, "ifftnd")
+ifftnd = _ifftn_wrapper(gen_spectral_ops.ifftnd, "ifftnd")
 tf_export("signal.ifftnd")(
     dispatch.add_dispatch_support(ifftnd)
 )

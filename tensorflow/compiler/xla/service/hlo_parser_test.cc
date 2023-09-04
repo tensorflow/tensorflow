@@ -21,12 +21,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -3596,6 +3598,30 @@ TEST_F(HloParserTest, ParseTransposedIotaShardingSubGroup) {
   std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL,
                                                   OpSharding::REPLICATED};
   EXPECT_EQ(HloSharding::Subgroup(tile_assignment, subgroup_types).ToString(),
+            original);
+}
+
+TEST_F(HloParserTest, ParseShardAs) {
+  const std::string original = "{manual shard_as 1}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  EXPECT_EQ(
+      HloSharding::Manual().SetShardGroup(HloSharding::ShardAs(1)).ToString(),
+      original);
+}
+
+TEST_F(HloParserTest, ParseShardLike) {
+  const std::string original =
+      "{devices=[2,2,2,2]<=[16] last_tile_dims={manual, replicated} shard_like "
+      "1}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  TileAssignment tile_assignment({2, 2, 2, 2});
+  std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL,
+                                                  OpSharding::REPLICATED};
+  EXPECT_EQ(HloSharding::Subgroup(tile_assignment, subgroup_types)
+                .SetShardGroup(HloSharding::ShardLike(1))
+                .ToString(),
             original);
 }
 

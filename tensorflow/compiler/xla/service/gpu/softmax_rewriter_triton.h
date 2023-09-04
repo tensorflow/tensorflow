@@ -16,15 +16,24 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_SOFTMAX_REWRITER_TRITON_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_SOFTMAX_REWRITER_TRITON_H_
 
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 namespace gpu {
+
+struct DiamondChainDescriptor {
+  HloInstruction* root = nullptr;
+  HloInstruction* producer = nullptr;
+};
 
 // Rewrite compatible Softmax into a custom fusion region to be code-generated
 // with the Triton-based Softmax emitter.
@@ -38,6 +47,18 @@ class SoftmaxRewriterTriton : public HloModulePass {
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  // Finds and returns all the fusible diamond chains in the module. The
+  // resulting vector is sorted according to a post-order matching (i.e. within
+  // the same computation, producer diamonds appear before consumer diamonds).
+  std::vector<DiamondChainDescriptor> FindAllFusibleDiamondChains(
+      HloModule& module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
+
+  // Constructs a Softmax fusion containing all the instructions between the
+  // root and the producer of a diamond chain. The producer is excluded from the
+  // fusion.
+  Status FuseDiamondChain(const DiamondChainDescriptor& diamond_chain);
 
  private:
   GpuVersion gpu_version_;

@@ -15,11 +15,10 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/split_lib.h"
-
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/split_lib.h"
 
 namespace tensorflow {
 namespace functor {
@@ -42,8 +41,8 @@ void Split<Eigen::ThreadPoolDevice, T, NDims>::operator()(
   template struct Split<Eigen::ThreadPoolDevice, T, 3>;
 
 TF_CALL_ALL_TYPES(DEFINE_CPU_KERNELS)
-DEFINE_CPU_KERNELS(quint8)
-
+TF_CALL_float8_e5m2(DEFINE_CPU_KERNELS)
+    TF_CALL_float8_e4m3fn(DEFINE_CPU_KERNELS) DEFINE_CPU_KERNELS(quint8)
 
 }  // namespace functor
 }  // namespace tensorflow

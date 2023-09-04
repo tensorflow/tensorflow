@@ -39,14 +39,12 @@ namespace gpu {
 // if can't fuse into at least one).
 class FusionInstructionMerger {
  public:
-  explicit FusionInstructionMerger(HloComputation* computation,
-                                   const GpuDeviceInfo& d,
-                                   se::CudaComputeCapability cc,
-                                   HloCostAnalysis::ShapeSizeFunction f)
+  explicit FusionInstructionMerger(
+      HloComputation* computation, const GpuDeviceInfo& gpu_device_info,
+      HloCostAnalysis::ShapeSizeFunction shape_size_function)
       : computation_(computation),
-        shape_size_function_(f),
-        gpu_device_info_(d),
-        compute_capability_(cc),
+        shape_size_function_(shape_size_function),
+        gpu_device_info_(gpu_device_info),
         dump_fusion_visualization_(computation->parent()
                                        ->config()
                                        .debug_options()
@@ -67,7 +65,6 @@ class FusionInstructionMerger {
   std::optional<GpuHloCostAnalysis> cost_analysis_;
   FusionInfoCache fusion_info_cache_;
   const GpuDeviceInfo& gpu_device_info_;
-  se::CudaComputeCapability compute_capability_;
   bool changed_ = false;
   bool dump_fusion_visualization_ = false;
 
@@ -278,7 +275,7 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   }
 
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      producer, &*cost_analysis_, compute_capability_, producer->users());
+      producer, &*cost_analysis_, producer->users());
   if (t.time_fused > t.time_unfused) {
     ++num_fail_slower_if_fused_;
     return "will execute slower if fused";
@@ -299,7 +296,6 @@ StatusOr<bool> FusionMerger::Run(
     XLA_VLOG_LINES(9, computation->ToString());
 
     FusionInstructionMerger fusion_merger(computation, gpu_device_info_,
-                                          compute_capability_,
                                           shape_size_function_);
     TF_RETURN_IF_ERROR(fusion_merger.Run());
     changed |= fusion_merger.changed();

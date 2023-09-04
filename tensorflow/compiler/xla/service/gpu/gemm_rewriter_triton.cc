@@ -374,10 +374,8 @@ class FusionContext {
   // `origin` with output `origin_dim_order` till parameters of the computation.
   // Store the found parameters and their iteration specs.
   Status PropagateDimensionOrdersToParameters(
-      const HloInstruction& origin,
-      absl::flat_hash_set<const HloInstruction*>& parameters,
-      absl::flat_hash_map<const HloInstruction*, TensorIterationSpec>&
-          iter_specs);
+      const HloInstruction& origin, ConstHloInstructionSet& parameters,
+      ConstHloInstructionMap<TensorIterationSpec>& iter_specs);
 
   // Index of dot dimension that can be split.
   // Currently typically LHS non-contracting one.
@@ -1413,10 +1411,8 @@ Status MakeDotComputationSplitKBatch(
 }
 
 Status FusionContext::PropagateDimensionOrdersToParameters(
-    const HloInstruction& origin,
-    absl::flat_hash_set<const HloInstruction*>& parameters,
-    absl::flat_hash_map<const HloInstruction*, TensorIterationSpec>&
-        iter_specs) {
+    const HloInstruction& origin, ConstHloInstructionSet& parameters,
+    ConstHloInstructionMap<TensorIterationSpec>& iter_specs) {
   absl::flat_hash_set<const HloInstruction*> visited;
   std::queue<const HloInstruction*> to_process;
   // Dimension orders describing outputs of corresponding instructions.
@@ -1735,6 +1731,61 @@ StatusOr<bool> GemmRewriterTriton::Run(
     changed |= result;
   }
   return changed;
+}
+
+static std::string IterationSpecByInstructionMapToString(  // NOLINT
+    const TritonFusionAnalysis::IterationSpecByInstructionMap& m) {
+  return absl::StrCat("IterSpec{",
+                      absl::StrJoin(m, ", ",
+                                    [&](std::string* s, const auto& kv) {
+                                      absl::StrAppend(s, kv.first->name(), ": ",
+                                                      kv.second.ToString());
+                                    }),
+                      "}");
+}
+
+static std::string ScopeToString(TritonFusionAnalysis::Scope s) {  // NOLINT
+  switch (s) {
+    case TritonFusionAnalysis::Scope::LHS:
+      return "LHS";
+    case TritonFusionAnalysis::Scope::RHS:
+      return "RHS";
+    case TritonFusionAnalysis::Scope::OUTPUT:
+      return "OUTPUT";
+  }
+}
+
+std::string TensorIterationSpec::IterationSpecFragment::ToString() const {
+  return absl::StrCat("{stride=", stride, ", count=", count, ", subfragments=[",
+                      absl::StrJoin(subfragments, ", "), "]}");
+}
+
+std::string TensorIterationSpec::ToString() const {
+  return absl::StrCat(
+      "{",
+      absl::StrJoin(dim_iteration_specs_, ", ",
+                    [&](std::string* s, const auto& kv) {
+                      absl::StrAppend(
+                          s, kv.first, ": ", "[",
+                          absl::StrJoin(kv.second, ", ",
+                                        [&](std::string* ss, const auto& v) {
+                                          absl::StrAppend(ss, v.ToString());
+                                        }),
+                          "]");
+                    }),
+      "}");
+}
+
+std::string TritonFusionAnalysis::ToString() const {
+  return absl::StrCat(
+      "TritonFusionAnalysis{\n",
+      absl::StrJoin(iter_specs_, ",\n",
+                    [&](std::string* s, const auto& kv) {
+                      absl::StrAppend(
+                          s, ScopeToString(kv.first), ": ",
+                          IterationSpecByInstructionMapToString(kv.second));
+                    }),
+      "\n}");
 }
 
 }  // namespace gpu

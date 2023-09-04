@@ -168,27 +168,27 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
   if (output->type == kTfLiteInt32) {
     if (kernel_type == kReference) {
       if (need_broadcast) {
-        TF_LITE_MUL(reference_ops, BroadcastMul4DSlow, int32_t);
+        TF_LITE_MUL(reference_ops, BroadcastMul6DSlow, int32_t);
       } else {
         TF_LITE_MUL(reference_ops, Mul, int32_t);
       }
     } else {
       if (need_broadcast) {
-        TF_LITE_MUL(optimized_ops, BroadcastMul4DSlow, int32_t);
+        TF_LITE_MUL(optimized_ops, BroadcastMul6DSlow, int32_t);
       } else {
         TF_LITE_MUL(optimized_ops, Mul, int32_t);
       }
     }
   } else if (output->type == kTfLiteUInt32) {
     if (need_broadcast) {
-      TF_LITE_MUL(reference_ops, BroadcastMul4DSlow, uint32_t);
+      TF_LITE_MUL(reference_ops, BroadcastMul6DSlow, uint32_t);
     } else {
       TF_LITE_MUL(reference_ops, Mul, uint32_t);
     }
   } else if (output->type == kTfLiteFloat32) {
     if (kernel_type == kReference) {
       if (need_broadcast) {
-        TF_LITE_MUL(reference_ops, BroadcastMul4DSlow, float);
+        TF_LITE_MUL(reference_ops, BroadcastMul6DSlow, float);
       } else {
         TF_LITE_MUL(reference_ops, Mul, float);
       }
@@ -228,7 +228,7 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
                      "Failed to run xnn_run_multiply_nd_f32. Error code: %d",
                      status);
           if (need_broadcast) {
-            TF_LITE_MUL(reference_ops, BroadcastMul4DSlow, float);
+            TF_LITE_MUL(reference_ops, BroadcastMul6DSlow, float);
           } else {
             TF_LITE_MUL(reference_ops, Mul, float);
           }
@@ -249,7 +249,7 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
     SetActivationParams(output_activation_min, output_activation_max,
                         &op_params);
     if (need_broadcast) {
-      reference_ops::BroadcastMul4DSlow<int16_t, true>(
+      reference_ops::BroadcastMul6DSlow<int16_t, true>(
           op_params, GetTensorShape(input1), GetTensorData<int16_t>(input1),
           GetTensorShape(input2), GetTensorData<int16_t>(input2),
           GetTensorShape(output), GetTensorData<int16_t>(output));
@@ -261,7 +261,7 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
     }
   } else if (output->type == kTfLiteInt64) {
     if (need_broadcast) {
-      TF_LITE_MUL(reference_ops, BroadcastMul4DSlow, int64_t);
+      TF_LITE_MUL(reference_ops, BroadcastMul6DSlow, int64_t);
     } else {
       TF_LITE_MUL(reference_ops, Mul, int64_t);
     }
@@ -275,7 +275,7 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
       GetTensorData<std::complex<float>>(output));
 
     if (need_broadcast) {
-      TF_LITE_MUL_COMPLEX(BroadcastMul4DSlow);
+      TF_LITE_MUL_COMPLEX(BroadcastMul6DSlow);
     } else {
       TF_LITE_MUL_COMPLEX(Mul);
     }
@@ -309,7 +309,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     if (input1->type == kTfLiteInt8) {
       if (kernel_type == kReference) {
         if (need_broadcast) {
-          TF_LITE_MUL(reference_integer_ops, BroadcastMul4DSlow, int8_t);
+          TF_LITE_MUL(reference_integer_ops, BroadcastMul6DSlow, int8_t);
         } else {
           TF_LITE_MUL(reference_integer_ops, Mul, int8_t);
         }
@@ -332,7 +332,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_ENSURE_EQ(context, op_params.output_offset, 0.0);
 
       if (need_broadcast) {
-        TF_LITE_MUL(reference_integer_ops, BroadcastMul4DSlow, int16_t);
+        TF_LITE_MUL(reference_integer_ops, BroadcastMul6DSlow, int16_t);
       } else {
         TF_LITE_MUL(reference_integer_ops, Mul, int16_t);
       }
@@ -340,7 +340,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       // type == kTfLiteUInt8
       if (kernel_type == kReference) {
         if (need_broadcast) {
-          TF_LITE_MUL(reference_ops, BroadcastMul4DSlow, uint8_t);
+          TF_LITE_MUL(reference_ops, BroadcastMul6DSlow, uint8_t);
         } else {
           TF_LITE_MUL(reference_ops, Mul, uint8_t);
         }

@@ -342,7 +342,7 @@ typedef struct {
   // These fields are only used in old models for backward compatibility.
   // In the current implementation, we use the 2nd input of the op as the shape,
   // and these fields are unused.
-  int shape[TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT];
+  int32_t shape[TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT];
   int num_dimensions;
 } TfLiteReshapeParams;
 
@@ -399,7 +399,7 @@ typedef struct {
 typedef struct {
   // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
   // For now we will fix the maximum possible number of dimensions.
-  int squeeze_dims[8];
+  int32_t squeeze_dims[8];
   int num_squeeze_dims;
 } TfLiteSqueezeParams;
 

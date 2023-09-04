@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_op_metadata.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -9310,6 +9311,42 @@ ENTRY %entry {
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Sharding("{{replicated}, {manual}}"));
+}
+
+TEST_F(ShardingPropagationTest, PropagateFromDanglingShardingCustomCall) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  p.0 = s32[40000]{0} parameter(0)
+  add = s32[40000]{0} add(p.0, p.0)
+  cc = s32[40000]{0} custom-call(add), custom_call_target="Sharding", sharding={devices=[4]0,1,2,3}
+  ROOT mul = s32[40000]{0} multiply(add, add)
+
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(bool dce_ed, RunHloPass(&dce, module.get()));
+  EXPECT_TRUE(dce_ed);
+
+  XLA_VLOG_LINES(1, module->ToString());
+  // Check dangling sharding custom-call can be removed by DCE after
+  // propagation.
+  auto* instruction = FindInstruction(module.get(), "param0");
+  EXPECT_EQ(instruction, nullptr);
+  // Check sharding is correctly propagated.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{devices=[4]0,1,2,3}"));
 }
 
 }  // namespace

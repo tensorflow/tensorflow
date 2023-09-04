@@ -3481,8 +3481,8 @@ Region &WhileRegionOp::getLoopBody() { return getBody(); }
 //===----------------------------------------------------------------------===//
 
 OperandRange WhileRegionOp::getEntrySuccessorOperands(
-    std::optional<unsigned> index) {
-  if (!index) {
+    RegionBranchPoint point) {
+  if (point.isParent()) {
     // WhileRegionOp branches to the condition, which branches to the body. But
     // the op itself doesn't branch back to itself. So this range is empty.
     auto end = this->getOperation()->operand_end();
@@ -3497,8 +3497,8 @@ OperandRange WhileRegionOp::getEntrySuccessorOperands(
 }
 
 void WhileRegionOp::getSuccessorRegions(
-    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor> &regions) {
-  if (index && *index == 0) {
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions) {
+  if (!point.isParent() && point == (*this)->getRegion(0)) {
     // 'cond' branches to the body or returns.
     Operation *yield = getCond().front().getTerminator();
     if (yield->getOperands().size() ==
@@ -3512,11 +3512,11 @@ void WhileRegionOp::getSuccessorRegions(
       regions.push_back(RegionSuccessor(&getBody()));
       regions.push_back(RegionSuccessor());  // branch back to parent, no args
     }
-  } else if (index && *index == 1) {
+  } else if (!point.isParent() && point == (*this)->getRegion(1)) {
     // 'body' branches back to 'cond'.
     regions.push_back(
         RegionSuccessor(&getCond(), getCond().front().getArguments()));
-  } else if (!index) {
+  } else if (point.isParent()) {
     // The parent branches to 'cond'. It is also considered to branch to `body`
     // in case the terminator of `cond` doesn't forward the arguments of `cond`.
     regions.push_back(
@@ -4383,7 +4383,7 @@ LogicalResult UniformQuantizedClipByValueOp::verify() {
 //===----------------------------------------------------------------------===//
 
 MutableOperandRange YieldOp::getMutableSuccessorOperands(
-    std::optional<unsigned> index) {
+    RegionBranchPoint point) {
   if (auto whileOp =
           llvm::dyn_cast<WhileRegionOp>(this->getOperation()->getParentOp())) {
     if (&whileOp.getCond() == this->getOperation()->getParentRegion()) {

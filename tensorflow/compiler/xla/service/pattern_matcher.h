@@ -26,8 +26,11 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "absl/utility/utility.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -103,6 +106,8 @@ namespace xla {
 //
 //  Layout():
 //     - EqualTo
+//     - WithMinorToMajor: minor to major dimension ordering matches the given
+//       pattern
 //
 // Op(), Shape(), and Layout() may be passed an argument of type
 // HloInstruction**, Shape**, or Layout**, respectively, or const versions of
@@ -503,6 +508,30 @@ class LayoutPatternEqualImpl {
   const ::xla::Layout* layout_;
 };
 
+class LayoutPatternMinorToMajorImpl {
+ public:
+  explicit LayoutPatternMinorToMajorImpl(
+      absl::Span<const int64_t> minor_to_major)
+      : minor_to_major_(minor_to_major.begin(), minor_to_major.end()) {}
+
+  bool Match(const ::xla::Layout* layout, MatchOption option) const {
+    if (layout->minor_to_major() != minor_to_major_) {
+      EXPLAIN << "Layout does not have minor to major ["
+              << absl::StrJoin(minor_to_major_, ",") << "]";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "with minor to major [" << absl::StrJoin(minor_to_major_, ",")
+        << "]";
+  }
+
+ private:
+  absl::InlinedVector<int64_t, 8> minor_to_major_;
+};
+
 // A pattern that matches Layouts.
 template <typename LayoutType, typename Impl>
 class LayoutPattern {
@@ -549,6 +578,11 @@ class LayoutPattern {
   // The layout must outlive the returned pattern.
   constexpr auto EqualTo(const ::xla::Layout* layout) const {
     return AppendImpl(LayoutPatternEqualImpl(layout));
+  }
+
+  constexpr auto WithMinorToMajor(
+      absl::Span<const int64_t> minor_to_major) const {
+    return AppendImpl(LayoutPatternMinorToMajorImpl(minor_to_major));
   }
 
  private:
@@ -1106,6 +1140,10 @@ class ShapePattern {
   template <typename LayoutType, typename LayoutImpl>
   auto WithLayout(const LayoutPattern<LayoutType, LayoutImpl>& layout) const {
     return AppendImpl(ShapePatternLayoutImpl<LayoutType, LayoutImpl>(layout));
+  }
+
+  constexpr auto WithLayout(absl::Span<const int64_t> minor_to_major) const {
+    return WithLayout(Layout().WithMinorToMajor(minor_to_major));
   }
 
   constexpr auto WithLayoutEqualTo(const ::xla::Layout* layout) const {
@@ -2113,6 +2151,13 @@ class HloInstructionPattern {
     return WithShape(Shape().WithElementType(ty).WithDims(dims));
   }
 
+  // Modifies the pattern to match only if the instruction's shape's element
+  // type, dims and minor to major dimension ordering match the given pattern.
+  constexpr auto WithShape(PrimitiveType ty, absl::Span<const int64_t> dims,
+                           absl::Span<const int64_t> minor_to_major) {
+    return WithShape(
+        Shape().WithElementType(ty).WithDims(dims).WithLayout(minor_to_major));
+  }
   // Make this a templated function to work around gcc 4.9.4 template infinite
   // recursion bug.
   template <typename Dummy = void>
@@ -2469,6 +2514,11 @@ inline auto WithOperands(Matcher&& m, int64_t operand_num, FirstArg&& first_arg,
                                     .WithNumOperands(sizeof...(Args)),        \
                                 /*operand_num=*/0,                            \
                                 std::forward<Args>(args)...);                 \
+  }                                                                           \
+                                                                              \
+  template <typename HloInstructionType>                                      \
+  inline auto NAME(HloInstructionType** matched_inst) {                       \
+    return Op(matched_inst).WithOpcode(HloOpcode::k##NAME);                   \
   }
 
 // We could implement all ops as "variadic" ops, but it would make the

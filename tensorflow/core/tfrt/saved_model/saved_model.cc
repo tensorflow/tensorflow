@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
@@ -79,6 +80,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
@@ -441,6 +443,10 @@ SavedModelImpl::LoadSavedModel(Options options,
 
   // Register TFRT dialects
   mlir::DialectRegistry registry;
+  if (AotPackageExists(saved_model_dir)) {
+    LOG(INFO) << "Found AoT package. Register required dialects.";
+    RegisterTFRTDialectsForAoT(registry);
+  }
   RegisterMlirDialect(registry);
   mlir::MLIRContext context(registry);
 
@@ -475,13 +481,21 @@ SavedModelImpl::LoadSavedModel(Options options,
         fallback_state, FallbackState::Create(session_options, fdef_lib));
   }
 
-  ASSIGN_OR_RETURN_IN_IMPORT(
-      auto mlir_module,
-      ImportSavedModel(
-          &context, meta_graph_def, *fallback_state,
-          std::string(saved_model_dir),
-          /*import_user_signatures=*/!options.enable_lazy_loading,
-          options.graph_execution_options.run_placer_grappler_on_functions));
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
+  if (AotPackageExists(saved_model_dir)) {
+    LOG(INFO) << "Found AoT package. Load and deserialize MLIR module.";
+
+    TF_RETURN_IF_ERROR(
+        DeserializeAoTMlirModule(saved_model_dir, &context, &mlir_module));
+  } else {
+    ASSIGN_OR_RETURN_IN_IMPORT(
+        mlir_module,
+        ImportSavedModel(
+            &context, meta_graph_def, *fallback_state,
+            std::string(saved_model_dir),
+            /*import_user_signatures=*/!options.enable_lazy_loading,
+            options.graph_execution_options.run_placer_grappler_on_functions));
+  }
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
   symbol_uids.tf_symbol_uid = MaybeUploadMlirToXsymbol(mlir_module.get());
@@ -534,7 +548,7 @@ SavedModelImpl::LoadSavedModel(Options options,
   mlrt::bc::Buffer bytecode;
   tfrt::BefBuffer bef;
   if (AotPackageExists(saved_model_dir)) {
-    LOG(INFO) << "Found AoT package";
+    LOG(INFO) << "Found AoT package. Load and deserialize BEF.";
 
     ASSIGN_OR_RETURN_IN_COMPILE(
         bef, LoadAotPackages(options.graph_execution_options.compile_options,

@@ -27,26 +27,33 @@ namespace {
 
 TEST(CalibratorSingletonTest, SimpleMinMax) {
   std::vector<std::vector<float>> report_vec;
+  CalibrationOptions calib_opts;
+  calib_opts.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
 
   report_vec.push_back({1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
   report_vec.push_back({1.0f, 2.0f, 3.0f, 4.0f, 10.0f});
   report_vec.push_back({-5.0f, 2.0f, 3.0f, 4.0f, 5.0f});
 
-  CalibratorSingleton::Report(/*id=*/"1", /*data_vec=*/report_vec[0]);
+  CalibratorSingleton::Report(/*id=*/"1", /*data_vec=*/report_vec[0],
+                              /*calib_opts=*/calib_opts);
   std::optional<CalibrationStatistics> statistics =
       CalibratorSingleton::GetStatistics(/*id=*/"1");
+
   EXPECT_TRUE(statistics.has_value());
   EXPECT_EQ(statistics.value().min_max_statistics().global_min(), 1.0f);
   EXPECT_EQ(statistics.value().min_max_statistics().global_max(), 5.0f);
 
-  CalibratorSingleton::Report(/*id=*/"1", /*data_vec=*/report_vec[1]);
+  CalibratorSingleton::Report(/*id=*/"1", /*data_vec=*/report_vec[1],
+                              /*calib_opts=*/calib_opts);
   statistics = CalibratorSingleton::GetStatistics(/*id=*/"1");
 
   EXPECT_TRUE(statistics.has_value());
   EXPECT_EQ(statistics.value().min_max_statistics().global_min(), 1.0f);
   EXPECT_EQ(statistics.value().min_max_statistics().global_max(), 10.0f);
 
-  CalibratorSingleton::Report(/*id=*/"1", /*data_vec=*/report_vec[2]);
+  CalibratorSingleton::Report(/*id=*/"1", /*data_vec=*/report_vec[2],
+                              /*calib_opts=*/calib_opts);
   statistics = CalibratorSingleton::GetStatistics(/*id=*/"1");
 
   EXPECT_TRUE(statistics.has_value());
@@ -56,12 +63,16 @@ TEST(CalibratorSingletonTest, SimpleMinMax) {
 
 TEST(CalibratorSingletonTest, DifferentSessions) {
   std::vector<std::vector<float>> report_vec;
+  CalibrationOptions calib_opts;
+  calib_opts.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
 
   report_vec.push_back({1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
   report_vec.push_back({1.0f, 2.0f, 3.0f, 4.0f, 10.0f});
   report_vec.push_back({-5.0f, 2.0f, 3.0f, 4.0f, 5.0f});
 
-  CalibratorSingleton::Report(/*id=*/"2", /*data_vec=*/report_vec[0]);
+  CalibratorSingleton::Report(/*id=*/"2", /*data_vec=*/report_vec[0],
+                              /*calib_opts=*/calib_opts);
   std::optional<CalibrationStatistics> statistics =
       CalibratorSingleton::GetStatistics(/*id=*/"2");
 
@@ -69,14 +80,16 @@ TEST(CalibratorSingletonTest, DifferentSessions) {
   EXPECT_EQ(statistics.value().min_max_statistics().global_min(), 1.0f);
   EXPECT_EQ(statistics.value().min_max_statistics().global_max(), 5.0f);
 
-  CalibratorSingleton::Report(/*id=*/"2", /*data_vec=*/report_vec[1]);
+  CalibratorSingleton::Report(/*id=*/"2", /*data_vec=*/report_vec[1],
+                              /*calib_opts=*/calib_opts);
   statistics = CalibratorSingleton::GetStatistics(/*id=*/"2");
 
   EXPECT_TRUE(statistics.has_value());
   EXPECT_EQ(statistics.value().min_max_statistics().global_min(), 1.0f);
   EXPECT_EQ(statistics.value().min_max_statistics().global_max(), 10.0f);
 
-  CalibratorSingleton::Report(/*id=*/"3", /*data_vec=*/report_vec[2]);
+  CalibratorSingleton::Report(/*id=*/"3", /*data_vec=*/report_vec[2],
+                              /*calib_opts=*/calib_opts);
   statistics = CalibratorSingleton::GetStatistics(/*id=*/"3");
 
   EXPECT_TRUE(statistics.has_value());
@@ -86,11 +99,15 @@ TEST(CalibratorSingletonTest, DifferentSessions) {
 
 TEST(CalibratorSingletonTest, ClearAndGetEmptyResult) {
   std::vector<std::vector<float>> report_vec;
+  CalibrationOptions calib_opts;
+  calib_opts.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
 
   report_vec.push_back({1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
   report_vec.push_back({1.0f, 2.0f, 3.0f, 4.0f, 10.0f});
 
-  CalibratorSingleton::Report(/*id=*/"4", /*data_vec=*/report_vec[0]);
+  CalibratorSingleton::Report(/*id=*/"4", /*data_vec=*/report_vec[0],
+                              /*calib_opts=*/calib_opts);
   std::optional<CalibrationStatistics> statistics =
       CalibratorSingleton::GetStatistics(/*id=*/"4");
 
@@ -106,12 +123,16 @@ TEST(CalibratorSingletonTest, ClearAndGetEmptyResult) {
 
 TEST(CalibratorSingletonTest, ClearDataAndGetResults) {
   std::vector<std::vector<float>> report_vec;
+  CalibrationOptions calib_opts;
+  calib_opts.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
 
   report_vec.push_back({1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
   report_vec.push_back({1.0f, 2.0f, 3.0f, 4.0f, 10.0f});
   report_vec.push_back({-5.0f, 2.0f, 3.0f, 4.0f, 5.0f});
 
-  CalibratorSingleton::Report(/*id=*/"5", /*data_vec=*/report_vec[0]);
+  CalibratorSingleton::Report(/*id=*/"5", /*data_vec=*/report_vec[0],
+                              /*calib_opts=*/calib_opts);
   std::optional<CalibrationStatistics> statistics =
       CalibratorSingleton::GetStatistics(/*id=*/"5");
 
@@ -119,7 +140,8 @@ TEST(CalibratorSingletonTest, ClearDataAndGetResults) {
   EXPECT_EQ(statistics.value().min_max_statistics().global_min(), 1.0f);
   EXPECT_EQ(statistics.value().min_max_statistics().global_max(), 5.0f);
 
-  CalibratorSingleton::Report(/*id=*/"6", /*data_vec=*/report_vec[1]);
+  CalibratorSingleton::Report(/*id=*/"6", /*data_vec=*/report_vec[1],
+                              /*calib_opts=*/calib_opts);
   statistics = CalibratorSingleton::GetStatistics(/*id=*/"6");
 
   EXPECT_TRUE(statistics.has_value());
@@ -131,7 +153,8 @@ TEST(CalibratorSingletonTest, ClearDataAndGetResults) {
 
   EXPECT_FALSE(statistics.has_value());
 
-  CalibratorSingleton::Report(/*id=*/"6", /*data_vec=*/report_vec[1]);
+  CalibratorSingleton::Report(/*id=*/"6", /*data_vec=*/report_vec[1],
+                              /*calib_opts=*/calib_opts);
   statistics = CalibratorSingleton::GetStatistics(/*id=*/"6");
 
   EXPECT_TRUE(statistics.has_value());
@@ -141,12 +164,16 @@ TEST(CalibratorSingletonTest, ClearDataAndGetResults) {
 
 TEST(CalibratorSingletonTest, SimpleAverageMinMax) {
   std::vector<std::vector<float>> report_vec;
+  CalibrationOptions calib_opts;
+  calib_opts.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX);
 
   report_vec.push_back({-10.0f, 2.0f, 3.0f, 4.0f, 30.0f});
   report_vec.push_back({-20.0f, 2.0f, 3.0f, 4.0f, 60.0f});
   report_vec.push_back({-30.0f, 2.0f, 3.0f, 4.0f, 90.0f});
 
-  CalibratorSingleton::Report(/*id=*/"7", /*data_vec=*/report_vec[0]);
+  CalibratorSingleton::Report(/*id=*/"7", /*data_vec=*/report_vec[0],
+                              /*calib_opts=*/calib_opts);
   std::optional<CalibrationStatistics> statistics =
       CalibratorSingleton::GetStatistics(/*id=*/"7");
 
@@ -155,7 +182,8 @@ TEST(CalibratorSingletonTest, SimpleAverageMinMax) {
   EXPECT_EQ(statistics.value().average_min_max_statistics().max_sum(), 30.0f);
   EXPECT_EQ(statistics.value().average_min_max_statistics().num_samples(), 1);
 
-  CalibratorSingleton::Report(/*id=*/"7", /*data_vec=*/report_vec[1]);
+  CalibratorSingleton::Report(/*id=*/"7", /*data_vec=*/report_vec[1],
+                              /*calib_opts=*/calib_opts);
   statistics = CalibratorSingleton::GetStatistics(/*id=*/"7");
 
   EXPECT_TRUE(statistics.has_value());
@@ -163,7 +191,8 @@ TEST(CalibratorSingletonTest, SimpleAverageMinMax) {
   EXPECT_EQ(statistics.value().average_min_max_statistics().max_sum(), 90.0f);
   EXPECT_EQ(statistics.value().average_min_max_statistics().num_samples(), 2);
 
-  CalibratorSingleton::Report(/*id=*/"7", /*data_vec=*/report_vec[2]);
+  CalibratorSingleton::Report(/*id=*/"7", /*data_vec=*/report_vec[2],
+                              /*calib_opts=*/calib_opts);
   statistics = CalibratorSingleton::GetStatistics(/*id=*/"7");
 
   EXPECT_TRUE(statistics.has_value());

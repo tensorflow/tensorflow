@@ -87,7 +87,8 @@ absl::Status RunSyncOrAsync(
 StatusOr<NcclComm::Lock> GetNcclComm(
     const NcclExecuteParams& params, int64_t group_mode, int64_t op_id,
     absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values, int64_t stream_id) {
+    absl::Span<const int64_t> replica_group_values, int64_t stream_id,
+    bool enable_clique_optimization) {
   // TODO(b/233930690): Pass the attribute below as a nested array.
   // Pass an array of arrays using two vectors; one specifying all the values
   // and another specifying the (ending) offsets of each array in the other
@@ -104,7 +105,7 @@ StatusOr<NcclComm::Lock> GetNcclComm(
 
   return LockNcclComm(params, replica_groups,
                       static_cast<CollectiveOpGroupMode>(group_mode), op_id,
-                      stream_id);
+                      stream_id, enable_clique_optimization);
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -192,8 +193,9 @@ absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
 
   const std::string device_string =
       NcclCollectiveThunk::GetDeviceString(params);
-  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values, stream_id);
+  auto comm = GetNcclComm(
+      params, group_mode, op_id, replica_group_offsets, replica_group_values,
+      stream_id, debug_options->xla_gpu_enable_nccl_clique_optimization());
   if (!comm.ok()) return comm.status();
 
   auto device_buffers = device_buffers_getter(args);
@@ -386,8 +388,10 @@ absl::Status AllGatherImplCommon(
   NcclExecuteParams params(*run_options, stream->parent());
 
   TF_ASSIGN_OR_RETURN(
-      auto comm, GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                             replica_group_values, GetStreamId(is_async)));
+      auto comm,
+      GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                  replica_group_values, GetStreamId(is_async),
+                  debug_options->xla_gpu_enable_nccl_clique_optimization()));
 
   TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
@@ -448,8 +452,10 @@ absl::Status AllReduceImplCommon(
   NcclExecuteParams params(*run_options, stream->parent());
 
   TF_ASSIGN_OR_RETURN(
-      auto comm, GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                             replica_group_values, GetStreamId(is_async)));
+      auto comm,
+      GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                  replica_group_values, GetStreamId(is_async),
+                  debug_options->xla_gpu_enable_nccl_clique_optimization()));
 
   TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
@@ -519,8 +525,10 @@ absl::Status AllToAllImplCommon(const ServiceExecutableRunOptions* run_options,
   NcclExecuteParams params(*run_options, stream->parent());
 
   TF_ASSIGN_OR_RETURN(
-      auto comm, GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                             replica_group_values, GetStreamId(is_async)));
+      auto comm,
+      GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                  replica_group_values, GetStreamId(is_async),
+                  debug_options->xla_gpu_enable_nccl_clique_optimization()));
 
   TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
@@ -585,8 +593,10 @@ absl::Status ReduceScatterImplCommon(
   NcclExecuteParams params(*run_options, stream->parent());
 
   TF_ASSIGN_OR_RETURN(
-      auto comm, GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                             replica_group_values, GetStreamId(is_async)));
+      auto comm,
+      GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                  replica_group_values, GetStreamId(is_async),
+                  debug_options->xla_gpu_enable_nccl_clique_optimization()));
 
   TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 

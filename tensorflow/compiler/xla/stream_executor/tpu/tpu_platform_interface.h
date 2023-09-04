@@ -49,8 +49,6 @@ class TpuPlatformInterface : public stream_executor::Platform {
 
   tsl::Status Reset() { return Reset(false, {}); }
 
-  virtual int64_t TpuMemoryLimit() = 0;
-
   virtual bool ShouldRegisterTpuDeviceToDeviceCopy() = 0;
 
   virtual const TpuTopologyPtr GetTopologyPtr() = 0;

@@ -697,9 +697,14 @@ message ConfigProto {
     // aims to negate its value.
     bool disable_optimize_for_static_graph = 24;
 
+    // Whether eager remote execution will stream all the function calls or
+    // allow them to happen in parallel. When true, streaming execution is
+    // disabled, and parallel execution is allowed.
+    bool disable_eager_executor_streaming_enqueue = 26;
+
     reserved 25;
 
-    // Next: 26
+    // Next: 27
   }
 
   Experimental experimental = 16;

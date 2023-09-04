@@ -35,14 +35,8 @@ void populateGpu2RuntimePasses(mlir::OpPassManager& pm,
                                ThunkSequence* thunk_sequence,
                                RuntimeBackend backend,
                                const Gpu2PipelineOpts& opts) {
-  // Use xla_gpu graph regions only if we are running with StreamExecutor
-  // backend and graphs are enabled.
-  bool use_graph_api =
-      backend == RuntimeBackend::kStreamExecutor && opts.graph_level;
-
-  if (use_graph_api) pm.addPass(createCreateGraphRegionsPass());
+  // Convert LMHLO operations to runtime input.
   pm.addPass(createConvertToGpu2RuntimePass(thunk_sequence, backend));
-  if (use_graph_api) pm.addPass(createFinalizeGraphDispatchesPass());
 
   // Clean up IR before passing it to IREE compiler.
   pm.addPass(createCSEPass());

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "pybind11/attr.h"  // from @pybind11
@@ -249,10 +250,7 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
                                   py::capsule capsule,
                                   const std::string& platform) {
   static const char* const kName = "xla._CUSTOM_CALL_TARGET";
-  // TODO(phawkins): remove old name after fixing users.
-  static const char* const kOldCpuName = "xla._CPU_CUSTOM_CALL_TARGET";
-  if (absl::string_view(capsule.name()) != kName &&
-      absl::string_view(capsule.name()) != kOldCpuName) {
+  if (absl::string_view(capsule.name()) != kName) {
     return InvalidArgument(
         "Argument to RegisterCustomCallTargetRegistry was not a "
         "xla._CUSTOM_CALL_TARGET capsule.");
@@ -873,7 +871,60 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           })
       .def_property("xla_test_all_input_layouts",
                     &DebugOptions::xla_test_all_input_layouts,
-                    &DebugOptions::set_xla_test_all_input_layouts);
+                    &DebugOptions::set_xla_test_all_input_layouts)
+      .def_property("xla_force_host_platform_device_count",
+                    &DebugOptions::xla_force_host_platform_device_count,
+                    &DebugOptions::set_xla_force_host_platform_device_count)
+      .def_property("xla_dump_to", &DebugOptions::xla_dump_to,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_dump_to(value);
+                    })
+      .def_property("xla_dump_hlo_module_re",
+                    &DebugOptions::xla_dump_hlo_module_re,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_dump_hlo_module_re(value);
+                    })
+      .def_property("xla_dump_hlo_pass_re", &DebugOptions::xla_dump_hlo_pass_re,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_dump_hlo_pass_re(value);
+                    })
+      .def_property("xla_dump_hlo_as_text", &DebugOptions::xla_dump_hlo_as_text,
+                    &DebugOptions::set_xla_dump_hlo_as_text)
+      .def_property("xla_dump_hlo_as_proto",
+                    &DebugOptions::xla_dump_hlo_as_proto,
+                    &DebugOptions::set_xla_dump_hlo_as_proto)
+      .def_property("xla_dump_hlo_as_dot", &DebugOptions::xla_dump_hlo_as_dot,
+                    &DebugOptions::set_xla_dump_hlo_as_dot)
+      .def_property("xla_dump_hlo_as_url", &DebugOptions::xla_dump_hlo_as_url,
+                    &DebugOptions::set_xla_dump_hlo_as_url)
+      .def_property("xla_dump_hlo_as_html", &DebugOptions::xla_dump_hlo_as_html,
+                    &DebugOptions::set_xla_dump_hlo_as_html)
+      .def_property("xla_dump_fusion_visualization",
+                    &DebugOptions::xla_dump_fusion_visualization,
+                    &DebugOptions::set_xla_dump_fusion_visualization)
+      .def_property("xla_dump_hlo_snapshots",
+                    &DebugOptions::xla_dump_hlo_snapshots,
+                    &DebugOptions::set_xla_dump_hlo_snapshots)
+      .def_property("xla_dump_max_hlo_modules",
+                    &DebugOptions::xla_dump_max_hlo_modules,
+                    &DebugOptions::set_xla_dump_max_hlo_modules)
+      .def_property("xla_dump_module_metadata",
+                    &DebugOptions::xla_dump_module_metadata,
+                    &DebugOptions::set_xla_dump_module_metadata)
+      .def_property("xla_dump_compress_protos",
+                    &DebugOptions::xla_dump_compress_protos,
+                    &DebugOptions::set_xla_dump_compress_protos)
+      .def_property("xla_dump_hlo_as_long_text",
+                    &DebugOptions::xla_dump_hlo_as_long_text,
+                    &DebugOptions::set_xla_dump_hlo_as_long_text)
+      .def_property("xla_dump_disable_metadata",
+                    &DebugOptions::xla_dump_disable_metadata,
+                    &DebugOptions::set_xla_dump_disable_metadata)
+      .def_property("xla_dump_hlo_pipeline_re",
+                    &DebugOptions::xla_dump_hlo_pipeline_re,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_dump_hlo_pipeline_re(value);
+                    });
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
@@ -938,11 +989,21 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .value("TUPLE", OpSharding::TUPLE)
       .value("OTHER", OpSharding::OTHER);
 
+  py::enum_<OpSharding::ShardGroupType> op_sharding_shard_group_type(
+      m, "OpSharding_ShardGroupType");
+  op_sharding_shard_group_type.value("AS", OpSharding::AS)
+      .value("LIKE", OpSharding::LIKE);
+
   py::class_<OpSharding> op_sharding(m, "OpSharding");
   op_sharding
       .def_property_readonly_static(
           "Type",
           [op_sharding_type](const py::object&) { return op_sharding_type; })
+      .def_property_readonly_static(
+          "ShardGroupType",
+          [op_sharding_shard_group_type](const py::object&) {
+            return op_sharding_shard_group_type;
+          })
       .def(py::init<>())
       .def(py::pickle(
           [](const OpSharding& self) {
@@ -957,6 +1018,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("replicate_on_last_tile_dim",
                     &xla::OpSharding::replicate_on_last_tile_dim,
                     &xla::OpSharding::set_replicate_on_last_tile_dim)
+      .def_property("is_shard_group", &xla::OpSharding::is_shard_group,
+                    &xla::OpSharding::set_is_shard_group)
+      .def_property("shard_group_id", &xla::OpSharding::shard_group_id,
+                    &xla::OpSharding::set_shard_group_id)
+      .def_property("shard_group_type", &xla::OpSharding::shard_group_type,
+                    &xla::OpSharding::set_shard_group_type)
       .def("__repr__", &xla::OpSharding::DebugString)
       .def("ParseFromString",
            [](OpSharding& sharding, const std::string& s) {

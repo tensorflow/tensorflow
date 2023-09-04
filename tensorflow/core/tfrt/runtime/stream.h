@@ -17,6 +17,7 @@ under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -127,6 +128,10 @@ class ScopedStreamCallback;
 
 class StreamInterfaceFactory {
  public:
+  using CreateWorkerStreamInterfaceFn =
+      std::function<absl::StatusOr<std::unique_ptr<StreamWorkerInterface>>(
+          absl::string_view)>;
+
   void RegisterController(
       absl::AnyInvocable<
           absl::StatusOr<std::unique_ptr<StreamControllerInterface>>() const>
@@ -141,18 +146,14 @@ class StreamInterfaceFactory {
     return controller_interface_factory_();
   }
 
-  void RegisterWorker(
-      absl::AnyInvocable<
-          absl::StatusOr<std::unique_ptr<StreamWorkerInterface>>() const>
-          interface_factory) {
+  void RegisterWorker(CreateWorkerStreamInterfaceFn interface_factory) {
     absl::MutexLock lock(&mu_);
     worker_interface_factory_ = std::move(interface_factory);
   }
 
-  absl::StatusOr<std::unique_ptr<StreamWorkerInterface>>
-  CreateWorkerStreamInterface() const {
+  CreateWorkerStreamInterfaceFn CreateWorkerStreamInterface() const {
     absl::MutexLock lock(&mu_);
-    return worker_interface_factory_();
+    return worker_interface_factory_;
   }
 
  private:
@@ -163,9 +164,9 @@ class StreamInterfaceFactory {
         return absl::InternalError(
             "The factory for StreamControllerInterface is not registered.");
       };
-  absl::AnyInvocable<absl::StatusOr<std::unique_ptr<StreamWorkerInterface>>()
-                         const>
-      worker_interface_factory_ ABSL_GUARDED_BY(mu_) = []() {
+
+  CreateWorkerStreamInterfaceFn worker_interface_factory_ ABSL_GUARDED_BY(mu_) =
+      [](absl::string_view) {
         return absl::InternalError(
             "The factory for StreamWorkerInterface is not registered.");
       };

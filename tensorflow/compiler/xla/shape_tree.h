@@ -247,6 +247,38 @@ class ShapeTree {
     return OkStatus();
   }
 
+  // Like the above, but traverses in post-order.  Note children are visited in
+  // right-to-left order.
+  void ForEachElementPostOrder(
+      absl::FunctionRef<void(const ShapeIndex&, const T&)> func) const {
+    for (auto node = nodes_.rbegin(); node != nodes_.rend(); ++node) {
+      func(node->first, node->second);
+    }
+  }
+
+  void ForEachMutableElementPostOrder(
+      absl::FunctionRef<void(const ShapeIndex&, T*)> func) {
+    for (auto node = nodes_.rbegin(); node != nodes_.rend(); ++node) {
+      func(node->first, &node->second);
+    }
+  }
+
+  Status ForEachElementPostOrderWithStatus(
+      absl::FunctionRef<Status(const ShapeIndex&, const T&)> func) const {
+    for (auto node = nodes_.rbegin(); node != nodes_.rend(); ++node) {
+      TF_RETURN_IF_ERROR(func(node->first, node->second));
+    }
+    return OkStatus();
+  }
+
+  Status ForEachMutableElementPostOrderWithStatus(
+      absl::FunctionRef<Status(const ShapeIndex&, T*)> func) {
+    for (auto node = nodes_.rbegin(); node != nodes_.rend(); ++node) {
+      TF_RETURN_IF_ERROR(func(node->first, &node->second));
+    }
+    return OkStatus();
+  }
+
   // Maps each element to generate a new tree with the same shape.
   template <typename U>
   ShapeTree<U> Map(absl::FunctionRef<U(const T&)> func) {

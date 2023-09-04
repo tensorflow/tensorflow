@@ -52,6 +52,13 @@ struct GraphExecutionOptions {
   // Whether to enable TFRT GPU.
   bool enable_tfrt_gpu = false;
 
+  // The number of virtual GPUs to create on a physical GPU.
+  int tfrt_gpu_parallelism = 1;
+
+  // Whether to use gpurt.compile_and_execute for GPU.
+  // TODO(b/294895431): Remove the flag and default to the fused op.
+  bool tfrt_use_fused_gpu_op = false;
+
   // Runtime configuration. Refer to tensorflow::tfrt_stub::Runtime class for
   // more details. It must not be nullptr;
   const tensorflow::tfrt_stub::Runtime* runtime = nullptr;

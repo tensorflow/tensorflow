@@ -37,6 +37,9 @@ bool IsOpWithDataMovementTrait(Operation* op);
 // operands.
 bool IsOpWithQuantizableTrait(Operation* op);
 
+// Check if the op's operand accepts int8 type.
+bool IsOpWithInt8TypeOperand(Operation* op);
+
 // Check if the data is in quantizable precision. Currently, a value in f32 or
 // bf16 is quantizable.
 bool IsValueWithQuantizablePrecision(Value val);

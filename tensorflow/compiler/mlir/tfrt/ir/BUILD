@@ -22,6 +22,7 @@ cc_library(
         # copybara:uncomment "//learning/brain/tfrt/tpu/compiler:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
         "//tensorflow/core/runtime_fallback:internal",
+        "//tensorflow/core/tfrt/saved_model:friends",
         # copybara:uncomment "//third_party/tf_runtime_google:__subpackages__",
     ],
     deps = [
@@ -42,6 +43,7 @@ cc_library(
         # copybara:uncomment "//learning/brain/tfrt/tpu/compiler/mlir:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
+        "//tensorflow/core/tfrt/saved_model:friends",
     ],
     deps = [
         ":tfrt_fallback_async_opdefs_inc_gen",

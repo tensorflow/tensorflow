@@ -698,7 +698,7 @@ bool CanPropagateThroughAtAggressiveLevel(const HloInstruction& inst,
       inst.opcode() != HloOpcode::kDynamicSlice &&
       inst.opcode() != HloOpcode::kOptimizationBarrier &&
       inst.opcode() != HloOpcode::kConcatenate &&
-      inst.opcode() != HloOpcode::kCall) {
+      inst.opcode() != HloOpcode::kCall && inst.opcode() != HloOpcode::kCopy) {
     return false;
   }
   // Broadcast propagation should have at least aggressiveness 2.

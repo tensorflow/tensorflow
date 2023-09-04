@@ -20,8 +20,29 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
-* tf.types.experimental.TraceType now allows custom tf.function inputs to
-  declare Tensor decomposition and type casting support.
+* Making the tf.function type system fully available:
+    * `tf.types.experimental.TraceType` now allows custom tf.function inputs to
+       declare Tensor decomposition and type casting support.
+    * Introducing `tf.types.experimental.FunctionType` as the comprehensive
+      representation of the signature of `tf.function` callables. It can be
+      accessed through the `function_type` property of `tf.function`s and
+      `ConcreteFunction`s. See the `tf.types.experimental.FunctionType`
+      documentation for more details.
+* Introducing `tf.types.experimental.AtomicFunction` as the fastest way to
+  perform TF computations in Python.
+    * Can be accessed through `inference_fn` property of `ConcreteFunction`s
+    * Does not support gradients.
+    * See `tf.types.experimental.AtomicFunction` documentation for how to call
+      and use it.
+
+*   `tf.data`:
+
+    *   Moved option `warm_start` from
+        `tf.data.experimental.OptimizationOptions` to `tf.data.Options`.
+
+*   `tf.lite`:
+
+    *   `mul_op` supports broadcasting up to 6 dimensions.
 
 ### Bug Fixes and Other Changes
 
@@ -62,6 +83,13 @@
     * It now takes in a new argument called `experimental_write_callbacks`.
     These are callbacks that will be executed after a saving event finishes
     writing the checkpoint file.
+* Add an option `disable_eager_executer_streaming_enqueue` to
+  `tensorflow.ConfigProto.Experimental` to control the eager runtime's behavior
+  around parallel remote function invocations; when set to `True`, the eager
+  runtime will be allowed to execute multiple function invocations in parallel.
+
+* `tf.lite`
+    * Added support for `stablehlo.scatter`.
 
 ## Thanks to our Contributors
 
@@ -191,6 +219,10 @@ This release contains contributions from many people at Google, as well as:
 
 * `tf.ones`, `tf.zeros`, `tf.fill`, `tf.ones_like`, `tf.zeros_like` now take an
     additional Layout argument that controls the output layout of their results.
+
+*  Limited support of unified n-d FFT Ops: `tf.signal.fftn`,
+   `tf.signal.ifftn`, `tf.signal.rfftn`, `tf.signal.irfftn`.
+   Note that they only support up to 3d and gradients are unsupported.
 
 * `tf.nest` and `tf.data` now support user defined classes implementing
   `__tf_flatten__` and `__tf_unflatten__` methods. See [

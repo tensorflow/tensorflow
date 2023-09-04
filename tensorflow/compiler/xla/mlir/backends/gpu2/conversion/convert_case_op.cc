@@ -20,7 +20,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputOps.h"
+#include "iree-dialects/Dialect/Input/InputOps.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/de_bufferization.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 
@@ -78,26 +79,30 @@ struct ConvertCaseOpToHal : public OpConversionPattern<lmhlo::CaseOp> {
     for (auto &branch : op.getBranches()) {
       for (auto &block : branch.getBlocks()) blocks.push_back(&block);
     }
-    auto bufs = getUsedBuffers(blocks);
+    auto bufs = getUsedBuffers(blocks, [&](TypedValue<MemRefType> memref) {
+      return llvm::all_of(op.getBranches(), [&](Region &branch) {
+        return areValuesDefinedAbove(ValueRange(memref), branch);
+      });
+    });
 
     // Tensors updated in all case op branches.
     SmallVector<Value> updated_tensors =
         llvm::to_vector(llvm::map_range(bufs.write, [&](auto memref) -> Value {
-          return state.remapped[block][memref];
+          return state.remapped(block, memref);
         }));
 
     // Sets up buffer to tensor remapping inside branch regions.
     auto remap_branch_tensors = [&](Block *branch_block) {
       for (auto r : bufs.read)
-        state.remapped[branch_block][r] = state.remapped[block][r];
+        state.remap(branch_block, r, state.remapped(block, r));
       for (auto w : bufs.write)
-        state.remapped[branch_block][w] = state.remapped[block][w];
+        state.remap(branch_block, w, state.remapped(block, w));
     };
 
     // Load branch index from the argument.
     Value offset = b.create<arith::ConstantIndexOp>(0);
     Value index = b.create<IREE::Input::TensorLoadOp>(
-        state.remapped[block][op.getIndex()], /*source_dims=*/ValueRange(),
+        state.remapped(block, op.getIndex()), /*source_dims=*/ValueRange(),
         /*indices=*/offset);
 
     bool is_predicate = index.getType().isInteger(1);
@@ -186,7 +191,7 @@ struct ConvertCaseOpToHal : public OpConversionPattern<lmhlo::CaseOp> {
     // Use replacement op results to remap buffers in the parent block.
     for (auto [from, to] :
          llvm::zip_equal(bufs.write, replacement->getResults()))
-      state.remapped[block][from] = cast<TypedValue<TensorType>>(to);
+      state.remap(block, from, cast<TypedValue<TensorType>>(to));
 
     (*converted)[replacement] = ConvertedCaseOp{std::move(bufs)};
 
@@ -230,7 +235,7 @@ struct ConvertTerminatorOpToHal
 
     auto updated_tensors = llvm::to_vector(
         llvm::map_range(it->second.buffers.write, [&](auto memref) -> Value {
-          return state.remapped[op->getBlock()][memref];
+          return state.remapped(op->getBlock(), memref);
         }));
 
     // Convert lmhlo.terminator in the branch block to scf.yield operation

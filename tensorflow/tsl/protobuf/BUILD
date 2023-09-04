@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load(
     "//tensorflow/tsl:tsl.bzl",
     "if_google",

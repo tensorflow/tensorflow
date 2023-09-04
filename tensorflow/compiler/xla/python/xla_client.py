@@ -44,7 +44,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 190
+_version = 193
 
 # Version number for MLIR:Python components.
 mlir_api_version = 54
@@ -530,8 +530,6 @@ def register_custom_call_target(
                                    xla_platform_names.get(platform, platform))
 
 
-# Deprecated. Use register_custom_call_target instead.
-register_cpu_custom_call_target = register_custom_call_target
 register_custom_call_partitioner = _xla.register_custom_call_partitioner
 encode_inspect_sharding_callback = _xla.encode_inspect_sharding_callback
 hlo_sharding_util = _xla.hlo_sharding_util

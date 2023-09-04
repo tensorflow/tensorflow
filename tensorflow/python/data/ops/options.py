@@ -389,20 +389,6 @@ class OptimizationOptions(options_lib.OptionsBase):
       docstring="Whether to fuse shuffle and repeat transformations. If None, "
       "defaults to True.")
 
-  warm_start = options_lib.create_option(
-      name="warm_start",
-      ty=bool,
-      docstring=(
-          "Whether to start background threads of asynchronous transformations "
-          "upon iterator creation, as opposed to during the first call to "
-          "`next()`. Defaults to `False`. "
-          "This improves the latency of the initial 'next()' calls at "
-          "the expense of requiring more memory to hold prefetched elements "
-          "between the time of iterator construction and usage."
-      ),
-      default_factory=lambda: True if test_mode.TEST_MODE else False,
-  )
-
   def _to_proto(self):
     pb = dataset_options_pb2.OptimizationOptions()
     if self.apply_default_optimizations is not None:
@@ -427,8 +413,6 @@ class OptimizationOptions(options_lib.OptionsBase):
       pb.parallel_batch = self.parallel_batch
     if self.shuffle_and_repeat_fusion is not None:
       pb.shuffle_and_repeat_fusion = self.shuffle_and_repeat_fusion
-    if self.warm_start is not None:
-      pb.warm_start = self.warm_start
     return pb
 
   def _from_proto(self, pb):
@@ -454,8 +438,6 @@ class OptimizationOptions(options_lib.OptionsBase):
       self.parallel_batch = pb.parallel_batch
     if pb.WhichOneof("optional_shuffle_and_repeat_fusion") is not None:
       self.shuffle_and_repeat_fusion = pb.shuffle_and_repeat_fusion
-    if pb.WhichOneof("optional_warm_start") is not None:
-      self.warm_start = pb.warm_start
 
   def _set_mutable(self, mutable):
     """Change the mutability value to `mutable` on this options and children."""
@@ -607,6 +589,20 @@ class Options(options_lib.OptionsBase):
       ty=ThreadingOptions,
       docstring="DEPRECATED. Use `threading` instead.")
 
+  experimental_warm_start = options_lib.create_option(
+      name="experimental_warm_start",
+      ty=bool,
+      docstring=(
+          "Whether to start background threads of asynchronous transformations "
+          "upon iterator creation, as opposed to during the first call to "
+          "`next()`. Defaults to `False`. "
+          "This improves the latency of the initial 'next()' calls at "
+          "the expense of requiring more memory to hold prefetched elements "
+          "between the time of iterator construction and usage."
+      ),
+      default_factory=lambda: True if test_mode.TEST_MODE else False,
+  )
+
   threading = options_lib.create_option(
       name="threading",
       ty=ThreadingOptions,
@@ -660,6 +656,8 @@ class Options(options_lib.OptionsBase):
       pb.slack = self.experimental_slack
     if self.experimental_symbolic_checkpoint is not None:
       pb.symbolic_checkpoint = self.experimental_symbolic_checkpoint
+    if self.experimental_warm_start is not None:
+      pb.warm_start = self.experimental_warm_start
     pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
     return pb
 
@@ -677,6 +675,8 @@ class Options(options_lib.OptionsBase):
       self.experimental_slack = pb.slack
     if pb.WhichOneof("optional_symbolic_checkpoint") is not None:
       self.experimental_symbolic_checkpoint = pb.symbolic_checkpoint
+    if pb.WhichOneof("optional_warm_start") is not None:
+      self.experimental_warm_start = pb.warm_start
     self.threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
 
   def _set_mutable(self, mutable):

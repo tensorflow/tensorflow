@@ -75,15 +75,6 @@ HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   return std::move(executor);
 }
 
-void HostPlatform::RegisterTraceListener(
-    std::unique_ptr<TraceListener> listener) {
-  LOG(FATAL) << "not yet implemented: register host trace listener";
-}
-
-void HostPlatform::UnregisterTraceListener(TraceListener* listener) {
-  LOG(FATAL) << "not yet implemented: unregister host trace listener";
-}
-
 static void InitializeHostPlatform() {
   std::unique_ptr<Platform> platform(new host::HostPlatform);
   TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));

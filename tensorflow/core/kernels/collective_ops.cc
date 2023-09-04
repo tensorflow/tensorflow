@@ -35,6 +35,10 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
+#include "tensorflow/core/profiler/lib/context_types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 
@@ -637,6 +641,15 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
   // method. col_params must live until done is called.
   void Run(OpKernelContext* c, CollectiveParams* col_params,
            DoneCallback done) {
+    // Trace the Run event.
+    profiler::TraceMeProducer producer(
+        [this] {
+          return profiler::TraceMeEncode("CollectiveOpV2Kernel::Run",
+                                         {{"name", name()}});
+        },
+        profiler::ContextType::kTfExecutor);
+    auto xprof_ctx_id = producer.GetContextId();
+
     CollectiveExecutor* col_exec = c->collective_executor();
     OP_REQUIRES_ASYNC(
         c, col_exec,
@@ -669,20 +682,43 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
     // Resolve the collective params.
     // Schedule the `CompleteParamsAsync` call on a work queue that can handle
     // blocking work because it's not guaranteed that this call cannot block.
-    c->collective_executor()->RunClosure([c, activity_id,
+    c->collective_executor()->RunClosure([c, activity_id, xprof_ctx_id,
                                           done = std::move(done), col_params,
                                           col_exec]() mutable {
+      profiler::TraceMeConsumer consumer(
+          [&] {
+            return profiler::TraceMeEncode("CollectiveExecutor::RunClosure",
+                                           {{"name", c->op_kernel().name()}});
+          },
+          profiler::ContextType::kTfExecutor, xprof_ctx_id);
+
       VLOG(1) << "Collective CompleteParams for " << col_params->name
               << " device " << c->device()->name() << " group "
               << col_params->group.group_key << " instance "
               << col_params->instance.instance_key;
       col_exec->CompleteParamsAsync(
           c->device()->attributes(), col_params, c->cancellation_manager(),
-          [c, activity_id, done = std::move(done), col_params,
+          [c, activity_id, xprof_ctx_id, done = std::move(done), col_params,
            col_exec](const Status& s) mutable {
+            profiler::TraceMeConsumer consumer(
+                [&] {
+                  return profiler::TraceMeEncode(
+                      "CollectiveExecutor::CompleteParamsAsync::Done",
+                      {{"name", c->op_kernel().name()}});
+                },
+                profiler::ContextType::kTfExecutor, xprof_ctx_id);
+
             if (s.ok()) {
-              auto actual_done = [c, activity_id, col_params,
+              auto actual_done = [c, activity_id, col_params, xprof_ctx_id,
                                   done = std::move(done)](const Status& s) {
+                profiler::TraceMeConsumer consumer(
+                    [&] {
+                      return profiler::TraceMeEncode(
+                          "CollectiveExecutor::ExecuteAsync::Done",
+                          {{"name", c->op_kernel().name()}});
+                    },
+                    profiler::ContextType::kTfExecutor, xprof_ctx_id);
+
                 VLOG(1) << "Collective ExecuteAsync done for "
                         << col_params->name << " device " << c->device()->name()
                         << " group " << col_params->group.group_key

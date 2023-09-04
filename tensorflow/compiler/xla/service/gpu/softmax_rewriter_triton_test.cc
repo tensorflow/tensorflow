@@ -13,22 +13,48 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
 namespace m = ::xla::match;
+
+// Wrapper around SoftmaxRewriterTriton(gpu_version).Run(module) that finds
+// and fuses as many diamond chains as possible without invoking any kind of
+// cost analysis.
+StatusOr<bool> SoftmaxRewriterTritonMatchAndRewrite(GpuVersion gpu_version,
+                                                    HloModule* module) {
+  CHECK_NE(module, nullptr);
+  SoftmaxRewriterTriton softmax_rewriter_triton(gpu_version);
+  std::vector<DiamondChainDescriptor> diamond_chains =
+      softmax_rewriter_triton.FindAllFusibleDiamondChains(
+          *module, /*execution_threads=*/{});
+
+  for (auto diamond_chain = diamond_chains.rbegin();
+       diamond_chain != diamond_chains.rend(); ++diamond_chain) {
+    TF_RETURN_IF_ERROR(
+        softmax_rewriter_triton.FuseDiamondChain(*diamond_chain));
+  }
+
+  return !diamond_chains.empty();
+}
 
 class SoftmaxRewriterTritonTest
     : public HloTestBase,
@@ -75,9 +101,9 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
 
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
 
@@ -118,8 +144,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -154,8 +180,8 @@ ENTRY main {
 )";
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 TEST_F(SoftmaxRewriterTritonTest, CanNotFuseExactSoftmaxBF16) {
@@ -186,8 +212,8 @@ ENTRY main {
 )";
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
@@ -231,9 +257,9 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
 
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
 
   switch (data_type) {
@@ -273,8 +299,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
@@ -300,8 +326,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
@@ -327,8 +353,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 // TODO(bchetioui): expand so this can be supported?
@@ -356,8 +382,9 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
@@ -394,9 +421,9 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
 
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
 
   switch (data_type) {
@@ -446,9 +473,9 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
 
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
 
   switch (data_type) {
@@ -490,8 +517,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter())));
@@ -520,8 +547,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter())));
@@ -550,8 +577,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter())));
@@ -582,8 +609,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
@@ -610,8 +637,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
@@ -639,8 +666,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
@@ -669,8 +696,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter())));
@@ -702,8 +729,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
@@ -740,9 +767,9 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
 
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
 
   switch (data_type) {
@@ -794,9 +821,9 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
 
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
 
   switch (data_type) {
@@ -849,9 +876,9 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
 
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
 
   switch (data_type) {
@@ -895,8 +922,9 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -930,8 +958,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
@@ -962,8 +990,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1001,8 +1029,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 TEST_P(SoftmaxRewriterTritonTest, DoNotFuseSoftmaxWithSmallRows) {
@@ -1027,8 +1055,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 TEST_P(
@@ -1059,18 +1087,22 @@ ENTRY main {
   auto volta_module = ampere_module->Clone();
 
   // Ampere
-  SoftmaxRewriterTriton fusion_rewriter_ampere(
-      se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0});
-  EXPECT_TRUE(fusion_rewriter_ampere.Run(ampere_module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(
+          se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0},
+          ampere_module.get())
+          .value());
   EXPECT_TRUE(verifier().Run(ampere_module.get()).status().ok());
   VLOG(2) << ampere_module->ToString();
   EXPECT_THAT(ampere_module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter())));
 
   // Volta (pre-Ampere)
-  SoftmaxRewriterTriton fusion_rewriter_volta(
-      se::CudaComputeCapability{se::CudaComputeCapability::VOLTA, 0});
-  EXPECT_TRUE(fusion_rewriter_volta.Run(volta_module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(
+          se::CudaComputeCapability{se::CudaComputeCapability::VOLTA, 0},
+          volta_module.get())
+          .value());
   EXPECT_TRUE(verifier().Run(volta_module.get()).status().ok());
   VLOG(2) << volta_module->ToString();
   EXPECT_THAT(volta_module->entry_computation()->root_instruction(),
@@ -1100,8 +1132,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1131,8 +1163,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1163,8 +1195,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1196,8 +1228,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1237,8 +1269,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1274,8 +1306,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1307,8 +1339,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
@@ -1345,8 +1377,8 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
-  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),

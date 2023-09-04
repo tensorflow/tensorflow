@@ -39,6 +39,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -616,6 +617,46 @@ static std::string_view StreamCaptureModeToString(
 
   RETURN_IF_CUDA_RES_ERROR(err_code, "Failed to update CUDA graph");
   return ::tsl::OkStatus();
+}
+
+/* static */ tsl::StatusOr<GpuDriver::GraphNodeType>
+GpuDriver::GraphNodeGetType(CUgraphNode node) {
+  CUgraphNodeType cu_node_type;
+  memset(&cu_node_type, 0, sizeof(cu_node_type));
+  RETURN_IF_CUDA_RES_ERROR(cuGraphNodeGetType(node, &cu_node_type),
+                           "Failed to get CUDA graph node type");
+
+  switch (cu_node_type) {
+    case CU_GRAPH_NODE_TYPE_KERNEL:
+      return GraphNodeType::kKernel;
+    case CU_GRAPH_NODE_TYPE_MEMCPY:
+      return GraphNodeType::kMemcpy;
+    case CU_GRAPH_NODE_TYPE_MEMSET:
+      return GraphNodeType::kMemset;
+    case CU_GRAPH_NODE_TYPE_HOST:
+      return GraphNodeType::kHost;
+    case CU_GRAPH_NODE_TYPE_GRAPH:
+      return GraphNodeType::kGraph;
+    case CU_GRAPH_NODE_TYPE_EMPTY:
+      return GraphNodeType::kEmpty;
+    case CU_GRAPH_NODE_TYPE_WAIT_EVENT:
+      return GraphNodeType::kWaitEvent;
+    case CU_GRAPH_NODE_TYPE_EVENT_RECORD:
+      return GraphNodeType::kEventRecord;
+    case CU_GRAPH_NODE_TYPE_EXT_SEMAS_SIGNAL:
+      return GraphNodeType::kExtSemasSignal;
+    case CU_GRAPH_NODE_TYPE_EXT_SEMAS_WAIT:
+      return GraphNodeType::kExtSemasWait;
+    case CU_GRAPH_NODE_TYPE_MEM_ALLOC:
+      return GraphNodeType::kMemAlloc;
+    case CU_GRAPH_NODE_TYPE_MEM_FREE:
+      return GraphNodeType::kMemFree;
+    case CU_GRAPH_NODE_TYPE_BATCH_MEM_OP:
+      return GraphNodeType::kBatchMemOp;
+  }
+
+  return tsl::Status(absl::StatusCode::kInternal,
+                     "Invalid CUDA graph node type");
 }
 
 /* static */ tsl::Status GpuDriver::DestroyGraphExec(CUgraphExec exec) {

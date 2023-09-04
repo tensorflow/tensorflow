@@ -801,7 +801,6 @@ Status DotOpEmitter::EmitCallToRuntime() {
   // to avoid target-dependent calling convention details.
 
   bool multi_threaded = ShouldUseMultiThreadedEigen(hlo_module_config_);
-  bool use_mkl_dnn = hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn();
   bool use_acl = hlo_module_config_.debug_options().xla_cpu_use_acl();
   PrimitiveType type = target_array_.GetShape().element_type();
   llvm::Function* function = b_->GetInsertBlock()->getParent();
@@ -816,23 +815,16 @@ Status DotOpEmitter::EmitCallToRuntime() {
       float_type = b_->getHalfTy();
       break;
     case F32:
-      fn_name =
-          multi_threaded
-              ? (use_mkl_dnn ? runtime::kMKLMatMulF32SymbolName
-                             : (use_acl ? runtime::kACLMatMulF32SymbolName
-                                        : runtime::kEigenMatMulF32SymbolName))
-              : (use_mkl_dnn
-                     ? runtime::kMKLSingleThreadedMatMulF32SymbolName
-                     : runtime::kEigenSingleThreadedMatMulF32SymbolName);
+      fn_name = multi_threaded
+                    ? (use_acl ? runtime::kACLMatMulF32SymbolName
+                               : runtime::kEigenMatMulF32SymbolName)
+                    : runtime::kEigenSingleThreadedMatMulF32SymbolName;
       float_type = b_->getFloatTy();
       break;
     case F64:
       fn_name = multi_threaded
-                    ? (use_mkl_dnn ? runtime::kMKLMatMulF64SymbolName
-                                   : runtime::kEigenMatMulF64SymbolName)
-                    : (use_mkl_dnn
-                           ? runtime::kMKLSingleThreadedMatMulF64SymbolName
-                           : runtime::kEigenSingleThreadedMatMulF64SymbolName);
+                    ? runtime::kEigenMatMulF64SymbolName
+                    : runtime::kEigenSingleThreadedMatMulF64SymbolName;
       float_type = b_->getDoubleTy();
       break;
     case C64:

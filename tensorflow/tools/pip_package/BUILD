@@ -1,11 +1,11 @@
 # Description:
 #  Tools for building the TensorFlow pip package.
 
-load("//tensorflow:tensorflow.bzl", "filegroup_as_file", "if_windows", "transitive_hdrs")
-load("//third_party/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
+load("//tensorflow:tensorflow.bzl", "filegroup_as_file", "transitive_hdrs")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
+load("//third_party/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 
 package(default_visibility = ["//visibility:private"])
 
@@ -170,6 +170,8 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/summary:summary_py",
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
+    "//tensorflow/python/tools/api/generator2/extractor:extractor",
+    "//tensorflow/python/tools/api/generator2/generator:generator",
     "//tensorflow/python/tpu",
     "//tensorflow/python/util:deprecated_module",
     "//tensorflow/python/util:deprecated_module_new",
@@ -217,6 +219,7 @@ filegroup(
         "@local_config_tensorrt//:LICENSE",
         "@ml_dtypes//:LICENSE",
         "@opt_einsum_archive//:LICENSE",
+        "@org_brotli//:LICENSE",
         "@pasta//:LICENSE",
         "@png//:LICENSE",
         "@ruy//:LICENSE",
@@ -266,6 +269,8 @@ sh_binary(
            select({
                "//tensorflow:dynamic_loaded_kernels": DYNAMIC_LOADED_KERNELS,
                "//conditions:default": [],
-           }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+           }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]) + [
+        "//tensorflow:tf_python_api_gen_v2",
+    ],
     visibility = ["//visibility:public"],
 )

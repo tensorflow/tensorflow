@@ -255,14 +255,15 @@ StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
 StatusOr<NcclComm::Lock> AcquireNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int rank,
-    int64_t stream_id) {
+    const NcclUniqueIdCallback& unique_id_callback, int rank, int64_t stream_id,
+    bool enable_clique_optimization) {
   // Ensure that this group of threads have exclusive access to the clique to
   // prevent threads from different groups locking communicators in the clique.
   NcclCliqueKey clique_key(std::move(participants), stream_id);
   std::shared_ptr<StatusOr<NcclClique::Lock>> clique = AcquireNcclClique(
       run_id, op_id, clique_key, unique_id_callback, num_local_participants,
-      stream_id == GetStreamId(true, kAsyncStreamP2P));
+      enable_clique_optimization ||
+          stream_id == GetStreamId(true, kAsyncStreamP2P));
 
   if (!clique->ok()) return clique->status();
 

@@ -39,10 +39,7 @@ filegroup(
         "histogram.cc",
         "histogram.h",
     ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/core/lib/histogram:__pkg__",
-    ],
+    visibility = ["//tensorflow/core/lib/histogram:__pkg__"],
 )
 
 filegroup(
@@ -50,10 +47,7 @@ filegroup(
     srcs = [
         "histogram.h",
     ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/core/lib/histogram:__pkg__",
-    ],
+    visibility = ["//tensorflow/core/lib/histogram:__pkg__"],
 )
 
 tsl_cc_test(

@@ -62,6 +62,12 @@ TEST(ShapeUtilTest, NegativeIndexOobFails) {
   ASSERT_DEATH(ShapeUtil::GetDimension(matrix, -3), "dimension_number >= 0");
 }
 
+TEST(ShapeUtilTest, CreateRank3DimensionVectorFromShape) {
+  Shape shape = ShapeUtil::MakeShape(F32, {3, 2, 7});
+  DimensionVector dimensions = ShapeUtil::CreateDimensionVectorFromShape(shape);
+  EXPECT_THAT(dimensions, ElementsAre(3, 2, 7));
+}
+
 TEST(ShapeUtilTest, Rank1DimensionIndexing) {
   Shape shape = ShapeUtil::MakeShape(F32, {3});
   ASSERT_EQ(3, shape.dimensions(0));

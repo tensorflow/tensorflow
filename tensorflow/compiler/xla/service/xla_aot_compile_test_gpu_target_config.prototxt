@@ -13,6 +13,9 @@
 # limitations under the License.
 
 gpu_device_info {
+  cuda_compute_capability {
+    major: 6
+  }
   threads_per_block_limit: 1024
   threads_per_warp: 32
   shared_memory_per_block: 49152
@@ -26,9 +29,6 @@ gpu_device_info {
   memory_bandwidth: 732160000000
   l2_cache_size: 4194304
   clock_rate_ghz: 1.4805
-}
-cuda_compute_capability {
-  major: 6
 }
 platform_name: "CUDA"
 dnn_version_info {

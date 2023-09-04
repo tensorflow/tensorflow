@@ -124,10 +124,7 @@ filegroup(
         "pywrap_tensor_conversion.h",
         "pywrap_tfe.h",
     ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__subpackages__",
-    ],
+    visibility = ["//tensorflow/python:__subpackages__"],
 )
 
 # Transitive dependencies of this target will be included in the pip package.

@@ -25,10 +25,10 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
+#include "iree-dialects/Dialect/Input/InputOps.h"
 #include "absl/base/call_once.h"
 #include "third_party/iree/compiler/bindings/c/iree/compiler/embedding_api.h"
 #include "third_party/iree/compiler/bindings/c/iree/compiler/loader.h"
-#include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputOps.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
