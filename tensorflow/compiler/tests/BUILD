@@ -2392,6 +2392,7 @@ tf_xla_py_strict_test(
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/ops:random_ops",
