@@ -329,7 +329,7 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
     # certain cases once the forward compatibility window expries (and remove
     # the imports in this file and dependencies in the BUILD file for compat
     # which is only required for this block.)
-    if not compat.forward_compatible(2023, 9, 3):
+    if not compat.forward_compatible(2023, 9, 10):
       self.skipTest(
           "b/255381064 tests with weights will pass once forward comptibiliy"
           " window expires"
