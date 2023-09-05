@@ -20,6 +20,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <iterator>
+#include <list>
 #include <queue>
 #include <stack>
 #include <string>
@@ -781,7 +782,7 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
   // Source logical -> destination logical.
   std::vector<std::vector<const Fragment*>> dst_logical;
   // Temporary storage for fragments of new dimensions created by reductions.
-  std::vector<Fragment> new_fragments;
+  std::list<Fragment> new_fragments;
   if (hlo->opcode() == HloOpcode::kTranspose) {
     const auto transpose = Cast<HloTransposeInstruction>(hlo);
     std::vector<int64_t> permutation(transpose->dimensions().cbegin(),
