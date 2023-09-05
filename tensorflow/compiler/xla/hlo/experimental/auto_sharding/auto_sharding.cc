@@ -2348,16 +2348,22 @@ AutoShardingSolverResult CallSolver(
     const StrategyVector* strategies = leaf_strategies[i];
     request.instruction_names.push_back(absl::StrCat(
         instructions.at(strategies->instruction_id)->name(), " (id: ", i, ")"));
-    std::vector<double> ci, di, mi;
+    std::vector<double> ci, di, mi, pi;
     for (NodeStrategyIdx j = 0; j < strategies->leaf_vector.size(); ++j) {
-      ci.push_back(strategies->leaf_vector[j].compute_cost);
-      di.push_back(strategies->leaf_vector[j].communication_cost +
+      const ShardingStrategy& strategy = strategies->leaf_vector[j];
+      const HloSharding& sharding = strategy.output_sharding;
+      ci.push_back(strategy.compute_cost);
+      di.push_back(strategy.communication_cost +
                    cost_graph.extra_node_costs_[i][j]);
-      mi.push_back(strategies->leaf_vector[j].memory_cost);
+      mi.push_back(strategy.memory_cost);
+      // TOOD(moffitt): Revisit the default strategy below, which is currently
+      // defined as the "trivial sharding" in hlo_sharding.h
+      pi.push_back(sharding.IsReplicated() && !sharding.IsManual() ? 0.0 : 1.0);
     }
     request.c.push_back(ci);
     request.d.push_back(di);
     request.m.push_back(mi);
+    request.p.push_back(pi);
   }
 
   // Serialize special edges that forces a alias pair have the same sharding
@@ -2466,6 +2472,7 @@ AutoShardingSolverResult CallSolver(
               << ")";
     LOG(INFO) << "Total Cost: " << evaluation.total.cost()
               << " (lower bound: " << evaluation.lower_bound.cost() << ")";
+    LOG(INFO) << "Total Departures: " << evaluation.total_departures;
     LOG(INFO) << "Total Violations: " << evaluation.violation_codes.size();
   }
   return result;

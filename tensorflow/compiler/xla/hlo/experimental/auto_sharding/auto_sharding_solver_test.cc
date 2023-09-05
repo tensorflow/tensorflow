@@ -54,6 +54,11 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
                {300000, 310000, 320000, 330000},
                {400000, 410000, 420000, 430000},
                {500000, 510000, 520000}};
+  request.p = {{1.0, 0.0, 1.0, 1.0},
+               {1.0, 0.0, 1.0},
+               {1.0, 0.0, 1.0, 1.0},
+               {1.0, 0.0, 1.0, 1.0},
+               {1.0, 0.0, 1.0}};
   request.r = {{1000, 1100, 1200, 1300,
                 2000, 2100, 2200, 2300,
                 3000, 3100, 3200, 3300,
@@ -93,6 +98,21 @@ TEST(CallORToolsSolverTest, SolvesOverbudget) {
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
   const std::vector<EdgeStrategyIdx> e_val = {0, 0};
   const double objective_value = 9007650.0;
+  const AutoShardingSolverResult expected_result = {
+      std::make_tuple(
+          std::move(s_val), std::move(e_val), objective_value), false};
+  EXPECT_EQ(result, expected_result);
+}
+
+TEST(CallORToolsSolverTest, SolvesMaxDepartures) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  request.max_departures = 3.0;
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
+  const std::vector<EdgeStrategyIdx> e_val = {1, 1};
+  const double objective_value = 7872.0;
   const AutoShardingSolverResult expected_result = {
       std::make_tuple(
           std::move(s_val), std::move(e_val), objective_value), false};
@@ -180,6 +200,7 @@ TEST(AutoShardingEvaluatorTest, NoViolations) {
   expected_evaluation.lower_bound.computation_cost = 150.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.total_departures = 3.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
 
@@ -205,6 +226,7 @@ TEST(AutoShardingEvaluatorTest, EvaluatesOverbudget) {
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
   expected_evaluation.lower_bound.overbudget_cost = 9000000.0;
+  expected_evaluation.total_departures = 3.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
 
@@ -227,6 +249,7 @@ TEST(AutoShardingEvaluatorTest, ViolatesFollower) {
   expected_evaluation.lower_bound.computation_cost = 150.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.total_departures = 2.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
 
@@ -249,6 +272,7 @@ TEST(AutoShardingEvaluatorTest, ViolatesAlias) {
   expected_evaluation.lower_bound.computation_cost = 150.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.total_departures = 4.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
 
@@ -271,6 +295,7 @@ TEST(AutoShardingEvaluatorTest, ViolatesMemory) {
   expected_evaluation.lower_bound.computation_cost = 150.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.total_departures = 3.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
 
@@ -294,6 +319,7 @@ TEST(AutoShardingEvaluatorTest, ViolatesInfiniteCostForNode) {
   expected_evaluation.lower_bound.computation_cost = 153.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.total_departures = 3.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
 
@@ -317,6 +343,31 @@ TEST(AutoShardingEvaluatorTest, ViolatesInfiniteCostForEdge) {
   expected_evaluation.lower_bound.computation_cost = 150.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.total_departures = 3.0;
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingEvaluatorTest, ViolatesMaxDepartures) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  request.max_departures = 2.0;
+  const std::vector<NodeStrategyIdx> s_val = {3, 1, 2, 2, 1};
+  const std::vector<EdgeStrategyIdx> e_val = {14, 6};
+  const double objective_value = 12149.0;
+  const AutoShardingSolverResult result = {
+      std::make_tuple(
+          std::move(s_val), std::move(e_val), objective_value), false};
+
+  const AutoShardingEvaluation evaluation = Evaluate(request, result);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.violation_codes = {kMaxDeparturesViolationCode};
+  expected_evaluation.total.computation_cost = 159.0;  // 13+21+32+42+51
+  expected_evaluation.total.communication_cost = 1590.0;  // 130+210+320+420+510
+  expected_evaluation.total.resharding_cost = 10400.0;  // 4200+6200
+  expected_evaluation.lower_bound.computation_cost = 150.0;
+  expected_evaluation.lower_bound.communication_cost = 1500.0;
+  expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.total_departures = 3.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
 

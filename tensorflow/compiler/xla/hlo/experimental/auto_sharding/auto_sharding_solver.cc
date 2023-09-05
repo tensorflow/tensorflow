@@ -412,6 +412,18 @@ AutoShardingSolverResult CallORToolsSolver(
       }
     }
   }
+  if (request.max_departures) {
+    MPConstraint* constraint = solver->MakeRowConstraint(
+        0, *request.max_departures,
+        absl::StrCat("departures <= ", *request.max_departures));
+    for (NodeIdx i = 0; i < request.num_nodes; ++i) {
+      for (NodeStrategyIdx j = 0; j < s[i].size(); ++j) {
+        double accumulated_coefficient = constraint->GetCoefficient(s[i][j]);
+        constraint->SetCoefficient(s[i][j],
+                                   accumulated_coefficient + request.p[i][j]);
+      }
+    }
+  }
 
   if (!request.s_hint.empty()) {
     std::vector<std::pair<const MPVariable*, double>> hint;
@@ -578,7 +590,8 @@ double CostComponents::cost() const {
 bool AutoShardingEvaluation::operator==(
     const AutoShardingEvaluation& other) const {
   return violation_codes == other.violation_codes && total == other.total &&
-         lower_bound == other.lower_bound;
+         lower_bound == other.lower_bound &&
+         total_departures == other.total_departures;
 }
 
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
@@ -607,6 +620,13 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
   for (EdgeIdx i = 0; i < request.e.size(); ++i) {
     if (request.r[i][e_val[i]] >= kInfinityCost) {
       evaluation.violation_codes.insert(kInfiniteCostViolationCode);
+    }
+  }
+  for (NodeIdx i = 0; i < request.num_nodes; ++i) {
+    evaluation.total_departures += request.p[i][s_val[i]];
+    if (request.max_departures &&
+        evaluation.total_departures > *request.max_departures) {
+      evaluation.violation_codes.insert(kMaxDeparturesViolationCode);
     }
   }
   if (request.memory_budget > 0) {

@@ -41,12 +41,14 @@ struct AutoShardingSolverRequest {
   std::vector<std::vector<double>> c;
   std::vector<std::vector<double>> d;
   std::vector<std::vector<double>> m;
+  std::vector<std::vector<double>> p;
   std::vector<std::vector<double>> r;
   std::vector<std::pair<NodeIdx, NodeIdx>> a;
   std::vector<std::vector<double>> v;
   std::vector<std::string> instruction_names;
   std::optional<int64_t> solver_timeout_in_seconds;
   std::optional<double> overbudget_coeff;
+  std::optional<double> max_departures;
   bool crash_at_infinity_costs_check = false;
   bool compute_iis = true;
   double saltiplier = 0.0001;  // Modifies each objective term by at most 0.01%
@@ -72,8 +74,9 @@ AutoShardingSolverResult CallORToolsSolver(
 enum AutoShardingViolationCode {
   kAliasViolationCode,     // Some node's strategy does not match its alias
   kFollowerViolationCode,  // Some node's strategy does not match its follower
-  kInfiniteCostViolationCode,  // Some node or edge incurs infinite cost
-  kMemoryViolationCode,        // The solution eclipses the memory budget
+  kInfiniteCostViolationCode,   // Some node or edge incurs infinite cost
+  kMemoryViolationCode,         // The solution eclipses the memory budget
+  kMaxDeparturesViolationCode,  // The solution has too many sharding departures
 };
 
 struct CostComponents {
@@ -96,6 +99,9 @@ struct AutoShardingEvaluation {
   // A breakdown & lower bound for each individual cost component.
   CostComponents total;
   CostComponents lower_bound;
+
+  // How many instructions departed from the "default" sharding strategy.
+  double total_departures = 0.0;
 
   bool operator==(const AutoShardingEvaluation& other) const;
 };
