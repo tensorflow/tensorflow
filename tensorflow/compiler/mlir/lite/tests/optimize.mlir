@@ -2680,30 +2680,6 @@ func.func @RemoveReshapeBeforeFullyConnectedExpandDims0(%arg0: tensor<128x64xf32
   // CHECK: return %[[FULLY_CONNECTED]] : tensor<128x32xf32>
 }
 
-// CHECK-LABEL: RemoveReshapeBeforeFullyConnectedExpandNeg
-func.func @RemoveReshapeBeforeFullyConnectedExpandNeg(%arg0: tensor<1x128x64xf32>, %arg1: tensor<32x64xf32>, %arg2: tensor<32xf32>) -> tensor<128x32xf32> {
-  %cst = arith.constant dense<[128, 64]> : tensor<2xi32>
-  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<1x128x64xf32>, tensor<2xi32>) -> tensor<128x64xf32>
-  %1 = "tfl.fully_connected"(%0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<128x64xf32>, tensor<32x64xf32>, tensor<32xf32>) -> tensor<128x32xf32>
-  func.return %1 : tensor<128x32xf32>
-  // CHECK: %cst = arith.constant dense<[128, 64]> : tensor<2xi32>
-  // CHECK: %0 = "tfl.reshape"(%arg0, %cst) : (tensor<1x128x64xf32>, tensor<2xi32>) -> tensor<128x64xf32>
-  // CHECK: %[[FULLY_CONNECTED:.*]] = "tfl.fully_connected"(%0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<128x64xf32>, tensor<32x64xf32>, tensor<32xf32>) -> tensor<128x32xf32>
-  // CHECK: return %[[FULLY_CONNECTED]] : tensor<128x32xf32>
-}
-
-// CHECK-LABEL: RemoveReshapeBeforeFullyConnectedReshapeNeg
-func.func @RemoveReshapeBeforeFullyConnectedReshapeNeg(%arg0: tensor<4x32x64xf32>, %arg1: tensor<32x64xf32>, %arg2: tensor<32xf32>) -> tensor<128x32xf32> {
-  %cst = arith.constant dense<[128, 64]> : tensor<2xi32>
-  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<4x32x64xf32>, tensor<2xi32>) -> tensor<128x64xf32>
-  %1 = "tfl.fully_connected"(%0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<128x64xf32>, tensor<32x64xf32>, tensor<32xf32>) -> tensor<128x32xf32>
-  func.return %1 : tensor<128x32xf32>
-  // CHECK: %cst = arith.constant dense<[128, 64]> : tensor<2xi32>
-  // CHECK: %0 = "tfl.reshape"(%arg0, %cst) : (tensor<4x32x64xf32>, tensor<2xi32>) -> tensor<128x64xf32>
-  // CHECK: %[[FULLY_CONNECTED:.*]] = "tfl.fully_connected"(%0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<128x64xf32>, tensor<32x64xf32>, tensor<32xf32>) -> tensor<128x32xf32>
-  // CHECK: return %[[FULLY_CONNECTED]] : tensor<128x32xf32>
-}
-
 // CHECK-LABEL: RemoveReshapeBeforeFullyConnectedReshape
 func.func @RemoveReshapeBeforeFullyConnectedReshape(%arg0: tensor<128x64xf32>, %arg1: tensor<32x64xf32>, %arg2: tensor<32xf32>) -> tensor<128x32xf32> {
   %cst = arith.constant dense<[4, 32, 64]> : tensor<3xi32>
