@@ -114,14 +114,16 @@ bool ConsumeAttrNumber(StringPiece* sp, int64_t* out) {
   } while (false)
 
 bool ConsumeCompoundAttrType(StringPiece* sp, StringPiece* out) {
-  auto capture_data = sp->data();
-  auto capture_begin = sp->begin();
+  const char* capture_data = sp->data();
+  size_t initial_length = sp->length(); 
+
   if (absl::ConsumePrefix(sp, "numbertype") ||
       absl::ConsumePrefix(sp, "numerictype") ||
       absl::ConsumePrefix(sp, "quantizedtype") ||
       absl::ConsumePrefix(sp, "realnumbertype") ||
       absl::ConsumePrefix(sp, "realnumberictype")) {
-    *out = StringPiece(capture_data, sp->begin() - capture_begin);
+    size_t consumed_length = initial_length - sp->length(); // prevent error: 'expression cannot subtract incompatible string_view iterators'
+    *out = StringPiece(capture_data, consumed_length);
     return true;
   }
   return false;
