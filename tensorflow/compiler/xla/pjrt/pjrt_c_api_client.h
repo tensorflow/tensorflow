@@ -233,6 +233,13 @@ class PjRtCApiClient : public PjRtClient {
         "PJRT C API does not support CreateBuffersForAsyncHostToDevice");
   }
 
+  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    PjRtMemorySpace* memory_space) override {
+    return Unimplemented(
+        "PJRT C API does not support CreateBuffersForAsyncHostToDevice");
+  }
+
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
