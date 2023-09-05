@@ -413,10 +413,17 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
     CHECK(conf.block_m() <= kMaxTileSize);
     CHECK(conf.block_n() <= kMaxTileSize);
     CHECK(conf.block_k() <= kMaxTileSize);
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Executable> executable, util.Compile([&] {
-          return TritonGemmAutotuneExtractor(conf, gpu_device_info, fusion);
-        }));
+    // TODO(b/296884861): Reenable GPU runtime, when it will have much smaller
+    // memory overhead (regarding the size of the executables).
+    // We can also remove the force_disable_gpu_runtime argument at that
+    // point.
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                        util.Compile(
+                            [&] {
+                              return TritonGemmAutotuneExtractor(
+                                  conf, gpu_device_info, fusion);
+                            },
+                            /*force_disable_gpu_runtime=*/true));
 
     if (executable != nullptr) {
       absl::MutexLock lock(&executable_sets_mu);
@@ -432,10 +439,11 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
   // Returns true on success.
   auto compile_reference_executable =
       [&](const HloFusionInstruction* fusion) -> StatusOr<bool> {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                        util.Compile([&] {
-                          return CublasGemmAutotuneExtractor(config, fusion);
-                        }));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Executable> executable,
+        util.Compile(
+            [&] { return CublasGemmAutotuneExtractor(config, fusion); },
+            /*force_disable_gpu_runtime=*/false));
 
     if (executable != nullptr) {
       absl::MutexLock lock(&executable_sets_mu);

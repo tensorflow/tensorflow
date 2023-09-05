@@ -76,7 +76,8 @@ class AutotunerCompileUtil {
   //  - `Executable` if everything goes fine.
   //  - `Status` on *unexpected* failure.
   StatusOr<std::unique_ptr<Executable>> Compile(
-      AutotunerCompileUtil::GenerateModuleFn extractor);
+      AutotunerCompileUtil::GenerateModuleFn extractor,
+      bool force_disable_gpu_runtime = false);
 
  private:
   AutotunerCompileUtil(const AutotuneConfig& config, Compiler* compiler,

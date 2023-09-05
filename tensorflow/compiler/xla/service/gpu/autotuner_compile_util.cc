@@ -122,7 +122,7 @@ AutotunerCompileUtil::ProfileExecutable(
 }
 
 StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
-    GenerateModuleFn extractor) {
+    GenerateModuleFn extractor, bool force_disable_gpu_runtime) {
   StatusOr<std::unique_ptr<HloModule>> new_hlo_module = extractor();
   if (new_hlo_module.status().GetPayload(kUncompilableFusion).has_value()) {
     // Incompatible value of split-k is an expected failure.
@@ -130,7 +130,14 @@ StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
   } else if (!new_hlo_module.status().ok()) {
     return new_hlo_module.status();
   }
-  (*new_hlo_module)->config().set_debug_options(opts_);
+
+  if (force_disable_gpu_runtime) {
+    DebugOptions opts = opts_;
+    opts.set_xla_gpu_enable_xla_runtime_executable(false);
+    (*new_hlo_module)->config().set_debug_options(opts);
+  } else {
+    (*new_hlo_module)->config().set_debug_options(opts_);
+  }
 
   StatusOr<std::unique_ptr<Executable>> out = compiler_->RunBackend(
       std::move(*new_hlo_module), &stream_executor_,
