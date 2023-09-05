@@ -39,6 +39,7 @@ limitations under the License.
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/support/aligned_buffer.h"  // from @tf_runtime
 #include "tfrt/support/rc_array.h"  // from @tf_runtime
 #include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
