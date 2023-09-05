@@ -13,21 +13,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_gpu.h"
+#include "third_party/tensorflow/compiler/xla/pjrt/c/pjrt_c_api_gpu.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
+#include <utility>
+#include <variant>
 #include <vector>
 
-#include <gtest/gtest.h>
-#include "absl/time/time.h"
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_test.h"
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_test_base.h"
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "testing/base/public/gunit.h"
+#include "third_party/absl/container/flat_hash_map.h"
+#include "third_party/absl/log/check.h"
+#include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/str_cat.h"
+#include "third_party/absl/synchronization/mutex.h"
+#include "third_party/absl/time/clock.h"
+#include "third_party/absl/time/time.h"
+#include "third_party/tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "third_party/tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "third_party/tensorflow/compiler/xla/pjrt/c/pjrt_c_api_test.h"
+#include "third_party/tensorflow/compiler/xla/pjrt/c/pjrt_c_api_test_base.h"
+#include "third_party/tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "third_party/tensorflow/compiler/xla/pjrt/gpu/gpu_helpers.h"
+#include "third_party/tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "third_party/tensorflow/compiler/xla/pjrt/pjrt_common.h"
+#include "third_party/tensorflow/compiler/xla/status.h"
+#include "third_party/tensorflow/compiler/xla/statusor.h"
+#include "third_party/tensorflow/tsl/platform/status.h"
+#include "third_party/tensorflow/tsl/platform/statusor.h"
 
 namespace pjrt {
 namespace {
@@ -134,6 +150,47 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
           api->PJRT_Client_AddressableDevices(&addressable_device_args);
       EXPECT_EQ(addressable_device_error, nullptr);
       EXPECT_EQ(addressable_device_args.num_addressable_devices, 1);
+
+      PJRT_Client_Destroy_Args destroy_args;
+      destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
+      destroy_args.priv = nullptr;
+      destroy_args.client = create_arg.client;
+
+      PJRT_Error* destroy_error = api->PJRT_Client_Destroy(&destroy_args);
+      CHECK_EQ(destroy_error, nullptr);
+    });
+  }
+  for (auto& t : threads) {
+    t.join();
+  }
+}
+
+TEST(PjrtCApiGpuAllocatorTest, AllocatorOptionsParsing) {
+  auto api = GetPjrtApi();
+  std::vector<std::thread> threads;
+  std::vector<std::string> allocator_options = {"default", "platform", "bfc",
+                                                "cuda_async"};
+  for (const std::string& allocator_option : allocator_options) {
+    threads.emplace_back([api, allocator_option, allocator_options] {
+      absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
+          {"allocator", allocator_option},
+      };
+      if (allocator_option == "bfc" || allocator_option == "cuda_async") {
+        options["memory_fraction"] = 0.5f;
+      }
+      if (allocator_option == "cuda_async") {
+        options["preallocate"] = true;
+      }
+      TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                              ::pjrt::ConvertToPjRtNamedValueList(options));
+      PJRT_Client_Create_Args create_arg;
+      create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
+      create_arg.priv = nullptr;
+      create_arg.client = nullptr;
+      create_arg.create_options = c_options.data();
+      create_arg.num_options = c_options.size();
+      PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
+      EXPECT_EQ(error, nullptr) << error->status.message();
 
       PJRT_Client_Destroy_Args destroy_args;
       destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
