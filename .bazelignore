@@ -14,4 +14,4 @@
 # ==============================================================================
 
 # The requirements updater has its own WORKSPACE file
-ci/official/requirements_updater
+ci/official/requirements_updaterr
