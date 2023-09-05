@@ -7,8 +7,8 @@ float8 varieties, and int4.
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
-    ML_DTYPES_COMMIT = "5b9fc9ad978757654843f4a8d899715dbea30e88"
-    ML_DTYPES_SHA256 = "9662811d9ab3823a56f8fa91b5a67fd82062b6dd4f187169b41e82a44e526455"
+    ML_DTYPES_COMMIT = "780b6d0ee01ffbfac45f7ec5418bc08f2b166483"
+    ML_DTYPES_SHA256 = "b9af15a8c781fe5906bceb1b2ead8190bb02d7df4d96b98daa8242da40808ff1"
     tf_http_archive(
         name = "ml_dtypes",
         build_file = "//third_party/py/ml_dtypes:ml_dtypes.BUILD",
