@@ -1271,8 +1271,8 @@ A set of element-wise binary arithmetic operations is supported.
 
 Where `Op` is one of `Add` (addition), `Sub` (subtraction), `Mul`
 (multiplication), `Div` (division), `Rem` (remainder), `Max` (maximum), `Min`
-(minimum), `LogicalAnd` (logical AND), or `LogicalOr` (logical OR), or
-`LogicalXor` (logical XOR).
+(minimum), `Atan2` (arctangent of y/x), `LogicalAnd` (logical AND), `LogicalOr`
+(logical OR), or `LogicalXor` (logical XOR).
 
 Arguments | Type    | Semantics
 --------- | ------- | ----------------------------------------
@@ -1358,10 +1358,6 @@ in detail on the [broadcasting page](broadcasting.md).
 XlaBuilder supports these element-wise unary functions:
 
 <b>`Abs(operand)`</b> Element-wise abs `x -> |x|`.
-
-<b>`Atan2(operand)`</b> Element-wise arctangent of $X_i$, $Y_i$ - the angle
-measure in radians between the x-axis and a ray from the origin to a point (x,
-y) `x,y -> atan2(x,y)`.
 
 <b>`Ceil(operand)`</b> Element-wise ceil `x -> ⌈x⌉`.
 
