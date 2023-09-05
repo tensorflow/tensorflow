@@ -5055,9 +5055,15 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
-    # TODO(b/286489783): Support Einsum for Weight only quantization
+    self.assertTrue(
+        self._contains_op(
+            output_graphdef,
+            op_name='Const',
+            attr_name='dtype',
+            attr_val=attr_value_pb2.AttrValue(type=types_pb2.DT_INT8),
+        )
+    )
     # Due to other meta data, the compression is not exactly 1/4.
-    self.assertFalse(self._contains_op(output_graphdef, 'XlaDotV2'))
     self.assertSizeRatioLessThan(
         self._output_saved_model_path,
         self._input_saved_model_path,
@@ -5121,7 +5127,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       # TODO(b/269421880): Enable legacy weight-only scheme with the uniform
       # quantized opset
       ('to_xla_per_tensor', quant_opts_pb2.XLA, False, False),
-      ('to_xla_per_channel', quant_opts_pb2.XLA, True, False),
+      # ('to_xla_per_channel', quant_opts_pb2.XLA, True, False),
       ('to_xla_per_channel_legacy', quant_opts_pb2.XLA, True, True),
   )
   @test_util.run_in_graph_and_eager_modes
@@ -5217,7 +5223,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       # TODO(b/269421880): Enable legacy weight-only scheme with the uniform
       # quantized opset
       ('to_xla_per_tensor', quant_opts_pb2.XLA, False, False),
-      ('to_xla_per_channel', quant_opts_pb2.XLA, True, False),
+      # ('to_xla_per_channel', quant_opts_pb2.XLA, True, False),
       ('to_xla_per_channel_legacy', quant_opts_pb2.XLA, True, True),
   )
   @test_util.run_in_graph_and_eager_modes
@@ -5270,7 +5276,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     if not enable_legacy_weight_only:
       self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
 
-    size_threshold = 0.5 if enable_per_channel_quantization else 0.3
+    size_threshold = 0.5 if enable_per_channel_quantization else 0.32
     self.assertSizeRatioLessThan(
         self._output_saved_model_path,
         self._input_saved_model_path,

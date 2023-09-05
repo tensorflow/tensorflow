@@ -983,8 +983,6 @@ def _dynamic_range_quantize(
 ) -> autotrackable.AutoTrackable:
   """Quantizes the given SavedModel via post-training dynamic range quantization.
 
-  Weight-only quantization also uses this path.
-
   Args:
     saved_model_path: Path to the saved model.
     output_directory: The path to save the output SavedModel. The directory will
@@ -998,13 +996,7 @@ def _dynamic_range_quantize(
   Raises:
     ValueError: when the model is QAT model.
   """
-  if (
-      quantization_options.quantization_method.experimental_method
-      == _ExperimentalMethod.WEIGHT_ONLY
-  ):
-    mode_str = 'weight-only quantization'
-  else:
-    mode_str = 'dynamic-range quantization'
+  mode_str = 'dynamic-range quantization'
   if _is_qat_saved_model(saved_model_path):
     raise ValueError(
         'The models trained with quantization-aware training (QAT) is not '
@@ -1015,23 +1007,6 @@ def _dynamic_range_quantize(
       'Running post-training %s on model: %s', mode_str, saved_model_path
   )
   logging.info('QuantizationOptions: \n%s', quantization_options)
-
-  # Check default quantization option values for post-training dynamic range
-  # quantization case.
-  # TODO(b/242805842): Find good minimum_elements_for_weights number for server.
-  # please also update default value in tflite converter:
-  # tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.cc;l=201
-  if quantization_options.min_num_elements_for_weights == 0:
-    quantization_options.min_num_elements_for_weights = (
-        _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
-    )
-    logging.warn(
-        (
-            'QuantizationOptions.min_num_elements_for_weights is not set (0). '
-            'Setting to the default value: %s.'
-        ),
-        _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
-    )
 
   loader = saved_model_loader.SavedModelLoader(saved_model_path)
 
@@ -1055,6 +1030,77 @@ def _dynamic_range_quantize(
       saved_model_path,
       quantization_options.signature_keys,
       quantization_options.tags,
+  )
+
+  save_model.save_model_v1(
+      exported_model.graph_def,
+      output_directory,
+      signature_def_map,
+      quantization_options.tags,
+      init_op_name=exported_model.init_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
+      checkpoint_dir=exported_model.checkpoint_dir,
+      function_aliases=exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
+  )
+  _copy_assets(saved_model_path, output_directory)
+
+  return saved_model_load.load(output_directory)
+
+
+def _weight_only_quantize(
+    saved_model_path: str,
+    output_directory: str,
+    quantization_options: quant_opts_pb2.QuantizationOptions,
+) -> autotrackable.AutoTrackable:
+  """Quantizes the given SavedModel via weight-only quantization.
+
+  Args:
+    saved_model_path: Path to the saved model.
+    output_directory: The path to save the output SavedModel. The directory will
+      be overwritten if not empty.
+    quantization_options: QuantizationOptions proto describing quantization
+      related config.
+
+  Returns:
+    A SavedModel object with TF quantization applied.
+
+  Raises:
+    ValueError: when the model is QAT model.
+  """
+  mode_str = 'weight-only quantization'
+
+  # QAT weight-only is not supported yet.
+  if _is_qat_saved_model(saved_model_path):
+    raise ValueError(
+        'The models trained with quantization-aware training (QAT) is not '
+        'supported for %s.' % mode_str
+    )
+
+  logging.info(
+      'Running post-training %s on model: %s', mode_str, saved_model_path
+  )
+  logging.info('QuantizationOptions: \n%s', quantization_options)
+
+  loader = saved_model_loader.SavedModelLoader(saved_model_path)
+
+  function_aliases = loader.get_meta_graph_def_from_tags(
+      quantization_options.tags
+  ).meta_info_def.function_aliases
+
+  exported_model_serialized = pywrap_quantize_model.quantize_weight_only(
+      saved_model_path,
+      quantization_options.SerializeToString(),
+      dict(function_aliases),
+  )
+
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized
+  )
+  signature_def_map = save_model.get_signatures_from_saved_model(
+      saved_model_path,
+      list(quantization_options.signature_keys),
+      set(quantization_options.tags),
   )
 
   save_model.save_model_v1(
@@ -1270,6 +1316,29 @@ def _populate_quantization_options_default_values(
   if not quantization_options.HasField('freeze_all_variables'):
     quantization_options.freeze_all_variables.enabled = True
 
+  # Check default quantization option values for weight-only quantization.
+  # TODO(b/242805842): Find good minimum_elements_for_weights number for server.
+  # please also update default value in tflite converter:
+  # tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.cc;l=201
+  if (
+      quantization_options.quantization_method.experimental_method
+      == _ExperimentalMethod.WEIGHT_ONLY
+  ) or (
+      quantization_options.quantization_method.experimental_method
+      == _ExperimentalMethod.DYNAMIC_RANGE
+  ):
+    if quantization_options.min_num_elements_for_weights == 0:
+      quantization_options.min_num_elements_for_weights = (
+          _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
+      )
+      logging.warn(
+          (
+              'QuantizationOptions.min_num_elements_for_weights is not set (0).'
+              ' Setting to the default value: %d.'
+          ),
+          _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
+      )
+
   # TODO(b/281595329): Implement static range quantization per-channel support
   if quantization_options.enable_per_channel_quantization and not (
       quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
@@ -1463,11 +1532,20 @@ def quantize(
           quantization_options,
           representative_dataset,
       )
-    elif (
-        method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE
-        or method.experimental_method == _ExperimentalMethod.WEIGHT_ONLY
+    elif (method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE) or (
+        method.experimental_method == _ExperimentalMethod.WEIGHT_ONLY
+        and quantization_options.enable_legacy_weight_only
     ):
       return _dynamic_range_quantize(
+          saved_model_path,
+          output_directory,
+          quantization_options,
+      )
+    elif (
+        method.experimental_method == _ExperimentalMethod.WEIGHT_ONLY
+        and not quantization_options.enable_legacy_weight_only
+    ):
+      return _weight_only_quantize(
           saved_model_path,
           output_directory,
           quantization_options,

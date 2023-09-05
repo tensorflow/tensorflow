@@ -188,5 +188,27 @@ void AddQuantizePtqPostCalibrationPasses(
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
 }
 
+void AddQuantizeWeightOnlyPasses(
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    std::optional<const absl::string_view> mlir_dump_file_prefix) {
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  // Add PrepareLiftingPass to utilize its functionalities like folding batch
+  // normalization ops and removing training related ops.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
+  pm.addPass(mlir::quant::CreateQuantizeWeightsPass(quantization_options));
+  pm.addPass(mlir::quant::CreatePropagateQuantizeTypePass());
+  pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
+  // Use optimize pass to remove double casts that are inserted when inlining
+  // functions.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
+}
+
 }  // namespace quantization
 }  // namespace tensorflow
