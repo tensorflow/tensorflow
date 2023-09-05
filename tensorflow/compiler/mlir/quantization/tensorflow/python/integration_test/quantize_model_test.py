@@ -5868,6 +5868,36 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
               ),
           ),
       },
+      {
+          'testcase_name': 'with_histogram_mse_bruteforce',
+          'target_opset': quant_opts_pb2.TF,
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=10,
+              ),
+          ),
+      },
+      {
+          'testcase_name': 'with_histogram_mse_bruteforce_to_xla',
+          'target_opset': quant_opts_pb2.XLA,
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=10,
+              ),
+          ),
+      },
+      {
+          'testcase_name': 'with_histogram_mse_bruteforce_to_uq',
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=10,
+              ),
+          ),
+      },
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model_by_calibration_options(
@@ -6006,6 +6036,18 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
               ),
           ),
       },
+      {
+          'testcase_name': 'with_histogram_mse_bruteforce',
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE
+          ),
+          'default_calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=256
+              ),
+          ),
+      },
   )
   @test_util.run_in_graph_and_eager_modes
   def test_default_calibration_options(
@@ -6014,8 +6056,12 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
       default_calibration_options: quant_opts_pb2.CalibrationOptions,
   ):
     quant_opts = quant_opts_pb2.QuantizationOptions(
-        calibration_options=calibration_options
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        ),
+        calibration_options=calibration_options,
     )
+    quantize_model._populate_quantization_component_spec(quant_opts)
     quantize_model._populate_calibration_options(quant_opts)
 
     self.assertEqual(

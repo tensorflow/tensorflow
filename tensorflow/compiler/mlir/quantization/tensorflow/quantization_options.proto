@@ -141,7 +141,7 @@ message FreezeAllVariables {
 // NEXT ID: 3
 message CalibrationOptions {
   // Configurations for calibration methods.
-  // NEXT ID: 4
+  // NEXT ID: 5
   enum CalibrationMethod {
     CALIBRATION_METHOD_UNSPECIFIED = 0;
     // Use the min, max values of all sample datasets.
@@ -150,6 +150,11 @@ message CalibrationOptions {
     CALIBRATION_METHOD_AVERAGE_MIN_MAX = 2;
     // Use the min/max percentile value of histogram.
     CALIBRATION_METHOD_HISTOGRAM_PERCENTILE = 3;
+    // Use the histogram mid values that minimize MSE error.
+    // This is very slow algorithm because it computes all errors for all
+    // histogram mid value pairs. Therefore the value of num_bins is recommended
+    // to be 256 or less.
+    CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE = 4;
   }
 
   // Parameters required for calibration.

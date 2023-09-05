@@ -679,7 +679,7 @@ def _add_calibration_statistics(
         node_def.attr['min'].f = min_value
         node_def.attr['max'].f = max_value
       except ValueError:
-        logging.warn(
+        logging.warning(
             (
                 'CustomAggregator id "%s" from FunctionDef "%s" does not have '
                 'min or max values. Parts of this function are not quantized.'
@@ -1208,8 +1208,7 @@ def _populate_calibration_options(
     calib_opts.calibration_method = (
         _CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
     )
-
-  if (
+  elif (
       calib_opts.calibration_method
       == _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE
   ):
@@ -1219,6 +1218,26 @@ def _populate_calibration_options(
       calib_opts.calibration_parameters.min_percentile = 0.001
     if not calib_opts.calibration_parameters.max_percentile:
       calib_opts.calibration_parameters.max_percentile = 99.999
+  # Check the activation_tensor_type of HISTOGRAM_MSE methods.
+  elif (
+      calib_opts.calibration_method
+      == _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE
+  ):
+    activation_tensor_type = (
+        quantization_options.quantization_method.quantization_component_specs[
+            _QuantizationComponent.COMPONENT_ACTIVATION
+        ].tensor_type
+    )
+    # Unlike the HISTOGRAM_PERCENTILE method, the HISTOGRAM_MSE method uses
+    # num_bits because it actually quantizes and dequantizes values.
+    if activation_tensor_type != _TensorType.TENSORTYPE_INT_8:
+      raise ValueError(
+          'Only TENSORTYPE_INT_8 is supported for HISTOGRAM_MSE calibration'
+          f' methods. calibration_method={calib_opts.calibration_method}'
+      )
+
+    if not calib_opts.calibration_parameters.initial_num_bins:
+      calib_opts.calibration_parameters.initial_num_bins = 256
 
 
 def _populate_quantization_options_default_values(
@@ -1285,9 +1304,6 @@ def _populate_quantization_options_default_values(
         _ExperimentalMethod.STATIC_RANGE
     )
 
-  # Check and populate calibration options.
-  _populate_calibration_options(quantization_options)
-
   if quantization_options.HasField('debugger_options'):
     if not quantization_options.debugger_options.log_dir_path:
       quantization_options.debugger_options.log_dir_path = '/tmp/dumps'
@@ -1312,6 +1328,13 @@ def _populate_quantization_options_default_values(
 
   # Check and populate quantization component spec
   _populate_quantization_component_spec(quantization_options)
+
+  if (
+      quantization_options.quantization_method.experimental_method
+      == _ExperimentalMethod.STATIC_RANGE
+  ):
+    # Check and populate calibration options.
+    _populate_calibration_options(quantization_options)
 
 
 @tf_export.tf_export('quantization.experimental.quantize_saved_model')

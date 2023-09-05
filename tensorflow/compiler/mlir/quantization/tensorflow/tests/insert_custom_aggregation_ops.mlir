@@ -1,6 +1,7 @@
 // RUN: tf-quant-opt %s -quant-insert-custom-aggregation-ops='test-case=MIN_MAX'  | FileCheck --check-prefix=MIN-MAX-CHECK %s
 // RUN: tf-quant-opt %s -quant-insert-custom-aggregation-ops='test-case=AVERAGE_MIN_MAX'  | FileCheck --check-prefix=AVERAGE-MIN-MAX-CHECK %s
 // RUN: tf-quant-opt %s -quant-insert-custom-aggregation-ops='test-case=HISTOGRAM_PERCENTILE'  | FileCheck --check-prefix=HISTOGRAM-PERCENTILE-CHECK %s
+// RUN: tf-quant-opt %s -quant-insert-custom-aggregation-ops='test-case=HISTOGRAM_MSE_BRUTEFORCE'  | FileCheck --check-prefix=HISTOGRAM-MSE-BRUTEFORCE-CHECK %s
 
 module {
   func.func @add_custom_ops(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
@@ -59,7 +60,7 @@ module {
 
 // CalibrationOptions(
 //   calibration_method=CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
-//   calibration_parameter=CalibrationParameter(num_bins=256, min_percentile=0.001, max_percentile=99.999)
+//   calibration_parameters=CalibrationParameters(initial_num_bins=256, min_percentile=0.001, max_percentile=99.999)
 // )
 // HISTOGRAM-PERCENTILE-CHECK: func @add_custom_ops
 // HISTOGRAM-PERCENTILE-CHECK-NEXT:  [[rhs:%.*]] = "tf.CustomAggregator"(%arg1) {calibration_method = 3 : i32, id = "", initial_num_bins = 256 : i32, max_percentile = 9.999900e+01 : f32, min_percentile = 1.000000e-03 : f32} : (tensor<*xf32>) -> tensor<*xf32>
@@ -77,3 +78,24 @@ module {
 // HISTOGRAM-PERCENTILE-CHECK-NEXT:  "tf.BiasAdd"
 // HISTOGRAM-PERCENTILE-CHECK-NEXT:  "tf.Relu6"
 // HISTOGRAM-PERCENTILE-CHECK-NEXT:  return
+
+// CalibrationOptions(
+//   calibration_method=CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
+//   calibration_parameters=CalibrationParameters(initial_num_bins=256)
+// )
+// HISTOGRAM-MSE-BRUTEFORCE-CHECK: func @add_custom_ops
+// HISTOGRAM-MSE-BRUTEFORCE-CHECK-NEXT:  [[rhs:%.*]] = "tf.CustomAggregator"(%arg1) {calibration_method = 4 : i32, id = "", initial_num_bins = 256 : i32, max_percentile = 0.000000e+00 : f32, min_percentile = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
+// HISTOGRAM-MSE-BRUTEFORCE-CHECK-NEXT:  [[lhs:%.*]] = "tf.CustomAggregator"(%arg0) {calibration_method = 4 : i32, id = "", initial_num_bins = 256 : i32, max_percentile = 0.000000e+00 : f32, min_percentile = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
+// HISTOGRAM-MSE-BRUTEFORCE-CHECK-NEXT:  [[add:%.*]] = "tf.AddV2"([[lhs]], [[rhs]]) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+// HISTOGRAM-MSE-BRUTEFORCE-CHECK-NEXT:  [[res:%.*]] = "tf.CustomAggregator"([[add]]) {calibration_method = 4 : i32, id = "", initial_num_bins = 256 : i32, max_percentile = 0.000000e+00 : f32, min_percentile = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
+// HISTOGRAM-MSE-BRUTEFORCE-CHECK-NEXT:  return [[res]] : tensor<*xf32>
+
+// HISTOGRAM-MSE-BRUTEFORCE-CHECK: func @no_custom_ops_on_non_f32_type
+// HISTOGRAM-MSE-BRUTEFORCE-CHECK-NEXT:  "tf.AddV2"
+// HISTOGRAM-MSE-BRUTEFORCE-CHECK-NEXT:  return
+
+// HISTOGRAM-MSE-BRUTEFORCE-CHECK: func @composite_conv2d_with_bias_and_relu6_fn
+// HISTOGRAM-MSE-BRUTEFORCE-CHECK-NEXT:  "tf.Conv2D"
+// HISTOGRAM-MSE-BRUTEFORCE-CHECK-NEXT:  "tf.BiasAdd"
+// HISTOGRAM-MSE-BRUTEFORCE-CHECK-NEXT:  "tf.Relu6"
+// HISTOGRAM-MSE-BRUTEFORCE-CHECK-NEXT:  return
