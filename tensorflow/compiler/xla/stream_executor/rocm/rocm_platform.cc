@@ -146,15 +146,6 @@ ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   return std::move(executor);
 }
 
-void ROCmPlatform::RegisterTraceListener(
-    std::unique_ptr<TraceListener> listener) {
-  LOG(FATAL) << "not yet implemented: register ROCM trace listener";
-}
-
-void ROCmPlatform::UnregisterTraceListener(TraceListener* listener) {
-  LOG(FATAL) << "not yet implemented: unregister ROCM trace listener";
-}
-
 }  // namespace gpu
 
 static void InitializeROCmPlatform() {
