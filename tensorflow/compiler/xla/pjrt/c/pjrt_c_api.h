@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 28
+#define PJRT_API_MINOR 29
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -145,6 +145,7 @@ typedef enum {
   PJRT_NamedValue_kInt64,
   PJRT_NamedValue_kInt64List,
   PJRT_NamedValue_kFloat,
+  PJRT_NamedValue_kBool,
 } PJRT_NamedValue_Type;
 
 // Named value for key-value pairs.
@@ -159,6 +160,7 @@ struct PJRT_NamedValue {
     int64_t int64_value;
     const int64_t* int64_array_value;
     float float_value;
+    bool bool_value;
   };
   // `value_size` is the number of elements for array/string and 1 for scalar
   // values.
