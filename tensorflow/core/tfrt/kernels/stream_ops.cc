@@ -101,8 +101,6 @@ void PwStreamResultsOp::Compute(tensorflow::OpKernelContext* ctx) {
     stream_->RecordSendLatency(model_name_, latency);
   });
 
-  // TODO(b/267818899): Switch to 64-bit step ids once host callbacks support
-  // passing int64 arguments.
   tensorflow::Tensor step_ids;
   bool has_step_id_inputs = false;
   if (names_.back() == kBatchedStepIdName) {
@@ -110,7 +108,7 @@ void PwStreamResultsOp::Compute(tensorflow::OpKernelContext* ctx) {
     step_ids = ctx->input(names_.size() - 1);
     has_step_id_inputs = true;
   } else {
-    step_ids = tensorflow::Tensor(static_cast<int32_t>(ctx->step_id()));
+    step_ids = tensorflow::Tensor(static_cast<int64_t>(ctx->step_id()));
   }
 
   std::vector<tensorflow::Tensor> batched_tensors;

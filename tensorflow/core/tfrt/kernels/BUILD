@@ -67,6 +67,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":stream_ops_util",
+        ":stream_ops_util_constants",
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:tensor_matcher",
         "//tensorflow/core/framework:tensor_testutil",

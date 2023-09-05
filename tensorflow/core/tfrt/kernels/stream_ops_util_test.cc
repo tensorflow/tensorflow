@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/tfrt/kernels/stream_ops_util_constants.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -35,10 +36,12 @@ using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 using ::testing::status::IsOkAndHolds;
 
-int32_t RequestId(int32_t step_id, int id) { return (step_id << 16) | id; }
+int64_t RequestId(int64_t step_id, uint32_t id) {
+  return (step_id << kStepIdBitSize) | id;
+}
 
 TEST(UnbatchStreamResultsTest, ScalarStepId) {
-  const tensorflow::Tensor step_ids = AsScalar<int32_t>(1);
+  const tensorflow::Tensor step_ids = AsScalar<int64_t>(1);
   const std::vector<tensorflow::Tensor> tensors = {
       AsScalar<int32_t>(1),
       AsTensor<int32_t>({2, 3}),
@@ -50,7 +53,7 @@ TEST(UnbatchStreamResultsTest, ScalarStepId) {
 }
 
 TEST(UnbatchStreamResultsTest, Batched) {
-  const tensorflow::Tensor step_ids = AsTensor<int32_t>(
+  const tensorflow::Tensor step_ids = AsTensor<int64_t>(
       {RequestId(1, 0), RequestId(1, 1), RequestId(2, 0), RequestId(3, 0)});
   const std::vector<tensorflow::Tensor> tensors = {
       AsTensor<int32_t>({1, 2, 3, 4}),
@@ -67,7 +70,7 @@ TEST(UnbatchStreamResultsTest, Batched) {
 }
 
 TEST(UnbatchStreamResultsTest, BatchedUnordered) {
-  const tensorflow::Tensor step_ids = AsTensor<int32_t>(
+  const tensorflow::Tensor step_ids = AsTensor<int64_t>(
       {RequestId(2, 0), RequestId(1, 0), RequestId(1, 1), RequestId(3, 0)});
   const std::vector<tensorflow::Tensor> tensors = {
       AsTensor<int32_t>({20, 10, 10, 30}),
@@ -80,7 +83,7 @@ TEST(UnbatchStreamResultsTest, BatchedUnordered) {
 }
 
 TEST(UnbatchStreamResultsTest, PaddingOneExample) {
-  const tensorflow::Tensor step_ids = AsTensor<int32_t>(
+  const tensorflow::Tensor step_ids = AsTensor<int64_t>(
       {RequestId(1, 0), RequestId(1, 0), RequestId(1, 0), RequestId(1, 0)});
   const std::vector<tensorflow::Tensor> tensors = {
       AsTensor<int32_t>({10, 10, 10, 10}),
@@ -91,7 +94,7 @@ TEST(UnbatchStreamResultsTest, PaddingOneExample) {
 }
 
 TEST(UnbatchStreamResultsTest, PaddingMultipleExamples) {
-  const tensorflow::Tensor step_ids = AsTensor<int32_t>(
+  const tensorflow::Tensor step_ids = AsTensor<int64_t>(
       {RequestId(1, 0), RequestId(1, 1), RequestId(2, 0), RequestId(1, 0)});
   const std::vector<tensorflow::Tensor> tensors = {
       AsTensor<int32_t>({10, 20, 30, 10}),
