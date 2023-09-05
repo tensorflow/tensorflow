@@ -88,14 +88,21 @@ absl::Duration ProducerInputAccessTime(
     }
   }
   for (int i = 0; i < producer->operand_count(); ++i) {
-    int64_t p_size_accessed =
+    // Information about data read taking into account utilization.
+    // If `operand_utilization` is 0, `operand_bytes_accessed` should be also 0.
+    const int64_t operand_bytes_accessed =
         cost_analysis->operand_bytes_accessed(*producer, i);
-    float operand_utilization =
+    const float operand_utilization =
         cost_analysis->operand_utilization(*producer, i);
-    int64_t p_size_net =
-        (operand_utilization == 0)
-            ? 0
-            : static_cast<float>(p_size_accessed) / operand_utilization;
+
+    // An estimate how much data would need to fit into L1/L2 cache to speed up
+    // the operand access.
+    // If `operand_utilization` < 1, only a part of the full operand size should
+    // be read. Otherwise, `operand_bytes_accessed / operand_utilization` is the
+    // size of the operand without reuse.
+    const int64_t n_bytes_read_net =
+        operand_bytes_accessed / std::max(operand_utilization, 1.f);
+
     // Look for common operands of producer and consumer that are accessed
     // more efficiently on merge:
     // 1) Producer has to use the common operand elementwise from its root if
@@ -124,9 +131,10 @@ absl::Duration ProducerInputAccessTime(
       }
     }
     CHECK_LE(common_utilization, producer_output_utilization);
-    ret += ReadTime(
-        gpu_device_info, std::min(p_size_net, p_size_accessed),
-        p_size_accessed * (producer_output_utilization - common_utilization));
+    ret += ReadTime(gpu_device_info, /*n_bytes_net=*/n_bytes_read_net,
+                    /*n_bytes_total=*/
+                    operand_bytes_accessed *
+                        (producer_output_utilization - common_utilization));
   }
   return ret;
 }
