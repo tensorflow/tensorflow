@@ -30,13 +30,18 @@ tsl::Status ValidateGPUMachineManager() {
 }
 
 Platform* GPUMachineManager() {
-  auto result = MultiPlatformManager::PlatformWithName(GpuPlatformName());
-  if (!result.ok()) {
-    LOG(FATAL) << "Could not find Platform with name " << GpuPlatformName();
-    return nullptr;
-  }
+  // Cache this result, it's on the critical path for light outside compilation
+  // (and probably other things as well).
+  static Platform* platform = [&] {
+    tsl::StatusOr<Platform*> p =
+        MultiPlatformManager::PlatformWithName(GpuPlatformName());
+    if (!p.ok()) {
+      LOG(FATAL) << "Could not find Platform with name " << GpuPlatformName();
+    }
+    return *p;
+  }();
 
-  return result.value();
+  return platform;
 }
 
 std::string GpuPlatformName() {
