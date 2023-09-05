@@ -13,28 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "third_party/tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
-#include "absl/types/span.h"
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "third_party/absl/status/status.h"
+#include "third_party/absl/strings/str_cat.h"
+#include "third_party/absl/types/span.h"
+#include "third_party/tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "third_party/tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "third_party/tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "third_party/tensorflow/compiler/xla/primitive_util.h"
+#include "third_party/tensorflow/compiler/xla/status.h"
+#include "third_party/tensorflow/compiler/xla/statusor.h"
+#include "third_party/tensorflow/compiler/xla/xla_data.proto.h"
 
 namespace pjrt {
 
@@ -431,6 +430,10 @@ static xla::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
     c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kFloat;
     c_value.float_value = std::get<float>(value);
     c_value.value_size = 1;
+  } else if (std::holds_alternative<bool>(value)) {
+    c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kBool;
+    c_value.bool_value = std::get<bool>(value);
+    c_value.value_size = 1;
   } else {
     return tsl::errors::InvalidArgument("Unexpected PjRtValueType: '",
                                         value.index(), " with name: ", name);
@@ -478,6 +481,10 @@ ConvertFromPjRtNamedValueList(PJRT_NamedValue* c_value_list, size_t list_size) {
         cpp_value_map[name] = xla::PjRtValueType(c_value.float_value);
         break;
       }
+      case PJRT_NamedValue_Type::PJRT_NamedValue_kBool: {
+        cpp_value_map[name] = xla::PjRtValueType(c_value.bool_value);
+        break;
+      }
       default: {
         LOG(FATAL) << "Unexpected PJRT_NamedValue type: " << c_value.type
                    << " with name: " << name;
@@ -501,6 +508,9 @@ static xla::StatusOr<PJRT_NamedValue_Type> GetPjrtNamedValueType(
   }
   if (std::holds_alternative<float>(cpp_value)) {
     return PJRT_NamedValue_Type::PJRT_NamedValue_kFloat;
+  }
+  if (std::holds_alternative<bool>(cpp_value)) {
+    return PJRT_NamedValue_Type::PJRT_NamedValue_kBool;
   }
   return tsl::errors::InvalidArgument("Unexpected PjRtValueType with index",
                                       cpp_value.index());
