@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+// placeholder for index annotation headers
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
@@ -286,12 +287,6 @@ H AbslHashValue(H h, const PyTreeDef& t) {
   return h;
 }
 
-// pybind11-index-annotation BEGIN
-// refs {
-//   module_path: "tensorflow/compiler/xla/python/xla.cc"
-//   module_arg {}
-// }
-// pybind11-index-annotation END
 void BuildPytreeSubmodule(pybind11::module& m);
 
 }  // namespace xla

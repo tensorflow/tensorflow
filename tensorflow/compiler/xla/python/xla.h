@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_XLA_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_XLA_H_
 
+// placeholder for index annotation headers
 #include "pybind11/pybind11.h"  // from @pybind11
 
 namespace xla {

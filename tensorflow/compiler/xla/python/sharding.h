@@ -23,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+// placeholder for index annotation headers
 #include "absl/types/span.h"
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/numpy.h"  // from @pybind11
@@ -252,12 +253,6 @@ class GSPMDSharding : public XLACompatibleSharding {
   std::shared_ptr<PyDeviceList> internal_device_list_;
 };
 
-// pybind11-index-annotation BEGIN
-// refs {
-//   module_path: "tensorflow/compiler/xla/python/xla.cc"
-//   module_arg {}
-// }
-// pybind11-index-annotation END
 void RegisterSharding(pybind11::module& m);
 
 }  // namespace jax

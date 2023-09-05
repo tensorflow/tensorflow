@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+// placeholder for index annotation headers
 #include "llvm/Support/Casting.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
@@ -112,12 +113,6 @@ class PyArray : public pybind11::object {
       tsl::RCReference<ifrt::Array> ifrt_array, pybind11::object sharding,
       bool weak_type, bool committed, bool skip_checks);
 
-  // pybind11-index-annotation BEGIN
-  // refs {
-  //   module_path: "tensorflow/compiler/xla/python/xla.cc"
-  //   module_arg {}
-  // }
-  // pybind11-index-annotation END
   static Status RegisterTypes(pybind11::module& m);
 
   using Storage = PyArray_Storage;

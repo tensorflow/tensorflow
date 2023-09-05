@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+// placeholder for index annotation headers
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -226,13 +227,6 @@ xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
                            ParsedArgumentsAsBuffers& arguments);
 
 // The function to call in `xla.cc` to add the bindings for this module.
-//
-// pybind11-index-annotation BEGIN
-// refs {
-//   module_path: "tensorflow/compiler/xla/python/xla.cc"
-//   module_arg {}
-// }
-// pybind11-index-annotation END
 void BuildJaxjitSubmodule(pybind11::module& m);
 
 }  // namespace jax

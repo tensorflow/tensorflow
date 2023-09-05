@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+// placeholder for index annotation headers
 #include "absl/types/variant.h"
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/numpy.h"  // from @pybind11
@@ -37,12 +38,6 @@ limitations under the License.
 
 namespace jax {
 
-// pybind11-index-annotation BEGIN
-// refs {
-//   module_path: "tensorflow/compiler/xla/python/xla.cc"
-//   module_arg {}
-// }
-// pybind11-index-annotation END
 void BuildPmapSubmodule(pybind11::module& m);
 
 }  // namespace jax

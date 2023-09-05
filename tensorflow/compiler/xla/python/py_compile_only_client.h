@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+// placeholder for index annotation headers
 #include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 
@@ -35,12 +36,6 @@ namespace xla {
 std::shared_ptr<PyClient> MakeCompileOnlyClient(
     std::shared_ptr<PjRtTopologyDescription>);
 
-// pybind11-index-annotation BEGIN
-// refs {
-//   module_path: "tensorflow/compiler/xla/python/xla.cc"
-//   module_arg {}
-// }
-// pybind11-index-annotation END
 void RegisterCompileOnlyClient(pybind11::module& m);
 
 }  // namespace xla

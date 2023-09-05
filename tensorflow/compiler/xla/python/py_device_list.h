@@ -102,12 +102,12 @@ class PyDeviceList : public std::enable_shared_from_this<PyDeviceList> {
       memory_kind_info_;  // Populated on demand.
 };
 
-// pybind11-index-annotation BEGIN
+// go/pywald-pybind-annotation BEGIN
 // refs {
-//   module_path: "tensorflow/compiler/xla/python/xla.cc"
+//   module_path: "third_party/tensorflow/compiler/xla/python/xla.cc"
 //   module_arg {}
 // }
-// pybind11-index-annotation END
+// go/pywald-pybind-annotation END
 void RegisterDeviceList(pybind11::module& m);
 
 }  // namespace jax
