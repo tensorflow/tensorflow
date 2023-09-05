@@ -681,11 +681,11 @@ cc_library(
     srcs = ["bridge.cc"],
     hdrs = ["bridge.h"],
     deps = [
+        ":tensorflow_passes",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",

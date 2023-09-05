@@ -1998,18 +1998,3 @@ build_test(
 # )
 #
 # copybara:uncomment_end(google-only)
-
-# Required as we created the transforms subpackage and need to update
-# these BUILD targets in a follow up.
-aliased_targets = [
-    "tensorflow_passes",
-]
-
-[
-    alias(
-        name = target,
-        actual = "//tensorflow/compiler/mlir/tensorflow/transforms:%s" % target,
-        visibility = ["//visibility:public"],
-    )
-    for target in aliased_targets
-]

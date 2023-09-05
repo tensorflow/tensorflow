@@ -19,7 +19,7 @@ cc_library(
     hdrs = ["dtensor_mlir_passes_internal.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:errors",
