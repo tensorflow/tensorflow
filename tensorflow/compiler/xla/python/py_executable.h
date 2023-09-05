@@ -23,13 +23,13 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/types/span.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_executable.h"
-#include "tensorflow/compiler/xla/python/py_array.h"
-#include "tensorflow/compiler/xla/python/py_client.h"
-#include "tensorflow/compiler/xla/python/traceback.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "third_party/absl/types/span.h"
+#include "third_party/tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "third_party/tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_executable.h"
+#include "third_party/tensorflow/compiler/xla/python/py_array.h"
+#include "third_party/tensorflow/compiler/xla/python/py_client.h"
+#include "third_party/tensorflow/compiler/xla/python/traceback.h"
+#include "third_party/tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 
@@ -139,7 +139,7 @@ class PyLoadedExecutable
 
   StatusOr<absl::flat_hash_map<
       std::string,
-      std::variant<std::string, int64_t, std::vector<int64_t>, float>>>
+      std::variant<std::string, int64_t, std::vector<int64_t>, float, bool>>>
   GetCostAnalysis() const {
     return ifrt_loaded_executable_->GetCostAnalysis();
   }
