@@ -28,6 +28,7 @@ cc_library(
     srcs = ["graph_execution_options.cc"],
     hdrs = ["graph_execution_options.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         ":config",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
