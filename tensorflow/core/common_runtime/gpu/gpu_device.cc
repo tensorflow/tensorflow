@@ -1639,7 +1639,8 @@ Status BaseGPUDeviceFactory::CreateDevices(
                 return false;
               }
               DCHECK_EQ(a.device_ordinal, b.device_ordinal);
-              DCHECK_NE(a.index, b.index);  // index is unique.
+              DCHECK(std::addressof(a) == std::addressof(b) ||
+                     a.index != b.index);  // index is unique.
               if (a.index < b.index) {
                 return true;
               }
