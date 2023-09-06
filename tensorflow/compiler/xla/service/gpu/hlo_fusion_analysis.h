@@ -74,6 +74,9 @@ class HloFusionAnalysis {
   // loop.
   const LaunchDimensionsConfig* GetLoopFusionConfig();
 
+  // Returns the hero reduction of the computation.
+  const HloInstruction* FindHeroReduction() const;
+
  private:
   HloFusionAnalysis(const HloFusionInstruction* fusion,
                     FusionBackendConfig fusion_backend_config,
