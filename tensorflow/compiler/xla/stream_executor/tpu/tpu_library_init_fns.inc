@@ -73,7 +73,6 @@ tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_Create);
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_Free);
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_Initialize);
-  TFTPU_SET_FN(ops_api_fn, TpuNodeContext_StopChipHeartbeats);
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_CloseTpuHost);
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_CompactionSupported);
 

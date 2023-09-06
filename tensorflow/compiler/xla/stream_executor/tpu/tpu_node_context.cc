@@ -46,14 +46,6 @@ TpuNodeContext::~TpuNodeContext() {
 }
 
 /* static */
-tsl::Status TpuNodeContext::StopChipHeartbeats() {
-  StatusHelper status;
-  stream_executor::tpu::OpsApiFn()->TpuNodeContext_StopChipHeartbeatsFn(
-      status.c_status);
-  return status.status();
-}
-
-/* static */
 tsl::Status TpuNodeContext::CloseTpuHost() {
   StatusHelper status;
   stream_executor::tpu::OpsApiFn()->TpuNodeContext_CloseTpuHostFn(

@@ -48,8 +48,6 @@ class TpuNodeContext final {
   }
   ~TpuNodeContext();
 
-  static tsl::Status StopChipHeartbeats();
-
   static tsl::Status CloseTpuHost();
 
   static tsl::Status Initialize(int device_ordinal);
