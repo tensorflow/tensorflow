@@ -1,3 +1,5 @@
+load("@rules_android_ndk//:rules.bzl", "android_ndk_repository")
+
 """Set up configurable Android SDK and NDK dependencies."""
 
 def android_workspace():

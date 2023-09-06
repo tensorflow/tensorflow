@@ -51,6 +51,11 @@ def _tf_bind():
         actual = "@six_archive//:six",
     )
 
+    native.bind(
+        name = "android/crosstool",
+        actual = "@androidndk//:toolchain",
+    )
+
 def workspace():
     http_archive(
         name = "inception_v1",

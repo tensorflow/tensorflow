@@ -818,6 +818,13 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/bazelbuild/rules_android/archive/v0.1.1.zip"),
     )
 
+    tf_http_archive(
+        name = "rules_android_ndk",
+        sha256 = "73eac2cf5f2fd009e8fb197346a2ca39f320b786985658de63a1dff0f12c53d5",
+        strip_prefix = "rules_android_ndk-72ca32741f27c3de69fdcb7a1aaf3ca59919ad8c",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_android_ndk/archive/72ca32741f27c3de69fdcb7a1aaf3ca59919ad8c.zip"),
+    )
+
     # Apple and Swift rules.
     # https://github.com/bazelbuild/rules_apple/releases
     tf_http_archive(

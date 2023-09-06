@@ -28,7 +28,7 @@ _ANDROID_SDK_REPO_TEMPLATE = """
 """
 
 _ANDROID_NDK_REPO_TEMPLATE = """
-    native.android_ndk_repository(
+    android_ndk_repository(
         name="androidndk",
         path="%s",
         api_level=%s,
