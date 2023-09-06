@@ -17,9 +17,10 @@ limitations under the License.
 
 #include <utility>
 
-#include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
@@ -27,7 +28,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 using SanitizeConstantNamesTest = HloTestBase;
 
 TEST_F(SanitizeConstantNamesTest, InstructionNameWithHyphenSanitized) {
@@ -73,8 +74,10 @@ TEST_F(SanitizeConstantNamesTest, BufferSanitizedNameCollisionResolved) {
                           ParseAndReturnVerifiedModule(kHloString));
 
   EXPECT_TRUE(GpuSanitizeConstantNames().Run(module.get()).value());
-  EXPECT_THAT(FindInstruction(module.get(), "equal_to_1"), op::Constant());
-  EXPECT_THAT(FindInstruction(module.get(), "equal_to_2"), op::Constant());
+  EXPECT_THAT(FindInstruction(module.get(), "equal_to_1"),
+              GmockMatch(m::Constant()));
+  EXPECT_THAT(FindInstruction(module.get(), "equal_to_2"),
+              GmockMatch(m::Constant()));
 }
 
 }  // namespace

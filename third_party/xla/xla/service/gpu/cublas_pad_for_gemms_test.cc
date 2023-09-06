@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "xla/service/gpu/cublas_pad_for_gemms.h"
 
-#include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 namespace xla {
 namespace gpu {
@@ -53,20 +54,17 @@ TEST_F(CublasGemmPadForTensorCoresTest, OneDotRootComputation) {
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
-      AllOf(
-          op::Shape("f16[2048, 33708]"),
-          op::Slice(AllOf(
-              op::Shape("f16[2048, 33712]"),
-              op::Dot(AllOf(op::Shape("f16[2048, 1024]"),
-                            op::Pad(AllOf(op::Shape("f16[2048, 1024]"),
-                                          op::Parameter()),
-                                    AllOf(op::Shape("f16[]"), op::Constant()))),
-                      AllOf(op::Shape("f16[1024, 33712]"),
-                            op::Pad(AllOf(op::Shape("f16[1024, 33708]"),
-                                          op::Parameter()),
-                                    AllOf(op::Shape("f16[]"), op::Constant()))),
-                      /*lhs_contracting_dim=*/1,
-                      /*rhs_contracting_dim=*/0)))));
+      GmockMatch(
+          m::Slice(m::Dot(m::Pad(m::Parameter().WithShape(F16, {2048, 1024}),
+                                 m::Constant().WithShape(F16, {}))
+                              .WithShape(F16, {2048, 1024}),
+                          m::Pad(m::Parameter().WithShape(F16, {1024, 33708}),
+                                 m::Constant().WithShape(F16, {}))
+                              .WithShape(F16, {1024, 33712}))
+                       .WithShape(F16, {2048, 33712})
+                       .WithContractingDims(/*lhs_contracting_dims=*/{1},
+                                            /*rhs_contracting_dims=*/{0}))
+              .WithShape(F16, {2048, 33708})));
 }
 
 TEST_F(CublasGemmPadForTensorCoresTest, OneDotS8RootComputation) {
@@ -91,20 +89,17 @@ TEST_F(CublasGemmPadForTensorCoresTest, OneDotS8RootComputation) {
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
-      AllOf(
-          op::Shape("s32[2047, 33707]"),
-          op::Slice(AllOf(
-              op::Shape("s32[2048, 33708]"),
-              op::Dot(AllOf(op::Shape("s8[2048, 1024]"),
-                            op::Pad(AllOf(op::Shape("s8[2047, 1023]"),
-                                          op::Parameter()),
-                                    AllOf(op::Shape("s8[]"), op::Constant()))),
-                      AllOf(op::Shape("s8[1024, 33708]"),
-                            op::Pad(AllOf(op::Shape("s8[1023, 33707]"),
-                                          op::Parameter()),
-                                    AllOf(op::Shape("s8[]"), op::Constant()))),
-                      /*lhs_contracting_dim=*/1,
-                      /*rhs_contracting_dim=*/0)))));
+      GmockMatch(
+          m::Slice(m::Dot(m::Pad(m::Parameter().WithShape(S8, {2047, 1023}),
+                                 m::Constant().WithShape(S8, {}))
+                              .WithShape(S8, {2048, 1024}),
+                          m::Pad(m::Parameter().WithShape(S8, {1023, 33707}),
+                                 m::Constant().WithShape(S8, {}))
+                              .WithShape(S8, {1024, 33708}))
+                       .WithShape(S32, {2048, 33708})
+                       .WithContractingDims(/*lhs_contracting_dims=*/{1},
+                                            /*rhs_contracting_dims=*/{0}))
+              .WithShape(S32, {2047, 33707})));
 }
 
 TEST_F(CublasGemmPadForTensorCoresTest, TwoDotsComputation) {
@@ -128,51 +123,41 @@ TEST_F(CublasGemmPadForTensorCoresTest, TwoDotsComputation) {
   SCOPED_TRACE(module->ToString());
 
   auto* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(
+  const HloInstruction* dot2 = nullptr;
+  ASSERT_THAT(
       root,
-      AllOf(
-          op::Shape("f16[2048, 1]"),
-          op::Slice(AllOf(
-              op::Shape("f16[2048, 8]"),
-              op::Dot(
-                  AllOf(
-                      op::Shape("f16[2048, 33712]"),
-                      AllOf(
-                          op::Shape("f16[2048, 33712]"),
-                          AllOf(
-                              op::Shape("f16[2048, 33712]"),
-                              op::Pad(
-                                  AllOf(op::Shape("f16[2048, 33708]"),
-                                        op::Slice(AllOf(
-                                            op::Shape("f16[2048, 33712]"),
-                                            op::Dot(
-                                                AllOf(op::Shape(
-                                                          "f16[2048, 1024]"),
-                                                      op::Pad()),
-                                                AllOf(op::Shape(
-                                                          "f16[1024, 33712]"),
-                                                      op::Pad()),
-                                                1, 0)))),
-                                  AllOf(op::Shape("f16[]"), op::Constant()))))),
-                  AllOf(op::Shape("f16[33712, 8]"),
-                        AllOf(op::Shape("f16[33712, 8]"),
-                              op::Pad(
-                                  AllOf(op::Shape("f16[33708, 1]"),
-                                        op::Parameter()),
-                                  AllOf(op::Shape("f16[]"), op::Constant())))),
-                  /*lhs_contracting_dim=*/1, /*rhs_contracting_dim=*/0)))));
+      GmockMatch(
+          m::Slice(
+              m::Dot(
+                  m::Pad(m::Slice(m::Dot(&dot2,
+                                         m::Pad().WithShape(F16, {2048, 1024}),
+                                         m::Pad().WithShape(F16, {1024, 33712}))
+                                      .WithContractingDims(
+                                          /*lhs_contracting_dims=*/{1},
+                                          /*rhs_contracting_dims=*/{0})
+                                      .WithShape(F16, {2048, 33712}))
+                             .WithShape(F16, {2048, 33708}),
+                         m::Constant().WithShape(F16, {}))
+                      .WithShape(F16, {2048, 33712}),
 
-  auto* dot2 = root->operand(0)->operand(0)->operand(0)->operand(0);
+                  m::Pad(m::Parameter().WithShape(F16, {33708, 1}),
+                         m::Constant().WithShape(F16, {}))
+                      .WithShape(F16, {33712, 8}))
+                  .WithShape(F16, {2048, 8})
+                  .WithContractingDims(/*lhs_contracting_dims=*/{1},
+                                       /*rhs_contracting_dims=*/{0}))
+              .WithShape(F16, {2048, 1})));
+
   EXPECT_THAT(
       dot2,
-      AllOf(op::Dot(
-          AllOf(op::Shape("f16[2048, 1024]"),
-                op::Pad(AllOf(op::Shape("f16[2048, 1024]"), op::Parameter()),
-                        AllOf(op::Shape("f16[]"), op::Constant()))),
-          AllOf(op::Shape("f16[1024, 33712]"),
-                op::Pad(AllOf(op::Shape("f16[1024, 33708]"), op::Parameter()),
-                        AllOf(op::Shape("f16[]"), op::Constant()))),
-          /*lhs_contracting_dim=*/1, /*rhs_contracting_dim=*/0)));
+      GmockMatch(m::Dot(m::Pad(m::Parameter().WithShape(F16, {2048, 1024}),
+                               m::Constant().WithShape(F16, {}))
+                            .WithShape(F16, {2048, 1024}),
+                        m::Pad(m::Parameter().WithShape(F16, {1024, 33708}),
+                               m::Constant().WithShape(F16, {}))
+                            .WithShape(F16, {1024, 33712}))
+                     .WithContractingDims(/*lhs_contracting_dims=*/{1},
+                                          /*rhs_contracting_dims=*/{0})));
 }
 
 TEST_F(CublasGemmPadForTensorCoresTest, DotWithBatchDimensions) {
@@ -192,20 +177,18 @@ TEST_F(CublasGemmPadForTensorCoresTest, DotWithBatchDimensions) {
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
-      AllOf(
-          op::Shape("f16[3, 5, 2048, 33708]"),
-          op::Slice(AllOf(
-              op::Shape("f16[3, 5, 2048, 33712]"),
-              op::Dot(AllOf(op::Shape("f16[3, 5, 2048, 1024]"),
-                            op::Pad(AllOf(op::Shape("f16[3, 5, 2048, 1024]"),
-                                          op::Parameter()),
-                                    AllOf(op::Shape("f16[]"), op::Constant()))),
-                      AllOf(op::Shape("f16[3, 5, 1024, 33712]"),
-                            op::Pad(AllOf(op::Shape("f16[3, 5, 1024, 33708]"),
-                                          op::Parameter()),
-                                    AllOf(op::Shape("f16[]"), op::Constant()))),
-                      /*lhs_contracting_dim=*/3,
-                      /*rhs_contracting_dim=*/2)))));
+      GmockMatch(
+          m::Slice(
+              m::Dot(m::Pad(m::Parameter().WithShape(F16, {3, 5, 2048, 1024}),
+                            m::Constant().WithShape(F16, {}))
+                         .WithShape(F16, {3, 5, 2048, 1024}),
+                     m::Pad(m::Parameter().WithShape(F16, {3, 5, 1024, 33708}),
+                            m::Constant().WithShape(F16, {}))
+                         .WithShape(F16, {3, 5, 1024, 33712}))
+                  .WithShape(F16, {3, 5, 2048, 33712})
+                  .WithContractingDims(/*lhs_contracting_dims=*/{3},
+                                       /*rhs_contracting_dims=*/{2}))
+              .WithShape(F16, {3, 5, 2048, 33708})));
 }
 
 TEST_F(CublasGemmPadForTensorCoresTest, NoDotComputation) {

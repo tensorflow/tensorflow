@@ -1835,7 +1835,8 @@ xla_cc_test(
         "//xla:test",
         "//xla:test_helpers",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_matchers",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
         "//xla/service:shape_inference",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
@@ -2070,9 +2071,10 @@ xla_cc_test(
     srcs = ["gpu_sanitize_constant_names_test.cc"],
     deps = [
         ":gpu_sanitize_constant_names",
-        "//xla/hlo/utils:hlo_matchers",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_parser",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/platform:test",
@@ -2345,7 +2347,8 @@ xla_cc_test(
     ],
     deps = [
         ":cublas_pad_for_gemms",
-        "//xla/hlo/utils:hlo_matchers",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
     ],

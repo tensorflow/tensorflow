@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -88,6 +89,8 @@ namespace xla {
 //     - WithConvDnums(string or proto): checks convolution_dimension_numbers().
 //     - WithPredicate: Instruction matches an arbitrary function you pass.
 //       Function must have signature `bool(const HloInstruction*)`.
+//     - WithContractingDims: Dot instruction with specific LHS and RHS
+//       contracting dimensions.
 //
 //   Shape():
 //     - EqualTo
@@ -1961,6 +1964,65 @@ class HloInstructionPredicateImpl {
   HloPredicate fn_;
 };
 
+class HloInstructionContractingDimsImpl {
+ public:
+  explicit HloInstructionContractingDimsImpl(
+      absl::Span<const int64_t> lhs_contracting_dims,
+      absl::Span<const int64_t> rhs_contracting_dims)
+      : lhs_contracting_dims_(lhs_contracting_dims.begin(),
+                              lhs_contracting_dims.end()),
+        rhs_contracting_dims_(rhs_contracting_dims.begin(),
+                              rhs_contracting_dims.end()) {}
+
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "with lhs_contracting_dims {"
+        << absl::StrJoin(lhs_contracting_dims_, ",")
+        << "} and rhs_contracting_dims {"
+        << absl::StrJoin(rhs_contracting_dims_, ",") << "}";
+  }
+
+ private:
+  template <typename HloInstructionType>
+  bool MatchImpl(HloInstructionType* inst, MatchOption option) const {
+    if (inst->opcode() != HloOpcode::kDot) {
+      EXPLAIN << "HloInstruction is not dot so "
+                 "can't have dot_dimension_numbers";
+      return false;
+    }
+
+    const DotDimensionNumbers& dnums = inst->dot_dimension_numbers();
+    if (absl::MakeSpan(dnums.lhs_contracting_dimensions()) !=
+        lhs_contracting_dims_) {
+      EXPLAIN << "lhs_contracting_dimensions {"
+              << absl::StrJoin(dnums.lhs_contracting_dimensions(), ",")
+              << "} don't match expected {"
+              << absl::StrJoin(lhs_contracting_dims_, ",") << "}";
+      return false;
+    }
+
+    if (absl::MakeSpan(dnums.rhs_contracting_dimensions()) !=
+        rhs_contracting_dims_) {
+      EXPLAIN << "rhs_contracting_dimensions {"
+              << absl::StrJoin(dnums.rhs_contracting_dimensions(), ",")
+              << "} don't match expected {"
+              << absl::StrJoin(rhs_contracting_dims_, ",") << "}";
+      return false;
+    }
+    return true;
+  }
+
+  absl::InlinedVector<int64_t, 8> lhs_contracting_dims_;
+  absl::InlinedVector<int64_t, 8> rhs_contracting_dims_;
+};
+
 // Matches a constant scalar or effective scalar, optionally with a given value.
 template <typename ScalarTy>
 class HloConstantScalarImpl {
@@ -2258,6 +2320,13 @@ class HloInstructionPattern {
 
   auto WithPredicate(HloPredicate fn) const {
     return AppendImpl(HloInstructionPredicateImpl(std::move(fn)));
+  }
+
+  auto WithContractingDims(
+      absl::Span<const int64_t> lhs_contracting_dims,
+      absl::Span<const int64_t> rhs_contracting_dims) const {
+    return AppendImpl(HloInstructionContractingDimsImpl(lhs_contracting_dims,
+                                                        rhs_contracting_dims));
   }
 
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {

@@ -1370,5 +1370,32 @@ TEST_F(PatternMatcherTest, SharedSubpatternCanBeNested) {
   }
 }
 
+TEST_F(PatternMatcherTest, TestWithContractingDims) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      %param1 = f32[2048,1024] parameter(0)
+      %param2 = f32[1024,33708] parameter(1)
+      ROOT %dot1 = f32[2048,33708]{1,0} dot(f32[2048,1024]{1,0} %param1,
+                f32[1024,33708]{0,1} %param2),
+                lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_TRUE(Match(root, m::Dot().WithContractingDims({1}, {0})));
+  EXPECT_FALSE(Match(root, m::Dot().WithContractingDims({0}, {1})));
+  EXPECT_FALSE(Match(root, m::Dot().WithContractingDims({1}, {0, 1})));
+  EXPECT_DESC_AND_EXPLANATION(
+      root, m::Dot().WithContractingDims({1}, {0, 1}),
+      "an HloInstruction:\n"
+      " * with opcode dot AND\n"
+      " * with lhs_contracting_dims {1} and rhs_contracting_dims {0,1}",
+      "rhs_contracting_dimensions {0} don't match expected {0,1}\n"
+      "in dot1 = f32[2048,33708]{1,0} dot(f32[2048,1024]{1,0} param1, "
+      "f32[1024,33708]{1,0} param2), lhs_contracting_dims={1}, "
+      "rhs_contracting_dims={0}");
+}
+
 }  // namespace
 }  // namespace xla
