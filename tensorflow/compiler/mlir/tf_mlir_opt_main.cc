@@ -31,12 +31,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir/framework/ir/xla_framework.h"
-#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/lhlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/service/cpu/hlo_xla_runtime_pipeline.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
+#include "xla/mlir/framework/ir/xla_framework.h"
+#include "xla/mlir/framework/transforms/passes.h"
+#include "xla/mlir_hlo/lhlo/transforms/passes.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/service/cpu/hlo_xla_runtime_pipeline.h"
+#include "xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 
 int main(int argc, char **argv) {
   tensorflow::InitMlir y(&argc, &argv);

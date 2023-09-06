@@ -46,8 +46,8 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringprintf.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {

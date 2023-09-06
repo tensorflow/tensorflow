@@ -15,7 +15,7 @@ limitations under the License.
 
 // clang-format off
 // Must be included first.
-#include "tensorflow/tsl/python/lib/core/numpy.h"
+#include "tsl/python/lib/core/numpy.h"
 // clang-format on
 
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/python/lib/core/py_util.h"
-#include "tensorflow/tsl/python/lib/core/ml_dtypes.h"
+#include "tsl/python/lib/core/ml_dtypes.h"
 
 namespace tensorflow {
 

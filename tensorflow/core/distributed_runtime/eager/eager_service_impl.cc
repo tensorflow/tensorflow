@@ -49,8 +49,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
-#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tsl/distributed_runtime/preemption/preemption_notifier.h"
+#include "tsl/protobuf/coordination_config.pb.h"
 namespace tensorflow {
 namespace eager {
 

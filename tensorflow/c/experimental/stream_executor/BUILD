@@ -41,15 +41,15 @@ cc_library(
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/compiler/xla/stream_executor:executor_cache",
-        "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
-        "//tensorflow/compiler/xla/stream_executor:platform",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",
-        "//tensorflow/compiler/xla/stream_executor:timer",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/device:device_utils",
         "//tensorflow/core/platform:strcat",
         "@com_google_absl//absl/functional:any_invocable",
+        "@local_xla//xla/stream_executor:executor_cache",
+        "@local_xla//xla/stream_executor:multi_platform_manager",
+        "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor:stream_executor_pimpl",
+        "@local_xla//xla/stream_executor:timer",
     ],
 )
 
@@ -67,7 +67,7 @@ cc_library(
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/compiler/xla/stream_executor:executor_cache",
+        "@local_xla//xla/stream_executor:executor_cache",
     ],
 )
 
@@ -78,12 +78,12 @@ tf_cc_test(
         ":stream_executor",
         ":stream_executor_internal",
         ":stream_executor_test_util",
-        "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:multi_platform_manager",
+        "@local_xla//xla/stream_executor:stream_executor_pimpl",
     ],
 )
 

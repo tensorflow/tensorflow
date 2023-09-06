@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_LOCK_H_
 
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/tsl/profiler/lib/profiler_lock.h"
+#include "tsl/profiler/lib/profiler_lock.h"
 
 namespace tensorflow {
 namespace profiler {

@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tfr {

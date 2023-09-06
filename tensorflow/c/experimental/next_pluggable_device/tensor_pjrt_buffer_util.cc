@@ -16,12 +16,12 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/pjrt_c_api_client.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 

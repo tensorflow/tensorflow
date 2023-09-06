@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_graph.h"
-#include "tensorflow/compiler/xla/parse_flags_from_env.h"
+#include "xla/parse_flags_from_env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/command_line_flags.h"
 

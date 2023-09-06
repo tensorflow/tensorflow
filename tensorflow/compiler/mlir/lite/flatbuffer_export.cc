@@ -115,9 +115,9 @@ limitations under the License.
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/lite/version.h"
-#include "tensorflow/tsl/platform/fingerprint.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/tstring.h"
+#include "tsl/platform/fingerprint.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/tstring.h"
 
 using llvm::dyn_cast;
 using llvm::formatv;

@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/tsl/platform/float8.h"
+#include "tsl/platform/float8.h"
 
 namespace tensorflow {
 

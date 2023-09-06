@@ -46,9 +46,9 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 
 namespace tensorflow {

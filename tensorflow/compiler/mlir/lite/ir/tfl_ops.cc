@@ -28,7 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/escaping.h"
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"

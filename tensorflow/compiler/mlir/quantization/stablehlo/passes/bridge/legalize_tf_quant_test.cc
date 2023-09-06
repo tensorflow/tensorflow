@@ -19,7 +19,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace tf2xla {

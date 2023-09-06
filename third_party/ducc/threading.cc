@@ -18,9 +18,9 @@ limitations under the License.
 #include <utility>
 
 #include "ducc/src/ducc0/infra/threading.h"
-#include "tensorflow/tsl/platform/cpu_info.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/threadpool.h"
+#include "tsl/platform/cpu_info.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/threadpool.h"
 
 namespace ducc0 {
 namespace google {

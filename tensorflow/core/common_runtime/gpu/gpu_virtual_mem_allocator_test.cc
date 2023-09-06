@@ -17,11 +17,11 @@ limitations under the License.
 
 #if CUDA_VERSION >= 10020
 
-#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/device_id_utils.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/tsl/framework/device_id.h"
+#include "tsl/framework/device_id.h"
 
 namespace tensorflow {
 namespace {

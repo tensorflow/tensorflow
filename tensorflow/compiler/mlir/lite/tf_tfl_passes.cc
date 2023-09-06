@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.

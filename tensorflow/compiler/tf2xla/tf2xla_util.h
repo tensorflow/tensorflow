@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"

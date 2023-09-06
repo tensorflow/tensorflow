@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
-#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tsl/protobuf/coordination_config.pb.h"
 
 namespace {
 

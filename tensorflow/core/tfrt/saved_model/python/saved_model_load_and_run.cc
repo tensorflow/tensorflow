@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
-#include "tensorflow/tsl/platform/casts.h"
-#include "tensorflow/tsl/platform/refcount.h"
+#include "tsl/platform/casts.h"
+#include "tsl/platform/refcount.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow::tfrt_stub {

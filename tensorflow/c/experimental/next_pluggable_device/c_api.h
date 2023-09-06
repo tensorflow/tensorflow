@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/c/tf_buffer.h"
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 
 // --------------------------------------------------------------------------
 // C API for device. The API is under active development and eventually

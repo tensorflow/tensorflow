@@ -106,9 +106,9 @@ cc_library(
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/tsl/platform:float8",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:float8",
     ],
 )
 
@@ -207,7 +207,6 @@ cc_library(
         ":convert_tensor",
         ":convert_types",
         ":mangling",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir:Dialect",
@@ -218,6 +217,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_xla//xla:status_macros",
     ],
 )
 

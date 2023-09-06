@@ -41,8 +41,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/math_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/transforms/rewriters.h"
 
 namespace mlir {
 namespace stablehlo {

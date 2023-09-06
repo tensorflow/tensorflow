@@ -30,17 +30,17 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/libtftpu.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initialize_util.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/stream_executor/tpu/libtftpu.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
+#include "xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "xla/stream_executor/tpu/tpu_initialize_util.h"
+#include "xla/stream_executor/tpu/tpu_platform.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 #if !defined(PLATFORM_GOOGLE)
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_library_init_fns.inc"
+#include "xla/stream_executor/tpu/tpu_library_init_fns.inc"
 
 namespace tensorflow {
 namespace tpu {

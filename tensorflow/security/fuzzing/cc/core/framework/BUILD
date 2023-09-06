@@ -27,8 +27,8 @@ cc_library(
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tstring",
-        "//tensorflow/tsl/platform:errors",
         "@com_google_fuzztest//fuzztest",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 

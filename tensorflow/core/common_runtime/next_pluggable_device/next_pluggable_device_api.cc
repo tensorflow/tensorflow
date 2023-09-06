@@ -18,8 +18,8 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/plugin_c_api.h"
-#include "tensorflow/tsl/c/tsl_status_internal.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tsl/c/tsl_status_internal.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

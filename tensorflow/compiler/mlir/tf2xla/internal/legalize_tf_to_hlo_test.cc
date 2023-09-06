@@ -26,17 +26,17 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/test_matchers.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
-#include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "xla/client/client_library.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {

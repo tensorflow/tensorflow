@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/file_system.h"
-#include "tensorflow/tsl/lib/io/random_inputstream.h"
+#include "tsl/lib/io/random_inputstream.h"
 
 namespace tensorflow {
 namespace io {

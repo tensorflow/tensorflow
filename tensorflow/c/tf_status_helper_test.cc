@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status_helper.h"
 
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/test.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace {

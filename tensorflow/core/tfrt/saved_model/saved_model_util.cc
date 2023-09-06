@@ -54,9 +54,9 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 #include "tensorflow/core/tfrt/saved_model/utils/serialize_bef_utils.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/path.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 

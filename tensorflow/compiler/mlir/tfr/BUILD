@@ -248,15 +248,15 @@ tf_cc_test(
     srcs = ["integration/tfr_decompose_ctx_test.cc"],
     deps = [
         ":tfr_decompose_ctx",
-        "//tensorflow/compiler/xla:test",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla:test",
     ],
 )
 

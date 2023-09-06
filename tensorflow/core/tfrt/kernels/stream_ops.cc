@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/kernels/stream_ops_util.h"
 #include "tensorflow/core/tfrt/runtime/stream.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace tfrt_stub {

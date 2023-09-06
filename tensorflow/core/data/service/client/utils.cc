@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {

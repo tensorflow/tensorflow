@@ -68,7 +68,7 @@ limitations under the License.
 #include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
 #include "tensorflow/lite/tools/optimize/quantize_weights.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {

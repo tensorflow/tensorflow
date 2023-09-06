@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/float8.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/tsl/platform/types.h"
+#include "tsl/platform/types.h"
 
 namespace tensorflow {
 

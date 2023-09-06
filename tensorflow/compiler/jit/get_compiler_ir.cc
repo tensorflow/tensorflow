@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/executable_build_options.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/client/executable_build_options.h"
+#include "xla/client/local_client.h"
+#include "xla/service/hlo_graph_dumper.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -47,8 +47,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 

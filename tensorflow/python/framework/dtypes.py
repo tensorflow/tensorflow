@@ -32,7 +32,7 @@ from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.types import trace
 from tensorflow.core.function import trace_type
 from tensorflow.tools.docs import doc_controls
-from tensorflow.tsl.python.lib.core import pywrap_ml_dtypes
+from tsl.python.lib.core import pywrap_ml_dtypes
 
 _np_bfloat16 = pywrap_ml_dtypes.bfloat16()
 _np_float8_e4m3fn = pywrap_ml_dtypes.float8_e4m3fn()

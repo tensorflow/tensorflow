@@ -51,8 +51,8 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
-#include "tensorflow/tsl/lib/io/buffered_file.h"
-#include "tensorflow/tsl/util/byte_swap_array.h"
+#include "tsl/lib/io/buffered_file.h"
+#include "tsl/util/byte_swap_array.h"
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile

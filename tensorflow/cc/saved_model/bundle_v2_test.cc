@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {

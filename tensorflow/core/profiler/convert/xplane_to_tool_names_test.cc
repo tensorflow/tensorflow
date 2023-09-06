@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {

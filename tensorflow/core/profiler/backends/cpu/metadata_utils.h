@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_METADATA_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_METADATA_UTILS_H_
 
-#include "tensorflow/compiler/xla/backends/profiler/cpu/metadata_utils.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "xla/backends/profiler/cpu/metadata_utils.h"
+#include "xla/service/hlo.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"

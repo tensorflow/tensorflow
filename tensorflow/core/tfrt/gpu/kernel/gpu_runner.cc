@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/common_runtime/serving_device_selector.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
@@ -51,11 +51,11 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/gpu_variables_table.h"
-#include "tensorflow/tsl/framework/device_id.h"
-#include "tensorflow/tsl/framework/device_id_manager.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/fingerprint.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/framework/device_id.h"
+#include "tsl/framework/device_id_manager.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/fingerprint.h"
+#include "tsl/platform/statusor.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime

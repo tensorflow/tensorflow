@@ -2355,7 +2355,6 @@ tf_xla_py_strict_test(
         ":xla_test",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
@@ -2369,6 +2368,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "@local_xla//xla:xla_data_proto_py",
     ],
 )
 

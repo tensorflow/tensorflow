@@ -20,7 +20,7 @@ limitations under the License.
 #include <set>
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/framework/device_type.h"
+#include "tsl/framework/device_type.h"
 
 namespace tensorflow {
 

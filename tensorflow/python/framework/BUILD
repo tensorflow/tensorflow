@@ -40,8 +40,8 @@ tf_cc_shared_object(
     }),
     deps = [
         "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
         "@com_google_protobuf//:protobuf_headers",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -190,12 +190,12 @@ tf_cc_binary(
     deps = [
         ":offset_counter_helper",
         ":op_reg_offset_proto_cc",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:platform_port",
-        "//tensorflow/tsl/platform:strcat",
-        "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/util:command_line_flags",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:strcat",
+        "@local_tsl//tsl/platform:types",
+        "@local_tsl//tsl/util:command_line_flags",
     ],
 )
 
@@ -206,12 +206,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":op_reg_offset_proto_cc",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:regexp",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:strcat",
-        "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:regexp",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:strcat",
+        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -453,7 +453,7 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@pybind11",
     ],
 )
@@ -483,7 +483,7 @@ py_strict_library(
         "//tensorflow/python/types:doc_typealias",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
-        "//tensorflow/tsl/python/lib/core:pywrap_ml_dtypes",
+        "@local_tsl//tsl/python/lib/core:pywrap_ml_dtypes",
         "@ml_dtypes",
     ],
 )
@@ -880,9 +880,9 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
-        "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
-        "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "//tensorflow/tsl/python/lib/core:numpy_hdr",
+        "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
+        "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "@local_tsl//tsl/python/lib/core:numpy_hdr",
     ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
@@ -906,13 +906,13 @@ tf_python_pybind_extension(
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
-            "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
         ],
         otherwise = [
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
-            "//tensorflow/tsl/protobuf:coordination_service_proto_cc_headers_only",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc_headers_only",
         ],
     ),
 )
@@ -976,9 +976,9 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
-        "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
-        "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "//tensorflow/tsl/python/lib/core:numpy_hdr",
+        "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
+        "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "@local_tsl//tsl/python/lib/core:numpy_hdr",
     ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
@@ -999,13 +999,13 @@ tf_python_pybind_extension(
         "@pybind11",
     ] + if_static(
         extra_deps = [
-            "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
-            "//tensorflow/tsl/protobuf:coordination_service_proto_cc_headers_only",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
@@ -1111,9 +1111,9 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
-        "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
-        "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "//tensorflow/tsl/python/lib/core:numpy_hdr",
+        "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
+        "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "@local_tsl//tsl/python/lib/core:numpy_hdr",
     ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
@@ -1134,13 +1134,13 @@ tf_python_pybind_extension(
         "@pybind11",
     ] + if_static(
         extra_deps = [
-            "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
-            "//tensorflow/tsl/protobuf:coordination_service_proto_cc_headers_only",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",

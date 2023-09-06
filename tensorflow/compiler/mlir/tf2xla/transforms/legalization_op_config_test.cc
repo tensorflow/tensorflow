@@ -33,10 +33,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace mhlo {

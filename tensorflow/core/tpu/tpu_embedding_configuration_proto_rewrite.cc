@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace {

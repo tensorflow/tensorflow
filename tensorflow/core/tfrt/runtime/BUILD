@@ -11,7 +11,6 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
-        "//tensorflow/compiler/xla/service/gpu/...",
         "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/...",
@@ -114,9 +113,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_proto_cc",
-        "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:random",
-        "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
@@ -129,6 +125,9 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/utility",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:random",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -151,14 +150,14 @@ tf_cc_shared_test(
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
-        "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -187,9 +186,9 @@ tf_cc_test(
     srcs = ["channel_test.cc"],
     deps = [
         ":channel",
-        "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:status_matchers",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:status_matchers",
     ],
 )

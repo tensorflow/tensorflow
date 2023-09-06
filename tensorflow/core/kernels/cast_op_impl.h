@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/status.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/op_kernel.h"

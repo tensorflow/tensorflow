@@ -122,9 +122,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/toco:model_flags_proto_cc",
@@ -138,6 +135,9 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/service:hlo_parser",
+        "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
     ],
 )
 

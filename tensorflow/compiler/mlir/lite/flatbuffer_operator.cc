@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/schema/mutable/schema_generated.h"

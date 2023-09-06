@@ -56,11 +56,11 @@ tf_cc_test(
         "inference_metrics_pass",
         "//tensorflow/compiler/mlir/tf2xla/transforms:test_utils",
         "//tensorflow/core/lib/monitoring:cell_reader",
-        "//tensorflow/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )

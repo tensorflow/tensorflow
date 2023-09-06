@@ -1,0 +1,356 @@
+ *******************************************************************************
+ Copyright 2023 Arm Limited and affiliates.
+ SPDX-License-Identifier: Apache-2.0
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ *******************************************************************************
+diff --git a/src/cpu/aarch64/acl_convolution_utils.cpp b/src/cpu/aarch64/acl_convolution_utils.cpp
+index 6b57374643..85e45ace9d 100644
+--- a/src/cpu/aarch64/acl_convolution_utils.cpp
++++ b/src/cpu/aarch64/acl_convolution_utils.cpp
+@@ -48,11 +48,14 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
+     if (!is_fwd) return status::unimplemented;
+ 
+     const int ndims = src_d.ndims();
++    const bool is_depthwise = wei_d.ndims() == 5 && wei_d.dims()[1] == 1
++            && wei_d.dims()[2] == 1;
+ 
+-    ACL_CHECK_SUPPORT(ndims != 4, " only supports 2 spatial dimensions");
++    ACL_CHECK_SUPPORT(
++            ndims != 4 && !is_depthwise, " only supports 2 spatial dimensions");
+ 
+     const int with_groups = wei_d.ndims() == src_d.ndims() + 1;
+-    ACL_CHECK_SUPPORT(with_groups, " does not support groups");
++    ACL_CHECK_SUPPORT(with_groups && !is_depthwise, " does not support groups");
+ 
+     ACL_CHECK_SUPPORT(src_d.data_type() != data_type::f32
+                     || wei_d.data_type() != data_type::f32
+@@ -108,7 +111,8 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
+ 
+     acp.with_bias = cd.bias_desc.format_kind != format_kind::undef;
+ 
+-    if (wei_d.format_kind() != format_kind::any) return status::unimplemented;
++    if (wei_d.format_kind() != format_kind::any && !is_depthwise)
++        return status::unimplemented;
+ 
+     auto src_tag = memory_desc_matches_one_of_tag(
+             src_md, format_tag::nhwc, format_tag::nchw);
+@@ -138,8 +142,12 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
+             || src_tag != dst_tag)
+         return status::unimplemented;
+ 
+-    // Set weights to initially be the same as src
+-    CHECK(memory_desc_init_by_tag(weights_md, src_tag));
++    if (is_depthwise) {
++        CHECK(memory_desc_init_by_tag(weights_md, format_tag::hwigo));
++    } else {
++        // Set weights to initially be the same as src
++        CHECK(memory_desc_init_by_tag(weights_md, src_tag));
++    }
+ 
+     // Bias is just 1D, set to be the obvious format
+     if (acp.with_bias && bias_md.format_kind == format_kind::any)
+@@ -166,6 +174,11 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
+             1,
+             acl_data_type,
+             acl_layout);
++    if(is_depthwise) {
++       // We need to set that values are not constant so that we
++       // we can update them in-place in ACL
++      acp.wei_tensor_info.set_are_values_constant(false);
++    }
+ 
+     acp.dst_tensor_info = arm_compute::TensorInfo(
+             is_nhwc ? arm_compute::TensorShape(oc, ow, oh, mb) :
+@@ -185,6 +198,11 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
+     // Are we allowed to cast down to bf16 or not?
+     acp.fast_math
+             = one_of(attr.fpmath_mode_, fpmath_mode::bf16, fpmath_mode::any);
++    if (is_depthwise) {
++        // There is no support for fixed format kernels for depthwise convolution
++        // in ACL so we are going to use weight format that we set up earlier
++        return status::success;
++    }
+ 
+     // WeightFormat::ANY tells ACL we can handle any format
+     acp.weights_info = arm_compute::WeightsInfo(
+@@ -252,6 +270,7 @@ status_t init_conf_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+         memory_desc_t &weights_md, memory_desc_t &dst_md,
+         memory_desc_t &bias_md, const convolution_desc_t &cd,
+         const primitive_attr_t &attr) {
++    if (weights_md.ndims != 4) return status::unimplemented;
+ 
+     // General Compute Library checks, memory tags are also set there
+     CHECK(acl_init_conf(acp, src_md, weights_md, dst_md, bias_md, cd, attr));
+@@ -277,6 +296,7 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+         memory_desc_t &weights_md, memory_desc_t &dst_md,
+         memory_desc_t &bias_md, const convolution_desc_t &cd,
+         const primitive_attr_t &attr) {
++    if (weights_md.ndims != 4) return status::unimplemented;
+ 
+     // Indirect is slower for small convolution kernels
+     if (weights_md.dims[2] == 1 && weights_md.dims[3] == 1)
+@@ -314,6 +334,22 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+     return status::success;
+ }
+ 
++status_t init_conf_depthwise(acl_conv_conf_t &acp, memory_desc_t &src_md,
++        memory_desc_t &weights_md, memory_desc_t &dst_md,
++        memory_desc_t &bias_md, const convolution_desc_t &cd,
++        const primitive_attr_t &attr) {
++    if (weights_md.ndims != 5) return status::unimplemented;
++
++    CHECK(acl_init_conf(acp, src_md, weights_md, dst_md, bias_md, cd, attr));
++
++    ACL_CHECK_VALID(arm_compute::NEDepthwiseConvolutionLayer::validate(
++            &acp.src_tensor_info, &acp.wei_tensor_info,
++            acp.with_bias ? &acp.bia_tensor_info : nullptr,
++            &acp.dst_tensor_info, acp.padstride_info));
++
++    return status::success;
++}
++
+ } // namespace acl_convolution_utils
+ 
+ } // namespace aarch64
+diff --git a/src/cpu/aarch64/acl_convolution_utils.hpp b/src/cpu/aarch64/acl_convolution_utils.hpp
+index e3d40a5e75..1ded5826c4 100644
+--- a/src/cpu/aarch64/acl_convolution_utils.hpp
++++ b/src/cpu/aarch64/acl_convolution_utils.hpp
+@@ -66,6 +66,11 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+         memory_desc_t &bias_md, const convolution_desc_t &cd,
+         const primitive_attr_t &attr);
+ 
++status_t init_conf_depthwise(acl_conv_conf_t &acp, memory_desc_t &src_md,
++        memory_desc_t &weights_md, memory_desc_t &dst_md,
++        memory_desc_t &bias_md, const convolution_desc_t &cd,
++        const primitive_attr_t &attr);
++
+ } // namespace acl_convolution_utils
+ 
+ template <typename conv_obj_t, typename conv_pd_t, typename src_data_t,
+diff --git a/src/cpu/aarch64/acl_depthwise_convolution.cpp b/src/cpu/aarch64/acl_depthwise_convolution.cpp
+new file mode 100644
+index 0000000000..70ae6bceea
+--- /dev/null
++++ b/src/cpu/aarch64/acl_depthwise_convolution.cpp
+@@ -0,0 +1,42 @@
++/*******************************************************************************
++* Copyright 2023 Arm Ltd. and affiliates
++*
++* Licensed under the Apache License, Version 2.0 (the "License");
++* you may not use this file except in compliance with the License.
++* You may obtain a copy of the License at
++*
++*     http://www.apache.org/licenses/LICENSE-2.0
++*
++* Unless required by applicable law or agreed to in writing, software
++* distributed under the License is distributed on an "AS IS" BASIS,
++* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++* See the License for the specific language governing permissions and
++* limitations under the License.
++*******************************************************************************/
++
++#include "cpu/aarch64/acl_depthwise_convolution.hpp"
++
++namespace dnnl {
++namespace impl {
++namespace cpu {
++namespace aarch64 {
++
++status_t acl_depthwise_convolution_fwd_t::execute_forward(
++        const exec_ctx_t &ctx) const {
++    std::lock_guard<std::mutex> _lock {this->mtx};
++
++    auto *acl_resource
++            = ctx.get_resource_mapper()
++                      ->get<acl_depthwise_convolution_resource_t>(this);
++    acl_obj_t<arm_compute::NEDepthwiseConvolutionLayer> &acl_depthwise_obj
++            = acl_resource->get_acl_obj();
++
++    return execute_forward_conv_acl<
++            acl_obj_t<arm_compute::NEDepthwiseConvolutionLayer>, pd_t, data_t>(
++            ctx, acl_depthwise_obj, pd());
++}
++
++} // namespace aarch64
++} // namespace cpu
++} // namespace impl
++} // namespace dnnl
+diff --git a/src/cpu/aarch64/acl_depthwise_convolution.hpp b/src/cpu/aarch64/acl_depthwise_convolution.hpp
+new file mode 100644
+index 0000000000..3e3d02cf41
+--- /dev/null
++++ b/src/cpu/aarch64/acl_depthwise_convolution.hpp
+@@ -0,0 +1,141 @@
++/*******************************************************************************
++* Copyright 2023 Arm Ltd. and affiliates
++*
++* Licensed under the Apache License, Version 2.0 (the "License");
++* you may not use this file except in compliance with the License.
++* You may obtain a copy of the License at
++*
++*     http://www.apache.org/licenses/LICENSE-2.0
++*
++* Unless required by applicable law or agreed to in writing, software
++* distributed under the License is distributed on an "AS IS" BASIS,
++* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++* See the License for the specific language governing permissions and
++* limitations under the License.
++*******************************************************************************/
++
++#ifndef CPU_AARCH64_ACL_DEPTHWISE_CONVOLUTION_HPP
++#define CPU_AARCH64_ACL_DEPTHWISE_CONVOLUTION_HPP
++
++#include "cpu/aarch64/acl_convolution_utils.hpp"
++#include "cpu/cpu_convolution_pd.hpp"
++
++namespace dnnl {
++namespace impl {
++namespace cpu {
++namespace aarch64 {
++
++struct acl_depthwise_convolution_resource_t : public resource_t {
++    acl_depthwise_convolution_resource_t()
++        : acl_obj_(utils::make_unique<
++                acl_obj_t<arm_compute::NEDepthwiseConvolutionLayer>>()) {}
++
++    status_t configure(const acl_conv_conf_t &acp) {
++        if (!acl_obj_) return status::out_of_memory;
++
++        acl_obj_->src_tensor.allocator()->init(acp.src_tensor_info);
++        acl_obj_->wei_tensor.allocator()->init(acp.wei_tensor_info);
++        acl_obj_->dst_tensor.allocator()->init(acp.dst_tensor_info);
++        acl_obj_->bia_tensor.allocator()->init(acp.bia_tensor_info);
++
++        // clang-format off
++        acl_obj_->conv.configure(
++            &acl_obj_->src_tensor,
++            &acl_obj_->wei_tensor,
++            acp.with_bias ? &acl_obj_->bia_tensor : nullptr,
++            &acl_obj_->dst_tensor,
++            acp.padstride_info,
++            1, // depth multiplier default value
++            acp.act_info);
++
++        // clang-format on
++        return status::success;
++    }
++
++    acl_obj_t<arm_compute::NEDepthwiseConvolutionLayer> &get_acl_obj() const {
++        return *acl_obj_;
++    }
++
++    DNNL_DISALLOW_COPY_AND_ASSIGN(acl_depthwise_convolution_resource_t);
++
++private:
++    std::unique_ptr<acl_obj_t<arm_compute::NEDepthwiseConvolutionLayer>>
++            acl_obj_;
++};
++
++struct acl_depthwise_convolution_fwd_t : public primitive_t {
++
++    struct pd_t : public cpu_convolution_fwd_pd_t {
++        pd_t(const convolution_desc_t *adesc, const primitive_attr_t *attr,
++                const typename pd_t::base_class *hint_fwd_pd)
++            : cpu_convolution_fwd_pd_t(adesc, attr, hint_fwd_pd), acp_() {}
++
++        DECLARE_COMMON_PD_T("depthwise_convolution:acl",
++                acl_depthwise_convolution_fwd_t, USE_GLOBAL_SCRATCHPAD);
++
++        status_t init(engine_t *engine) {
++            using namespace data_type;
++
++            const bool is_fp16_ok = expect_data_types(f16, f16, f16, f16, undef)
++                    && attr()->has_default_values(
++                            primitive_attr_t::skip_mask_t::post_ops, f16);
++            const bool is_fp32_ok = expect_data_types(f32, f32, f32, f32, undef)
++                    && attr()->has_default_values(
++                            primitive_attr_t::skip_mask_t::post_ops, f32);
++            bool ok = is_fwd()
++                    && set_default_alg_kind(alg_kind::convolution_direct)
++                    && utils::one_of(true, is_fp16_ok, is_fp32_ok)
++                    && !has_zero_dim_memory();
++            if (!ok) return status::unimplemented;
++
++            CHECK(acl_convolution_utils::init_conf_depthwise(acp_, src_md_,
++                    weights_md_, dst_md_, bias_md_, *desc(), *attr()));
++
++            CHECK(post_ops.init(
++                    engine, attr_.post_ops_, dst_md_, acp_.act_info));
++            acp_.use_dst_acc = post_ops.has_sum();
++
++            return status::success;
++        }
++
++        acl_conv_conf_t acp_;
++
++        acl_post_ops_t post_ops;
++    };
++
++    acl_depthwise_convolution_fwd_t(const pd_t *apd) : primitive_t(apd) {}
++
++    status_t create_resource(
++            engine_t *engine, resource_mapper_t &mapper) const override {
++        if (mapper.has_resource(this)) return status::success;
++
++        auto r = utils::make_unique<acl_depthwise_convolution_resource_t>();
++        if (!r) return status::out_of_memory;
++
++        CHECK(r->configure(pd()->acp_));
++        mapper.add(this, std::move(r));
++
++        CHECK(pd()->post_ops.create_resource(engine, mapper));
++
++        return status::success;
++    }
++
++    typedef typename prec_traits<data_type::f32>::type data_t;
++
++    status_t execute(const exec_ctx_t &ctx) const override {
++        return execute_forward(ctx);
++    }
++
++private:
++    mutable std::mutex mtx;
++    status_t execute_forward(const exec_ctx_t &ctx) const;
++
++    const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
++};
++
++} // namespace aarch64
++} // namespace cpu
++} // namespace impl
++} // namespace dnnl
++
++#endif // CPU_AARCH64_ACL_DEPTHWISE_CONVOLUTION_HPP
+diff --git a/src/cpu/cpu_convolution_list.cpp b/src/cpu/cpu_convolution_list.cpp
+index 094c73aa36..80385432d8 100644
+--- a/src/cpu/cpu_convolution_list.cpp
++++ b/src/cpu/cpu_convolution_list.cpp
+@@ -63,6 +63,7 @@ using namespace dnnl::impl::cpu::x64;
+ #include "cpu/aarch64/jit_sve_512_x8s8s32x_convolution.hpp"
+ #include "cpu/aarch64/jit_uni_dw_convolution.hpp"
+ #if DNNL_AARCH64 && DNNL_AARCH64_USE_ACL
++#include "cpu/aarch64/acl_depthwise_convolution.hpp"
+ #include "cpu/aarch64/acl_gemm_convolution.hpp"
+ #include "cpu/aarch64/acl_indirect_gemm_convolution.hpp"
+ #endif
+@@ -102,6 +103,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
+             CPU_INSTANCE_AARCH64(jit_sve_512_dw_convolution_fwd_t)
+             CPU_INSTANCE_AARCH64(jit_sve_512_1x1_convolution_fwd_f32_t)
+             CPU_INSTANCE_AARCH64(jit_sve_512_convolution_fwd_t<f32>)
++            CPU_INSTANCE_AARCH64_ACL(acl_depthwise_convolution_fwd_t)
+             CPU_INSTANCE_AARCH64_ACL(acl_indirect_gemm_convolution_fwd_t)
+             CPU_INSTANCE_AARCH64_ACL(acl_gemm_convolution_fwd_t<f32>)
+             CPU_INSTANCE(gemm_convolution_fwd_t)

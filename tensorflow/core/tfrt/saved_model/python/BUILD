@@ -73,10 +73,10 @@ cc_library(
         "//tensorflow/core/tfrt/saved_model",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        "//tensorflow/tsl/platform:casts",
-        "//tensorflow/tsl/platform:refcount",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:refcount",
         "@tf_runtime//:hostcontext",
     ],
 )

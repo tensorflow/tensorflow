@@ -43,8 +43,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/transforms/rewriters.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 
 namespace mlir {

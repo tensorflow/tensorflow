@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/inference/inference_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace tf2xla {

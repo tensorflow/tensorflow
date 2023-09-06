@@ -27,13 +27,13 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/compiler/xla/error_spec.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "xla/error_spec.h"
+#include "xla/literal_util.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "xla/statusor.h"
+#include "xla/tests/literal_test_util.h"
 
 namespace mlir {
 namespace stablehlo {

@@ -28,11 +28,11 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/tsl/distributed_runtime/call_options.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
-#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
+#include "tsl/distributed_runtime/call_options.h"
+#include "tsl/distributed_runtime/coordination/coordination_client.h"
+#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tsl/protobuf/coordination_config.pb.h"
+#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 namespace {

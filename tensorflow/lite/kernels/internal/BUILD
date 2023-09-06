@@ -347,7 +347,7 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
         "//tensorflow/lite/kernels:kernel_util",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
     ],
@@ -385,7 +385,7 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
     ],
@@ -404,8 +404,8 @@ cc_library(
         ":optimized_base",
         ":types",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/tsl/framework/convolution:eigen_spatial_convolutions-inl",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/framework/convolution:eigen_spatial_convolutions-inl",
     ],
 )
 
@@ -763,7 +763,7 @@ cc_library(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
     ],
@@ -858,7 +858,7 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
     ],
@@ -1109,7 +1109,7 @@ cc_library(
         ":cpu_check",
         ":tensor_utils_no_eigen",
         "//tensorflow/lite/core/c:common",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ] + selects.with_or({
         (
             ":arm_any",
@@ -1520,7 +1520,7 @@ transitive_hdrs(
     name = "nnapi_external_headers",
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@gemmlowp",
     ],
 )

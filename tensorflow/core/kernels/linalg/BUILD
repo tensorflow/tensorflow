@@ -93,7 +93,7 @@ cc_library(
 
 LINALG_DEPS = [
     ":linalg_ops_common",
-    "//third_party/eigen3",
+    "@eigen_archive//:eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core/kernels:cast_op",
@@ -220,9 +220,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:fill_functor",
         "//tensorflow/core/platform:stream_executor",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ] + if_cuda([
-        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
+        "@local_xla//xla/stream_executor/cuda:cublas_plugin",
         "//tensorflow/core/util:cuda_solvers",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
@@ -277,7 +277,7 @@ tf_kernel_library(
     ]) + [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -292,9 +292,9 @@ tf_kernel_library(
         "//tensorflow/core/kernels:reduction_ops",
         "//tensorflow/core/kernels:transpose_functor",
         "//tensorflow/core/profiler/lib:traceme",
-        "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -306,7 +306,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -355,7 +355,7 @@ tf_kernel_library(
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
         "//tensorflow/core:framework",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
     alwayslink = 0,
 )

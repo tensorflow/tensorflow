@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"

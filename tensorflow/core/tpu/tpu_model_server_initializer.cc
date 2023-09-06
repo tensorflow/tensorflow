@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <dlfcn.h>
 
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initialize_util.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
+#include "xla/stream_executor/tpu/tpu_initialize_util.h"
+#include "xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -28,7 +28,7 @@ namespace tensorflow {
 namespace tpu {
 namespace {
 #if !defined(PLATFORM_GOOGLE)
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_library_init_fns.inc"
+#include "xla/stream_executor/tpu/tpu_library_init_fns.inc"
 Status InitializeTpuLibrary(void* library_handle) {
   Status s = InitializeTpuStructFns(library_handle);
 

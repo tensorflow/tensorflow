@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/lib/core/status.h"
 

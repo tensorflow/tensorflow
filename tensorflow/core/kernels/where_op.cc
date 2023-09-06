@@ -25,7 +25,7 @@ limitations under the License.
 
 #include <memory>
 #include <numeric>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/util/gpu_solvers.h"
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"

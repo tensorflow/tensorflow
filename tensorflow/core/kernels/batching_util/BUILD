@@ -363,11 +363,11 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/util:incremental_barrier",
-        "//tensorflow/tsl/platform:criticality",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
+        "@local_tsl//tsl/platform:criticality",
     ],
 )
 
@@ -378,13 +378,13 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 

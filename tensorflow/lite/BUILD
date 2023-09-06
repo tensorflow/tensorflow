@@ -957,8 +957,8 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -988,8 +988,8 @@ cc_test(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/testing:util",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
     ],
 )
 

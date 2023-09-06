@@ -38,8 +38,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/work_sharder.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
-#include "tensorflow/tsl/util/determinism_test_util.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/util/determinism_test_util.h"
 
 namespace tensorflow {
 namespace data {

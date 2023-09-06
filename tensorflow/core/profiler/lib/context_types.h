@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_CONTEXT_TYPES_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_CONTEXT_TYPES_H_
 
-#include "tensorflow/tsl/profiler/lib/context_types.h"
+#include "tsl/profiler/lib/context_types.h"
 
 namespace tensorflow {
 namespace profiler {

@@ -32,8 +32,8 @@ tf_custom_op_py_library(
     ],
     deps = [
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
-        "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/python/ops:random_ops_util",
         "//tensorflow/python/ops/numpy_ops:np_utils",
+        "@local_xla//xla:xla_data_proto_py",
     ],
 )

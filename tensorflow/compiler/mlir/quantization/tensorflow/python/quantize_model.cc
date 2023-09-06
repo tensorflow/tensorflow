@@ -63,9 +63,9 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace quantization {

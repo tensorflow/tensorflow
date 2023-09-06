@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"

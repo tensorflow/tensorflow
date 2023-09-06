@@ -67,9 +67,6 @@ cc_library(
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:stack_trace",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/profiler/lib:traceme",
-        "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -80,6 +77,9 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/python/lib/core:numpy",
         "@pybind11",
     ],
 )
@@ -287,7 +287,6 @@ cuda_py_strict_test(
     deps = [
         ":context",
         ":def_function",
-        "//tensorflow/compiler/xla/service:hlo_proto_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
@@ -295,6 +294,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
+        "@local_xla//xla/service:hlo_proto_py",
     ],
 )
 
@@ -358,7 +358,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/profiler:trace",
-        "//tensorflow/tsl/profiler/protobuf:trace_events_proto_py",
+        "@local_tsl//tsl/profiler/protobuf:trace_events_proto_py",
     ],
 )
 

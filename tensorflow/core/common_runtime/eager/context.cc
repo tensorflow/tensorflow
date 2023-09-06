@@ -57,7 +57,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/platform/refcount.h"
+#include "tsl/platform/refcount.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"

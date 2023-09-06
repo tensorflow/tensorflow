@@ -37,7 +37,7 @@ under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/tfrt/runtime/channel.h"
-#include "tensorflow/tsl/platform/env.h"
+#include "tsl/platform/env.h"
 
 namespace tensorflow {
 namespace tfrt_stub {

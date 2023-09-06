@@ -42,7 +42,7 @@ transitive_hdrs(
         "//tensorflow/c/experimental/grappler:grappler_hdrs",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:ops_hdrs",
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+        "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
         # TODO(rostam): Revisit these after cc_shared_library everywhere
         "//tensorflow/cc:client_session",
@@ -67,7 +67,7 @@ transitive_hdrs(
         "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python/client:tf_session_helper",
         "//third_party/eigen3",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "@local_xla//xla/stream_executor:stream_executor_headers",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
     ]),
@@ -189,7 +189,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/common:test_module1",
     "//tensorflow/tools/common:traverse",
     "//tensorflow/tools/docs:tf_doctest_lib",
-    "//tensorflow/tsl/profiler/protobuf:trace_events_proto_py",
+    "@local_tsl//tsl/profiler/protobuf:trace_events_proto_py",
     "//tensorflow/python/distribute:parameter_server_strategy_v2",
     "//tensorflow/python/distribute/coordinator:cluster_coordinator",
     "//tensorflow/python/distribute/coordinator:remote_eager_lib",
@@ -239,7 +239,7 @@ filegroup(
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
     }) + select({
-        "//tensorflow/tsl:with_numa_support": [
+        "@local_tsl//tsl:with_numa_support": [
             "@hwloc//:COPYING",
         ],
         "//conditions:default": [],

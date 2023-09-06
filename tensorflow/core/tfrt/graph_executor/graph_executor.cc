@@ -80,9 +80,9 @@ limitations under the License.
 #include "tensorflow/core/tfrt/stubs/tfrt_native_lowering_stub.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/refcount.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/refcount.h"
+#include "tsl/platform/statusor.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime

@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_HOST_SEND_DEVICE_CONTEXT_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_HOST_SEND_DEVICE_CONTEXT_H_
 
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
 

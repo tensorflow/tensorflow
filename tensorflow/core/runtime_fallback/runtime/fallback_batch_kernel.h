@@ -33,9 +33,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow {

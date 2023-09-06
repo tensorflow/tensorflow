@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/backends/profiler/cpu/host_tracer.h"
+#include "xla/backends/profiler/cpu/host_tracer.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 
 namespace tensorflow {
