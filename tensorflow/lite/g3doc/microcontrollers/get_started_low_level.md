@@ -77,7 +77,6 @@ To use the TensorFlow Lite for Microcontrollers library, we must include the
 following header files:
 
 ```C++
-
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
