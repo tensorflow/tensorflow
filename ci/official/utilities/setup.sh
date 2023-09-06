@@ -57,24 +57,6 @@ else
   echo 'If you have not, you will see a lot of undefined variable errors.'
 fi
 
-# For Google-internal jobs, run copybara, which will overwrite the source tree.
-# Never useful for outside users. Requires that the Kokoro job define a gfile
-# resource pointing to copybara.sh, which is then loaded into the GFILE_DIR.
-# See: cs/official/copybara.sh
-if [[ "$TFCI_COPYBARA_ENABLE" == 1 && "${TFCI_COPYBARA_COMPLETE:-}" != 1 ]]; then
-  if [[ -e "$KOKORO_GFILE_DIR/copybara.sh" ]]; then
-    source "$KOKORO_GFILE_DIR/copybara.sh"
-  else
-    echo "TF_CI_COPYBARA_ENABLE is 1, but \$KOKORO_GFILE_DIR/copybara.sh"
-    echo "could not be found. If you are an internal user, make sure your"
-    echo "Kokoro job has a gfile_resources item pointing to the right file."
-    echo "If you are an external user, Copybara is useless for you, and you"
-    echo "should set TFCI_COPYBARA_ENABLE=0"
-    exit 1
-  fi
-fi
-
-
 # Create and expand to the full path of TFCI_OUTPUT_DIR
 export TFCI_OUTPUT_DIR=$(realpath "$TFCI_OUTPUT_DIR")
 mkdir -p "$TFCI_OUTPUT_DIR"
