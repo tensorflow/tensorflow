@@ -4044,10 +4044,12 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     }
     if (status_or_changed.value()) {
       module_is_changed = true;
-      VLOG(3) << "XLA sharding annotations are removed.";
+      LOG(INFO) << "XLA sharding annotations are removed.";
     } else {
-      VLOG(3) << "This workload does not have XLA sharding annotations.";
+      LOG(INFO) << "This workload does not have XLA sharding annotations.";
     }
+  } else {
+    LOG(INFO) << "Preserving XLA sharding annotations.";
   }
 
   // ----- Get a sequential schedule and do liveness analysis -----
