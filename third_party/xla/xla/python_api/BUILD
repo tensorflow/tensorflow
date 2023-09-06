@@ -20,7 +20,6 @@ py_strict_library(
     deps = [
         "//third_party/py/numpy",
         "//xla:xla_data_proto_py",
-        "@local_tsl//tsl/python/lib/core:pywrap_ml_dtypes",
         "@ml_dtypes",
     ],
 )

@@ -2,9 +2,10 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
-# Placeholder: load py_proto_library
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pywrap_tensorflow_macro", "tf_external_workspace_visible", "tf_monitoring_python_deps", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load(
@@ -642,7 +643,7 @@ py_strict_library(
 pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
     srcs = ["pywrap_tensorflow_internal.cc"],
-    dynamic_deps = ["@local_tsl//tsl/python/lib/core:ml_dtypes.so"] + select({
+    dynamic_deps = select({
         "//tensorflow:macos": [
             "//tensorflow:libtensorflow_cc.%s.dylib" % VERSION,
             "//tensorflow:libtensorflow_framework.%s.dylib" % VERSION,
@@ -827,7 +828,7 @@ pywrap_tensorflow_macro(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/profiler/rpc:profiler_server_impl",
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
-        "@local_tsl//tsl/python/lib/core",
+        "@local_tsl//tsl/python/lib/core:numpy",
         "@local_xla//xla/stream_executor:stream_executor_impl",
     ] + if_static([
         "//tensorflow/core/platform:tensor_float_32_utils",

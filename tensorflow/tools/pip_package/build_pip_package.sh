@@ -250,28 +250,14 @@ function prepare_src() {
       find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from xla/from tensorflow.compiler.xla/' {} \;
     fi
     # Copy MKL libs over so they can be loaded at runtime
-    # TODO(b/271299337): shared libraries that depend on libml_dtypes.so.so have
-    # their NEEDED and RUNPATH set corresponding to a dependency on
-    # RUNFILES/_solib_local/libtensorflow_Stsl_Spython_Slib_Score_Slibml_dtypes.so.so,
-    # which is a symlink to tensorflow/include/external/local_tsl/tsl/python/lib/core/libml_dtypes.so in
-    # the Bazel build tree. We do not export the file in _solib_local (nor
-    # symlinks in general, I think Python wheels have poor support for them?)
     so_lib_dir=$(ls $RUNFILES | grep solib)
     if is_macos; then
-      chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
-      install_name_tool -change "@loader_path/../../../../../../${so_lib_dir}//libexternal_Slocal_Utsl_Stsl_Spython_Slib_Score_Slibml_Udtypes.so.dylib" "@loader_path/libml_dtypes.so.dylib" ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
-      install_name_tool -change "@loader_path/../../${so_lib_dir}//libexternal_Slocal_Utsl_Stsl_Spython_Slib_Score_Slibml_Udtypes.so.dylib" "@loader_path/../tsl/python/lib/core/libml_dtypes.so.dylib" ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
     else
-      chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
       chmod +rw ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
-      patchelf --replace-needed libexternal_Slocal_Utsl_Stsl_Spython_Slib_Score_Slibml_Udtypes.so.so libml_dtypes.so.so ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
-      patchelf --replace-needed libexternal_Slocal_Utsl_Stsl_Spython_Slib_Score_Slibml_Udtypes.so.so libml_dtypes.so.so ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
-      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so):\$ORIGIN ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
       patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so):\$ORIGIN/../../tensorflow/tsl/python/lib/core ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
       patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so):\$ORIGIN/../../../../../python ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
-      patchelf --shrink-rpath ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
       patchelf --shrink-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
       patchelf --shrink-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
     fi

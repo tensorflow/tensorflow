@@ -1,7 +1,9 @@
 # python/framework package
 
-# Placeholder: load py_proto_library
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+
+# Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "if_not_windows",
@@ -14,10 +16,9 @@ load(
     "tf_kernel_library",
 )
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_framework_friends", "tf_python_pybind_extension")
-load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_xla_deps_py")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 
 visibility = tf_python_framework_friends()
 
@@ -483,7 +484,6 @@ py_strict_library(
         "//tensorflow/python/types:doc_typealias",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
-        "@local_tsl//tsl/python/lib/core:pywrap_ml_dtypes",
         "@ml_dtypes",
     ],
 )

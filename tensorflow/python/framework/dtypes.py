@@ -18,6 +18,7 @@ import builtins
 import dataclasses
 from typing import Type, Sequence, Optional
 
+import ml_dtypes
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
@@ -32,11 +33,10 @@ from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.types import trace
 from tensorflow.core.function import trace_type
 from tensorflow.tools.docs import doc_controls
-from tsl.python.lib.core import pywrap_ml_dtypes
 
-_np_bfloat16 = pywrap_ml_dtypes.bfloat16()
-_np_float8_e4m3fn = pywrap_ml_dtypes.float8_e4m3fn()
-_np_float8_e5m2 = pywrap_ml_dtypes.float8_e5m2()
+_np_bfloat16 = ml_dtypes.bfloat16
+_np_float8_e4m3fn = ml_dtypes.float8_e4m3fn
+_np_float8_e5m2 = ml_dtypes.float8_e5m2
 
 
 class DTypeMeta(type(_dtypes.DType), abc.ABCMeta):

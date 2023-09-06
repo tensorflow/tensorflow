@@ -2488,11 +2488,6 @@ def pywrap_tensorflow_macro_opensource(
         cmd = "touch $@",
     )
 
-    # TODO(b/271333181): This should be done more generally on Windows for every dll dependency
-    # (there is only one currently) that is not in the same directory, otherwise Python will fail to
-    # link the pyd (which is just a dll) because of missing dependencies.
-    _create_symlink("ml_dtypes.so", "@local_tsl//tsl/python/lib/core:ml_dtypes.so")
-
     _plain_py_library(
         name = name,
         srcs = [":" + name + ".py"],
@@ -2500,8 +2495,6 @@ def pywrap_tensorflow_macro_opensource(
         data = select({
             clean_dep("//tensorflow:windows"): [
                 ":" + cc_library_pyd_name,
-                ":ml_dtypes.so",
-                "@local_tsl//tsl/python/lib/core:ml_dtypes.so",
             ],
             "//conditions:default": [
                 ":" + cc_shared_library_name,

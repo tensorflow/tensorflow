@@ -119,6 +119,8 @@ PyTypeObject TensorReleaserType = {
 
 Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
                                    int* out_pyarray_type) {
+  const tsl::ml_dtypes::NumpyDtypes& custom_dtypes =
+      tsl::ml_dtypes::GetNumpyDtypes();
   switch (tf_datatype) {
     case TF_HALF:
       *out_pyarray_type = NPY_FLOAT16;
@@ -187,13 +189,13 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       *out_pyarray_type = NPY_INT32;
       break;
     case TF_BFLOAT16:
-      *out_pyarray_type = tsl::ml_dtypes::GetBfloat16TypeNum();
+      *out_pyarray_type = custom_dtypes.bfloat16;
       break;
     case TF_FLOAT8_E5M2:
-      *out_pyarray_type = tsl::ml_dtypes::GetFloat8E5m2TypeNum();
+      *out_pyarray_type = custom_dtypes.float8_e5m2;
       break;
     case TF_FLOAT8_E4M3FN:
-      *out_pyarray_type = tsl::ml_dtypes::GetFloat8E4m3fnTypeNum();
+      *out_pyarray_type = custom_dtypes.float8_e4m3fn;
       break;
     default:
       return errors::Internal("Tensorflow type ", tf_datatype,

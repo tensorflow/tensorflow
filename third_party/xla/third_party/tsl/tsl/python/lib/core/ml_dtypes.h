@@ -16,28 +16,32 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PYTHON_LIB_CORE_ML_DTYPES_H_
 #define TENSORFLOW_TSL_PYTHON_LIB_CORE_ML_DTYPES_H_
 
-// Registers all custom types from the python ml_dtypes.py package.
+// Registers all custom types from the python ml_dtypes package.
 //   https://github.com/jax-ml/ml_dtypes
-
-#include <Python.h>
 
 namespace tsl {
 namespace ml_dtypes {
 
-// Register all ml dtypes.
-bool RegisterTypes();
+struct NumpyDtypes {
+  int bfloat16;
+  int float8_e4m3fn;
+  int float8_e4m3b11fnuz;
+  int float8_e4m3fnuz;
+  int float8_e5m2;
+  int float8_e5m2fnuz;
+  int int4;
+  int uint4;
+};
 
-// Return a pointer to the numpy dtype objects.
-PyObject* GetBfloat16Dtype();
-PyObject* GetFloat8E4m3b11fnuzDtype();
-PyObject* GetFloat8E4m3fnDtype();
-PyObject* GetFloat8E5m2Dtype();
+const NumpyDtypes& GetNumpyDtypes();
 
-// Returns the type id number of the numpy type.
-int GetBfloat16TypeNum();
-int GetFloat8E4m3b11fnuzTypeNum();
-int GetFloat8E4m3fnTypeNum();
-int GetFloat8E5m2TypeNum();
+// Deprecated: no longer required, but is currently heavily used.
+inline bool RegisterTypes() {
+  GetNumpyDtypes();
+  return true;
+}
+
+inline int GetBfloat16TypeNum() { return GetNumpyDtypes().bfloat16; }
 
 }  // namespace ml_dtypes
 }  // namespace tsl
