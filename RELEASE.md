@@ -56,6 +56,22 @@
        *   `tflite::Interpreter::input_tensor_by_signature`
        *   `tflite::Interpreter::output_tensor_by_signature`
 
+    *  Similarly, the following signature runner functions in the TF Lite C API
+       are no longer considered experimental:
+
+       *    `TfLiteInterpreterGetSignatureCount`
+       *    `TfLiteInterpreterGetSignatureKey`
+       *    `TfLiteInterpreterGetSignatureRunner`
+       *    `TfLiteSignatureRunnerAllocateTensors`
+       *    `TfLiteSignatureRunnerGetInputCount`
+       *    `TfLiteSignatureRunnerGetInputName`
+       *    `TfLiteSignatureRunnerGetInputTensor`
+       *    `TfLiteSignatureRunnerGetOutputCount`
+       *    `TfLiteSignatureRunnerGetOutputName`
+       *    `TfLiteSignatureRunnerGetOutputTensor`
+       *    `TfLiteSignatureRunnerInvoke`
+       *    `TfLiteSignatureRunnerResizeInputTensor`
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
