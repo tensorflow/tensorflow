@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -226,7 +227,6 @@ Status EinsumDepthAnalysis::DefaultAction(HloInstruction* instruction) {
       !instruction->shape().IsTuple()) {
     return InvalidArgument("Unexpected shape for default action.");
   }
-  // If the instruction is an array, the output depends on all operands.
   auto depth_iter = einsum_depth_map_.find(instruction);
   CHECK(depth_iter != einsum_depth_map_.end());
   const ShapeTree<int> depth_tree = depth_iter->second;
@@ -236,6 +236,16 @@ Status EinsumDepthAnalysis::DefaultAction(HloInstruction* instruction) {
       TF_RETURN_IF_ERROR(SetInstructionDepth(operand, max_depth));
     }
   }
+  if (instruction->operand_count() == 1) {
+    HloInstruction* operand = instruction->mutable_operand(0);
+    if (Shape::Equal().IgnoreLayout()(instruction->shape(), operand->shape())) {
+      auto operand_depth_iter = GetOrCreateDepthTree(operand);
+      ShapeTree<int>& operand_depth = operand_depth_iter->second;
+      SetDepth(operand_depth, depth_tree);
+      return OkStatus();
+    }
+  }
+  // If the instruction is an array, the output depends on all operands.
   if (instruction->shape().IsArray()) {
     int instruction_depth = depth_tree.element({});
     for (HloInstruction* operand : instruction->mutable_operands()) {
@@ -1108,6 +1118,12 @@ Status HloValueSemanticsPropagation::HandleWhile(HloInstruction* xla_while) {
 
 Status HloValueSemanticsPropagation::HandleCustomCall(
     HloInstruction* custom_call) {
+  if (custom_call->custom_call_target() == "Sharding") {
+    const ShapeTree<const HloValueSemantics*>& operand_semantics =
+        analysis_->GetInstructionSemantics(custom_call->operand(0));
+    analysis_->DeepCopyHloValueSemantics(custom_call, operand_semantics);
+    return OkStatus();
+  }
   return Unimplemented("Unimplemented custom-call: %s",
                        custom_call->custom_call_target());
 }
@@ -1303,6 +1319,14 @@ Status HloValueSemanticsPropagation::HandleInfeed(HloInstruction* infeed) {
         }
       });
   analysis_->SetHloValueSemantics(infeed, semantics_shape_tree);
+  return OkStatus();
+}
+
+Status HloValueSemanticsPropagation::HandleDomain(HloInstruction* domain) {
+  HloInstruction* domain_operand = domain->mutable_operand(0);
+  const ShapeTree<const HloValueSemantics*>& operand_semantics =
+      analysis_->GetInstructionSemantics(domain_operand);
+  analysis_->DeepCopyHloValueSemantics(domain, operand_semantics);
   return OkStatus();
 }
 

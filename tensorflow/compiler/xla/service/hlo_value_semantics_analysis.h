@@ -237,6 +237,7 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
   Status HandleAsyncStart(HloInstruction* async_start) override;
   Status HandleAsyncDone(HloInstruction* async_done) override;
   Status HandleInfeed(HloInstruction* infeed) override;
+  Status HandleDomain(HloInstruction* domain) override;
 
  protected:
   HloValueSemantics CopySemantics(const HloValueSemantics& semantics) const;
