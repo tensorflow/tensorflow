@@ -191,6 +191,20 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "legalize_tf_quant_test",
+    srcs = ["passes/bridge/legalize_tf_quant_test.cc"],
+    # TODO(b/299290907): Fix OSS test.
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/compiler/jit",
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "convert_tf_quant_types_test",
     srcs = ["passes/bridge/convert_tf_quant_types_test.cc"],
     deps = [
