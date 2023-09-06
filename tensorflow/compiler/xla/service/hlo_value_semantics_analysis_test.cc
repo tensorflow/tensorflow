@@ -462,8 +462,6 @@ body.49 {
   transpose.95 = f32[32,128]{0,1} transpose(get.59), dimensions={1,0}
   dot.96 = f32[100,128]{1,0} dot(map.90, transpose.95), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   map.97 = f32[100,128]{1,0} map(map.66, dot.96), dimensions={0,1}, to_apply=relu_gradients.29
-  transpose.102 = f32[128,784]{0,1} transpose(get.57), dimensions={1,0}
-  dot.103 = f32[100,784]{1,0} dot(map.97, transpose.102), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   transpose.98 = f32[784,100]{0,1} transpose(get.54), dimensions={1,0}
   dot.99 = f32[784,128]{1,0} dot(transpose.98, map.97), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   constant.104 = f32[] constant(0.01)
@@ -550,11 +548,8 @@ ENTRY MnistTrainingLoopWithInfeed.140 {
       IsWeightGradient(*hlo_value_semantics_analysis, module.get(), "dot.92"));
   EXPECT_TRUE(IsActivationGradient(*hlo_value_semantics_analysis, module.get(),
                                    "dot.96"));
-  // TODO(b/272597866) Should technically be a WeightGradient, but this
-  // classification is coming from it's input (the input data tensor) being
-  // classified as a Weight.
-  EXPECT_TRUE(IsActivationGradient(*hlo_value_semantics_analysis, module.get(),
-                                   "dot.99"));
+  EXPECT_TRUE(
+      IsWeightGradient(*hlo_value_semantics_analysis, module.get(), "dot.99"));
 }
 
 }  // namespace

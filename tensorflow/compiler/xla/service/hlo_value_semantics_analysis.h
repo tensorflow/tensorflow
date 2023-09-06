@@ -16,18 +16,88 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VALUE_SEMANTICS_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VALUE_SEMANTICS_ANALYSIS_H_
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
+
+class HloPreOrderDFS {
+ public:
+  HloPreOrderDFS() = default;
+  ~HloPreOrderDFS() = default;
+  Status Run(const HloComputation& computation,
+             DfsHloVisitorBase<HloInstruction*>* visitor);
+
+ private:
+  bool IsReady(const HloInstruction* instruction) const;
+  std::vector<HloInstruction*> stack_;
+  absl::flat_hash_set<HloInstruction*> visited_;
+};
+
+using EinsumDepthMap =
+    absl::flat_hash_map<const HloInstruction*, ShapeTree<int>>;
+
+// The einsum depth is the length of the einsum dependency chain. And we
+// distinguish instructions that are used by root and that are not used by
+// root.
+// The einsum depth of an HLO value A is defined as follows:
+// for B = op(A, ...)
+// 1) the root instruction has a depth of 0;
+// 2) non-root instructions that have zero users have a depth of -1;
+// 3) if op is a Dot or Convolution (i.e., einsum),
+//    depth(A, B) = depth(B) >= 0 ? depth(B) + 1 : depth(B) - 1.
+//    depth(A, B) means the depth of A because of B;
+// 4) otherwise depth(A, B) = depth(B);
+// 5) depth(A) is computed by merging all depth(A, u) where u is a user of A.
+//    See MergeDepth for how user depths are merged.
+
+class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
+ public:
+  static StatusOr<std::unique_ptr<EinsumDepthAnalysis>> Run(
+      const HloComputation& computation);
+  ~EinsumDepthAnalysis() override = default;
+  Status DefaultAction(HloInstruction* instruction) override;
+  Status HandleTuple(HloInstruction* tuple) override;
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+  Status HandleDot(HloInstruction* dot) override;
+  Status HandleConvolution(HloInstruction* convolution) override;
+  Status HandleCall(HloInstruction* call) override;
+  Status HandleFusion(HloInstruction* fusion) override;
+  Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status HandleWhile(HloInstruction* xla_while) override;
+  Status HandleConditional(HloInstruction* conditional) override;
+  Status HandleAfterAll(HloInstruction* after_all) override;
+  Status HandleOutfeed(HloInstruction* outfeed) override;
+  const EinsumDepthMap& GetEinsumDepthMap() const { return einsum_depth_map_; }
+
+ private:
+  EinsumDepthAnalysis() = default;
+  Status RunInternal(const HloComputation& computation,
+                     const std::optional<ShapeTree<int>>& root_depth);
+  EinsumDepthMap::iterator GetOrCreateDepthTree(HloInstruction* instruction);
+  Status SetInstructionDepth(HloInstruction* instruction, int depth);
+  Status HandleDepthIncrementInstruction(HloInstruction* instruction);
+  Status HandleCalledComputation(const HloComputation& called_computation,
+                                 const ShapeTree<int>& root_depth,
+                                 absl::Span<HloInstruction* const> operands);
+  EinsumDepthMap einsum_depth_map_;
+};
 
 // The comment below explains where the labels could originate from. Once
 // originated,  those labels are then propagated throughout the HLO module.
@@ -89,11 +159,12 @@ class HloValueSemanticsAnalysis {
     return value_semantics_;
   }
 
+  const EinsumDepthMap& GetEinsumDepthMap() const { return einsum_depth_map_; }
+
  protected:
   friend class HloValueSemanticsPropagation;
-
   explicit HloValueSemanticsAnalysis(const HloModule& module);
-
+  Status InitializeEinsumDepth();
   void AnnotateWeights();
 
   // Infer semantics for all instructions in the computation. Computation
@@ -127,6 +198,7 @@ class HloValueSemanticsAnalysis {
   absl::flat_hash_map<HloValueSemantics::Id, std::unique_ptr<HloValueSemantics>>
       value_semantics_map_;
   HloValueSemantics::Id next_id_;
+  EinsumDepthMap einsum_depth_map_;
 };
 
 class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
@@ -167,39 +239,60 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
   Status HandleInfeed(HloInstruction* infeed) override;
 
  protected:
-  HloValueSemantics CopySemantics(const HloValueSemantics& semantics);
+  HloValueSemantics CopySemantics(const HloValueSemantics& semantics) const;
   HloValueSemantics CopySemanticsWithNewOrigin(
       const HloValueSemantics& semantics, HloInstruction* new_origin,
-      const ShapeIndex& index = {});
+      const ShapeIndex& index = {}) const;
   const HloValueSemantics* AddSemantics(const HloValueSemantics& semantics);
-  // Checks whether the given activation's origin depends on the given
-  // origin_dependence. If recursive is true, recursively match
-  // origin_dependence with operands, otherwise only match it with
-  // activation_semantics' operands.
-  bool IsActivationOriginDependentOn(
-      const HloValueSemantics& activation_semantics,
-      const HloPosition& origin_dependence, bool recursive = false) const;
+  struct EinsumAndOperandIndex {
+    HloInstruction* einsum;
+    int64_t operand_index;
+  };
+  // Checks if the origin of `semantics` is an einsum that takes
+  // `origin_dependence` as an operand.
+  // If `recursive` is set to true, recursively checks all ancestors of the
+  // `semantics`' origin (including itself) for the above condition.
+  // Returns all such einsums and the operand index corresponding to
+  // `origin_dependence`.
+  // We use this function to find whether the output of an einsum who has an
+  // operand X is used in another einsum who takes X as an operand. This is
+  // the pattern for gradient.
+  // For example, consider C = einsum(A, B), dC / dB = einsum(A, C).
+  std::vector<EinsumAndOperandIndex> FindEinsumsWhereOriginDependsOnOther(
+      const HloValueSemantics& semantics, const HloPosition& origin_dependence,
+      bool recursive = false) const;
+  bool OriginDependsOn(const HloValueSemantics& semantics,
+                       const HloPosition& origin_dependence,
+                       bool recursive = false) const;
+  StatusOr<HloValueSemantics> CreateGradientSemantics(
+      HloInstruction* gradient_candidate) const;
   StatusOr<HloValueSemantics> ComputeSemanticsFromStaticAndOther(
       const HloValueSemantics& static_semantics,
-      const HloValueSemantics& other_semantics, HloInstruction* instruction);
+      const HloValueSemantics& other_semantics,
+      HloInstruction* instruction) const;
   StatusOr<HloValueSemantics> ComputeSemanticsFromRandomAndOther(
       const HloValueSemantics& random_semantics,
-      const HloValueSemantics& other_semantics, HloInstruction* instruction);
+      const HloValueSemantics& other_semantics,
+      HloInstruction* instruction) const;
   StatusOr<HloValueSemantics> ComputeSemanticsFromWeightAndOther(
       const HloValueSemantics& weight_semantics,
-      const HloValueSemantics& other_semantics, HloInstruction* instruction);
+      const HloValueSemantics& other_semantics,
+      HloInstruction* instruction) const;
   StatusOr<HloValueSemantics> ComputeSemanticsFromActivationAndOther(
       const HloValueSemantics& activation_semantics,
-      const HloValueSemantics& other_semantics, HloInstruction* instruction);
+      const HloValueSemantics& other_semantics,
+      HloInstruction* instruction) const;
   StatusOr<HloValueSemantics> ComputeSemanticsFromActivationGradientAndOther(
       const HloValueSemantics& activation_gradient_semantics,
-      const HloValueSemantics& other_semantics, HloInstruction* instruction);
+      const HloValueSemantics& other_semantics,
+      HloInstruction* instruction) const;
   StatusOr<HloValueSemantics> ComputeSemanticsFromWeightGradientAndOther(
       const HloValueSemantics& weight_gradient_semantics,
-      const HloValueSemantics& other_semantics, HloInstruction* instruction);
+      const HloValueSemantics& other_semantics,
+      HloInstruction* instruction) const;
   StatusOr<HloValueSemantics> ComputeSemanticsFromOperands(
       HloInstruction* instruction, absl::Span<const int64_t> operand_indices,
-      absl::Span<const ShapeIndex> operand_shape_indices = {});
+      absl::Span<const ShapeIndex> operand_shape_indices = {}) const;
   HloValueSemanticsAnalysis* analysis_;
 };
 

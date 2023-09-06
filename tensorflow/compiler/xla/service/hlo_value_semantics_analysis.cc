@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_value_semantics_analysis.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -26,12 +27,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -46,6 +49,367 @@ limitations under the License.
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
+
+bool HloPreOrderDFS::IsReady(const HloInstruction* instruction) const {
+  for (HloInstruction* user : instruction->users()) {
+    if (!visited_.contains(user)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+namespace {
+
+std::vector<HloInstruction*> GetAllInstructionsWithZeroUsers(
+    const HloComputation& computation) {
+  std::vector<HloInstruction*> results;
+  for (HloInstruction* instruction : computation.instructions()) {
+    if (instruction->users().empty()) {
+      results.push_back(instruction);
+    }
+  }
+  return results;
+}
+
+}  // namespace
+
+Status HloPreOrderDFS::Run(const HloComputation& computation,
+                           DfsHloVisitorBase<HloInstruction*>* visitor) {
+  stack_.clear();
+  visited_.clear();
+  std::vector<HloInstruction*> roots =
+      GetAllInstructionsWithZeroUsers(computation);
+  for (HloInstruction* root : roots) {
+    stack_.push_back(root);
+  }
+  while (!stack_.empty()) {
+    HloInstruction* to_visit = stack_.back();
+    stack_.pop_back();
+    if (visited_.contains(to_visit)) {
+      continue;
+    }
+    visited_.insert(to_visit);
+    for (HloInstruction* operand : to_visit->mutable_operands()) {
+      if (IsReady(operand)) {
+        stack_.push_back(operand);
+      }
+    }
+    TF_RETURN_IF_ERROR(visitor->Preprocess(to_visit));
+    TF_RETURN_IF_ERROR(to_visit->Visit(visitor));
+    TF_RETURN_IF_ERROR(visitor->Postprocess(to_visit));
+  }
+  return OkStatus();
+}
+
+Status EinsumDepthAnalysis::RunInternal(
+    const HloComputation& computation,
+    const std::optional<ShapeTree<int>>& root_depth) {
+  std::vector<HloInstruction*> roots =
+      GetAllInstructionsWithZeroUsers(computation);
+  for (HloInstruction* root : roots) {
+    if (root == computation.root_instruction()) {
+      if (root_depth.has_value()) {
+        einsum_depth_map_.insert(std::make_pair(root, *root_depth));
+      } else {
+        ShapeTree<int> depth(root->shape(), 0);
+        einsum_depth_map_.insert(std::make_pair(root, std::move(depth)));
+      }
+    } else {
+      ShapeTree<int> depth(root->shape(), -1);
+      einsum_depth_map_.insert(std::make_pair(root, std::move(depth)));
+    }
+  }
+  HloPreOrderDFS dfs;
+  return dfs.Run(computation, this);
+}
+
+StatusOr<std::unique_ptr<EinsumDepthAnalysis>> EinsumDepthAnalysis::Run(
+    const HloComputation& computation) {
+  EinsumDepthAnalysis* analysis_ptr = new EinsumDepthAnalysis();
+  std::unique_ptr<EinsumDepthAnalysis> analysis(analysis_ptr);
+  TF_RETURN_IF_ERROR(analysis->RunInternal(computation, std::nullopt));
+  return analysis;
+}
+
+namespace {
+
+int MergeDepth(int original_depth, int new_depth) {
+  // If the instruction has users that are dependent upon by the root, its depth
+  // is set by the max of all its users that are dependence of the root.
+  if (new_depth >= 0) {
+    return std::max(original_depth, new_depth);
+  }
+  // If the instruction's user is not dependent upon by the root, it affects
+  // the depth of the instruction only if all users of the instruction are not
+  // ancestors of the root.
+  if (new_depth < 0 && original_depth < 0) {
+    return std::min(original_depth, new_depth);
+  }
+  return original_depth;
+}
+
+void SetDepth(ShapeTree<int>& depth_tree, int depth) {
+  depth_tree.ForEachMutableElement(
+      [depth, &depth_tree](const ShapeIndex& shape_index, int* depth_ptr) {
+        if (depth_tree.IsLeaf(shape_index)) {
+          *depth_ptr = MergeDepth(*depth_ptr, depth);
+        }
+      });
+}
+
+void SetDepth(ShapeTree<int>& depth_tree, const ShapeTree<int>& source) {
+  depth_tree.ForEachMutableElement(
+      [&depth_tree, &source](const ShapeIndex& shape_index, int* depth_ptr) {
+        if (depth_tree.IsLeaf(shape_index)) {
+          *depth_ptr = MergeDepth(*depth_ptr, source.element(shape_index));
+        }
+      });
+}
+
+int GetMaxDepth(const ShapeTree<int>& depth_tree) {
+  int max_depth = -1;
+  depth_tree.ForEachElement(
+      [&max_depth](const ShapeIndex& shape_index, int depth) {
+        max_depth = std::max(max_depth, depth);
+        return OkStatus();
+      });
+  if (max_depth >= 0) {
+    return max_depth;
+  }
+  depth_tree.ForEachElement(
+      [&max_depth](const ShapeIndex& shape_index, int depth) {
+        max_depth = std::min(max_depth, depth);
+        return OkStatus();
+      });
+  return max_depth;
+}
+
+void SetDepthFromTupleDepth(ShapeTree<int>& depth_tree,
+                            const ShapeTree<int>& tuple_depth_tree,
+                            int tuple_index) {
+  depth_tree.ForEachMutableElement([&depth_tree, &tuple_depth_tree,
+                                    tuple_index](const ShapeIndex& shape_index,
+                                                 int* depth_ptr) {
+    if (depth_tree.IsLeaf(shape_index)) {
+      ShapeIndex output_index = shape_index;
+      output_index.push_front(tuple_index);
+      *depth_ptr = std::max(*depth_ptr, tuple_depth_tree.element(output_index));
+    }
+  });
+}
+
+}  // namespace
+
+EinsumDepthMap::iterator EinsumDepthAnalysis::GetOrCreateDepthTree(
+    HloInstruction* instruction) {
+  auto depth_iter = einsum_depth_map_.find(instruction);
+  if (depth_iter == einsum_depth_map_.end()) {
+    ShapeTree<int> depth_tree(instruction->shape(), -1);
+    auto inserted = einsum_depth_map_.insert(
+        std::make_pair(instruction, std::move(depth_tree)));
+    depth_iter = inserted.first;
+  }
+  return depth_iter;
+}
+
+Status EinsumDepthAnalysis::SetInstructionDepth(HloInstruction* instruction,
+                                                int depth) {
+  auto depth_iter = GetOrCreateDepthTree(instruction);
+  ShapeTree<int>& depth_tree = depth_iter->second;
+  SetDepth(depth_tree, depth);
+  return OkStatus();
+}
+
+Status EinsumDepthAnalysis::DefaultAction(HloInstruction* instruction) {
+  if (!instruction->shape().IsToken() && !instruction->shape().IsArray() &&
+      !instruction->shape().IsTuple()) {
+    return InvalidArgument("Unexpected shape for default action.");
+  }
+  // If the instruction is an array, the output depends on all operands.
+  auto depth_iter = einsum_depth_map_.find(instruction);
+  CHECK(depth_iter != einsum_depth_map_.end());
+  const ShapeTree<int> depth_tree = depth_iter->second;
+  int max_depth = GetMaxDepth(depth_tree);
+  if (instruction->shape().IsToken()) {
+    for (HloInstruction* operand : instruction->mutable_operands()) {
+      TF_RETURN_IF_ERROR(SetInstructionDepth(operand, max_depth));
+    }
+  }
+  if (instruction->shape().IsArray()) {
+    int instruction_depth = depth_tree.element({});
+    for (HloInstruction* operand : instruction->mutable_operands()) {
+      TF_RETURN_IF_ERROR(SetInstructionDepth(operand, instruction_depth));
+    }
+    return OkStatus();
+  }
+  // If the instruction is a tuple and the output size is larger than the
+  // operand count, each tuple element depends on all operands.
+  int tuple_shape_size = instruction->shape().tuple_shapes_size();
+  if (instruction->operand_count() < tuple_shape_size) {
+    for (HloInstruction* operand : instruction->mutable_operands()) {
+      TF_RETURN_IF_ERROR(SetInstructionDepth(operand, max_depth));
+    }
+    return OkStatus();
+  }
+  // Each tuple element depends on a specific operand.
+  for (int operand_index = 0; operand_index < instruction->operand_count();
+       ++operand_index) {
+    HloInstruction* operand = instruction->mutable_operand(operand_index);
+    if (operand_index < tuple_shape_size) {
+      auto operand_depth_iter = GetOrCreateDepthTree(operand);
+      ShapeTree<int>& operand_depth = operand_depth_iter->second;
+      SetDepthFromTupleDepth(operand_depth, depth_tree, operand_index);
+    } else {
+      TF_RETURN_IF_ERROR(SetInstructionDepth(operand, max_depth));
+    }
+  }
+  return OkStatus();
+}
+
+Status EinsumDepthAnalysis::HandleTuple(HloInstruction* tuple) {
+  auto depth_iter = einsum_depth_map_.find(tuple);
+  CHECK(depth_iter != einsum_depth_map_.end());
+  const ShapeTree<int> depth_tree = depth_iter->second;
+  for (int operand_index = 0; operand_index < tuple->operand_count();
+       ++operand_index) {
+    HloInstruction* operand = tuple->mutable_operand(operand_index);
+    auto operand_depth_iter = GetOrCreateDepthTree(operand);
+    ShapeTree<int>& operand_depth = operand_depth_iter->second;
+    SetDepthFromTupleDepth(operand_depth, depth_tree, operand_index);
+  }
+  return OkStatus();
+}
+
+Status EinsumDepthAnalysis::HandleGetTupleElement(
+    HloInstruction* get_tuple_element) {
+  auto depth_iter = einsum_depth_map_.find(get_tuple_element);
+  CHECK(depth_iter != einsum_depth_map_.end());
+  const ShapeTree<int> depth_tree = depth_iter->second;
+
+  HloInstruction* operand = get_tuple_element->mutable_operand(0);
+  int tuple_index = get_tuple_element->tuple_index();
+  auto operand_depth_iter = GetOrCreateDepthTree(operand);
+  ShapeTree<int>& operand_depth = operand_depth_iter->second;
+  operand_depth.ForEachMutableElement(
+      [&operand_depth, &depth_tree, tuple_index](const ShapeIndex& shape_index,
+                                                 int* depth_ptr) {
+        if (shape_index.front() != tuple_index) {
+          return;
+        }
+        if (operand_depth.IsLeaf(shape_index)) {
+          ShapeIndex output_index = shape_index;
+          output_index.pop_front();
+          *depth_ptr = std::max(*depth_ptr, depth_tree.element(output_index));
+        }
+      });
+  return OkStatus();
+}
+
+Status EinsumDepthAnalysis::HandleDepthIncrementInstruction(
+    HloInstruction* instruction) {
+  auto depth_iter = einsum_depth_map_.find(instruction);
+  CHECK(depth_iter != einsum_depth_map_.end());
+  int instruction_depth = depth_iter->second.element({});
+  for (HloInstruction* operand : instruction->mutable_operands()) {
+    TF_RETURN_IF_ERROR(SetInstructionDepth(
+        operand, instruction_depth >= 0 ? instruction_depth + 1
+                                        : instruction_depth - 1));
+  }
+  return OkStatus();
+}
+
+Status EinsumDepthAnalysis::HandleDot(HloInstruction* dot) {
+  auto depth_iter = einsum_depth_map_.find(dot);
+  CHECK(depth_iter != einsum_depth_map_.end());
+  return HandleDepthIncrementInstruction(dot);
+}
+
+Status EinsumDepthAnalysis::HandleConvolution(HloInstruction* convolution) {
+  return HandleDepthIncrementInstruction(convolution);
+}
+
+Status EinsumDepthAnalysis::HandleCall(HloInstruction* call) {
+  auto depth_iter = einsum_depth_map_.find(call);
+  CHECK(depth_iter != einsum_depth_map_.end());
+  const ShapeTree<int> depth_tree = depth_iter->second;
+  return HandleCalledComputation(*call->called_computations()[0], depth_tree,
+                                 call->operands());
+}
+
+Status EinsumDepthAnalysis::HandleFusion(HloInstruction* fusion) {
+  auto depth_iter = einsum_depth_map_.find(fusion);
+  CHECK(depth_iter != einsum_depth_map_.end());
+  const ShapeTree<int> depth_tree = depth_iter->second;
+  return HandleCalledComputation(*fusion->called_computations()[0], depth_tree,
+                                 fusion->operands());
+}
+
+Status EinsumDepthAnalysis::HandleCustomCall(HloInstruction* custom_call) {
+  if (custom_call->shape().IsToken() || custom_call->shape().IsArray() ||
+      custom_call->shape().IsTuple()) {
+    return DefaultAction(custom_call);
+  }
+  return Unimplemented("Unimplemented custom-call: %s",
+                       custom_call->custom_call_target());
+}
+
+Status EinsumDepthAnalysis::HandleWhile(HloInstruction* xla_while) {
+  auto depth_iter = einsum_depth_map_.find(xla_while);
+  CHECK(depth_iter != einsum_depth_map_.end());
+  const ShapeTree<int> depth_tree = depth_iter->second;
+  int max_depth = GetMaxDepth(depth_tree);
+  HloComputation* condition_computation = xla_while->while_condition();
+  HloInstruction* condition_root = condition_computation->root_instruction();
+  ShapeTree<int> condition_depth(condition_root->shape(), max_depth);
+  TF_RETURN_IF_ERROR(HandleCalledComputation(
+      *condition_computation, condition_depth, xla_while->operands()));
+  HloComputation* body_computation = xla_while->while_body();
+  Status status = HandleCalledComputation(*body_computation, depth_tree,
+                                          xla_while->operands());
+  return status;
+}
+
+Status EinsumDepthAnalysis::HandleConditional(HloInstruction* conditional) {
+  auto depth_iter = einsum_depth_map_.find(conditional);
+  CHECK(depth_iter != einsum_depth_map_.end());
+  const ShapeTree<int> depth_tree = depth_iter->second;
+  return HandleCalledComputation(*conditional->called_computations()[0],
+                                 depth_tree, conditional->operands());
+}
+
+Status EinsumDepthAnalysis::HandleCalledComputation(
+    const HloComputation& called_computation, const ShapeTree<int>& root_depth,
+    absl::Span<HloInstruction* const> operands) {
+  TF_RETURN_IF_ERROR(RunInternal(called_computation,
+                                 std::optional<ShapeTree<int>>(root_depth)));
+  for (int i = 0; i < operands.size(); ++i) {
+    HloInstruction* operand = operands[i];
+    HloInstruction* parameter = called_computation.parameter_instruction(i);
+    const ShapeTree<int> parameter_depth =
+        GetOrCreateDepthTree(parameter)->second;
+    ShapeTree<int>& operand_depth = GetOrCreateDepthTree(operand)->second;
+    SetDepth(operand_depth, parameter_depth);
+  }
+  return OkStatus();
+}
+
+Status EinsumDepthAnalysis::HandleAfterAll(HloInstruction* after_all) {
+  return OkStatus();
+}
+
+Status EinsumDepthAnalysis::HandleOutfeed(HloInstruction* outfeed) {
+  auto depth_iter = einsum_depth_map_.find(outfeed);
+  CHECK(depth_iter != einsum_depth_map_.end());
+  const ShapeTree<int> depth_tree = depth_iter->second;
+  int max_depth = GetMaxDepth(depth_tree);
+  for (HloInstruction* operand : outfeed->mutable_operands()) {
+    auto operand_depth_iter = GetOrCreateDepthTree(operand);
+    ShapeTree<int>& operand_depth = operand_depth_iter->second;
+    SetDepth(operand_depth, max_depth);
+  }
+  return OkStatus();
+}
 
 std::string HloValueSemanticLabelToString(HloValueSemanticLabel label) {
   switch (label) {
@@ -94,10 +458,19 @@ StatusOr<std::unique_ptr<HloValueSemanticsAnalysis>>
 HloValueSemanticsAnalysis::Run(const HloModule& module) {
   std::unique_ptr<HloValueSemanticsAnalysis> value_semantics_analysis =
       absl::WrapUnique(new HloValueSemanticsAnalysis(module));
+  TF_RETURN_IF_ERROR(value_semantics_analysis->InitializeEinsumDepth());
   value_semantics_analysis->AnnotateWeights();
   TF_RETURN_IF_ERROR(
       value_semantics_analysis->RunOnComputation(*module.entry_computation()));
   return value_semantics_analysis;
+}
+
+Status HloValueSemanticsAnalysis::InitializeEinsumDepth() {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
+      EinsumDepthAnalysis::Run(*module_.entry_computation()));
+  einsum_depth_map_ = einsum_depth_analysis->GetEinsumDepthMap();
+  return OkStatus();
 }
 
 HloValueSemantics::Id HloValueSemanticsAnalysis::NextId() { return next_id_++; }
@@ -237,13 +610,13 @@ Status HloValueSemanticsPropagation::Run(const HloComputation& computation) {
 }
 
 HloValueSemantics HloValueSemanticsPropagation::CopySemantics(
-    const HloValueSemantics& semantics) {
+    const HloValueSemantics& semantics) const {
   return HloValueSemantics(semantics.label(), semantics.origin());
 }
 
 HloValueSemantics HloValueSemanticsPropagation::CopySemanticsWithNewOrigin(
     const HloValueSemantics& semantics, HloInstruction* new_origin,
-    const ShapeIndex& index) {
+    const ShapeIndex& index) const {
   return HloValueSemantics(semantics.label(), {new_origin, index});
 }
 
@@ -252,13 +625,15 @@ const HloValueSemantics* HloValueSemanticsPropagation::AddSemantics(
   return analysis_->NewHloValueSemantics(semantics.label(), semantics.origin());
 }
 
-bool HloValueSemanticsPropagation::IsActivationOriginDependentOn(
-    const HloValueSemantics& activation_semantics,
-    const HloPosition& origin_dependence, bool recursive) const {
-  CHECK(activation_semantics.label() == HloValueSemanticLabel::kActivation);
+std::vector<HloValueSemanticsPropagation::EinsumAndOperandIndex>
+HloValueSemanticsPropagation::FindEinsumsWhereOriginDependsOnOther(
+    const HloValueSemantics& semantics, const HloPosition& origin_dependence,
+    bool recursive) const {
   std::vector<HloPosition> stack;
   absl::flat_hash_set<HloPosition> visited;
-  stack.push_back(activation_semantics.origin());
+  std::vector<HloValueSemanticsPropagation::EinsumAndOperandIndex>
+      dependent_einsums;
+  stack.push_back(semantics.origin());
   while (!stack.empty()) {
     HloPosition origin = stack.back();
     stack.pop_back();
@@ -275,28 +650,58 @@ bool HloValueSemanticsPropagation::IsActivationOriginDependentOn(
     if (origin.instruction->opcode() == HloOpcode::kDynamicSlice) {
       operands = operands.subspan(0, 1);
     }
-    for (const HloInstruction* origin_operand : operands) {
-      const HloValueSemantics* origin_operand_semantics =
-          analysis_->GetSemantics(origin_operand);
-      if (origin_operand_semantics->origin() == origin_dependence) {
-        return true;
+    bool is_einsum = origin.instruction->opcode() == HloOpcode::kDot ||
+                     origin.instruction->opcode() == HloOpcode::kConvolution;
+    bool found_einsum = false;
+    if (is_einsum) {
+      for (int64_t operand_index = 0; operand_index < operands.size();
+           ++operand_index) {
+        const HloInstruction* origin_operand = operands[operand_index];
+        const HloValueSemantics* origin_operand_semantics =
+            analysis_->GetSemantics(origin_operand);
+        if (origin_operand_semantics->origin() == origin_dependence) {
+          dependent_einsums.push_back({origin.instruction, operand_index});
+          found_einsum = true;
+        }
       }
-      if (recursive) {
+    }
+    if (!found_einsum && recursive) {
+      for (int64_t operand_index = 0; operand_index < operands.size();
+           ++operand_index) {
+        const HloInstruction* origin_operand = operands[operand_index];
+        const HloValueSemantics* origin_operand_semantics =
+            analysis_->GetSemantics(origin_operand);
         stack.push_back(origin_operand_semantics->origin());
       }
     }
   }
-  return false;
+  return dependent_einsums;
+}
+
+bool HloValueSemanticsPropagation::OriginDependsOn(
+    const HloValueSemantics& semantics, const HloPosition& origin_dependence,
+    bool recursive) const {
+  auto dependent_einsums = FindEinsumsWhereOriginDependsOnOther(
+      semantics, origin_dependence, recursive);
+  return !dependent_einsums.empty();
 }
 
 StatusOr<HloValueSemantics>
 HloValueSemanticsPropagation::ComputeSemanticsFromStaticAndOther(
     const HloValueSemantics& static_semantics,
-    const HloValueSemantics& other_semantics, HloInstruction* instruction) {
+    const HloValueSemantics& other_semantics,
+    HloInstruction* instruction) const {
   CHECK(static_semantics.label() == HloValueSemanticLabel::kStatic)
       << __func__ << ", : " << static_semantics.ToString();
   if (other_semantics.label() == HloValueSemanticLabel::kStatic) {
     return CopySemanticsWithNewOrigin(other_semantics, instruction);
+  }
+
+  bool is_dot_or_convolution = instruction->opcode() == HloOpcode::kDot ||
+                               instruction->opcode() == HloOpcode::kConvolution;
+  if (is_dot_or_convolution &&
+      other_semantics.label() == HloValueSemanticLabel::kActivationGradient) {
+    return CreateGradientSemantics(instruction);
   }
   return CopySemantics(other_semantics);
 }
@@ -304,7 +709,8 @@ HloValueSemanticsPropagation::ComputeSemanticsFromStaticAndOther(
 StatusOr<HloValueSemantics>
 HloValueSemanticsPropagation::ComputeSemanticsFromRandomAndOther(
     const HloValueSemantics& random_semantics,
-    const HloValueSemantics& other_semantics, HloInstruction* instruction) {
+    const HloValueSemantics& other_semantics,
+    HloInstruction* instruction) const {
   CHECK(random_semantics.label() == HloValueSemanticLabel::kRandom);
   CHECK(other_semantics.label() != HloValueSemanticLabel::kStatic);
   if (other_semantics.label() == HloValueSemanticLabel::kRandom) {
@@ -314,9 +720,32 @@ HloValueSemanticsPropagation::ComputeSemanticsFromRandomAndOther(
 }
 
 StatusOr<HloValueSemantics>
+HloValueSemanticsPropagation::CreateGradientSemantics(
+    HloInstruction* gradient_candidate) const {
+  const EinsumDepthMap& einsum_depth_map = analysis_->GetEinsumDepthMap();
+  auto depth_iter = einsum_depth_map.find(gradient_candidate);
+  CHECK(depth_iter != einsum_depth_map.end());
+  int gradient_depth = depth_iter->second.element({});
+  if (gradient_depth < 0) {
+    // There is dependency between the two operands of the dot, but the dot
+    // is not used by root. This is likely eval computation in a TF program.
+    return HloValueSemantics(HloValueSemanticLabel::kActivation,
+                             {gradient_candidate, {}});
+  }
+  // If the gradient has no einsum users, then it's a WeightGradient.
+  if (gradient_depth == 0) {
+    return HloValueSemantics(HloValueSemanticLabel::kWeightGradient,
+                             {gradient_candidate, {}});
+  }
+  return HloValueSemantics(HloValueSemanticLabel::kActivationGradient,
+                           {gradient_candidate, {}});
+}
+
+StatusOr<HloValueSemantics>
 HloValueSemanticsPropagation::ComputeSemanticsFromWeightAndOther(
     const HloValueSemantics& weight_semantics,
-    const HloValueSemantics& other_semantics, HloInstruction* instruction) {
+    const HloValueSemantics& other_semantics,
+    HloInstruction* instruction) const {
   CHECK(weight_semantics.label() == HloValueSemanticLabel::kWeight);
   CHECK(other_semantics.label() != HloValueSemanticLabel::kStatic &&
         other_semantics.label() != HloValueSemanticLabel::kRandom);
@@ -333,16 +762,23 @@ HloValueSemanticsPropagation::ComputeSemanticsFromWeightAndOther(
     return CopySemantics(other_semantics);
   }
   if (other_semantics.label() == HloValueSemanticLabel::kActivation) {
-    if (IsActivationOriginDependentOn(other_semantics,
-                                      weight_semantics.origin(),
-                                      /*recursive=*/true)) {
-      return HloValueSemantics(HloValueSemanticLabel::kActivationGradient,
-                               {instruction, {}});
+    // In our analysis, loss is classified as Activation. So an einsum between
+    // a Weight (W) and an Activation (X) could be an ActivationGradient when X
+    // is the loss. We distinguish this case from regular Activations by
+    // checking whether X is computed from some einsum that takes W as an
+    //  operand.
+    if (OriginDependsOn(other_semantics, weight_semantics.origin(),
+                        /*recursive=*/true)) {
+      return CreateGradientSemantics(instruction);
     }
     return CopySemanticsWithNewOrigin(other_semantics, instruction);
   }
   if (other_semantics.label() == HloValueSemanticLabel::kActivationGradient) {
-    return CopySemanticsWithNewOrigin(other_semantics, instruction);
+    // Since we classify input data as Weight, there are Weight-Weight einsums
+    // which produce an Activation. The ActivationGradient to this Activation
+    // could be used in an einsum with one of the Weights to compute
+    // the WeightGradient for the other Weight.
+    return CreateGradientSemantics(instruction);
   }
   CHECK(other_semantics.label() == HloValueSemanticLabel::kWeightGradient);
   return CopySemantics(other_semantics);
@@ -351,7 +787,8 @@ HloValueSemanticsPropagation::ComputeSemanticsFromWeightAndOther(
 StatusOr<HloValueSemantics>
 HloValueSemanticsPropagation::ComputeSemanticsFromActivationAndOther(
     const HloValueSemantics& activation_semantics,
-    const HloValueSemantics& other_semantics, HloInstruction* instruction) {
+    const HloValueSemantics& other_semantics,
+    HloInstruction* instruction) const {
   CHECK(activation_semantics.label() == HloValueSemanticLabel::kActivation);
   CHECK(other_semantics.label() != HloValueSemanticLabel::kStatic &&
         other_semantics.label() != HloValueSemanticLabel::kRandom &&
@@ -362,24 +799,28 @@ HloValueSemanticsPropagation::ComputeSemanticsFromActivationAndOther(
     return CopySemanticsWithNewOrigin(other_semantics, instruction);
   }
   if (other_semantics.label() == HloValueSemanticLabel::kActivation) {
-    // The first weight gradient after the loss computation will have two
-    // activation inputs that have a dependency between them. Other Activations
-    // should have a Weight origin input.
-    if (IsActivationOriginDependentOn(other_semantics,
-                                      activation_semantics.origin(),
-                                      /*recursive=*/true) ||
-        IsActivationOriginDependentOn(activation_semantics,
-                                      other_semantics.origin(),
-                                      /*recursive=*/true)) {
-      return HloValueSemantics(HloValueSemanticLabel::kWeightGradient,
-                               {instruction, {}});
+    // Like said above, since loss is classified as Activation, an einsum
+    // between an Activation X and an Activation Y could be WeightGradient or
+    // even ActivationGradient when either X or Y is the loss. This case is
+    // different from other Activation einsums because there must a dependency
+    // between X and Y.
+    bool other_depends_on_activation = OriginDependsOn(
+        other_semantics, activation_semantics.origin(), /*recursive=*/true);
+    bool activation_depends_on_other =
+        OriginDependsOn(activation_semantics, other_semantics.origin(),
+                        /*recursive=*/true);
+    CHECK(!other_depends_on_activation || !activation_depends_on_other);
+    // If there is no dependency between the two Activations, the output must
+    // be an Activation.
+    if (other_depends_on_activation || activation_depends_on_other) {
+      return CreateGradientSemantics(instruction);
     }
-    // Otherwise still an activation.
     return CopySemanticsWithNewOrigin(other_semantics, instruction);
   }
   if (other_semantics.label() == HloValueSemanticLabel::kActivationGradient) {
-    return HloValueSemantics(HloValueSemanticLabel::kWeightGradient,
-                             {instruction, {}});
+    // An Activation-ActivationGradient einsum could be computing
+    // WeightGradient or ActivationGradient.
+    return CreateGradientSemantics(instruction);
   }
   CHECK(other_semantics.label() == HloValueSemanticLabel::kWeightGradient)
       << "instruction:  " << instruction->ToString()
@@ -392,7 +833,8 @@ HloValueSemanticsPropagation::ComputeSemanticsFromActivationAndOther(
 StatusOr<HloValueSemantics>
 HloValueSemanticsPropagation::ComputeSemanticsFromActivationGradientAndOther(
     const HloValueSemantics& activation_gradient_semantics,
-    const HloValueSemantics& other_semantics, HloInstruction* instruction) {
+    const HloValueSemantics& other_semantics,
+    HloInstruction* instruction) const {
   CHECK(activation_gradient_semantics.label() ==
         HloValueSemanticLabel::kActivationGradient);
   CHECK(other_semantics.label() != HloValueSemanticLabel::kStatic &&
@@ -410,7 +852,8 @@ HloValueSemanticsPropagation::ComputeSemanticsFromActivationGradientAndOther(
 StatusOr<HloValueSemantics>
 HloValueSemanticsPropagation::ComputeSemanticsFromWeightGradientAndOther(
     const HloValueSemantics& weight_gradient_semantics,
-    const HloValueSemantics& other_semantics, HloInstruction* instruction) {
+    const HloValueSemantics& other_semantics,
+    HloInstruction* instruction) const {
   CHECK(weight_gradient_semantics.label() ==
         HloValueSemanticLabel::kWeightGradient);
   CHECK(other_semantics.label() != HloValueSemanticLabel::kStatic &&
@@ -424,7 +867,7 @@ HloValueSemanticsPropagation::ComputeSemanticsFromWeightGradientAndOther(
 StatusOr<HloValueSemantics>
 HloValueSemanticsPropagation::ComputeSemanticsFromOperands(
     HloInstruction* instruction, absl::Span<const int64_t> operand_indices,
-    absl::Span<const ShapeIndex> operand_shape_indices) {
+    absl::Span<const ShapeIndex> operand_shape_indices) const {
   CHECK(!operand_indices.empty());
   CHECK(operand_shape_indices.empty() ||
         operand_indices.size() == operand_shape_indices.size());
