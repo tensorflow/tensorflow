@@ -294,7 +294,7 @@ Status EinsumDepthAnalysis::HandleGetTupleElement(
   operand_depth.ForEachMutableElement(
       [&operand_depth, &depth_tree, tuple_index](const ShapeIndex& shape_index,
                                                  int* depth_ptr) {
-        if (shape_index.front() != tuple_index) {
+        if (shape_index.empty() || shape_index.front() != tuple_index) {
           return;
         }
         if (operand_depth.IsLeaf(shape_index)) {
