@@ -28,7 +28,8 @@ ca-certificates
 llvm-16
 clang-16
 lld-16
-clang-format-12
+clang-format-16
+clang-tidy-16
 colordiff
 curl
 ffmpeg
