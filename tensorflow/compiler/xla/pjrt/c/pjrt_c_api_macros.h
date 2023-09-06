@@ -13,21 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_GPU_H_
-#define TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_GPU_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_MACROS_H_
+#define TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_MACROS_H_
 
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_macros.h"
+#if defined(_WIN32)
+#define PJRT_CAPI_EXPORT __declspec(dllexport)
+#else
+#define PJRT_CAPI_EXPORT __attribute__((visibility("default")))
+#endif  // _WIN32
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// Does not pass ownership of returned PJRT_Api* to caller.
-PJRT_CAPI_EXPORT const PJRT_Api* GetPjrtApi();
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif  // TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_GPU_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_MACROS_H_

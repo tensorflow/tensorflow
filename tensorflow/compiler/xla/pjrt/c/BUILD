@@ -18,6 +18,14 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_macros",
+    hdrs = [
+        "pjrt_c_api_macros.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "pjrt_c_api_tpu_hdrs",
     hdrs = ["pjrt_c_api_tpu.h"],
     visibility = ["//visibility:public"],
@@ -135,6 +143,7 @@ cc_library(
     deps = [
         ":pjrt_c_api_gpu_internal",
         ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_macros",
     ],
 )
 
