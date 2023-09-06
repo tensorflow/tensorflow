@@ -1,1 +1,14 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/test/Other/cfg-multiline-header.ll b/llvm/test/Other/cfg-multiline-header.ll
+--- a/llvm/test/Other/cfg-multiline-header.ll
++++ b/llvm/test/Other/cfg-multiline-header.ll
+@@ -1,5 +1,7 @@
+-; RUN: opt < %s -passes=dot-cfg -cfg-dot-filename-prefix=cfg 2>/dev/null > /dev/null
+-; RUN: FileCheck %s -input-file=cfg.foo.dot --check-prefix=CHECK
++; RUN: rm -rf %t
++; RUN: mkdir -p %t
++; RUN: opt < %s -passes=dot-cfg -cfg-dot-filename-prefix=%t/cfg 2>/dev/null > /dev/null
++; RUN: FileCheck %s -input-file=%t/cfg.foo.dot --check-prefix=CHECK
+ 
+ define void @foo(ptr %A, ptr %B) {
+ a_very_long_label_that_should_take_over_eight_symbols_and_span_2_lines_in_cfg_dot_graph:
