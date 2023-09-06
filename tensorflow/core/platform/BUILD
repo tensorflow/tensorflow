@@ -10,25 +10,6 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "if_static",
-    "tf_gpu_tests_tags",
-)
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_additional_lib_hdrs",
-    "tf_additional_tensor_coding_deps",
-    "tf_google_mobile_srcs_only_runtime",
-    "tf_platform_alias",
-    "tf_platform_deps",
-    "tf_windows_aware_platform_deps",
-)
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_binary",
-    "cc_library",
-)
-load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
     "if_not_android",
@@ -40,15 +21,39 @@ load(
     "tf_cuda_library",
 )
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
+    "//tensorflow:tensorflow.default.bzl",
+    "filegroup",
+    "get_compatible_with_portable",
+    "tf_cuda_cc_test",
+)
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_lib_hdrs",
+    "tf_additional_tensor_coding_deps",
+    "tf_google_mobile_srcs_only_runtime",
+    "tf_platform_alias",
+    "tf_platform_deps",
+    "tf_windows_aware_platform_deps",
+)
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+    "tf_gpu_tests_tags",
+)
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_binary",
+    "cc_library",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable", "tf_cuda_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -510,23 +515,15 @@ py_strict_test(
     srcs = ["ram_file_system_test.py"],
     python_version = "PY3",
     deps = [
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:model_fn",
-        "//tensorflow/python/estimator:run_config",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/layers",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/module",
-        "//tensorflow/python/ops/losses",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/saved_model",
-        "//tensorflow/python/training:adam",
-        "//tensorflow/python/training:training_util",
-        "//third_party/py/numpy",
     ],
 )
 
