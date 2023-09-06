@@ -22,6 +22,7 @@ option cc_enable_arenas = true;
 // NEXT ID: 4
 message QuantizationMethod {
   // Quantization methods that are supported as a stable API.
+  // NEXT ID: 1
   enum Method {
     // This should never be used. Using this will generally result in an error.
     METHOD_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
@@ -30,6 +31,7 @@ message QuantizationMethod {
   // Experimental quantization methods.
   // These methods are either not implemented or provided with an unstable
   // behavior.
+  // NEXT ID: 4
   enum ExperimentalMethod {
     // This should never be used. Using this will generally result in an error.
     EXPERIMENTAL_METHOD_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
@@ -116,7 +118,7 @@ message UnitWiseQuantizationSpec {
 
 // List of supported opsets to deploy the quantized model.
 // The quantized model contains different set of ops depending on the opset.
-// NEXT ID: 4
+// NEXT ID: 5
 enum OpSet {
   OP_SET_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
   // Uses TF ops that mimic quantization behavior. Used when the corresponding
@@ -126,6 +128,9 @@ enum OpSet {
   XLA = 2;
   // Uses TF Uniform Quantized ops
   UNIFORM_QUANTIZED = 3;
+  // Uses the StableHLO Quantizer. StableHLO Quantizer will be available as
+  // an option in the TF Quantizer in StableHLO Quantizer v1.
+  STABLEHLO = 4;
 }
 
 // Configurations for variable freezing during quantization passes.
