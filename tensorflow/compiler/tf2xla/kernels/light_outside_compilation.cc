@@ -452,6 +452,7 @@ class TfCallbackDevice : public DeviceBase {
         *BaseGPUDevice::FindTfDeviceId(stream));
 #endif
 
+    allocators_.clear();
     for (int i = 0; i < callback_data.outputs_size(); ++i) {
       int buffer_num = GetOutputBufferId(i, callback_data);
       VLOG(1) << "Binding output " << i << " to buffer " << buffers[buffer_num];
