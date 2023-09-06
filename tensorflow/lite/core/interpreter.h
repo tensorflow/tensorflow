@@ -321,7 +321,6 @@ class Interpreter {
     return nullptr;
   }
 
-  /// \warning Experimental interface, subject to change. \n
   /// \brief Returns list of all keys of different method signatures defined
   /// in the model.
   /// Note, pointers returned have lifetime same as the Interpreter object.
@@ -334,7 +333,6 @@ class Interpreter {
     return signature_keys;
   }
 
-  /// \warning Experimental interface, subject to change. \n
   /// \brief Returns a pointer to the SignatureRunner instance to run the part
   /// of the graph identified by a SignatureDef. The nullptr is returned if the
   /// given signature key is not valid.
@@ -368,7 +366,6 @@ class Interpreter {
     return -1;
   }
 
-  /// \warning Experimental interface, subject to change. \n
   /// \brief Returns the mapping of inputs to tensor index in the signature
   /// specified through 'signature_key'.
   /// If invalid name passed, an empty list will be returned.
@@ -382,7 +379,6 @@ class Interpreter {
     return *default_empty_list;
   }
 
-  /// \warning Experimental interface, subject to change. \n
   /// \brief Returns the mapping of outputs to tensor index in the signature
   /// specified through 'signature_key'.
   /// If invalid name passed, an empty list will be returned.
@@ -396,7 +392,6 @@ class Interpreter {
     return *default_empty_list;
   }
 
-  /// \warning Experimental interface, subject to change. \n
   /// \brief Returns the input tensor identified by 'signature_input_name' in
   /// the signature identified by 'signature_key'.
   /// Returns nullptr if not found.
@@ -410,7 +405,6 @@ class Interpreter {
     return subgraph(subgraph_index)->tensor(tensor_index);
   }
 
-  /// \warning Experimental interface, subject to change. \n
   /// \brief Returns the output tensor identified by 'signature_output_name' in
   /// the signature identified by 'signature_key'.
   /// Returns nullptr if not found.

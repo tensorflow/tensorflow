@@ -44,6 +44,18 @@
 
     *   `mul_op` supports broadcasting up to 6 dimensions.
 
+    *  The `tflite::SignatureRunner` class, which provides support for named
+       parameters and for multiple named computations within a single TF Lite
+       model, is no longer considered experimental. Likewise for the following
+       signature-related methods of `tflite::Interpreter`:
+
+       *   `tflite::Interpreter::GetSignatureRunner`
+       *   `tflite::Interpreter::signature_keys`
+       *   `tflite::Interpreter::signature_inputs`
+       *   `tflite::Interpreter::signature_outputs`
+       *   `tflite::Interpreter::input_tensor_by_signature`
+       *   `tflite::Interpreter::output_tensor_by_signature`
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>

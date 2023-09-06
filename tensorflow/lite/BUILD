@@ -128,6 +128,7 @@ STABLE_FRAMEWORK_LIB_HDRS = [
     "model.h",
     "model_builder.h",
     "interpreter_builder.h",
+    "signature_runner.h",
     "mutable_op_resolver.h",
     "op_resolver.h",
     "stderr_reporter.h",
@@ -140,7 +141,6 @@ FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
     "interpreter_options.h",
     "logger.h",
     "optional_debug_tools.h",
-    "signature_runner.h",
 ]
 
 # Private header files that are included from the public API header files.
@@ -487,6 +487,8 @@ alias_with_tflite(
 
 # The public target for the C++ API excluding experimental APIs.
 # TODO(ahentz): investigate dependency on gemm_support requiring usage of tf_copts.
+# TODO(b/298419516): remove the dependency on cpp_api_experimental once signature runner
+# has been promoted to stable in TFLite-in-Play-Services.
 cc_library_with_tflite(
     name = "framework_stable",
     srcs = STABLE_FRAMEWORK_LIB_IMPL_HDRS,
@@ -511,6 +513,7 @@ cc_library_with_tflite(
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core:signature_runner",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
@@ -588,6 +591,9 @@ cc_library(
 #
 # This target has restricted visibility; for a public target that exposes
 # these APIs, see 'framework_stable' above.
+#
+# TODO(b/298419516): remove the dependency on cpp_api_experimental once signature runner
+# has been promoted to stable in TFLite-in-Play-Services.
 cc_library_with_tflite(
     name = "cc_api_stable",
     srcs = STABLE_FRAMEWORK_LIB_IMPL_HDRS,
@@ -597,6 +603,7 @@ cc_library_with_tflite(
         "interpreter_options.h",
         "model.h",
         "model_builder.h",
+        "signature_runner.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
