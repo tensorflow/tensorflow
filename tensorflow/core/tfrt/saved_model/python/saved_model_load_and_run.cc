@@ -86,6 +86,11 @@ std::vector<tensorflow::Tensor> RunConvertor(PyObject* args) {
   tensorflow::Safe_PyObjectPtr py_eager_tensor = nullptr;
   PyObject* lst = PyTuple_GetItem(args, 0);
   std::vector<PyObject*> input = MakeTensorList(lst);
+  for (PyObject* tensor : input) {
+    // Creating a C++ Tensor object on a python buffer will eat a reference to
+    // the buffer, so we need to increase their reference count.
+    Py_INCREF(tensor);
+  }
   std::vector<tensorflow::Tensor> input_run;
   for (int i = 0; i < input.size(); ++i) {
     py_eager_tensor.reset(input[i]);
