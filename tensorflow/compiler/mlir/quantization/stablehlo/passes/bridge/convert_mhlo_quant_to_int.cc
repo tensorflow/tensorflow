@@ -163,15 +163,13 @@ class ConvertUniformQuantizeOp
     Value scale = rewriter.create<mhlo::ConstantOp>(
         op->getLoc(), rewriter.getF32FloatAttr(quantized_type.getScale()));
     Value zero_point = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(
-                          static_cast<int32_t>(quantized_type.getZeroPoint())));
-    Value half = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getF32FloatAttr(0.5f));
+        op->getLoc(), rewriter.getF32FloatAttr(
+                          static_cast<float>(quantized_type.getZeroPoint())));
     Value quantization_min = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
+        op->getLoc(), rewriter.getF32FloatAttr(static_cast<float>(
                           quantized_type.getStorageTypeMin())));
     Value quantization_max = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
+        op->getLoc(), rewriter.getF32FloatAttr(static_cast<float>(
                           quantized_type.getStorageTypeMax())));
 
     auto res_float_tensor_type =
@@ -179,28 +177,18 @@ class ConvertUniformQuantizeOp
     Value res_float = rewriter.create<chlo::BroadcastDivOp>(
         op->getLoc(), res_float_tensor_type, adaptor.getOperand(), scale,
         nullptr);
-    // TODO: b/260280919 - Consider using round_nearest_even.
     res_float = rewriter.create<chlo::BroadcastAddOp>(
-        op->getLoc(), res_float_tensor_type, res_float, half, nullptr);
-    res_float = rewriter.create<mhlo::FloorOp>(op->getLoc(), res_float);
-    // TODO: b/260280919 - Consider avoiding conversion to int32.
-    auto res_int32_tensor_type =
-        res_float_tensor_type.clone(rewriter.getI32Type());
-    Value res_int32 = rewriter.create<mhlo::ConvertOp>(
-        op->getLoc(), res_int32_tensor_type, res_float);
-    // TODO: b/260280919 - Use mhlo::Clamp instead.
-    res_int32 = rewriter.create<chlo::BroadcastAddOp>(
-        op->getLoc(), res_int32_tensor_type, res_int32, zero_point, nullptr);
-    res_int32 = rewriter.create<chlo::BroadcastMaxOp>(
-        op->getLoc(), res_int32_tensor_type, res_int32, quantization_min,
-        nullptr);
-    res_int32 = rewriter.create<chlo::BroadcastMinOp>(
-        op->getLoc(), res_int32_tensor_type, res_int32, quantization_max,
-        nullptr);
+        op->getLoc(), res_float_tensor_type, res_float, zero_point, nullptr);
+
+    res_float = rewriter.create<mhlo::ClampOp>(
+        op->getLoc(), res_float_tensor_type, quantization_min, res_float,
+        quantization_max);
+    res_float = rewriter.create<mhlo::RoundNearestEvenOp>(
+        op->getLoc(), res_float_tensor_type, res_float);
     auto res_final_tensor_type =
-        res_int32_tensor_type.clone(quantized_type.getStorageType());
+        res_float_tensor_type.clone(quantized_type.getStorageType());
     rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, res_final_tensor_type,
-                                                 res_int32);
+                                                 res_float);
     return success();
   }
 

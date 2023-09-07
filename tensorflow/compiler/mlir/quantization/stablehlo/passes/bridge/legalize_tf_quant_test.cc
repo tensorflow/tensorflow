@@ -19,6 +19,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
@@ -72,6 +73,9 @@ TEST(LegalizeTFQuantTest, LegalizesModuleWithTFUniformQuantization) {
         case xla::HloOpcode::kParameter:
         case xla::HloOpcode::kTuple:
         case xla::HloOpcode::kGetTupleElement:
+        case xla::HloOpcode::kBroadcast:
+        case xla::HloOpcode::kClamp:
+        case xla::HloOpcode::kRoundNearestEven:
           break;
         default:
           ADD_FAILURE() << "Failed to compile TF uniform quantized ops "
