@@ -43,6 +43,10 @@ tf_python_pybind_extension(
         "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
         "@local_tsl//tsl/python/lib/core:numpy_hdr",
     ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_tf_session.pyi",
+    ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework_headers_lib",
@@ -84,6 +88,10 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_debug_events_writer",
     srcs = ["debug_events_writer_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_debug_events_writer.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -173,6 +181,10 @@ py_strict_library(
 tf_python_pybind_extension(
     name = "_pywrap_device_lib",
     srcs = ["device_lib_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_device_lib.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_internal_headers_lib",
         "//tensorflow/core:protos_all_cc",
