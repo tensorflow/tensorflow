@@ -377,9 +377,10 @@ def _get_imports_for_module(
   content = ''
   symbol_imports = list(symbols_by_module[module])
   symbol_imports = sorted(
-      symbol_imports, key=lambda s: s.exported_symbol.file_name
+      symbol_imports, key=lambda s: f'{s.exported_symbol.file_name}:{s.name}'
   )
-  for imp in generated_imports_by_module[module]:
+  generated_imports = sorted(generated_imports_by_module[module])
+  for imp in generated_imports:
     if subpackage_rewrite:
       imp = imp.replace(output_package, subpackage_rewrite)
     last_dot = imp.rfind('.')
