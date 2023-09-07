@@ -26,18 +26,20 @@ load(
     "tf_cc_fuzz_test",
 )
 
+default_visibility = [
+    "//tensorflow/core:__subpackages__",
+    "//tensorflow/security/fuzzing:__subpackages__",
+    # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
+    "@local_tsl//tsl/lib:__subpackages__",
+    # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
+    # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
+    # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",
+    "//tensorflow/cc/saved_model:__subpackages__",
+]
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow/core:__subpackages__",
-        "//tensorflow/security/fuzzing:__subpackages__",
-        # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
-        "@local_tsl//tsl/lib:__subpackages__",
-        # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
-        # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
-        # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",
-        "//tensorflow/cc/saved_model:__subpackages__",
-    ],
+    default_visibility = default_visibility,
     licenses = ["notice"],
 )
 
@@ -708,6 +710,9 @@ cc_library(
 cc_library(
     name = "resource_base",
     hdrs = ["resource_base.h"],
+    visibility = default_visibility + [
+        "//learning/brain/google/data/core/kernels:__pkg__",
+    ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/lib/core:status",
