@@ -601,6 +601,18 @@ class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
   }
 };
 
+class ConvertUniformQuantizedDotGeneralOp
+    : public OpConversionPattern<mhlo::DotGeneralOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DotGeneralOp op, mhlo::DotGeneralOpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    return matchAndRewriteDotLikeOp(op, adaptor, rewriter);
+  }
+};
+
 class ConvertUniformQuantizedConvolutionOp
     : public OpConversionPattern<mhlo::ConvolutionOp> {
  public:
@@ -677,6 +689,7 @@ void ConvertMHLOQuantToInt::runOnOperation() {
   // Populate MHLO quant ops conversion patterns.
   patterns.add<ConvertUniformQuantizeOp, ConvertUniformDequantizeOp,
                ConvertUniformQuantizedAddOp, ConvertUniformQuantizedDotOp,
+               ConvertUniformQuantizedDotGeneralOp,
                ConvertUniformQuantizedConvolutionOp, ConvertMhloConvertOp,
                ConvertMhloConstantOp>(context);
 

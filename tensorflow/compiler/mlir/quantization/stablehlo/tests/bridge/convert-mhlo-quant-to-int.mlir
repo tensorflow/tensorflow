@@ -344,6 +344,55 @@ func.func @uniform_quantize_dot_int4(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf
 
 // -----
 
+// CHECK-LABEL: func @uniform_quantize_dot_general_dequantize
+func.func @uniform_quantize_dot_general_dequantize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
+
+  // CHECK: %[[VAL1:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?x?xi8>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL3:.*]] = chlo.broadcast_subtract %[[VAL1]], %[[VAL2:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL5:.*]] = mhlo.convert %[[VAL4:.*]] : (tensor<?x?xi8>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL7:.*]] = chlo.broadcast_subtract %[[VAL5]], %[[VAL6:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL8:.*]] = "mhlo.dot_general"(%[[VAL3]], %[[VAL7]]) {dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>} : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL10:.*]] = chlo.broadcast_multiply %[[VAL8]], %[[VAL9:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL12:.*]] = chlo.broadcast_add %[[VAL10]], %[[VAL11:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL13:.*]] = mhlo.floor %[[VAL12]] : tensor<?x?xf32>
+  // CHECK: %[[VAL15:.*]] = chlo.broadcast_add %[[VAL13]], %[[VAL14:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL16:.*]] = mhlo.convert %[[VAL15]] : (tensor<?x?xf32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL19:.*]] = mhlo.clamp %[[VAL17:.*]], %[[VAL16]], %[[VAL18:.*]] : (tensor<i32>, tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL20:.*]] = mhlo.convert %[[VAL19]] : (tensor<?x?xi32>) -> tensor<?x?xi8>
+  %2 = "mhlo.dot_general" (%0, %1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >} : (tensor<?x?x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  %3 = mhlo.uniform_dequantize %2 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
+  return %3 : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_dot_general_int4
+func.func @uniform_quantize_dot_general_int4(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) {
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>
+
+  // CHECK: %[[VAL2:.*]] = "mhlo.dot_general"(%[[VAL0:.*]], %[[VAL1:.*]]) {dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>} : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL4:.*]] = mhlo.convert %[[VAL3:.*]] : (tensor<?x?xf32>) -> tensor<?x?xi32>
+  // CHECK-DAG: %[[VAL5:.*]] = mhlo.constant dense<-8> : tensor<i32>
+  // CHECK-DAG: %[[VAL6:.*]] = mhlo.constant dense<7> : tensor<i32>
+  // CHECK: %[[VAL7:.*]] = mhlo.clamp %[[VAL5]], %[[VAL4]], %[[VAL6]] : (tensor<i32>, tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL8:.*]] = mhlo.convert %[[VAL7]] : (tensor<?x?xi32>) -> tensor<?x?xi4>
+  %2 = "mhlo.dot_general" (%0, %1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >} : (tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>, tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @uniform_quantized_convolution
 func.func @uniform_quantized_convolution(%arg0: tensor<?x?x?x?xf32>, %arg1: tensor<?x?x?x?xf32>) {
   %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?x?x?xf32>) -> tensor<?x?x?x?x!quant.uniform<i8:f32, 2.000000e+00:4>>
