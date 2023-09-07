@@ -189,8 +189,6 @@ tf_staging/third_party/android/android.bzl.tpl:
 tf_staging/third_party/android/android_configure.BUILD.tpl:
 tf_staging/third_party/android/android_configure.bzl:
 tf_staging/third_party/arm_neon_2_x86_sse.BUILD:
-tf_staging/third_party/astor.BUILD:
-tf_staging/third_party/astunparse.BUILD:
 tf_staging/third_party/boringssl/BUILD:
 tf_staging/third_party/clang_toolchain/BUILD:
 tf_staging/third_party/clang_toolchain/cc_configure_clang.bzl:
@@ -202,7 +200,6 @@ tf_staging/third_party/coremltools.BUILD:
 tf_staging/third_party/cub.BUILD:
 tf_staging/third_party/curl.BUILD:
 tf_staging/third_party/cython.BUILD:
-tf_staging/third_party/dill.BUILD:
 tf_staging/third_party/ducc/BUILD:
 tf_staging/third_party/ducc/ducc0_custom_lowlevel_threading.h:
 tf_staging/third_party/ducc/threading.cc:
@@ -228,8 +225,6 @@ tf_staging/third_party/fft2d/LICENSE:
 tf_staging/third_party/fft2d/fft.h:
 tf_staging/third_party/fft2d/fft2d.BUILD:
 tf_staging/third_party/fft2d/fft2d.h:
-tf_staging/third_party/functools32.BUILD:
-tf_staging/third_party/gast.BUILD:
 tf_staging/third_party/gif.BUILD:
 tf_staging/third_party/gif_fix_strtok_r.patch:
 tf_staging/third_party/git/BUILD.tpl:
@@ -284,7 +279,6 @@ tf_staging/third_party/nccl/build_defs.bzl.tpl:
 tf_staging/third_party/nccl/nccl_configure.bzl:
 tf_staging/third_party/nccl/system.BUILD.tpl:
 tf_staging/third_party/nlohmann_json.BUILD:
-tf_staging/third_party/opt_einsum.BUILD:
 tf_staging/third_party/ortools/BUILD:
 tf_staging/third_party/ortools/glpk.BUILD:
 tf_staging/third_party/ortools/ortools.patch:
@@ -324,13 +318,11 @@ tf_staging/third_party/systemlibs/absl_py.BUILD:
 tf_staging/third_party/systemlibs/absl_py.absl.flags.BUILD:
 tf_staging/third_party/systemlibs/absl_py.absl.logging.BUILD:
 tf_staging/third_party/systemlibs/absl_py.absl.testing.BUILD:
-tf_staging/third_party/systemlibs/astor.BUILD:
 tf_staging/third_party/systemlibs/boringssl.BUILD:
 tf_staging/third_party/systemlibs/build_defs.bzl.tpl:
 tf_staging/third_party/systemlibs/curl.BUILD:
 tf_staging/third_party/systemlibs/cython.BUILD:
 tf_staging/third_party/systemlibs/double_conversion.BUILD:
-tf_staging/third_party/systemlibs/gast.BUILD:
 tf_staging/third_party/systemlibs/gif.BUILD:
 tf_staging/third_party/systemlibs/google_cloud_cpp.BUILD:
 tf_staging/third_party/systemlibs/google_cloud_cpp.google.cloud.bigtable.BUILD:
@@ -338,7 +330,6 @@ tf_staging/third_party/systemlibs/grpc.BUILD:
 tf_staging/third_party/systemlibs/jsoncpp.BUILD:
 tf_staging/third_party/systemlibs/lmdb.BUILD:
 tf_staging/third_party/systemlibs/nsync.BUILD:
-tf_staging/third_party/systemlibs/opt_einsum.BUILD:
 tf_staging/third_party/systemlibs/png.BUILD:
 tf_staging/third_party/systemlibs/protobuf.BUILD:
 tf_staging/third_party/systemlibs/protobuf.bzl:
@@ -347,9 +338,7 @@ tf_staging/third_party/systemlibs/six.BUILD:
 tf_staging/third_party/systemlibs/snappy.BUILD:
 tf_staging/third_party/systemlibs/sqlite.BUILD:
 tf_staging/third_party/systemlibs/syslibs_configure.bzl:
-tf_staging/third_party/systemlibs/termcolor.BUILD:
 tf_staging/third_party/systemlibs/zlib.BUILD:
-tf_staging/third_party/tblib.BUILD:
 tf_staging/third_party/tensorrt/BUILD.tpl:
 tf_staging/third_party/tensorrt/BUILD:
 tf_staging/third_party/tensorrt/LICENSE:
@@ -359,13 +348,10 @@ tf_staging/third_party/tensorrt/tensorrt/include/tensorrt_config.h.tpl:
 tf_staging/third_party/tensorrt/tensorrt/tensorrt_config.py.tpl:
 tf_staging/third_party/tensorrt/tensorrt_configure.bzl:
 tf_staging/third_party/tensorrt/workspace.bzl:
-tf_staging/third_party/termcolor.BUILD:
 tf_staging/third_party/tf_toolchains.BUILD:
 tf_staging/third_party/tflite_mobilenet.BUILD:
 tf_staging/third_party/tflite_mobilenet_float.BUILD:
 tf_staging/third_party/tflite_mobilenet_quant.BUILD:
 tf_staging/third_party/tflite_ovic_testdata.BUILD:
 tf_staging/third_party/tflite_smartreply.BUILD:
-tf_staging/third_party/typing_extensions.BUILD:
-tf_staging/third_party/wrapt.BUILD:
 tf_staging/third_party/zlib.BUILD:

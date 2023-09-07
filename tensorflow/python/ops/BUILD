@@ -2760,7 +2760,7 @@ py_strict_library(
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@opt_einsum_archive//:opt_einsum",
+        "@pypi_opt_einsum//:pkg",
     ],
 )
 
@@ -3848,7 +3848,7 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@opt_einsum_archive//:opt_einsum",
+        "@pypi_opt_einsum//:pkg",
     ],
 )
 

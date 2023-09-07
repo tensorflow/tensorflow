@@ -103,13 +103,11 @@ third_party/systemlibs/absl_py.BUILD:
 third_party/systemlibs/absl_py.absl.flags.BUILD:
 third_party/systemlibs/absl_py.absl.logging.BUILD:
 third_party/systemlibs/absl_py.absl.testing.BUILD:
-third_party/systemlibs/astor.BUILD:
 third_party/systemlibs/boringssl.BUILD:
 third_party/systemlibs/build_defs.bzl.tpl:
 third_party/systemlibs/curl.BUILD:
 third_party/systemlibs/cython.BUILD:
 third_party/systemlibs/double_conversion.BUILD:
-third_party/systemlibs/gast.BUILD:
 third_party/systemlibs/gif.BUILD:
 third_party/systemlibs/google_cloud_cpp.BUILD:
 third_party/systemlibs/google_cloud_cpp.google.cloud.bigtable.BUILD:
@@ -117,7 +115,6 @@ third_party/systemlibs/grpc.BUILD:
 third_party/systemlibs/jsoncpp.BUILD:
 third_party/systemlibs/lmdb.BUILD:
 third_party/systemlibs/nsync.BUILD:
-third_party/systemlibs/opt_einsum.BUILD:
 third_party/systemlibs/png.BUILD:
 third_party/systemlibs/protobuf.BUILD:
 third_party/systemlibs/protobuf.bzl:
@@ -126,7 +123,6 @@ third_party/systemlibs/six.BUILD:
 third_party/systemlibs/snappy.BUILD:
 third_party/systemlibs/sqlite.BUILD:
 third_party/systemlibs/syslibs_configure.bzl:
-third_party/systemlibs/termcolor.BUILD:
 third_party/systemlibs/zlib.BUILD:
 third_party/tensorrt/BUILD.tpl:
 third_party/tensorrt/BUILD:

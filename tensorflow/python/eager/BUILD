@@ -1316,7 +1316,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/framework:ops",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 

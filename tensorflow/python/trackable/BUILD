@@ -225,7 +225,7 @@ py_strict_library(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:tf_export",
-        "@wrapt",
+        "@pypi_wrapt//:pkg",
     ],
 )
 
