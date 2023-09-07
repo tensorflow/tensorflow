@@ -1412,8 +1412,9 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
 
   if (!call_target && !is_typed_custom_call) {
     return Unimplemented(
-        "No registered implementation for custom call to \"%s\"",
-        call_target_name);
+        "No registered implementation for custom call to \"%s\" for platform "
+        "\"%s\"",
+        call_target_name, platform_name());
   }
 
   std::vector<CustomCallThunk::OptionalSlice> operands;
