@@ -18,6 +18,7 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//learning/brain/contrib/tpu_modeling/inference_converter_v2/mlir/...",
         "//waymo/ml/cn/...",
         "//waymo/ml/compiler/mlir/...",
     ],
