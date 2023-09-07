@@ -173,6 +173,35 @@ struct DepthToSpaceOpFunctor<CPUDevice, T, FORMAT_NHWC> {
     }
   }
 };
+
+template <typename T>
+struct DepthToSpaceOpFunctor<CPUDevice, T, FORMAT_NCHW> {
+  void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
+                  int block_size, typename TTypes<T, 4>::Tensor output) {
+    const int batch_size = output.dimension(0);
+    const int output_height = output.dimension(1);
+    const int output_width = output.dimension(2);
+    const int output_depth = output.dimension(3);
+
+    for (int b = 0; b < batch_size; ++b) {
+      for (int h = 0; h < output_height; ++h) {
+        const int in_h = h / block_size;
+        const int offset_h = (h % block_size);
+        for (int w = 0; w < output_width; ++w) {
+          const int in_w = w / block_size;
+          const int offset_w = (w % block_size);
+          const int offset_d =
+              (offset_h * block_size + offset_w) * output_depth;
+          for (int d = 0; d < output_depth; ++d) {
+            const int in_d = d + offset_d;
+            output(b, h, w, d) = input(b, in_h, in_w, in_d);
+          }
+        }
+      }
+    }
+  }
+};
+
 }  // namespace functor
 
 #define REGISTER(type)                                                \
