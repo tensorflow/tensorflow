@@ -93,7 +93,9 @@ struct PJRT_Executable {
   // Must be shared_ptr so that we can share with PJRT_LoadedExecutable.
   std::shared_ptr<xla::PjRtExecutable> executable;
 
+  // Used to synchronize concurrent setting of cached values.
   mutable absl::Mutex mutex;
+
   // Cost analysis properties and name strings are populated after cost analysis
   // has been run. These are returned from cost analysis calls, and do not
   // change after the first call.
@@ -101,10 +103,16 @@ struct PJRT_Executable {
   std::vector<std::string> cost_analysis_names;
   std::vector<PJRT_NamedValue> cost_analysis_properties;
 
-  mutable absl::Mutex memory_kind_mutex;
-  bool memory_kind_ran ABSL_GUARDED_BY(memory_kind_mutex) = false;
+  bool memory_kind_ran ABSL_GUARDED_BY(mutex) = false;
   std::vector<const char*> memory_kinds;
   std::vector<size_t> memory_kind_sizes;
+
+  bool out_type_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<PJRT_Buffer_Type> out_types;
+
+  bool out_dimension_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<int64_t> out_dimensions;
+  std::vector<size_t> out_dimension_sizes;
 
   explicit PJRT_Executable(std::shared_ptr<xla::PjRtExecutable> executable);
 
@@ -254,6 +262,10 @@ PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
 PJRT_Error* PJRT_Executable_GetCostAnalysis(
     PJRT_Executable_GetCostAnalysis_Args* args);
+PJRT_Error* PJRT_Executable_OutputElementTypes(
+    PJRT_Executable_OutputElementTypes_Args* args);
+PJRT_Error* PJRT_Executable_OutputDimensions(
+    PJRT_Executable_OutputDimensions_Args* args);
 PJRT_Error* PJRT_Executable_OutputMemoryKinds(
     PJRT_Executable_OutputMemoryKinds_Args* args);
 PJRT_Error* PJRT_Executable_OptimizedProgram(
@@ -536,6 +548,13 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_TopologyDescription_Attributes,
 
       /*PJRT_Compile=*/pjrt::PJRT_Compile,
+
+      // Always add new fields to the end of the struct. Move fields below to
+      // their corresponding places after each major version bump.
+      /*PJRT_Executable_OutputElementTypes=*/
+      pjrt::PJRT_Executable_OutputElementTypes,
+      /*PJRT_Executable_OutputDimensions=*/
+      pjrt::PJRT_Executable_OutputDimensions,
   };
 }
 

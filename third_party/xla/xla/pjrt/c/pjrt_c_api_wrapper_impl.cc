@@ -89,88 +89,138 @@ static PJRT_Memory* GetCMemory(const PJRT_Client* client,
   return iter->second;
 }
 
-// Performs one-time cost-analysis on an executable if not done already, and
-// populates its cost analysis properties. After this returns successfully,
-// cost analysis properties of the executable can be accessed without mutex.
-static xla::Status PopulateExecutableCostAnalysisIfNeeded(
-    PJRT_Executable* executable) {
-  absl::MutexLock lock(&executable->mutex);
-  if (!executable->cost_analysis_ran) {
-    // Call GetCostAnalysis in the underlying PjRtExecutable
-    using PropertiesMapType =
-        absl::flat_hash_map<std::string, xla::PjRtValueType>;
-    TF_ASSIGN_OR_RETURN(const PropertiesMapType properties,
-                        executable->get()->GetCostAnalysis());
-    // If no output, return empty result
-    if (properties.empty()) {
-      executable->cost_analysis_ran = true;
-      return xla::OkStatus();
-    }
-
-    // Copy each returned property to cost analysis vectors in PJRT_Executable
-    std::vector<PJRT_NamedValue>& cost_analysis_properties =
-        executable->cost_analysis_properties;
-    cost_analysis_properties.resize((properties.size()));
-    std::vector<std::string>& cost_analysis_names =
-        executable->cost_analysis_names;
-    cost_analysis_names.resize(properties.size());
-    size_t i = 0;
-    for (const auto& property : properties) {
-      PJRT_NamedValue& cost_analysis_property = cost_analysis_properties[i];
-      std::string& property_name = cost_analysis_names[i];
-
-      cost_analysis_property.struct_size = PJRT_NamedValue_STRUCT_SIZE;
-      cost_analysis_property.priv = nullptr;
-
-      property_name = property.first;
-      cost_analysis_property.name = property_name.c_str();
-      cost_analysis_property.name_size = property_name.size();
-
-      const xla::PjRtValueType& property_value = property.second;
-      CHECK(std::holds_alternative<float>(property_value))
-          << property_value.index();
-      cost_analysis_property.type =
-          PJRT_NamedValue_Type::PJRT_NamedValue_kFloat;
-      cost_analysis_property.float_value = std::get<float>(property_value);
-      cost_analysis_property.value_size = 1;
-
-      ++i;
-    }
-    executable->cost_analysis_ran = true;
+// Performs one-time cost-analysis on an executable, and populates its cost
+// analysis properties. After this returns successfully, cost analysis
+// properties of the executable can be accessed without mutex.
+static xla::Status PopulateExecutableCostAnalysis(PJRT_Executable* executable) {
+  // Call GetCostAnalysis in the underlying PjRtExecutable
+  using PropertiesMapType =
+      absl::flat_hash_map<std::string, xla::PjRtValueType>;
+  TF_ASSIGN_OR_RETURN(const PropertiesMapType properties,
+                      executable->get()->GetCostAnalysis());
+  // If no output, return empty result
+  if (properties.empty()) {
+    return xla::OkStatus();
   }
+
+  // Copy each returned property to cost analysis vectors in PJRT_Executable
+  std::vector<PJRT_NamedValue>& cost_analysis_properties =
+      executable->cost_analysis_properties;
+  cost_analysis_properties.resize((properties.size()));
+  std::vector<std::string>& cost_analysis_names =
+      executable->cost_analysis_names;
+  cost_analysis_names.resize(properties.size());
+  size_t i = 0;
+  for (const auto& property : properties) {
+    PJRT_NamedValue& cost_analysis_property = cost_analysis_properties[i];
+    std::string& property_name = cost_analysis_names[i];
+
+    cost_analysis_property.struct_size = PJRT_NamedValue_STRUCT_SIZE;
+    cost_analysis_property.priv = nullptr;
+
+    property_name = property.first;
+    cost_analysis_property.name = property_name.c_str();
+    cost_analysis_property.name_size = property_name.size();
+
+    const xla::PjRtValueType& property_value = property.second;
+    CHECK(std::holds_alternative<float>(property_value))
+        << property_value.index();
+    cost_analysis_property.type = PJRT_NamedValue_Type::PJRT_NamedValue_kFloat;
+    cost_analysis_property.float_value = std::get<float>(property_value);
+    cost_analysis_property.value_size = 1;
+
+    ++i;
+  }
+
   return xla::OkStatus();
 }
 
-static xla::Status PopulateExecutableOutputMemoryKindsIfNeeded(
+static xla::Status PopulateExecutableOutputElementTypes(
     PJRT_Executable* executable) {
-  absl::MutexLock lock(&executable->memory_kind_mutex);
-  if (!executable->memory_kind_ran) {
-    TF_ASSIGN_OR_RETURN(
-        std::vector<std::vector<absl::string_view>> output_memories,
-        executable->get()->GetOutputMemoryKinds());
-    if (output_memories.empty()) {
-      return xla::InvalidArgument(
-          "Can't get output memory kinds, the list is empty for executable %s.",
-          executable->get()->name());
-    }
-    if (output_memories.size() != 1) {
-      return xla::Unimplemented(
-          "MPMD execution not supported by PJRT C API (in "
-          "function PJRT_Executable_GetOutputMemoryKinds).");
-    }
-
-    std::vector<absl::string_view>& inner_output_memories = output_memories[0];
-    std::vector<const char*>& memory_kinds = executable->memory_kinds;
-    std::vector<size_t>& memory_kind_sizes = executable->memory_kind_sizes;
-    memory_kinds.reserve(inner_output_memories.size());
-    memory_kind_sizes.reserve(inner_output_memories.size());
-    for (absl::string_view memory : inner_output_memories) {
-      memory_kinds.push_back(memory.data());
-      memory_kind_sizes.push_back(memory.size());
-    }
-
-    executable->memory_kind_ran = true;
+  TF_ASSIGN_OR_RETURN(auto output_types,
+                      executable->get()->GetOutputElementTypes());
+  if (output_types.empty()) {
+    return xla::InvalidArgument(
+        "Can't get output element types, the list is empty for executable "
+        "%s.",
+        executable->get()->name());
   }
+  if (output_types.size() != 1) {
+    return xla::Unimplemented(
+        "MPMD execution not supported by PJRT C API (in function "
+        "PJRT_Executable_OutputElementTypes).");
+  }
+
+  std::vector<xla::PrimitiveType>& inner_output_types = output_types[0];
+  std::vector<PJRT_Buffer_Type>& out_types = executable->out_types;
+  out_types.reserve(inner_output_types.size());
+  for (const auto& element_type : inner_output_types) {
+    out_types.push_back(ConvertToPjRtBufferType(element_type));
+  }
+
+  return xla::OkStatus();
+}
+
+static xla::Status PopulateExecutableOutputDimensions(
+    PJRT_Executable* executable) {
+  TF_ASSIGN_OR_RETURN(auto output_dims,
+                      executable->get()->GetOutputDimensions());
+  if (output_dims.empty()) {
+    return xla::InvalidArgument(
+        "Can't get output dimensions, the list is empty for executable %s.",
+        executable->get()->name());
+  }
+  if (output_dims.size() != 1) {
+    return xla::Unimplemented(
+        "MPMD execution not supported by PJRT C API (in function "
+        "PJRT_Executable_OutputDimensions).");
+  }
+
+  std::vector<xla::DimensionVector>& inner_output_dims = output_dims[0];
+  std::vector<size_t>& out_dimension_sizes = executable->out_dimension_sizes;
+  out_dimension_sizes.reserve(inner_output_dims.size());
+  size_t total_size = 0;
+  for (const auto& dimension_vector : inner_output_dims) {
+    out_dimension_sizes.push_back(dimension_vector.size());
+    total_size += dimension_vector.size();
+  }
+  std::vector<int64_t>& out_dimensions = executable->out_dimensions;
+  out_dimensions.reserve(total_size);
+  for (const auto& dimension_vector : inner_output_dims) {
+    for (int i = 0; i < dimension_vector.size(); ++i) {
+      out_dimensions.push_back(dimension_vector[i]);
+    }
+  }
+
+  return xla::OkStatus();
+}
+
+static xla::Status PopulateExecutableOutputMemoryKinds(
+    PJRT_Executable* executable) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<absl::string_view>> output_memories,
+      executable->get()->GetOutputMemoryKinds());
+  if (output_memories.empty()) {
+    return xla::InvalidArgument(
+        "Can't get output memory kinds, the list is empty for executable %s.",
+        executable->get()->name());
+  }
+  if (output_memories.size() != 1) {
+    return xla::Unimplemented(
+        "MPMD execution not supported by PJRT C API (in "
+        "function PJRT_Executable_GetOutputMemoryKinds).");
+  }
+
+  std::vector<absl::string_view>& inner_output_memories = output_memories[0];
+  std::vector<const char*>& memory_kinds = executable->memory_kinds;
+  std::vector<size_t>& memory_kind_sizes = executable->memory_kind_sizes;
+  memory_kinds.reserve(inner_output_memories.size());
+  memory_kind_sizes.reserve(inner_output_memories.size());
+  for (absl::string_view memory : inner_output_memories) {
+    memory_kinds.push_back(memory.data());
+    memory_kind_sizes.push_back(memory.size());
+  }
+
   return xla::OkStatus();
 }
 
@@ -1045,8 +1095,13 @@ PJRT_Error* PJRT_Executable_GetCostAnalysis(
       "PJRT_Executable_GetCostAnalysis_Args",
       PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE, args->struct_size));
 
-  PJRT_RETURN_IF_ERROR(
-      PopulateExecutableCostAnalysisIfNeeded(args->executable));
+  {
+    absl::MutexLock lock(&args->executable->mutex);
+    if (!args->executable->cost_analysis_ran) {
+      PJRT_RETURN_IF_ERROR(PopulateExecutableCostAnalysis(args->executable));
+      args->executable->cost_analysis_ran = true;
+    }
+  }
 
   // Output cost analysis data in PJRT_Executable
   args->num_properties = args->executable->cost_analysis_properties.size();
@@ -1058,13 +1113,62 @@ PJRT_Error* PJRT_Executable_GetCostAnalysis(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Executable_OutputElementTypes(
+    PJRT_Executable_OutputElementTypes_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_OutputElementTypes_Args",
+      PJRT_Executable_OutputElementTypes_Args_STRUCT_SIZE, args->struct_size));
+
+  {
+    absl::MutexLock lock(&args->executable->mutex);
+    if (!args->executable->out_type_ran) {
+      PJRT_RETURN_IF_ERROR(
+          PopulateExecutableOutputElementTypes(args->executable));
+      args->executable->out_type_ran = true;
+    }
+  }
+
+  args->num_output_types = args->executable->out_types.size();
+  args->output_types = args->executable->out_types.data();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_OutputDimensions(
+    PJRT_Executable_OutputDimensions_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_OutputDimensions_Args",
+      PJRT_Executable_OutputDimensions_Args_STRUCT_SIZE, args->struct_size));
+
+  {
+    absl::MutexLock lock(&args->executable->mutex);
+    if (!args->executable->out_dimension_ran) {
+      PJRT_RETURN_IF_ERROR(
+          PopulateExecutableOutputDimensions(args->executable));
+      args->executable->out_dimension_ran = true;
+    }
+  }
+
+  args->num_outputs = args->executable->out_dimension_sizes.size();
+  args->dim_sizes = args->executable->out_dimension_sizes.data();
+  args->dims = args->executable->out_dimensions.data();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Executable_OutputMemoryKinds(
     PJRT_Executable_OutputMemoryKinds_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Executable_OutputMemoryKinds_Args",
       PJRT_Executable_OutputMemoryKinds_Args_STRUCT_SIZE, args->struct_size));
-  PJRT_RETURN_IF_ERROR(
-      PopulateExecutableOutputMemoryKindsIfNeeded(args->executable));
+
+  {
+    absl::MutexLock lock(&args->executable->mutex);
+    if (!args->executable->memory_kind_ran) {
+      PJRT_RETURN_IF_ERROR(
+          PopulateExecutableOutputMemoryKinds(args->executable));
+      args->executable->memory_kind_ran = true;
+    }
+  }
+
   args->num_outputs = args->executable->memory_kinds.size();
   args->memory_kinds = args->executable->memory_kinds.data();
   args->memory_kind_sizes = args->executable->memory_kind_sizes.data();

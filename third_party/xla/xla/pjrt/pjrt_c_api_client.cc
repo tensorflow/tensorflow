@@ -924,6 +924,62 @@ PjRtCApiExecutable::GetCostAnalysis() const {
                                              args.num_properties);
 }
 
+StatusOr<std::vector<std::vector<PrimitiveType>>>
+PjRtCApiExecutable::GetOutputElementTypes() const {
+  PJRT_Executable_OutputElementTypes_Args args;
+  args.struct_size = PJRT_Executable_OutputElementTypes_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = c_executable();
+
+  const PJRT_Api* c_api = pjrt_c_api();
+
+  // TODO(yueshengys): To be removed after 11/29/2023.
+  if (c_api->PJRT_Executable_OutputElementTypes == nullptr) {
+    return Unimplemented("PJRT C API does not support GetOutputElementTypes");
+  }
+
+  RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_Executable_OutputElementTypes(&args),
+                              c_api);
+
+  std::vector<PrimitiveType> out;
+  out.reserve(args.num_output_types);
+  for (int i = 0; i < args.num_output_types; ++i) {
+    out.push_back(pjrt::ConvertFromPjRtBufferType(args.output_types[i]));
+  }
+  return std::vector<std::vector<PrimitiveType>>{std::move(out)};
+}
+
+StatusOr<std::vector<std::vector<DimensionVector>>>
+PjRtCApiExecutable::GetOutputDimensions() const {
+  PJRT_Executable_OutputDimensions_Args args;
+  args.struct_size = PJRT_Executable_OutputDimensions_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = c_executable();
+
+  const PJRT_Api* c_api = pjrt_c_api();
+
+  // TODO(yueshengys): To be removed after 11/29/2023.
+  if (c_api->PJRT_Executable_OutputDimensions == nullptr) {
+    return Unimplemented("PJRT C API does not support GetOutputDimensions");
+  }
+
+  RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_Executable_OutputDimensions(&args),
+                              c_api);
+
+  std::vector<DimensionVector> out;
+  out.reserve(args.num_outputs);
+  int index = 0;
+  for (int i = 0; i < args.num_outputs; ++i) {
+    DimensionVector dimensions;
+    dimensions.reserve(args.dim_sizes[i]);
+    for (int j = 0; j < args.dim_sizes[i]; ++j) {
+      dimensions.push_back(args.dims[index++]);
+    }
+    out.push_back(std::move(dimensions));
+  }
+  return std::vector<std::vector<DimensionVector>>{std::move(out)};
+}
+
 StatusOr<std::vector<std::vector<absl::string_view>>>
 PjRtCApiExecutable::GetOutputMemoryKinds() const {
   PJRT_Executable_OutputMemoryKinds_Args args;

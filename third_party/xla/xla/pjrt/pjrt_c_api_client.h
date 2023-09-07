@@ -498,6 +498,18 @@ class PjRtCApiExecutable : public PjRtExecutable {
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
 
+  StatusOr<std::vector<Shape>> GetOutputShapes() const override {
+    LOG(FATAL) << "PjRtExecutable::GetOutputShapes() not implemented in PJRT C "
+                  "API. Please use PjRtExecutable::GetOutputElementTypes() or "
+                  "PjRtExecutable::GetOutputDimensions().";
+  }
+
+  StatusOr<std::vector<std::vector<PrimitiveType>>> GetOutputElementTypes()
+      const override;
+
+  StatusOr<std::vector<std::vector<DimensionVector>>> GetOutputDimensions()
+      const override;
+
   StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
       const override;
 
@@ -547,6 +559,23 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
     return executable_->GetHloModules();
+  }
+
+  StatusOr<std::vector<Shape>> GetOutputShapes() const override {
+    LOG(FATAL)
+        << "PjRtLoadedExecutable::GetOutputShapes() not implemented in PJRT C "
+           "API. Please use PjRtLoadedExecutable::GetOutputElementTypes() or "
+           "PjRtLoadedExecutable::GetOutputDimensions().";
+  }
+
+  StatusOr<std::vector<std::vector<PrimitiveType>>> GetOutputElementTypes()
+      const override {
+    return executable_->GetOutputElementTypes();
+  }
+
+  StatusOr<std::vector<std::vector<DimensionVector>>> GetOutputDimensions()
+      const override {
+    return executable_->GetOutputDimensions();
   }
 
   StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
