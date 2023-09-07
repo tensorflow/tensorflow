@@ -1268,6 +1268,7 @@ def _populate_calibration_options(
   elif calib_opts.calibration_method in [
       _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
       _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
+      _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
   ]:
     activation_tensor_type = (
         quantization_options.quantization_method.quantization_component_specs[

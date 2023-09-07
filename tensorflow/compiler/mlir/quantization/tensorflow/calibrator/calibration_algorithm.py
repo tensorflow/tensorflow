@@ -349,6 +349,26 @@ class _HistogramMseMaxFrequency(_HistogramCalibrationAlgorithmBase):
     return self._get_min_max_value_by_expanding_range(freq_max_idx)
 
 
+@_implements(_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC)
+class _HistogramMseSymmetric(_HistogramCalibrationAlgorithmBase):
+  """HistogramMseSymmetric for calculating min and max values of calibration result."""
+
+  def get_min_max_value(self) -> tuple[float, float]:
+    """Finds min and max starting from the center index.
+
+    The HistogramMseSymmetric method starts from the center bin and expands the
+    range to both sides. This works better when the data is well-centered.
+
+    Returns:
+      (min_value, max_value): Min and max calculated using the method starting
+      from center and expanding.
+    """
+
+    # This function is currently only called in this method, but will be used in
+    # other methods in the future.
+    return self._get_min_max_value_by_expanding_range(self._num_bins // 2)
+
+
 def get_min_max_value(
     statistics: calib_stats_pb2.CalibrationStatistics,
     calib_opts: quant_opts_pb2.CalibrationOptions,

@@ -122,6 +122,7 @@ void CalibratorSingleton::AssignIfNotExists(
         break;
       case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE:
       case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE:
+      case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC:
       case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY:
         instance.id_to_collector_[id_str] =
             std::make_unique<CalibrationStatisticsCollectorHistogram>(

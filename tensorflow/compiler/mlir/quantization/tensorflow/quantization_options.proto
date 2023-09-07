@@ -146,7 +146,7 @@ message FreezeAllVariables {
 // NEXT ID: 3
 message CalibrationOptions {
   // Configurations for calibration methods.
-  // NEXT ID: 6
+  // NEXT ID: 7
   enum CalibrationMethod {
     CALIBRATION_METHOD_UNSPECIFIED = 0;
     // Use the min, max values of all sample datasets.
@@ -164,6 +164,10 @@ message CalibrationOptions {
     // This is an algorithm that finds the bin with the max frequency in the
     // histogram and expands the range.
     CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY = 5;
+    // Use the histogram mid values that minimize MSE error. This is an
+    // algorithm that starts with the center in thehistogram and expands the
+    // range.
+    CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC = 6;
   }
 
   // Parameters required for calibration.

@@ -77,6 +77,13 @@ class CalibrationAlgorithmTest(test.TestCase, parameterized.TestCase):
               calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(),
           ),
       },
+      {
+          "testcase_name": "with_histogram_mse_symmetric",
+          "calibration_options": quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(),
+          ),
+      },
   )
   def test_histogram_calibration_methods(self, calibration_options):
     statistics = calib_stats_pb2.CalibrationStatistics()

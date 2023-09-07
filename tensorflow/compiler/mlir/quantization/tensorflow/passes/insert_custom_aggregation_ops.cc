@@ -91,6 +91,7 @@ class InsertCustomAggregationOpsPass
     TEST_CASE_HISTOGRAM_PERCENTILE,
     TEST_CASE_HISTOGRAM_MSE_BRUTEFORCE,
     TEST_CASE_HISTOGRAM_MSE_MAX_FREQUENCY,
+    TEST_CASE_HISTOGRAM_MSE_SYMMETRIC,
   };
 
   bool test_mode_;
@@ -114,6 +115,10 @@ class InsertCustomAggregationOpsPass
           clEnumValN(TEST_CASE_HISTOGRAM_MSE_MAX_FREQUENCY,
                      "HISTOGRAM_MSE_MAX_FREQUENCY",
                      "Uses HISTOGRAM_MSE_MAX_FREQUENCY calibration "
+                     "method"),
+          clEnumValN(TEST_CASE_HISTOGRAM_MSE_SYMMETRIC,
+                     "HISTOGRAM_MSE_SYMMETRIC",
+                     "Uses HISTOGRAM_MSE_SYMMETRIC calibration "
                      "method"))};
 
   // Initialize for tests.
@@ -154,6 +159,16 @@ class InsertCustomAggregationOpsPass
       case TEST_CASE_HISTOGRAM_MSE_MAX_FREQUENCY: {
         calib_opts_.set_calibration_method(
             CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY);
+        auto calibration_parameters =
+            CalibrationOptions::CalibrationParameters();
+        calibration_parameters.set_initial_num_bins(256);
+        calib_opts_.mutable_calibration_parameters()->CopyFrom(
+            calibration_parameters);
+        break;
+      }
+      case TEST_CASE_HISTOGRAM_MSE_SYMMETRIC: {
+        calib_opts_.set_calibration_method(
+            CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC);
         auto calibration_parameters =
             CalibrationOptions::CalibrationParameters();
         calibration_parameters.set_initial_num_bins(256);
