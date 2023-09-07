@@ -58,24 +58,14 @@ namespace xla {
 namespace literal_comparison {
 namespace {
 
-// Since Eigen::half doesn't satisfy the absl::bit_cast contract, we need to be
-// able to transparently access the raw 16-bit value contained within.
-template <typename T>
-T GetRawValue(T val) {
-  return val;
-}
-uint16_t GetRawValue(Eigen::half val) {
-  return Eigen::numext::bit_cast<uint16_t>(val);
-}
-
 // Helper function for comparing a floating point type, FloatT, bitwise equal
 // between the left-hand-side and right-hand-side, by bit-casting to UnsignedT
 // -- on miscompare, a nice error message is given in the AssertionFailure.
 template <typename FloatT, typename UnsignedT>
 bool CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs,
                                absl::Span<const int64_t> multi_index) {
-  auto ulhs = absl::bit_cast<UnsignedT>(GetRawValue(lhs));
-  auto urhs = absl::bit_cast<UnsignedT>(GetRawValue(rhs));
+  auto ulhs = Eigen::numext::bit_cast<UnsignedT>(lhs);
+  auto urhs = Eigen::numext::bit_cast<UnsignedT>(rhs);
   return ulhs == urhs;
 }
 
@@ -87,8 +77,7 @@ bool CompareEqual(NativeT lhs, NativeT rhs,
                   absl::Span<const int64_t> multi_index) {
   // Specializations for floating types that do bitwise comparisons when
   // equality comparison is requested.
-  if constexpr (std::numeric_limits<NativeT>::is_specialized &&
-                !std::numeric_limits<NativeT>::is_integer) {
+  if constexpr (is_specialized_floating_point_v<NativeT>) {
     using BitT = UnsignedIntegerTypeForSizeType<sizeof(NativeT)>;
     return CompareFloatsBitwiseEqual<NativeT, BitT>(lhs, rhs, multi_index);
   }
@@ -103,8 +92,8 @@ bool CompareEqual(NativeT lhs, NativeT rhs,
 template <typename NativeT, typename UnsignedT>
 Status MakeBitwiseErrorStatus(NativeT lhs, NativeT rhs,
                               absl::Span<const int64_t> multi_index) {
-  auto ulhs = absl::bit_cast<UnsignedT>(GetRawValue(lhs));
-  auto urhs = absl::bit_cast<UnsignedT>(GetRawValue(rhs));
+  auto ulhs = Eigen::numext::bit_cast<UnsignedT>(lhs);
+  auto urhs = Eigen::numext::bit_cast<UnsignedT>(rhs);
   auto lhs_double = static_cast<double>(lhs);
   auto rhs_double = static_cast<double>(rhs);
   return InvalidArgument(
@@ -118,15 +107,13 @@ Status MakeBitwiseErrorStatus(NativeT lhs, NativeT rhs,
 template <typename NativeT>
 Status MakeErrorStatus(NativeT lhs, NativeT rhs,
                        absl::Span<const int64_t> multi_index) {
-  if constexpr (std::numeric_limits<NativeT>::is_specialized &&
-                std::numeric_limits<NativeT>::is_integer) {
+  if constexpr (is_specialized_integral_v<NativeT>) {
     return InvalidArgument(
         "first mismatch at array index %s:\n  expected value: %s\n  actual "
         "value:   %s",
         LiteralUtil::MultiIndexAsString(multi_index), StrCat(lhs), StrCat(rhs));
   }
-  if constexpr (std::numeric_limits<NativeT>::is_specialized &&
-                !std::numeric_limits<NativeT>::is_integer) {
+  if constexpr (is_specialized_floating_point_v<NativeT>) {
     using BitT = UnsignedIntegerTypeForSizeType<sizeof(NativeT)>;
     return MakeBitwiseErrorStatus<NativeT, BitT>(lhs, rhs, multi_index);
   }
@@ -216,8 +203,7 @@ bool IsNan(NativeT value) {
 // Converts the given floating-point value to a string.
 template <typename NativeT>
 std::string FpValueToString(NativeT value) {
-  if constexpr (std::numeric_limits<NativeT>::is_specialized &&
-                !std::numeric_limits<NativeT>::is_integer) {
+  if constexpr (is_specialized_floating_point_v<NativeT>) {
     constexpr int kPrecisionDigits = std::numeric_limits<NativeT>::max_digits10;
     const int kExponentDigts =
         std::ceil(std::log10(std::numeric_limits<NativeT>::max_exponent10));

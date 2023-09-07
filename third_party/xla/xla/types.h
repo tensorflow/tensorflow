@@ -43,9 +43,14 @@ template <typename T>
 inline constexpr bool is_complex_v = is_complex<T>::value;
 
 template <typename T>
-constexpr bool is_specialized_floating_point_v =
+inline constexpr bool is_specialized_floating_point_v =
     std::numeric_limits<T>::is_specialized &&
     !std::numeric_limits<T>::is_integer;
+
+template <typename T>
+inline constexpr bool is_specialized_integral_v =
+    std::numeric_limits<T>::is_specialized &&
+    std::numeric_limits<T>::is_integer;
 
 // LINT.IfChange
 template <typename UnderlyingTy>
