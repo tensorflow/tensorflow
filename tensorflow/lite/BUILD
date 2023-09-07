@@ -1376,15 +1376,6 @@ bzl_library(
     ],
 )
 
-# This target defines the TFLITE_CONDITIONAL_NAMESPACE macro.
-cc_library_with_tflite(
-    name = "namespace",
-    hdrs = ["namespace.h"],
-    visibility = [
-        "//visibility:public",
-    ],
-)
-
 bzl_library(
     name = "special_rules_bzl",
     srcs = ["special_rules.bzl"],
