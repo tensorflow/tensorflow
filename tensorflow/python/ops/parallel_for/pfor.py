@@ -16,7 +16,7 @@
 # pylint: disable=missing-docstring,g-direct-tensorflow-import
 
 import collections
-from functools import partial
+import functools
 import string
 import sys
 import traceback
@@ -135,6 +135,35 @@ def _parse_variant_shapes_and_types(t):
       raise ValueError(
           "Attempted to stack a variant-dtype tensor with no type set ({!r})"
           .format(t))
+
+
+def _rank(t):
+  """Returns rank as an integer (when statically known) or as a tensor."""
+  rank = t.get_shape().rank if isinstance(t, tensor_lib.Tensor) else None
+  return array_ops.rank(t) if rank is None else rank
+
+
+def _size(t, dtype=None):
+  """Returns size as an integer (when statically known) or as a tensor."""
+  size = (
+      t.get_shape().num_elements() if isinstance(t, tensor_lib.Tensor) else None
+  )
+  return array_ops.size(t, out_type=dtype) if size is None else size
+
+
+def _expand_dims(t, axis, num_axes=1):
+  """Similar to `expand_dims` but supports insertion of multiple axes."""
+  if isinstance(num_axes, int):
+    for _ in range(num_axes):
+      t = array_ops.expand_dims(t, axis)
+  else:
+    shape = array_ops.shape(t)
+    ones = array_ops.fill(
+        array_ops.reshape(num_axes, [1]), constant_op.constant(1, shape.dtype)
+    )
+    new_shape = array_ops.concat([shape[:1], ones, shape[1:]], axis=0)
+    t = array_ops.reshape(t, new_shape)
+  return t
 
 
 def _stack(t, length):
@@ -850,30 +879,28 @@ class _PforInput:
     rules could incorrectly try to expand dimensions before that leading
     dimension. To avoid that, we reshape these stacked inputs to the maximum
     rank they will need to be broadcasted to.
+
+    IMPORTANT: This function is heavily optimized for statically known ranks
+    because it's on the critical path of some huge training graphs.
     """
-    if not self._inputs:
+    if len(self._inputs) < 2:
       return
 
-    # Find max rank
-    def _get_rank(x):
-      rank = array_ops.rank(x.t)
-      if not x.is_stacked:
-        rank += 1
-      return rank
-
-    ranks = [_get_rank(x) for x in self._inputs]
-    max_rank = ranks[0]
-    for rank in ranks[1:]:
-      max_rank = math_ops.maximum(rank, max_rank)
+    ranks = [
+        _rank(inp.t) if inp.is_stacked else (_rank(inp.t) + 1)
+        for inp in self._inputs
+    ]
+    if all(isinstance(rank, int) for rank in ranks):
+      max_rank = max(ranks)
+    else:
+      max_rank = functools.reduce(math_ops.maximum, ranks)
 
     for i, inp in enumerate(self._inputs):
-      if inp.is_stacked:
-        shape = array_ops.shape(inp.t)
-        rank_diff = array_ops.reshape(max_rank - ranks[i], [1])
-        ones = constant_op.constant([1], dtype=shape.dtype)
-        ones = array_ops.tile(ones, rank_diff)
-        new_shape = array_ops.concat([shape[:1], ones, shape[1:]], axis=0)
-        self._inputs[i] = wrap(array_ops.reshape(inp.t, new_shape), True)
+      if not inp.is_stacked:
+        continue
+      if isinstance(max_rank, int) and ranks[i] == max_rank:
+        continue
+      self._inputs[i] = wrap(_expand_dims(inp.t, 1, max_rank - ranks[i]), True)
 
   @property
   def inputs(self):
@@ -1629,7 +1656,7 @@ class PFor:
           else:
             converter = _pfor_converter_registry.get(y_op.type, None)
           if converter is None:
-            root_cause = (f"there is no registered converter for this op.")
+            root_cause = "there is no registered converter for this op."
             has_variant_outputs = any(x.dtype == dtypes.variant for x in
                                       y_op.outputs)
             has_vectorized_variant_inputs = any(
@@ -1637,7 +1664,7 @@ class PFor:
                 y_op.inputs)
             if (self._fallback_to_while_loop and not has_variant_outputs
                 and not has_vectorized_variant_inputs):
-              converter = partial(
+              converter = functools.partial(
                   _fallback_converter, root_cause=root_cause, warn=self._warn)
             else:
               message = (f"No pfor vectorization defined for {y_op.type}\n"
@@ -2247,25 +2274,14 @@ def _convert_fill(pfor_input: _PforInput):
 
 @RegisterPFor("BroadcastTo")
 def _convert_broadcast_to(pfor_input: _PforInput):
-  t = pfor_input.stacked_input(0)
   shape = pfor_input.unstacked_input(1)
-  n = pfor_input.pfor.loop_len_vector
+  n = math_ops.cast(pfor_input.pfor.loop_len_vector, shape.dtype)
   new_shape = array_ops.concat([n, shape], axis=0)
+  new_rank = _size(new_shape, dtypes.int32)
 
-  # Expand dims of stacked t to broadcast against the new shape.
-  # TODO(davmre): consider factoring out common code with
-  # `expanddim_inputs_for_broadcast`, which has similar logic but with
-  # implicit shapes (of input Tensors) rather than explicit shapes.
-  t_shape = array_ops.shape(t)
-  t_rank = math_ops.cast(array_ops.rank(t), t_shape.dtype)
-  rank_diff = array_ops.shape(new_shape)[0] - t_rank
-  ones = array_ops.tile([1], array_ops.reshape(rank_diff, [1]))
-  ones = math_ops.cast(ones, t_shape.dtype)
-  t_expanded_shape = array_ops.concat([t_shape[:1], ones, t_shape[1:]], axis=0)
-
-  return wrap(
-      array_ops.broadcast_to(array_ops.reshape(t, t_expanded_shape), new_shape),
-      True)
+  t = pfor_input.stacked_input(0)
+  t = _expand_dims(t, 1, new_rank - _rank(t))
+  return wrap(array_ops.broadcast_to(t, new_shape), True)
 
 
 @RegisterPFor("ExpandDims")
