@@ -126,6 +126,10 @@ tf_cc_test(
 tf_python_pybind_extension(
     name = "_pywrap_python_op_gen",
     srcs = ["python_op_gen_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_python_op_gen.pyi",
+    ],
     deps = [
         "//tensorflow/python:python_op_gen_headers_lib",
         "//tensorflow/python/lib/core:pybind11_absl",
@@ -450,6 +454,10 @@ py_strict_library(
 tf_python_pybind_extension(
     name = "_dtypes",
     srcs = ["dtypes.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_dtypes.pyi",
+    ],
     visibility = visibility + ["//third_party/py/tensorfn:__subpackages__"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
@@ -700,6 +708,10 @@ py_strict_library(
 tf_python_pybind_extension(
     name = "_op_def_library_pybind",
     srcs = ["op_def_library_pybind.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_op_def_library_pybind.pyi",
+    ],
     deps = [
         ":op_def_util_headers",
         "//tensorflow/core:framework_headers_lib",
@@ -731,6 +743,10 @@ pytype_strict_library(
 tf_python_pybind_extension(
     name = "_op_def_registry",
     srcs = ["op_def_registry.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_op_def_registry.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
@@ -891,6 +907,10 @@ tf_python_pybind_extension(
         "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
         "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
         "@local_tsl//tsl/python/lib/core:numpy_hdr",
+    ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_python_api_parameter_converter.pyi",
     ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
@@ -2176,6 +2196,10 @@ py_strict_library(
 tf_python_pybind_extension(
     name = "_python_memory_checker_helper",
     srcs = ["python_memory_checker_helper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_python_memory_checker_helper.pyi",
+    ],
     deps = [
         "@pybind11",
     ],
@@ -2957,6 +2981,10 @@ tf_py_strict_test(
 tf_python_pybind_extension(
     name = "_memory_checker_test_helper",
     srcs = ["memory_checker_test_helper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_memory_checker_test_helper.pyi",
+    ],
     deps = [
         "@pybind11",
     ],
@@ -3028,6 +3056,10 @@ tf_proto_library(
 tf_python_pybind_extension(
     name = "_errors_test_helper",
     srcs = ["errors_test_helper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_errors_test_helper.pyi",
+    ],
     deps = [
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
@@ -3136,6 +3168,10 @@ cuda_py_strict_test(
 tf_python_pybind_extension(
     name = "_proto_comparators",
     srcs = ["proto_comparators.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_proto_comparators.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -3195,6 +3231,10 @@ py_strict_test(
 tf_python_pybind_extension(
     name = "_test_metrics_util",
     srcs = ["test_metrics_util.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_test_metrics_util.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework",
         "//third_party/python_runtime:headers",
