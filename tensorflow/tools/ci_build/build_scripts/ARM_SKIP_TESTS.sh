@@ -16,7 +16,5 @@
 set -x
 
 ARM_SKIP_TESTS="-//tensorflow/lite/... \
--//tensorflow/compiler/xla/service/cpu/tests:cpu_eigen_dot_operation_test \
--//tensorflow/compiler/xla/service/gpu:fusion_merger_test \
 -//tensorflow/core/kernels/image:resize_bicubic_op_test \
 "
