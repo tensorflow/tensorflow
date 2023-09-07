@@ -180,17 +180,15 @@ struct ConvertNdConvOp {
 
     // All ones in "lhs_dilation" means this "mhlo.conv" op should be
     // converted to "tf.Conv2D" or "tf.DepthwiseConv2dNativeOp".
-    if (conv_op.getLhsDilation().has_value()) {
-      auto lhs_dilation = conv_op.getLhsDilation().value();
-      if (!lhs_dilation.isSplat() || lhs_dilation.getSplatValue<int64_t>() != 1)
-        return false;
-    }
+    auto lhs_dilation = conv_op.getLhsDilation().value();
+    if (!lhs_dilation.isSplat() || lhs_dilation.getSplatValue<int64_t>() != 1)
+      return false;
 
-    if (!conv_op.getWindowStrides().has_value() || conv_op.getWindowStrides()
-                                                           .value()
-                                                           .getType()
-                                                           .cast<ShapedType>()
-                                                           .getRank() != 1)
+    if (conv_op.getWindowStrides()
+            .value()
+            .getType()
+            .cast<ShapedType>()
+            .getRank() != 1)
       return false;
 
     auto num_spatial_dims =
@@ -202,6 +200,32 @@ struct ConvertNdConvOp {
   }
 };
 
+// Checks for attributes with no value and sets the default value according to
+// the convolution op definition.
+void setDefaultConvAttributes(mhlo::ConvolutionOp& conv_op,
+                              ConversionPatternRewriter& rewriter) {
+  auto dnums = conv_op.getDimensionNumbers();
+  int32_t input_spatial_dims =
+      static_cast<int32_t>(dnums.getInputSpatialDimensions().size());
+  if (!conv_op.getWindowStrides().has_value()) {
+    conv_op.setWindowStridesAttr(
+        rewriter.getI64TensorAttr(std::vector<int64_t>(input_spatial_dims, 1)));
+  }
+  if (!conv_op.getPadding().has_value()) {
+    conv_op.setPaddingAttr(DenseIntElementsAttr::get(
+        RankedTensorType::get({input_spatial_dims, 2}, rewriter.getI64Type()),
+        SmallVector<int64_t>(input_spatial_dims * 2, 0)));
+  }
+  if (!conv_op.getLhsDilation().has_value()) {
+    conv_op.setLhsDilationAttr(
+        rewriter.getI64TensorAttr(std::vector<int64_t>(input_spatial_dims, 1)));
+  }
+  if (!conv_op.getRhsDilation().has_value()) {
+    conv_op.setRhsDilationAttr(
+        rewriter.getI64TensorAttr(std::vector<int64_t>(input_spatial_dims, 1)));
+  }
+}
+
 // Convert a 1-D convolution into a 2-D convolution (which TF supports) so that
 // it can be rewritten by the pattern `Convert2DConvOp`.
 class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
@@ -212,24 +236,8 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
   LogicalResult matchAndRewrite(
       mhlo::ConvolutionOp conv_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    //
+    setDefaultConvAttributes(conv_op, rewriter);
     // Check that input is a supported 1d convolution.
-    //
-
-    // stablehlo.convolution allows ops without window strides, where default
-    // value 1 will be set for each spatial dimension. However, window_strides
-    // are needed for mhlo.convolution -> tf.Conv2D conversion. Therefore, in
-    // this conversion path have a fallback to set window strides if not set.
-    if (!conv_op.getWindowStrides().has_value()) {
-      const int window_strides_size =
-          conv_op.getDimensionNumbers().getInputSpatialDimensions().size();
-      std::vector<int64_t> window_strides_2d_array_default(window_strides_size,
-                                                           1);
-      DenseIntElementsAttr window_strides_2d_default =
-          rewriter.getI64TensorAttr(window_strides_2d_array_default);
-      conv_op.setWindowStridesAttr(window_strides_2d_default);
-    }
-
     if (!IsSupportedConvOp(conv_op) || conv_op->getNumResults() != 1)
       return rewriter.notifyMatchFailure(conv_op, "unsupported conv op.");
 
@@ -320,12 +328,6 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
         RankedTensorType::get({2, 2}, rewriter.getI64Type()), padding_2d_array);
 
     // LHS dilation
-    // Set LHS dilation defaults if not set (1 for each input spatial dimension)
-    if (!conv_op.getLhsDilation().has_value()) {
-      conv_op.setLhsDilationAttr(rewriter.getI64TensorAttr(
-          std::vector<int64_t>(dnums.getInputSpatialDimensions().size(), 1)));
-    }
-
     SmallVector<int64_t, 4> lhs_dilation_array_2d;
     for (const auto v : conv_op.getLhsDilation().value().getValues<int64_t>()) {
       lhs_dilation_array_2d.emplace_back(v);
@@ -336,13 +338,6 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
         lhs_dilation_array_2d);
 
     // RHS dilation
-    // Set RHS dilation defaults if not set (1 for each kernel spatial
-    // dimension)
-    if (!conv_op.getRhsDilation().has_value()) {
-      conv_op.setRhsDilationAttr(rewriter.getI64TensorAttr(
-          std::vector<int64_t>(dnums.getKernelSpatialDimensions().size(), 1)));
-    }
-
     SmallVector<int64_t, 4> rhs_dilation_array_2d;
     for (const auto v : conv_op.getRhsDilation().value().getValues<int64_t>()) {
       rhs_dilation_array_2d.emplace_back(v);
@@ -431,6 +426,7 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
   LogicalResult matchAndRewrite(
       mhlo::ConvolutionOp conv_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
+    setDefaultConvAttributes(conv_op, rewriter);
     if (!IsSupportedConvOp(conv_op)) {
       return failure();
     }
@@ -481,9 +477,8 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
     const bool is_depthwise_conv = input_channels == feature_group_count;
     std::string padding;
     SmallVector<int64_t, 8> explicit_padding;
-    if (!conv_op.getPadding().has_value() ||
-        (conv_op.getPadding().value().isSplat() &&
-         conv_op.getPadding()->getSplatValue<int64_t>() == 0)) {
+    if (conv_op.getPadding().value().isSplat() &&
+        conv_op.getPadding()->getSplatValue<int64_t>() == 0) {
       padding = "VALID";
     } else {
       SmallVector<int64_t, 4> padding_array;
@@ -748,13 +743,13 @@ class ConvertNonTrivialConvOp
   LogicalResult matchAndRewrite(
       mhlo::ConvolutionOp conv_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
+    setDefaultConvAttributes(conv_op, rewriter);
     if (IsSupportedConvOp(conv_op, rewriter).failed()) {
       return rewriter.notifyMatchFailure(
           conv_op,
           "doesn't support to convert to ConvBackpropInputOp or "
           "ResizeBilinearOp");
     }
-
     // tf.ResizeBilinearOp is perferred than tf.Conv2DBackpropInputOp since
     // the former has better portability, especially in inference use cases.
     bool align_corners;
@@ -788,9 +783,8 @@ class ConvertNonTrivialConvOp
 
     mhlo::ConvDimensionNumbersAttr dnums = conv_op.getDimensionNumbers();
     std::string padding;
-    if (!conv_op.getPadding().has_value() ||
-        (conv_op.getPadding().value().isSplat() &&
-         conv_op.getPadding()->getSplatValue<int64_t>() == 0)) {
+    if (conv_op.getPadding().value().isSplat() &&
+        conv_op.getPadding()->getSplatValue<int64_t>() == 0) {
       padding = "VALID";
     } else {
       auto spatial_dims = dnums.getInputSpatialDimensions();
@@ -866,21 +860,16 @@ class ConvertNonTrivialConvOp
                                          "doesn't support group convolution");
     }
 
-    // Checks lhs_dilation is non-trivial.
-    if (!conv_op.getLhsDilation().has_value()) {
-      return rewriter.notifyMatchFailure(conv_op,
-                                         "requires lhs_dilation attribute");
-    }
     auto lhs_dilation = conv_op.getLhsDilation().value();
     if (lhs_dilation.isSplat() && lhs_dilation.getSplatValue<int64_t>() == 1)
       return rewriter.notifyMatchFailure(conv_op,
                                          "requires non-trivial lhs_dilation");
 
-    if (!conv_op.getWindowStrides().has_value() || conv_op.getWindowStrides()
-                                                           .value()
-                                                           .getType()
-                                                           .cast<ShapedType>()
-                                                           .getRank() != 1)
+    if (conv_op.getWindowStrides()
+            .value()
+            .getType()
+            .cast<ShapedType>()
+            .getRank() != 1)
       return rewriter.notifyMatchFailure(
           conv_op, "requires window_strides to equal to one");
 
@@ -966,14 +955,6 @@ class ConvertNonTrivialConvOp
         input_spatial_dimensions[1] != output_spatial_dimensions[1])
       return rewriter.notifyMatchFailure(
           conv_op, "can only be converted to 2D resize op");
-
-    // When "lhs_dilation" is 2D and contains at least "1", and "rhs_dilation"
-    // are all "1"s, this "mhlo.conv" op can potentially be converted to
-    // "tf.ResizeBilinearOp".
-    if (!conv_op.getRhsDilation().has_value() ||
-        !conv_op.getPadding().has_value())
-      return rewriter.notifyMatchFailure(
-          conv_op, "resize op requires rhs_dilation and padding");
 
     auto lhs_dilation = conv_op.getLhsDilation().value();
     auto rhs_dilation = conv_op.getRhsDilation().value();
