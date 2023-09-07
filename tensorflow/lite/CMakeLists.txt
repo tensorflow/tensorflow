@@ -156,6 +156,11 @@ endif()
 find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
 find_package(ml_dtypes REQUIRED)
 find_package(ruy REQUIRED)
+# Include TSL/XLA, which is in tensorflow/third_party
+include_directories(
+  ${TF_SOURCE_DIR}/../third_party/xla
+  ${TF_SOURCE_DIR}/../third_party/xla/third_party/tsl
+)
 # Download necessary dependencies.
 # Download pthreadpool source package if it doesn't exist.
 if(SYSTEM_PTHREADPOOL)
