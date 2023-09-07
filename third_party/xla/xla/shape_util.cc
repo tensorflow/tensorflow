@@ -373,8 +373,8 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
       /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID, element_size_in_bits,
       memory_space,
       /*physical_shape=*/std::nullopt);
-  if (!ret.ok()) LOG(ERROR) << ret.status();
-  return ret.value();
+  TF_CHECK_OK(ret.status());
+  return *ret;
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithSparseLayout(
@@ -389,8 +389,8 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
       element_type, dimensions, minor_to_major, dim_level_types, dim_unique,
       dim_ordered, /*tiles=*/{}, index_primitive_type, pointer_primitive_type,
       element_size_in_bits, memory_space, std::move(physical_shape));
-  if (!ret.ok()) LOG(ERROR) << ret.status();
-  return ret.value();
+  TF_CHECK_OK(ret.status());
+  return *ret;
 }
 
 /* static */ Shape ShapeUtil::MoveDimToMajor(const Shape& shape, int64_t dim) {
