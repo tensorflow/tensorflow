@@ -1265,10 +1265,10 @@ def _populate_calibration_options(
     if not calib_opts.calibration_parameters.max_percentile:
       calib_opts.calibration_parameters.max_percentile = 99.999
   # Check the activation_tensor_type of HISTOGRAM_MSE methods.
-  elif (
-      calib_opts.calibration_method
-      == _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE
-  ):
+  elif calib_opts.calibration_method in [
+      _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
+      _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
+  ]:
     activation_tensor_type = (
         quantization_options.quantization_method.quantization_component_specs[
             _QuantizationComponent.COMPONENT_ACTIVATION

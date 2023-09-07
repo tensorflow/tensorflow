@@ -85,7 +85,8 @@ class InsertCustomAggregationOpsPass
     TEST_CASE_MIN_MAX,
     TEST_CASE_AVERAGE_MIN_MAX,
     TEST_CASE_HISTOGRAM_PERCENTILE,
-    TEST_CASE_HISTOGRAM_MSE_BRUTEFORCE
+    TEST_CASE_HISTOGRAM_MSE_BRUTEFORCE,
+    TEST_CASE_HISTOGRAM_MSE_MAX_FREQUENCY,
   };
 
   bool test_mode_;
@@ -105,7 +106,11 @@ class InsertCustomAggregationOpsPass
                      "Uses HISTOGRAM_PERCENTILE calibration method"),
           clEnumValN(TEST_CASE_HISTOGRAM_MSE_BRUTEFORCE,
                      "HISTOGRAM_MSE_BRUTEFORCE",
-                     "Uses HISTOGRAM_MSE_BRUTEFORCE calibration method"))};
+                     "Uses HISTOGRAM_MSE_BRUTEFORCE calibration method"),
+          clEnumValN(TEST_CASE_HISTOGRAM_MSE_MAX_FREQUENCY,
+                     "HISTOGRAM_MSE_MAX_FREQUENCY",
+                     "Uses HISTOGRAM_MSE_MAX_FREQUENCY calibration "
+                     "method"))};
 };
 
 static PassRegistration<InsertCustomAggregationOpsPass> pass;
@@ -226,6 +231,16 @@ void InsertCustomAggregationOpsPass::runOnOperation() {
       case TEST_CASE_HISTOGRAM_MSE_BRUTEFORCE: {
         calib_opts_.set_calibration_method(
             CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE);
+        auto calibration_parameters =
+            CalibrationOptions::CalibrationParameters();
+        calibration_parameters.set_initial_num_bins(256);
+        calib_opts_.mutable_calibration_parameters()->CopyFrom(
+            calibration_parameters);
+        break;
+      }
+      case TEST_CASE_HISTOGRAM_MSE_MAX_FREQUENCY: {
+        calib_opts_.set_calibration_method(
+            CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY);
         auto calibration_parameters =
             CalibrationOptions::CalibrationParameters();
         calibration_parameters.set_initial_num_bins(256);

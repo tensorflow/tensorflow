@@ -156,6 +156,39 @@ class _HistogramCalibrationAlgorithmBase(_CalibrationAlgorithmBase):
     weighted_error = np.sum(squared_error * self._hist_freq)
     return (weighted_error, quant_min, quant_max)
 
+  def _get_min_max_value_by_expanding_range(
+      self, start_idx: int
+  ) -> tuple[float, float]:
+    """Starting from start_idx, expand left and right alternately to find the min value of mse loss.
+
+    Args:
+      start_idx: Index to start quantization.
+
+    Returns:
+      (min_value, max_value): Min and max calculated.
+    """
+    # Tuple of (mse_error, quant_min, quant_max).
+    mse_min = (float('inf'), float('inf'), float('inf'))
+    left, right = start_idx, start_idx
+
+    # If this value is true, it moves left, otherwise it moves right.
+    move_left = True
+    while not (left == 0 and right == self._num_bins - 1):
+      # Decrease left if right can't be moved or move_left is true.
+      if (move_left and left > 0) or (right == self._num_bins - 1):
+        left = max(left - 1, 0)
+      # Else increase right.
+      else:
+        right = min(right + 1, self._num_bins - 1)
+      # Toogle the move_left.
+      move_left = not move_left
+      quant_min, quant_max = self._hist_mids[left], self._hist_mids[right]
+      mse_tuple = self._get_weighted_mean_squared_error(quant_min, quant_max)
+      mse_min = min(mse_tuple, mse_min)
+    # Extract (quant_min, quant_max) from (mse_error, quant_min, quant_max).
+    min_value, max_value = mse_min[1], mse_min[2]
+    return min_value, max_value
+
 
 @_implements(_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX)
 class _MinMax(_CalibrationAlgorithmBase):
@@ -294,6 +327,26 @@ class _HistogramMseBruteforce(_HistogramCalibrationAlgorithmBase):
     min_value, max_value = mse_min[1], mse_min[2]
 
     return min_value, max_value
+
+
+@_implements(_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY)
+class _HistogramMseMaxFrequency(_HistogramCalibrationAlgorithmBase):
+  """HistogramMseMaxFrequency for calculating min and max values of calibration result."""
+
+  def get_min_max_value(self) -> tuple[float, float]:
+    """Finds min and max starting from the index of the max frequency.
+
+     The HistogramMseMaxFrequency method starts from the bin with the highest
+     frequency and expands the range to both sides. This performs well when data
+     is well spread on both sides of the max frequency.
+
+    Returns:
+      (min_value, max_value): Min and max calculated using method to expand the
+      range based on max frequency.
+    """
+    # Find the index of max frequency.
+    freq_max_idx = np.argmax(self._hist_freq)
+    return self._get_min_max_value_by_expanding_range(freq_max_idx)
 
 
 def get_min_max_value(

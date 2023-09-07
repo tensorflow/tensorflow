@@ -2,6 +2,7 @@
 // RUN: tf-quant-opt %s -quant-insert-custom-aggregation-ops='test-case=AVERAGE_MIN_MAX'  | FileCheck --check-prefix=AVERAGE-MIN-MAX-CHECK %s
 // RUN: tf-quant-opt %s -quant-insert-custom-aggregation-ops='test-case=HISTOGRAM_PERCENTILE'  | FileCheck --check-prefix=HISTOGRAM-PERCENTILE-CHECK %s
 // RUN: tf-quant-opt %s -quant-insert-custom-aggregation-ops='test-case=HISTOGRAM_MSE_BRUTEFORCE'  | FileCheck --check-prefix=HISTOGRAM-MSE-BRUTEFORCE-CHECK %s
+// RUN: tf-quant-opt %s -quant-insert-custom-aggregation-ops='test-case=HISTOGRAM_MSE_MAX_FREQUENCY'  | FileCheck --check-prefix=HISTOGRAM-MSE-MAX-FREQUENCY-CHECK %s
 
 module {
   func.func @add_custom_ops(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
@@ -99,3 +100,24 @@ module {
 // HISTOGRAM-MSE-BRUTEFORCE-CHECK-NEXT:  "tf.BiasAdd"
 // HISTOGRAM-MSE-BRUTEFORCE-CHECK-NEXT:  "tf.Relu6"
 // HISTOGRAM-MSE-BRUTEFORCE-CHECK-NEXT:  return
+
+// CalibrationOptions(
+//   calibration_method=CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
+//   calibration_parameters=CalibrationParameters(initial_num_bins=256)
+// )
+// HISTOGRAM-MSE-MAX-FREQUENCY-CHECK: func @add_custom_ops
+// HISTOGRAM-MSE-MAX-FREQUENCY-CHECK-NEXT:  [[rhs:%.*]] = "tf.CustomAggregator"(%arg1) {calibration_method = 5 : i32, id = "", initial_num_bins = 256 : i32, max_percentile = 0.000000e+00 : f32, min_percentile = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
+// HISTOGRAM-MSE-MAX-FREQUENCY-CHECK-NEXT:  [[lhs:%.*]] = "tf.CustomAggregator"(%arg0) {calibration_method = 5 : i32, id = "", initial_num_bins = 256 : i32, max_percentile = 0.000000e+00 : f32, min_percentile = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
+// HISTOGRAM-MSE-MAX-FREQUENCY-CHECK-NEXT:  [[add:%.*]] = "tf.AddV2"([[lhs]], [[rhs]]) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+// HISTOGRAM-MSE-MAX-FREQUENCY-CHECK-NEXT:  [[res:%.*]] = "tf.CustomAggregator"([[add]]) {calibration_method = 5 : i32, id = "", initial_num_bins = 256 : i32, max_percentile = 0.000000e+00 : f32, min_percentile = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
+// HISTOGRAM-MSE-MAX-FREQUENCY-CHECK-NEXT:  return [[res]] : tensor<*xf32>
+
+// HISTOGRAM-MSE-MAX-FREQUENCY-CHECK: func @no_custom_ops_on_non_f32_type
+// HISTOGRAM-MSE-MAX-FREQUENCY-CHECK-NEXT:  "tf.AddV2"
+// HISTOGRAM-MSE-MAX-FREQUENCY-CHECK-NEXT:  return
+
+// HISTOGRAM-MSE-MAX-FREQUENCY-CHECK: func @composite_conv2d_with_bias_and_relu6_fn
+// HISTOGRAM-MSE-MAX-FREQUENCY-CHECK-NEXT:  "tf.Conv2D"
+// HISTOGRAM-MSE-MAX-FREQUENCY-CHECK-NEXT:  "tf.BiasAdd"
+// HISTOGRAM-MSE-MAX-FREQUENCY-CHECK-NEXT:  "tf.Relu6"
+// HISTOGRAM-MSE-MAX-FREQUENCY-CHECK-NEXT:  return

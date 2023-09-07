@@ -5904,6 +5904,36 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
               ),
           ),
       },
+      {
+          'testcase_name': 'with_histogram_mse_max_frequency',
+          'target_opset': quant_opts_pb2.TF,
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=10,
+              ),
+          ),
+      },
+      {
+          'testcase_name': 'with_histogram_mse_max_frequency_to_xla',
+          'target_opset': quant_opts_pb2.XLA,
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=10,
+              ),
+          ),
+      },
+      {
+          'testcase_name': 'with_histogram_mse_max_frequency_to_uq',
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=10,
+              ),
+          ),
+      },
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model_by_calibration_options(
@@ -5925,11 +5955,14 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
     saved_model_save.save(model, self._input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
-      yield {
-          'input_tensor': ops.convert_to_tensor(
-              np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype('f4')
-          ),
-      }
+      for _ in range(10):
+        yield {
+            'input_tensor': ops.convert_to_tensor(
+                np.random.uniform(low=0, high=10, size=(1, 3, 4, 3)).astype(
+                    'f4'
+                )
+            ),
+        }
 
     tags = {tag_constants.SERVING}
 
@@ -5955,6 +5988,13 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(
         converted_model.signatures._signatures.keys(), {'serving_default'}
     )
+
+    sample_input = ops.convert_to_tensor(
+        np.random.uniform(low=0, high=10, size=(1, 3, 4, 3)).astype('f4')
+    )
+    expected_outputs = model.conv(sample_input)
+    got_outputs = converted_model.signatures['serving_default'](sample_input)
+    self.assertAllClose(expected_outputs, got_outputs, atol=1e-1)
 
     output_loader = saved_model_loader.SavedModelLoader(
         self._output_saved_model_path
@@ -6049,6 +6089,18 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           ),
           'default_calibration_options': quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=256
+              ),
+          ),
+      },
+      {
+          'testcase_name': 'with_histogram_mse_max_frequency',
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY
+          ),
+          'default_calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
               calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
                   initial_num_bins=256
               ),
