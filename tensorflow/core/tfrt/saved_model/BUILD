@@ -15,6 +15,7 @@ package_group(
         # copybara:uncomment "//learning/infra/mira/...",
         # copybara:uncomment "//learning/serving/...",
         # copybara:uncomment "//learning/pathways/serving/model_tests/...",
+        # copybara:uncomment "//learning/pathways/serving/runtime/...",
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/mlrt/application/tensorflow/tests/...",
         "//tensorflow/core/tfrt/...",
@@ -113,6 +114,7 @@ cc_library(
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/saved_model/utils:serialize_bef_utils",
+        "//tensorflow/core/tfrt/stubs:model_config_stub",
         "//tensorflow/core/tfrt/utils",
         "//tensorflow/core/tfrt/utils:error_util",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
@@ -139,6 +141,7 @@ cc_library(
         "@tf_runtime//:support",
     ] + if_google([
         "//third_party/tf_runtime_google:streamz_metrics_registry_alwayslink",
+        "//learning/brain/tfrt/mlrt/application/pathways:model_config_impl",
     ]),
 )
 
