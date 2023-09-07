@@ -2787,6 +2787,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         instruction->opcode() != HloOpcode::kCustomCall &&
         instruction->opcode() != HloOpcode::kReshape &&
         instruction->opcode() != HloOpcode::kDynamicSlice &&
+        instruction->opcode() != HloOpcode::kBitcastConvert &&
+        !(instruction->opcode() == HloOpcode::kCall &&
+          instruction->metadata().op_type() == "XlaCallModule") &&
         absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
           return ShapeUtil::HasPrimitiveType(operand->shape(), S4) ||
                  ShapeUtil::HasPrimitiveType(operand->shape(), U4);
