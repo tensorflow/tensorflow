@@ -28,17 +28,6 @@ limitations under the License.
 
 #include "xla/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
-
-// Temporarily pull stream_executor into perftools::gputools while we migrate
-// code to the new namespace.  TODO(b/77980417): Remove this once we've
-// completed the migration.
-using namespace stream_executor;  // NOLINT[build/namespaces]
-
-}  // namespace gputools
-}  // namespace perftools
-
 namespace stream_executor {
 
 class DeviceMemoryAllocator;
