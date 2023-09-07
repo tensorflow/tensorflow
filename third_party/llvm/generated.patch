@@ -1,14 +1,114 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/test/Other/cfg-multiline-header.ll b/llvm/test/Other/cfg-multiline-header.ll
---- a/llvm/test/Other/cfg-multiline-header.ll
-+++ b/llvm/test/Other/cfg-multiline-header.ll
-@@ -1,5 +1,7 @@
--; RUN: opt < %s -passes=dot-cfg -cfg-dot-filename-prefix=cfg 2>/dev/null > /dev/null
--; RUN: FileCheck %s -input-file=cfg.foo.dot --check-prefix=CHECK
-+; RUN: rm -rf %t
-+; RUN: mkdir -p %t
-+; RUN: opt < %s -passes=dot-cfg -cfg-dot-filename-prefix=%t/cfg 2>/dev/null > /dev/null
-+; RUN: FileCheck %s -input-file=%t/cfg.foo.dot --check-prefix=CHECK
+diff -ruN --strip-trailing-cr a/libc/src/__support/CPP/type_traits/is_rvalue_reference.h b/libc/src/__support/CPP/type_traits/is_rvalue_reference.h
+--- a/libc/src/__support/CPP/type_traits/is_rvalue_reference.h
++++ b/libc/src/__support/CPP/type_traits/is_rvalue_reference.h
+@@ -25,7 +25,8 @@
+ template <typename T> struct is_rvalue_reference<T &&> : public true_type {};
+ #endif
+ template <class T>
+-using add_rvalue_reference_t = typename add_rvalue_reference<T>::type;
++LIBC_INLINE_VAR constexpr bool is_rvalue_reference_v =
++    is_rvalue_reference<T>::value;
  
- define void @foo(ptr %A, ptr %B) {
- a_very_long_label_that_should_take_over_eight_symbols_and_span_2_lines_in_cfg_dot_graph:
+ } // namespace __llvm_libc::cpp
+ 
+diff -ruN --strip-trailing-cr a/libc/src/__support/CPP/type_traits/remove_extent.h b/libc/src/__support/CPP/type_traits/remove_extent.h
+--- a/libc/src/__support/CPP/type_traits/remove_extent.h
++++ b/libc/src/__support/CPP/type_traits/remove_extent.h
+@@ -9,6 +9,7 @@
+ #define LLVM_LIBC_SRC_SUPPORT_CPP_TYPE_TRAITS_REMOVE_EXTENT_H
+ 
+ #include "src/__support/CPP/type_traits/type_identity.h"
++#include "stddef.h" // size_t
+ 
+ namespace __llvm_libc::cpp {
+ 
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
+--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
+@@ -10009,27 +10009,6 @@
+     }
+   }
+ 
+-  // fold (shl (sext (add_nsw x, c1)), c2) -> (add (shl (sext x), c2), c1 << c2)
+-  // TODO: Add zext/add_nuw variant with suitable test coverage
+-  // TODO: Should we limit this with isLegalAddImmediate?
+-  if (N0.getOpcode() == ISD::SIGN_EXTEND &&
+-      N0.getOperand(0).getOpcode() == ISD::ADD &&
+-      N0.getOperand(0)->getFlags().hasNoSignedWrap() && N0->hasOneUse() &&
+-      N0.getOperand(0)->hasOneUse() &&
+-      TLI.isDesirableToCommuteWithShift(N, Level)) {
+-    SDValue Add = N0.getOperand(0);
+-    SDLoc DL(N0);
+-    if (SDValue ExtC = DAG.FoldConstantArithmetic(N0.getOpcode(), DL, VT,
+-                                                  {Add.getOperand(1)})) {
+-      if (SDValue ShlC =
+-              DAG.FoldConstantArithmetic(ISD::SHL, DL, VT, {ExtC, N1})) {
+-        SDValue ExtX = DAG.getNode(N0.getOpcode(), DL, VT, Add.getOperand(0));
+-        SDValue ShlX = DAG.getNode(ISD::SHL, DL, VT, ExtX, N1);
+-        return DAG.getNode(ISD::ADD, DL, VT, ShlX, ShlC);
+-      }
+-    }
+-  }
+-
+   // fold (shl (mul x, c1), c2) -> (mul x, c1 << c2)
+   if (N0.getOpcode() == ISD::MUL && N0->hasOneUse()) {
+     SDValue N01 = N0.getOperand(1);
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/arm64-shifted-sext.ll b/llvm/test/CodeGen/AArch64/arm64-shifted-sext.ll
+--- a/llvm/test/CodeGen/AArch64/arm64-shifted-sext.ll
++++ b/llvm/test/CodeGen/AArch64/arm64-shifted-sext.ll
+@@ -275,9 +275,8 @@
+ define i64 @extendedLeftShiftintToint64By4(i32 %a) nounwind readnone ssp {
+ ; CHECK-LABEL: extendedLeftShiftintToint64By4:
+ ; CHECK:       ; %bb.0: ; %entry
+-; CHECK-NEXT:    ; kill: def $w0 killed $w0 def $x0
+-; CHECK-NEXT:    sbfiz x8, x0, #4, #32
+-; CHECK-NEXT:    add x0, x8, #16
++; CHECK-NEXT:    add w8, w0, #1
++; CHECK-NEXT:    sbfiz x0, x8, #4, #32
+ ; CHECK-NEXT:    ret
+ entry:
+   %inc = add nsw i32 %a, 1
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/arm64-trunc-store.ll b/llvm/test/CodeGen/AArch64/arm64-trunc-store.ll
+--- a/llvm/test/CodeGen/AArch64/arm64-trunc-store.ll
++++ b/llvm/test/CodeGen/AArch64/arm64-trunc-store.ll
+@@ -20,10 +20,10 @@
+ ; CHECK-LABEL: fct32:
+ ; CHECK:       // %bb.0: // %bb
+ ; CHECK-NEXT:    adrp x8, :got:zptr32
++; CHECK-NEXT:    sub w9, w0, #1
+ ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:zptr32]
+ ; CHECK-NEXT:    ldr x8, [x8]
+-; CHECK-NEXT:    add x8, x8, w0, sxtw #2
+-; CHECK-NEXT:    stur w1, [x8, #-4]
++; CHECK-NEXT:    str w1, [x8, w9, sxtw #2]
+ ; CHECK-NEXT:    ret
+ bb:
+   %.pre37 = load ptr, ptr @zptr32, align 8
+@@ -39,10 +39,10 @@
+ ; CHECK-LABEL: fct16:
+ ; CHECK:       // %bb.0: // %bb
+ ; CHECK-NEXT:    adrp x8, :got:zptr16
++; CHECK-NEXT:    sub w9, w0, #1
+ ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:zptr16]
+ ; CHECK-NEXT:    ldr x8, [x8]
+-; CHECK-NEXT:    add x8, x8, w0, sxtw #1
+-; CHECK-NEXT:    sturh w1, [x8, #-2]
++; CHECK-NEXT:    strh w1, [x8, w9, sxtw #1]
+ ; CHECK-NEXT:    ret
+ bb:
+   %.pre37 = load ptr, ptr @zptr16, align 8
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/addr-mode-matcher-2.ll b/llvm/test/CodeGen/X86/addr-mode-matcher-2.ll
+--- a/llvm/test/CodeGen/X86/addr-mode-matcher-2.ll
++++ b/llvm/test/CodeGen/X86/addr-mode-matcher-2.ll
+@@ -52,8 +52,8 @@
+ ; X64-NEXT:    .p2align 4, 0x90
+ ; X64-NEXT:  .LBB0_2: # =>This Inner Loop Header: Depth=1
+ ; X64-NEXT:    cltq
+-; X64-NEXT:    shlq $2, %rax
+-; X64-NEXT:    leaq 20(%rax,%rax,4), %rdi
++; X64-NEXT:    leaq 4(,%rax,4), %rax
++; X64-NEXT:    leaq (%rax,%rax,4), %rdi
+ ; X64-NEXT:    callq bar@PLT
+ ; X64-NEXT:    jmp .LBB0_2
+   br i1 %0, label %9, label %3
