@@ -135,6 +135,11 @@ mlir::LogicalResult ShardingParam::verify(
     if (dim_index == dim_shards().size()) {
       break;
     }
+    if (index < 0 || index >= minor_to_major().axis_sizes.size()) {
+      return emit_error() << "Out of range axis " << index << " to the mesh of "
+                          << minor_to_major().permutation << " on "
+                          << minor_to_major().axis_sizes;
+    }
 
     cum_size *= minor_to_major().axis_sizes[index];
     if (cum_size > dim_shards()[dim_index]) {

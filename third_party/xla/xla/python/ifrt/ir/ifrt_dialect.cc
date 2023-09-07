@@ -118,6 +118,12 @@ mlir::LogicalResult IfrtDialect::verifyRegionArgAttribute(
   return mlir::success();
 }
 
+mlir::LogicalResult IfrtShardingAttr::verify(
+    llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+    ShardingParam sharding) {
+  return sharding.verify(emitError);
+}
+
 llvm::ArrayRef<int> IfrtArrayType::getDevices() const {
   return getDevicesAttr().getIds();
 }

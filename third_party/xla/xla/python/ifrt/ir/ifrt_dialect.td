@@ -60,6 +60,8 @@ def Ifrt_ShardingAttr : AttrDef<Ifrt_Dialect, "IfrtSharding"> {
 
   let parameters = (ins Ifrt_ShardingParameter:$sharding);
   let assemblyFormat = "`<` $sharding `>`";
+
+  let genVerifyDecl = 1;
 }
 
 def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
