@@ -11,8 +11,6 @@ package(
         "//tensorflow/core:__pkg__",
         # tensorflow/core/lib/random uses on gtl:array_slice
         "//tensorflow/core/lib/random:__pkg__",
-        # tensorflow/core/lib/strings:proto_serialization uses on gtl:inlined_vector
-        "//tensorflow/core/lib/strings:__pkg__",
         # tensorflow/core/lib/histogram uses array_slice
         "//tensorflow/core/lib/histogram:__pkg__",
         # tensorflow/core/framework uses array_slice, map_util, and flatmap
@@ -23,9 +21,6 @@ package(
         "//tensorflow/core/tfrt/utils:__pkg__",
         # tensorflow/examples/custom_ops_doc/simple_hash_table uses map_util
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
-        "@local_xla//xla/stream_executor:__subpackages__",
-        # TODO(aminim): remove when array_slice migrates to TSL
-        "@local_tsl//tsl:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -69,12 +64,10 @@ cc_library(
     name = "flatmap",
     hdrs = ["flatmap.h"],
     visibility = [
-        "//tensorflow/c/eager:__pkg__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/framework:__pkg__",
         "//tensorflow/core/lib/histogram:__pkg__",
         "//tensorflow/core/lib/random:__pkg__",
-        "//tensorflow/core/lib/strings:__pkg__",
     ],
     deps = [
         "//tensorflow/core/lib/gtl:flatrep",
