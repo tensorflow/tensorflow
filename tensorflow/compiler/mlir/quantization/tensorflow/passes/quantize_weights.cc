@@ -59,15 +59,16 @@ class QuantizeWeightsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizeWeightsPass)
 
-  explicit QuantizeWeightsPass() : test_mode_(true) {}
+  explicit QuantizeWeightsPass() : test_mode_(true) { initializeForTest(); }
 
   explicit QuantizeWeightsPass(
       const tensorflow::quantization::QuantizationOptions& quant_options)
       : test_mode_(false), quant_options_(quant_options) {}
 
   QuantizeWeightsPass(const QuantizeWeightsPass& other) {
-    test_mode_ = true;
+    test_mode_ = other.test_mode_;
     quant_options_ = other.quant_options_;
+    initializeForTest();
   }
 
   StringRef getArgument() const final {
@@ -90,6 +91,19 @@ class QuantizeWeightsPass
 
   bool test_mode_;
   tensorflow::quantization::QuantizationOptions quant_options_;
+
+  // Initialize for tests.
+  void initializeForTest() {
+    if (!test_mode_) return;
+
+    tensorflow::quantization::QuantizationComponentSpec quant_spec;
+    quant_spec.set_quantization_component(
+        tensorflow::quantization::QuantizationComponentSpec::COMPONENT_WEIGHT);
+    quant_spec.set_tensor_type(
+        tensorflow::quantization::QuantizationComponentSpec::TENSORTYPE_INT_8);
+    auto mutable_quant_method = quant_options_.mutable_quantization_method();
+    *mutable_quant_method->add_quantization_component_specs() = quant_spec;
+  }
 };
 
 // If a constant is connected to a quantizable op, quantize the constant to have
@@ -242,17 +256,6 @@ void QuantizeWeightsPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   auto module_op = getOperation();
   RewritePatternSet patterns(ctx);
-
-  // Initialize for tests.
-  if (test_mode_) {
-    tensorflow::quantization::QuantizationComponentSpec quant_spec;
-    quant_spec.set_quantization_component(
-        tensorflow::quantization::QuantizationComponentSpec::COMPONENT_WEIGHT);
-    quant_spec.set_tensor_type(
-        tensorflow::quantization::QuantizationComponentSpec::TENSORTYPE_INT_8);
-    auto mutable_quant_method = quant_options_.mutable_quantization_method();
-    *mutable_quant_method->add_quantization_component_specs() = quant_spec;
-  }
 
   patterns.add<QuantizeConstWeights>(ctx, quant_options_);
 
