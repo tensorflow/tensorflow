@@ -208,7 +208,8 @@ void DcnTracker::VisitOp(const InstrMetadata& instr,
         // has to be sent back to the replicas, the total bytes transmitted over
         // the network is 2x the shape of the op.
         analysis->set_bytes_transmitted_over_network(
-            instr.transfer_type == "ALL_REDUCE" ? 2 * instr.size : instr.size);
+            analysis->transfer_type() == "ALL_REDUCE" ? 2 * instr.size
+                                                      : instr.size);
         analysis->set_stall_duration_us(NanoToMicro(opState.stall_duration_ns));
         analysis->set_recv_op_name(std::string(visitor.DisplayName()));
         analysis->set_send_op_name(opState.send_op_name);
