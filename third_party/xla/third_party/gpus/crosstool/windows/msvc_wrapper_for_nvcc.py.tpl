@@ -122,7 +122,11 @@ def InvokeNvcc(argv, log=False):
   includes = ["-I " + include for include in include_options]
 
   defines, argv = GetOptionValue(argv, '/D')
-  defines = ['-D' + define for define in defines]
+  defines = [
+      '-D' + define
+      for define in defines
+      if 'BAZEL_CURRENT_REPOSITORY' not in define
+  ]
 
   undefines, argv = GetOptionValue(argv, '/U')
   undefines = ['-U' + define for define in undefines]
