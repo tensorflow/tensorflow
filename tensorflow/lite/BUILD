@@ -487,8 +487,6 @@ alias_with_tflite(
 
 # The public target for the C++ API excluding experimental APIs.
 # TODO(ahentz): investigate dependency on gemm_support requiring usage of tf_copts.
-# TODO(b/298419516): remove the dependency on cpp_api_experimental once signature runner
-# has been promoted to stable in TFLite-in-Play-Services.
 cc_library_with_tflite(
     name = "framework_stable",
     srcs = STABLE_FRAMEWORK_LIB_IMPL_HDRS,
@@ -592,8 +590,6 @@ cc_library(
 # This target has restricted visibility; for a public target that exposes
 # these APIs, see 'framework_stable' above.
 #
-# TODO(b/298419516): remove the dependency on cpp_api_experimental once signature runner
-# has been promoted to stable in TFLite-in-Play-Services.
 cc_library_with_tflite(
     name = "cc_api_stable",
     srcs = STABLE_FRAMEWORK_LIB_IMPL_HDRS,
