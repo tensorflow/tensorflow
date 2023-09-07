@@ -928,6 +928,7 @@ tf_python_pybind_extension(
     ],
     deps = [
         ":pywrap_saved_model_headers",
+        # placeholder for index annotation deps
         "//tensorflow/cc/experimental/libexport:save",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/core:protos_all_cc",

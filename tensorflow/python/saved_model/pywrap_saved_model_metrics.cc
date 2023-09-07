@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/python/saved_model/pywrap_saved_model_metrics.h"
+
 #include <exception>
 #include <string>
 #include <utility>
