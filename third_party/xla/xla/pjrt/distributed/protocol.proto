@@ -129,7 +129,9 @@ service DistributedRuntimeService {
   // Connects a node to the distributed coordinator node. Blocks until all tasks
   // have connected. The service receives the number of nodes to expect as an
   // option passed to its constructor.
-  rpc Connect(ConnectRequest) returns (ConnectResponse) {}
+  rpc Connect(ConnectRequest) returns (ConnectResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // Blocking enumeration of devices, used by the GPU backend only.
   // In parallel, all clients call EnumerateDevices() with their local device
@@ -140,7 +142,9 @@ service DistributedRuntimeService {
   // Health-checking RPC. Workers send heartbeats to the coordinator at regular
   // intervals. If the worker does not hear from the coordinator or the
   // coordinator does not hear from the tasks, the tasks abort.
-  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse) {}
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // Shutdown RPC. Workers send this RPC when they are ready to shut down; the
   // RPC blocks until all tasks have indicated they are ready to shut down,
