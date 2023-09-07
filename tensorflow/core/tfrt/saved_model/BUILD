@@ -141,7 +141,6 @@ cc_library(
         "@tf_runtime//:support",
     ] + if_google([
         "//third_party/tf_runtime_google:streamz_metrics_registry_alwayslink",
-        "//learning/brain/tfrt/mlrt/application/pathways:model_config_impl",
     ]),
 )
 
@@ -195,6 +194,7 @@ cc_library(
     ] + if_google([
         "//learning/brain/tfrt/support:export_mlir",
         "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
+        "//learning/brain/tfrt/mlrt/application/pathways:model_config_impl",
     ]),
 )
 
