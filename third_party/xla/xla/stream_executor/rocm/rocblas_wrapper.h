@@ -263,6 +263,7 @@ using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
   __macro(rocblas_ztrsm_batched)                \
   __macro(rocblas_create_handle)                \
   __macro(rocblas_destroy_handle)               \
+  __macro(rocblas_get_stream)                   \
   __macro(rocblas_set_stream)                   \
   __macro(rocblas_set_atomics_mode)
 

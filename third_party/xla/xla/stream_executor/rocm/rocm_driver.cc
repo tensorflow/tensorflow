@@ -588,6 +588,47 @@ static std::string_view StreamCaptureModeToString(
   return ::tsl::OkStatus();
 }
 
+/* static */ tsl::StatusOr<GpuDriver::GraphNodeType>
+GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
+  hipGraphNodeType node_type = hipGraphNodeTypeCount;
+  RETURN_IF_ROCM_ERROR(hipGraphNodeGetType(node, &node_type),
+                       "Failed to get HIP graph node type");
+
+  switch (node_type) {
+    case hipGraphNodeTypeCount:
+      break;
+    case hipGraphNodeTypeKernel:
+      return GraphNodeType::kKernel;
+    case hipGraphNodeTypeMemcpy:
+    case hipGraphNodeTypeMemcpyFromSymbol:
+    case hipGraphNodeTypeMemcpyToSymbol:
+      return GraphNodeType::kMemcpy;
+    case hipGraphNodeTypeMemset:
+      return GraphNodeType::kMemset;
+    case hipGraphNodeTypeHost:
+      return GraphNodeType::kHost;
+    case hipGraphNodeTypeGraph:
+      return GraphNodeType::kGraph;
+    case hipGraphNodeTypeEmpty:
+      return GraphNodeType::kEmpty;
+    case hipGraphNodeTypeWaitEvent:
+      return GraphNodeType::kWaitEvent;
+    case hipGraphNodeTypeEventRecord:
+      return GraphNodeType::kEventRecord;
+    case hipGraphNodeTypeExtSemaphoreSignal:
+      return GraphNodeType::kExtSemasSignal;
+    case hipGraphNodeTypeExtSemaphoreWait:
+      return GraphNodeType::kExtSemasWait;
+    case hipGraphNodeTypeMemAlloc:
+      return GraphNodeType::kMemAlloc;
+    case hipGraphNodeTypeMemFree:
+      return GraphNodeType::kMemFree;
+  }
+
+  return tsl::Status(absl::StatusCode::kInternal,
+                     "Invalid HIP graph node type");
+}
+
 /* static */ tsl::Status GpuDriver::GraphDebugDotPrint(hipGraph_t graph,
                                                        const char* path) {
   VLOG(2) << "Print HIP graph " << graph << " debug dot file to " << path;

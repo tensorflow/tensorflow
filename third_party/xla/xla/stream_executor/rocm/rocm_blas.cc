@@ -136,6 +136,29 @@ bool ROCMBlas::SetStream(Stream *stream) {
   CHECK(AsGpuStreamValue(stream) != nullptr);
   CHECK(blas_ != nullptr);
   gpu::ScopedActivateExecutorContext sac{parent_};
+
+  hipStream_t current_stream;
+  rocblas_status get_current_stream =
+      wrap::rocblas_get_stream(blas_, &current_stream);
+  if (get_current_stream != rocblas_status_success) {
+    LOG(ERROR) << "failed to get current stream for rocBLAS calls: "
+               << ToString(get_current_stream);
+    return false;
+  }
+
+  // Do not set stream if it's already set
+  if (current_stream == ROCMStream(stream)) return true;
+
+  // Check the set stream is not in capture mode
+  hipStreamCaptureStatus capture_status;
+  hipStreamIsCapturing(ROCMStream(stream), &capture_status);
+  if (capture_status == hipStreamCaptureStatusActive) {
+    LOG(ERROR)
+        << "ROCmblasSetStream should not be called during graph capture, "
+           "since it will reset rocBLAS workspace";
+    return false;
+  }
+
   rocblas_status ret =
       wrap::rocblas_set_stream(blas_, AsGpuStreamValue(stream));
   if (ret != rocblas_status_success) {
@@ -144,6 +167,13 @@ bool ROCMBlas::SetStream(Stream *stream) {
   }
 
   return true;
+}
+
+hipStream_t ROCMBlas::ROCMStream(Stream *stream) {
+  CHECK(stream != nullptr);
+  CHECK(AsGpuStreamValue(stream) != nullptr);
+  gpu::ScopedActivateExecutorContext sac{parent_};
+  return AsGpuStreamValue(stream);
 }
 
 namespace {

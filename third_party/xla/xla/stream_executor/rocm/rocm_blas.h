@@ -108,6 +108,9 @@ class ROCMBlas : public blas::BlasSupport {
   // invoked before calling into rocBLAS.
   bool SetStream(Stream *stream) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Returns the underlying ROCm stream
+  hipStream_t ROCMStream(Stream *stream);
+
   // A helper function that calls the real rocBLAS function together with error
   // handling.
   //
