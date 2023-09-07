@@ -115,6 +115,10 @@
   `tensorflow.ConfigProto.Experimental` to control the eager runtime's behavior
   around parallel remote function invocations; when set to `True`, the eager
   runtime will be allowed to execute multiple function invocations in parallel.
+* `tf.constant_initializer`
+    * It now takes a new argument called `support_partition`.
+    If True, constant_initializers can create sharded variables.
+    This is disabled by default, similar to existing behavior.
 
 * `tf.lite`
     * Added support for `stablehlo.scatter`.
