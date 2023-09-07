@@ -1938,19 +1938,22 @@ def tf_kernel_library(
         gpu_copts = None,
         is_external = False,
         compatible_with = None,
+        textual_hdrs = None,
         **kwargs):
     """A rule to build a TensorFlow OpKernel.
 
       May either specify srcs/hdrs or prefix.  Similar to tf_gpu_library,
       but with alwayslink=1 by default.  If prefix is specified:
         * prefix*.cc (except *.cu.cc) is added to srcs
-        * prefix*.h (except *.cu.h) is added to hdrs
+        * prefix*.h (except *.cu.h, *impl.h) is added to hdrs
         * prefix*.cu.cc and prefix*.h (including *.cu.h) are added to gpu_srcs.
+        * prefix*impl.h is added to textual_hdrs
       With the exception that test files are excluded.
       For example, with prefix = "cast_op",
         * srcs = ["cast_op.cc"]
         * hdrs = ["cast_op.h"]
         * gpu_srcs = ["cast_op_gpu.cu.cc", "cast_op.h"]
+        * textual_hdrs = ["cast_op_impl.h"]
         * "cast_op_test.cc" is excluded
       With prefix = "cwise_op"
         * srcs = ["cwise_op_abs.cc", ..., "cwise_op_tanh.cc"],
@@ -1972,7 +1975,8 @@ def tf_kernel_library(
         copts = []
     if not gpu_copts:
         gpu_copts = []
-    textual_hdrs = []
+    if not textual_hdrs:
+        textual_hdrs = []
     copts = copts + tf_copts(is_external = is_external) + if_cuda(["-DNV_CUDNN_DISABLE_EXCEPTION"])
 
     # Override EIGEN_STRONG_INLINE to inline when
@@ -2034,7 +2038,7 @@ def tf_kernel_library(
     # TODO(gunan): CUDA dependency not clear here. Fix it.
     tf_cc_shared_object(
         name = "libtfkernel_%s.so" % name,
-        srcs = srcs + hdrs,
+        srcs = srcs + hdrs + textual_hdrs,
         copts = copts,
         tags = ["manual", "notap"],
         deps = deps,

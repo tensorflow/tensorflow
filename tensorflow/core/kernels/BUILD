@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -17,6 +17,7 @@ load(
     "tf_cuda_only_cc_test",
     "tf_opts_nortti_if_lite_protos",
 )
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
     "if_mlir_generated_experimental_kernels_enabled",
@@ -27,17 +28,16 @@ load(
     "tf_fingerprint_deps",
 )
 load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
-    "mkl_deps",
-)
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
-load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
     "tf_cuda_tests_tags",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+    "mkl_deps",
+)
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
@@ -116,7 +116,6 @@ tf_kernel_library(
     hdrs = [
         "slice_op.h",
         "strided_slice_op.h",
-        "strided_slice_op_impl.h",
     ],
     gpu_srcs = [
         "slice_op.h",
@@ -128,6 +127,7 @@ tf_kernel_library(
         "strided_slice_op_gpu_bool.cu.cc",
         "strided_slice_op_gpu_number_types.cu.cc",
     ],
+    textual_hdrs = ["strided_slice_op_impl.h"],
     deps = [
         ":dense_update_functor",
         ":inplace_ops",
@@ -3462,9 +3462,8 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "matmul_op",
-    # <prefix>*impl.h are excluded by default from the CPU build, add explicitly.
-    hdrs = ["matmul_op_impl.h"],
     prefix = "matmul_op",
+    textual_hdrs = ["matmul_op_impl.h"],
     deps = MATH_DEPS + [
         ":fused_eigen_output_kernels",
         ":loose_headers",
@@ -4031,11 +4030,8 @@ tf_kernel_library(
         "deep_conv2d.cc",
     ],
     hdrs = [
-        "autotune_conv_impl.h",
         "conv_grad_input_ops.h",
         "conv_grad_ops.h",
-        "conv_ops_fused_impl.h",
-        "conv_ops_impl.h",
         "deep_conv2d.h",
         "fill_functor.h",
         "gemm_functors.h",
@@ -4045,6 +4041,11 @@ tf_kernel_library(
         "EIGEN_NEON_GEBP_NR=4",
     ],
     prefix = "conv_ops",
+    textual_hdrs = [
+        "autotune_conv_impl.h",
+        "conv_ops_fused_impl.h",
+        "conv_ops_impl.h",
+    ],
     deps = [
         ":cast_op",
         ":conv_2d",
@@ -5383,7 +5384,6 @@ tf_kernel_library(
     ],
     hdrs = [
         "scatter_nd_op.h",
-        "scatter_nd_op_cpu_impl.h",
     ],
     gpu_copts = if_not_windows([
         "-Wno-pass-failed",  # clang misses #pragma loop optimizations
@@ -5391,6 +5391,9 @@ tf_kernel_library(
     gpu_srcs = [
         "scatter_nd_op.h",
         "scatter_nd_op_gpu.cu.cc",
+    ],
+    textual_hdrs = [
+        "scatter_nd_op_cpu_impl.h",
     ],
     deps = STATE_DEPS + [
         ":dense_update_functor",

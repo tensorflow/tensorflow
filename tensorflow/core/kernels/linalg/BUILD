@@ -1,14 +1,14 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_kernel_library")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_kernel_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -212,8 +212,8 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "matrix_triangular_solve_op",
-    hdrs = ["matrix_triangular_solve_op_impl.h"],
     prefix = "matrix_triangular_solve_op",
+    textual_hdrs = ["matrix_triangular_solve_op_impl.h"],
     deps = [
         ":linalg_ops_common",
         "//tensorflow/core:framework",
