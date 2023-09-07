@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
@@ -1493,8 +1494,16 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
   Value unquantized_bias = tfl_conv2d_op.getBias();
   Type bias_ety =
       output_is_qtype ? rewriter.getI32Type() : output_type.getElementType();
-  if (unquantized_bias)
-    bias_ety = unquantized_bias.getType().cast<ShapedType>().getElementType();
+  if (unquantized_bias) {
+    Type new_bias_ety = getElementTypeOrSelf(unquantized_bias.getType());
+    if (auto qtype = new_bias_ety.dyn_cast<mlir::quant::QuantizedType>()) {
+      new_bias_ety = qtype.getStorageType();
+    }
+    if (new_bias_ety.getIntOrFloatBitWidth() >
+        bias_ety.getIntOrFloatBitWidth()) {
+      bias_ety = new_bias_ety;
+    }
+  }
 
   auto a1_conv2d_op = CreateOpAndInfer<tosa::Conv2DOp>(
       rewriter, op->getLoc(), output_type.clone(bias_ety),
@@ -1845,11 +1854,20 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
       a1_filter_transpose_op.getResult(),
       rewriter.getDenseI64ArrayAttr(a2_reshape_dims));
 
-  Value unquantized_bias = tfl_conv2d_op.getBias();
   Type bias_ety =
       output_is_qtype ? rewriter.getI32Type() : output_type.getElementType();
-  if (unquantized_bias)
-    bias_ety = unquantized_bias.getType().cast<ShapedType>().getElementType();
+
+  Value unquantized_bias = tfl_conv2d_op.getBias();
+  if (unquantized_bias) {
+    Type new_bias_ety = getElementTypeOrSelf(unquantized_bias.getType());
+    if (auto qtype = new_bias_ety.dyn_cast<mlir::quant::QuantizedType>()) {
+      new_bias_ety = qtype.getStorageType();
+    }
+    if (new_bias_ety.getIntOrFloatBitWidth() >
+        bias_ety.getIntOrFloatBitWidth()) {
+      bias_ety = new_bias_ety;
+    }
+  }
 
   auto a3_depthwise_conv2d_op = CreateOpAndInfer<tosa::DepthwiseConv2DOp>(
       rewriter, op->getLoc(), output_type.clone(bias_ety),
