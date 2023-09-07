@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
@@ -40,6 +41,9 @@ void MklTestingUtil::RunMklQuantizeOp(const Tensor& input,
   Node* max_node = test::graph::Constant(&*graph, Tensor(max), "max");
 
   Node* quantize_op;
+  string round_mode =
+      (mode == "SCALE") ? "HALF_TO_EVEN" : "HALF_AWAY_FROM_ZERO";
+
   TF_CHECK_OK(NodeBuilder("mkl_quantizeV2", "_MklQuantizeV2")
                   .Input(input_node)
                   .Input(min_node)
