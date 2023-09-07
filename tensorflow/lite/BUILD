@@ -449,7 +449,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":string",
-        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -1314,7 +1314,7 @@ cc_library(
     name = "stateful_error_reporter",
     hdrs = ["stateful_error_reporter.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["//tensorflow/lite/core/api"],
+    deps = ["//tensorflow/lite/core/api:error_reporter"],
 )
 
 # Shared lib target for convenience, pulls in the core runtime and builtin ops.
