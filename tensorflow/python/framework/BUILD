@@ -766,6 +766,10 @@ cc_library(
 tf_python_pybind_extension(
     name = "_py_context_manager",
     srcs = ["py_context_manager_pybind.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_py_context_manager.pyi",
+    ],
     deps = [
         ":py_context_manager",
         "//third_party/python_runtime:headers",
@@ -811,6 +815,10 @@ cc_library(
 tf_python_pybind_extension(
     name = "_op_def_util",
     srcs = ["op_def_util_pybind.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_op_def_util.pyi",
+    ],
     deps = [
         ":op_def_util_headers",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -980,6 +988,10 @@ tf_python_pybind_extension(
         "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
         "@local_tsl//tsl/python/lib/core:numpy_hdr",
     ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_python_api_info.pyi",
+    ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
@@ -1054,6 +1066,10 @@ tf_python_pybind_extension(
         "python_api_dispatcher.h",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_python_api_dispatcher.pyi",
+    ],
     deps = [
         "//tensorflow/python/util:function_parameter_canonicalizer_hdrs",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
@@ -1114,6 +1130,10 @@ tf_python_pybind_extension(
         "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
         "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
         "@local_tsl//tsl/python/lib/core:numpy_hdr",
+    ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_python_tensor_converter.pyi",
     ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
