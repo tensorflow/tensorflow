@@ -152,9 +152,9 @@ class RamBudgetManager {
  public:
   explicit RamBudgetManager(int64_t budget) : budget_(budget) {
     if (budget <= 0) {
-      LOG(ERROR) << "RAM budget is " << budget
-                 << " which could prevent autotuner from properly adjusting "
-                    "buffer sizes.";
+      LOG(WARNING) << "RAM budget is " << budget
+                   << " which could prevent autotuner from properly adjusting "
+                      "buffer sizes.";
     }
   }
 
