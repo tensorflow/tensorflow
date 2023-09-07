@@ -220,14 +220,15 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
         cost_analysis->operand_utilization(*u, u->operand_index(producer));
     total_producer_utilization += utilization_by_this_consumer;
 
-    auto thread_count = EstimateThreadCount(u, *cost_analysis->device_info_);
-    int64_t upper_bound =
+    int64_t num_threads =
         producer_data.elements_out * utilization_by_this_consumer;
+    if (auto thread_count =
+            EstimateThreadCount(u, *cost_analysis->device_info_)) {
+      num_threads = std::min(*thread_count, num_threads);
+    }
     absl::Duration compute_time_by_this_consumer = ComputeTime(
         *cost_analysis->device_info_,
-        producer_data.flops * utilization_by_this_consumer,
-        thread_count.has_value() ? std::min(*thread_count, upper_bound)
-                                 : upper_bound);
+        producer_data.flops * utilization_by_this_consumer, num_threads);
     exec_time_fused +=
         std::max(compute_time_by_this_consumer,
                  ProducerInputAccessTime(
