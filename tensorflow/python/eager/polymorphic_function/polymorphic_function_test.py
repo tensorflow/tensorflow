@@ -480,6 +480,32 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(not_present, 2, fdefs)
       self.assertEqual(present, 1, fdefs)
 
+  def testDisableACDAttribute(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    def foo(x, y):
+      nonlocal v
+      t = v.read_value()
+      v.assign_add(x + y)
+      return t
+
+    with_acd = polymorphic_function.function(foo)
+    without_acd = polymorphic_function.function(
+        foo, experimental_attributes={'_disable_acd': True}
+    )
+
+    with_acd_control_outputs = with_acd.get_concrete_function(
+        tensor_lib.TensorSpec(shape=None, dtype=dtypes.float32),
+        tensor_lib.TensorSpec(shape=None, dtype=dtypes.float32),
+    ).graph.control_outputs
+    without_acd_control_outputs = without_acd.get_concrete_function(
+        tensor_lib.TensorSpec(shape=None, dtype=dtypes.float32),
+        tensor_lib.TensorSpec(shape=None, dtype=dtypes.float32),
+    ).graph.control_outputs
+
+    self.assertLen(with_acd_control_outputs, 2)
+    self.assertEmpty(without_acd_control_outputs)
+
   def testReduceTracingWithNestedTFFunction(self):
     v = resource_variable_ops.ResourceVariable([1., 2.])
 
