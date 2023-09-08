@@ -803,9 +803,11 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
   } else if (hlo->opcode() == HloOpcode::kReduce) {
     const auto reduce = Cast<HloReduceInstruction>(hlo);
     dst_logical.resize(src_logical.size() + reduce->dimensions().size());
-    auto reduce_dim_it = reduce->dimensions().cbegin();
+    if (reduce->dimensions().size() != 1) {
+      return FusionDecision("Unsupported reduction.");
+    }
     for (int i = 0; i < dst_logical.size(); ++i) {
-      if (i == *reduce_dim_it) {
+      if (i == reduce->dimensions().front()) {
         // This way to assign the reduction dimension will only work for
         // softmax fusions with known patterns for now. Generally a reduction
         // should create a new tiled dimension.
@@ -814,8 +816,7 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
                 .softmax_reduction_dimension,
             reduce->operand(0)->shape().dimensions(i))};
       } else {
-        dst_logical[i] =
-            src_logical[i - (reduce_dim_it - reduce->dimensions().cbegin())];
+        dst_logical[i] = src_logical[i];
       }
     }
   } else if (hlo->opcode() == HloOpcode::kCopy) {
