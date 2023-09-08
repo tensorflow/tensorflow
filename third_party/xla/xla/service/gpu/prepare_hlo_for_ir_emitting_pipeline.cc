@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <utility>
 
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/copy_insertion.h"
@@ -38,9 +37,9 @@ namespace xla {
 namespace gpu {
 
 HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
-    HloModule* hlo_module,
+    HloModule& hlo_module,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer) {
-  const DebugOptions& debug_options = hlo_module->config().debug_options();
+  const DebugOptions& debug_options = hlo_module.config().debug_options();
 
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
@@ -64,7 +63,7 @@ HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
   // (and sometime after) copy insertion, to avoid dead code from interfering
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
-  if (hlo_module->config().alias_passthrough_params()) {
+  if (hlo_module.config().alias_passthrough_params()) {
     pipeline.AddPass<AliasPassthroughParams>();
   }
   pipeline.AddPass<LoopScheduleLinearizer>(can_share_buffer);

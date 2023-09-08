@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -49,14 +48,13 @@ HloPassPipeline FusionPipeline(
   // We try to split variadic ops with many parameters into several such ops
   // to avoid exceeding the parameter space.
   fusion.AddPass<VariadicOpSplitter>();
-  std::unique_ptr<TargetVerifierMetadata> verifier_metadata =
+  fusion.AddInvariantCheckerDebug<HloVerifier>(
       std::make_unique<GpuVerifierMetadata>(
-          HloVerifierOpts{}
+          HloVerifierOpts()
               .MakeLayoutSensitive()
               .WithInstructionCanChangeLayout(
-                  LayoutAssignment::InstructionCanChangeLayout));
-  fusion.AddInvariantCheckerDebug<HloVerifier>(std::move(verifier_metadata),
-                                               "hlo verifier (debug)");
+                  LayoutAssignment::InstructionCanChangeLayout)),
+      "hlo verifier (debug)");
 
   GpuHloCostAnalysis::Options cost_analysis_options{
       shape_size_bytes_function,

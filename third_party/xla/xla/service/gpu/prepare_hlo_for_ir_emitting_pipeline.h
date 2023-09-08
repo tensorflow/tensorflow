@@ -27,7 +27,7 @@ namespace gpu {
 // pipeline. This pipeline must be run right before IR emission to ensure
 // correctness of the input module.
 HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
-    HloModule* hlo_module,
+    HloModule& hlo_module,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer);
 
 }  // namespace gpu
