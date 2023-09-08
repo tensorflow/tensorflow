@@ -49,6 +49,7 @@ if(NOT TENSORFLOW_SOURCE_DIR)
   )
 endif()
 set(TF_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow")
+set(TSL_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/third_party/tsl")
 set(TFLITE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(CMAKE_MODULE_PATH
   "${TFLITE_SOURCE_DIR}/tools/cmake/modules"
@@ -156,10 +157,9 @@ endif()
 find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
 find_package(ml_dtypes REQUIRED)
 find_package(ruy REQUIRED)
-# Include TSL/XLA, which is in tensorflow/third_party
+# Include TSL, which is in tensorflow/third_party
 include_directories(
-  ${TF_SOURCE_DIR}/../third_party/xla
-  ${TF_SOURCE_DIR}/../third_party/xla/third_party/tsl
+  ${TSL_SOURCE_DIR}
 )
 # Download necessary dependencies.
 # Download pthreadpool source package if it doesn't exist.
