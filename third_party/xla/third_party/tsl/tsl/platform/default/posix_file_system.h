@@ -25,7 +25,7 @@ class PosixFileSystem : public FileSystem {
  public:
   PosixFileSystem() {}
 
-  ~PosixFileSystem() {}
+  ~PosixFileSystem() override {}
 
   TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
