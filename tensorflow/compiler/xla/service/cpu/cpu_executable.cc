@@ -58,53 +58,60 @@ namespace cpu {
 
 namespace runtime = ::xla::runtime;
 
-CpuExecutable::CpuExecutable(
+StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module,
     const std::string& entry_function_name,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
-    : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
-                 std::move(hlo_profile_index_map)),
-      jit_(std::move(jit)),
-      assignment_(std::move(assignment)),
-      module_name_(entry_function_name) {
-  if (assignment_) {
-    buffer_assignment_ =
-        std::make_shared<BufferAssignmentProto>(assignment_->ToProto());
-  }
-  if (has_module()) {
-    XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
-                                               buffer_assignment_);
-  }
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map) {
+  std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
+      std::move(hlo_module), std::move(hlo_profile_printer_data),
+      std::move(hlo_profile_index_map), std::move(assignment)));
+  executable->jit_ = std::move(jit);
+  executable->module_name_ = entry_function_name;
 
   // Resolve symbols in the constructor rather than at execution time to avoid
   // races because FindSymbol is not thread safe.
   llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
-      jit_->FindCompiledSymbol(entry_function_name);
+      executable->jit_->FindCompiledSymbol(entry_function_name);
   // We expect to find the symbol provided with entry_function_name; otherwise
   // this is an internal error.
-  CHECK(sym->getAddress()) << "Symbol " << entry_function_name << " not found.";
+  if (!sym) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Symbol ", entry_function_name, " not found."));
+  }
   // getAddress can do work under the hood in the jit, so it needs to be
   // guarded by the mutex.
-  compute_function_ =
+  executable->compute_function_ =
       reinterpret_cast<ComputeFunctionType>(sym->getAddress().getValue());
   VLOG(1) << "compute_function_ at address "
-          << reinterpret_cast<void*>(compute_function_);
-  jit_->DoneCompiling();
+          << reinterpret_cast<void*>(executable->compute_function_);
+  executable->jit_->DoneCompiling();
+  return executable;
+}
+
+StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
+    std::unique_ptr<HloModule> hlo_module,
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+    std::unique_ptr<const BufferAssignment> assignment,
+    std::unique_ptr<XlaRuntimeCpuExecutable> xla_runtime_executable) {
+  std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
+      std::move(hlo_module), std::move(hlo_profile_printer_data),
+      std::move(hlo_profile_index_map), std::move(assignment)));
+  executable->xla_runtime_executable_ = std::move(xla_runtime_executable);
+  return executable;
 }
 
 CpuExecutable::CpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-    std::unique_ptr<const BufferAssignment> assignment,
-    std::unique_ptr<XlaRuntimeCpuExecutable> xla_runtime_executable)
+    std::unique_ptr<const BufferAssignment> assignment)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
-      assignment_(std::move(assignment)),
-      xla_runtime_executable_(std::move(xla_runtime_executable)) {
+      assignment_(std::move(assignment)) {
   if (assignment_) {
     buffer_assignment_ =
         std::make_shared<BufferAssignmentProto>(assignment_->ToProto());
@@ -328,9 +335,9 @@ StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
       std::move(executable_ptr), xla_framework_mapping,
       std::move(*ffi_modules_state));
 
-  return std::unique_ptr<Executable>(new CpuExecutable(
-      std::move(hlo_module), nullptr, nullptr, std::move(buffer_assignment),
-      std::move(xla_runtime_executable)));
+  return CpuExecutable::Create(std::move(hlo_module), nullptr, nullptr,
+                               std::move(buffer_assignment),
+                               std::move(xla_runtime_executable));
 }
 
 StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
