@@ -33,6 +33,7 @@ cc_library(
     name = "inference_metrics_pass",
     srcs = ["inference_metrics_pass.cc"],
     hdrs = ["inference_passes.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":inference_passes_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
