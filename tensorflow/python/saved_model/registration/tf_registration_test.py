@@ -31,6 +31,9 @@ SERIALIZABLE_ALLOWLIST = os.path.join(resource_loader.get_data_files_path(),
 CHECKPOINT_SAVER_ALLOWLIST = os.path.join(resource_loader.get_data_files_path(),
                                           "tf_checkpoint_saver_allowlist.txt")
 
+# call TPUEmbedding to load the file and run its registration
+_ = tf.tpu.experimental.embedding.TPUEmbedding
+
 
 @registration.register_tf_serializable()
 class NotInAllowlistExample(tf.Variable):

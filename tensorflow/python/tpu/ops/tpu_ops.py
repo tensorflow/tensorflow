@@ -26,6 +26,9 @@ from tensorflow.python.tpu import tpu_function
 from tensorflow.python.util.tf_export import tf_export
 
 
+ops.NotDifferentiable("TPUReplicatedInput")
+
+
 def _create_default_group_assignment():
   num_shards = tpu_function.get_tpu_context().number_of_shards
   if num_shards is None:
