@@ -407,11 +407,6 @@ static void Init(py::module_& m) {
       .def("process_index", &PyClient::process_index)
       .def("host_id", &PyClient::process_index)
       .def("task_id", &PyClient::process_index)
-      .def("get_default_device_assignment",
-           xla::ValueOrThrowWrapper(&PyClient::GetDefaultDeviceAssignment))
-      // TODO(skye): delete after all callers can handle 2D output
-      .def("get_default_device_assignment",
-           xla::ValueOrThrowWrapper(&PyClient::GetDefaultDeviceAssignment1D))
       .def(
           "buffer_from_pyval",
           [](py::handle py_client, py::handle argument, py::handle py_device,
