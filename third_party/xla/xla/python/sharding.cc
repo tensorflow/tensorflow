@@ -40,7 +40,7 @@ namespace py = pybind11;
 
 bool (*GetEnableMemories)() = +[] {
   static bool fetch_memory_kind_on_executable = [] {
-    char* v = getenv("JAX_ENABLE_MEMORY_KIND");
+    char* v = getenv("JAX_ENABLE_MEMORIES");
     if (v == nullptr || *v == '\0') {
       return false;
     }
