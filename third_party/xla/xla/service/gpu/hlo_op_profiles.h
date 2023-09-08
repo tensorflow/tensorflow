@@ -589,142 +589,141 @@ constexpr char kDeviceHloOpProfiles[] = R"pb(
     }
   }
 
-  entries {
-    key: "sm_80"
-    value {
-      entries {
-        instruction {
-          opcode: "divide"
-          shape { element_type: S8 }
-        }
-        clock_cycles: 417
-      }
-      entries {
-        instruction {
-          opcode: "divide"
-          shape { element_type: S16 }
-        }
-        clock_cycles: 468
-      }
-      entries {
-        instruction {
-          opcode: "divide"
-          shape { element_type: S64 }
-        }
-        clock_cycles: 1094
-      }
-      entries {
-        instruction {
-          opcode: "divide"
-          shape { element_type: U8 }
-        }
-        clock_cycles: 420
-      }
-      entries {
-        instruction {
-          opcode: "power"
-          shape { element_type: U8 }
-        }
-        clock_cycles: 417
-      }
-      entries {
-        instruction {
-          opcode: "divide"
-          shape { element_type: U16 }
-        }
-        clock_cycles: 391
-      }
-      entries {
-        instruction {
-          opcode: "power"
-          shape { element_type: U16 }
-        }
-        clock_cycles: 454
-      }
-      entries {
-        instruction {
-          opcode: "divide"
-          shape { element_type: U64 }
-        }
-        clock_cycles: 908
-      }
-      entries {
-        instruction {
-          opcode: "power"
-          shape { element_type: U64 }
-        }
-        clock_cycles: 744
-      }
-      entries {
-        instruction {
-          opcode: "cbrt"
-          shape { element_type: F16 }
-        }
-        clock_cycles: 1195
-      }
-      entries {
-        instruction {
-          opcode: "log"
-          shape { element_type: F16 }
-        }
-        clock_cycles: 321
-      }
-      entries {
-        instruction {
-          opcode: "log-plus-one"
-          shape { element_type: F16 }
-        }
-        clock_cycles: 346
-      }
-      entries {
-        instruction {
-          opcode: "sqrt"
-          shape { element_type: F16 }
-        }
-        clock_cycles: 124
-      }
-      entries {
-        instruction {
-          opcode: "tanh"
-          shape { element_type: F16 }
-        }
-        clock_cycles: 499
-      }
-      entries {
-        instruction {
-          opcode: "log"
-          shape { element_type: F32 }
-        }
-        clock_cycles: 259
-      }
-      entries {
-        instruction {
-          opcode: "tanh"
-          shape { element_type: F32 }
-        }
-        clock_cycles: 504
-      }
-      entries {
-        instruction {
-          opcode: "power"
-          shape { element_type: F32 }
-        }
-        clock_cycles: 1221
-      }
-      entries {
-        instruction {
-          opcode: "cbrt"
-          shape { element_type: F64 }
-        }
-        clock_cycles: 1638
-      }
-      entries {
-        instruction {
-          opcode: "exponential-minus-one"
-          shape { element_type: F64 }
-        }
-        clock_cycles: 572
-      }
+  entries { key: "sm_80"
+            value { entries {
+              instruction {
+                opcode: "divide"
+                shape { element_type: S8 }
+              }
+              clock_cycles: 417
+            }
+                    entries {
+                      instruction {
+                        opcode: "divide"
+                        shape { element_type: S16 }
+                      }
+                      clock_cycles: 468
+                    }
+                    entries {
+                      instruction {
+                        opcode: "divide"
+                        shape { element_type: S64 }
+                      }
+                      clock_cycles: 1094
+                    }
+                    entries {
+                      instruction {
+                        opcode: "divide"
+                        shape { element_type: U8 }
+                      }
+                      clock_cycles: 420
+                    }
+                    entries {
+                      instruction {
+                        opcode: "power"
+                        shape { element_type: U8 }
+                      }
+                      clock_cycles: 417
+                    }
+                    entries {
+                      instruction {
+                        opcode: "divide"
+                        shape { element_type: U16 }
+                      }
+                      clock_cycles: 391
+                    }
+                    entries {
+                      instruction {
+                        opcode: "power"
+                        shape { element_type: U16 }
+                      }
+                      clock_cycles: 454
+                    }
+                    entries {
+                      instruction {
+                        opcode: "divide"
+                        shape { element_type: U64 }
+                      }
+                      clock_cycles: 908
+                    }
+                    entries {
+                      instruction {
+                        opcode: "power"
+                        shape { element_type: U64 }
+                      }
+                      clock_cycles: 744
+                    }
+                    entries {
+                      instruction {
+                        opcode: "cbrt"
+                        shape { element_type: F16 }
+                      }
+                      clock_cycles: 1195
+                    }
+                    entries {
+                      instruction {
+                        opcode: "log"
+                        shape { element_type: F16 }
+                      }
+                      clock_cycles: 321
+                    }
+                    entries {
+                      instruction {
+                        opcode: "log-plus-one"
+                        shape { element_type: F16 }
+                      }
+                      clock_cycles: 346
+                    }
+                    entries {
+                      instruction {
+                        opcode: "sqrt"
+                        shape { element_type: F16 }
+                      }
+                      clock_cycles: 124
+                    }
+                    entries {
+                      instruction {
+                        opcode: "tanh"
+                        shape { element_type: F16 }
+                      }
+                      clock_cycles: 499
+                    }
+                    entries {
+                      instruction {
+                        opcode: "log"
+                        shape { element_type: F32 }
+                      }
+                      clock_cycles: 259
+                    }
+                    entries {
+                      instruction {
+                        opcode: "tanh"
+                        shape { element_type: F32 }
+                      }
+                      clock_cycles: 504
+                    }
+                    entries {
+                      instruction {
+                        opcode: "power"
+                        shape { element_type: F32 }
+                      }
+                      clock_cycles: 1221
+                    }
+                    entries {
+                      instruction {
+                        opcode: "cbrt"
+                        shape { element_type: F64 }
+                      }
+                      clock_cycles: 1638
+                    }
+                    entries {
+                      instruction {
+                        opcode: "exponential-minus-one"
+                        shape { element_type: F64 }
+                      }
+                      clock_cycles: 572
+                    })pb"
+                                        R"pb(
       entries {
         instruction {
           opcode: "log"
@@ -887,7 +886,7 @@ constexpr char kDeviceHloOpProfiles[] = R"pb(
         clock_cycles: 6054
       }
     }
-  }
+        }
 
   entries {
     key: "sm_70"
@@ -1486,6 +1485,8 @@ constexpr char kDeviceHloOpProfiles[] = R"pb(
         }
         clock_cycles: 435
       }
+      )pb"
+                                        R"pb(
       entries {
         instruction {
           opcode: "log-plus-one"
@@ -1767,7 +1768,7 @@ constexpr char kDeviceHloOpProfiles[] = R"pb(
         clock_cycles: 10458
       }
     }
-  }
+        }
 
   entries {
     key: "sm_75"
@@ -2038,6 +2039,8 @@ constexpr char kDeviceHloOpProfiles[] = R"pb(
         }
         clock_cycles: 74
       }
+      )pb"
+                                        R"pb(
       entries {
         instruction {
           opcode: "tanh"
@@ -2361,7 +2364,7 @@ constexpr char kDeviceHloOpProfiles[] = R"pb(
         clock_cycles: 97
       }
     }
-  }
+        }
 )pb";
 
 }  // namespace gpu

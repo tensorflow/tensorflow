@@ -522,7 +522,8 @@ $L__BB1_8:
 $L__BB1_9:
 	ret;
 
-}
+})"
+                                        R"(
 	// .globl	__xla_fp16_comparison
 .visible .entry __xla_fp16_comparison(
 	.param .u64 __xla_fp16_comparison_param_0,

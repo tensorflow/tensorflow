@@ -740,9 +740,9 @@ std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
   constexpr int kSufficientNumberOfTiles = 500;
   const int max_split_k =
       debug_options.xla_gpu_enable_split_k_autotuning()
-          ? std::max(1L, kSufficientNumberOfTiles * kMaxTileSize *
-                             kMaxTileSize /
-                             ShapeUtil::ElementsIn(instr.shape()))
+          ? std::max<int64_t>(1L, kSufficientNumberOfTiles * kMaxTileSize *
+                                      kMaxTileSize /
+                                      ShapeUtil::ElementsIn(instr.shape()))
           : 1;
   return exhaustive_tiling_search
              ? GetExhaustiveMatmulAutotuneConfigs(compute_capability,
