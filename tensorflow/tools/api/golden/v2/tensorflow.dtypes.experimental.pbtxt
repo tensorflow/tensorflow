@@ -8,4 +8,12 @@ tf_module {
     name: "float8_e5m2"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
+  member {
+    name: "int4"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "uint4"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
 }

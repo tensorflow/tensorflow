@@ -37,6 +37,7 @@ cc_library(
     deps = [
         ":py_util",
         "//tensorflow/c:c_api_no_xla",
+        "//tensorflow/c:tf_datatype_hdrs",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@local_tsl//tsl/python/lib/core:ml_dtypes_lib",
