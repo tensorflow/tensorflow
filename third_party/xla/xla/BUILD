@@ -1,12 +1,12 @@
 # Placeholder: load py_proto_library
+load("//xla:xla.bzl", "xla_cc_test", "xla_py_proto_library")
+load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
-load("//xla:xla.bzl", "xla_cc_test", "xla_py_proto_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -209,6 +209,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings:str_format",
         "@eigen_archive//:eigen3",
+        "@ml_dtypes//:int4",
     ],
 )
 
