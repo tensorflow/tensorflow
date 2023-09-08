@@ -72,7 +72,8 @@ struct is_simple_type {
       is_quantized<T>::value || std::is_same<T, bfloat16>::value ||
       std::is_same<T, float8_e4m3fn>::value ||
       std::is_same<T, float8_e4m3b11>::value ||
-      std::is_same<T, float8_e5m2>::value;
+      std::is_same<T, float8_e5m2>::value || std::is_same<T, int4>::value ||
+      std::is_same<T, uint4>::value;
 };
 
 }  // namespace tsl

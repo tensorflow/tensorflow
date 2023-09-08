@@ -143,7 +143,7 @@ cc_library(
     hdrs = ["float8.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "@local_tsl//tsl/platform:float8",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
@@ -960,7 +960,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":bfloat16",
-        ":float8",
         ":platform",
         ":tstring",
         "@local_tsl//tsl/framework:device_type",

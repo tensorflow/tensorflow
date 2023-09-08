@@ -4,13 +4,13 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load("//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tsl:tsl.bzl",
     "if_not_fuchsia",
     "set_external_visibility",
     "tsl_copts",
 )
+load("//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tsl/platform:build_config.bzl",
     "tf_cuda_libdevice_path_deps",
@@ -28,6 +28,7 @@ load(
     "tsl_cc_test",
     "tsl_protobuf_deps",
 )
+load("//tsl/platform:build_config_root.bzl", "if_static")
 load(
     "//tsl/platform:rules_cc.bzl",
     "cc_library",
@@ -36,7 +37,6 @@ load(
     "@bazel_skylib//:bzl_library.bzl",
     "bzl_library",
 )
-load("//tsl/platform:build_config_root.bzl", "if_static")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -1042,7 +1042,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":bfloat16",
-        ":float8",
+        ":ml_dtypes",
         ":platform",
         ":tstring",
     ] + tf_platform_deps("types"),
@@ -1080,12 +1080,25 @@ cc_library(
 )
 
 cc_library(
-    name = "float8",
-    hdrs = ["float8.h"],
+    name = "ml_dtypes",
+    hdrs = ["ml_dtypes.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         "@ml_dtypes//:float8",
+        "@ml_dtypes//:int4",
+    ],
+)
+
+cc_library(
+    name = "float8",
+    hdrs = ["float8.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    # TODO - b/299180335: Add deprecation, update usages.
+    # deprecation = "Please use ml_dtypes.",
+    deps = [
+        ":ml_dtypes",
     ],
 )
 

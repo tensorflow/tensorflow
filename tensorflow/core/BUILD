@@ -62,6 +62,7 @@
 # build targets.
 
 # Placeholder: load py_proto_library
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -98,20 +99,19 @@ load(
     "tf_tpu_dependencies",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
-load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_dynamic_kernels",
     "if_static",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -1270,6 +1270,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@ml_dtypes//:float8",
+        "@ml_dtypes//:int4",
     ] + if_static([":lib_internal_impl"]),
 )
 
@@ -1297,6 +1298,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@ml_dtypes//:float8",
+        "@ml_dtypes//:int4",
     ],
 )
 
@@ -1446,6 +1448,7 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/lib/math:math_util",
         "@ml_dtypes//:float8",
+        "@ml_dtypes//:int4",
         "@snappy",
         "@zlib",
     ] + select({

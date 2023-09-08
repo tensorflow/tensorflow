@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,20 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_TSL_PLATFORM_FLOAT8_H_
 #define TENSORFLOW_TSL_PLATFORM_FLOAT8_H_
 
-#include "ml_dtypes/include/float8.h"  // from @ml_dtypes
-
-namespace tsl {
-using float8_e4m3fn = ml_dtypes::float8_e4m3fn;
-using float8_e4m3fnuz = ml_dtypes::float8_e4m3fnuz;
-using float8_e4m3b11fnuz = ml_dtypes::float8_e4m3b11fnuz;
-// Deprecated: old name for backward-compatibility only.
-using float8_e4m3b11 = float8_e4m3b11fnuz;
-using float8_e5m2 = ml_dtypes::float8_e5m2;
-using float8_e5m2fnuz = ml_dtypes::float8_e5m2fnuz;
-}  // namespace tsl
+// Deprecated, here only for backward-compatibility.  Please use ml_dtypes.h.
+#include "tsl/platform/ml_dtypes.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_TSL_PLATFORM_FLOAT8_H_
