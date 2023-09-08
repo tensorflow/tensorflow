@@ -102,11 +102,7 @@ REQUIRED_PACKAGES = [
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
     'wrapt >= 1.11.0, < 1.15',
-    # This looks worse as a wrapped line. pylint:disable=line-too-long
-    (
-        'tensorflow-io-gcs-filesystem >= 0.23.1;platform_machine!="arm64" or'
-        ' platform_system!="Darwin"'
-    ),
+    'tensorflow-io-gcs-filesystem >= 0.23.1',
     # grpcio does not build correctly on big-endian machines due to lack of
     # BoringSSL support.
     # See https://github.com/tensorflow/tensorflow/issues/17882.
