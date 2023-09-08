@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/TargetSelect.h"
-#include "tensorflow/compiler/xla/cpu_function_runtime.h"
-#include "tensorflow/compiler/xla/shape_util.h"
+#include "xla/cpu_function_runtime.h"
+#include "xla/shape_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -41,8 +41,8 @@ using ::xla::cpu_function_runtime::BufferInfo;
 
 void ExpectErrorContains(const Status& status, absl::string_view str) {
   EXPECT_NE(OkStatus(), status);
-  EXPECT_TRUE(absl::StrContains(status.error_message(), str))
-      << "expected error: " << status.error_message() << " to contain: " << str;
+  EXPECT_TRUE(absl::StrContains(status.message(), str))
+      << "expected error: " << status.message() << " to contain: " << str;
 }
 
 TEST(ValidateCppIdent, Simple) {
@@ -215,18 +215,22 @@ TEST(CodegenTest, Golden) {
   CompileResult compile_result;
   compile_result.aot.reset(new xla::cpu::CpuAotCompilationResult(
       {},
-      {BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/8, /*param_number=*/0),
+      {BufferInfo::MakeTempBuffer(3 * 8),
+       BufferInfo::MakeEntryParameter(/*size=*/8, /*entry_param_number=*/0),
        BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/1),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/1),
        BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/2),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/2),
        BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/3),
-       BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/4),
-       BufferInfo::MakeTempBuffer(1), BufferInfo::MakeTempBuffer(120)},
-      11, {}));
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/3),
+       BufferInfo::MakeResultParameter(/*size=*/5 * 6 * 4,
+                                       /*result_param_number=*/0),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/4),
+       BufferInfo::MakeResultParameter(/*size=*/1 * 4,
+                                       /*result_param_number=*/1),
+       BufferInfo::MakeResultParameter(/*size=*/5 * 4,
+                                       /*result_param_number=*/2)},
+      0, {}));
   compile_result.program_shape =
       xla::ShapeUtil::MakeProgramShape(
           {

@@ -1232,7 +1232,7 @@ TEST(CellReaderTest, PercentilesRepeatedSetAndRead) {
   EXPECT_FLOAT_EQ(percentiles.sum(), -111.0);
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(CellReaderTest, WrongNumberOfLabels) {
   CellReader<int64_t> cell_reader("/tensorflow/monitoring/test/counter");
   EXPECT_EQ(cell_reader.Read(), 0);

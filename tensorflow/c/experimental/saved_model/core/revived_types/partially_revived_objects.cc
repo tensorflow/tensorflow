@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
@@ -60,15 +62,15 @@ Status AssertAllCreateResourceFunctionsHaveNoCaptures(
     const TFConcreteFunctionRevivalState* create_resource_fn =
         resource.create_resource;
     if (create_resource_fn == nullptr) {
-      return errors::FailedPrecondition(
-          "Resource at node ", node_id,
-          " did not have a create_resource() function");
+      return absl::FailedPreconditionError(
+          absl::StrCat("Resource at node ", node_id,
+                       " did not have a create_resource() function"));
     }
     const SavedConcreteFunction* saved_create_resource_fn =
         create_resource_fn->saved_concrete_func;
     if (!saved_create_resource_fn->bound_inputs().empty()) {
       // TODO(b/124045874): Support loading resource functions via a top sort
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Create Resource functions with captures are currently unsupported.");
     }
   }
@@ -86,9 +88,9 @@ Status TensorHandleFromNode(int node_id, const SavedObjectGraph& obj_graph,
     case SavedObject::kVariable: {
       const auto& variables_iter = objects.variables.find(node_id);
       if (variables_iter == objects.variables.end()) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "Tried to convert node id ", node_id,
-            " of type variable to tensor but the variable wasn't initialized");
+            " of type variable to tensor but the variable wasn't initialized"));
       }
       *handle = variables_iter->second->handle();
       return Status();
@@ -96,9 +98,10 @@ Status TensorHandleFromNode(int node_id, const SavedObjectGraph& obj_graph,
     case SavedObject::kConstant: {
       const auto& constants_iter = objects.constants.find(node_id);
       if (constants_iter == objects.constants.end()) {
-        return errors::FailedPrecondition("Tried to convert node id ", node_id,
-                                          " of type constant to tensor but the "
-                                          "constant wasn't initialized");
+        return absl::FailedPreconditionError(
+            absl::StrCat("Tried to convert node id ", node_id,
+                         " of type constant to tensor but the "
+                         "constant wasn't initialized"));
       }
       *handle = constants_iter->second->handle();
       return Status();
@@ -106,9 +109,9 @@ Status TensorHandleFromNode(int node_id, const SavedObjectGraph& obj_graph,
     case SavedObject::kAsset: {
       const auto& assets_iter = objects.assets.find(node_id);
       if (assets_iter == objects.assets.end()) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "Tried to convert node id ", node_id,
-            " of type asset to tensor but the asset wasn't initialized");
+            " of type asset to tensor but the asset wasn't initialized"));
       }
       *handle = assets_iter->second->handle();
       return Status();
@@ -116,24 +119,24 @@ Status TensorHandleFromNode(int node_id, const SavedObjectGraph& obj_graph,
     case SavedObject::kResource: {
       const auto& resource_iter = objects.restored_resources.find(node_id);
       if (resource_iter == objects.restored_resources.end()) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "Tried to convert node id ", node_id,
-            " of type Resource to tensor but the Resource wasn't initialized");
+            " of type Resource to tensor but the Resource wasn't initialized"));
       }
       const RestoredResourceRevivalState& resource = resource_iter->second;
       if (resource.resource_handle == nullptr) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "Resource with node id ", node_id,
-            " should have its resource_handle created, but was nullptr.");
+            " should have its resource_handle created, but was nullptr."));
       }
       *handle = resource.resource_handle.get();
       return Status();
     }
     default: {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Only objects of type variable, constant, asset, and resources have "
           "capturable tensorhandles. Encountered object of kind ",
-          node.kind_case(), " at node id: ", node_id);
+          node.kind_case(), " at node id: ", node_id));
     }
   }
 }
@@ -167,35 +170,35 @@ Status SignatureDefArgsFromInputs(
   // (args, kwargs), where args is an empty tuple, and kwargs is a dictionary of
   // string keys to TensorSpecs.
   if (!canonicalized_input_signature.has_tuple_value()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "SignatureDefFunction's canonicalized_input_signature should be "
         "of form tuple(tuple(), dict()), but was instead: \n",
-        canonicalized_input_signature.DebugString());
+        canonicalized_input_signature.DebugString()));
   }
 
   const TupleValue& args_kwargs_tuple =
       canonicalized_input_signature.tuple_value();
   if (args_kwargs_tuple.values_size() != 2) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "SignatureDefFunction's canonicalized_input_signature should be "
         "a tuple of two elements (args, kwargs), but was instead: \n",
-        args_kwargs_tuple.DebugString());
+        args_kwargs_tuple.DebugString()));
   }
 
   const StructuredValue& args = args_kwargs_tuple.values(0);
   if (!args.has_tuple_value() || !args.tuple_value().values().empty()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "SignatureDefFunction's canonicalized_input_signature's args"
         "should be an empty tuple, but instead got: \n",
-        args.DebugString());
+        args.DebugString()));
   }
 
   const StructuredValue& kwargs = args_kwargs_tuple.values(1);
   if (!kwargs.has_dict_value()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "SignatureDefFunction's canonicalized_input_signature's kwargs"
         "should be a dictionary, but instead got: \n",
-        kwargs.DebugString());
+        kwargs.DebugString()));
   }
 
   const DictValue& kwargs_dict = kwargs.dict_value();
@@ -206,10 +209,10 @@ Status SignatureDefArgsFromInputs(
     const std::string& key = key_value.first;
     const StructuredValue& value = key_value.second;
     if (!value.has_tensor_spec_value()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "SignatureDefFunction's canonicalized_input_signature's kwargs"
           "dictionary contained a non-tensorspec value for key-value pair: \n",
-          "Key: ", key, "Value: \n", value.DebugString());
+          "Key: ", key, "Value: \n", value.DebugString()));
     }
     result[key] = &value.tensor_spec_value();
   }
@@ -226,10 +229,10 @@ Status SignatureDefArgsFromInputs(
 Status SignatureDefReturnsFromOutputs(const StructuredValue& output_signature,
                                       std::vector<SignatureDefParam>* out) {
   if (!output_signature.has_dict_value()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "SignatureDefFunction's output_signature must be a dictionary, but "
         "instead got: ",
-        output_signature.DebugString());
+        output_signature.DebugString()));
   }
 
   const DictValue& output_dict = output_signature.dict_value();
@@ -240,10 +243,10 @@ Status SignatureDefReturnsFromOutputs(const StructuredValue& output_signature,
     const std::string& key = key_value.first;
     const StructuredValue& value = key_value.second;
     if (!value.has_tensor_spec_value()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "SignatureDefFunction's output_signature dictionary contained a "
           "non-tensorspec value for key-value pair: \n",
-          "Key: ", key, "Value: \n", value.DebugString());
+          "Key: ", key, "Value: \n", value.DebugString()));
     }
     result[key] = &value.tensor_spec_value();
   }
@@ -337,7 +340,7 @@ Status InitializeCreateResourceFunctions(ImmediateExecutionContext* ctx,
         create_resource_fn->saved_concrete_func;
     if (!saved_create_resource_fn->bound_inputs().empty()) {
       // TODO(b/124045874): Load resource functions via a topological sort
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Create Resource functions with captures are currently unsupported.");
     }
     std::unique_ptr<TFConcreteFunction> out;
@@ -401,9 +404,9 @@ Status CreateAllResourceHandles(ImmediateExecutionContext* ctx,
     const TFConcreteFunction* create_resource_fn =
         revived->concrete_functions.Find(create_resource_fn_node);
     if (create_resource_fn == nullptr) {
-      return errors::FailedPrecondition(
-          "ConcreteFunction at node ", create_resource_fn_node,
-          " should have been initialized prior to being called.");
+      return absl::FailedPreconditionError(
+          absl::StrCat("ConcreteFunction at node ", create_resource_fn_node,
+                       " should have been initialized prior to being called."));
     }
     ImmediateOpPtr function_op;
     TF_RETURN_IF_ERROR(create_resource_fn->MakeCallOp({}, &function_op));
@@ -416,7 +419,7 @@ Status CreateAllResourceHandles(ImmediateExecutionContext* ctx,
     AbstractTensorHandlePtr owned_resource_handle(resource_handle);
     if (!tensorflow::isa<ImmediateExecutionTensorHandle>(
             owned_resource_handle.get())) {
-      return errors::Internal("Unexpected tensor handle kind.");
+      return absl::InternalError("Unexpected tensor handle kind.");
     }
     ImmediateTensorHandlePtr result(
         reinterpret_cast<ImmediateExecutionTensorHandle*>(
@@ -443,9 +446,9 @@ Status BuildResources(ImmediateExecutionContext* ctx,
       create_resource = revived->concrete_functions.Find(
           resource_revival_state.create_resource->node_id);
       if (create_resource == nullptr) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "'create_resource' function with node id ",
-            resource_revival_state.create_resource->node_id, " not found");
+            resource_revival_state.create_resource->node_id, " not found"));
       }
     }
 
@@ -454,9 +457,9 @@ Status BuildResources(ImmediateExecutionContext* ctx,
       initialize = revived->concrete_functions.Find(
           resource_revival_state.initialize->node_id);
       if (initialize == nullptr) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "'initialize' function with node id ",
-            resource_revival_state.initialize->node_id, " not found");
+            resource_revival_state.initialize->node_id, " not found"));
       }
     }
 
@@ -465,15 +468,16 @@ Status BuildResources(ImmediateExecutionContext* ctx,
       destroy_resource = revived->concrete_functions.Find(
           resource_revival_state.destroy_resource->node_id);
       if (destroy_resource == nullptr) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "'destroy_resource' function with node id ",
-            resource_revival_state.destroy_resource->node_id, " not found");
+            resource_revival_state.destroy_resource->node_id, " not found"));
       }
     }
 
     if (resource_revival_state.resource_handle == nullptr) {
-      return errors::FailedPrecondition("Resource at node id ", node_id,
-                                        " does not have a resource handle.");
+      return absl::FailedPreconditionError(
+          absl::StrCat("Resource at node id ", node_id,
+                       " does not have a resource handle."));
     }
 
     revived->restored_resources.emplace(

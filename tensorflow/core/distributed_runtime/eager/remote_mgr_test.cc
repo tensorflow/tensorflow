@@ -52,12 +52,13 @@ class RemoteMgrTest : public ::testing::Test {
         DeviceFactory::NewDevice("CPU", {}, "/job:worker/replica:0/task:0"));
     remote_device_ = devices.back().get();
     auto device_mgr = std::make_unique<StaticDeviceMgr>(std::move(devices));
-    tensorflow::Rendezvous* rendezvous =
-        new tensorflow::IntraProcessRendezvous(device_mgr.get());
+    auto rendezvous = tsl::core::RefCountPtr<tensorflow::Rendezvous>(
+        new tensorflow::IntraProcessRendezvous(device_mgr.get()));
     ctx_ = new tensorflow::EagerContext(
         SessionOptions(),
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-        /*async=*/false, device_mgr.release(), true, rendezvous, nullptr);
+        /*async=*/false, device_mgr.release(), true, std::move(rendezvous),
+        nullptr, nullptr, /*run_eager_op_as_function=*/true);
   }
 
   ~RemoteMgrTest() override { ctx_->Unref(); }

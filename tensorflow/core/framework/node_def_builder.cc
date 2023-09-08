@@ -45,7 +45,7 @@ NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
   if (status.ok()) {
     Initialize();
   } else {
-    errors_.push_back(status.error_message());
+    errors_.push_back(std::string(status.message()));
     inputs_specified_ = 0;
   }
   if (debug != nullptr) MergeDebugInfo(*debug, &node_def_);
@@ -88,7 +88,7 @@ bool NodeDefBuilder::NextArgAvailable() {
 NodeDefBuilder& NodeDefBuilder::Input(FakeInputFunctor fake_input) {
   if (NextArgAvailable()) {
     Status status = fake_input(*op_def_, inputs_specified_, node_def_, this);
-    if (!status.ok()) errors_.push_back(status.error_message());
+    if (!status.ok()) errors_.push_back(std::string(status.message()));
   }
   return *this;
 }
@@ -235,6 +235,11 @@ Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
           (*errors_ptr)[0], " while building NodeDef '", node_def_.name(),
           "' using ", SummarizeOpDef(*op_def_));
     } else {
+      if (op_def_ == nullptr) {
+        return errors::InvalidArgument(
+            errors_ptr->size(), " errors while building NodeDef '",
+            node_def_.name(), "':\n", absl::StrJoin(*errors_ptr, "\n"));
+      }
       return errors::InvalidArgument(
           errors_ptr->size(), " errors while building NodeDef '",
           node_def_.name(), "' using ", SummarizeOpDef(*op_def_), ":\n",

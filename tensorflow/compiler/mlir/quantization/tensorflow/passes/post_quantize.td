@@ -31,5 +31,5 @@ def ReorderIdentityFollowingQuantizedFunction : Pat<
       (TF_IdentityOp
         (quantfork_StorageCastOp $value)))),
   (TF_IdentityOp
-    (CreateOpWithOutputType<"quantfork::DequantizeCastOp">
-      (GetValueType $output), $value))>;
+    (quantfork_DequantizeCastOp
+      $value, (returnType (GetValueType $output))))>;

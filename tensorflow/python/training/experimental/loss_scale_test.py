@@ -17,15 +17,16 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -35,7 +36,7 @@ from tensorflow.python.training.experimental import loss_scale as loss_scale_mod
 
 # If called outside any strategy.scope() calls, this will return the default
 # strategy.
-default_strategy_fn = distribution_strategy_context.get_strategy
+default_strategy_fn = distribute_lib.get_strategy
 
 
 def create_mirrored_strategy():
@@ -86,7 +87,7 @@ class FixedLossScaleTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_call_type(self):
     scalar = loss_scale_module.FixedLossScale(123)
-    self.assertIsInstance(scalar(), ops.Tensor)
+    self.assertIsInstance(scalar(), tensor_lib.Tensor)
 
   @test_util.run_in_graph_and_eager_modes
   def test_repr(self):
@@ -102,19 +103,19 @@ def _get_example_iter(inputs):
 class DynamicLossScaleTest(test.TestCase, parameterized.TestCase):
 
   def _get_tensor(self, is_finite):
-    tensor = control_flow_ops.cond(is_finite, lambda: 1., lambda: float('NaN'))
+    tensor = cond.cond(is_finite, lambda: 1., lambda: float('NaN'))
 
-    if not distribution_strategy_context.has_strategy():
+    if not distribute_lib.has_strategy():
       return tensor
 
     def get():
       rep_id = (
-          distribution_strategy_context.get_replica_context()
+          distribute_lib.get_replica_context()
           .replica_id_in_sync_group)
-      return control_flow_ops.cond(
+      return cond.cond(
           math_ops.equal(rep_id, 0), lambda: tensor, lambda: 1.)
 
-    distribution = distribution_strategy_context.get_strategy()
+    distribution = distribute_lib.get_strategy()
     return distribution.extended.call_for_each_replica(get)
 
   def _test_helper(self,
@@ -301,7 +302,7 @@ class DynamicLossScaleTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_call_type(self):
     scalar = loss_scale_module.DynamicLossScale()
-    self.assertIsInstance(scalar(), ops.Tensor)
+    self.assertIsInstance(scalar(), tensor_lib.Tensor)
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes

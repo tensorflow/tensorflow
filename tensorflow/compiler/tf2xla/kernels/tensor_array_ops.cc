@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal.h"
+#include "xla/client/xla_builder.h"
+#include "xla/literal.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -76,7 +76,7 @@ Status MaybeInitializeTensorArray(xla::XlaBuilder* builder,
     TF_RETURN_IF_ERROR(XLAShapeToTensorShape(shape_or_status.value(), &shape));
 
     TensorShape ta_shape;
-    ta_shape.AddDim(resource->max_array_size());
+    TF_RETURN_IF_ERROR(ta_shape.AddDimWithStatus(resource->max_array_size()));
     ta_shape.AppendShape(elem_shape);
     if (ta_shape != shape) {
       return errors::InvalidArgument(
@@ -118,8 +118,8 @@ Status GetTensorArrayShape(const XlaResource* resource,
 
 // Like XlaBuilder::DynamicUpdateSlice, but adds 'update' to the
 // relevant slice of 'operand'.
-xla::XlaOp DynamicAddSlice(xla::XlaBuilder* builder, const xla::XlaOp& operand,
-                           const xla::XlaOp& update,
+xla::XlaOp DynamicAddSlice(xla::XlaBuilder* builder, const xla::XlaOp operand,
+                           const xla::XlaOp update,
                            absl::Span<const int64_t> update_dims,
                            absl::Span<const xla::XlaOp> start_indices,
                            DataType dtype) {

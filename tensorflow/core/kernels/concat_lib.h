@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/register_types.h"
 
@@ -66,7 +66,6 @@ void ConcatGPU(
       Tensor* output, typename TTypes<T, 2>::Tensor* output_flat);
 
 TF_CALL_INTEGRAL_TYPES(REGISTER);  // int32 Needed for TensorLists.
-TF_CALL_bfloat16(REGISTER);
 TF_CALL_GPU_ALL_TYPES(REGISTER);
 #undef REGISTER
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -25,7 +25,7 @@ def make_gather_tests(options):
 
   test_parameters = [
       {
-          "params_dtype": [tf.float32, tf.int32, tf.int64],
+          "params_dtype": [tf.float32, tf.int32, tf.int64, tf.int16],
           "params_shape": [[1, 2, 20]],
           "indices_dtype": [tf.int32, tf.int64],
           "indices_shape": [[3], [5]],

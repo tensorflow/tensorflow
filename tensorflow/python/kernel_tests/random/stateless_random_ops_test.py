@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -156,10 +157,21 @@ def int_cases(shape_dtypes=(None,), minval_maxval=None):
 def multinomial_cases():
   num_samples = 10
   def wrap(op, logits, logits_dtype, output_dtype, seed):
+    device_type = get_device().device_type
+    # Some dtypes are not supported on some devices
+    if (logits_dtype == dtypes.bfloat16 and device_type == 'GPU' and
+        not test_util.is_gpu_available(
+            cuda_only=True, min_cuda_compute_capability=(8, 0))):
+      logits_dtype = dtypes.float32
     return op(seed=seed,
               logits=constant_op.constant(logits, dtype=logits_dtype),
               num_samples=num_samples, output_dtype=output_dtype)
-  for logits_dtype in np.float16, np.float32, np.float64:
+  for logits_dtype in (
+      np.float16,
+      dtypes.bfloat16.as_numpy_dtype,
+      np.float32,
+      np.float64,
+  ):
     for output_dtype in dtypes.int32, dtypes.int64:
       for logits in ([[0.1, 0.25, 0.5, 0.15]], [[0.5, 0.5], [0.8, 0.2],
                                                 [0.25, 0.75]]):
@@ -505,7 +517,7 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
     new_seed = stateless.split(seed, 3)
     self.assertEqual(new_seed.shape, [3, 2])
     self.assertDTypeEqual(new_seed.dtype, dtype)
-    self.assertNoEqualPair([seed] + array_ops.unstack(new_seed))
+    self.assertNoEqualPair([seed] + array_ops_stack.unstack(new_seed))
 
   @parameterized.parameters(['int32', 'int64'])
   @test_util.run_v2_only

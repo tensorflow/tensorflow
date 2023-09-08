@@ -1,0 +1,11 @@
+// RUN: hlo_to_llvm_ir %s | FileCheck %s
+
+HloModule Test
+
+ENTRY main {
+// CHECK: %{{.*}} = getelementptr inbounds i8, ptr %arg0, i32 %{{.*}}
+// CHECK: %{{.*}} = getelementptr inbounds i8, ptr %arg1, i32 %{{.*}}
+  a = pred[2, 2]{1,0} constant({{false, true}, {true, false}})
+  b = pred[2, 2]{1,0} constant({{false, true}, {false, true}})
+  ROOT xor = pred[2, 2]{1, 0} xor(a, b)
+}

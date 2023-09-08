@@ -23,10 +23,19 @@ namespace tensorflow {
 class NcclReducer : public NcclBase {
  public:
   NcclReducer() : NcclBase(REDUCTION_COLLECTIVE, "NcclReduce") {}
+  NcclReducer(CollectiveType type, const string& name) : NcclBase(type, name) {}
   ~NcclReducer() override = default;
 
   // Hands off all reduce to NcclManager.
   void Run(StatusCallback done) override;
+};
+
+class NcclReduceScatterer : public NcclReducer {
+ public:
+  NcclReduceScatterer()
+      : NcclReducer(REDUCE_SCATTER_COLLECTIVE, "NcclReduceScatter") {}
+  ~NcclReduceScatterer() override = default;
+  // Uses same Run() as NcclReducer.
 };
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

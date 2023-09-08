@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -33,12 +34,15 @@ class DTensorMlirPassRunner {
  public:
   DTensorMlirPassRunner();
 
-  // Translates `graph` and replaces it with the resulting rewritten graph.
-  // And returns the resulting MLIR ModuleOp.
-  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> RunOnGraph(
-      const DeviceSet& device_set, bool is_func,
-      FunctionLibraryDefinition* flib_def, std::unique_ptr<Graph>* graph,
-      absl::flat_hash_set<Node*>& control_ret_nodes, Fprint128 cache_key);
+  // Imports Graph to MLIR module in tf_execute Dialect with DTensor attributes.
+  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportGraphToMlir(
+      const DeviceSet& device_set, absl::string_view name, bool is_func,
+      const dtensor::Mesh& default_mesh,
+      const FunctionLibraryDefinition& flib_def, const Graph& graph,
+      Fprint128 cache_key);
+
+  // Transforms input MLIR module with DTensor Pass pipeline.
+  Status Run(mlir::ModuleOp module);
 
  private:
   // N.B. op_registration_ must be initialized before context/pass-manager to

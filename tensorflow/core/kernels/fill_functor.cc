@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -64,7 +64,6 @@ DEFINE_SETZERO_CPU(Variant);
 DEFINE_SETZERO_CPU(float8_e5m2);
 DEFINE_SETZERO_CPU(float8_e4m3fn);
 #undef DEFINE_SETZERO_CPU
-
 
 template <typename T>
 void SetOneFunctor<Eigen::ThreadPoolDevice, T>::operator()(
@@ -126,8 +125,9 @@ DEFINE_FILL_CPU(quint16);
 DEFINE_FILL_CPU(qint8);
 DEFINE_FILL_CPU(qint16);
 DEFINE_FILL_CPU(qint32);
+DEFINE_FILL_CPU(float8_e5m2);
+DEFINE_FILL_CPU(float8_e4m3fn);
 #undef DEFINE_FILL_CPU
-
 
 }  // namespace functor
 }  // namespace tensorflow

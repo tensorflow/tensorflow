@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_enums.h.inc"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #define GET_ATTRDEF_CLASSES

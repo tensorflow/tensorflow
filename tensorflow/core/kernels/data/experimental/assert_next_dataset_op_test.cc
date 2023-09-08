@@ -210,13 +210,13 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(AssertNextDatasetOpTest,
 TEST_F(AssertNextDatasetOpTest, InvalidArguments) {
   auto dataset_params = InvalidAssertNextDatasetParams();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(AssertNextDatasetOpTest, ShortAssertNext) {
   auto dataset_params = ShortAssertNextDatasetParams();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

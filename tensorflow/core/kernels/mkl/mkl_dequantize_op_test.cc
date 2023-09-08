@@ -42,33 +42,15 @@ TEST_F(MklDequantizeOpTest, small) {
   AddInputFromArray<quint8>(TensorShape({1, 2, 2, 2}),
                             {0, 10, 50, 40, 25, 115, 190, 255});
   // min_range = 0
-  AddInputFromArray<float>(TensorShape({1}), {0});
+  AddInputFromArray<float>(TensorShape({}), {0});
   // max_range = 200
-  AddInputFromArray<float>(TensorShape({1}), {200.0f});
+  AddInputFromArray<float>(TensorShape({}), {200.0f});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 2}));
   test::FillValues<float>(&expected,
                           {0.0, 7.84, 39.21, 31.37, 19.6, 90.2, 149.0, 200});
   const Tensor& output = *GetOutput(0);
   test::ExpectTensorNear<float>(expected, output, 0.1);
-}
-
-Tensor CreateMklInput() {
-  MklDnnShape mkl_shape;
-  memory::desc md =
-      memory::desc({1, 2, 2, 2}, MklDnnType<uint8>(), memory::format_tag::nhwc);
-  mkl_shape.SetMklTensor(true);
-  mkl_shape.SetMklLayout(&md);
-  mkl_shape.SetElemType(MklDnnType<uint8>());
-  mkl_shape.SetTfLayout(4, {1, 2, 2, 2}, MklTensorFormat::FORMAT_NHWC);
-
-  DataType dtype = DataTypeToEnum<uint8>::v();
-  Tensor mkl_tensor(dtype,
-                    {static_cast<int64_t>(mkl_shape.GetSerializeBufferSize())});
-  mkl_shape.SerializeMklDnnShape(
-      mkl_tensor.flat<uint8>().data(),
-      mkl_tensor.flat<uint8>().size() * sizeof(uint8));
-  return mkl_tensor;
 }
 
 TEST_F(MklDequantizeOpTest, MKLInput) {
@@ -84,9 +66,9 @@ TEST_F(MklDequantizeOpTest, MKLInput) {
   AddInputFromArray<quint8>(TensorShape({1, 2, 2, 2}),
                             {0, 10, 50, 40, 25, 115, 190, 255});
   // min_range = 0
-  AddInputFromArray<float>(TensorShape({1}), {0});
+  AddInputFromArray<float>(TensorShape({}), {0});
   // max_range = 200
-  AddInputFromArray<float>(TensorShape({1}), {200.0f});
+  AddInputFromArray<float>(TensorShape({}), {200.0f});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 2}));
   test::FillValues<float>(&expected,

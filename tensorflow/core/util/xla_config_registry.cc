@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/xla_config_registry.h"
 
+#include <utility>
+
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {

@@ -25,8 +25,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_nnapi_sl_fake_impl.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
@@ -227,7 +227,15 @@ TEST_F(ValidatorRunnerTest, ShouldUseNnApiSl) {
   while (event_count < settings.size()) {
     events = validator.GetAndFlushEventsToLog();
     event_count += events.size();
+    // Duplicating the sleep(1) from CheckConfigurations() method above in this
+    // file. The validation is done in a separate process, this is likely needed
+    // to properly wait for the async process to finish.
+#ifndef _WIN32
+    sleep(1);
+#endif  // !_WIN32
   }
+  ASSERT_EQ(validator.TriggerMissingValidation(settings), 0);
+
   EXPECT_TRUE(WasNnApiSlInvoked());
 }
 

@@ -28,8 +28,8 @@ import (
 	"os"
 	"path/filepath"
 
-	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 	"github.com/tensorflow/tensorflow/tensorflow/go/op"
+	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
 func Example() {
@@ -47,8 +47,8 @@ func Example() {
 	// - 3 is the (R, G, B) values of the pixel colors represented as a float.
 	//
 	// And produces as output a vector with shape [ NUM_LABELS ].
-	// output[i] is the probability that the input image was recognized as
-	// having the i-th label.
+	// output[i] is the model-implied probability of the input image having
+	// the i-th label.
 	//
 	// A separate file contains a list of string labels corresponding to the
 	// integer indices of the output.
@@ -64,18 +64,30 @@ func Example() {
 	// - Constructs another TensorFlow graph to normalize the image into a
 	//   form suitable for the model (for example, resizing the image)
 	// - Creates and executes a Session to obtain a Tensor in this normalized form.
-	modeldir := flag.String("dir", "", "Directory containing the trained model files. The directory will be created and the model downloaded into it if necessary")
-	imagefile := flag.String("image", "", "Path of a JPEG-image to extract labels for")
+	modeldir := flag.String(
+		"dir",
+		"testdata/saved_model/inception5h",
+		"Directory containing the trained model files. The directory will be"+
+			"created and the model downloaded into it if necessary",
+	)
+	imagefile := flag.String(
+		"image",
+		"testdata/label_image/grace_hopper.jpg",
+		"Path of a JPEG-image to extract labels for",
+	)
 	flag.Parse()
-	if *modeldir == "" || *imagefile == "" {
-		flag.Usage()
-		return
-	}
+
 	// Load the serialized GraphDef from a file.
 	modelfile, labelsfile, err := modelFiles(*modeldir)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	labels, err := readLabelsFile(labelsfile)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	model, err := ioutil.ReadFile(modelfile)
 	if err != nil {
 		log.Fatal(err)
@@ -115,34 +127,20 @@ func Example() {
 	}
 	// output[0].Value() is a vector containing probabilities of
 	// labels for each image in the "batch". The batch size was 1.
-	// Find the most probably label index.
+	// Find the most probable label index.
 	probabilities := output[0].Value().([][]float32)[0]
-	printBestLabel(probabilities, labelsfile)
+	printBestLabel(probabilities, labels)
+	// // Output:
+	// // BEST MATCH: (29% likely) military uniform
 }
 
-func printBestLabel(probabilities []float32, labelsFile string) {
-	bestIdx := 0
-	for i, p := range probabilities {
-		if p > probabilities[bestIdx] {
-			bestIdx = i
-		}
-	}
-	// Found the best match. Read the string from labelsFile, which
-	// contains one line per label.
-	file, err := os.Open(labelsFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	var labels []string
-	for scanner.Scan() {
-		labels = append(labels, scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
-		log.Printf("ERROR: failed to read %s: %v", labelsFile, err)
-	}
-	fmt.Printf("BEST MATCH: (%2.0f%% likely) %s\n", probabilities[bestIdx]*100.0, labels[bestIdx])
+func printBestLabel(probabilities []float32, labels []string) {
+	idx := argmax(probabilities)
+	fmt.Printf(
+		"BEST MATCH: (%2.0f%% likely) %s",
+		probabilities[idx]*100.0,
+		labels[idx],
+	)
 }
 
 // Convert the image in filename to a Tensor suitable as input to the Inception model.
@@ -288,4 +286,34 @@ func unzip(dir, zipfile string) error {
 		dst.Close()
 	}
 	return nil
+}
+
+func readLabelsFile(f string) ([]string, error) {
+	var labels []string
+
+	file, err := os.Open(f)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for i := 0; scanner.Scan(); i++ {
+		labels = append(labels, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return labels, nil
+}
+
+// argmax returns the index the maximal element in slice a.
+func argmax(a []float32) int {
+	var idx int
+	for i := 0; i < len(a); i++ {
+		if a[i] > a[idx] {
+			idx = i
+		}
+	}
+	return idx
 }

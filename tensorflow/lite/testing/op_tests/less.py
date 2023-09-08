@@ -24,7 +24,7 @@ def make_less_tests(options):
   """Make a set of tests to do less."""
 
   test_parameters = [{
-      "input_dtype": [tf.float32, tf.int32, tf.int64],
+      "input_dtype": [tf.float32, tf.int16, tf.int32, tf.int64],
       "input_shape_pair": [([1, 1, 1, 3], [1, 1, 1, 3]),
                            ([2, 3, 4, 5], [2, 3, 4, 5]), ([2, 3, 3], [2, 3]),
                            ([5, 5], [1]), ([10], [2, 4, 10])],
@@ -61,4 +61,4 @@ def make_less_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=4)
+      expected_tf_failures=5)

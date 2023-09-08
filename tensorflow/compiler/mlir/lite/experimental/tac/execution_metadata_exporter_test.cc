@@ -15,6 +15,7 @@
 #include "tensorflow/compiler/mlir/lite/experimental/tac/execution_metadata_exporter.h"
 
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

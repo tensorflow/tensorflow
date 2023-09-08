@@ -48,7 +48,6 @@ struct FreezeAssetsPass : public impl::FreezeAssetsPassBase<FreezeAssetsPass> {
   void runOnOperation() override;
 
  private:
-  // TODO(team): should be a pass option.
   std::string saved_model_dir;
 };
 

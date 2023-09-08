@@ -17,8 +17,8 @@ limitations under the License.
 #include <string>
 
 #include "flatbuffers/idl.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_fbs_contents-inl.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_fbs_contents-inl.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/tools/logging.h"
 
@@ -33,15 +33,24 @@ TfLiteSettingsJsonParser::TfLiteSettingsJsonParser() {
 
 const TFLiteSettings* TfLiteSettingsJsonParser::Parse(
     const std::string& json_file_path) {
-  if (!LoadFromJsonFile(json_file_path)) {
+  if (!LoadFromJsonFile(json_file_path) || buffer_pointer_ == nullptr) {
     return nullptr;
   }
-  return flatbuffers::GetRoot<TFLiteSettings>(
-      parser_.builder_.GetBufferPointer());
+  return flatbuffers::GetRoot<TFLiteSettings>(buffer_pointer_);
+}
+
+const uint8_t* TfLiteSettingsJsonParser::GetBufferPointer() {
+  return buffer_pointer_;
+}
+
+flatbuffers::uoffset_t TfLiteSettingsJsonParser::GetBufferSize() {
+  return buffer_size_;
 }
 
 bool TfLiteSettingsJsonParser::LoadFromJsonFile(
     const std::string& json_file_path) {
+  buffer_size_ = 0;
+  buffer_pointer_ = nullptr;
   if (json_file_path.empty()) {
     TFLITE_LOG(ERROR) << "Invalid JSON file path.";
     return false;
@@ -57,6 +66,8 @@ bool TfLiteSettingsJsonParser::LoadFromJsonFile(
                       << json_file_path << ").";
     return false;
   }
+  buffer_size_ = parser_.builder_.GetSize();
+  buffer_pointer_ = parser_.builder_.GetBufferPointer();
   return true;
 }
 

@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
 #include "tensorflow/compiler/tf2xla/test_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
@@ -65,7 +65,7 @@ Status FindIfThenAndElse(const GraphDef& graph, string* op_name,
 // Graph:
 // x = array_ops.placeholder(dtypes.int32)
 // y = array_ops.placeholder(dtypes.int32)
-// z = control_flow_ops.cond(
+// z = cond.cond(
 //     math_ops.less(y, x), lambda: math_ops.multiply(y, 17),
 //     lambda: math_ops.add(x, 23))
 //

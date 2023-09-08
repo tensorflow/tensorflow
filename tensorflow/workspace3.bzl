@@ -3,8 +3,12 @@
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("//third_party:tf_runtime/workspace.bzl", tf_runtime = "repo")
 load("//third_party/llvm:workspace.bzl", llvm = "repo")
+load("//third_party:repo.bzl", "tf_vendored")
 
 def workspace():
+    tf_vendored(name = "local_xla", relpath = "third_party/xla")
+    tf_vendored(name = "local_tsl", relpath = "third_party/xla/third_party/tsl")
+
     http_archive(
         name = "io_bazel_rules_closure",
         sha256 = "5b00383d08dd71f28503736db0500b6fb4dda47489ff5fc6bed42557c07c6ba9",
@@ -37,11 +41,11 @@ def workspace():
     )
 
     # Maven dependencies.
-    RULES_JVM_EXTERNAL_TAG = "3.2"
+    RULES_JVM_EXTERNAL_TAG = "4.3"
     http_archive(
         name = "rules_jvm_external",
         strip_prefix = "rules_jvm_external-%s" % RULES_JVM_EXTERNAL_TAG,
-        sha256 = "82262ff4223c5fda6fb7ff8bd63db8131b51b413d26eb49e3131037e79e324af",
+        sha256 = "6274687f6fc5783b589f56a2f1ed60de3ce1f99bc4e8f9edef3de43bdf7c6e74",
         url = "https://github.com/bazelbuild/rules_jvm_external/archive/%s.zip" % RULES_JVM_EXTERNAL_TAG,
     )
 

@@ -17,7 +17,6 @@
 import os
 import time
 from tensorflow.python.checkpoint import checkpoint as util
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
@@ -26,27 +25,15 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.platform import test
 from tensorflow.python.trackable import base
 from tensorflow.python.training import py_checkpoint_reader
-from tensorflow.python.training.saving import saveable_object
-
-
-class _TrivialSaveable(saveable_object.SaveableObject):
-
-  def __init__(self, name):
-    op = lambda: array_ops.ones([])
-    super(_TrivialSaveable, self).__init__(
-        op=op,
-        specs=[saveable_object.SaveSpec(
-            op, "", name, dtype=dtypes.float32, device="CPU:0")],
-        name=name)
-
-  def restore(self, restored_tensors, restored_shapes):
-    return control_flow_ops.no_op()
 
 
 class _TrivialRestore(base.Trackable):
 
-  def _gather_saveables_for_checkpoint(self):
-    return {base.VARIABLE_VALUE_KEY: _TrivialSaveable}
+  def _serialize_to_tensors(self):
+    return {base.VARIABLE_VALUE_KEY: array_ops.ones([])}
+
+  def _restore_from_tensors(self, restored_tensors):
+    return control_flow_ops.no_op()
 
 
 class _LazyTrivialObjects(module.Module):

@@ -26,11 +26,13 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -130,15 +132,16 @@ class _DynamicRaggedShapeBatchEncoder(extension_type.ExtensionTypeBatchEncoder):
              encoding) -> "DynamicRaggedShape":
     return DynamicRaggedShape.from_tensor(encoding, dtype=spec.dtype)
 
-  def encode(self,
-             spec: "DynamicRaggedShape.Spec",
-             value,
-             minimum_rank=0) -> Union[ragged_tensor.RaggedTensor, ops.Tensor]:
+  def encode(
+      self,
+      spec: "DynamicRaggedShape.Spec",
+      value,
+      minimum_rank=0) -> Union[ragged_tensor.RaggedTensor, tensor_lib.Tensor]:
     return ones(value, dtype=dtypes.bool)
 
   def encoding_specs(
       self, spec: "DynamicRaggedShape.Spec"
-  ) -> Union[ragged_tensor.RaggedTensorSpec, tensor_spec.TensorSpec]:
+  ) -> Union[ragged_tensor.RaggedTensorSpec, tensor_lib.TensorSpec]:
     if spec.rank != 0:
       ragged_rank = spec.num_row_partitions
     else:
@@ -193,7 +196,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
   [RP([2, 1]), RP([2, 1, 2])] | [5]          | `[[[1, 2], [3]], [[4, 5]]]`
   """
   _row_partitions: Tuple[RowPartition, ...]
-  _inner_shape: ops.Tensor
+  _inner_shape: tensor_lib.Tensor
   _static_inner_shape: tensor_shape.TensorShape
   __batch_encoder__ = _DynamicRaggedShapeBatchEncoder()
   __name__ = "tf.DynamicRaggedShape"
@@ -779,8 +782,8 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       new_dims = [first_dimension] + [
           x.uniform_row_length() for x in self.row_partitions[-new_dimensions:]
       ]
-      return array_ops.concat([array_ops.stack(new_dims), self.inner_shape[1:]],
-                              axis=0)
+      return array_ops.concat(
+          [array_ops_stack.stack(new_dims), self.inner_shape[1:]], axis=0)
 
   def _inner_shape_dim(self, dimension):
     """Returns an int or a tensor representing _inner_shape[dimension]."""
@@ -1067,7 +1070,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
 
   def _validate_flat_values(self, flat_values):
     """Test if flat_values have the right nvals."""
-    if not isinstance(flat_values, ops.Tensor):
+    if not isinstance(flat_values, tensor_lib.Tensor):
       return flat_values
     if self.row_partitions:
       last_row_partition = self.row_partitions[-1]
@@ -1198,7 +1201,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
         ]
 
       self._static_inner_shape = static_inner_shape
-      self._inner_shape = tensor_spec.TensorSpec([inner_rank], dtype=dtype)
+      self._inner_shape = tensor_lib.TensorSpec([inner_rank], dtype=dtype)
       self._row_partitions = row_partitions
 
     def __repr__(self):
@@ -1303,7 +1306,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
     def _from_spec(
         cls,
         spec: Union["DynamicRaggedShape.Spec", ragged_tensor.RaggedTensorSpec,
-                    tensor_spec.TensorSpec],
+                    tensor_lib.TensorSpec],
         dtype: dtypes.DType = dtypes.int64) -> "DynamicRaggedShape.Spec":
       """Create a TypeSpec for the shape of an object with a given TypeSpec.
 
@@ -1333,7 +1336,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       elif isinstance(spec, ragged_tensor.RaggedTensorSpec):
         return cls._from_tensor_shape(spec.shape, spec.ragged_rank,
                                       spec.row_splits_dtype)
-      elif isinstance(spec, tensor_spec.TensorSpec):
+      elif isinstance(spec, tensor_lib.TensorSpec):
         return cls._from_tensor_shape(
             shape=spec.shape, num_row_partitions=0, dtype=dtype)
 
@@ -2386,7 +2389,7 @@ def _broadcast_dynamic_shape_one_layer(a, b):
   can_broadcast_from_b = math_ops.equal(b_0, 1)
 
   def broadcast_not_from_a():
-    return control_flow_ops.cond(
+    return cond.cond(
         can_broadcast_from_b, true_fn=broadcast_from_b, false_fn=broadcast_noop)
 
   nrows_equal = math_ops.equal(a_0, b_0)
@@ -2397,7 +2400,7 @@ def _broadcast_dynamic_shape_one_layer(a, b):
   check_can_broadcast = check_ops.assert_equal(
       can_broadcast, True, message="Cannot broadcast")
 
-  results = control_flow_ops.cond(
+  results = cond.cond(
       can_broadcast_from_a,
       true_fn=broadcast_from_a,
       false_fn=broadcast_not_from_a)
@@ -2467,7 +2470,7 @@ def _broadcast_dynamic_shape_first_layer(a_0, b_0):
   can_broadcast_from_b = math_ops.equal(b_0, constant_op.constant(1, b_0.dtype))
 
   def broadcast_not_from_a():
-    return control_flow_ops.cond(
+    return cond.cond(
         can_broadcast_from_b, true_fn=broadcast_from_b, false_fn=broadcast_noop)
 
   # Ideally, this would only block control flow on broadcast_noop, but
@@ -2476,7 +2479,7 @@ def _broadcast_dynamic_shape_first_layer(a_0, b_0):
       math_ops.logical_or(can_broadcast_from_a, can_broadcast_from_b),
       math_ops.equal(a_0, b_0))
 
-  result = control_flow_ops.cond(
+  result = cond.cond(
       can_broadcast_from_a,
       true_fn=broadcast_from_a,
       false_fn=broadcast_not_from_a)
@@ -2587,7 +2590,7 @@ def _broadcast_dynamic_shape_next_layer_half_ragged(
   can_broadcast_a = math_ops.equal(a_1.uniform_row_length(), 1)
 
   [c_1_row_splits, ac_1_gather_index,
-   bc_1_gather_index] = control_flow_ops.cond(
+   bc_1_gather_index] = cond.cond(
        can_broadcast_a, true_fn=broadcast_a, false_fn=broadcast_noop)
 
   c_1 = RowPartition.from_row_splits(c_1_row_splits)
@@ -2684,7 +2687,7 @@ def _broadcast_dynamic_shape_next_layer_both_uniform(
   can_broadcast_b = math_ops.equal(b_1.uniform_row_length(), 1)
 
   def no_broadcast_a():
-    return control_flow_ops.cond(
+    return cond.cond(
         can_broadcast_b, true_fn=broadcast_b, false_fn=broadcast_noop)
 
   can_broadcast_a = math_ops.equal(a_1.uniform_row_length(), 1)
@@ -2697,7 +2700,7 @@ def _broadcast_dynamic_shape_next_layer_both_uniform(
                              b_1.uniform_row_length())), True)
   ]
 
-  result = control_flow_ops.cond(
+  result = cond.cond(
       can_broadcast_a, true_fn=broadcast_a, false_fn=no_broadcast_a)
 
   [c_1_uniform_row_length, ac_1_gather_index, bc_1_gather_index] = [
@@ -3000,7 +3003,7 @@ def _first_layer_gather_index(nrows_source, nrows_target):
       True,
       message="Cannot broadcast")
 
-  gather_index = control_flow_ops.cond(
+  gather_index = cond.cond(
       do_broadcast, true_fn=gi_broadcast_first, false_fn=gi_no_broadcast_first)
 
   return control_flow_ops.with_dependencies([can_broadcast], gather_index)
@@ -3057,7 +3060,7 @@ def _next_layer_gather_index(bc, original_rp, broadcast_rp):
 
   do_broadcast = math_ops.equal(original_rp.uniform_row_length(),
                                 constant_op.constant(1, original_rp.dtype))
-  gather_index = control_flow_ops.cond(
+  gather_index = cond.cond(
       do_broadcast, true_fn=gi_broadcast, false_fn=gi_no_broadcast)
 
   return gather_index
@@ -3180,9 +3183,10 @@ def _merge_row_partitions(
 
 
 def _merge_inner_shape(
-    inner_shape: ops.Tensor, static_inner_shape: tensor_shape.TensorShape,
+    inner_shape: tensor_lib.Tensor,
+    static_inner_shape: tensor_shape.TensorShape,
     outer_axis: int,
-    inner_axis: int) -> Tuple[ops.Tensor, tensor_shape.TensorShape]:
+    inner_axis: int) -> Tuple[tensor_lib.Tensor, tensor_shape.TensorShape]:
   """Merge the inner shape of a DynamicRaggedShape."""
   prefix = inner_shape[:outer_axis]
   suffix = inner_shape[inner_axis + 1:]

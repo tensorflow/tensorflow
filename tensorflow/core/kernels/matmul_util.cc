@@ -16,8 +16,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -71,7 +71,7 @@ int MatmulMaxAutotuneAlgorithmCount() {
   Status status =
       ReadInt64FromEnvVar("TF_MATMUL_AUTOTUNE_MAX_ALGORITHMS", 10, &value);
   if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
   }
   static constexpr const int kMaxValue = std::numeric_limits<int>::max();
   if (value < 1 || value > kMaxValue) {

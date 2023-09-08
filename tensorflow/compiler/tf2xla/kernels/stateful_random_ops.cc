@@ -27,11 +27,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/lib/prng.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/math.h"
+#include "xla/client/lib/prng.h"
+#include "xla/client/xla_builder.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -228,15 +228,6 @@ Status CompileImpl(
   TF_RETURN_IF_ERROR(
       ctx->AssignVariable(state_input_idx, STATE_ELEMENT_DTYPE, var));
   return OkStatus();
-}
-
-DataType MaybeConvertBF16ToF32(DataType const& dtype) {
-  if (dtype == DT_BFLOAT16) {
-    // We'll go through F32 to generate BF16.
-    // TODO(b/256243456): Generate BF16 directly from U16.
-    return DT_FLOAT;
-  }
-  return dtype;
 }
 
 class StatefulUniformOp : public XlaOpKernel {

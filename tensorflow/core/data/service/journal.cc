@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
@@ -106,11 +107,11 @@ Status FileJournalReader::Read(Update& update, bool& end_of_journal) {
   while (true) {
     tstring record;
     Status s = reader_->ReadRecord(&record);
-    if (errors::IsOutOfRange(s)) {
+    if (absl::IsOutOfRange(s)) {
       sequence_number_++;
       std::string next_journal_file =
           DataServiceJournalFile(journal_dir_, sequence_number_);
-      if (errors::IsNotFound(env_->FileExists(next_journal_file))) {
+      if (absl::IsNotFound(env_->FileExists(next_journal_file))) {
         VLOG(3) << "Next journal file " << next_journal_file
                 << " does not exist. End of journal reached.";
         end_of_journal = true;

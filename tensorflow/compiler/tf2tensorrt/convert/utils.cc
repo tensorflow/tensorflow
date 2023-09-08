@@ -70,6 +70,10 @@ string DebugString(const nvinfer1::DataType trt_dtype) {
     case nvinfer1::DataType::kUINT8:
       return "kUINT8";
 #endif
+#if IS_TRT_VERSION_GE(8, 6, 0, 0)
+    case nvinfer1::DataType::kFP8:
+      return "kFP8";
+#endif
     default:
       return "Invalid TRT data type";
   }
@@ -203,6 +207,11 @@ Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
 #if IS_TRT_VERSION_GE(8, 5, 0, 0)
     case nvinfer1::DataType::kUINT8:
       *tf_type = DT_UINT8;
+      break;
+#endif
+#if IS_TRT_VERSION_GE(8, 6, 0, 0)
+    case nvinfer1::DataType::kFP8:
+      *tf_type = DT_FLOAT8_E4M3FN;
       break;
 #endif
     default:

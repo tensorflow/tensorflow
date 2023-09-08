@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -24,17 +26,17 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/platform_util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/client_library.h"
+#include "xla/client/lib/arithmetic.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/local_client.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/platform_util.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/compiler/xrt/cc/ops/xrt_compile_ops.h"
 #include "tensorflow/compiler/xrt/cc/ops/xrt_execute_op.h"
 #include "tensorflow/compiler/xrt/cc/ops/xrt_state_ops.h"
@@ -134,9 +136,18 @@ xla::LiteralProto CreateR0(T v) {
   return array.ToProto();
 }
 
+tensorflow::SessionOptions GetSessionOptions() {
+  tensorflow::SessionOptions options;
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  options.config.mutable_experimental()->set_disable_optimize_for_static_graph(
+      true);
+  return options;
+}
+
 class XrtClientSession : public ClientSession {
  public:
-  explicit XrtClientSession(const Scope& scope) : ClientSession(scope) {
+  explicit XrtClientSession(const Scope& scope)
+      : ClientSession(scope, GetSessionOptions()) {
     auto clear_all = ops::XRTReleaseAllAllocations(scope);
     std::vector<Tensor> outputs;
     TF_CHECK_OK(Run(ClientSession::FeedType(), {}, {clear_all}, &outputs));

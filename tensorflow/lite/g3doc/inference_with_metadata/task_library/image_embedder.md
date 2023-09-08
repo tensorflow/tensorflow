@@ -43,11 +43,11 @@ options.mutable_model_file_with_metadata()->set_file_name(model_path);
 options.set_l2_normalize(true);
 std::unique_ptr<ImageEmbedder> image_embedder = ImageEmbedder::CreateFromOptions(options).value();
 
-// Create input frame_buffer1 and frame_buffer_2 from your inputs `image_data1`, `image_data2`, `image_dimension1` and `image_dimension2`.
+// Create input frame_buffer_1 and frame_buffer_2 from your inputs `image_data1`, `image_data2`, `image_dimension1` and `image_dimension2`.
 // See more information here: tensorflow_lite_support/cc/task/vision/utils/frame_buffer_common_utils.h
-std::unique_ptr<FrameBuffer> frame_buffer1 = CreateFromRgbRawBuffer(
+std::unique_ptr<FrameBuffer> frame_buffer_1 = CreateFromRgbRawBuffer(
       image_data1, image_dimension1);
-std::unique_ptr<FrameBuffer> frame_buffer1 = CreateFromRgbRawBuffer(
+std::unique_ptr<FrameBuffer> frame_buffer_2 = CreateFromRgbRawBuffer(
       image_data2, image_dimension2);
 
 // Run inference on two images.

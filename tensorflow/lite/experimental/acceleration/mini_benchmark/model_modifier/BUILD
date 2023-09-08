@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "libjpeg_handle_deps", "register_selected_ops_deps")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -42,11 +44,11 @@ cc_library(
         ":validation_graph_builder",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:decode_jpeg_status",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:jpeg_common",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:jpeg_header_parser",
-        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
         "@com_google_absl//absl/status",
@@ -79,14 +81,15 @@ cc_binary(
     deps = [
         ":embedder",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:call",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:decode_jpeg",
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
         "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
-    ],
+    ] + libjpeg_handle_deps() + register_selected_ops_deps(),
 )
 
 cc_library(
@@ -110,18 +113,17 @@ cc_test(
     deps = [
         ":custom_validation_embedder",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:model_builder",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:call",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_model",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:mini_benchmark_test_helper",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:model_loader",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
-        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools:model_loader",
         "@com_google_googletest//:gtest_main",
-    ],
+    ] + libjpeg_handle_deps() + register_selected_ops_deps(),
 )

@@ -19,7 +19,7 @@ import time
 from tensorflow.python.eager import monitoring
 from tensorflow.python.util import tf_contextlib
 
-enable_metrics = False
+enable_metrics = True
 _METRICS_MAPPING = {}
 
 
@@ -27,28 +27,61 @@ def _init():
   """Initialize the metrics mapping."""
   global _METRICS_MAPPING
 
-  # Time in seconds to bucket the distribution of execution time. Range from
-  # 0.001s (i.e., 1ms) to 1000s.
-  time_buckets = monitoring.ExponentialBuckets(0.001, 10, 6)
+  # Define the boundaries for bucketing times of distribution (Sampler) metrics.
+
+  # Closure execution: range from 0.1s to 10000s, i.e. [(0.1, 1), (1, 10), ...]
+  execution_time_buckets = monitoring.ExponentialBuckets(
+      scale=0.1, growth_factor=10, bucket_count=6)
+  # Tracing: same range as execution
+  tracing_time_buckets = execution_time_buckets
+  # Remote value fetch: range from 0.001s (i.e. 1ms) to 1000s
+  fetch_time_buckets = monitoring.ExponentialBuckets(
+      scale=0.001, growth_factor=10, bucket_count=7)
+  # Server def update: range from 1s to 10000s
+  server_update_time_buckets = monitoring.ExponentialBuckets(
+      scale=1, growth_factor=10, bucket_count=5)
 
   function_tracing_sampler = monitoring.Sampler(
-      '/tensorflow/api/ps_strategy/coordinator/function_tracing', time_buckets,
+      '/tensorflow/api/ps_strategy/coordinator/function_tracing',
+      tracing_time_buckets,
       'Sampler to track the time (in seconds) for tracing functions.')
 
   closure_execution_sampler = monitoring.Sampler(
       '/tensorflow/api/ps_strategy/coordinator/closure_execution',
-      time_buckets,
+      execution_time_buckets,
       'Sampler to track the time (in seconds) for executing closures.')
 
   remote_value_fetch_sampler = monitoring.Sampler(
       '/tensorflow/api/ps_strategy/coordinator/remote_value_fetch',
-      time_buckets,
+      fetch_time_buckets,
       'Sampler to track the time (in seconds) for fetching remote_value.')
+
+  server_def_update_sampler = monitoring.Sampler(
+      '/tensorflow/api/ps_strategy/coordinator/server_def_update',
+      server_update_time_buckets,
+      'Sample to track the time (in seconds) for updating the server def upon '
+      'worker recovery.')
+
+  queued_closure_gauge = monitoring.IntGauge(
+      '/tensorflow/api/ps_strategy/coordinator/queued_closures',
+      'Track how many closures are in the coordinator queue pending execution.')
+
+  inflight_closure_gauge = monitoring.IntGauge(
+      '/tensorflow/api/ps_strategy/coordinator/inflight_closures',
+      'Track how many closures are currently being processed by workers.')
+
+  worker_failure_counter = monitoring.Counter(
+      '/tensorflow/api/ps_strategy/coordinator/recoverable_worker_failure_count',
+      'Track how many recoverable worker failures have been encountered.')
 
   _METRICS_MAPPING = {
       'function_tracing': function_tracing_sampler,
       'closure_execution': closure_execution_sampler,
-      'remote_value_fetch': remote_value_fetch_sampler
+      'remote_value_fetch': remote_value_fetch_sampler,
+      'server_def_update': server_def_update_sampler,
+      'queued_closures': queued_closure_gauge,
+      'inflight_closures': inflight_closure_gauge,
+      'worker_failures': worker_failure_counter,
   }
 
 
@@ -71,14 +104,55 @@ def monitored_timer(metric_name, state_tracker=None):
       metric.get_cell().add(duration_sec)
 
 
-def get_metric_summary(metric_name):
-  """Get summary for the specified metric."""
-  metric = _METRICS_MAPPING[metric_name]
-  histogram_proto = metric.get_cell().value()
+def monitor_int(metric_name, value):
+  if not enable_metrics:
+    return
+  else:
+    if not _METRICS_MAPPING:
+      _init()
+    metric = _METRICS_MAPPING[metric_name]
+    metric.get_cell().set(value)
+
+
+def monitor_increment_counter(metric_name):
+  if not enable_metrics:
+    return
+  else:
+    if not _METRICS_MAPPING:
+      _init()
+    metric = _METRICS_MAPPING[metric_name]
+    metric.get_cell().increase_by(1)
+
+
+def _get_metric_histogram(histogram_proto):
+  """Convert a histogram proto into a dict.
+
+  Args:
+    histogram_proto: a proto containing a Sampler metric's result histogram.
+
+  Returns:
+    A dict containing summary statistics and the raw histogram values.
+  """
   ret = dict()
   ret['min'] = histogram_proto.min
   ret['max'] = histogram_proto.max
   ret['num'] = histogram_proto.num
   ret['sum'] = histogram_proto.sum
-  # TODO(haoyuzhang): consider reporting the distribution in buckets.
+
+  bucket_limits = histogram_proto.bucket_limit
+  bucket_vals = histogram_proto.bucket
+  ret['histogram'] = {}
+  # Add lower limit as 0, since all these metrics are durations
+  bucket_limits.insert(0, 0)
+  for lb, ub, val in zip(bucket_limits[:-1], bucket_limits[1:], bucket_vals):
+    ret['histogram'][(lb, ub)] = val
   return ret
+
+
+def get_metric_summary(metric_name):
+  """Get summary for the specified metric."""
+  metric = _METRICS_MAPPING[metric_name]
+  result = metric.get_cell().value()
+  if isinstance(metric, monitoring.Sampler):
+    result = _get_metric_histogram(result)
+  return result

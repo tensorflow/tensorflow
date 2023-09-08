@@ -128,6 +128,58 @@ REGISTER_OP("RaggedCross")
       return OkStatus();
     });
 
+REGISTER_OP("RaggedFillEmptyRows")
+    .Input("value_rowids: int64")
+    .Input("values: T")
+    .Input("nrows: int64")
+    .Input("default_value: T")
+    .Output("output_value_rowids: int64")
+    .Output("output_values: T")
+    .Output("empty_row_indicator: bool")
+    .Output("reverse_index_map: int64")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input_value_rowids = c->input(0);
+      TF_RETURN_IF_ERROR(
+          c->WithRank(input_value_rowids, 1, &input_value_rowids));
+      ShapeHandle input_values = c->input(1);
+      TF_RETURN_IF_ERROR(c->WithRank(input_values, 1, &input_values));
+      ShapeHandle input_nrows = c->input(2);
+      TF_RETURN_IF_ERROR(c->WithRank(input_nrows, 0, &input_nrows));
+      ShapeHandle default_value = c->input(3);
+      TF_RETURN_IF_ERROR(c->WithRank(default_value, 0, &default_value));
+      DimensionHandle N = c->Dim(input_value_rowids, 0);
+      TF_RETURN_IF_ERROR(c->Merge(N, c->Dim(input_values, 0), &N));
+      DimensionHandle unused_dim;
+      ShapeHandle output_value_rowids =
+          c->Vector(InferenceContext::kUnknownDim);
+      ShapeHandle output_values = c->Vector(InferenceContext::kUnknownDim);
+      ShapeHandle empty_row_indicator =
+          c->Vector(InferenceContext::kUnknownDim);
+      ShapeHandle reverse_index_map = c->Vector(N);
+      c->set_output(0, output_value_rowids);
+      c->set_output(1, output_values);
+      c->set_output(2, empty_row_indicator);
+      c->set_output(3, reverse_index_map);
+      return OkStatus();
+    });
+
+REGISTER_OP("RaggedFillEmptyRowsGrad")
+    .Input("reverse_index_map: int64")
+    .Input("grad_values: T")
+    .Output("d_values: T")
+    .Output("d_default_value: T")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle reverse_index_map = c->input(0);
+      TF_RETURN_IF_ERROR(c->WithRank(reverse_index_map, 1, &reverse_index_map));
+      ShapeHandle grad_values = c->input(1);
+      TF_RETURN_IF_ERROR(c->WithRank(grad_values, 1, &grad_values));
+      c->set_output(0, reverse_index_map);
+      c->set_output(1, c->Scalar());
+      return OkStatus();
+    });
+
 //==============================================================================
 // Shape Functions
 //==============================================================================

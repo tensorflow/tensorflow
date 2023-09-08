@@ -83,6 +83,7 @@ def TfSavedModel_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::tf_saved_model";
+  let usePropertiesForAttributes = 0;
 }
 
 
@@ -121,7 +122,7 @@ def TfSavedModel_GlobalTensorOp : TfSavedModel_Op<"global_tensor"> {
 
   let arguments = (ins
     StrAttr:$sym_name,
-    ElementsAttr:$value,
+    OptionalAttr<ElementsAttr>:$value,
     TypeAttr:$type,
     UnitAttr:$is_mutable
   );

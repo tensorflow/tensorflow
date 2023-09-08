@@ -1,6 +1,5 @@
 # DTensor Internal experimental code.
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "if_google", "if_oss")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -16,18 +15,11 @@ cc_library(
         "collective_lowering.cc",
         "dtensor_mlir_passes_internal.cc",
         "update_tpu_metadata.cc",
-    ] + if_oss(
-        [
-            "dtensor_embedding_stub.cc",
-            "dtensor_embedding_v2_stub.cc",
-        ],
-    ),
+    ],
     hdrs = ["dtensor_mlir_passes_internal.h"],
-    textual_hdrs = [] + if_google(["collective_lowering_google.inc"]),
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:str_util",
@@ -35,13 +27,14 @@ cc_library(
         "//tensorflow/dtensor/cc:constants",
         "//tensorflow/dtensor/cc:dstatus",
         "//tensorflow/dtensor/cc:dtensor_utils",
+        "//tensorflow/dtensor/cc:layout_to_xla_sharding",
         "//tensorflow/dtensor/cc:tensor_layout",
+        "//tensorflow/dtensor/mlir:collectives",
         "//tensorflow/dtensor/mlir:collectives_common",
         "//tensorflow/dtensor/mlir:create_dtensor_mlir_passes",
         "//tensorflow/dtensor/mlir:device_utils",
         "//tensorflow/dtensor/mlir:dtensor_location",
         "//tensorflow/dtensor/mlir:dtensor_passes_inc_gen",
-        "//tensorflow/dtensor/mlir:group_assignment",
         "//tensorflow/dtensor/mlir:layout_parsing",
         "//tensorflow/dtensor/mlir:op_utils",
         "//tensorflow/dtensor/mlir:shape_utils",
@@ -54,8 +47,11 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/util:env_var",
+        "@local_xla//xla:xla_data_proto_cc",
     ],
 )

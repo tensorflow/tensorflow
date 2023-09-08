@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/union_find.h"
+#include "xla/union_find.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -1528,10 +1528,10 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   // nesting. (CondId, AncestorId) is not enough, e.g.
   //   pred1 = array_ops.placeholder(dtypes.bool, name='pred1')
   //   pred2 = array_ops.placeholder(dtypes.bool, name='pred2')
-  //   cond1 = control_flow_ops.cond(pred1, ...)
-  //   cond2 = control_flow_ops.cond(pred2, ...)
-  //   cond3 = control_flow_ops.cond(pred1, use cond1 and cond2)
-  //   cond4 = control_flow_ops.cond(pred2, use cond1 and cond2)
+  //   cond1 = cond.cond(pred1, ...)
+  //   cond2 = cond.cond(pred2, ...)
+  //   cond3 = cond.cond(pred1, use cond1 and cond2)
+  //   cond4 = cond.cond(pred2, use cond1 and cond2)
   // cond3 and cond4 have the same (CondId, AncestorId), but they should not
   // be merged into one "If" node (because they have different predicates).
   std::deque<std::vector<Node*>> merge_clusters;

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/cc_op_gen.h"
 
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>

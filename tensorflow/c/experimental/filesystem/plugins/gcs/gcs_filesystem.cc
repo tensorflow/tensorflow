@@ -17,6 +17,8 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <variant>
+
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
@@ -771,9 +773,9 @@ static std::vector<std::string> GetChildrenBounded(
       return result;
     }
     auto value = *std::move(item);
-    std::string children = absl::holds_alternative<std::string>(value)
-                               ? absl::get<std::string>(value)
-                               : absl::get<gcs::ObjectMetadata>(value).name();
+    std::string children = std::holds_alternative<std::string>(value)
+                               ? std::get<std::string>(value)
+                               : std::get<gcs::ObjectMetadata>(value).name();
     auto pos = children.find(prefix);
     if (pos != 0) {
       TF_SetStatus(status, TF_INTERNAL,

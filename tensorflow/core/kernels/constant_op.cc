@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/constant_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -336,14 +336,15 @@ REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
 #endif
 REGISTER_KERNEL(bfloat16, GPU);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#undef REGISTER_KERNEL
+
 REGISTER_KERNEL_BUILDER(Name("OnesLike")
                             .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("y"),
                         OnesLikeOp<CPUDevice, int32>);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#undef REGISTER_KERNEL
 
 PlaceholderOp::PlaceholderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));

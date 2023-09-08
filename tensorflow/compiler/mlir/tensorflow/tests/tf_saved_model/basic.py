@@ -44,8 +44,8 @@ class TestModule(tf.Module):
   # CHECK: "tf_saved_model.global_tensor"() {is_mutable, sym_name = "[[VAR:[a-zA-Z_0-9]+]]", tf_saved_model.exported_names = ["v42"], type = tensor<f32>, value = dense<4.200000e+01> : tensor<f32>} : () -> ()
   # CHECK:      func {{@[a-zA-Z_0-9]+}}(
   # CHECK-SAME:   %arg0: tensor<f32> {tf._user_specified_name = "x", tf_saved_model.index_path = [0]},
-  # CHECK-SAME:   %arg1: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @[[VAR]]},
-  # CHECK-SAME:   %arg2: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @[[CONST]]}) -> (
+  # CHECK-SAME:   %arg1: tensor<!tf_type.resource<tensor<f32>>>
+  # CHECK-SAME:   %arg2: tensor<!tf_type.resource<tensor<f32>>>
   # CHECK-SAME:   tensor<f32> {tf_saved_model.index_path = []})
   # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["some_function"]
   @tf.function(input_signature=[tf.TensorSpec([], tf.float32)])

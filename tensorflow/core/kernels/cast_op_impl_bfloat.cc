@@ -24,20 +24,17 @@ typedef Eigen::GpuDevice GPUDevice;
 
 CastFunctorType GetCpuCastFromBfloat(DataType dst_dtype) {
   CURRY_TYPES3(CAST_CASE, CPUDevice, bfloat16);
+  CAST_CASE(CPUDevice, bfloat16, float8_e5m2);
+  CAST_CASE(CPUDevice, bfloat16, float8_e4m3fn);
   return nullptr;
 }
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 CastFunctorType GetGpuCastFromBfloat(DataType dst_dtype) {
-  if (dst_dtype == DT_FLOAT) {
-    return [](OpKernelContext* ctx, const Tensor& inp, Tensor* out,
-              bool truncate) {
-      functor::CastFunctor<GPUDevice, float, bfloat16> func;
-      func(ctx->eigen_device<GPUDevice>(), out->flat<float>(),
-           inp.flat<bfloat16>(), truncate);
-    };
-  }
+  CURRY_TYPES3(CAST_CASE, GPUDevice, bfloat16);
+  CAST_CASE(GPUDevice, bfloat16, float8_e5m2);
+  CAST_CASE(GPUDevice, bfloat16, float8_e4m3fn);
   return nullptr;
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

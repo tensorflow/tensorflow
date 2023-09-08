@@ -48,17 +48,18 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/tf_allocator_adapter.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/kernels/matmul_op_impl.h"
 #include "tensorflow/core/kernels/matmul_util.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
@@ -183,7 +184,7 @@ StatusOr<se::cuda::BlasLt::Epilogue> GetBlasLtEpilogOp(
   } else if (fusion == FusedComputationType::kBiasAddWithRelu) {
     return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
   } else if (fusion == FusedComputationType::kBiasAddWithGeluApproximate) {
-    return se::cuda::BlasLt::Epilogue::kBiasThenGeLUApproximate;
+    return se::cuda::BlasLt::Epilogue::kBiasThenGELU;
   } else {
     return errors::Internal("Unsupported fusion for BlasLt Matmul");
   }
@@ -241,7 +242,7 @@ se::blas::AlgorithmConfig AutotuneMatmul(
 }
 
 template <typename LaunchFunc, typename Sig>
-StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneMatMulImpl(
+StatusOr<std::vector<xla::AutotuneResult>> AutotuneMatMulImpl(
     OpKernelContext* ctx,
     std::vector<std::unique_ptr<const se::dnn::OpRunner<Sig>>>& runners,
     bool actually_do_autotune, const LaunchFunc& launch_func,
@@ -251,7 +252,7 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneMatMulImpl(
   se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                               stream);
 
-  std::vector<tensorflow::AutotuneResult> results;
+  std::vector<xla::AutotuneResult> results;
   results.reserve(runners.size());
   // TODO(reedwm): Warn if determinism is enabled after autotune is run
   for (auto& runner : runners) {
@@ -294,7 +295,7 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneMatMulImpl(
       CheckRedzones(rz_scratch_allocator, &result);
       CheckRedzones(rz_allocator, &result);
     } else {
-      result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
+      result.mutable_failure()->set_kind(xla::AutotuneResult::UNKNOWN);
       result.mutable_failure()->set_msg(
           absl::StrCat("Profiling failure on CUDNN engine ", desc.ToString(),
                        ": ", cudnn_launch_status.ToString()));
@@ -340,7 +341,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>> AutotuneFusedMatmul(
     TF_RETURN_IF_ERROR(stream->parent()->GetFusedMatmulRunners(
         CudnnUseFrontend(), element_type, element_type, element_type, stream,
         trans_a, trans_b, m, n, k, lda, ldb, ldc, activation_mode,
-        /*use_fallback=*/false, &runners));
+        /*use_fallback=*/false, GetNumericOptions(), &runners));
 
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
@@ -384,7 +385,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>> AutotuneFusedMatmul(
       TF_RETURN_IF_ERROR(stream->parent()->GetFusedMatmulRunners(
           CudnnUseFrontend(), element_type, element_type, element_type, stream,
           trans_a, trans_b, m, n, k, lda, ldb, ldc, activation_mode,
-          /*use_fallback=*/true, &fallback_runners));
+          /*use_fallback=*/true, GetNumericOptions(), &fallback_runners));
 
       TF_ASSIGN_OR_RETURN(
           auto fallback_results,

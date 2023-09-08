@@ -36,12 +36,11 @@ import zipfile
 
 import numpy as np
 
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from six.moves.urllib.request import urlopen
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.io_utils import path_to_string
-from tensorflow.python.util.tf_export import keras_export
 
 # Required to support google internal urlretrieve
 if sys.version_info[0] == 2:
@@ -89,7 +88,7 @@ else:
 def is_generator_or_sequence(x):
   """Check if `x` is a Keras generator type."""
   builtin_iterators = (str, list, tuple, dict, set, frozenset)
-  if isinstance(x, (ops.Tensor, np.ndarray) + builtin_iterators):
+  if isinstance(x, (tensor.Tensor, np.ndarray) + builtin_iterators):
     return False
   return (tf_inspect.isgenerator(x) or
           isinstance(x, Sequence) or
@@ -145,7 +144,6 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
   return False
 
 
-@keras_export('keras.utils.get_file')
 def get_file(fname,
              origin,
              untar=False,
@@ -389,7 +387,6 @@ def threadsafe_generator(f):
   return g
 
 
-@keras_export('keras.utils.Sequence')
 class Sequence(object):
   """Base object for fitting to a sequence of data, such as a dataset.
 
@@ -547,7 +544,6 @@ def get_index(uid, i):
   return _SHARED_SEQUENCES[uid][i]
 
 
-@keras_export('keras.utils.SequenceEnqueuer')
 class SequenceEnqueuer(object):
   """Base class to enqueue inputs.
 
@@ -676,7 +672,6 @@ class SequenceEnqueuer(object):
     raise NotImplementedError
 
 
-@keras_export('keras.utils.OrderedEnqueuer')
 class OrderedEnqueuer(SequenceEnqueuer):
   """Builds a Enqueuer from a Sequence.
 
@@ -809,7 +804,6 @@ def next_sample(uid):
   return next(_SHARED_SEQUENCES[uid])
 
 
-@keras_export('keras.utils.GeneratorEnqueuer')
 class GeneratorEnqueuer(SequenceEnqueuer):
   """Builds a queue out of a data generator.
 

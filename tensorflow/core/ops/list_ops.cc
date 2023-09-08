@@ -492,6 +492,7 @@ REGISTER_OP("TensorListSetItem")
     .Input("item: element_dtype")
     .Output("output_handle: variant")
     .Attr("element_dtype: type")
+    .Attr("resize_if_index_out_of_bounds: bool = false")
     .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_ARRAY,
                                                         "element_dtype"))
     .SetForwardTypeFn(full_type::UnaryContainerAdd(TFT_ARRAY,

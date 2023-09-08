@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 
+#include <optional>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -173,9 +174,9 @@ LogicalResult CreateInitBufferValue(ArrayRef<int64_t> element_shape,
   return success();
 }
 
-llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
+std::optional<RankedTensorType> GetElementTypeFromAccess(
     Value collection, ModuleOp module,
-    llvm::function_ref<llvm::Optional<Type>(Operation*)> infer_from_op) {
+    llvm::function_ref<std::optional<Type>(Operation*)> infer_from_op) {
   for (auto& use : collection.getUses()) {
     if (auto while_op = llvm::dyn_cast<TF::WhileOp>(use.getOwner())) {
       auto body = while_op.body_function();
@@ -211,7 +212,7 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
       if (elem_type && elem_type.hasStaticShape()) return elem_type;
     }
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Creates a ReadVariableOp on a local variable.
@@ -315,7 +316,7 @@ Value ScatterAccumulateElements(Value indices, Value updates, Value buffer,
         GetElement(index, buffer, builder, loc, /*keep_slice_shape=*/true);
     starts_in_update[0] = i;
     auto update_slice_starts = GetR1Const(starts_in_update, builder, loc);
-    auto slice =
+    Value slice =
         builder
             .create<TF::SliceOp>(
                 loc, ArrayRef<Type>{old_slice.getType()},

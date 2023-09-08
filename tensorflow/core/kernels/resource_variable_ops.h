@@ -34,6 +34,7 @@ class VarHandleOp : public OpKernel {
   bool is_anonymous_;
   string container_;
   string name_;
+  string debug_name_;
   Tensor const_tensor_;
 
   DtypeAndPartialTensorShape dtype_and_shape_;

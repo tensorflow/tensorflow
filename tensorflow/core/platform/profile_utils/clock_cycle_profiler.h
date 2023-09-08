@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
-#include "tensorflow/tsl/platform/profile_utils/clock_cycle_profiler.h"
+#include "tsl/platform/profile_utils/clock_cycle_profiler.h"
 
 namespace tensorflow {
 using tsl::ClockCycleProfiler;  // NOLINT

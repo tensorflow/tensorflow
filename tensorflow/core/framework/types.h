@@ -20,7 +20,7 @@ limitations under the License.
 #include <set>
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/framework/device_type.h"
+#include "tsl/framework/device_type.h"
 
 namespace tensorflow {
 
@@ -72,7 +72,6 @@ struct DeviceName<Eigen::GpuDevice> {
   static const std::string value;
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 
 typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
 typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;
@@ -469,6 +468,9 @@ inline bool DataTypeIsFloating(DataType dt) {
   return kDataTypeIsFloating.Contains(dt);
 }
 
+// Returns true iff 'dt' is a numeric type.
+inline bool DataTypeIsNumeric(DataType dt) { return kNumberTypes.Contains(dt); }
+
 // Returns true iff 'dt' is a complex type.
 constexpr DataTypeSet kDataTypeIsComplex =
     ToSet(DT_COMPLEX64) | ToSet(DT_COMPLEX128);
@@ -545,8 +547,14 @@ struct TypeHasher {
   }
 };
 
-// Maps a legacy DType proto enum to an equivalent FullType ID.
+// Maps a legacy DType proto enum to an equivalent FullType ID,
+// i.e. sets the type_id of t based on dtype.
 void map_dtype_to_tensor(const DataType& dtype, FullTypeDef& t);
+
+// Set the type id_of t to TFT_TENSOR and add a child arg by mapping
+// a legacy DType proto enun to an equivalent FullType ID, e.g.
+// if dtype is DT_FLOAT, sets t to TFT_TENSOR[TFT_FLOAT].
+void map_dtype_to_child_of_tensor(const DataType& dtype, FullTypeDef& t);
 
 }  // namespace tensorflow
 

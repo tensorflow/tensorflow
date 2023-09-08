@@ -162,8 +162,9 @@ class EditDistanceOp : public OpKernel {
 
     TensorShape output_shape;
     for (int d = 0; d < static_cast<int>(group_dims.size()); ++d) {
-      output_shape.AddDim(std::max(hypothesis_st_shape.dim_size(d),
-                                   truth_st_shape.dim_size(d)));
+      OP_REQUIRES_OK(ctx, output_shape.AddDimWithStatus(
+                              std::max(hypothesis_st_shape.dim_size(d),
+                                       truth_st_shape.dim_size(d))));
     }
     const auto output_elements = output_shape.num_elements();
     OP_REQUIRES(

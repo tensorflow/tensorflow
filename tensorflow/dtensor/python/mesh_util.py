@@ -14,7 +14,8 @@
 # ==============================================================================
 """Utilities to help with mesh creation."""
 
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
+
 from absl import logging
 import numpy as np
 
@@ -36,10 +37,9 @@ def _print_context(num_global_devices: int, num_clients: int, client_id: int,
   logging.info('Number of global %s devices: %d', device_type.upper(),
                num_global_devices)
   # pylint: disable=protected-access
-  logging.info('Global device IDs: %s', mesh._global_device_ids)
-  logging.info('Local device IDs: %s', mesh._local_device_ids)
-  logging.info('Local devices: %s',
-               [d.to_string() for d in mesh._local_devices])
+  logging.info('Global device IDs: %s', mesh.global_device_ids())
+  logging.info('Local device IDs: %s', mesh.local_device_ids())
+  logging.info('Local devices: %s', mesh.local_devices())
   # pylint: enable=protected-access
 
 
@@ -66,11 +66,13 @@ def _make_device_specs(
 
 
 @tf_export('experimental.dtensor.create_mesh', v1=[])
-def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
-                mesh_name: str = '',
-                devices: Optional[List[str]] = None,
-                device_type: Optional[str] = None,
-                use_xla_spmd: bool = layout.USE_XLA_SPMD) -> layout.Mesh:
+def create_mesh(
+    mesh_dims: Optional[Union[List[Tuple[str, int]], Dict[str, int]]] = None,
+    mesh_name: str = '',
+    devices: Optional[List[str]] = None,
+    device_type: Optional[str] = None,
+    use_xla_spmd: bool = layout.USE_XLA_SPMD,
+) -> layout.Mesh:
   """Creates a single-client mesh.
 
   If both `mesh_dims` and `devices` are specified, they must match each otehr.
@@ -78,16 +80,17 @@ def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
   with an empty name, assigning all available devices to that dimension.
 
   Args:
-    mesh_dims: A list of (dim_name, dim_size) tuples. Defaults to a single
-      batch-parallel dimension called 'x' using all devices. As a special case,
-      a single-element mesh_dims whose dim_size is -1 also uses all devices.
+    mesh_dims: A dict of dim_name: dim_size, or a list of (dim_name, dim_size)
+      tuples. Defaults to a single batch-parallel dimension called 'x' usin all
+      devices. As a special case, a single-element mesh_dims whose dim_size is
+      -1 also uses all devices.  e.g. `{'x' : 4, 'y' : 1}` or `[('x', 4), ('y',
+      1)]`.
     mesh_name: Name of the created mesh. Defaults to ''.
     devices: String representations of devices to use. This is the device part
       of tf.DeviceSpec, e.g. 'CPU:0'. Defaults to all available logical devices.
     device_type: If `devices` is missing, the type of devices to use. Defaults
       to 'CPU'.
-    use_xla_spmd: Boolean when True, will use XLA SPMD instead of
-      DTensor SPMD.
+    use_xla_spmd: Boolean when True, will use XLA SPMD instead of DTensor SPMD.
 
   Returns:
     A single-client mesh created from specified or default arguments.
@@ -97,6 +100,8 @@ def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
   local_spec = tf_device.DeviceSpec(job=config.job_name(), replica=0, task=0)
   device_specs = [local_spec.make_merged_spec(d) for d in device_specs]
 
+  if isinstance(mesh_dims, dict):
+    mesh_dims = list(mesh_dims.items())
   if mesh_dims is None:
     mesh_dims = [('x', len(device_specs))]
   elif len(mesh_dims) == 1 and mesh_dims[0][1] == -1:
@@ -130,11 +135,12 @@ def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
 
 @tf_export('experimental.dtensor.create_distributed_mesh', v1=[])
 def create_distributed_mesh(
-    mesh_dims: List[Tuple[str, int]],
+    mesh_dims: Union[List[Tuple[str, int]], Dict[str, int]],
     mesh_name: str = '',
     local_devices: Optional[List[str]] = None,
     device_type: Optional[str] = None,
-    use_xla_spmd: bool = layout.USE_XLA_SPMD) -> layout.Mesh:
+    use_xla_spmd: bool = layout.USE_XLA_SPMD,
+) -> layout.Mesh:
   """Creates a distributed mesh.
 
   This is similar to `create_mesh`, but with a different set of arguments to
@@ -147,19 +153,21 @@ def create_distributed_mesh(
   runtime.
 
   Args:
-    mesh_dims: A list of (dim_name, dim_size) tuples.
+    mesh_dims: A dict of dim_name: dim_size, or a list of (dim_name, dim_size)
+      tuples. e.g. `{'x' : 4, 'y' : 1}` or `[('x', 4), ('y', 1)]`.
     mesh_name: Name of the created mesh. Defaults to ''.
     local_devices: String representations of devices to use. This is the device
       part of tf.DeviceSpec, e.g. 'CPU:0'. Defaults to all available local
       logical devices.
     device_type: Type of device to build the mesh for. Defaults to 'CPU'.
       Supported values are 'CPU', 'GPU', 'TPU'.6
-    use_xla_spmd: Boolean when True, will use XLA SPMD instead of
-      DTensor SPMD.
+    use_xla_spmd: Boolean when True, will use XLA SPMD instead of DTensor SPMD.
 
   Returns:
     A mesh that spans evenly across all DTensor clients in the cluster.
   """
+  if isinstance(mesh_dims, dict):
+    mesh_dims = list(mesh_dims.items())
   dim_names, shape = zip(*mesh_dims)
 
   if not accelerator_util.is_initialized():
@@ -214,7 +222,11 @@ def create_distributed_mesh(
     return mesh
 
   if device_type.upper() == 'TPU':
-    mesh = tpu_util.create_tpu_mesh(dim_names, shape, mesh_name, use_xla_spmd)
+    mesh = tpu_util.create_tpu_mesh(
+        mesh_dim_names=dim_names,
+        mesh_shape=shape,
+        mesh_name=mesh_name,
+        use_xla_spmd=use_xla_spmd)
     _print_context(
         config.num_global_devices(device_type), config.num_clients(),
         config.client_id(), device_type, mesh)

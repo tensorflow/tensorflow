@@ -19,7 +19,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_reference.h"
@@ -40,11 +40,11 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
-using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+#include "xla/stream_executor/cuda/cuda_activation.h"
+using ::stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_activation.h"
-using ::perftools::gputools::rocm::ScopedActivateExecutorContext;
+#include "xla/stream_executor/rocm/rocm_activation.h"
+using ::stream_executor::rocm::ScopedActivateExecutorContext;
 #endif
 
 namespace tensorflow {
@@ -94,6 +94,7 @@ class DenseToCSRSparseMatrixCPUOp : public OpKernel {
 
     const int64_t batch_size = (rank == 2) ? 1 : dense_tensor_shape.dim_size(0);
     const int64_t num_rows = dense_tensor_shape.dim_size((rank == 2) ? 0 : 1);
+    const int64_t num_cols = dense_tensor_shape.dim_size((rank == 2) ? 1 : 2);
     const int64_t total_nnz = indices.NumElements() / rank;
 
     Tensor values;
@@ -111,10 +112,10 @@ class DenseToCSRSparseMatrixCPUOp : public OpKernel {
 
     // Convert from COO to CSR format.
     functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
-    OP_REQUIRES_OK(ctx,
-                   coo_to_csr(batch_size, num_rows, indices.matrix<int64_t>(),
-                              batch_ptr.vec<int32>(), csr_row_ptr.vec<int32>(),
-                              csr_col_ind.vec<int32>()));
+    OP_REQUIRES_OK(
+        ctx, coo_to_csr(batch_size, num_rows, num_cols,
+                        indices.matrix<int64_t>(), batch_ptr.vec<int32>(),
+                        csr_row_ptr.vec<int32>(), csr_col_ind.vec<int32>()));
 
     CSRSparseMatrix output_csr_matrix;
     OP_REQUIRES_OK(ctx, CSRSparseMatrix::CreateCSRSparseMatrix(
@@ -200,7 +201,7 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
           c, calculate_nnz_from_indices(c, indices, nnz_per_batch_device),
           done);
 
-      perftools::gputools::DeviceMemoryBase nnz_per_batch_device_ptr(
+      stream_executor::DeviceMemoryBase nnz_per_batch_device_ptr(
           static_cast<void*>(nnz_per_batch_device.data()));
 
       OP_REQUIRES_ASYNC(

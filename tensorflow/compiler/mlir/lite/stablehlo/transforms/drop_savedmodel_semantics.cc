@@ -26,8 +26,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 namespace mlir {
-namespace TFL {
-namespace mhlo {
+namespace odml {
+namespace {
+
+using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
+
+}  // namespace
 
 class DropSavedModelSemanticsPass
     : public PassWrapper<DropSavedModelSemanticsPass, OperationPass<ModuleOp>> {
@@ -47,9 +52,8 @@ class DropSavedModelSemanticsPass
     // Clean up functions from tf_saved_model attributes.
     OpBuilder builder(module);
     auto bound_input = builder.getStringAttr("tf_saved_model.bound_input");
-    auto exported_names =
-        builder.getStringAttr("tf_saved_model.exported_names");
-    auto index_path = builder.getStringAttr("tf_saved_model.index_path");
+    auto exported_names = builder.getStringAttr(kTfSavedModelExportedNamesAttr);
+    auto index_path = builder.getStringAttr(kTfSavedModelIndexPathAttr);
     module.walk([&](func::FuncOp func) {
       func->removeAttr(exported_names);
       for (unsigned i = 0, e = func.getNumArguments(); i != e; ++i) {
@@ -75,6 +79,5 @@ std::unique_ptr<Pass> CreateDropSavedModelSemanticsPass() {
 
 static PassRegistration<DropSavedModelSemanticsPass> pass;
 
-}  // namespace mhlo
-}  // namespace TFL
+}  // namespace odml
 }  // namespace mlir

@@ -108,12 +108,13 @@ Status AccumulatorApplyGradient(AbstractContext* ctx, AbstractTensorHandle** han
 // Summary:
 //
 // Description:
-Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource, DataType dtype, const PartialTensorShape shape, const char* container, const char* shared_name, absl::Span<string const> allowed_devices, const char* name, const char* raw_device_name) {
+Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource, DataType dtype, const PartialTensorShape shape, const char* container, const char* shared_name, const char* debug_name, absl::Span<string const> allowed_devices, const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("VarHandleOp", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrString("container", container, strlen(container)));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrString("shared_name", shared_name, strlen(shared_name)));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrString("debug_name", debug_name, strlen(debug_name)));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrType("dtype", dtype));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrShape("shape", shape));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrStringList("allowed_devices", allowed_devices));

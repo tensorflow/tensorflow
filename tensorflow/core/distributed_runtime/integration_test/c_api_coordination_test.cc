@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -312,7 +312,8 @@ TEST(CAPI, MultiClientCoordinationSetGetConfigs) {
     EXPECT_EQ(TF_ALREADY_EXISTS, TF_GetCode(status)) << TF_Message(status);
     // Getting next_key returns the value set by another worker
     TF_Buffer* value_buf = TF_NewBuffer();
-    TFE_GetConfigKeyValue(ctx, next_key.c_str(), value_buf, status);
+    TFE_GetConfigKeyValue(ctx, next_key.c_str(), /*timeout_in_ms=*/5000,
+                          value_buf, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     std::string value_str{static_cast<const char*>(value_buf->data),
                           value_buf->length};

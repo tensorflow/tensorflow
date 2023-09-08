@@ -58,6 +58,10 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
   HANDLER(GetWorkers);
   HANDLER(GetDataServiceMetadata);
   HANDLER(GetDataServiceConfig);
+  HANDLER(Snapshot);
+  HANDLER(GetSnapshotSplit);
+  HANDLER(GetSnapshotStreams);
+  HANDLER(DisableCompressionAtRuntime);
 #undef HANDLER
 
  private:

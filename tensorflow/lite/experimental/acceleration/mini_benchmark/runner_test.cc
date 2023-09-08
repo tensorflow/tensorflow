@@ -24,7 +24,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/lite/stderr_reporter.h"
 #ifdef __ANDROID__
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_executable.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_unit_test_entry_points.h"
@@ -89,7 +91,7 @@ struct RunnerTest : ::testing::Test {
     ModelT model;
     model.description = "test";
     flatbuffers::FlatBufferBuilder fbb;
-    fbb.Finish(CreateModel(fbb, &model));
+    FinishModelBuffer(fbb, CreateModel(fbb, &model));
     return fbb;
   }
   int exitcode = 0;
@@ -206,7 +208,9 @@ TEST_F(RunnerTest, SymbolLookupFailed) {
 TEST_F(RunnerTest, ReadModelFromPipe) {
   ASSERT_NO_FATAL_FAILURE(Init("TfLiteReadFromPipe"));
   FlatBufferBuilder model = CreateTestModel();
-  EXPECT_EQ(runner->Run(&model, {}, &output, &exitcode, &signal),
+  MemoryAllocation alloc(model.GetBufferPointer(), model.GetSize(),
+                         tflite::DefaultErrorReporter());
+  EXPECT_EQ(runner->Run(&alloc, {}, &output, &exitcode, &signal),
             kMinibenchmarkSuccess);
   EXPECT_EQ(exitcode, kMinibenchmarkSuccess);
   EXPECT_EQ(signal, 0);
@@ -240,7 +244,9 @@ TEST_F(RunnerTest, ProcessDoNotTimedOut) {
 TEST_F(RunnerTest, ReadModelFromPipeNonAndroid) {
   ASSERT_NO_FATAL_FAILURE(Init("TfLiteReadFromPipeInProcess"));
   FlatBufferBuilder model = CreateTestModel();
-  EXPECT_EQ(runner->Run(&model, {}, &output, &exitcode, &signal),
+  MemoryAllocation alloc(model.GetBufferPointer(), model.GetSize(),
+                         tflite::DefaultErrorReporter());
+  EXPECT_EQ(runner->Run(&alloc, {}, &output, &exitcode, &signal),
             kMinibenchmarkSuccess);
 }
 

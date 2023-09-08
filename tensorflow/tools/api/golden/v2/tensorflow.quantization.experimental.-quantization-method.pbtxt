@@ -1,0 +1,58 @@
+path: "tensorflow.quantization.experimental.QuantizationMethod"
+tf_proto {
+  descriptor {
+    name: "QuantizationMethod"
+    field {
+      name: "method"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.quantization.QuantizationMethod.Method"
+      oneof_index: 0
+    }
+    field {
+      name: "experimental_method"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.quantization.QuantizationMethod.ExperimentalMethod"
+      oneof_index: 0
+    }
+    field {
+      name: "quantization_component_specs"
+      number: 3
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.quantization.QuantizationComponentSpec"
+    }
+    enum_type {
+      name: "Method"
+      value {
+        name: "METHOD_UNSPECIFIED"
+        number: 0
+      }
+    }
+    enum_type {
+      name: "ExperimentalMethod"
+      value {
+        name: "EXPERIMENTAL_METHOD_UNSPECIFIED"
+        number: 0
+      }
+      value {
+        name: "STATIC_RANGE"
+        number: 1
+      }
+      value {
+        name: "DYNAMIC_RANGE"
+        number: 2
+      }
+      value {
+        name: "WEIGHT_ONLY"
+        number: 3
+      }
+    }
+    oneof_decl {
+      name: "method_oneof"
+    }
+  }
+}

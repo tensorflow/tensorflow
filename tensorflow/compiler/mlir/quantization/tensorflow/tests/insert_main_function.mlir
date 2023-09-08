@@ -1,4 +1,5 @@
-// RUN: tf-quant-opt %s -quant-add-main-function -allow-unregistered-dialect -mlir-disable-threading -split-input-file | FileCheck %s
+// RUN: tf-quant-opt %s -quant-insert-main-function -mlir-disable-threading \
+// RUN:     -allow-unregistered-dialect -split-input-file | FileCheck %s
 
 // CHECK-LABEL: module attributes {tf.versions = {producer = 930 : i32}, tf_saved_model.semantics, tfl.description = "MLIR Converted.", tfl.schema_version = 3 : i32}  {
 module attributes {tf.versions = {producer = 930 : i32}, tf_saved_model.semantics, tfl.description = "MLIR Converted.", tfl.schema_version = 3 : i32}  {
@@ -34,9 +35,9 @@ module attributes {tf.versions = {producer = 930 : i32}, tf_saved_model.semantic
 // CHECK-NOT: f = @NoOp
 // CHECK:   %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @mul1} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
 // CHECK:   %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg2, %arg3) {config = "", config_proto = "", executor_type = "", f = @mul2} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-// CHECK:   %[[IDENTITY_0:.*]] = "tf.Identity"(%[[PARTITIONEDCALL_1]])
-// CHECK:   %[[IDENTITY_1:.*]] = "tf.Identity"(%[[PARTITIONEDCALL_0]])
-// CHECK:   return %[[IDENTITY_1]], %[[IDENTITY_0]] : tensor<1xf32>, tensor<1xf32>
+// CHECK-DAG:   %[[IDENTITY_0:.*]] = "tf.Identity"(%[[PARTITIONEDCALL_0]])
+// CHECK-DAG:   %[[IDENTITY_1:.*]] = "tf.Identity"(%[[PARTITIONEDCALL_1]])
+// CHECK:   return %[[IDENTITY_0]], %[[IDENTITY_1]] : tensor<1xf32>, tensor<1xf32>
 // CHECK: }
 }
 
@@ -169,4 +170,45 @@ module attributes {tf.versions = {producer = 930 : i32}, tf_saved_model.semantic
 // CHECK: %arg2: tensor<1xf32> {tf_saved_model.index_path = ["mul2_y:0"]}, %arg3: tensor<1xf32> {tf_saved_model.index_path = ["mul2_x:0"]})
 // CHECK: -> (tensor<1xf32> {tf_saved_model.index_path = ["mul1_output:0"]}, tensor<1xf32> {tf_saved_model.index_path = ["mul2_output:0"]})
 // CHECK: attributes {tf.entry_function = {inputs = "mul1_y:0,mul1_x:0,mul2_y:0,mul2_x:0", outputs = "mul1_output:0,mul2_output:0"}, tf_saved_model.exported_names = ["main"]}
+}
+
+// -----
+
+// Tests when a function called @main already exists, it is renamed to
+// `main_{i}` to avoid conflict.
+module attributes {tf_saved_model.semantics}  {
+  func.func @main(%arg0: tensor<1xf32> {tf_saved_model.index_path = ["x"]}, %arg1: tensor<1xf32> {tf_saved_model.index_path = ["y"]}) -> (tensor<1xf32> {tf_saved_model.index_path = ["output_0"]}) attributes {tf.entry_function = {inputs = "x:0,y:0", outputs = "output:0"}, tf_saved_model.exported_names = ["main"]} {
+    %0 = "tf.Mul"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+    func.return %0 : tensor<1xf32>
+  }
+
+// CHECK: func.func private @main_0
+// CHECK: func.func @main
+}
+
+// -----
+
+// Tests when a function called @main already exists and @main_{i} also already
+// exists, it increments the suffix number until there's no conflict.
+module attributes {tf_saved_model.semantics}  {
+  func.func @main_0(%arg0: tensor<1xf32> {tf_saved_model.index_path = ["z"]}) -> (tensor<1xf32> {tf_saved_model.index_path = ["output_0"]}) attributes {tf.entry_function = {inputs = "z:0", outputs = "output:0"}, tf_saved_model.exported_names = ["main_0"]} {
+    %0 = "tf.Identity"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
+    func.return %0 : tensor<1xf32>
+  }
+
+  func.func @main(%arg0: tensor<1xf32> {tf_saved_model.index_path = ["x"]}, %arg1: tensor<1xf32> {tf_saved_model.index_path = ["y"]}) -> (tensor<1xf32> {tf_saved_model.index_path = ["output_0"]}) attributes {tf.entry_function = {inputs = "x:0,y:0", outputs = "output:0"}, tf_saved_model.exported_names = ["main"]} {
+    %0 = "tf.Mul"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+    func.return %0 : tensor<1xf32>
+  }
+// `@main_0` remains touched.
+// CHECK: func.func private @main_0
+// CHECK-SAME: z:0
+
+// `@main` should be renamed to `@main_1` instead of `@main_0` to avoid
+// conflict.
+// CHECK: func.func private @main_1
+// CHECK-SAME: x:0
+
+// This is the newly created main function.
+// CHECK: func.func @main
 }

@@ -14,7 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/captured_function.h"
 
+#include <functional>
+#include <map>
+#include <memory>
+#include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/time/clock.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -60,7 +66,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     return new SimpleNodeExecStats(this);
   }
 
-  string ReportAllocsOnResourceExhausted(const string& err) override {
+  string ReportAllocsOnResourceExhausted(absl::string_view err) override {
     return "";
   }
 
@@ -177,7 +183,7 @@ Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
   auto cleanup = gtl::MakeCleanup([ctx, fn_handle]() {
     Status s = ctx->function_library()->ReleaseHandle(fn_handle);
     if (!s.ok()) {
-      LOG(WARNING) << "Failed to release handle: " << s.error_message();
+      LOG(WARNING) << "Failed to release handle: " << s.message();
     }
   });
 
@@ -419,16 +425,6 @@ Status MakeIteratorFromInputElement(
   return OkStatus();
 }
 
-IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
-  // Strip out any split providers so that they don't apply to sub-iterators.
-  if (ctx->split_providers().empty()) {
-    return *ctx;
-  }
-  IteratorContext::Params params(ctx);
-  params.split_providers.clear();
-  return IteratorContext(std::move(params));
-}
-
 /* static */
 Status FunctionMetadata::Create(
     OpKernelConstruction* ctx, const string& func_name, Params params,
@@ -592,6 +588,9 @@ Status CapturedFunction::Instantiate(
       const auto& input = captured_inputs_[i];
       DataType dtype = input.dtype();
       if (dtype == DT_RESOURCE) {
+        if (input.NumElements() == 0) {
+          return errors::InvalidArgument("Empty resouce handle");
+        }
         const auto& handles = input.flat<ResourceHandle>();
         const ResourceHandle& handle0 = handles(0);
         string composite_device;
@@ -722,6 +721,9 @@ Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
   for (const auto& input : captured_inputs_) {
     DataType dtype = input.dtype();
     if (dtype == DT_RESOURCE) {
+      if (input.NumElements() == 0) {
+        return errors::InvalidArgument("Empty resouce handle");
+      }
       const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
       DeviceNameUtils::ParsedName resource_device_name;
       if (!DeviceNameUtils::ParseFullName(handle.device(),
@@ -809,7 +811,7 @@ Status InstantiatedCapturedFunction::Run(
   if (node || ctx->stats_aggregator()) {
     stats_collector = std::make_shared<SimpleStepStatsCollector>();
   }
-  const bool collect_usage = node && ctx->model();
+  const bool was_recording = node && node->is_recording();
   f_opts.stats_collector = stats_collector.get();
 
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
@@ -824,7 +826,7 @@ Status InstantiatedCapturedFunction::Run(
     // Resource usage for function execution is gathered from the executor.
     // TODO(jsimsa): Factor out common code for Run, RunAsync, and
     // RunWithBorrowedArguments
-    if (collect_usage) node->record_stop(EnvTime::NowNanos());
+    if (was_recording) node->record_stop(EnvTime::NowNanos());
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
     if (ctx->stats_aggregator()) {
       string prefix_with_func_name = strings::StrCat(
@@ -835,7 +837,7 @@ Status InstantiatedCapturedFunction::Run(
           node->num_elements());
     }
     node->add_processing_time(stats_collector->processing_time());
-    if (collect_usage) node->record_start(EnvTime::NowNanos());
+    if (was_recording) node->record_start(EnvTime::NowNanos());
   } else {
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
   }
@@ -872,7 +874,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   if (node || ctx->stats_aggregator()) {
     stats_collector = std::make_shared<SimpleStepStatsCollector>();
   }
-  const bool collect_usage = node && ctx->model();
+  const bool was_recording = node && node->is_recording();
   f_opts.stats_collector = stats_collector.get();
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
@@ -884,9 +886,9 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
             {{"id", f_opts.step_id}});
       },
       profiler::TraceMeLevel::kInfo);
+  if (was_recording) node->record_stop(EnvTime::NowNanos());
   if (node) {
     // Resource usage for function execution is gathered from the executor.
-    if (collect_usage) node->record_stop(EnvTime::NowNanos());
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
     if (ctx->stats_aggregator()) {
       string prefix_with_func_name = strings::StrCat(
@@ -897,10 +899,10 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
           node->num_elements());
     }
     node->add_processing_time(stats_collector->processing_time());
-    if (collect_usage) node->record_start(EnvTime::NowNanos());
   } else {
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
   }
+  if (was_recording) node->record_start(EnvTime::NowNanos());
   return frame.ConsumeRetvals(rets);
 }
 
@@ -1029,9 +1031,10 @@ void InstantiatedCapturedFunction::RunAsync(
   // Stop the usage collection before calling `Run()` because `callback` may
   // be executed synchronously, and so the `node->record_start()` call within
   // `callback` would violate nesting.
-  if (collect_usage) node->record_stop(EnvTime::NowNanos());
+  bool was_recording = node && node->is_recording();
+  if (was_recording) node->record_stop(EnvTime::NowNanos());
   lib_->Run(f_opts, f_handle_, frame, std::move(callback));
-  if (collect_usage) node->record_start(EnvTime::NowNanos());
+  if (was_recording) node->record_start(EnvTime::NowNanos());
 }
 
 bool InstantiatedCapturedFunction::ShouldCreateRendezvous() const {

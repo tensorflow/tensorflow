@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -44,19 +46,6 @@ mlir::LogicalResult SetMeshForResourceCreatingCluster(
   });
 
   if (!result.wasInterrupted()) return mlir::success();
-
-  const auto& cluster_ops = cluster.GetBody().without_terminator();
-
-  bool has_single_tf_op =
-      llvm::count_if(cluster_ops, [](auto& operation) {
-        return !llvm::isa<mlir::TF::DTensorLayout>(&operation);
-      }) == 1;
-
-  if (!has_single_tf_op) {
-    return cluster.emitOpError(
-        "cluster containing tf.VarHandleOp/DestroyResourceOp must contain "
-        "single operation and a terminator");
-  }
 
   if (!cluster->hasAttr(kMeshAttr)) {
     cluster->setAttr(kMeshAttr, builder->getStringAttr(Mesh::kEmptyMeshString));

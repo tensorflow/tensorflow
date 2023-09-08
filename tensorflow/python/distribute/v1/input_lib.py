@@ -22,6 +22,7 @@ from tensorflow.python.distribute import input_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.types import data as data_types
 from tensorflow.python.util.deprecation import deprecated
 
 
@@ -303,7 +304,7 @@ class InputFunctionIterator(DistributedIteratorV1):
       with ops.device(worker):
         result = input_fn(ctx)
         devices = input_workers.compute_devices_for_worker(i)
-        if isinstance(result, dataset_ops.DatasetV2):
+        if isinstance(result, data_types.DatasetV2):
           iterator = _SingleWorkerDatasetIterator(result, worker, devices)
         elif callable(result):
           iterator = _SingleWorkerCallableIterator(result, worker, devices)

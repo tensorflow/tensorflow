@@ -18,8 +18,13 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
-#include "tensorflow/compiler/xla/debug_options_flags.h"
-#include "tensorflow/compiler/xla/types.h"
+#include <functional>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "xla/debug_options_flags.h"
+#include "xla/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -194,6 +199,9 @@ xla::DebugOptions BuildXlaDebugOptions(const xla::DebugOptions& ref_options) {
   options.set_xla_dump_include_timestamp(
       ref_options.xla_dump_include_timestamp());
   options.set_xla_dump_max_hlo_modules(ref_options.xla_dump_max_hlo_modules());
+  options.set_xla_dump_enable_mlir_pretty_form(
+      ref_options.xla_dump_enable_mlir_pretty_form());
+
   for (auto& pass : ref_options.xla_disable_hlo_passes()) {
     options.add_xla_disable_hlo_passes(pass);
   }

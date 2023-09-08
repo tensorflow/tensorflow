@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -88,8 +88,7 @@ Attribute ConstFoldBroadcastInDim(ShapedType result_type,
   // dimensions to match result shape.
   llvm::SmallVector<int64_t, 16> operand_new_shape(result_type.getRank(), 1);
   for (int i = 0; i < dimensions.size(); ++i) {
-    auto dim_index = dimensions[i];
-    operand_new_shape[dim_index] = result_type.getDimSize(dim_index);
+    operand_new_shape[dimensions[i]] = operand.getType().getDimSize(i);
   }
 
   llvm::SmallVector<ElementValueT, 16> new_values;

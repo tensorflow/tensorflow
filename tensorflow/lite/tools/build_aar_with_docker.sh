@@ -24,14 +24,13 @@ function print_usage {
   echo "  $(basename ${BASH_SOURCE}) \\"
   echo "    --input_models=model1.tflite,model2.tflite \\"
   echo "    --target_archs=x86,x86_64,arm64-v8a,armeabi-v7a \\"
-  echo "    --checkpoint=master \\"
+  echo "    --src_dir=$PWD \\"
   echo "    [--cache_dir=<path to cache directory>]"
   echo ""
   echo "Where: "
   echo "  --input_models: Supported TFLite models. "
   echo "  --target_archs: Supported arches included in the aar file."
-  echo "  --checkpoint: Checkpoint of the github repo, could be a branch, a "
-  echo "        commit or a tag. Default: lastest release branch."
+  echo "  --src_dir: Directory of tensorflow source code."
   echo "  --cache_dir: Path to the directory to store bazel cache. If not "
   echo "        provided, a directory name bazel-build-cache will be created."
   echo ""
@@ -42,7 +41,7 @@ function print_usage {
 ARGUMENTS=$@
 BUILD_FLAGS=""
 TARGET_ARCHS=x86,x86_64,arm64-v8a,armeabi-v7a
-FLAG_CHECKPOINT=""
+FLAG_SRC_DIR=""
 
 if [ "$#" -gt 5 ]; then
   echo "ERROR: Too many arguments."
@@ -60,8 +59,8 @@ case $i in
       TARGET_ARCHS="${i#*=}"
       BUILD_FLAGS="${BUILD_FLAGS} ${i}"
       shift;;
-    --checkpoint=*)
-      FLAG_CHECKPOINT="${i#*=}"
+    --src_dir=*)
+      FLAG_SRC_DIR="${i#*=}"
       shift;;
     --cache_dir=*)
       BAZEL_CACHE_DIR="${i#*=}"
@@ -89,7 +88,8 @@ if [ ! -d /tensorflow_src ]; then
   fi
   FLAG_DIR="${FLAG_DIR} -v ${BAZEL_CACHE_DIR}:${BAZEL_CACHE_DIR}"
 
-  docker run --rm -it -v $PWD:/host_dir -v ${SCRIPT_DIR}:/script_dir ${FLAG_DIR} \
+  docker run --rm -it -v ${FLAG_SRC_DIR}:/tensorflow_src -v $PWD:/host_dir \
+    -v ${SCRIPT_DIR}:/script_dir ${FLAG_DIR} \
     --entrypoint /script_dir/build_aar_with_docker.sh tflite-builder \
     ${ARGUMENTS}
   exit 0
@@ -116,15 +116,6 @@ else
     '/android/sdk'
   )
   printf '%s\n' "${configs[@]}" | ./configure
-
-  # Pull the latest code from tensorflow.
-  git pull -a
-
-  # Get the latest stable branch.
-  if [ -z ${FLAG_CHECKPOINT} ]; then
-    FLAG_CHECKPOINT="v$(git tag -l | grep "^v[0-9\.]*$" | cut -c2- | sort -t. -rn -k1 -k2 -k3 | head -n1)"
-  fi
-  git checkout ${FLAG_CHECKPOINT}
 
   # Configure Bazel.
   source tensorflow/tools/ci_build/release/common.sh

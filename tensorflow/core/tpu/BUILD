@@ -1,5 +1,6 @@
 # Description: Utilities for TPU Operations
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -11,12 +12,7 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow/compiler/jit:__subpackages__",
-        "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
-        "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
-        "//tensorflow/compiler/xla:__subpackages__",
-        "//tensorflow/compiler/xla/backends/profiler/tpu:__subpackages__",
-        "//tensorflow/compiler/xla/stream_executor/tpu:__subpackages__",
+        "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
@@ -46,6 +42,7 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
     ],
 )
 
@@ -56,8 +53,12 @@ tf_cc_test(
         ":tpu_embedding_errors",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -67,15 +68,15 @@ cc_library(
     hdrs = ["tpu_embedding_optimization_parameters_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_cc",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/service:hlo_proto_cc",
     ],
 )
 
@@ -86,8 +87,24 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/framework:tensor_shape_proto_cc",
-        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "tpu_embedding_spmd_sharding_utils",
+    srcs = ["tpu_embedding_spmd_sharding_utils.cc"],
+    hdrs = ["tpu_embedding_spmd_sharding_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:logging",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/client:xla_builder",
     ],
 )
 
@@ -97,13 +114,14 @@ cc_library(
     hdrs = ["tpu_embedding_configuration_proto_rewrite.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core/lib/math:math_util",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -112,17 +130,15 @@ tf_cc_test(
     srcs = ["tpu_embedding_configuration_proto_rewrite_test.cc"],
     deps = [
         ":tpu_embedding_configuration_proto_rewrite",
-        "//tensorflow/core:framework_lite",
         "//tensorflow/core:test",
-        "//tensorflow/core/lib/core:errors",
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/platform:casts",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:status_matchers",
-        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -180,8 +196,19 @@ cc_library(
     ),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
-        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_xla//xla/stream_executor/tpu:libtftpu_header",
+        "@local_xla//xla/stream_executor/tpu:tpu_api",
+        "@local_xla//xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
+        "@local_xla//xla/stream_executor/tpu:tpu_executor_base",
+        "@local_xla//xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "@local_xla//xla/stream_executor/tpu:tpu_initialize_util",
+        "@local_xla//xla/stream_executor/tpu:tpu_library_init_fns",
+        "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
     ],
     # Always link this in, because even if we don't use it directly we want its
     # static initializers to dynamically load API symbols exported from libtpu.so
@@ -210,17 +237,14 @@ cc_library(
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:framework",
         "//tensorflow/core/framework:attr_value_proto_cc",
-        "//tensorflow/core/framework:node_def_util",
-        "//tensorflow/core/framework:versions_proto_cc",
-        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
-        "//tensorflow/core/tpu/kernels:tpu_util_hdrs",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/client:compile_only_client",
     ],
 )
 
@@ -229,40 +253,48 @@ cc_library(
     srcs = ["tpu_execute.cc"],
     hdrs = ["tpu_execute.h"],
     deps = [
-        "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/compiler/xla:shape_layout",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/service:computation_layout",
-        "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xla/service:executable",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
-        "//tensorflow/compiler/xla/service:transfer_manager",
-        "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor:device_memory",
-        "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
-        "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_node_context",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_op_executable",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/next_pluggable_device/c:outside_compilation_params",
+        "//tensorflow/core/common_runtime/next_pluggable_device/c:tf_rendezvous_c_api_internal",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tpu/kernels:tpu_executable_info_proto_cc",
-        "//tensorflow/core/tpu/kernels:tpu_execute_op_options",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
+        "@local_xla//xla:executable_run_options",
+        "@local_xla//xla:shape_layout",
+        "@local_xla//xla:shape_tree",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:status",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla:statusor",
+        "@local_xla//xla:util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/service:backend",
+        "@local_xla//xla/service:computation_layout",
+        "@local_xla//xla/service:computation_placer",
+        "@local_xla//xla/service:executable",
+        "@local_xla//xla/service:hlo_module_config",
+        "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/service:maybe_owning_device_memory",
+        "@local_xla//xla/service:transfer_manager",
+        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:device_memory",
+        "@local_xla//xla/stream_executor/tpu:c_api_conversions",
+        "@local_xla//xla/stream_executor/tpu:c_api_decl",
+        "@local_xla//xla/stream_executor/tpu:proto_helper",
+        "@local_xla//xla/stream_executor/tpu:status_helper",
+        "@local_xla//xla/stream_executor/tpu:tpu_api",
+        "@local_xla//xla/stream_executor/tpu:tpu_node_context",
+        "@local_xla//xla/stream_executor/tpu:tpu_op_executable",
+        "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
+        "@local_xla//xla/stream_executor/tpu:tpu_platform_interface",
     ],
 )
 
@@ -272,8 +304,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_api_dlsym_initializer",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_on_demand_compiler",
         "//tensorflow/core/tpu/ops",
+        "@local_xla//xla/stream_executor/tpu:tpu_on_demand_compiler",
     ],
 )
 
@@ -283,10 +315,12 @@ cc_library(
     hdrs = ["tpu_fingerprint_utils.h"],
     deps = [
         ":tpu_compile_interface",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
-        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/lib/strings:proto_serialization",
+        "//tensorflow/core/platform:status",
+        "@local_tsl//tsl/platform:logging",
+        "@local_xla//xla:status_macros",
     ],
 )
 
@@ -296,16 +330,16 @@ cc_library(
     hdrs = ["tpu_model_server_initializer.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_init_fns",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_library_init_fns",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core:lib",
+        "@local_xla//xla/stream_executor/tpu:libtftpu_header",
+        "@local_xla//xla/stream_executor/tpu:tpu_api",
+        "@local_xla//xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
+        "@local_xla//xla/stream_executor/tpu:tpu_executor",
+        "@local_xla//xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "@local_xla//xla/stream_executor/tpu:tpu_executor_init_fns",
+        "@local_xla//xla/stream_executor/tpu:tpu_initialize_util",
+        "@local_xla//xla/stream_executor/tpu:tpu_library_init_fns",
+        "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
     ],
     alwayslink = True,
 )
@@ -317,8 +351,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_defs",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:tpu_ops",
         "//tensorflow/core:core_cpu",
@@ -329,20 +361,16 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:topology_proto_cc",
         "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_configuration_rewrite_pass",
         "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_rewrite_helpers",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:logging",
     ] + if_libtpu(["//tensorflow/compiler/jit"]),
 )
 
-# For a more maintainable build this target should not exist and the headers
-# should  be split into the existing cc_library targets, but this change was
-# automatically  done so that we can remove long standing issues and complexity
-# in the build system. It's up to the OWNERS of this package to get rid of it or
-# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
-# Here it is used to avoid header parsing errors in packages where the feature
-# parse_headers was enabled since loose headers were not being parsed. See
-# go/loose-lsc-one-target-approach for more details.
-cc_library(
-    name = "loose_headers",
-    tags = ["avoid_dep"],
-    textual_hdrs = ["tpu_global_init.h"],
-    visibility = ["//tensorflow_serving/model_servers:__pkg__"],
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    deps = ["//tensorflow:tensorflow_bzl"],
 )

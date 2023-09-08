@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/export.pb.h"
@@ -41,7 +42,7 @@ class GrpcWorkerImpl : public WorkerService::Service {
   ~GrpcWorkerImpl() override { Stop(); }
 
   Status Start(const std::string& worker_address,
-               const std::string& transfer_address);
+               const std::vector<DataTransferServerInfo>& transfer_servers);
   void Stop();
 
   std::function<Status(const GetElementRequest*, GetElementResult*)>
@@ -60,6 +61,7 @@ class GrpcWorkerImpl : public WorkerService::Service {
   HANDLER(ProcessTask);
   HANDLER(GetElement);
   HANDLER(GetWorkerTasks);
+  HANDLER(GetSnapshotTaskProgresses);
 #undef HANDLER
 
  private:

@@ -61,7 +61,8 @@ std::string JoinPath(const std::string& path1, const std::string& path2) {
 }
 }  // namespace
 
-MiniBenchmarkTestHelper::MiniBenchmarkTestHelper()
+MiniBenchmarkTestHelper::MiniBenchmarkTestHelper(
+    bool should_load_entrypoint_dynamically)
     : should_perform_test_(true) {
 #ifdef __ANDROID__
   AndroidInfo android_info;
@@ -71,6 +72,9 @@ MiniBenchmarkTestHelper::MiniBenchmarkTestHelper()
     return;
   }
 
+  if (!should_load_entrypoint_dynamically) {
+    return;
+  }
   DumpToTempFile("librunner_main.so", g_tflite_acceleration_embedded_runner,
                  g_tflite_acceleration_embedded_runner_len);
 

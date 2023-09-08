@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/tsl/platform/notification.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/notification.h"
+#include "tsl/platform/thread_annotations.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
@@ -404,16 +404,15 @@ class ProcessFunctionLibraryRuntime {
                    std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
                    FunctionLibraryRuntime::DoneCallback done) const;
 
-  Status CreateRendezvous(FunctionLibraryRuntime::Options& opts,
-                          Rendezvous** created_rendezvous) const;
-
-  void CleanupCreatedRendezvous(const Rendezvous* created_rendezvous,
-                                const int64_t step_id) const;
+  Status CreateRendezvous(
+      FunctionLibraryRuntime::Options& opts,
+      tsl::core::RefCountPtr<Rendezvous>* created_rendezvous) const;
 
   FunctionLibraryRuntime::DoneCallback ApplyCleanUpToDoneCallback(
       std::vector<std::unique_ptr<CleanUpItem>>* items,
-      FunctionLibraryRuntime::DoneCallback done, const int64_t step_id,
-      const Rendezvous* rendezvous) const;
+      FunctionLibraryRuntime::DoneCallback done,
+      const FunctionLibraryRuntime::Options& opts,
+      tsl::core::RefCountPtr<Rendezvous> rendezvous) const;
 
   void CleanUp(std::vector<std::unique_ptr<CleanUpItem>>* items,
                FunctionLibraryRuntime::DoneCallback done) const;
@@ -532,7 +531,7 @@ class ProcessFunctionLibraryRuntime {
       mdevice_data_ TF_GUARDED_BY(mu_);
 
   std::unique_ptr<
-      std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>>>
+      std::unordered_map<Device*, core::RefCountPtr<FunctionLibraryRuntime>>>
       flr_map_;
   int next_handle_ TF_GUARDED_BY(mu_);
   const SessionMetadata* const session_metadata_;

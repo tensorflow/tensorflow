@@ -25,6 +25,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_SHOW_H_
 
 #include <algorithm>
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -41,7 +43,7 @@ namespace tfprof {
 class ShowNode {
  public:
   explicit ShowNode(const TFGraphNode* node);
-  virtual ~ShowNode() {}
+  virtual ~ShowNode() = default;
 
   const string& name() const { return node->name(); }
   GraphNodeProto* mutable_proto();
@@ -76,7 +78,7 @@ class GraphNode : public ShowNode {
 class ScopeNode : public ShowNode {
  public:
   explicit ScopeNode(const TFGraphNode* node) : ShowNode(node) {}
-  ~ScopeNode() override {}
+  ~ScopeNode() override = default;
 
   std::vector<ScopeNode*> children;
   std::vector<ScopeNode*> show_children;
@@ -85,7 +87,7 @@ class ScopeNode : public ShowNode {
 class ShowMultiNode {
  public:
   explicit ShowMultiNode(TFMultiGraphNode* node);
-  virtual ~ShowMultiNode() {}
+  virtual ~ShowMultiNode() = default;
 
   bool ReInit(int64_t step, const std::vector<string>& type_regexes);
 
@@ -113,7 +115,7 @@ class CodeNode : public ShowMultiNode {
   CodeNode(TFMultiGraphNode* node, const CallStack::Trace* trace,
            const string& suffix)
       : ShowMultiNode(node), trace_(trace), suffix_(suffix) {}
-  ~CodeNode() override {}
+  ~CodeNode() override = default;
 
   CodeNode* AddChildren(const string& name, const CallStack::Trace* trace,
                         const string suffix) {
@@ -122,16 +124,16 @@ class CodeNode : public ShowMultiNode {
       return it->second.get();
     }
 
-    graph_children_.push_back(
-        std::unique_ptr<TFMultiGraphNode>(new TFMultiGraphNode(name)));
+    graph_children_.push_back(std::make_unique<TFMultiGraphNode>(name));
     auto child = &children_[name];
-    child->reset(new CodeNode(graph_children_.back().get(), trace, suffix));
+    *child =
+        std::make_unique<CodeNode>(graph_children_.back().get(), trace, suffix);
     children.push_back(child->get());
     return child->get();
   }
 
   bool has_trace() const { return trace_ != nullptr; }
-  const int32 lineno() const { return trace_->lineno(); }
+  int32 lineno() const { return trace_->lineno(); }
   string file() const { return trace_->file(); }
   string function() const { return trace_->function() + suffix_; }
   int32 func_start_line() const { return trace_->func_start_line(); }
@@ -149,7 +151,7 @@ class CodeNode : public ShowMultiNode {
 class OpNode : public ShowMultiNode {
  public:
   explicit OpNode(TFMultiGraphNode* node) : ShowMultiNode(node) {}
-  ~OpNode() override {}
+  ~OpNode() override = default;
 };
 
 }  // namespace tfprof

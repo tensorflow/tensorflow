@@ -33,21 +33,42 @@ inline constexpr absl::string_view kFusedFunctionAttr =
 // The keyword to detect if this is a `NullAttribute`.
 inline constexpr absl::string_view kNullAttributeValue = "N/A";
 
+// The attribute will be used for TF::XlaCallModuleOp to restore the original
+// function name when loading it back.
+inline constexpr absl::string_view kOriginalStablehloEntryFunctionAttrName =
+    "_original_entry_function";
+
+// FunctionCallOpType to be generated as the function call operator when
+// function lifting will happen.
+enum FunctionCallOpType { TFPartitionedCallOp = 0, TFXlaCallModuleOp = 1 };
+
 // Checks if the op is inside a lifted function.
 bool IsInLiftedFunc(Operation *op);
 
+// Checks if the given einsum op is supported for XlaDotV2 quantization.
+bool IsEinsumSupportedByXlaDotV2(mlir::StringAttr equation_attr);
+
 // Creates a function to wrap the section between arguments and results.
+// The generated function call op type will be decided by the given call_op_type
+// argument. Currently, it supports TF::XlaCallModuleOp and
+// TF::PartitionedCallOp function call op generations.
 llvm::SmallVector<Value, 4> LiftAsFunctionCall(
-    OpBuilder builder, Location location, StringRef func_name,
-    const llvm::SmallVector<Value> &arguments,
+    OpBuilder builder, Location location, FunctionCallOpType call_op_type,
+    StringRef func_name, const llvm::SmallVector<Value> &arguments,
     const llvm::SmallVector<Value> &results,
     const llvm::SmallVector<NamedAttribute> &attributes);
 
 // Same as above but with empty attributes.
 llvm::SmallVector<Value, 4> LiftAsFunctionCall(
-    OpBuilder builder, Location location, StringRef func_name,
-    const llvm::SmallVector<Value> &arguments,
+    OpBuilder builder, Location location, FunctionCallOpType call_op_type,
+    StringRef func_name, const llvm::SmallVector<Value> &arguments,
     const llvm::SmallVector<Value> &results);
+
+// Add the second argument to the first argument, which is expected to be an
+// argument list.
+// Used to attach bias to einsum argument list.
+llvm::SmallVector<Value> AppendToVector(
+    const llvm::SmallVector<Value> &arguments, Value append);
 
 }  // namespace quant
 }  // namespace mlir

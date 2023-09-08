@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <array>
 #include <memory>
+#include <optional>
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -48,16 +49,22 @@ class CoreRTConverter : public mlir::TypeConverter {
   // named attribute lists, which is an array of pairs, with keys and values
   // both being string attributes. The values represent function names.
   // This method also populates a vector of attribute keys to be removed.
+  // If `use_mlir_func_name` is true, the function name given by MLIR will be
+  // used, which could be different from the original function name in the graph
+  // function library. This is used when the original function has been changed
+  // by lowering passes, and hence it needs to be exported to function library
+  // for runtime to use.
   mlir::ArrayAttr CreateOpFuncAttrs(
       const mlir::SymbolTable &symbol_table,
       llvm::ArrayRef<mlir::NamedAttribute> attrs,
-      llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys);
+      llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys,
+      bool use_mlir_func_name = false);
 
   // Parse the device name of `op` to TFRT's device name. For example, "/CPU:0"
   // will be parsed as "cpu". Return None if no device is assigned.
-  llvm::Optional<ParseDeviceNameResult> ParseDeviceName(
+  std::optional<ParseDeviceNameResult> ParseDeviceName(
       llvm::StringRef device_name) const;
-  llvm::Optional<ParseDeviceNameResult> ParseDeviceName(
+  std::optional<ParseDeviceNameResult> ParseDeviceName(
       mlir::Operation *op) const;
 
   // Convert the device name in a TF op to a op_handler value produced by the
@@ -140,10 +147,6 @@ class CoreRTConverter : public mlir::TypeConverter {
   mlir::Attribute ConvertAttribute(mlir::Attribute attr);
 
   mlir::TypeAttr ConvertTypeAttribute(mlir::TypeAttr type_attr);
-
-  mlir::StringAttr ConvertSymbolAttrToStringAttr(
-      const mlir::SymbolTable &symbol_table,
-      mlir::FlatSymbolRefAttr symbol_attr);
 
   mlir::Builder builder_;
 

@@ -43,6 +43,7 @@ def np_expm(x):  # pylint: disable=invalid-name
   return y
 
 
+@test_util.run_all_without_tensor_float_32("Avoid TF32-based matmuls.")
 class ExponentialOpTest(test.TestCase):
 
   def _verifyExponential(self, x, np_type):

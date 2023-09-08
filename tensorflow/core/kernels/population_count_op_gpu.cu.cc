@@ -18,7 +18,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -73,6 +73,11 @@ __global__ void PopulationCountKernel<int64_t>(const int size,
       TTypes<uint8>::Flat output) {                                           \
     const GPUDevice& d = c->eigen_device<GPUDevice>();                        \
     int64 total_count = input.size();                                         \
+    if (total_count == 0) {                                                   \
+      /* Return on empty input. Output is empty for empty inputs,             \
+       similar to CPU kernel.   */                                            \
+      return;                                                                 \
+    }                                                                         \
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);              \
     TF_CHECK_OK(GpuLaunchKernel(PopulationCountKernel<T>, config.block_count, \
                                 config.thread_per_block, 0, d.stream(),       \

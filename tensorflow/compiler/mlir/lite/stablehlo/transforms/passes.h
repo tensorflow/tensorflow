@@ -17,8 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_PASSES_H_
 
 #include <memory>
-#include <string>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
@@ -36,6 +37,27 @@ std::unique_ptr<Pass> createFuseConvolutionPass();
 
 // Creates a pass which applies various optimizations on MHLO IR.
 std::unique_ptr<Pass> createOptimizePass();
+
+// Creates a pass that finds quantization patterns and compose them to uniform
+// quantized types.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateComposeUniformQuantizedTypePass();
+
+// Creates a pass that finds stablehlo ops that accept or produce uniform
+// quantized typed tensors and converts them to equivalent ops in the TFLite
+// dialect.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateUniformQuantizedStablehloToTflPass();
+
+// Create a pass that legalizes MHLO to TF dialect.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass();
+
+// Adds the HLO to TF rewrite patterns to the specified pattern list.
+void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
+                                     MLIRContext* context);
+
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 
 }  // namespace odml
 }  // namespace mlir

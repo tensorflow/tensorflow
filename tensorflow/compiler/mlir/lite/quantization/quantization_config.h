@@ -20,13 +20,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_CONFIG_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
@@ -42,9 +43,8 @@ struct CustomOpInfo {
 };
 
 using ::tflite::optimize::ReducedPrecisionSupport;
-using StringSet = absl::flat_hash_set<std::string>;
 using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
-enum CustomOpUpdateOptions { kINputIndices, kWeightOnly, kNoSideEffect };
+enum CustomOpUpdateOptions { kInputIndices, kWeightOnly, kNoSideEffect };
 
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
@@ -92,6 +92,12 @@ struct QuantizationSpecs {
   // quantization.
   bool disable_infer_tensor_range = false;
 
+  // Whether use the unfrozen variable quantization in MLIR. Typically,
+  // variables are frozen for passing passes, but some variables aren't frozen.
+  // If it is true, QuantizeVariables pass will be added after the
+  // PrepareQuantizePass.
+  bool enable_mlir_variable_quantization = false;
+
   // The node type when the model is exported. Currently this is limited to
   // DT_FLOAT, DT_HALF, DT_QINT8, and DT_QUINT8. When DT_HALF is used, the
   // `weight_quantization` flag needs to set to true. When DT_QUINT8 is used,
@@ -109,7 +115,7 @@ struct QuantizationSpecs {
   // arguments. They are only used when `weight_quantization` is set to false,
   // and the model is required to have quantization parameters, either from
   // quantization aware training or calibration, for the remaining tensors.
-  std::vector<std::pair<llvm::Optional<double>, llvm::Optional<double>>>
+  std::vector<std::pair<std::optional<double>, std::optional<double>>>
       input_ranges;
 
   // Whether to disable setting the quantization parameters of the input nodes
@@ -118,7 +124,7 @@ struct QuantizationSpecs {
 
   // The default ranges can be used when a tensor doesn't have quantization
   // parameters and couldn't be quantized. Used only for latency tests.
-  std::pair<llvm::Optional<double>, llvm::Optional<double>> default_ranges;
+  std::pair<std::optional<double>, std::optional<double>> default_ranges;
 
   // A serialized "QuantizationInfo" object to specify value ranges for some of
   // the tensors with known names.
@@ -194,10 +200,10 @@ struct QuantizationSpecs {
   // Names of ops to block from quantization. Used in QuantizePass.
   // For dynamic range quantization, ops in blocklist are quantized in weight-
   // only manner.
-  StringSet ops_blocklist;
+  absl::flat_hash_set<std::string> ops_blocklist;
 
   // Names of locations to block from quantization. Used in QuantizePass.
-  StringSet nodes_blocklist;
+  absl::flat_hash_set<std::string> nodes_blocklist;
 
   // Map from custom op code to custom op quantization information.
   // For dynamic range quantization, among the custom ops in the graph those
@@ -222,11 +228,11 @@ bool ParseInputNodeQuantSpecs(absl::string_view node_names,
 // Gets the quantization specification for input arrays. The array names are not
 // stored in the spec, and will be matched by position. The min/max will be
 // ignored if the inference_type isn't a quantized type. Returns true if failed.
-bool GetInputNodeQuantSpecs(
-    const std::vector<std::string>& node_names,
-    const std::vector<llvm::Optional<double>>& node_mins,
-    const std::vector<llvm::Optional<double>>& node_maxs,
-    tensorflow::DataType inference_type, QuantizationSpecs* quant_specs);
+bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
+                            const std::vector<std::optional<double>>& node_mins,
+                            const std::vector<std::optional<double>>& node_maxs,
+                            tensorflow::DataType inference_type,
+                            QuantizationSpecs* quant_specs);
 
 }  // namespace quant
 }  // namespace mlir

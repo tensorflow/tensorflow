@@ -39,6 +39,10 @@ _TRUEDIV = lambda x, y: x / y
 _FLOORDIV = lambda x, y: x // y
 _MOD = lambda x, y: x % y
 
+# x and y must be numpy array object
+np_xlogy = lambda x, y: x * np.log(y)
+np_xlog1py = lambda x, y: x * np.log1p(y)
+
 
 # TODO(zongheng): it'd be great to factor out this function and various random
 # SparseTensor gen funcs.
@@ -235,6 +239,7 @@ class BinaryOpTest(test.TestCase):
   def testFloatDifferentShapes(self):
     x = np.array([1, 2, 3, 4]).reshape(2, 2).astype(np.float32)
     y = np.array([1, 2]).reshape(2, 1).astype(np.float32)
+    self._compareBoth(y, x, np.arctan2, math_ops.atan2)
     with self.cached_session() as sess:
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
@@ -259,6 +264,15 @@ class BinaryOpTest(test.TestCase):
     np_result = x * y
     self.assertAllEqual(np_result, left_result)
     self.assertAllEqual(np_result, right_result)
+
+  def testBFloat16Basic(self):
+    bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
+    x = np.linspace(-20, 20, 10).reshape(1, 2, 5).astype(bfloat16)  # pylint: disable=too-many-function-args
+    # y cannot be zero
+    y = np.linspace(-20, 20, 10).reshape(1, 2, 5).astype(bfloat16)  # pylint: disable=too-many-function-args
+    self._compareCpu(x, y, np.true_divide, math_ops.xdivy)
+    self._compareCpu(x, y, np_xlogy, math_ops.xlogy)
+    self._compareCpu(x, y, np_xlog1py, math_ops.xlog1py)
 
   @test_util.run_deprecated_v1
   def testDoubleBasic(self):
@@ -868,6 +882,26 @@ class BinaryOpTest(test.TestCase):
     y = np.array([-1, 0, -2, -2, -3]).astype(np.int64)
     z = math_ops.pow(x, y)
     self.assertAllEqual(self.evaluate(z), [0, 1, 1, 1, -1])
+
+  def testFloorModInfDenominator(self):
+    """Regression test for GitHub issue #58369."""
+    if not test_util.is_gpu_available():
+      self.skipTest("Requires GPU")
+
+    dtypes = [
+        dtypes_lib.bfloat16.as_numpy_dtype,
+        np.float16,
+        np.float32,
+        np.float64,
+    ]
+
+    for dtype in dtypes:
+      x = np.array([4, 0, -1, 4, 0, -1], dtype=dtype)
+      y = np.array([np.inf, np.inf, np.inf, -np.inf, -np.inf, -np.inf],
+                   dtype=dtype)
+      expected = np.array([4, 0, np.inf, -np.inf, 0, -1], dtype=dtype)
+
+      self.assertAllClose(self.evaluate(math_ops.mod(x, y)), expected)
 
 
 class ComparisonOpTest(test.TestCase):

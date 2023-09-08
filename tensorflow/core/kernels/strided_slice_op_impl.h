@@ -18,7 +18,7 @@ limitations under the License.
 
 // Functor definition for StridedSliceOp, must be compilable by nvcc.
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -282,15 +282,15 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TF_CALL_GPU_PROXY_TYPES(PREVENT_FOR_N_GPU);
 TF_CALL_COMPLEX_TYPES(PREVENT_FOR_N_GPU);
-TF_CALL_bfloat16(PREVENT_FOR_N_GPU);
 
 TF_CALL_INTEGRAL_TYPES(DECLARE_FOR_N_GPU);
 TF_CALL_GPU_ALL_TYPES(DECLARE_FOR_N_GPU);
-TF_CALL_bfloat16(DECLARE_FOR_N_GPU);
 #endif  // END GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TF_CALL_ALL_TYPES(DECLARE_FOR_N_CPU);
 TF_CALL_QUANTIZED_TYPES(DECLARE_FOR_N_CPU);
+TF_CALL_float8_e5m2(DECLARE_FOR_N_CPU);
+TF_CALL_float8_e4m3fn(DECLARE_FOR_N_CPU);
 
 #undef INSTANTIATE
 #undef DECLARE_FOR_N_CPU

@@ -324,7 +324,7 @@ TEST_F(ShardDatasetOpTest, NoElemForEachShard) {
   EXPECT_EQ(
       iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence)
           .code(),
-      tensorflow::error::INVALID_ARGUMENT);
+      absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(ShardDatasetOpTest, InvalidArguments) {
@@ -333,7 +333,7 @@ TEST_F(ShardDatasetOpTest, InvalidArguments) {
       InvalidShardDatasetParams3(), InvalidShardDatasetParams4()};
   for (const auto& dataset_params : invalid_dataset_params) {
     EXPECT_EQ(Initialize(dataset_params).code(),
-              tensorflow::error::INVALID_ARGUMENT);
+              absl::StatusCode::kInvalidArgument);
   }
 }
 

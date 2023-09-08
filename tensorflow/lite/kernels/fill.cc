@@ -100,7 +100,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, value->params.zero_point, 0);
   }
 
-  if (IsConstantTensor(dims)) {
+  if (IsConstantOrPersistentTensor(dims)) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, dims, output));
   } else {
     SetTensorToDynamic(output);

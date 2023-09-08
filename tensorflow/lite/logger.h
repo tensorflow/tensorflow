@@ -28,6 +28,8 @@ enum LogSeverity {
   TFLITE_LOG_WARNING = 2,
   /// Log error events that are likely to cause problems.
   TFLITE_LOG_ERROR = 3,
+  /// Silence logging
+  TFLITE_LOG_SILENT = 4,
 };
 
 /// TFLite logger specific configurations.

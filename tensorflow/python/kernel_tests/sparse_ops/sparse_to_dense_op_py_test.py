@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for tensorflow.kernels.sparse_op."""
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -28,16 +29,21 @@ from tensorflow.python.platform import test
 
 
 @test_util.with_eager_op_as_function
-class SparseToDenseTest(test.TestCase):
+class SparseToDenseTest(test.TestCase, parameterized.TestCase):
 
   def testInt(self):
     tf_ans = sparse_ops.sparse_to_dense([1, 3], [5], 1, 0)
     np_ans = np.array([0, 1, 0, 1, 0]).astype(np.int32)
     self.assertAllClose(np_ans, tf_ans)
 
-  def testFloat(self):
-    tf_ans = sparse_ops.sparse_to_dense([1, 3], [5], 1.0, 0.0)
-    np_ans = np.array([0, 1, 0, 1, 0]).astype(np.float32)
+  @parameterized.parameters(
+      dtypes.bfloat16, dtypes.float16, dtypes.float32, dtypes.float64
+  )
+  def testFloatTypes(self, dtype):
+    tf_ans = sparse_ops.sparse_to_dense(
+        [1, 3], [5], array_ops.constant(1.0, dtype=dtype), 0.0
+    )
+    np_ans = np.array([0, 1, 0, 1, 0]).astype(dtype.as_numpy_dtype)
     self.assertAllClose(np_ans, tf_ans)
 
   def testComplex(self):

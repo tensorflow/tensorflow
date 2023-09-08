@@ -103,6 +103,7 @@ inline int StridedSliceEndForAxis(const tflite::StridedSliceParams& params,
   const auto shrink_axis_mask = params.shrink_axis_mask;
   const bool shrink_axis = shrink_axis_mask & (1 << axis);
   const int axis_size = input_shape.Dims(axis);
+  const bool offset = params.offset;
   if (shrink_axis) {
     if (start >= axis_size) {
       return start;
@@ -112,6 +113,9 @@ inline int StridedSliceEndForAxis(const tflite::StridedSliceParams& params,
   }
   const auto* indices = params.stop_indices;
   int end = indices[axis];
+  if (offset) {
+    end += start;
+  }
   const int32_t stride = params.strides[axis];
   const int32_t end_mask = (params.end_mask & 1 << axis);
   if (end < 0) {
@@ -246,7 +250,7 @@ inline tflite::StridedSliceParams BuildStridedSliceParams(
     int begin_mask, int end_mask, int shrink_axis_mask,
     const std::vector<int>& start_indices, const std::vector<int>& stop_indices,
     const std::vector<int>& strides) {
-  tflite::StridedSliceParams op_params;
+  tflite::StridedSliceParams op_params{};
   const int dims_count = start_indices.size();
 
   op_params.start_indices_count = dims_count;

@@ -45,6 +45,8 @@ extern const char* const DEVICE_GPU_XLA_JIT;  // "GPU_XLA_JIT"
 extern const char* const DEVICE_XLA_CPU;
 extern const char* const DEVICE_XLA_GPU;
 
+// Do not include DT_FLOAT8_* as float or numeric types since they are only
+// supported in a very limited set of ops.
 constexpr std::array<DataType, 4> kFloatTypes = {
     {DT_HALF, DT_FLOAT, DT_DOUBLE, DT_BFLOAT16}};
 constexpr std::array<DataType, 6> kFloatAndComplexTypes = {
@@ -54,15 +56,17 @@ constexpr std::array<DataType, 14> kNumericTypes = {
      DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128,
      DT_BFLOAT16}};
 
-constexpr std::array<DataType, 18> kCpuAllTypes = {
-    {DT_UINT8, DT_QUINT8, DT_UINT16, DT_UINT32, DT_UINT64, DT_INT8, DT_QINT8,
-     DT_INT16, DT_INT32, DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
-     DT_COMPLEX64, DT_COMPLEX128, DT_BOOL, DT_BFLOAT16}};
+constexpr std::array<DataType, 20> kCpuAllTypes = {
+    {DT_UINT8,      DT_QUINT8, DT_UINT16,   DT_UINT32,      DT_UINT64,
+     DT_INT8,       DT_QINT8,  DT_INT16,    DT_INT32,       DT_QINT32,
+     DT_INT64,      DT_HALF,   DT_FLOAT,    DT_DOUBLE,      DT_COMPLEX64,
+     DT_COMPLEX128, DT_BOOL,   DT_BFLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN}};
 
-constexpr std::array<DataType, 18> kGpuAllTypes = {
-    {DT_UINT8, DT_QUINT8, DT_UINT16, DT_UINT32, DT_UINT64, DT_INT8, DT_QINT8,
-     DT_INT16, DT_INT32, DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
-     DT_COMPLEX64, DT_COMPLEX128, DT_BOOL, DT_BFLOAT16}};
+constexpr std::array<DataType, 20> kGpuAllTypes = {
+    {DT_UINT8,      DT_QUINT8, DT_UINT16,   DT_UINT32,      DT_UINT64,
+     DT_INT8,       DT_QINT8,  DT_INT16,    DT_INT32,       DT_QINT32,
+     DT_INT64,      DT_HALF,   DT_FLOAT,    DT_DOUBLE,      DT_COMPLEX64,
+     DT_COMPLEX128, DT_BOOL,   DT_BFLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN}};
 
 // Class that manages registrations of operators and devices for the XLA JIT.
 // Not thread-safe.
@@ -329,6 +333,12 @@ class XlaOpRegistry {
 
 #define REGISTER_XLA_OP(NAME, OP) \
   REGISTER_XLA_OP_UNIQ_HELPER(__COUNTER__, NAME, OP)
+
+#define REGISTER_XLA_CONV_OP(BUILDER, OP)                                      \
+  REGISTER_XLA_OP(BUILDER.TypeConstraint("T", GetXlaConvTypesForNonGpu()), OP) \
+  REGISTER_XLA_OP(BUILDER.TypeConstraint("T", GetXlaConvTypesForGpu())         \
+                      .Device(DEVICE_GPU_XLA_JIT),                             \
+                  OP)
 
 class XlaOpRegistrationBuilder {
  public:

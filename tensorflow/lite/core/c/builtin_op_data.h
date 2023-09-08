@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_C_BUILTIN_OP_DATA_H_
 #define TENSORFLOW_LITE_CORE_C_BUILTIN_OP_DATA_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "tensorflow/lite/core/c/common.h"
@@ -31,6 +32,7 @@ extern "C" {
 // TfLiteReshapeParams can't have dynamic data so we fix the maximum possible
 // number of dimensions.
 #define TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT 8
+#define TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT 8
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
@@ -166,7 +168,7 @@ typedef struct {
   TfLiteFusedActivation activation;
   bool merge_outputs;
 
-  // Parameter for Bidirectional RNN verison 3.
+  // Parameter for Bidirectional RNN version 3.
   bool asymmetric_quantize_inputs;
 } TfLiteBidirectionalSequenceRNNParams;
 
@@ -291,6 +293,9 @@ typedef struct {
 
   // Parameter for unidirectional sequence RNN version 3.
   bool asymmetric_quantize_inputs;
+
+  // Parameter for unidirectional sequence RNN version 4.
+  bool diagonal_recurrent_tensors;
 } TfLiteUnidirectionalSequenceLSTMParams;
 
 typedef struct {
@@ -337,7 +342,7 @@ typedef struct {
   // These fields are only used in old models for backward compatibility.
   // In the current implementation, we use the 2nd input of the op as the shape,
   // and these fields are unused.
-  int shape[TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT];
+  int32_t shape[TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT];
   int num_dimensions;
 } TfLiteReshapeParams;
 
@@ -394,7 +399,7 @@ typedef struct {
 typedef struct {
   // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
   // For now we will fix the maximum possible number of dimensions.
-  int squeeze_dims[8];
+  int32_t squeeze_dims[8];
   int num_squeeze_dims;
 } TfLiteSqueezeParams;
 
@@ -404,6 +409,10 @@ typedef struct {
   int ellipsis_mask;
   int new_axis_mask;
   int shrink_axis_mask;
+
+  // Parameters supported by version 8:
+  // If true, then the end tensor is an offset of the begin tensor.
+  bool offset;
 } TfLiteStridedSliceParams;
 
 typedef struct {
@@ -415,9 +424,13 @@ typedef struct {
 } TfLiteArgMinParams;
 
 typedef struct {
+  // Parameters supported by version 1:
   TfLitePadding padding;
   int stride_width;
   int stride_height;
+
+  // Parameters supported by version 4:
+  TfLiteFusedActivation activation;
 } TfLiteTransposeConvParams;
 
 typedef struct {
@@ -522,6 +535,28 @@ typedef struct {
 typedef struct {
   bool approximate;
 } TfLiteGeluParams;
+
+typedef struct {
+  int64_t dimension;
+} TfLiteStablehloConcatenateParams;
+
+typedef struct {
+  // See the stablehlo spec for the explanation of the attributes:
+  // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#scatter
+  bool indices_are_sorted;
+  int64_t
+      update_window_dims[TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_update_window_dims;
+  int64_t
+      inserted_window_dims[TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_inserted_window_dims;
+  int64_t scatter_dims_to_operand_dims
+      [TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_scatter_dims_to_operand_dims;
+  int64_t index_vector_dim;
+  bool unique_indices;
+  int update_computation_subgraph_index;
+} TfLiteStablehloScatterParams;
 
 #ifdef __cplusplus
 }  // extern "C"
