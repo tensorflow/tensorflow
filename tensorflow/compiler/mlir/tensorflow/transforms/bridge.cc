@@ -233,6 +233,8 @@ void CreateTPUBridgePipelineImpl(
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(TFDevice::CreateExtractHeadTailOutsideCompilationPass());
   pm.addPass(TFDevice::CreateExtractOutsideCompilationPass());
+  pm.addNestedPass<func::FuncOp>(
+      TFDevice::CreateVerifyNoOutsideCompilationMarkersPass());
 
   pm.addNestedPass<func::FuncOp>(TFDevice::CreateClusterConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
