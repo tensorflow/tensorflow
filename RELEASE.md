@@ -1,6 +1,8 @@
 # Release 2.13.1
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+### Bug Fixes and Other Changes
+
+*  Refactor CpuExecutable to propagate LLVM errors.
 
 # Release 2.13.0
 
