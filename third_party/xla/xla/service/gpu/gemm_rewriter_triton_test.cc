@@ -52,6 +52,21 @@ using ::testing::FieldsAre;
 
 namespace m = ::xla::match;
 
+TEST(HasDivisibleSuffixAllowingSplitTest, AllTests) {
+  EXPECT_TRUE(HasDivisibleSuffixAllowingSplit({1}, 1));
+  EXPECT_TRUE(HasDivisibleSuffixAllowingSplit({2}, 2));
+  EXPECT_TRUE(HasDivisibleSuffixAllowingSplit({2, 2}, 2));
+  EXPECT_TRUE(HasDivisibleSuffixAllowingSplit({3, 2}, 6));
+  EXPECT_TRUE(HasDivisibleSuffixAllowingSplit({2, 3, 2}, 6));
+  // True, because 15 can be rewritten as {5, 3}.
+  EXPECT_TRUE(HasDivisibleSuffixAllowingSplit({15, 2}, 6));
+  EXPECT_TRUE(HasDivisibleSuffixAllowingSplit({3, 15, 2}, 6));
+  EXPECT_FALSE(HasDivisibleSuffixAllowingSplit({}, 1));
+  EXPECT_FALSE(HasDivisibleSuffixAllowingSplit({1}, 2));
+  EXPECT_FALSE(HasDivisibleSuffixAllowingSplit({3}, 2));
+  EXPECT_FALSE(HasDivisibleSuffixAllowingSplit({2, 3}, 2));
+}
+
 class GemmRewriterTritonTest : public HloTestBase {
  public:
   GemmRewriterTritonTest()
@@ -127,7 +142,6 @@ ENTRY e {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
-
 
 TEST_F(GemmRewriterTritonTest, DoNotTriggerOnUnsupportedOutputConversions) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,

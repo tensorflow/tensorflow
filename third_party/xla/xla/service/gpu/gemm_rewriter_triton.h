@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,6 +37,11 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+// Is there a non-empty suffix "s" of span such that product(s) % divisor = 0
+// and for all t != s non-empty suffixes of s: d % product(t) = 0?
+bool HasDivisibleSuffixAllowingSplit(absl::Span<int64_t const> span,
+                                     int64_t divisor);
 
 // Allowlist of unary elementwise operations supported by Triton GEMM codegen.
 std::vector<HloOpcode> TritonSupportedUnaryElementwise(PrimitiveType);

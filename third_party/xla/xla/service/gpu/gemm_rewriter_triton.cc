@@ -73,6 +73,23 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+bool HasDivisibleSuffixAllowingSplit(const absl::Span<int64_t const> span,
+                                     const int64_t divisor) {
+  CHECK_GE(divisor, 1);
+  int64_t product = 1;
+  // Note: Using reverse iterator.
+  for (auto it = span.crbegin(); it != span.crend(); ++it) {
+    product *= *it;
+    if (product % divisor == 0) {
+      return true;
+    }
+    if (divisor % product != 0) {
+      return false;
+    }
+  }
+  return false;
+}
+
 bool TensorIterationSpec::operator==(const TensorIterationSpec& other) const {
   VLOG(9) << this->ToString();
   VLOG(9) << other.ToString();
@@ -623,7 +640,8 @@ DimOrderUpdatesOrError FusionContext::HandleBitcast(
   // Iterate in parallel over source dimension order and target dimensions
   // in minor_to_major order. Find groups of dimensions of equal size
   // and project the source dimension order onto the destination.
-  auto dst_dim_iter = dst_shape.layout().minor_to_major().cbegin();
+  auto dst_dim_it = dst_shape.layout().minor_to_major().cbegin();
+  const auto dst_dim_end = dst_shape.layout().minor_to_major().cend();
   for (auto src_dim = src_fragments_order.cbegin();
        src_dim != src_fragments_order.cend(); ++src_dim) {
     auto add_new_fragment = [&](const Fragment& fragment) {
@@ -646,10 +664,11 @@ DimOrderUpdatesOrError FusionContext::HandleBitcast(
         dst_remaining_size *= src_dim->size;
       }
       while (dst_remaining_size > 1) {
+        CHECK(dst_dim_it != dst_dim_end);
         add_new_fragment(
-            {src_dim->dst_dim_number, dst_shape.dimensions(*dst_dim_iter)});
-        dst_remaining_size /= dst_shape.dimensions(*dst_dim_iter);
-        ++dst_dim_iter;
+            {src_dim->dst_dim_number, dst_shape.dimensions(*dst_dim_it)});
+        dst_remaining_size /= dst_shape.dimensions(*dst_dim_it);
+        ++dst_dim_it;
       }
       continue;
     }
@@ -682,7 +701,8 @@ DimOrderUpdatesOrError FusionContext::HandleBitcast(
       }
       while (src_remaining_size > 1) {
         // Assign destination dimensions until the source remainder is covered.
-        int64_t dst_dim_size = dst_shape.dimensions(*dst_dim_iter);
+        CHECK(dst_dim_it != dst_dim_end);
+        int64_t dst_dim_size = dst_shape.dimensions(*dst_dim_it);
         int64_t new_fragment_size = dst_dim_size;
         if (dst_dim_size > src_remaining_size) {
           // If adding the next destination dimension exceeds source fragment
@@ -696,7 +716,7 @@ DimOrderUpdatesOrError FusionContext::HandleBitcast(
         }
         add_new_fragment({src_dim->dst_dim_number, new_fragment_size});
         src_remaining_size /= new_fragment_size;
-        ++dst_dim_iter;
+        ++dst_dim_it;
       }
     }
   }
@@ -705,8 +725,8 @@ DimOrderUpdatesOrError FusionContext::HandleBitcast(
   // Handle remaining major dimensions of the destination. Call all degenerate
   // ones subdimensions of the most-major non-degenerate one. Otherwise
   // give up.
-  while (dst_dim_iter != dst_shape.layout().minor_to_major().cend()) {
-    if (dst_shape.dimensions(*dst_dim_iter) != 1) {
+  while (dst_dim_it != dst_dim_end) {
+    if (dst_shape.dimensions(*dst_dim_it) != 1) {
       return "Unsupported bitcast";
     }
     if (!dst_fragments_order.empty()) {
@@ -715,7 +735,7 @@ DimOrderUpdatesOrError FusionContext::HandleBitcast(
       src_to_dst[&src_fragments_order.back()].push_back(
           dst_fragments_order.size() - 1);
     }
-    ++dst_dim_iter;
+    ++dst_dim_it;
   }
 
   FragmentOrders& dst_dim_fragment_orders = dst_dim_order.DimFragmentsOrders();
@@ -760,15 +780,17 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
   // full dimensions and matching by total size.
   std::vector<std::vector<const Fragment*>> src_physical;
   src_physical.reserve(src->shape().rank());
-  auto dim_order_it = src_fragments_order.cbegin();
+  auto src_fragment_it = src_fragments_order.cbegin();
+  const auto src_fragment_end = src_fragments_order.cend();
   for (int64_t dim_index : src->shape().layout().minor_to_major()) {
     const int64_t dim_size = src->shape().dimensions(dim_index);
     int64_t subdim_size_accumulator = 1;
     std::vector<const Fragment*> subdim_group;
     do {
-      subdim_size_accumulator *= dim_order_it->size;
-      subdim_group.push_back(&*dim_order_it);
-      ++dim_order_it;
+      CHECK(src_fragment_it != src_fragment_end);
+      subdim_size_accumulator *= src_fragment_it->size;
+      subdim_group.push_back(&*src_fragment_it);
+      ++src_fragment_it;
     } while (subdim_size_accumulator < dim_size);
     CHECK_EQ(subdim_size_accumulator, dim_size);
     src_physical.push_back(subdim_group);
@@ -1356,19 +1378,12 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
     if (spec->size() != 1) {
       return UncompilableMatmul("Unsupported case.");
     }
-    auto fragment = spec->at(0).subfragments.crbegin();
-    int64_t size_to_split = tiling.split_k();
-    while (size_to_split > *fragment) {
-      if (size_to_split % *fragment) {
-        return UncompilableMatmul("Contracting dimension is too fragmented.");
-      }
-      size_to_split /= *fragment;
-      ++fragment;
-    }
-    if (*fragment % size_to_split) {
+    const TensorIterationSpec::IterationSpecFragment& fragment = spec->at(0);
+    if (!HasDivisibleSuffixAllowingSplit(fragment.subfragments,
+                                         tiling.split_k())) {
       return UncompilableMatmul("Contracting dimension is too fragmented.");
     }
-    if (tiling.split_k() > ceil(1.0 * spec->at(0).count / tiling.block_k())) {
+    if (tiling.split_k() > ceil(1.0 * fragment.count / tiling.block_k())) {
       return UncompilableMatmul(
           "Too small divisible part of the contracting dimension.");
     }
