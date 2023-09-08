@@ -85,7 +85,9 @@ class Arguments {
   }
 
   ~Arguments() {
-    for (size_t i = 0; i < storage_.size(); ++i) (*this)[i].~Argument();
+    for (size_t i = 0; i < storage_.size(); ++i) {
+      reinterpret_cast<Argument*>(storage_[i].data)->~Argument();
+    }
   }
 
   template <typename T>
