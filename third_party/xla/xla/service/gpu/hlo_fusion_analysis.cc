@@ -79,37 +79,30 @@ bool AllSliceInputsAreCompatible(
   });
 }
 
-bool MayPreventVectorization(const HloComputation* fusion) {
+bool MayPreventVectorization(const std::vector<HloInstruction*>& fusion_roots) {
   // An empirically chosen constant: unrolling concat with a large amount of
   // arguments causes excessive register spilling.
   static constexpr int kMaxConcatArgumentsForUnrolling = 10;
-
-  for (const HloInstruction* instr : fusion->instructions()) {
-    switch (instr->opcode()) {
-      case HloOpcode::kReduceWindow:
-      case HloOpcode::kSort:
-      case HloOpcode::kDot:
-      case HloOpcode::kSin:
-      case HloOpcode::kCos:
-      case HloOpcode::kTan:
-      case HloOpcode::kPower:
-      case HloOpcode::kAtan2:
-        return true;
-      case HloOpcode::kConcatenate:
-        if (instr->operand_count() > kMaxConcatArgumentsForUnrolling) {
-          return true;
+  return HloAnyOf(
+      fusion_roots, DefaultFusionBoundaryFn, [&](const HloInstruction& node) {
+        switch (node.opcode()) {
+          case HloOpcode::kReduceWindow:
+          case HloOpcode::kSort:
+          case HloOpcode::kDot:
+          case HloOpcode::kSin:
+          case HloOpcode::kCos:
+          case HloOpcode::kTan:
+          case HloOpcode::kPower:
+          case HloOpcode::kAtan2:
+            return true;
+          case HloOpcode::kConcatenate:
+            return node.operand_count() > kMaxConcatArgumentsForUnrolling;
+          case HloOpcode::kReduce:
+            return node.shape().tuple_shapes_size() > 1;
+          default:
+            return false;
         }
-        break;
-      case HloOpcode::kReduce:
-        if (instr->shape().tuple_shapes_size() > 1) {
-          return true;
-        }
-        break;
-      default:
-        break;
-    }
-  }
-  return false;
+      });
 }
 
 // Determines if we enable the row optimized codegen. When we have a fusion with
@@ -303,10 +296,10 @@ StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
   std::optional<TransposeDescription> tiled_transpose_hero =
       FindConsistentTransposeHero(hlo_roots, heroes);
 
-  return HloFusionAnalysis(
-      fusion, std::move(backend_config), std::move(hlo_roots),
-      std::move(fusion_parameter_inputs), std::move(heroes), device_info,
-      tiled_transpose_hero);
+  return HloFusionAnalysis(std::move(backend_config), std::move(hlo_roots),
+                           std::move(fusion_parameter_inputs),
+                           std::move(heroes), device_info,
+                           tiled_transpose_hero);
 }
 
 // Returns true if the fusion has consistent transpose heros.
@@ -473,7 +466,7 @@ const LaunchDimensionsConfig* HloFusionAnalysis::GetLoopFusionConfig() {
   int64_t n_threads_max =
       device_info_->threads_per_core_limit * device_info_->core_count;
   if (num_elements >= n_threads_max &&
-      !MayPreventVectorization(fused_computation_)) {
+      !MayPreventVectorization(fusion_roots_)) {
     unroll_factor = ComputeMaxUnrollFactor(num_elements);
   }
   VLOG(2) << "Unroll factor: " << unroll_factor;
@@ -488,25 +481,23 @@ const LaunchDimensionsConfig* HloFusionAnalysis::GetLoopFusionConfig() {
   int num_big_inputs;
   std::tie(row_vectorized, num_big_inputs) =
       RowVectorizationEnabled(fusion_roots(), GetElementShape().rank());
-  bool few_waves = [this, row_vectorized, num_big_inputs]() {
-    for (const HloInstruction* instr : fused_computation_->instructions()) {
-      if (instr->opcode() == HloOpcode::kParameter ||
-          instr->opcode() == HloOpcode::kConstant ||
-          HloInstruction::IsOpElementwise(instr->opcode())) {
-        continue;
-      }
-      if (auto broadcast = DynCast<HloBroadcastInstruction>(instr)) {
-        if (broadcast->dimensions().empty() ||
-            // More than 3 big inputs cause a speed regression.
-            (row_vectorized && num_big_inputs <= 3)) {
-          continue;
+  bool few_waves = !HloAnyOf(
+      fusion_roots_, DefaultFusionBoundaryFn, [&](const HloInstruction& instr) {
+        if (instr.opcode() == HloOpcode::kParameter ||
+            instr.opcode() == HloOpcode::kConstant ||
+            HloInstruction::IsOpElementwise(instr.opcode())) {
+          return false;
         }
-      }
-      VLOG(2) << "few_waves not enabled due to: " << instr->ToString();
-      return false;
-    }
-    return true;
-  }();
+        if (auto broadcast = DynCast<HloBroadcastInstruction>(&instr)) {
+          if (broadcast->dimensions().empty() ||
+              // More than 3 big inputs cause a speed regression.
+              (row_vectorized && num_big_inputs <= 3)) {
+            return false;
+          }
+        }
+        VLOG(2) << "few_waves not enabled due to: " << instr.ToString();
+        return true;
+      });
 
   LaunchDimensionsConfig launch_config{unroll_factor, few_waves,
                                        row_vectorized};
@@ -523,7 +514,7 @@ const LaunchDimensionsConfig* HloFusionAnalysis::GetLoopFusionConfig() {
 }
 
 const Shape& HloFusionAnalysis::GetElementShape() const {
-  const Shape* shape = &fusion_->shape();
+  const Shape* shape = &fusion_roots_.front()->shape();
   while (shape->IsTuple()) {
     shape = &shape->tuple_shapes(0);
   }
@@ -581,16 +572,20 @@ HloFusionAnalysis::GroupDisjointReductions() const {
     return {{fusion_roots()[0]}};
   }
 
-  HloInstructionMap<tensorflow::UnionFind<HloInstruction*>> disjoint_sets;
+  ConstHloInstructionMap<tensorflow::UnionFind<const HloInstruction*>>
+      disjoint_sets;
 
   // TODO(b/249976438): we currently do not treat properly
   // aliasing between inputs and outputs of the fusion, so for now put all
   // non-reduction roots into one group to avoid read-after-write conflicts.
   HloInstruction* first_non_reduction_root = nullptr;
 
+  ConstHloInstructionMap<absl::flat_hash_set<const HloInstruction*>>
+      reachable_outputs;
   absl::flat_hash_set<HloInstruction*> roots_with_reduction;
   for (auto [root, hero] : llvm::zip(fusion_roots(), fusion_heroes_)) {
     disjoint_sets[root].Get() = root;
+    reachable_outputs[root].insert(root);
     if (IsRealReductionHero(*root, *hero)) {
       roots_with_reduction.insert(root);
     } else if (first_non_reduction_root) {
@@ -600,9 +595,23 @@ HloFusionAnalysis::GroupDisjointReductions() const {
     }
   }
 
-  std::unique_ptr<HloReachabilityMap> reachability_map =
-      HloReachabilityMap::Build(fused_computation_);
-  for (HloInstruction* instr : fused_computation_->instructions()) {
+  std::vector<const HloInstruction*> instructions;
+  HloBfsConsumersFirstTraversal(
+      fusion_roots_,
+      [&](const HloInstruction& producer, const HloInstruction& consumer) {
+        auto& producer_reachable = reachable_outputs[&producer];
+        for (auto* instruction : reachable_outputs[&consumer]) {
+          producer_reachable.insert(instruction);
+        }
+        return DefaultFusionBoundaryFn(producer, consumer);
+      },
+      [&](const HloInstruction& node) {
+        instructions.push_back(&node);
+        return TraversalResult::kVisitOperands;
+      });
+
+  for (const HloInstruction* instr : instructions) {
+    const auto& reachable = reachable_outputs[instr];
     std::vector<HloInstruction*> reached_output_ids;
     bool added_to_reduce = false;
     for (HloInstruction* output : fusion_roots()) {
@@ -618,7 +627,7 @@ HloFusionAnalysis::GroupDisjointReductions() const {
         }
       }
       // Now group output instructions if they have common predecessors.
-      if (reachability_map->IsReachable(instr, output)) {
+      if (reachable.contains(output)) {
         VLOG(3) << "Reaching " << output->ToString() << " from "
                 << instr->ToString();
         reached_output_ids.push_back(output);
@@ -634,12 +643,13 @@ HloFusionAnalysis::GroupDisjointReductions() const {
   }
 
   // Place output instructions in the same set into the same group.
-  HloInstructionMap<std::vector<HloInstruction*>> groups;
+  ConstHloInstructionMap<std::vector<HloInstruction*>> groups;
   for (HloInstruction* root : fusion_roots()) {
     groups[disjoint_sets[root].Get()].push_back(root);
   }
 
   std::vector<std::vector<HloInstruction*>> ret;
+  ret.reserve(groups.size());
   absl::c_for_each(
       groups, [&](auto& iter) { ret.emplace_back(std::move(iter.second)); });
   return ret;
@@ -725,7 +735,7 @@ bool HloFusionAnalysis::CanVectorizeReduction(
   }
 
   if (reduction_dimensions.dimensions[kDimX] % 2 != 0 ||
-      MayPreventVectorization(fusion_->fused_instructions_computation())) {
+      MayPreventVectorization(fusion_roots_)) {
     return false;
   }
 

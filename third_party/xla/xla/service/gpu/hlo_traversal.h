@@ -41,7 +41,7 @@ using FusionBoundaryFn = std::function<bool(const HloInstruction& producer,
 bool DefaultFusionBoundaryFn(const HloInstruction& producer,
                              const HloInstruction& consumer);
 
-// Visit the HLO nodes starting from `root` in BFS order (consumers before
+// Visit the HLO nodes starting from `roots` in BFS order (consumers before
 // producers). Each node will be visited exactly once. The graph is not
 // traversed along edges for which `boundary` returns true.
 void HloBfsConsumersFirstTraversal(
@@ -49,6 +49,14 @@ void HloBfsConsumersFirstTraversal(
     const std::function<bool(const HloInstruction& producer,
                              const HloInstruction& consumer)>& boundary,
     const std::function<TraversalResult(const HloInstruction& node)>& visit);
+
+// Visit the HLO nodes starting from `roots`, returning true if the return value
+// of `visit` for any of the ones is true.
+bool HloAnyOf(
+    absl::Span<const HloInstruction* const> roots,
+    const std::function<bool(const HloInstruction& producer,
+                             const HloInstruction& consumer)>& boundary,
+    const std::function<bool(const HloInstruction& node)>& visit);
 
 // Visit the producers of all parameters that are needed by the fusion.
 void FindFusionParameters(
