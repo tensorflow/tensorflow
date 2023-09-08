@@ -426,7 +426,7 @@ module @jit_f_jax attributes {jax.uses_shape_polymorphism = true} {
                              platforms=platforms)
 
     expected_value = (
-        x + dict(CPU=2.0, CUDA=3.0, ROCM=3.0, TPU=4.0)[self.testing_platform()]
+        x + dict(CPU=2.0, CUDA=3.0, ROCM=4.0, TPU=4.0)[self.testing_platform()]
     )
     self._assertOpOutputMatchesExpected(f, (x,), (expected_value,))
 
