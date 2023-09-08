@@ -629,6 +629,7 @@ BUILTIN_KERNEL_SRCS = [
     "depthwise_conv.cc",
     "dequantize.cc",
     "detection_postprocess.cc",
+    "dilate.cc",
     "div.cc",
     "dynamic_update_slice.cc",
     "elementwise.cc",
@@ -1205,6 +1206,23 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "dilate_test",
+    size = "small",
+    srcs = ["dilate_test.cc"],
+    tags = ["tflite_nnapi"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
     ],
 )
 

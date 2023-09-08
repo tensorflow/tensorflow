@@ -319,6 +319,8 @@ TfLiteRegistration*
 Register_STABLEHLO_TRANSPOSE();  // WARNING: not implemented, using this
                                  // op will crash the runtime
 
+TfLiteRegistration* Register_DILATE();
+
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

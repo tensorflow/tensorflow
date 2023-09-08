@@ -647,6 +647,12 @@ class SingleOpModel {
     PopulateTensorImpl<T>(index, /*offset=*/0, data);
   }
 
+  // Populates the tensor given its index.
+  template <typename T>
+  void PopulateTensor(int index, absl::Span<const T> data) {
+    PopulateTensorImpl<T>(index, /*offset=*/0, data);
+  }
+
   // Partially populates the tensor, starting at the given offset.
   template <typename T>
   void PopulateTensor(int index, int offset, T* begin, T* end) {
