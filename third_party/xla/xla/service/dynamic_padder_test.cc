@@ -537,7 +537,9 @@ HloModule WhileLoopDynamicShapeChangeToStatic
   %add.1 = s32[] add(get-tuple-element.184, get-tuple-element.184)
   %gte.2 = f32[] get-tuple-element(param), index=2
   %broadcast.19389 = f32[32,216]{1,0} broadcast(f32[] %gte.2), dimensions={}
-  ROOT tuple = (s32[], s32[], f32[], f32[<=32,216]{1,0}) tuple(add.1, %get-tuple-element.185, %gte.2, %broadcast.19389)
+  %constant.32 = s32[] constant(32)
+  %set-dimension-size = f32[<=32,216]{1,0} set-dimension-size(f32[32,216]{1,0} %broadcast.19389, s32[] %constant.32), dimensions={0}
+  ROOT tuple = (s32[], s32[], f32[], f32[<=32,216]{1,0}) tuple(add.1, %get-tuple-element.185, %gte.2, %set-dimension-size)
 }
 
 ENTRY main {
@@ -558,7 +560,24 @@ ENTRY main {
   TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
   XLA_LOG_LINES(0, module_->ToString());
   auto* root = module_->entry_computation()->root_instruction();
-  EXPECT_EQ(root->operand(0)->shape(), ShapeUtil::MakeShape(F32, {32, 216}));
+  EXPECT_EQ(root->shape(), ShapeUtil::MakeShape(F32, {32, 216}, {true, false}));
+  // Find the while loop and ensure that the dynamic dimension size was added to
+  // its operand and output.
+  HloInstruction* while_inst = nullptr;
+  for (HloInstruction* inst :
+       module_->entry_computation()->MakeInstructionPostOrder()) {
+    if (inst->opcode() == HloOpcode::kWhile) {
+      ASSERT_EQ(while_inst, nullptr)
+          << "while_inst: " << while_inst->name() << ", inst: " << inst->name();
+      while_inst = inst;
+    }
+  }
+  EXPECT_EQ(while_inst->shape(),
+            ShapeUtil::MakeTupleShape({ShapeUtil::MakeScalarShape(S32),
+                                       ShapeUtil::MakeScalarShape(S32),
+                                       ShapeUtil::MakeScalarShape(F32),
+                                       ShapeUtil::MakeShape(F32, {32, 216}),
+                                       ShapeUtil::MakeScalarShape(S32)}));
 }
 
 TEST_F(DynamicPadderTest, HandleReshapeCheckPastReshape) {

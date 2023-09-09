@@ -3888,25 +3888,17 @@ XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val,
 StatusOr<XlaOp> XlaBuilder::SetDimensionSizeInternal(const Shape& shape,
                                                      XlaOp operand, XlaOp val,
                                                      int64_t dimension) {
-  std::optional<Shape> shape_override;
-
-  TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
-                      LookUpInstruction(val));
-  if (StringToHloOpcode(val_proto->opcode()).value() == HloOpcode::kConstant &&
-      shape.is_dynamic_dimension(dimension)) {
-    TF_ASSIGN_OR_RETURN(auto constant_size,
-                        Literal::CreateFromProto(val_proto->literal(), true));
-    if (constant_size.Get<int32_t>({}) == shape.dimensions(dimension)) {
-      shape_override = shape;
-      shape_override->set_dynamic_dimension(dimension, false);
-    }
-  }
+  // Note that both SetDimensionSize and RemoveDynamicDimension use
+  // HloOpcode::kSetDimensionSize internally. However, The SetDimensionSize
+  // builder always produces an output with a dynamic bound on the given
+  // dimension, while RemoveDynamicDimension removes the dynamic dimension from
+  // the shape. The only case where HloOpcode::kSetDimensionSize should have a
+  // non-dynamic bound on the given dimension is where the operand is constant
+  // and exactly equal to the size of the dimension.
+  // TODO(b/298671312): Clarify the semantics of SetDimensionSize and consider
+  // adding a separate RemoveDynamicDimension opcode.
   HloInstructionProto instr;
-  if (shape_override) {
-    *instr.mutable_shape() = shape_override->ToProto();
-  } else {
-    *instr.mutable_shape() = shape.ToProto();
-  }
+  *instr.mutable_shape() = shape.ToProto();
   instr.add_dimensions(dimension);
   return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
                         {operand, val});

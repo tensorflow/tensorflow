@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
@@ -2453,6 +2454,44 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
       ctx.builder, token, Convert_channel_handle(op.getChannelHandle()),
       op.getIsHostTransfer());
   return success();
+}
+
+// TODO(b/298671312): The semantics of xla::SetDimensionSize have changed so
+// that it always returns a dynamic shape.  The old semantics are still
+// available through xla::RemoveDynamicDimension, so to avoid changing MHLO
+// semantics we explicitly check for that case here.  However, we should
+// consider adding a RemoveDynamicDimensionOp to HLO and MHLO.
+mlir::LogicalResult ExportXlaOp(mlir::mhlo::SetDimensionSizeOp op,
+                                OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp array;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &array, op)))
+    return mlir::failure();
+  auto dimension = Convertuint64_t(op.getDimension());
+  auto shape_or = ctx.builder->GetShapePtr(array);
+  if (!shape_or.ok()) {
+    return op.emitError(shape_or.status().ToString());
+  }
+  xla::XlaOp xla_result;
+  if (auto constant = llvm::dyn_cast_or_null<mlir::mhlo::ConstantOp>(
+          op.getSize().getDefiningOp());
+      constant != nullptr) {
+    auto value = constant.getValue();
+    auto values = value.getValues<mlir::IntegerAttr>();
+    if ((*values.begin()).getValue().getSExtValue() ==
+        shape_or.value()->dimensions(dimension)) {
+      xla_result = xla::RemoveDynamicDimension(array, dimension);
+    }
+  }
+  if (!xla_result.valid()) {
+    xla::XlaOp dynamic_size;
+    if (failed(GetXlaOp(op.getSize(), value_map, &dynamic_size, op)))
+      return mlir::failure();
+    xla_result = xla::SetDimensionSize(array, dynamic_size, dimension);
+  }
+  value_map[result] = xla_result;
+  return mlir::success();
 }
 
 mlir::LogicalResult ExportXlaOp(mlir::mhlo::SineOp op, OpLoweringContext ctx) {

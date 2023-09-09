@@ -285,7 +285,9 @@ Status CreateZerosTensorListWithShape(
     xla::XlaOp zeros = xla::Broadcast(zero, shape.dimensions());
     TF_RET_CHECK(dynamic_dims[i].size() == shape.dimensions_size());
     for (int64_t dim = 0; dim < shape.dimensions_size(); ++dim) {
-      zeros = xla::SetDimensionSize(zeros, dynamic_dims[i][dim], dim);
+      if (shape.is_dynamic_dimension(dim)) {
+        zeros = xla::SetDimensionSize(zeros, dynamic_dims[i][dim], dim);
+      }
     }
     elements.push_back(zeros);
   }

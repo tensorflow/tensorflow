@@ -2922,6 +2922,7 @@ def MHLO_SetDimensionSizeOp: MHLO_Op<"set_dimension_size", [Pure,
   let results = (outs MHLO_Tensor);
 
   let hasFolder = 1;
+  let hasCustomHLOConverter = 1;
 }
 
 def MHLO_SortOp : MHLO_Op<"sort",
