@@ -2163,6 +2163,13 @@ func.func @selectv2_unranked(%arg0: tensor<1xi1>, %arg1: tensor<2x8x8xi32>, %arg
   func.return %0: tensor<*xi32>
 }
 
+// CHECK-LABEL: func @not_lowering_select
+func.func @not_lowering_select(%arg0: tensor<3xi1>, %arg1: tensor<3x2x!tf_type.string>, %arg2: tensor<3x2x!tf_type.string>) -> tensor<3x2x!tf_type.string> {
+  // CHECK: "tf.Select"
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<3x2x!tf_type.string>, tensor<3x2x!tf_type.string>) -> tensor<3x2x!tf_type.string>
+  func.return %0: tensor<3x2x!tf_type.string>
+}
+
 //===----------------------------------------------------------------------===//
 // Fast Fourier Transform op legalization.
 //===----------------------------------------------------------------------===//

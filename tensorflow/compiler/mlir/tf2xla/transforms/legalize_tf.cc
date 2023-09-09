@@ -2869,6 +2869,9 @@ class ConvertSelectOp : public OpRewritePattern<TF::SelectOp> {
 
   LogicalResult matchAndRewrite(TF::SelectOp op,
                                 PatternRewriter &rewriter) const override {
+    if(op.getOutput().getType().getElementType().isa<mlir::TF::StringType>()) {
+      return failure();
+    }
     // This lowering only works on ranked types.
     auto cond_type = op.getCondition().getType().dyn_cast<RankedTensorType>();
     auto then_type = op.getThenValue().getType().dyn_cast<RankedTensorType>();
