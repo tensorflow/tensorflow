@@ -36,9 +36,5 @@ py_strict_library(
     name = "xla_ops_grad",
     srcs = ["xla_ops_grad.py"],
     srcs_version = "PY3",
-    visibility = [
-        "//tensorflow/compiler/tf2xla:internal",
-        "//tensorflow/python/ops:__pkg__",
-    ],
     deps = ["//tensorflow/python/framework:ops"],
 )
