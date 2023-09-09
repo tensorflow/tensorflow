@@ -766,6 +766,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:literal",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",

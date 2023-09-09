@@ -1,14 +1,15 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
 
 # copybara:uncomment_begin(google-only)
 # load("//learning/brain/experimental/mlir/tensorflow/dialectgen:dialectgen.bzl", "dialectgen")
 #
 # copybara:uncomment_end(google-only)
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
@@ -1158,7 +1159,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:float8",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
@@ -1177,7 +1178,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:float8",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_xla//xla:test",
     ],
 )

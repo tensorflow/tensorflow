@@ -1,6 +1,6 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -109,7 +109,7 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:float8",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 

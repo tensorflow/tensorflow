@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -27,6 +28,9 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
   switch (data_type) {
     case tensorflow::DT_BOOL:
       *type = xla::PRED;
+      return OkStatus();
+    case tensorflow::DT_INT4:
+      *type = xla::S4;
       return OkStatus();
     case tensorflow::DT_INT8:
     case tensorflow::DT_QINT8:
@@ -42,6 +46,9 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
       return OkStatus();
     case tensorflow::DT_INT64:
       *type = xla::S64;
+      return OkStatus();
+    case tensorflow::DT_UINT4:
+      *type = xla::U4;
       return OkStatus();
     case tensorflow::DT_UINT8:
     case tensorflow::DT_QUINT8:
