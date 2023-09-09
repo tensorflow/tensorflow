@@ -612,7 +612,10 @@ message DebugOptions {
   // Allow early return when acquiring NCCL cliques.
   bool xla_gpu_enable_nccl_clique_optimization = 244;
 
-  // Next id: 245
+  // Replace custom calls with noop operations.
+  bool xla_gpu_mock_custom_calls = 245;
+
+  // Next id: 246
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

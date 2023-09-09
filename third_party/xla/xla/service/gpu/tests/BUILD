@@ -1,27 +1,27 @@
 # Description: GPU-specific XLA tests. For example, codegen tests that
 # verify the IR emitted.
 
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("//xla:glob_lit_test.bzl", "glob_lit_tests")
 load(
     "//xla:xla.bzl",
     "xla_cc_binary",
     "xla_cc_test",
 )
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
+load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
+load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("//xla:glob_lit_test.bzl", "glob_lit_tests")
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_is_configured",
-)
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -797,6 +797,19 @@ filegroup(
 xla_cc_test(
     name = "kernel_launch_test",
     srcs = ["kernel_launch_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//xla/tests:hlo_test_base",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+xla_cc_test(
+    name = "mock_custom_call_test",
+    srcs = ["mock_custom_call_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",

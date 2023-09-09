@@ -1411,6 +1411,10 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
       mlir::mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI;
 
   if (!call_target && !is_typed_custom_call) {
+    if (ir_emitter_context_->debug_options().xla_gpu_mock_custom_calls()) {
+      // Don't run anything on custom call.
+      return OkStatus();
+    }
     return Unimplemented(
         "No registered implementation for custom call to \"%s\" for platform "
         "\"%s\"",
