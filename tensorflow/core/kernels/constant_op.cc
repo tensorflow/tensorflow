@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 
 namespace tensorflow {
@@ -202,6 +203,8 @@ REGISTER_KERNEL(CPU, quint16);
 REGISTER_KERNEL(CPU, qint8);
 REGISTER_KERNEL(CPU, qint16);
 REGISTER_KERNEL(CPU, qint32);
+REGISTER_KERNEL(CPU, int4);
+REGISTER_KERNEL(CPU, uint4);
 #undef REGISTER_CPU_KERNEL
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
@@ -218,6 +221,8 @@ REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64_t);
 REGISTER_KERNEL(GPU, bool);
+REGISTER_KERNEL(GPU, int4);
+REGISTER_KERNEL(GPU, uint4);
 // Currently we do not support filling strings on GPU
 #endif
 

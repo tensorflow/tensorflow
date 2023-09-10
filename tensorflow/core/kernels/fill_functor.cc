@@ -132,6 +132,8 @@ DEFINE_FILL_CPU(qint16);
 DEFINE_FILL_CPU(qint32);
 DEFINE_FILL_CPU(float8_e5m2);
 DEFINE_FILL_CPU(float8_e4m3fn);
+TF_CALL_int4(DEFINE_FILL_CPU);
+TF_CALL_uint4(DEFINE_FILL_CPU);
 #undef DEFINE_FILL_CPU
 
 }  // namespace functor
