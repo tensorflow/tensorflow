@@ -176,9 +176,9 @@ idna==3.4 \
 jax==0.4.7 \
     --hash=sha256:5e7002d74db25f97c99b979d4ba1233b1ef26e1597e5fc468ad11d1c8a9dc4f8
     # via -r ./requirements.in
-keras==2.14.0rc0 \
-    --hash=sha256:56dc53aad890ea6c585150ce69e8e6f263ee1b34ab5c3a1ff10865cfa5150317 \
-    --hash=sha256:b53f050ce66351db41cca57cfaa3dec7bee7feb4f45f83a763934701f8b27bda
+keras==2.14.0 \
+    --hash=sha256:22788bdbc86d9988794fe9703bb5205141da797c4faeeb59497c58c3d94d34ed \
+    --hash=sha256:d7429d1d2131cc7eb1f2ea2ec330227c7d9d38dab3dfdf2e78defee4ecc43fcd
     # via -r ./requirements.in
 lit==16.0.6 \
     --hash=sha256:84623c9c23b6b14763d637f4e63e6b721b3446ada40bf7001d8fee70b8e77a9a
@@ -410,8 +410,8 @@ tensorboard-data-server==0.7.1 \
     --hash=sha256:9938bd39f5041797b33921066fba0eab03a0dd10d1887a05e62ae58841ad4c3f \
     --hash=sha256:be8d016a1aa394e6198280d4a3dc37898f56467310c5f5e617cac10a783e055a
     # via tensorboard
-tensorflow-estimator==2.14.0rc0 \
-    --hash=sha256:98d7bcf84e17a0ebc2f3d07c4e2a59a6ac3ad9a6e7ed9270f67b6cc3c11b4eaf
+tensorflow-estimator==2.14.0 \
+    --hash=sha256:820bf57c24aa631abb1bbe4371739ed77edb11361d61381fd8e790115ac0fd57
     # via -r ./requirements.in
 urllib3==1.26.16 \
     --hash=sha256:8d36afa7616d8ab714608411b4a3b13e58f463aee519024578e062e141dce20f \
