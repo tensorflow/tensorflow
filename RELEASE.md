@@ -109,6 +109,8 @@
 
 *  TensorFlow IO support is now available for Apple Silicon packages.
 
+*  Refactor CpuExecutable to propagate LLVM errors.
+
 ## Keras
 
 Keras is a framework built on top of the TensorFlow. See more details on the Keras [website](https://keras.io/).
