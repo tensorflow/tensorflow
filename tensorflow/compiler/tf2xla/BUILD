@@ -773,6 +773,19 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "type_util_test",
+    srcs = ["type_util_test.cc"],
+    deps = [
+        ":common",
+        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
 cc_library(
     name = "frontend_attributes_util",
     srcs = ["frontend_attributes_util.cc"],
