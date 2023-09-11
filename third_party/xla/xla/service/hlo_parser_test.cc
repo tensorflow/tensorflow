@@ -3625,6 +3625,13 @@ TEST_F(HloParserTest, ParseShardLike) {
             original);
 }
 
+TEST_F(HloParserTest, ParseUnknownSharding) {
+  const std::string original = "{unknown}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  EXPECT_EQ(HloSharding::Unknown().ToString(), original);
+}
+
 TEST_F(HloParserTest, ParseFrontendAttributes) {
   const std::string original =
       R"({attr_a="test_a",attr_b="b",attr_c="s64",attr_d="a/b"})";

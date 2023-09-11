@@ -795,6 +795,9 @@ message OpSharding {
     // This op is manually sharded: the shapes are already partitioned and the
     // partitioner should not change this op.
     MANUAL = 4;
+    // This sharding is a placeholder sharding with lowest precedence, it can be
+    // overwriten by any other shardings.
+    UNKNOWN = 5;
   }
   Type type = 1;
   // The shape of the sharded tile.
