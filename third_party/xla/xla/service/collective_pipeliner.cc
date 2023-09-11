@@ -1551,11 +1551,6 @@ static Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
     if (instr == loop_parameter || instr == while_body->root_instruction()) {
       continue;
     }
-    auto new_operands =
-        MapNewOperands(instr->operands(), while_body_replacement_map);
-    HloInstruction* cloned_instr = while_loop->parent()->AddInstruction(
-        instr->CloneWithNewOperands(instr->shape(), new_operands));
-    UpdateInstructionChannelId(cloned_instr, next_channel_id);
     auto instruction_is_output_it = is_output_instruction.find(instr);
     auto it = collective_to_move_map.find(instr);
     if (it != collective_to_move_map.end()) {
@@ -1570,6 +1565,11 @@ static Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
       }
       continue;
     }
+    auto new_operands =
+        MapNewOperands(instr->operands(), while_body_replacement_map);
+    HloInstruction* cloned_instr = while_loop->parent()->AddInstruction(
+        instr->CloneWithNewOperands(instr->shape(), new_operands));
+    UpdateInstructionChannelId(cloned_instr, next_channel_id);
     while_body_replacement_map[instr] = cloned_instr;
     if (instruction_is_output_it != is_output_instruction.end()) {
       output_tuple_instructions[instruction_is_output_it->second] =
