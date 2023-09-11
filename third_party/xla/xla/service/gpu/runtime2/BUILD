@@ -103,55 +103,6 @@ package_group(
 # )
 #
 # cc_library(
-#     name = "kernel",
-#     srcs = if_gpu2(["kernel.cc"]),
-#     hdrs = if_gpu2(["kernel.h"]),
-#     compatible_with = [],
-#     deps = [
-#         ":hal",
-#         ":vm",
-#         "@com_google_absl//absl/container:flat_hash_map",
-#         "@com_google_absl//absl/container:inlined_vector",
-#         "@com_google_absl//absl/log",
-#         "@com_google_absl//absl/synchronization",
-#         "//xla:status",
-#         "//xla:statusor",
-#         "//xla/service:executable",
-#         "//xla/service/gpu:launch_dimensions",
-#         "//xla/service/gpu:stream_executor_util",
-#         "//xla/stream_executor:device_memory",
-#         "//xla/stream_executor:kernel",
-#         "@local_tsl//tsl/profiler/lib:scoped_annotation",
-#     ] + if_gpu2([
-#         "//third_party/iree/runtime/src/iree/hal",
-#         "//third_party/iree/runtime/src/iree/vm",
-#     ]),
-# )
-#
-# cc_library(
-#     name = "memcpy",
-#     srcs = if_gpu2(["memcpy.cc"]),
-#     hdrs = if_gpu2(["memcpy.h"]),
-#     compatible_with = [],
-#     deps = [
-#         ":hal",
-#         ":vm",
-#         "@com_google_absl//absl/container:inlined_vector",
-#         "@com_google_absl//absl/log",
-#         "//xla:status",
-#         "//xla:statusor",
-#         "//xla/service:executable",
-#         "//xla/service/gpu:launch_dimensions",
-#         "//xla/service/gpu:stream_executor_util",
-#         "//xla/stream_executor:device_memory",
-#         "@local_tsl//tsl/profiler/lib:scoped_annotation",
-#     ] + if_gpu2([
-#         "//third_party/iree/runtime/src/iree/hal",
-#         "//third_party/iree/runtime/src/iree/vm",
-#     ]),
-# )
-#
-# cc_library(
 #     name = "module",
 #     srcs = if_gpu2(["module.cc"]),
 #     hdrs = if_gpu2(["module.h"]),
@@ -159,8 +110,6 @@ package_group(
 #     deps = [
 #         ":gemm",
 #         ":hal",
-#         ":kernel",
-#         ":memcpy",
 #         ":vm",
 #         "@com_google_absl//absl/log",
 #     ] + if_gpu2([

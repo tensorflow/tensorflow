@@ -56,9 +56,6 @@ class XlaGpuApi {
   // Returns `!iree_input.list<!iree_input.buffer_view>` type.
   static mlir::Type getBufferViewListType(mlir::OpBuilder &b);
 
-  // Returns `!iree_input.list<!xla_gpu.graph.node>` type.
-  static mlir::Type getGraphNodeListType(mlir::OpBuilder &b);
-
   // Constructs `!iree_input.list<i32>` list from given values.
   static mlir::TypedValue<mlir::iree_compiler::IREE::Input::ListType>
   getI32List(mlir::ImplicitLocOpBuilder &b, llvm::ArrayRef<int64_t> values);
@@ -72,11 +69,6 @@ class XlaGpuApi {
   static mlir::TypedValue<mlir::iree_compiler::IREE::Input::ListType>
   getBufferViewList(mlir::ImplicitLocOpBuilder &b,
                     llvm::ArrayRef<mlir::TypedValue<mlir::TensorType>> tensors);
-
-  // Constructs `!iree_input.list<!xla_gpu.graph.node>` list from tensors.
-  static mlir::TypedValue<mlir::iree_compiler::IREE::Input::ListType>
-  getGraphNodeList(mlir::ImplicitLocOpBuilder &b,
-                   llvm::ArrayRef<mlir::TypedValue<GraphNodeType>> nodes);
 
   //===---------------------------------------------------------------------===/
   // Helper functions to build globals
@@ -98,17 +90,6 @@ class XlaGpuApi {
   }
 
   //===--------------------------------------------------------------------===//
-  // XLA:GPU kernel APIs
-  //===--------------------------------------------------------------------===//
-
-  // Imports `@xla_gpu.kernel.create` into the module.
-  mlir::func::FuncOp getCreateKernel(mlir::OpBuilder &b, mlir::ModuleOp module);
-
-  // Imports `@xla_gpu.kernel.dispatch` into the module.
-  mlir::func::FuncOp getDispatchKernel(mlir::OpBuilder &b,
-                                       mlir::ModuleOp module);
-
-  //===--------------------------------------------------------------------===//
   // XLA:GPU gemm (dot) APIs
   //===--------------------------------------------------------------------===//
 
@@ -128,34 +109,6 @@ class XlaGpuApi {
   mlir::func::FuncOp getDispatchGemm(mlir::OpBuilder &b, mlir::ModuleOp module);
 
   //===--------------------------------------------------------------------===//
-  // XLA:GPU memcpy APIs
-  //===--------------------------------------------------------------------===//
-
-  // Imports `@xla_gpu.memcpy.d2d` into the module.
-  mlir::func::FuncOp getD2DMemcpy(mlir::OpBuilder &b, mlir::ModuleOp module);
-
-  // Imports `@xla_gpu.memcpy.load.i1` into the module.
-  mlir::func::FuncOp getLoadI1Memcpy(mlir::OpBuilder &b, mlir::ModuleOp module);
-
-  //===--------------------------------------------------------------------===//
-  // XLA:GPU graph construction APIs
-  //===--------------------------------------------------------------------===//
-
-  // Imports `@xla_gpu.graph.kernel_node.create` into the module.
-  mlir::func::FuncOp getCreateKernelNode(mlir::OpBuilder &b,
-                                         mlir::ModuleOp module);
-
-  // Imports `@xla_gpu.graph.memcpy_node.d2d.create` into the module.
-  mlir::func::FuncOp getCreateD2DMemcpyNode(mlir::OpBuilder &b,
-                                            mlir::ModuleOp module);
-
-  // Imports `@xla_gpu.graph.create` into the module.
-  mlir::func::FuncOp getCreateGraph(mlir::OpBuilder &b, mlir::ModuleOp module);
-
-  // Imports `@xla_gpu.graph.execute` into the module.
-  mlir::func::FuncOp getExecuteGraph(mlir::OpBuilder &b, mlir::ModuleOp module);
-
-  //===--------------------------------------------------------------------===//
   // XLA:GPU tracing APIs
   //===--------------------------------------------------------------------===//
 
@@ -172,20 +125,6 @@ class XlaGpuApi {
   using GlobalKey = std::tuple<mlir::ModuleOp, mlir::StringAttr, mlir::Type>;
   llvm::DenseMap<GlobalKey, mlir::iree_compiler::IREE::Input::GlobalOp>
       globals_;
-};
-
-//===----------------------------------------------------------------------===//
-// XLA:GPU graph building helpers
-//===----------------------------------------------------------------------===//
-
-struct XlaGpuGraphs {
-  // Keep a mapping from the tensor value to the last graph node id that updated
-  // the underlying storage buffer. We use this mapping to set up graph
-  // dependencies inside a graph dispatch region.
-  llvm::DenseMap<mlir::Block *,
-                 llvm::DenseMap<mlir::TypedValue<mlir::TensorType>,
-                                mlir::TypedValue<GraphNodeType>>>
-      dependency;
 };
 
 }  // namespace xla::gpu

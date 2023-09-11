@@ -33,10 +33,9 @@ void registerGpu2Pases() { ::impl::registerPasses(); }
 
 void populateGpu2RuntimePasses(mlir::OpPassManager& pm,
                                ThunkSequence* thunk_sequence,
-                               RuntimeBackend backend,
                                const Gpu2PipelineOpts& opts) {
   // Convert LMHLO operations to runtime input.
-  pm.addPass(createConvertToGpu2RuntimePass(thunk_sequence, backend));
+  pm.addPass(createConvertToGpu2RuntimePass(thunk_sequence));
 
   // Clean up IR before passing it to IREE compiler.
   pm.addPass(createCSEPass());

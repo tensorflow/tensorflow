@@ -24,8 +24,6 @@ limitations under the License.
 #include "third_party/iree/runtime/src/iree/vm/native_module_cc.h"
 #include "third_party/iree/runtime/src/iree/vm/native_module_packing.h"
 #include "xla/service/gpu/runtime2/gemm.h"
-#include "xla/service/gpu/runtime2/kernel.h"
-#include "xla/service/gpu/runtime2/memcpy.h"
 #include "xla/service/gpu/runtime2/vm.h"
 
 namespace xla::gpu {
@@ -35,19 +33,13 @@ namespace xla::gpu {
 //===-----------------------------------------------------------------------===/
 
 using vm::GemmAPI;
-using vm::KernelAPI;
-using vm::MemcpyAPI;
 using vm::TraceAPI;
 
 class XlaGpuModuleState : public GemmAPI,
-                          public KernelAPI,
-                          public MemcpyAPI,
                           public TraceAPI {
  public:
   explicit XlaGpuModuleState(iree_hal_allocator_t* device_allocator)
-      : GemmAPI(device_allocator),
-        KernelAPI(device_allocator),
-        MemcpyAPI(device_allocator) {}
+      : GemmAPI(device_allocator) {}
 };
 
 //===----------------------------------------------------------------------===//
@@ -89,14 +81,6 @@ static const iree::vm::NativeFunction<XlaGpuModuleState> kXlaGpuFunctions[] = {
     MakeApiFunction("dot_precision.create", &GemmAPI::DotPrecisionCreate),
     MakeApiFunction("dot_config.create", &GemmAPI::DotConfigCreate),
     MakeApiFunction("gemm.dispatch", &GemmAPI::GemmDispatch),
-
-    // XLA:GPU kernel APIs
-    MakeApiFunction("kernel.create", &KernelAPI::KernelCreate),
-    MakeApiFunction("kernel.dispatch", &KernelAPI::KernelDispatch),
-
-    // XLA:GPU memcpy APIs
-    MakeApiFunction("memcpy.d2d", &MemcpyAPI::MemcpyD2D),
-    MakeApiFunction("memcpy.load.i1", &MemcpyAPI::LoadI1),
 
     // XLA:GPU tracing APIs
     MakeApiFunction("trace.create", &TraceAPI::TraceCreate),
@@ -177,10 +161,6 @@ iree_status_t RegisterXlaGpuTypes(iree_vm_instance_t* instance) {
       instance, "xla_gpu.dot_precision", &dot_precision_registration));
   IREE_RETURN_IF_ERROR(RegisterType<vm::DotConfig>(
       instance, "xla_gpu.dot_config", &dot_config_registration));
-
-  // XLA:GPU kernel dispatch types
-  IREE_RETURN_IF_ERROR(RegisterType<vm::Kernel>(instance, "xla_gpu.kernel",
-                                                &kernel_registration));
 
   // XLA:GPU tracing types
   IREE_RETURN_IF_ERROR(

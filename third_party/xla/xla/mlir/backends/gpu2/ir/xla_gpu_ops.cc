@@ -15,31 +15,9 @@ limitations under the License.
 
 #include "xla/mlir/backends/gpu2/ir/xla_gpu_ops.h"  // IWYU pragma: keep
 
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Region.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-
 namespace xla::gpu {
 
 using namespace mlir;  // NOLINT
-
-static ParseResult parseGraphDispatchRegion(OpAsmParser &parser, Region &body) {
-  OpAsmParser::Argument arg;
-  if (parser.parseKeyword("graph") || parser.parseLParen() ||
-      parser.parseArgument(arg, /*allowType=*/true) || parser.parseRParen())
-    return failure();
-
-  return parser.parseRegion(body, /*arguments=*/{arg});
-}
-
-static void printGraphDispatchRegion(OpAsmPrinter &p, Operation *op,
-                                     Region &body) {
-  auto arg = body.getArgument(0);
-  p << "graph"
-    << "(" << arg << ": " << arg.getType() << ") ";
-  p.printRegion(body, /*printEntryBlockArgs=*/false);
-}
 
 }  // namespace xla::gpu
 

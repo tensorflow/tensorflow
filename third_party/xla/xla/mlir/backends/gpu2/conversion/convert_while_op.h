@@ -30,12 +30,6 @@ void populateWhileOpConversionPatterns(mlir::RewritePatternSet &patterns,
                                        mlir::TypeConverter &converter,
                                        DeBufferization &state);
 
-// Appends patterns to convert while loops to scf.while operations and XLA:GPU
-// API to load predicate from device buffer (StreamExecutor backend).
-void populateWhileOpConversionPatterns(mlir::RewritePatternSet &patterns,
-                                       mlir::TypeConverter &converter,
-                                       DeBufferization &state, XlaGpuApi &api);
-
 }  // namespace gpu
 }  // namespace xla
 

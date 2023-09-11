@@ -29,20 +29,11 @@ namespace gpu {
 class ThunkSequence;
 
 // Appends patterns to convert LMHLO operations compiled to kernel thunks to
-// IREEInput executable export and dispatch operations.
+// XLA executable object and dispatch operations.
 void populateCompiledOpsConversionPatterns(
     mlir::RewritePatternSet &patterns, mlir::TypeConverter &converter,
     mlir::iree_compiler::IREE::Input::ExecutableSourceOp executable_source,
     ThunkSequence *thunk_sequence, DeBufferization &state);
-
-// Appends patterns to convert LMHLO operations compiled to kernel thunks to
-// XLA:GPU runtime API calls.
-void populateCompiledOpsConversionPatterns(mlir::RewritePatternSet &patterns,
-                                           mlir::TypeConverter &converter,
-                                           ThunkSequence *thunk_sequence,
-                                           DeBufferization &state,
-                                           XlaGpuApi &api,
-                                           XlaGpuGraphs &graphs);
 
 }  // namespace gpu
 }  // namespace xla
