@@ -74,11 +74,22 @@
 
 ### Bug Fixes and Other Changes
 
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
+*   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+*   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+*   <NOTES SHOULD BE GROUPED PER AREA>
 
-* Add TensorFlow Quantizer to TensorFlow pip package.
+*   Add TensorFlow Quantizer to TensorFlow pip package.
+
+*   `tf.sparse.segment_sum` `tf.sparse.segment_mean` `tf.sparse.segment_sqrt_n`
+    `SparseSegmentSum/Mean/SqrtN[WithNumSegments]`
+
+    *   Added `sparse_gradient` option (default=false) that makes the gradient
+        of these functions/ops sparse (`IndexedSlices`) instead of dense
+        (`Tensor`), using new `SparseSegmentSum/Mean/SqrtNGradV2` ops.
+
+*   `tf.nn.embedding_lookup_sparse`
+
+    *   Optimized this function for some cases by fusing internal operations.
 
 ## Keras
 
