@@ -183,9 +183,8 @@ class ConcreteFunction(Callable, metaclass=abc.ABCMeta):
     """Returns the original `AtomicFunction` owned by this ConcreteFunction."""
 
 
-# TODO(mdan): Name just `types.Function`, for historic continuity?
-@tf_export("types.experimental.GenericFunction", v1=[])
-class GenericFunction(Callable, metaclass=abc.ABCMeta):
+@tf_export("types.experimental.PolymorphicFunction", v1=[])
+class PolymorphicFunction(Callable, metaclass=abc.ABCMeta):
   """Base class for polymorphic graph functions.
 
   Graph functions are Python callable objects that dispatch calls to a
@@ -363,6 +362,13 @@ class GenericFunction(Callable, metaclass=abc.ABCMeta):
       TypeError: When called with input in graph mode.
     """
     pass
+
+
+# TODO(b/297237997): Delete this once all usages are removed.
+@tf_export("types.experimental.GenericFunction", v1=[])
+class GenericFunction(PolymorphicFunction):
+  """Please use tf.types.experimental.PolymorphicFunction instead."""
+  pass
 
 
 @runtime_checkable
