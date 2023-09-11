@@ -110,6 +110,7 @@ cc_library(
     hdrs = ["stream.h"],
     deps = [
         ":channel",
+        ":step_id",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_proto_cc",
@@ -138,6 +139,16 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "step_id",
+    srcs = ["step_id.cc"],
+    hdrs = ["step_id.h"],
+    deps = [
+        "//tensorflow/core/tfrt/kernels:stream_ops_util_constants",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

@@ -102,6 +102,7 @@ cc_library(
         "//tensorflow/core/tfrt/mlrt/interpreter:execute",
         "//tensorflow/core/tfrt/mlrt/kernel:context",
         "//tensorflow/core/tfrt/runtime",
+        "//tensorflow/core/tfrt/runtime:step_id",
         "//tensorflow/core/tfrt/runtime:stream",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/stubs:tfrt_native_lowering_stub",

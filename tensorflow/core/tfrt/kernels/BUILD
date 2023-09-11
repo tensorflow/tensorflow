@@ -1,6 +1,7 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
+    "//tensorflow:tensorflow.default.bzl",
+    "get_compatible_with_portable",
 )
 
 package(
@@ -38,6 +39,7 @@ cc_library(
 cc_library(
     name = "stream_ops_util_constants",
     hdrs = ["stream_ops_util_constants.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//visibility:public",
     ],
