@@ -178,10 +178,10 @@ struct AutotunerUtil {
 
   // Adds the result to the autotune cache.
   //
-  // It is an error to call this, if the key is already present in the cache.
+  // Returns true if the entry is inserted.
   //
   // Normally, we don't have to use this low level method.
-  static Status AddResult(const AutotuneCacheKey& key, AutotuneResult result);
+  static bool AddResult(const AutotuneCacheKey& key, AutotuneResult result);
 
   // Creates a RedzoneAllocator from a given config. If `force_stream` is
   // provided, than it is used for checking redzones.

@@ -712,8 +712,13 @@ Status Autotune(const AutotuneConfig& config, AutotunerCompileUtil& util,
           DumpAutotunedFusions(config, result, fusion, fusion_id_for_dump));
     }
 
-    TF_RETURN_IF_ERROR(AutotunerUtil::AddResult(
-        AutotunerUtil::GetKey(fusion, config), std::move(result)));
+    const AutotuneCacheKey key = AutotunerUtil::GetKey(fusion, config);
+    if (!AutotunerUtil::AddResult(key, std::move(result))) {
+      // In the context of model server, concurrent autotuning is expected and
+      // insertion of identical autotuning keys is accepted.
+      LOG(WARNING) << "AutotunerUtil::AddResult already existed: "
+                   << key.ToString();
+    }
 
     fusion_id_for_dump += 1;
   }

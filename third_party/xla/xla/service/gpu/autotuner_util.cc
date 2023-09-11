@@ -134,15 +134,11 @@ static AutotuneResult* TryFindInCache(const AutotuneCacheKey& key) {
   return TryFindInCache(key) != nullptr;
 }
 
-/*static*/ Status AutotunerUtil::AddResult(const AutotuneCacheKey& key,
-                                           AutotuneResult result) {
+/*static*/ bool AutotunerUtil::AddResult(const AutotuneCacheKey& key,
+                                         AutotuneResult result) {
   absl::MutexLock lock(&autotune_cache_mu);
   auto [_, inserted] = autotune_cache.emplace(key, std::move(result));
-  if (!inserted) {
-    return absl::AlreadyExistsError(absl::StrCat(
-        "The key is already in the autotune cache: ", key.ToString()));
-  }
-  return OkStatus();
+  return inserted;
 }
 
 /*static*/ StatusOr<AutotuneResult> AutotunerUtil::Autotune(
