@@ -256,9 +256,9 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
 
       tensorflow::quantization::QuantizationOptions quantization_options;
 
-      quantization_options.mutable_quantization_method()
-          ->set_experimental_method(
-              tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE);
+      quantization_options.mutable_quantization_method()->set_preset_method(
+          tensorflow::quantization::QuantizationMethod::
+              METHOD_DYNAMIC_RANGE_INT8);
       quantization_options.set_op_set(
           tensorflow::quantization::UNIFORM_QUANTIZED);
       quantization_options.set_min_num_elements_for_weights(

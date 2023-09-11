@@ -55,12 +55,12 @@ void AddQuantizeQatPasses(
       quantization_options.op_set(),
       quantization_options.enable_two_input_tensors()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      quantization_options.quantization_method().experimental_method(),
+      quantization_options.quantization_method().preset_method(),
       quantization_options.op_set()));
   // TODO(b/260677670): Pass quantization options as pass's inputs where
   // applicable
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      quantization_options.quantization_method().experimental_method(),
+      quantization_options.quantization_method().preset_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization(),
       quantization_options.min_num_elements_for_weights(),
@@ -96,14 +96,14 @@ void AddQuantizePtqDynamicRangePasses(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass(
-      quantization_options.quantization_method().experimental_method(),
+      quantization_options.quantization_method().preset_method(),
       quantization_options.op_set(),
       quantization_options.min_num_elements_for_weights()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      quantization_options.quantization_method().experimental_method(),
+      quantization_options.quantization_method().preset_method(),
       quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      quantization_options.quantization_method().experimental_method(),
+      quantization_options.quantization_method().preset_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization(),
       quantization_options.min_num_elements_for_weights(),
@@ -163,10 +163,10 @@ void AddQuantizePtqPostCalibrationPasses(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      quantization_options.quantization_method().experimental_method(),
+      quantization_options.quantization_method().preset_method(),
       quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      quantization_options.quantization_method().experimental_method(),
+      quantization_options.quantization_method().preset_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization(),
       quantization_options.min_num_elements_for_weights(),

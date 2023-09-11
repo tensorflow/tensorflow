@@ -476,8 +476,7 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
       },
       context, *module_ref));
 
-  const bool unfreeze_constants =
-      !quantization_options.freeze_all_variables().enabled();
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
 
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
 
@@ -546,8 +545,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
       },
       context, *module_ref));
 
-  const bool unfreeze_constants =
-      !quantization_options.freeze_all_variables().enabled();
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
 
   // `duplicate_shape_determining_constants = false` because the
@@ -623,8 +621,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
       },
       context, *module_ref));
 
-  const bool unfreeze_constants =
-      !quantization_options.freeze_all_variables().enabled();
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
 
   const auto export_opts = ExportOptions{
@@ -696,8 +693,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
       },
       context, *module_ref));
 
-  const bool unfreeze_constants =
-      !quantization_options.freeze_all_variables().enabled();
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
 
   const auto export_opts = ExportOptions{
@@ -772,8 +768,7 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
       },
       context, *module_ref));
 
-  const bool unfreeze_constants =
-      !quantization_options.freeze_all_variables().enabled();
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
 
   const auto export_opts = ExportOptions{
