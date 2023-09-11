@@ -83,7 +83,9 @@
       mesh under the dtensor context.
     * \*fft\* ops now support dtensors with any layout. Fixed bug in 'fft2d/
       fft3d', 'ifft2d/ifft3d', 'rfft2d/rfft3d', and 'irfft2d/irfft3d' for
-      sharded input.
+      sharded input. Refer to this
+      [blog post](https://blog.tensorflow.org/2023/08/distributed-fast-fourier-transform-in-tensorflow.html)
+      for details.
 
 *  `tf.experimental.strict_mode`
     * Added a new API, `strict_mode`, which converts all deprecation warnings
