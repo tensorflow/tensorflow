@@ -223,6 +223,10 @@ class HeapSimulator {
   void ShareBuffer(const HloValue* buffer, const HloValue* shared,
                    const HloInstruction* instruction);
 
+  // Returns the size of the HloValue, which is the max size of the HloValues
+  // that are part of the HloBuffer.
+  int64_t GetBufferSize(const HloValue* buffer) const;
+
   // Returns true if:
   //  Two buffers belong to the same shared group.
   //  Eight of the buffer has no shared group assigned.
@@ -252,6 +256,8 @@ class HeapSimulator {
   // Hold some sets for error-checking the sequence of Alloc and Free calls.
   absl::flat_hash_set<const HloValue*> allocated_buffers_;
   absl::flat_hash_set<const HloValue*> freed_buffers_;
+
+  absl::flat_hash_map<const HloValue*, int64_t> buffer_sizes_;
 
   // Debugging information filled in while the heap simulator runs.
   HeapSimulatorTrace debug_trace_;

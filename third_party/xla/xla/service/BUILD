@@ -1761,9 +1761,12 @@ xla_cc_test(
     name = "heap_simulator_test",
     srcs = ["heap_simulator_test.cc"],
     deps = [
+        ":async_op_canonicalizer",
         ":buffer_value",
         ":heap_simulator",
+        ":hlo_dce",
         ":hlo_ordering",
+        ":hlo_parser",
         ":hlo_value",
         ":tuple_points_to_analysis",
         "//xla:literal",

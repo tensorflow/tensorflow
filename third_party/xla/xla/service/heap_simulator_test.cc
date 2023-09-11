@@ -29,8 +29,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
+#include "xla/service/async_op_canonicalizer.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_ordering.h"
+#include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/tuple_points_to_analysis.h"
 #include "xla/status_macros.h"
@@ -938,6 +941,53 @@ TEST_F(HeapSimulatorTest, WholeModule) {
       {kFree, tracker.BufferAt(param, {1})},
       {kFinish, nullptr},
   });
+}
+
+TEST_F(HeapSimulatorTest, AsyncCallImplicitSharding) {
+  std::string hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  called_computation {
+    param0 = f32[4] parameter(0)
+    constant = f32[1] constant(1)
+    dynamic-update-slice = f32[4] dynamic-update-slice(param0, constant, constant)
+    ROOT negate = f32[4] negate(dynamic-update-slice)
+  }
+
+  ENTRY entry {
+    p0 = f32[8] parameter(0)
+    call-start = ((f32[8]), f32[8], s32[]) call-start(p0), async_execution_thread="foo", to_apply=called_computation
+    ROOT call-done = f32[8] call-done(call-start), async_execution_thread="foo", to_apply=called_computation
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  AsyncOpCanonicalizer canonicalizer;
+  TF_ASSERT_OK(canonicalizer.Run(module.get()).status());
+  HloDCE dce;
+  TF_ASSERT_OK(dce.Run(module.get()).status());
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                          HloAliasAnalysis::Run(module.get()));
+  auto size_fn = [](const BufferValue& buffer) -> int64_t {
+    const Shape& shape = buffer.shape();
+    if (!shape.IsArray()) {
+      return 0;
+    }
+    return ShapeUtil::ByteSizeOf(shape);
+  };
+  auto algorithm = std::make_unique<GlobalDecreasingSizeBestFitHeap<HloValue>>(
+      /*alignment=*/1);
+
+  HeapSimulator::Result<HloValue> result =
+      HeapSimulator::Run(std::move(algorithm), *module, module->schedule(),
+                         *alias_analysis, size_fn)
+          .value();
+  for (const auto& [value, chunk] : result.heap_results[0].chunk_map) {
+    if (value->instruction()->name() == "dynamic-update-slice") {
+      EXPECT_EQ(chunk.size, 32);
+    }
+  }
 }
 
 // Base class for heap algorithm tests.

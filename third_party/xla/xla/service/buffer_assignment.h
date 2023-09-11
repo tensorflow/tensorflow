@@ -551,9 +551,9 @@ class BufferAssignment {
   BufferAllocation* GetMutableAllocation(BufferAllocation::Index index);
 
   int64_t HloBufferSize(const HloBuffer& buffer) {
-    int64_t result = buffer_size_(*buffer.values()[0]);
+    int64_t result = 0;
     for (const HloValue* value : buffer.values()) {
-      DCHECK_EQ(result, buffer_size_(*value));
+      result = std::max(result, buffer_size_(*value));
     }
     return result;
   }

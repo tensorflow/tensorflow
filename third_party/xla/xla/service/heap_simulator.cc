@@ -257,6 +257,17 @@ Status HeapSimulator::RunComputation(
 
   VLOG(1) << "Program time" << hlo_live_range->schedule_end_time();
 
+  // Populate buffer sizes with the maximum size of the constituent HloValues.
+  for (const HloBuffer& buffer : alias_analysis.buffers()) {
+    int64_t size = 0;
+    for (const HloValue* value : buffer.values()) {
+      size = std::max(size, size_fn_(*value));
+    }
+    for (const HloValue* value : buffer.values()) {
+      buffer_sizes_[value] = size;
+    }
+  }
+
   // Go through each step in the program and replay each buffer define and free
   // events.
   for (int64_t i = 0; i < hlo_live_range->schedule_end_time() + 1; ++i) {
@@ -406,7 +417,7 @@ void HeapSimulator::Alloc(const HloValue* buffer,
       << "Alloc called on freed buffer: " << *buffer;
 
   allocated_buffers_.insert(buffer);
-  const int64_t size = size_fn_(*buffer);
+  const int64_t size = GetBufferSize(buffer);
   algorithm_->Alloc(buffer, size);
   no_fragmentation_stats_->Alloc(buffer, size);
   FillDebugTrace(HeapSimulatorTrace::Event::ALLOC, buffer, instruction,
@@ -419,7 +430,7 @@ void HeapSimulator::Alloc(const HloValue* buffer,
 // causes Free to be called on the underlying algorithm.
 void HeapSimulator::Free(const HloValue* buffer,
                          const HloInstruction* instruction) {
-  const int64_t size = size_fn_(*buffer);
+  const int64_t size = GetBufferSize(buffer);
   algorithm_->Free(buffer, size);
   no_fragmentation_stats_->Free(buffer, size);
   FillDebugTrace(HeapSimulatorTrace::Event::FREE, buffer, instruction, nullptr);
@@ -432,10 +443,16 @@ void HeapSimulator::Free(const HloValue* buffer,
 // SharedGroup.
 void HeapSimulator::ShareBuffer(const HloValue* buffer, const HloValue* shared,
                                 const HloInstruction* instruction) {
-  algorithm_->ShareWith(buffer, shared, size_fn_(*shared));
-  no_fragmentation_stats_->ShareWith(buffer, shared, size_fn_(*shared));
+  algorithm_->ShareWith(buffer, shared, GetBufferSize(shared));
+  no_fragmentation_stats_->ShareWith(buffer, shared, GetBufferSize(shared));
   FillDebugTrace(HeapSimulatorTrace::Event::SHARE_WITH, buffer, instruction,
                  shared);
+}
+
+int64_t HeapSimulator::GetBufferSize(const HloValue* buffer) const {
+  auto it = buffer_sizes_.find(buffer);
+  CHECK(it != buffer_sizes_.end());
+  return it->second;
 }
 
 HeapSimulator::Result<HloValue> HeapSimulator::Finish() {
@@ -591,7 +608,7 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Alloc(
 
   auto emplace_result = buffer_intervals_.emplace(
       buffer, BufferInterval{buffer, size, current_time_, -1, {}, true});
-  DCHECK(emplace_result.second);
+  CHECK(emplace_result.second);
   ++current_time_;
 }
 
@@ -603,11 +620,11 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::ShareWith(
     result_.chunk_map.emplace(buffer, Chunk::FromOffsetSize(0, 0));
     return;
   }
-  DCHECK_NE(buffer_intervals_.count(share_with), 0);
+  CHECK_NE(buffer_intervals_.count(share_with), 0);
   buffer_intervals_[share_with].colocations.push_back(buffer);
   auto emplace_result = buffer_intervals_.emplace(
       buffer, BufferInterval{buffer, size, current_time_, -1, {}, false});
-  DCHECK(emplace_result.second);
+  CHECK(emplace_result.second);
   ++current_time_;
 }
 
@@ -638,9 +655,9 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Free(const BufferType* buffer,
     return;
   }
   BufferInterval& buffer_interval = FindOrDie(buffer_intervals_, buffer);
-  DCHECK_EQ(buffer_interval.buffer, buffer);
-  DCHECK_EQ(buffer_interval.size, size);
-  DCHECK_EQ(buffer_interval.end, -1);
+  CHECK_EQ(buffer_interval.buffer, buffer);
+  CHECK_EQ(buffer_interval.size, size);
+  CHECK_EQ(buffer_interval.end, -1);
   if (buffer_interval.end != -1) {
     return;
   }
