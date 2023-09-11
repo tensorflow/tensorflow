@@ -17,6 +17,7 @@ limitations under the License.
 
 // Must be included first
 // clang-format off
+#include "pybind11/attr.h"  // from @pybind11
 #include "tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
@@ -690,6 +691,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
   py::class_<TF_DeviceList> TF_DeviceList_class(m, "TF_DeviceList");
   py::class_<TF_Function> TF_Function_class(m, "TF_Function");
+  py::class_<TF_Buffer> TF_Buffer_class(m, "TF_Buffer", py::module_local());
 
   m.def("TFE_Py_RegisterExceptionClass", [](const py::handle& e) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterExceptionClass(e.ptr()));

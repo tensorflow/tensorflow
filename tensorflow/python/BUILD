@@ -1189,6 +1189,10 @@ tf_python_pybind_extension(
         "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
         "//tensorflow:windows": [],
     }),
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_tfe.pyi",
+    ],
     static_deps = tf_python_pybind_static_deps(),
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
