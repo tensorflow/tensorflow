@@ -1,3 +1,9 @@
+# Release 2.13.1
+
+### Bug Fixes and Other Changes
+
+*  Refactor CpuExecutable to propagate LLVM errors.
+
 # Release 2.13.0
 
 ## TensorFlow
