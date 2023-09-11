@@ -9,9 +9,9 @@ lit ~= 16.0.5.post0
 # Note that here we want the latest version that matches TF major.minor version
 # Note that we must use nightly here as these are used in nightly jobs
 # For release jobs, we will pin these on the release branch
-keras ~= 2.14.0rc0
+keras ~= 2.14.0
 tensorboard ~= 2.14.0
-tensorflow-estimator ~= 2.14.0rc0
+tensorflow-estimator ~= 2.14.0
 
 # Test dependencies
 grpcio >= 1.24.3, < 2.0
