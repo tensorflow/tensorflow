@@ -105,6 +105,8 @@
   nest_util code examples](https://github.com/tensorflow/tensorflow/blob/04869b4e63bfc03cb13627b3e1b879fdd0f69e34/tensorflow/python/util/nest_util.py#L97)
   for an example.
 
+*  TensorFlow IO support is now available for Apple Silicon packages.
+
 ## Keras
 
 Keras is a framework built on top of the TensorFlow. See more details on the Keras [website](https://keras.io/).
