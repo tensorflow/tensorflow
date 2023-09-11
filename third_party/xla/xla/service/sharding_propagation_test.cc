@@ -9349,5 +9349,205 @@ ENTRY %entry {
               op::Sharding("{devices=[4]0,1,2,3}"));
 }
 
+TEST_F(ShardingPropagationTest, PropagateShardLikeDifferentSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  p.0 = s32[16,16] parameter(0), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  p.1 = s32[16,16] parameter(1), sharding={devices=[2,4]0,1,2,3,4,5,6,7}
+  add.1 = s32[16,16] add(p.0, p.0)
+  sharding.1 = s32[16,16] custom-call(add.1), custom_call_target="Sharding", sharding={unknown shard_like 0}
+  add.2 = s32[16,16] add(p.1, p.1)
+  sharding.2 = s32[16,16] custom-call(add.2), custom_call_target="Sharding", sharding={unknown shard_like 0}
+  ROOT mul = s32[16,16] multiply(add.1, add.2)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  XLA_VLOG_LINES(1, module->ToString());
+  // Check dangling sharding custom-call can be removed by DCE after
+  // propagation.
+  auto* add_0 = FindInstruction(module.get(), "add.1");
+  ASSERT_NE(add_0, nullptr);
+  auto* add_1 = FindInstruction(module.get(), "add.2");
+  ASSERT_NE(add_1, nullptr);
+  // Check sharding is correctly propagated, and shard like wasn't able to force
+  // the same sharding
+  EXPECT_NE(add_0->sharding(), add_1->sharding());
+}
+
+TEST_F(ShardingPropagationTest, PropagateShardLikeSameSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%add {
+  %lhs = s32[] parameter(0)
+  %rhs = s32[] parameter(1)
+  ROOT %add = s32[] add(%lhs, %rhs)
+}
+
+ENTRY %entry {
+  p.0 = s32[16,16] parameter(0), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  p.1 = s32[16,16] parameter(1)
+  add.1 = s32[16,16] add(p.0, p.0)
+  sharding.1 = s32[16,16] custom-call(add.1), custom_call_target="Sharding", sharding={unknown shard_like 0}
+  init = s32[] constant(0)
+  reduce.1 = s32[] reduce(add.1, init), dimensions={0,1}, to_apply=%add
+  add.2 = s32[16,16] add(p.1, p.1)
+  sharding.2 = s32[16,16] custom-call(add.2), custom_call_target="Sharding", sharding={unknown shard_like 0}
+  reduce.2 = s32[] reduce(add.2, init), dimensions={0,1}, to_apply=%add
+  ROOT mul = s32[] multiply(reduce.1, reduce.2)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  XLA_VLOG_LINES(1, module->ToString());
+  // Check dangling sharding custom-call can be removed by DCE after
+  // propagation.
+  auto* add_1 = FindInstruction(module.get(), "add.1");
+  ASSERT_NE(add_1, nullptr);
+  auto* add_2 = FindInstruction(module.get(), "add.2");
+  ASSERT_NE(add_2, nullptr);
+  // Check sharding is correctly propagated.
+  EXPECT_EQ(add_1->sharding(), add_2->sharding());
+}
+
+TEST_F(ShardingPropagationTest, PropagateShardAs) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  p.0 = s32[16,16] parameter(0), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  p.1 = s32[16,16] parameter(1), sharding={devices=[2,4]0,1,2,3,4,5,6,7}
+  add.1 = s32[16,16] add(p.0, p.0)
+  sharding.1 = s32[16,16] custom-call(add.1), custom_call_target="Sharding", sharding={unknown shard_as 0}
+  add.2 = s32[16,16] add(p.1, p.1)
+  sharding.2 = s32[16,16] custom-call(add.2), custom_call_target="Sharding", sharding={unknown shard_as 0}
+  ROOT mul = s32[16,16] multiply(add.1, add.2)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  XLA_VLOG_LINES(1, module->ToString());
+  // Check dangling sharding custom-call can be removed by DCE after
+  // propagation.
+  auto* add_1 = FindInstruction(module.get(), "add.1");
+  ASSERT_NE(add_1, nullptr);
+  auto* add_2 = FindInstruction(module.get(), "add.2");
+  ASSERT_NE(add_2, nullptr);
+  // Check sharding is correctly propagated.
+  EXPECT_EQ(add_1->sharding(), add_2->sharding());
+}
+
+TEST_F(ShardingPropagationTest, PropagateShardAsToParameters) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%add {
+  %lhs = s32[] parameter(0)
+  %rhs = s32[] parameter(1)
+  ROOT %add = s32[] add(%lhs, %rhs)
+}
+
+ENTRY %entry {
+  p.0 = s32[16,16] parameter(0), sharding={unknown shard_as 0}
+  p.1 = s32[16,16] parameter(1), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  add.1 = s32[16,16] add(p.0, p.0)
+  init = s32[] constant(0)
+  reduce.1 = s32[] reduce(add.1, init), dimensions={0,1}, to_apply=%add
+  add.2 = s32[16,16] add(p.1, p.1)
+  sharding.2 = s32[16,16] custom-call(add.2), custom_call_target="Sharding", sharding={unknown shard_as 0}
+  reduce.2 = s32[] reduce(add.2, init), dimensions={0,1}, to_apply=%add
+  ROOT mul = s32[] multiply(reduce.1, reduce.2)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{true, true})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  XLA_VLOG_LINES(1, module->ToString());
+  // Check dangling sharding custom-call can be removed by DCE after
+  // propagation.
+  auto* p_0 = FindInstruction(module.get(), "p.0");
+  ASSERT_NE(p_0, nullptr);
+  auto* add_2 = FindInstruction(module.get(), "add.2");
+  ASSERT_NE(add_2, nullptr);
+  // Check sharding is correctly propagated.
+  EXPECT_THAT(add_2, op::Sharding("{devices=[4,2]0,1,2,3,4,5,6,7}"));
+  EXPECT_EQ(p_0->sharding(), add_2->sharding());
+}
+TEST_F(ShardingPropagationTest, PropagateShardAsToOutputs) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%add {
+  %lhs = s32[] parameter(0)
+  %rhs = s32[] parameter(1)
+  ROOT %add = s32[] add(%lhs, %rhs)
+}
+
+ENTRY %entry {
+  p.0 = s32[16,16] parameter(0), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  add.1 = s32[16,16] add(p.0, p.0)
+  sharding.1 = s32[16,16] custom-call(add.1), custom_call_target="Sharding", sharding={unknown shard_as 0}
+  init = s32[] constant(0)
+  reduce.1 = s32[] reduce(add.1, init), dimensions={0,1}, to_apply=%add
+  broadcast.1 = s32[16,16] broadcast(reduce.1), dimensions={}
+  ROOT mul = s32[16,16] multiply(broadcast.1, broadcast.1), sharding={unknown shard_as 0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  XLA_VLOG_LINES(1, module->ToString());
+  // Check dangling sharding custom-call can be removed by DCE after
+  // propagation.
+  auto* add_1 = FindInstruction(module.get(), "add.1");
+  ASSERT_NE(add_1, nullptr);
+  auto* output = FindInstruction(module.get(), "mul");
+  ASSERT_NE(output, nullptr);
+  // Check sharding is correctly propagated.
+  EXPECT_THAT(add_1, op::Sharding("{devices=[4,2]0,1,2,3,4,5,6,7}"));
+  EXPECT_EQ(add_1->sharding(), output->sharding());
+}
+
 }  // namespace
 }  // namespace xla
