@@ -602,8 +602,10 @@ xla_test(
     ],
     deps = [
         "//xla:error_spec",
+        "//xla:xla_proto_cc",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_googletest//:gtest",
     ],
 )
 
