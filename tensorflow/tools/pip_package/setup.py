@@ -99,7 +99,7 @@ REQUIRED_PACKAGES = [
     'termcolor >= 1.1.0',
     'typing_extensions>=3.6.6,<4.6.0',
     'wrapt >= 1.11.0',
-    'tensorflow-io-gcs-filesystem >= 0.23.1;platform_machine!="arm64" or ' +
+    'tensorflow-io-gcs-filesystem ~= 0.32.0;platform_machine!="arm64" or ' +
     'platform_system!="Darwin"',
     # grpcio does not build correctly on big-endian machines due to lack of
     # BoringSSL support.
