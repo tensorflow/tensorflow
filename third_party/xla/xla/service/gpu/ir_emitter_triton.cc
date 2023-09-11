@@ -781,8 +781,10 @@ StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder builder,
   CHECK_EQ(dims.lhs_contracting_dimensions_size(), 1);
   CHECK_EQ(dims.rhs_contracting_dimensions_size(), 1);
 
-  const bool have_split_k = split_k > 1;
-  if (have_split_k) {
+  std::optional<int> split_k_out_idx = std::nullopt;
+  if (split_k > 1) {
+    // split-k is always the first logical output dimension.
+    split_k_out_idx = 0;
     // Split-K dimension has to be the first batch one and have an index
     // just before the contracting one.
     const int lhs_split_k_dim_idx = dims.lhs_contracting_dimensions(0) - 1;
@@ -796,16 +798,21 @@ StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder builder,
              dot_instr->operand(1)->shape().dimensions(rhs_split_k_dim_idx));
   }
 
-  CHECK_LE(dims.lhs_batch_dimensions_size(), 1 + have_split_k);
-  const bool have_batch = dims.lhs_batch_dimensions_size() - have_split_k;
-  int lhs_batch_dim_idx = -1;
-  int rhs_batch_dim_idx = -1;
-  if (have_batch) {
+  int num_split_k_dims = split_k_out_idx.has_value() ? 1 : 0;
+  CHECK_LE(dims.lhs_batch_dimensions_size(), 1 + num_split_k_dims);
+  std::optional<int> lhs_batch_dim_idx = std::nullopt;
+  std::optional<int> rhs_batch_dim_idx = std::nullopt;
+  std::optional<int> batch_out_idx = std::nullopt;
+  if (dims.lhs_batch_dimensions_size() > num_split_k_dims) {
     lhs_batch_dim_idx = *dims.lhs_batch_dimensions().rbegin();
     rhs_batch_dim_idx = *dims.rhs_batch_dimensions().rbegin();
+    // The batch dimension (if present) comes after the split-k dimension (if
+    // present, otherwise it's the first dimension).
+    batch_out_idx = num_split_k_dims;
   }
   CHECK_EQ(dot_instr->operand(0)->shape().rank(),
-           2 + have_split_k + have_batch);
+           2 + (split_k_out_idx.has_value() ? 1 : 0) +
+               (lhs_batch_dim_idx.has_value() ? 1 : 0));
   const int lhs_noncontracting_dim_idx =
       GetNonContractingDims(dot_instr->operand(0)->shape(),
                             dims.lhs_batch_dimensions(),
@@ -822,8 +829,6 @@ StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder builder,
   // where split-K and batch are optional.
   const int rhs_nc_out_idx = dot_instr->shape().rank() - 1;
   const int lhs_nc_out_idx = dot_instr->shape().rank() - 2;
-  const int split_k_out_idx = have_split_k ? 0 : -1;
-  const int batch_out_idx = have_batch ? (have_split_k ? 1 : 0) : -1;
 
   // LHS non-contracting dimension length.
   // LHS non-contracting can be split, this holds only its minor part.
@@ -851,7 +856,7 @@ StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder builder,
     if (lhs_nc_iter_spec != nullptr && lhs_nc_iter_spec->size() > 1) {
       // For now split non-contracting and batch are not supported
       // simultaneously because they are implemented via same mechanism.
-      CHECK(!have_batch);
+      CHECK(!lhs_batch_dim_idx.has_value());
       CHECK_EQ(lhs_nc_iter_spec->size(), 2);
       lhs_nc_split = true;
       // If split dimension is used all parameters have to have either have
@@ -866,8 +871,8 @@ StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder builder,
       m = lhs_nc_iter_spec->at(0).count;
     }
   }
-  if (have_batch && !lhs_nc_split) {
-    batch_size = dot_instr->shape().dimensions(batch_out_idx);
+  if (batch_out_idx.has_value() && !lhs_nc_split) {
+    batch_size = dot_instr->shape().dimensions(*batch_out_idx);
   }
   CHECK_GE(m, 1);
 
@@ -1078,7 +1083,8 @@ StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder builder,
   auto emit_tensor_pointer =
       [&](const HloInstruction* hlo, const TritonFusionAnalysis::Scope scope,
           Value base, absl::Span<const DimProperties> tiled_dimensions,
-          const int batch_dim_idx, std::vector<int32_t>& boundary_checks) {
+          std::optional<int> batch_dim_idx,
+          std::vector<int32_t>& boundary_checks) {
         std::vector<Value> bounds;
         std::vector<Value> strides;
         std::vector<Value> offsets;
@@ -1131,9 +1137,9 @@ StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder builder,
             }
             CHECK_NE(stride_batch, 0);
           }
-        } else if (have_batch) {
+        } else if (batch_dim_idx.has_value()) {
           const TensorIterationSpec::DimIterationSpec* spec =
-              analysis.IterSpec(scope, hlo, batch_dim_idx);
+              analysis.IterSpec(scope, hlo, *batch_dim_idx);
           if (spec != nullptr) {
             stride_batch = spec->at(0).stride;
             CHECK_NE(stride_batch, 0);
@@ -1146,9 +1152,9 @@ StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder builder,
           base = AddPtr(b, base, offset_batch);
         }
 
-        if (have_split_k) {
+        if (split_k_out_idx.has_value()) {
           const TensorIterationSpec::DimIterationSpec* spec = analysis.IterSpec(
-              TritonFusionAnalysis::Scope::OUTPUT, hlo, split_k_out_idx);
+              TritonFusionAnalysis::Scope::OUTPUT, hlo, *split_k_out_idx);
           if (spec != nullptr) {
             int64_t stride_split_k = spec->at(0).stride;
             Value offset_split_k =
