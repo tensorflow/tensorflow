@@ -2908,7 +2908,7 @@ _local_genrule_internal = rule(
         "srcs": attr.label_list(
             allow_files = True,
         ),
-        "_whitelist_function_transition": attr.label(default = "@bazel_tools//tools/whitelists/function_transition_whitelist"),
+        "_allowlist_function_transition": attr.label(default = "@bazel_tools//tools/allowlists/function_transition_allowlist"),
     },
 )
 
