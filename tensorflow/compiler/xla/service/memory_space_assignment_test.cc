@@ -6362,7 +6362,7 @@ ENTRY entry {
                   .memory_space() == kAlternateMemorySpace);
 }
 
-// A mock MemorySpaceAssignmentRepacker class that accepst a map of
+// A mock MemorySpaceAssignmentRepacker class that accepts a map of
 // (start_time,offset) -> new_offset values. Using this map, the repacker
 // repacks the allocations to the new_offset.
 class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
@@ -6748,7 +6748,7 @@ TEST_P(MemorySpaceAssignmentTest, ReduceReservedScopedVmemIfOperandInVmem) {
   Options options = DefaultMemorySpaceOptions();
   options.max_repacks = 10;
   options.repack_after_every_allocation = true;
-  options.reduce_scoped_vmem_limit = true;
+  options.reduce_scoped_memory_limit = true;
   options.reserved_scoped_memory_fn =
       [&](const HloInstruction* instruction,
           const absl::flat_hash_set<std::pair<int, ShapeIndex>>

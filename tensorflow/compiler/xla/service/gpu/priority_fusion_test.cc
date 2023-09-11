@@ -21,16 +21,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 namespace xla {
 namespace gpu {
@@ -69,7 +70,7 @@ TEST_F(PriorityFusionTest, FuseWithSharedArgument) {
   EXPECT_TRUE(priority_fusion_.Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(root, GmockMatch(m::Fusion()));
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kLoop);
 }
 
@@ -104,8 +105,8 @@ TEST_F(PriorityFusionTest, FusionFusionWithDuplication) {
   EXPECT_TRUE(priority_fusion_.Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::Fusion(op::Parameter(0)),
-                              op::Fusion(op::Parameter(0))));
+  EXPECT_THAT(root, GmockMatch(m::Tuple(m::Fusion(m::Parameter(0)),
+                                        m::Fusion(m::Parameter(0)))));
 }
 
 }  // namespace gpu

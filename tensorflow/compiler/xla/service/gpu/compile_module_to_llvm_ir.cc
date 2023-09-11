@@ -17,16 +17,19 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
@@ -68,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/optimization_barrier_expander.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
@@ -113,7 +117,8 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
                                    llvm::StringRef entry_function_name,
                                    llvm::ArrayRef<int64_t> buffer_sizes,
                                    ThunkSequence* thunk_sequence,
-                                   const DebugOptions& debug_options) {
+                                   const DebugOptions& debug_options,
+                                   GpuVersion compute_capability) {
   if (!module) {
     return InternalError("No MLIR module to lower.");
   }
@@ -125,6 +130,7 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
   opts.min_graph_size = debug_options.xla_gpu_graph_min_graph_size();
   opts.enable_concurrent_region =
       debug_options.xla_gpu_graph_enable_concurrent_region();
+  opts.compute_capability = compute_capability;
   populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
 
   if (pm.run(module).failed()) {
@@ -147,8 +153,6 @@ static Status LowerToXlaGpu2Runtime(mlir::ModuleOp module,
                                : RuntimeBackend::kStreamExecutor;
 
   Gpu2PipelineOpts opts;
-  opts.graph_level = debug_options.xla_gpu_graph_level();
-
   populateGpu2RuntimePasses(pm, thunk_sequence, backend, opts);
 
   if (pm.run(module).failed()) {
@@ -205,14 +209,15 @@ StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, const HloModuleConfig& module_config,
     std::unique_ptr<ThunkSequence> thunk_sequence,
-    const HloModule* hlo_module_for_dump) {
+    const HloModule* hlo_module_for_dump, GpuVersion compute_capability) {
   // Forward collective (NCCL) attributes for use by the lowering pipeline.
   ForwardCollectiveAttrs(mlir_module, entry_function_name, module_config);
 
   // Lower LMHLO operations to the XLA:GPU runtime custom calls.
   TF_RETURN_IF_ERROR(LowerToXlaGpuRuntime(
       mlir_module, {entry_function_name.data(), entry_function_name.size()},
-      buffer_sizes, thunk_sequence.get(), module_config.debug_options()));
+      buffer_sizes, thunk_sequence.get(), module_config.debug_options(),
+      compute_capability));
 
   // TODO(b/232033540): Pass MLIR module directly to Gpu runtime executable
   // without forcing serialization.
@@ -257,14 +262,11 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, const se::Platform::Id platform_id,
-    GpuDeviceInfo gpu_device_info,
-    se::CudaComputeCapability cuda_compute_capability,
-    se::RocmComputeCapability rocm_compute_capability, int pointer_size) {
+    GpuDeviceInfo gpu_device_info, int pointer_size) {
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
-      platform_id, gpu_device_info, cuda_compute_capability,
-      rocm_compute_capability, DummyCanShareBufferFunction, pointer_size,
+      platform_id, gpu_device_info, DummyCanShareBufferFunction, pointer_size,
       &results));
   return std::move(results.llvm_module);
 }
@@ -351,8 +353,6 @@ Status CompileModuleToLlvmIrImpl(
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
-    se::CudaComputeCapability cuda_compute_capability,
-    se::RocmComputeCapability rocm_compute_capability,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     int pointer_size, CompileModuleResults* results,
     se::StreamExecutor* stream_exec) {
@@ -428,9 +428,18 @@ Status CompileModuleToLlvmIrImpl(
 
   VLOG(1) << "Buffer Assignment Stats for " << hlo_module->name() << "\n"
           << results->buffer_assignment->GetStats().ToString();
-  DumpHloModuleIfEnabled(*hlo_module, *results->buffer_assignment,
-                         absl::StrCat("sm_", cuda_compute_capability.ToString(),
-                                      "_gpu_", kAfterOptimizationsDumpName));
+  struct GetCcStr {
+    std::string operator()(const se::CudaComputeCapability& cc) const {
+      return absl::StrCat("sm_", cc.ToString());
+    }
+    std::string operator()(const se::RocmComputeCapability& cc) const {
+      return cc.gfx_version();
+    }
+  };
+  DumpHloModuleIfEnabled(
+      *hlo_module, *results->buffer_assignment,
+      absl::StrCat(std::visit(GetCcStr(), gpu_device_info.compute_capability),
+                   "_gpu_", kAfterOptimizationsDumpName));
 
   VLOG(1) << "After optimization module fingerprint for " << hlo_module->name()
           << ": " << hlo_module->GetFingerprint128();
@@ -469,8 +478,7 @@ Status CompileModuleToLlvmIrImpl(
 
   IrEmitterContext ir_emitter_context(
       hlo_module, /*buffer_assignment=*/nullptr, platform_name, gpu_device_info,
-      cuda_compute_capability, rocm_compute_capability, mlir_context.get(),
-      results->llvm_module.get());
+      mlir_context.get(), results->llvm_module.get());
 
   ir_emitter_context.set_allocations(results->allocations);
 
@@ -516,7 +524,8 @@ Status CompileModuleToLlvmIrImpl(
         results->executable,
         LowerToJitRt(*mlir_module, entry_function.getName(), buffer_sizes,
                      hlo_module->config(), ir_emitter->ConsumeThunkSequence(),
-                     /*hlo_module_for_dump=*/hlo_module));
+                     /*hlo_module_for_dump=*/hlo_module,
+                     gpu_device_info.compute_capability));
     return OkStatus();
   }
 

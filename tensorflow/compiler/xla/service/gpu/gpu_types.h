@@ -16,12 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_TYPES_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_TYPES_H_
 
-#include <string>
-#include <utility>
+#include <variant>
 
-#include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 namespace gpu {
@@ -29,10 +26,11 @@ namespace gpu {
 // GpuVersion is used to abstract Gpu hardware version.
 //
 // On Cuda platform, it comprises of se::CudaComputeCapability.
-//
 // On ROCm platform, it comprises of se::RocmComputeCapability.
-using GpuVersion =
-    std::variant<se::CudaComputeCapability, se::RocmComputeCapability>;
+//
+// TODO(csigg): rename to GpuComputeCapability.
+using GpuVersion = std::variant<stream_executor::CudaComputeCapability,
+                                stream_executor::RocmComputeCapability>;
 }  // namespace gpu
 }  // namespace xla
 

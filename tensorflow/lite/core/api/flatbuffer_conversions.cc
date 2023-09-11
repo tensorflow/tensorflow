@@ -929,6 +929,18 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_SELECT:
     case BuiltinOperator_STABLEHLO_SUBTRACT:
     case BuiltinOperator_STABLEHLO_TANH:
+    case BuiltinOperator_STABLEHLO_DYNAMIC_SLICE:
+    case BuiltinOperator_STABLEHLO_DYNAMIC_UPDATE_SLICE:
+    case BuiltinOperator_STABLEHLO_IOTA:
+    case BuiltinOperator_STABLEHLO_COMPARE:
+    case BuiltinOperator_STABLEHLO_CONVERT:
+    case BuiltinOperator_STABLEHLO_PAD:
+    case BuiltinOperator_STABLEHLO_DOT_GENERAL:
+    case BuiltinOperator_STABLEHLO_REDUCE_WINDOW:
+    case BuiltinOperator_STABLEHLO_SORT:
+    case BuiltinOperator_STABLEHLO_WHILE:
+    case BuiltinOperator_STABLEHLO_GATHER:
+    case BuiltinOperator_STABLEHLO_TRANSPOSE:
 
     // Below are the ops with no builtin_data structure.
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are

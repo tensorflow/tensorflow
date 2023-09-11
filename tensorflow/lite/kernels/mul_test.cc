@@ -15,7 +15,12 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <algorithm>
+#include <array>
 #include <complex>
+#include <functional>
+#include <numeric>
+#include <random>
 #include <utility>
 #include <vector>
 
@@ -49,6 +54,7 @@ class BaseMulOpModel : public SingleOpModel {
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_MUL, BuiltinOptions_MulOptions,
                  CreateMulOptions(builder_, activation_type).Union());
+    SetBypassDefaultDelegates();
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
     if (!constant_tensors) {
       PopulateTensor<QuantizedType>(input1_, input1_data);
@@ -59,6 +65,10 @@ class BaseMulOpModel : public SingleOpModel {
   int input1() { return input1_; }
   int input2() { return input2_; }
 
+  std::vector<InputType> GetOutput() {
+    return ExtractVector<InputType>(output_);
+  }
+
  protected:
   int input1_;
   int input2_;
@@ -68,38 +78,17 @@ class BaseMulOpModel : public SingleOpModel {
 class FloatMulOpModel : public BaseMulOpModel<float> {
  public:
   using BaseMulOpModel::BaseMulOpModel;
-
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 };
 
 class ComplexMulOpModel : public BaseMulOpModel<std::complex<float>> {
  public:
   using BaseMulOpModel::BaseMulOpModel;
-
-  std::vector<std::complex<float>> GetOutput() {
-    return ExtractVector<std::complex<float>>(output_);
-  }
 };
 
-class IntegerMulOpModel : public BaseMulOpModel<int32_t> {
+template <typename InputType>
+class IntegerMulOpModel : public BaseMulOpModel<InputType> {
  public:
-  using BaseMulOpModel::BaseMulOpModel;
-
-  std::vector<int32_t> GetOutput() { return ExtractVector<int32_t>(output_); }
-};
-
-class UnsignedInteger32BitMulOpModel : public BaseMulOpModel<uint32_t> {
- public:
-  using BaseMulOpModel::BaseMulOpModel;
-
-  std::vector<uint32_t> GetOutput() { return ExtractVector<uint32_t>(output_); }
-};
-
-class Integer16BitMulOpModel : public BaseMulOpModel<int16_t> {
- public:
-  using BaseMulOpModel::BaseMulOpModel;
-
-  std::vector<int16_t> GetOutput() { return ExtractVector<int16_t>(output_); }
+  using BaseMulOpModel<InputType>::BaseMulOpModel;
 };
 
 // For quantized Mul, the error shouldn't exceed (2*step + step^2).
@@ -384,10 +373,10 @@ TEST_P(MulOpTest, IntegerNoActivation) {
     // NNAPI does not support graphs with all constant inputs.
     return;
   }
-  IntegerMulOpModel m({TensorType_INT32, {1, 2, 2, 1}},
-                      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
-                      ActivationFunctionType_NONE, {-20, 2, 7, 8}, {1, 2, 3, 5},
-                      constant_tensors);
+  IntegerMulOpModel<int32_t> m(
+      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {1, 2, 2, 1}},
+      {TensorType_INT32, {}}, ActivationFunctionType_NONE, {-20, 2, 7, 8},
+      {1, 2, 3, 5}, constant_tensors);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 4, 21, 40}));
 }
@@ -398,7 +387,7 @@ TEST_P(MulOpTest, Int16ActivationRELU_N1_TO_1) {
     // NNAPI does not support graphs with all constant inputs.
     return;
   }
-  Integer16BitMulOpModel m(
+  IntegerMulOpModel<int16_t> m(
       {TensorType_INT16, {1, 2, 2, 1}}, {TensorType_INT16, {1, 2, 2, 1}},
       {TensorType_INT16, {}}, ActivationFunctionType_RELU_N1_TO_1,
       {-20, 2, 7, 8}, {1, 2, 3, 5}, constant_tensors);
@@ -415,7 +404,7 @@ TEST_P(MulOpTest, Int16VariousInputShapes) {
   const std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    Integer16BitMulOpModel m(
+    IntegerMulOpModel<int16_t> m(
         {TensorType_INT16, test_shapes[i]}, {TensorType_INT16, test_shapes[i]},
         {TensorType_INT16, {}}, ActivationFunctionType_NONE,
         {-20, 2, 7, 8, 11, 20}, {1, 2, 3, 5, 11, 1}, constant_tensors);
@@ -434,11 +423,11 @@ TEST_P(MulOpTest, Int16WithBroadcast) {
   const std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    Integer16BitMulOpModel m({TensorType_INT16, test_shapes[i]},
-                             {TensorType_INT16, {}},  // always a scalar
-                             {TensorType_INT16, {}},
-                             ActivationFunctionType_NONE,
-                             {-20, 2, 7, 8, 11, 20}, {1}, constant_tensors);
+    IntegerMulOpModel<int16_t> m({TensorType_INT16, test_shapes[i]},
+                                 {TensorType_INT16, {}},  // always a scalar
+                                 {TensorType_INT16, {}},
+                                 ActivationFunctionType_NONE,
+                                 {-20, 2, 7, 8, 11, 20}, {1}, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 2, 7, 8, 11, 20}))
         << "With shape number " << i;
@@ -451,9 +440,10 @@ TEST_P(MulOpTest, 16BitIntegerNoActivation) {
     // NNAPI does not support graphs with all constant inputs.
     return;
   }
-  Integer16BitMulOpModel m({TensorType_INT16, {4}}, {TensorType_INT16, {4}},
-                           {TensorType_INT16, {}}, ActivationFunctionType_NONE,
-                           {-20, 2, 7, 8}, {1, 2, 3, 5}, constant_tensors);
+  IntegerMulOpModel<int16_t> m({TensorType_INT16, {4}}, {TensorType_INT16, {4}},
+                               {TensorType_INT16, {}},
+                               ActivationFunctionType_NONE, {-20, 2, 7, 8},
+                               {1, 2, 3, 5}, constant_tensors);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 4, 21, 40}));
 }
@@ -464,7 +454,7 @@ TEST_P(MulOpTest, 32BitUnsignedIntegerNoActivation) {
     // NNAPI does not support graphs with all constant inputs.
     return;
   }
-  UnsignedInteger32BitMulOpModel m(
+  IntegerMulOpModel<uint32_t> m(
       {TensorType_UINT32, {1, 2, 2, 1}}, {TensorType_UINT32, {1, 2, 2, 1}},
       {TensorType_UINT32, {}}, ActivationFunctionType_NONE, {20, 2, 7, 8},
       {1, 2, 3, 5}, constant_tensors);
@@ -524,10 +514,10 @@ TEST_P(MulOpTest, Int32ActivationRELU_N1_TO_1) {
     // NNAPI does not support graphs with all constant inputs.
     return;
   }
-  IntegerMulOpModel m({TensorType_INT32, {1, 2, 2, 1}},
-                      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
-                      ActivationFunctionType_RELU_N1_TO_1, {-20, 2, 7, 8},
-                      {1, 2, 3, 5}, constant_tensors);
+  IntegerMulOpModel<int32_t> m(
+      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {1, 2, 2, 1}},
+      {TensorType_INT32, {}}, ActivationFunctionType_RELU_N1_TO_1,
+      {-20, 2, 7, 8}, {1, 2, 3, 5}, constant_tensors);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1, 1, 1, 1}));
 }
@@ -541,7 +531,7 @@ TEST_P(MulOpTest, Int32VariousInputShapes) {
   const std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    IntegerMulOpModel m(
+    IntegerMulOpModel<int32_t> m(
         {TensorType_INT32, test_shapes[i]}, {TensorType_INT32, test_shapes[i]},
         {TensorType_INT32, {}}, ActivationFunctionType_NONE,
         {-20, 2, 7, 8, 11, 20}, {1, 2, 3, 5, 11, 1}, constant_tensors);
@@ -560,10 +550,11 @@ TEST_P(MulOpTest, Int32WithBroadcast) {
   const std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    IntegerMulOpModel m({TensorType_INT32, test_shapes[i]},
-                        {TensorType_INT32, {}},  // always a scalar
-                        {TensorType_INT32, {}}, ActivationFunctionType_NONE,
-                        {-20, 2, 7, 8, 11, 20}, {1}, constant_tensors);
+    IntegerMulOpModel<int32_t> m({TensorType_INT32, test_shapes[i]},
+                                 {TensorType_INT32, {}},  // always a scalar
+                                 {TensorType_INT32, {}},
+                                 ActivationFunctionType_NONE,
+                                 {-20, 2, 7, 8, 11, 20}, {1}, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutput(),
                 ElementsAreArray(ArrayFloatNear({-20, 2, 7, 8, 11, 20})))
@@ -807,6 +798,490 @@ TEST_P(MulOpTest, QuantizedWithMixedBroadcastInt8) {
 }
 
 INSTANTIATE_TEST_SUITE_P(ConstantInputs, MulOpTest, testing::Bool());
+
+constexpr int kDim1 = 2;
+constexpr int kDim2 = 3;
+constexpr int kDim3 = 4;
+constexpr int kDim4 = 5;
+constexpr int kDim5 = 6;
+constexpr int kDim6 = 7;
+
+constexpr int kMaxMulBroadcastDim = 6;
+
+void TestBroadcast(std::vector<int> input1_shape,
+                   std::vector<int> input2_shape) {
+  std::array<int, kMaxMulBroadcastDim> input1_dims;
+  std::array<int, kMaxMulBroadcastDim> input2_dims;
+  std::array<int, kMaxMulBroadcastDim> output_dims;
+  std::array<int, kMaxMulBroadcastDim> input1_strides;
+  std::array<int, kMaxMulBroadcastDim> input2_strides;
+  std::array<int, kMaxMulBroadcastDim> output_strides;
+  std::fill(input1_dims.begin(), input1_dims.end(), 1);
+  std::fill(input2_dims.begin(), input2_dims.end(), 1);
+  std::fill(output_dims.begin(), output_dims.end(), 1);
+  std::copy(input1_shape.cbegin(), input1_shape.cend(),
+            input1_dims.end() - input1_shape.size());
+  std::copy(input2_shape.cbegin(), input2_shape.cend(),
+            input2_dims.end() - input2_shape.size());
+
+  for (size_t i = 0; i < kMaxMulBroadcastDim; i++) {
+    if (input1_dims[i] != 1 && input2_dims[i] != 1) {
+      ASSERT_EQ(input1_dims[i], input2_dims[i]);
+    }
+    output_dims[i] = std::max(input1_dims[i], input2_dims[i]);
+  }
+  // Compute generalized strides.
+  size_t input1_stride = 1, input2_stride = 1, output_stride = 1;
+  for (size_t i = kMaxMulBroadcastDim; i != 0; i--) {
+    input1_strides[i - 1] = input1_dims[i - 1] == 1 ? 0 : input1_stride;
+    input2_strides[i - 1] = input2_dims[i - 1] == 1 ? 0 : input2_stride;
+    output_strides[i - 1] = output_stride;
+    input1_stride *= input1_dims[i - 1];
+    input2_stride *= input2_dims[i - 1];
+    output_stride *= output_dims[i - 1];
+  }
+  const int num_input1_elements = std::accumulate(
+      input1_dims.begin(), input1_dims.end(), 1, std::multiplies<int>());
+  const int num_input2_elements = std::accumulate(
+      input2_dims.begin(), input2_dims.end(), 1, std::multiplies<int>());
+  const int num_output_elements = std::accumulate(
+      output_dims.begin(), output_dims.end(), 1, std::multiplies<int>());
+  std::vector<float> input1(num_input1_elements);
+  std::vector<float> input2(num_input2_elements);
+  std::vector<float> output_ref(num_output_elements);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  std::uniform_real_distribution<float> f32dist(0.01f, 1.0f);
+
+  std::generate(input1.begin(), input1.end(), [&]() { return f32dist(rng); });
+  std::generate(input2.begin(), input2.end(), [&]() { return f32dist(rng); });
+
+  // Compute reference results.
+  for (size_t i = 0; i < output_dims[0]; i++) {
+    for (size_t j = 0; j < output_dims[1]; j++) {
+      for (size_t k = 0; k < output_dims[2]; k++) {
+        for (size_t l = 0; l < output_dims[3]; l++) {
+          for (size_t m = 0; m < output_dims[4]; m++) {
+            for (size_t n = 0; n < output_dims[5]; n++) {
+              output_ref[i * output_strides[0] + j * output_strides[1] +
+                         k * output_strides[2] + l * output_strides[3] +
+                         m * output_strides[4] + n * output_strides[5]] =
+                  input1[i * input1_strides[0] + j * input1_strides[1] +
+                         k * input1_strides[2] + l * input1_strides[3] +
+                         m * input1_strides[4] + n * input1_strides[5]] *
+                  input2[i * input2_strides[0] + j * input2_strides[1] +
+                         k * input2_strides[2] + l * input2_strides[3] +
+                         m * input2_strides[4] + n * input2_strides[5]];
+            }
+          }
+        }
+      }
+    }
+  }
+
+  FloatMulOpModel m({TensorType_FLOAT32, input1_shape},
+                    {TensorType_FLOAT32, input2_shape},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
+                    input1, input2, /*constant_tensors=*/false);
+  m.PopulateTensor<float>(m.input1(), input1);
+  m.PopulateTensor<float>(m.input2(), input2);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), testing::ContainerEq(output_ref));
+}
+
+template <typename IntegerType>
+void TestIntegerBroadcast(std::vector<int> input1_shape,
+                          std::vector<int> input2_shape) {
+  std::array<int, kMaxMulBroadcastDim> input1_dims;
+  std::array<int, kMaxMulBroadcastDim> input2_dims;
+  std::array<int, kMaxMulBroadcastDim> output_dims;
+  std::array<int, kMaxMulBroadcastDim> input1_strides;
+  std::array<int, kMaxMulBroadcastDim> input2_strides;
+  std::array<int, kMaxMulBroadcastDim> output_strides;
+  std::fill(input1_dims.begin(), input1_dims.end(), 1);
+  std::fill(input2_dims.begin(), input2_dims.end(), 1);
+  std::fill(output_dims.begin(), output_dims.end(), 1);
+  std::copy(input1_shape.cbegin(), input1_shape.cend(),
+            input1_dims.end() - input1_shape.size());
+  std::copy(input2_shape.cbegin(), input2_shape.cend(),
+            input2_dims.end() - input2_shape.size());
+
+  for (size_t i = 0; i < kMaxMulBroadcastDim; i++) {
+    if (input1_dims[i] != 1 && input2_dims[i] != 1) {
+      ASSERT_EQ(input1_dims[i], input2_dims[i]);
+    }
+    output_dims[i] = std::max(input1_dims[i], input2_dims[i]);
+  }
+  // Compute generalized strides.
+  size_t input1_stride = 1, input2_stride = 1, output_stride = 1;
+  for (size_t i = kMaxMulBroadcastDim; i != 0; i--) {
+    input1_strides[i - 1] = input1_dims[i - 1] == 1 ? 0 : input1_stride;
+    input2_strides[i - 1] = input2_dims[i - 1] == 1 ? 0 : input2_stride;
+    output_strides[i - 1] = output_stride;
+    input1_stride *= input1_dims[i - 1];
+    input2_stride *= input2_dims[i - 1];
+    output_stride *= output_dims[i - 1];
+  }
+  const int num_input1_elements = std::accumulate(
+      input1_dims.begin(), input1_dims.end(), 1, std::multiplies<int>());
+  const int num_input2_elements = std::accumulate(
+      input2_dims.begin(), input2_dims.end(), 1, std::multiplies<int>());
+  const int num_output_elements = std::accumulate(
+      output_dims.begin(), output_dims.end(), 1, std::multiplies<int>());
+  std::vector<IntegerType> input1(num_input1_elements);
+  std::vector<IntegerType> input2(num_input2_elements);
+  std::vector<IntegerType> output_ref(num_output_elements);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  std::uniform_int_distribution<IntegerType> dist(0, 256);
+
+  std::generate(input1.begin(), input1.end(), [&]() { return dist(rng); });
+  std::generate(input2.begin(), input2.end(), [&]() { return dist(rng); });
+
+  // Compute reference results.
+  for (size_t i = 0; i < output_dims[0]; i++) {
+    for (size_t j = 0; j < output_dims[1]; j++) {
+      for (size_t k = 0; k < output_dims[2]; k++) {
+        for (size_t l = 0; l < output_dims[3]; l++) {
+          for (size_t m = 0; m < output_dims[4]; m++) {
+            for (size_t n = 0; n < output_dims[5]; n++) {
+              output_ref[i * output_strides[0] + j * output_strides[1] +
+                         k * output_strides[2] + l * output_strides[3] +
+                         m * output_strides[4] + n * output_strides[5]] =
+                  input1[i * input1_strides[0] + j * input1_strides[1] +
+                         k * input1_strides[2] + l * input1_strides[3] +
+                         m * input1_strides[4] + n * input1_strides[5]] *
+                  input2[i * input2_strides[0] + j * input2_strides[1] +
+                         k * input2_strides[2] + l * input2_strides[3] +
+                         m * input2_strides[4] + n * input2_strides[5]];
+            }
+          }
+        }
+      }
+    }
+  }
+
+  IntegerMulOpModel<IntegerType> m({GetTensorType<IntegerType>(), input1_shape},
+                                   {GetTensorType<IntegerType>(), input2_shape},
+                                   {GetTensorType<IntegerType>(), {}},
+                                   ActivationFunctionType_NONE, input1, input2,
+                                   /*constant_tensors=*/false);
+  m.template PopulateTensor<IntegerType>(m.input1(), input1);
+  m.template PopulateTensor<IntegerType>(m.input2(), input2);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), testing::ContainerEq(output_ref));
+}
+
+TEST(FloatMulOpModel, Float32MultiDimBroadcast) {
+  for (uint32_t bm1 = 0;
+       bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
+    for (uint32_t bm2 = 0;
+         bm2 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm2++) {
+      const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
+      const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
+      const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
+      const bool input1_broadcast_dim4 = bm1 & (static_cast<uint32_t>(1) << 3);
+      const bool input1_broadcast_dim5 = bm1 & (static_cast<uint32_t>(1) << 4);
+      const bool input1_broadcast_dim6 = bm1 & (static_cast<uint32_t>(1) << 5);
+      const bool input2_broadcast_dim1 = bm2 & (static_cast<uint32_t>(1) << 0);
+      const bool input2_broadcast_dim2 = bm2 & (static_cast<uint32_t>(1) << 1);
+      const bool input2_broadcast_dim3 = bm2 & (static_cast<uint32_t>(1) << 2);
+      const bool input2_broadcast_dim4 = bm2 & (static_cast<uint32_t>(1) << 3);
+      const bool input2_broadcast_dim5 = bm2 & (static_cast<uint32_t>(1) << 4);
+      const bool input2_broadcast_dim6 = bm2 & (static_cast<uint32_t>(1) << 5);
+      const int input1_dim1 = input1_broadcast_dim1 ? 1 : kDim1;
+      const int input1_dim2 = input1_broadcast_dim2 ? 1 : kDim2;
+      const int input1_dim3 = input1_broadcast_dim3 ? 1 : kDim3;
+      const int input1_dim4 = input1_broadcast_dim4 ? 1 : kDim4;
+      const int input1_dim5 = input1_broadcast_dim5 ? 1 : kDim5;
+      const int input1_dim6 = input1_broadcast_dim6 ? 1 : kDim6;
+      const int input2_dim1 = input2_broadcast_dim1 ? 1 : kDim1;
+      const int input2_dim2 = input2_broadcast_dim2 ? 1 : kDim2;
+      const int input2_dim3 = input2_broadcast_dim3 ? 1 : kDim3;
+      const int input2_dim4 = input2_broadcast_dim4 ? 1 : kDim4;
+      const int input2_dim5 = input2_broadcast_dim5 ? 1 : kDim5;
+      const int input2_dim6 = input2_broadcast_dim6 ? 1 : kDim6;
+      std::vector<int> input1_full_shape{input1_dim1, input1_dim2, input1_dim3,
+                                         input1_dim4, input1_dim5, input1_dim6};
+      std::vector<int> input2_full_shape{input2_dim1, input2_dim2, input2_dim3,
+                                         input2_dim4, input2_dim5, input2_dim6};
+      for (int input1_dims = 1; input1_dims <= kMaxMulBroadcastDim;
+           ++input1_dims) {
+        for (int input2_dims = 1; input2_dims <= kMaxMulBroadcastDim;
+             ++input2_dims) {
+          std::vector<int> input1_shape(input1_dims), input2_shape(input2_dims);
+          std::copy(input1_full_shape.end() - input1_dims,
+                    input1_full_shape.end(), input1_shape.data());
+          std::copy(input2_full_shape.end() - input2_dims,
+                    input2_full_shape.end(), input2_shape.data());
+          TestBroadcast(input1_shape, input2_shape);
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+class IntegerMulOpTest : public ::testing::Test {};
+
+using Int16OrInt32Or64Types = ::testing::Types<int16_t, int32_t, int64_t>;
+TYPED_TEST_SUITE(IntegerMulOpTest, Int16OrInt32Or64Types);
+
+TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcast) {
+  for (uint32_t bm1 = 0;
+       bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
+    for (uint32_t bm2 = 0;
+         bm2 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm2++) {
+      const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
+      const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
+      const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
+      const bool input1_broadcast_dim4 = bm1 & (static_cast<uint32_t>(1) << 3);
+      const bool input1_broadcast_dim5 = bm1 & (static_cast<uint32_t>(1) << 4);
+      const bool input1_broadcast_dim6 = bm1 & (static_cast<uint32_t>(1) << 5);
+      const bool input2_broadcast_dim1 = bm2 & (static_cast<uint32_t>(1) << 0);
+      const bool input2_broadcast_dim2 = bm2 & (static_cast<uint32_t>(1) << 1);
+      const bool input2_broadcast_dim3 = bm2 & (static_cast<uint32_t>(1) << 2);
+      const bool input2_broadcast_dim4 = bm2 & (static_cast<uint32_t>(1) << 3);
+      const bool input2_broadcast_dim5 = bm2 & (static_cast<uint32_t>(1) << 4);
+      const bool input2_broadcast_dim6 = bm2 & (static_cast<uint32_t>(1) << 5);
+      const int input1_dim1 = input1_broadcast_dim1 ? 1 : kDim1;
+      const int input1_dim2 = input1_broadcast_dim2 ? 1 : kDim2;
+      const int input1_dim3 = input1_broadcast_dim3 ? 1 : kDim3;
+      const int input1_dim4 = input1_broadcast_dim4 ? 1 : kDim4;
+      const int input1_dim5 = input1_broadcast_dim5 ? 1 : kDim5;
+      const int input1_dim6 = input1_broadcast_dim6 ? 1 : kDim6;
+      const int input2_dim1 = input2_broadcast_dim1 ? 1 : kDim1;
+      const int input2_dim2 = input2_broadcast_dim2 ? 1 : kDim2;
+      const int input2_dim3 = input2_broadcast_dim3 ? 1 : kDim3;
+      const int input2_dim4 = input2_broadcast_dim4 ? 1 : kDim4;
+      const int input2_dim5 = input2_broadcast_dim5 ? 1 : kDim5;
+      const int input2_dim6 = input2_broadcast_dim6 ? 1 : kDim6;
+      std::vector<int> input1_full_shape{input1_dim1, input1_dim2, input1_dim3,
+                                         input1_dim4, input1_dim5, input1_dim6};
+      std::vector<int> input2_full_shape{input2_dim1, input2_dim2, input2_dim3,
+                                         input2_dim4, input2_dim5, input2_dim6};
+      for (int input1_dims = 1; input1_dims <= kMaxMulBroadcastDim;
+           ++input1_dims) {
+        for (int input2_dims = 1; input2_dims <= kMaxMulBroadcastDim;
+             ++input2_dims) {
+          std::vector<int> input1_shape(input1_dims), input2_shape(input2_dims);
+          std::copy(input1_full_shape.end() - input1_dims,
+                    input1_full_shape.end(), input1_shape.data());
+          std::copy(input2_full_shape.end() - input2_dims,
+                    input2_full_shape.end(), input2_shape.data());
+          TestIntegerBroadcast<TypeParam>(input1_shape, input2_shape);
+        }
+      }
+    }
+  }
+}
+
+template <typename QuantizedType>
+void TestQuantizedBroadcast(std::vector<int> input1_shape,
+                            std::vector<int> input2_shape) {
+  std::array<int, kMaxMulBroadcastDim> input1_dims;
+  std::array<int, kMaxMulBroadcastDim> input2_dims;
+  std::array<int, kMaxMulBroadcastDim> output_dims;
+  std::array<int, kMaxMulBroadcastDim> input1_strides;
+  std::array<int, kMaxMulBroadcastDim> input2_strides;
+  std::array<int, kMaxMulBroadcastDim> output_strides;
+  std::fill(input1_dims.begin(), input1_dims.end(), 1);
+  std::fill(input2_dims.begin(), input2_dims.end(), 1);
+  std::fill(output_dims.begin(), output_dims.end(), 1);
+  std::copy(input1_shape.cbegin(), input1_shape.cend(),
+            input1_dims.end() - input1_shape.size());
+  std::copy(input2_shape.cbegin(), input2_shape.cend(),
+            input2_dims.end() - input2_shape.size());
+
+  for (size_t i = 0; i < kMaxMulBroadcastDim; i++) {
+    if (input1_dims[i] != 1 && input2_dims[i] != 1) {
+      ASSERT_EQ(input1_dims[i], input2_dims[i]);
+    }
+    output_dims[i] = std::max(input1_dims[i], input2_dims[i]);
+  }
+  // Compute generalized strides.
+  size_t input1_stride = 1, input2_stride = 1, output_stride = 1;
+  for (size_t i = kMaxMulBroadcastDim; i != 0; i--) {
+    input1_strides[i - 1] = input1_dims[i - 1] == 1 ? 0 : input1_stride;
+    input2_strides[i - 1] = input2_dims[i - 1] == 1 ? 0 : input2_stride;
+    output_strides[i - 1] = output_stride;
+    input1_stride *= input1_dims[i - 1];
+    input2_stride *= input2_dims[i - 1];
+    output_stride *= output_dims[i - 1];
+  }
+  const int num_input1_elements = std::accumulate(
+      input1_dims.begin(), input1_dims.end(), 1, std::multiplies<int>());
+  const int num_input2_elements = std::accumulate(
+      input2_dims.begin(), input2_dims.end(), 1, std::multiplies<int>());
+  const int num_output_elements = std::accumulate(
+      output_dims.begin(), output_dims.end(), 1, std::multiplies<int>());
+  std::vector<float> input1(num_input1_elements);
+  std::vector<float> input2(num_input2_elements);
+  std::vector<float> output_ref(num_output_elements);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+
+  std::uniform_real_distribution<float> dist(-0.5f, 0.5f);
+
+  std::generate(input1.begin(), input1.end(), [&]() { return dist(rng); });
+  std::generate(input2.begin(), input2.end(), [&]() { return dist(rng); });
+
+  QuantizedMulOpModel<QuantizedType, QuantizedType> m(
+      {GetTensorType<QuantizedType>(), input1_shape, -0.5f, 0.5f},
+      {GetTensorType<QuantizedType>(), input2_shape, -0.5f, 0.5f},
+      {GetTensorType<QuantizedType>(), {}, -1.f, 1.f},
+      ActivationFunctionType_NONE, input1, input2, /*constant_tensors=*/false);
+  // Compute reference results.
+  for (size_t i = 0; i < output_dims[0]; i++) {
+    for (size_t j = 0; j < output_dims[1]; j++) {
+      for (size_t k = 0; k < output_dims[2]; k++) {
+        for (size_t l = 0; l < output_dims[3]; l++) {
+          for (size_t m = 0; m < output_dims[4]; m++) {
+            for (size_t n = 0; n < output_dims[5]; n++) {
+              float x = input1[i * input1_strides[0] + j * input1_strides[1] +
+                               k * input1_strides[2] + l * input1_strides[3] +
+                               m * input1_strides[4] + n * input1_strides[5]];
+              float y = input2[i * input2_strides[0] + j * input2_strides[1] +
+                               k * input2_strides[2] + l * input2_strides[3] +
+                               m * input2_strides[4] + n * input2_strides[5]];
+              output_ref[i * output_strides[0] + j * output_strides[1] +
+                         k * output_strides[2] + l * output_strides[3] +
+                         m * output_strides[4] + n * output_strides[5]] = x * y;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (float& output_value : output_ref) {
+    output_value = std::max<float>(output_value, -1.0f);
+    output_value = std::min<float>(output_value, 1.0f);
+  }
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  std::vector<float> output = m.GetDequantizedOutput();
+  for (size_t i = 0; i < output_dims[0]; i++) {
+    for (size_t j = 0; j < output_dims[1]; j++) {
+      for (size_t k = 0; k < output_dims[2]; k++) {
+        for (size_t l = 0; l < output_dims[3]; l++) {
+          for (size_t m = 0; m < output_dims[4]; m++) {
+            for (size_t n = 0; n < output_dims[5]; n++) {
+              const size_t index =
+                  i * output_strides[0] + j * output_strides[1] +
+                  k * output_strides[2] + l * output_strides[3] +
+                  m * output_strides[4] + n * output_strides[5];
+              EXPECT_NEAR(output[index], output_ref[index], 0.6f)
+                  << "(i, j, k, l, m, n) = (" << i << ", " << j << ", " << k
+                  << ", " << l << ", " << m << ", " << n << ")";
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcast) {
+  for (uint32_t bm1 = 0;
+       bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
+    for (uint32_t bm2 = 0;
+         bm2 < (static_cast<int32_t>(1) << kMaxMulBroadcastDim); bm2++) {
+      const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
+      const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
+      const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
+      const bool input1_broadcast_dim4 = bm1 & (static_cast<uint32_t>(1) << 3);
+      const bool input1_broadcast_dim5 = bm1 & (static_cast<uint32_t>(1) << 4);
+      const bool input1_broadcast_dim6 = bm1 & (static_cast<uint32_t>(1) << 5);
+      const bool input2_broadcast_dim1 = bm2 & (static_cast<uint32_t>(1) << 0);
+      const bool input2_broadcast_dim2 = bm2 & (static_cast<uint32_t>(1) << 1);
+      const bool input2_broadcast_dim3 = bm2 & (static_cast<uint32_t>(1) << 2);
+      const bool input2_broadcast_dim4 = bm2 & (static_cast<uint32_t>(1) << 3);
+      const bool input2_broadcast_dim5 = bm2 & (static_cast<uint32_t>(1) << 4);
+      const bool input2_broadcast_dim6 = bm2 & (static_cast<uint32_t>(1) << 5);
+      const int input1_dim1 = input1_broadcast_dim1 ? 1 : kDim1;
+      const int input1_dim2 = input1_broadcast_dim2 ? 1 : kDim2;
+      const int input1_dim3 = input1_broadcast_dim3 ? 1 : kDim3;
+      const int input1_dim4 = input1_broadcast_dim4 ? 1 : kDim4;
+      const int input1_dim5 = input1_broadcast_dim5 ? 1 : kDim5;
+      const int input1_dim6 = input1_broadcast_dim6 ? 1 : kDim6;
+      const int input2_dim1 = input2_broadcast_dim1 ? 1 : kDim1;
+      const int input2_dim2 = input2_broadcast_dim2 ? 1 : kDim2;
+      const int input2_dim3 = input2_broadcast_dim3 ? 1 : kDim3;
+      const int input2_dim4 = input2_broadcast_dim4 ? 1 : kDim4;
+      const int input2_dim5 = input2_broadcast_dim5 ? 1 : kDim5;
+      const int input2_dim6 = input2_broadcast_dim6 ? 1 : kDim6;
+      std::vector<int> input1_full_shape{input1_dim1, input1_dim2, input1_dim3,
+                                         input1_dim4, input1_dim5, input1_dim6};
+      std::vector<int> input2_full_shape{input2_dim1, input2_dim2, input2_dim3,
+                                         input2_dim4, input2_dim5, input2_dim6};
+      for (int input1_dims = 1; input1_dims <= kMaxMulBroadcastDim;
+           ++input1_dims) {
+        for (int input2_dims = 1; input2_dims <= kMaxMulBroadcastDim;
+             ++input2_dims) {
+          std::vector<int> input1_shape(input1_dims), input2_shape(input2_dims);
+          std::copy(input1_full_shape.end() - input1_dims,
+                    input1_full_shape.end(), input1_shape.data());
+          std::copy(input2_full_shape.end() - input2_dims,
+                    input2_full_shape.end(), input2_shape.data());
+          TestQuantizedBroadcast<int8_t>(input1_shape, input2_shape);
+        }
+      }
+    }
+  }
+}
+
+TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcast) {
+  for (uint32_t bm1 = 0;
+       bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
+    for (uint32_t bm2 = 0;
+         bm2 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm2++) {
+      const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
+      const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
+      const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
+      const bool input1_broadcast_dim4 = bm1 & (static_cast<uint32_t>(1) << 3);
+      const bool input1_broadcast_dim5 = bm1 & (static_cast<uint32_t>(1) << 4);
+      const bool input1_broadcast_dim6 = bm1 & (static_cast<uint32_t>(1) << 5);
+      const bool input2_broadcast_dim1 = bm2 & (static_cast<uint32_t>(1) << 0);
+      const bool input2_broadcast_dim2 = bm2 & (static_cast<uint32_t>(1) << 1);
+      const bool input2_broadcast_dim3 = bm2 & (static_cast<uint32_t>(1) << 2);
+      const bool input2_broadcast_dim4 = bm2 & (static_cast<uint32_t>(1) << 3);
+      const bool input2_broadcast_dim5 = bm2 & (static_cast<uint32_t>(1) << 4);
+      const bool input2_broadcast_dim6 = bm2 & (static_cast<uint32_t>(1) << 5);
+      const int input1_dim1 = input1_broadcast_dim1 ? 1 : kDim1;
+      const int input1_dim2 = input1_broadcast_dim2 ? 1 : kDim2;
+      const int input1_dim3 = input1_broadcast_dim3 ? 1 : kDim3;
+      const int input1_dim4 = input1_broadcast_dim4 ? 1 : kDim4;
+      const int input1_dim5 = input1_broadcast_dim5 ? 1 : kDim5;
+      const int input1_dim6 = input1_broadcast_dim6 ? 1 : kDim6;
+      const int input2_dim1 = input2_broadcast_dim1 ? 1 : kDim1;
+      const int input2_dim2 = input2_broadcast_dim2 ? 1 : kDim2;
+      const int input2_dim3 = input2_broadcast_dim3 ? 1 : kDim3;
+      const int input2_dim4 = input2_broadcast_dim4 ? 1 : kDim4;
+      const int input2_dim5 = input2_broadcast_dim5 ? 1 : kDim5;
+      const int input2_dim6 = input2_broadcast_dim6 ? 1 : kDim6;
+      std::vector<int> input1_full_shape{input1_dim1, input1_dim2, input1_dim3,
+                                         input1_dim4, input1_dim5, input1_dim6};
+      std::vector<int> input2_full_shape{input2_dim1, input2_dim2, input2_dim3,
+                                         input2_dim4, input2_dim5, input2_dim6};
+      for (int input1_dims = 1; input1_dims <= kMaxMulBroadcastDim;
+           ++input1_dims) {
+        for (int input2_dims = 1; input2_dims <= kMaxMulBroadcastDim;
+             ++input2_dims) {
+          std::vector<int> input1_shape(input1_dims), input2_shape(input2_dims);
+          std::copy(input1_full_shape.end() - input1_dims,
+                    input1_full_shape.end(), input1_shape.data());
+          std::copy(input2_full_shape.end() - input2_dims,
+                    input2_full_shape.end(), input2_shape.data());
+          TestQuantizedBroadcast<uint8_t>(input1_shape, input2_shape);
+        }
+      }
+    }
+  }
+}
 
 }  // namespace
 }  // namespace tflite

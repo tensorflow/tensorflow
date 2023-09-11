@@ -141,15 +141,6 @@ class Platform {
   virtual tsl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) = 0;
 
-  // Registers a TraceListener to listen to all StreamExecutors for this
-  // platform.
-  // Takes ownership of listener.
-  virtual void RegisterTraceListener(
-      std::unique_ptr<TraceListener> listener) = 0;
-
-  // Removes the specified TraceListener from all StreamExecutors.
-  virtual void UnregisterTraceListener(TraceListener* listener) = 0;
-
  protected:
   // SE_DISALLOW_COPY_AND_ASSIGN declares a constructor, which suppresses the
   // presence of the default constructor. This statement re-enables it, which

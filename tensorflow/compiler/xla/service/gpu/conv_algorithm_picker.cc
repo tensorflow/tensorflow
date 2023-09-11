@@ -1085,6 +1085,7 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
   HloComputation* computation = instr->parent();
   std::vector<Shape> new_call_element_shapes;
   // Add the shapes of the outputs of the convolution.
+  new_call_element_shapes.reserve(instr->shape().tuple_shapes_size() - 1);
   for (int i = 0; i < instr->shape().tuple_shapes_size() - 1; ++i) {
     new_call_element_shapes.emplace_back(instr->shape().tuple_shapes(i));
   }
@@ -1113,6 +1114,7 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
   TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));
 
   std::vector<HloInstruction*> new_tuple_elements;
+  new_tuple_elements.reserve(new_call->shape().tuple_shapes_size() - 1);
   for (int i = 0; i < new_call->shape().tuple_shapes_size() - 1; ++i) {
     new_tuple_elements.emplace_back(
         computation->AddInstruction(HloInstruction::CreateGetTupleElement(

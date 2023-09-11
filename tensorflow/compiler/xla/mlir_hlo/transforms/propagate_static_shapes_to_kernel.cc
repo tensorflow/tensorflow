@@ -200,11 +200,14 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
     return rewriter.notifyMatchFailure(funcOp, "no static shapes");
   }
   rewriter.updateRootInPlace(funcOp, [&] {
-    funcOp.eraseArguments(argsToDrop);
-    auto argTypes =
-        llvm::to_vector(TypeRange{ValueRange{funcOp.getArguments()}});
-    funcOp.setType(LLVM::LLVMFunctionType::get(
-        funcOp.getFunctionType().getReturnType(), argTypes));
+    SmallVector<Type> argTypes;
+    for (unsigned idx = 0; idx < argsToDrop.size(); ++idx)
+      if (!argsToDrop[idx])
+        argTypes.push_back(funcOp.getArgument(idx).getType());
+    auto newFuncType = LLVM::LLVMFunctionType::get(
+        funcOp.getFunctionType().getReturnType(), argTypes);
+    function_interface_impl::eraseFunctionArguments(funcOp, argsToDrop,
+                                                    newFuncType);
   });
   return success();
 }

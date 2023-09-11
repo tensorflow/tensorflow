@@ -45,7 +45,7 @@ void EnableDetailedLogging(PassManager *pm,
   // multi-threading as well.
   pm->getContext()->disableMultithreading();
   pm->enableIRPrinting(std::make_unique<::tensorflow::DataDumperLoggerConfig>(
-      [module_name](const std::string &pass_tag_name) {
+      [module_name](const std::string &pass_tag_name, mlir::Operation *op) {
         return DEBUG_DATA_DUMPER()->GetDumpFilename(
             module_name.str(), kDebugGroupBridgePhase1, pass_tag_name);
       },
@@ -256,7 +256,10 @@ void CreateTPUBridgePipelineImpl(
   pm.addNestedPass<func::FuncOp>(
       TF::CreateHoistReplicateInvariantResourceWritesPass());
   pm.addNestedPass<func::FuncOp>(CreateTPUColocateCompositeResourceOps());
-  pm.addPass(CreateTPUVariableRuntimeReformattingPass());
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_tpu_variable_runtime_reformatting_pass) {
+    pm.addPass(CreateTPUVariableRuntimeReformattingPass());
+  }
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 }  // namespace

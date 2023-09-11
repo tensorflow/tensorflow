@@ -18,17 +18,21 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_op_profile.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_op_profiles.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -276,40 +280,46 @@ int64_t GpuHloCostAnalysis::GetConvolutionFlops(
                                               result_shape);
 }
 
-using profiles_nested_map = absl::flat_hash_map<
-    std::string,  // Device name.
+using ProfilesNestedMap = absl::flat_hash_map<
+    std::string,  // compute capability.
     absl::flat_hash_map<PrimitiveType,
                         absl::flat_hash_map<HloOpcode, int64_t>>>;
 
-const profiles_nested_map* LoadOpProfiles() {
-  static profiles_nested_map* profiles = [] {
-    profiles_nested_map* ret = new profiles_nested_map;
-    DeviceHloInstructionProfiles all_device_profiles;
-    CHECK(tsl::protobuf::TextFormat::ParseFromString(
-        std::string(kDeviceHloOpProfiles), &all_device_profiles));
-    for (const auto& device_profile : all_device_profiles.entries()) {
-      for (const auto& entry : device_profile.second.entries()) {
-        (*ret)[device_profile.first][entry.instruction().shape().element_type()]
-              [StringToHloOpcode(entry.instruction().opcode()).value()] =
-                  entry.clock_cycles();
-      }
+const ProfilesNestedMap* LoadOpProfiles() {
+  ProfilesNestedMap* ret = new ProfilesNestedMap();
+  DeviceHloInstructionProfiles all_device_profiles;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+      std::string(kDeviceHloOpProfiles), &all_device_profiles));
+  for (const auto& device_profile : all_device_profiles.entries()) {
+    for (const auto& entry : device_profile.second.entries()) {
+      (*ret)[device_profile.first][entry.instruction().shape().element_type()]
+            [StringToHloOpcode(entry.instruction().opcode()).value()] =
+                entry.clock_cycles();
     }
-    return ret;
-  }();
-  return profiles;
+  }
+  return ret;
 }
 
-// Elementwise instructions typically take at least a few clock cycles.
-constexpr int64_t kDefaultFlopsPerElement = 3;
-
-constexpr absl::string_view kDefaultDeviceName = "NVIDIA RTX A6000";
-
-int64_t FlopsPerElement(const absl::string_view device_name,
+int64_t FlopsPerElement(const GpuDeviceInfo* device_info,
                         const PrimitiveType type, const HloOpcode opcode) {
-  const profiles_nested_map* all_profiles = LoadOpProfiles();
-  auto device_profiles = FindOrDefault(*all_profiles, std::string(device_name),
-                                       all_profiles->at(kDefaultDeviceName));
+  std::string compute_capability = "<unknown>";
+  if (device_info != nullptr) {
+    if (auto* ptr = std::get_if<stream_executor::CudaComputeCapability>(
+            &device_info->compute_capability))
+      compute_capability = absl::StrCat("sm_", ptr->major, ptr->minor);
+    if (auto* ptr = std::get_if<stream_executor::RocmComputeCapability>(
+            &device_info->compute_capability))
+      compute_capability = ptr->gfx_version();
+  }
+
+  static const auto* all_profiles = LoadOpProfiles();
+  static const auto& default_profile = all_profiles->at("sm_89");
+  auto device_profiles =
+      FindOrDefault(*all_profiles, compute_capability, default_profile);
   auto dtype_profiles = MaybeFind(device_profiles, type);
+
+  // Elementwise instructions typically take at least a few clock cycles.
+  constexpr int64_t kDefaultFlopsPerElement = 3;
   if (!dtype_profiles.ok()) {
     return kDefaultFlopsPerElement;
   }
@@ -318,8 +328,7 @@ int64_t FlopsPerElement(const absl::string_view device_name,
 
 Status GpuHloCostAnalysis::HandleElementwiseOp(const HloInstruction* hlo) {
   int64_t flop_per_element =
-      FlopsPerElement(device_info_ ? device_info_->name : kDefaultDeviceName,
-                      hlo->shape().element_type(), hlo->opcode());
+      FlopsPerElement(device_info_, hlo->shape().element_type(), hlo->opcode());
   current_properties_[kFlopsKey] =
       flop_per_element * ShapeUtil::ElementsInRecursive(hlo->shape());
   return OkStatus();

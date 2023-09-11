@@ -31,6 +31,10 @@ struct ErrorSpec {
   // for inputs outside its mathematical domain.
   bool relaxed_nans;
 
+  // If true, then we don't check for bitwise equality of NaNs.  All NaNs are
+  // considered equivalent.
+  bool all_nans_are_equivalent = true;
+
   // If this is true, then we treat each +/-inf in the actual result as
   // equivalent to our choice of either +/-inf or the min/max floating-point
   // value.

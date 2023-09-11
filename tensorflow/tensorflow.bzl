@@ -287,6 +287,13 @@ def if_windows(a, otherwise = []):
         "//conditions:default": otherwise,
     })
 
+def if_not_windows_or_mac(a):
+    return select({
+        clean_dep("//tensorflow:windows"): [],
+        clean_dep("//tensorflow:macos"): [],
+        "//conditions:default": a,
+    })
+
 def if_windows_cuda(a, otherwise = []):
     return select({
         clean_dep("//tensorflow:is_cuda_enabled_and_windows"): a,

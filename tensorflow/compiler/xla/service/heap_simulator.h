@@ -466,7 +466,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     //
     // REQUIRES:
     // - sum(slice_sizes_sorted_by_offset) == full_buffer_interval_.size
-    void Slice(absl::Span<int64_t> slice_sizes_sorted_by_offset);
+    void Slice(absl::Span<const int64_t> slice_sizes_sorted_by_offset);
 
     // Updates the times at which we will start each slice. However, we have not
     // yet decided which slice size will correspond to which start time.
@@ -604,8 +604,6 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     //   with the fully allocated sliced allocation.
     // - preferred_offset: The preferred starting offset for the fully allocated
     //   sliced allocation.
-    // - is_allocation_offset_allowed_fn: Indicates if a the entire sliced
-    //   allocation is allowed to be allocated staring at a given offset.
     //
     // REQUIRES:
     // - sorted_slice_sizes.size() == free_chunks_per_slice_time.size()
@@ -750,6 +748,14 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // FindChunkCandidates is the same as FindChunkCandidate, except it finds
   // spatially contiguous chunks candidates for a sliced buffer interval.
   // Returned chunk i should be copied at slice time i.
+  //
+  // Given the way that FindChunkCandidates and MakeFreeChunks interact, the
+  // following properties are guaranteed about colocations.
+  // - The returned spatially contiguous chunks have enough space for every
+  //   colocation specified in sliced_buffer_interval.
+  // - The returned spatially contiguous chunks will be free for the entire
+  //   lifetime of each colocation. If a colocation is sliced, the returned
+  //   chunks will be free for the lifetime of the longest-lived slice.
   std::vector<Chunk> FindChunkCandidates(
       const SlicedBufferInterval& sliced_buffer_interval,
       int64_t preferred_offset = -1) const;

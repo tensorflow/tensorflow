@@ -10,7 +10,6 @@ tsl::Status SetExecutorStructFn(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(executor_fn, TpuPlatform_GetExecutor);
   TFTPU_SET_FN(executor_fn, TpuPlatform_Id);
   TFTPU_SET_FN(executor_fn, TpuPlatform_VisibleDeviceCount);
-  TFTPU_SET_FN(executor_fn, TpuPlatform_TpuMemoryLimit);
   TFTPU_SET_FN(executor_fn, TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy);
   TFTPU_SET_FN(executor_fn, TpuPlatform_GetTopologyPtr);
   TFTPU_SET_FN(executor_fn, TpuPlatform_GetHostLocation);
@@ -18,7 +17,6 @@ tsl::Status SetExecutorStructFn(void* library_handle) {  // TENSORFLOW_STATUS_OK
 
   TFTPU_SET_FN(executor_fn, TpuExecutor_Init);
   TFTPU_SET_FN(executor_fn, TpuExecutor_Free);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_PlatformDeviceCount);
   TFTPU_SET_FN(executor_fn, TpuExecutor_Allocate);
   TFTPU_SET_FN(executor_fn, TpuExecutor_Deallocate);
   TFTPU_SET_FN(executor_fn, TpuExecutor_GetAllocatorStats);
@@ -39,11 +37,7 @@ tsl::Status SetExecutorStructFn(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(executor_fn, TpuExecutor_MemcpyFromHost);
   TFTPU_SET_FN(executor_fn, TpuExecutor_EnqueueInfeed);
   TFTPU_SET_FN(executor_fn, TpuExecutor_DequeueOutfeed);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_WaitForInfeedReady);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_WaitForOutfeedReady);
   TFTPU_SET_FN(executor_fn, TpuExecutor_BlockHostUntilDone);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_BlockUntilDoneOrFailed);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_SyncAndForgetFailedStreams);
   TFTPU_SET_FN(executor_fn, TpuExecutor_SynchronizeAllActivity);
   TFTPU_SET_FN(executor_fn, TpuExecutor_UnloadAllPrograms);
   TFTPU_SET_FN(executor_fn, TpuExecutor_EnqueueCompactionOnStreamForHbm);

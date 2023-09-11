@@ -47,14 +47,6 @@ class GpuPriorityFusion : public InstructionFusion {
 
   static bool IsExpensive(const HloInstruction& instruction);
 
-  using HloPassInterface::Run;
-  StatusOr<bool> Run(HloModule* module,
-                     const absl::flat_hash_set<absl::string_view>&
-                         execution_threads) override {
-    cost_analysis_.emplace(cost_analysis_options_, &device_info_);
-    return InstructionFusion::Run(module, execution_threads);
-  }
-
  protected:
   std::unique_ptr<FusionQueue> GetFusionQueue(
       HloComputation* computation) override;
@@ -75,9 +67,8 @@ class GpuPriorityFusion : public InstructionFusion {
 
   const GpuDeviceInfo device_info_;
 
-  // Cost model that defines priorities in the queue.
+  // Cost model options that defines priorities in the queue.
   GpuHloCostAnalysis::Options cost_analysis_options_;
-  std::optional<GpuHloCostAnalysis> cost_analysis_;
 };
 
 }  // namespace gpu

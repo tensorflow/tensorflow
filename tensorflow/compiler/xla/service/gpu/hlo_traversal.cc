@@ -18,6 +18,7 @@ limitations under the License.
 #include <queue>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
@@ -25,8 +26,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+bool DefaultFusionBoundaryFn(const HloInstruction&,
+                             const HloInstruction& consumer) {
+  return consumer.opcode() == HloOpcode::kParameter;
+}
+
 void HloBfsConsumersFirstTraversal(
-    const HloInstruction& root, const FusionBoundaryFn& boundary,
+    absl::Span<const HloInstruction* const> roots,
+    const FusionBoundaryFn& boundary,
     const std::function<TraversalResult(const HloInstruction& node)>& visit) {
   absl::flat_hash_set<const HloInstruction*> visited;
   std::queue<const HloInstruction*> q;
@@ -59,7 +66,9 @@ void HloBfsConsumersFirstTraversal(
     }
   };
 
-  q.push(&root);
+  for (auto* root : roots) {
+    q.push(root);
+  }
   while (!q.empty()) {
     const HloInstruction* node = q.front();
     q.pop();
@@ -76,11 +85,12 @@ void HloBfsConsumersFirstTraversal(
 }
 
 void FindFusionParameters(
-    const HloInstruction& root, const FusionBoundaryFn& boundary,
+    absl::Span<const HloInstruction* const> roots,
+    const FusionBoundaryFn& boundary,
     const std::function<void(const HloInstruction& param)>& visit) {
   absl::flat_hash_set<const HloInstruction*> visited;
   HloBfsConsumersFirstTraversal(
-      root,
+      roots,
       [&](const HloInstruction& producer, const HloInstruction& consumer) {
         auto is_boundary = boundary(producer, consumer);
         if (is_boundary) {

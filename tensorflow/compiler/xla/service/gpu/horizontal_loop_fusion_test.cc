@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -25,6 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -36,7 +37,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 class HorizontalLoopFusionTest : public HloTestBase {
  public:
@@ -82,14 +83,14 @@ TEST_F(HorizontalLoopFusionTest, BasicTest) {
 
   const HloInstruction* entry_root =
       module->entry_computation()->root_instruction();
-  EXPECT_THAT(entry_root, op::Tuple(op::GetTupleElement(op::Fusion()),
-                                    op::GetTupleElement(op::Fusion())));
-
-  const HloInstruction* fusion = entry_root->operand(0)->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(entry_root,
+              GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                  m::GetTupleElement(m::Fusion()))));
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
-  EXPECT_THAT(
-      fusion->fused_expression_root(),
-      op::Tuple(op::Slice(op::Concatenate()), op::Slice(op::Concatenate())));
+  EXPECT_THAT(fusion->fused_expression_root(),
+              GmockMatch(m::Tuple(m::Slice(m::Concatenate()),
+                                  m::Slice(m::Concatenate()))));
 }
 
 // Horizontal fusion should not be triggered as fusion will create cycles.
@@ -306,18 +307,17 @@ TEST_F(HorizontalLoopFusionTest, HorizontalLoopFusionAfterVerticalFusion) {
 
   const HloInstruction* entry_root =
       module->entry_computation()->root_instruction();
+  const HloInstruction* fusion_instr = nullptr;
   // Check that we add bitcast when needed.
-  EXPECT_THAT(entry_root,
-              op::Tuple(op::Bitcast(op::GetTupleElement(op::Fusion())),
-                        op::Bitcast(op::GetTupleElement(op::Fusion()))));
-  const HloInstruction* fusion_instr =
-      entry_root->operand(0)->operand(0)->operand(0);
+  ASSERT_THAT(entry_root,
+              GmockMatch(m::Tuple(
+                  m::Bitcast(m::GetTupleElement(m::Fusion(&fusion_instr))),
+                  m::Bitcast(m::GetTupleElement(m::Fusion())))));
   ASSERT_TRUE(fusion_instr->IsMultiOutputFusion());
-
-  EXPECT_THAT(
-      fusion_instr->fused_expression_root(),
-      op::Tuple(op::Slice(op::Concatenate(op::Reshape(), op::Reshape())),
-                op::Slice(op::Concatenate(op::Reshape(), op::Reshape()))));
+  EXPECT_THAT(fusion_instr->fused_expression_root(),
+              GmockMatch(m::Tuple(
+                  m::Slice(m::Concatenate(m::Reshape(), m::Reshape())),
+                  m::Slice(m::Concatenate(m::Reshape(), m::Reshape())))));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec{0, 0}));
 }
@@ -625,9 +625,10 @@ TEST_F(HorizontalLoopFusionTest, IterativeHorizontalFusion) {
   // Verify that fusion.0 and fusion.1 are fused.
   const HloInstruction* entry_root =
       module->entry_computation()->root_instruction();
-  EXPECT_THAT(entry_root, op::Tuple(op::GetTupleElement(op::Fusion()),
-                                    op::GetTupleElement(op::Fusion())));
-  const HloInstruction* fusion = entry_root->operand(0)->operand(0);
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(entry_root,
+              GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                  m::GetTupleElement(m::Fusion()))));
   EXPECT_TRUE(fusion->IsMultiOutputFusion());
 
   // Verify that the total number of fusion instructions is 2 so that we
@@ -776,8 +777,8 @@ ENTRY main {
       module->entry_computation()->root_instruction();
   // Check that we fuse when supported.
   EXPECT_THAT(entry_root,
-              op::Tuple(op::Copy(), op::GetTupleElement(op::Fusion()),
-                        op::GetTupleElement(op::Fusion()), op::Copy()));
+              GmockMatch(m::Tuple(m::Copy(), m::GetTupleElement(m::Fusion()),
+                                  m::GetTupleElement(m::Fusion()), m::Copy())));
 }
 
 TEST_F(HorizontalLoopFusionTest, DoNotMergeVariadicReductions) {

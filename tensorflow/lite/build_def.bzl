@@ -64,6 +64,9 @@ def tflite_copts():
     }) + select({
         clean_dep("//tensorflow/lite/delegates:tflite_debug_delegate"): ["-DTFLITE_DEBUG_DELEGATE"],
         "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow/lite:tflite_mmap_disabled"): ["-DTFLITE_MMAP_DISABLED"],
+        "//conditions:default": [],
     })
 
     return copts + tflite_copts_extra()

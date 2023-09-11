@@ -73,6 +73,8 @@ class TensorIterationSpec {
     // Logical subfragments when this iteration is composed
     // of several HLO dimensions. Product of subfragments equals `count`.
     std::vector<int64_t> subfragments;
+
+    std::string ToString() const;
   };
   // Description of complex iteration over a sequence of several strides.
   // Describes a logically contiguous dimension of a tensor physically
@@ -99,14 +101,14 @@ class TensorIterationSpec {
   // Compares physical layouts of tensors ignoring subfragments of dimensions.
   bool operator==(const TensorIterationSpec& other) const;
 
+  std::string ToString() const;
+
  private:
   StorageType dim_iteration_specs_;
 };
 
 // Analysis of tensor iteration orders within tiled fusions.
 class TritonFusionAnalysis {
-  TritonFusionAnalysis() {}
-
   Status ExecuteForDotFusion(const HloInstruction& dot, int split_k);
 
  public:
@@ -121,6 +123,11 @@ class TritonFusionAnalysis {
   // defined by left operand, right operand and output.
   enum class Scope { LHS = 0, RHS = 1, OUTPUT = 2 };
 
+  using IterationSpecByInstructionMap =
+      ConstHloInstructionMap<TensorIterationSpec>;
+  using IterationSpecByInstructionByScopeMap =
+      std::map<Scope, IterationSpecByInstructionMap>;
+
   // Every parameter requires a separate piece of shared memory for asynchronous
   // loads. Multiple parameters are approximately equivalent to multiple
   // pipeline stages.
@@ -131,18 +138,16 @@ class TritonFusionAnalysis {
                                                         const HloInstruction*,
                                                         int dimension) const;
   // Parameter HLO instructions used in a scope of `dot`.
-  const absl::flat_hash_set<const HloInstruction*>& ScopeParameters(
-      const Scope scope) const {
+  const ConstHloInstructionSet& ScopeParameters(const Scope scope) const {
     return parameters_.at(scope);
   }
 
+  std::string ToString() const;
+
  private:
-  absl::flat_hash_map<
-      Scope, absl::flat_hash_map<const HloInstruction*, TensorIterationSpec>>
-      iter_specs_;
+  IterationSpecByInstructionByScopeMap iter_specs_;
   // HLO computation parameters per scope.
-  absl::flat_hash_map<Scope, absl::flat_hash_set<const HloInstruction*>>
-      parameters_;
+  std::map<Scope, ConstHloInstructionSet> parameters_;
 };
 
 // Rewrite compatible dot() calls into custom calls with fused computations

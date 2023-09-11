@@ -47,6 +47,7 @@ extern llvm::cl::opt<bool> guarantee_all_funcs_one_use;
 extern llvm::cl::opt<bool> enable_dynamic_update_slice;
 extern llvm::cl::opt<bool> preserve_assert_op;
 extern llvm::cl::opt<bool> legalize_custom_tensor_list_ops;
+extern llvm::cl::opt<bool> reduce_type_precision;
 
 // Import saved model.
 extern llvm::cl::opt<bool> import_saved_model_object_graph;

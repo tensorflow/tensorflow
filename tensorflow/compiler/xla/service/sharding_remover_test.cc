@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/sharding_remover.h"
 
+#include <gtest/gtest.h>
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -43,6 +46,18 @@ ENTRY entry {
   EXPECT_TRUE(changed);
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Reshape(op::Parameter()));
+  // Check that sharding custom-call is replaced with a DCE-able copy.
+  auto parameter = root->operand(0);
+  EXPECT_EQ(parameter->user_count(), 2);
+  bool replaced = false;
+  for (HloInstruction* user : parameter->users()) {
+    if (user->opcode() == HloOpcode::kCopy) {
+      replaced = true;
+      EXPECT_THAT(user, op::Copy(op::Parameter()));
+      break;
+    }
+  }
+  EXPECT_TRUE(replaced);
 }
 
 TEST_F(ShardingRemoverTest, RemoveSPMDShardingToFullShape) {

@@ -2482,6 +2482,28 @@ func.func @convert_avgpool_valid(%arg0: tensor<4x16x16x8xf32>) -> tensor<4x7x7x8
   func.return %3 : tensor<4x7x7x8xf32>
 }
 
+// CHECK-LABEL:   func @convert_avgpool_valid_channel_first(
+// CHECK-SAME:                                %[[VAL_0:.*]]: tensor<4x3x16x16xf32>) -> tensor<4x3x7x7xf32> {
+// CHECK:           %[[VAL_1:.*]] = "tf.AvgPool"(%[[VAL_0]]) {data_format = "NCHW", ksize = [1, 1, 3, 3], padding = "VALID", strides = [1, 1, 2, 2]} : (tensor<4x3x16x16xf32>) -> tensor<4x3x7x7xf32>
+// CHECK:           return %[[VAL_1]] : tensor<4x3x7x7xf32>
+// CHECK:         }
+func.func @convert_avgpool_valid_channel_first(%arg0: tensor<4x3x16x16xf32>) -> tensor<4x3x7x7xf32> {
+  %0 = mhlo.constant dense<9.0> : tensor<4x3x7x7xf32>
+  %1 = mhlo.constant dense<0.0> : tensor<f32>
+  %2 = "mhlo.reduce_window"(%arg0, %1) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %4 = mhlo.add %arg1, %arg2 : tensor<f32>
+    mhlo.return %4 : tensor<f32>
+  }) {
+    base_dilations = dense<1> : tensor<4xi64>,
+    padding = dense<0> : tensor<4x2xi64>,
+    window_dilations = dense<1> : tensor<4xi64>,
+    window_dimensions = dense<[1, 1, 3, 3]> : tensor<4xi64>,
+    window_strides = dense<[1, 1, 2, 2]> : tensor<4xi64>} : (tensor<4x3x16x16xf32>, tensor<f32>) -> tensor<4x3x7x7xf32>
+  %3 = mhlo.divide %2, %0 : tensor<4x3x7x7xf32>
+  func.return %3 : tensor<4x3x7x7xf32>
+}
+
 // CHECK-LABEL:   func @convert_avgpool_valid_rw(
 // CHECK-SAME:                               %[[VAL_0:.*]]: tensor<4x16x16x8xf32>) -> tensor<4x7x7x8xf32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.AvgPool"(%[[VAL_0]]) {data_format = "NHWC", ksize = [1, 3, 3, 1], padding = "VALID", strides = [1, 2, 2, 1]} : (tensor<4x16x16x8xf32>) -> tensor<4x7x7x8xf32>
@@ -2534,6 +2556,28 @@ func.func @convert_avgpool_valid_3d(%arg0: tensor<4x16x16x16x8xf32>) -> tensor<4
     window_strides = dense<[1, 2, 2, 2, 1]> : tensor<5xi64>} : (tensor<4x16x16x16x8xf32>, tensor<f32>) -> tensor<4x7x7x7x8xf32>
   %3 = mhlo.divide %2, %1 : tensor<4x7x7x7x8xf32>
   func.return %3 : tensor<4x7x7x7x8xf32>
+}
+
+// CHECK-LABEL:   func @convert_avgpool_valid_3d_channel_first(
+// CHECK-SAME:                                %[[VAL_0:.*]]: tensor<4x3x16x16x16xf32>) -> tensor<4x3x7x7x7xf32> {
+// CHECK:           %[[VAL_1:.*]] = "tf.AvgPool3D"(%[[VAL_0]]) {data_format = "NCDHW", ksize = [1, 1, 3, 3, 3], padding = "VALID", strides = [1, 1, 2, 2, 2]} : (tensor<4x3x16x16x16xf32>) -> tensor<4x3x7x7x7xf32>
+// CHECK:           return %[[VAL_1]] : tensor<4x3x7x7x7xf32>
+// CHECK:         }
+func.func @convert_avgpool_valid_3d_channel_first(%arg0: tensor<4x3x16x16x16xf32>) -> tensor<4x3x7x7x7xf32> {
+  %0 = mhlo.constant dense<27.0> : tensor<4x3x7x7x7xf32>
+  %1 = mhlo.constant dense<0.0> : tensor<f32>
+  %2 = "mhlo.reduce_window"(%arg0, %1) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %4 = mhlo.add %arg1, %arg2 : tensor<f32>
+    mhlo.return %4 : tensor<f32>
+  }) {
+    base_dilations = dense<1> : tensor<5xi64>,
+    padding = dense<0> : tensor<5x2xi64>,
+    window_dilations = dense<1> : tensor<5xi64>,
+    window_dimensions = dense<[1, 1, 3, 3, 3]> : tensor<5xi64>,
+    window_strides = dense<[1, 1, 2, 2, 2]> : tensor<5xi64>} : (tensor<4x3x16x16x16xf32>, tensor<f32>) -> tensor<4x3x7x7x7xf32>
+  %3 = mhlo.divide %2, %0 : tensor<4x3x7x7x7xf32>
+  func.return %3 : tensor<4x3x7x7x7xf32>
 }
 
 // CHECK-LABEL:   func @convert_avgpool_same(
@@ -2613,6 +2657,27 @@ func.func @convert_maxpool_valid(%arg0: tensor<4x16x16x8xf32>) -> tensor<4x7x7x8
   func.return %1 : tensor<4x7x7x8xf32>
 }
 
+// CHECK-LABEL:   func @convert_maxpool_valid_channel_first(
+// CHECK-SAME:                                %[[VAL_0:.*]]: tensor<4x3x16x16xf32>) -> tensor<4x3x7x7xf32> {
+// CHECK:           %[[VAL_1:.*]]  = "tf.MaxPool"(%[[VAL_0]]) {data_format = "NCHW", explicit_paddings = [], ksize = [1, 1, 3, 3], padding = "VALID", strides = [1, 1, 2, 2]} : (tensor<4x3x16x16xf32>) -> tensor<4x3x7x7xf32>
+// CHECK:           return %[[VAL_1]] : tensor<4x3x7x7xf32>
+// CHECK:         }
+func.func @convert_maxpool_valid_channel_first(%arg0: tensor<4x3x16x16xf32>) -> tensor<4x3x7x7xf32> {
+  // "0xFF800000" represents -INF for f32.
+  %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
+  %1 = "mhlo.reduce_window"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %2 = mhlo.maximum %arg1, %arg2 : tensor<f32>
+    mhlo.return %2 : tensor<f32>
+  }) {
+    base_dilations = dense<1> : tensor<4xi64>,
+    padding = dense<0> : tensor<4x2xi64>,
+    window_dilations = dense<1> : tensor<4xi64>,
+    window_dimensions = dense<[1, 1, 3, 3]> : tensor<4xi64>,
+    window_strides = dense<[1, 1, 2, 2]> : tensor<4xi64>} : (tensor<4x3x16x16xf32>, tensor<f32>) -> tensor<4x3x7x7xf32>
+  func.return %1 : tensor<4x3x7x7xf32>
+}
+
 // CHECK-LABEL:   func @convert_maxpool_valid_3d(
 // CHECK-SAME:                                %[[VAL_0:.*]]: tensor<4x16x16x16x8xf32>) -> tensor<4x7x7x7x8xf32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.MaxPool3D"(%[[VAL_0]]) {data_format = "NDHWC", ksize = [1, 3, 3, 3, 1], padding = "VALID", strides = [1, 2, 2, 2, 1]} : (tensor<4x16x16x16x8xf32>) -> tensor<4x7x7x7x8xf32>
@@ -2632,6 +2697,27 @@ func.func @convert_maxpool_valid_3d(%arg0: tensor<4x16x16x16x8xf32>) -> tensor<4
     window_dimensions = dense<[1, 3, 3, 3, 1]> : tensor<5xi64>,
     window_strides = dense<[1, 2, 2, 2, 1]> : tensor<5xi64>} : (tensor<4x16x16x16x8xf32>, tensor<f32>) -> tensor<4x7x7x7x8xf32>
   func.return %1 : tensor<4x7x7x7x8xf32>
+}
+
+// CHECK-LABEL:   func @convert_maxpool_valid_3d_channel_first(
+// CHECK-SAME:                                %[[VAL_0:.*]]: tensor<4x3x16x16x16xf32>) -> tensor<4x3x7x7x7xf32> {
+// CHECK:           %[[VAL_1:.*]]  = "tf.MaxPool3D"(%[[VAL_0]]) {data_format = "NCDHW", ksize = [1, 1, 3, 3, 3], padding = "VALID", strides = [1, 1, 2, 2, 2]} : (tensor<4x3x16x16x16xf32>) -> tensor<4x3x7x7x7xf32>
+// CHECK:           return %[[VAL_1]] : tensor<4x3x7x7x7xf32>
+// CHECK:         }
+func.func @convert_maxpool_valid_3d_channel_first(%arg0: tensor<4x3x16x16x16xf32>) -> tensor<4x3x7x7x7xf32> {
+  // "0xFF800000" represents -INF for f32.
+  %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
+  %1 = "mhlo.reduce_window"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %2 = mhlo.maximum %arg1, %arg2 : tensor<f32>
+    mhlo.return %2 : tensor<f32>
+  }) {
+    base_dilations = dense<1> : tensor<5xi64>,
+    padding = dense<0> : tensor<5x2xi64>,
+    window_dilations = dense<1> : tensor<5xi64>,
+    window_dimensions = dense<[1, 1, 3, 3, 3]> : tensor<5xi64>,
+    window_strides = dense<[1, 1, 2, 2, 2]> : tensor<5xi64>} : (tensor<4x3x16x16x16xf32>, tensor<f32>) -> tensor<4x3x7x7x7xf32>
+  func.return %1 : tensor<4x3x7x7x7xf32>
 }
 
 // CHECK-LABEL:   func @convert_maxpool_same(

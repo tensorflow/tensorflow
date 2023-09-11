@@ -40,7 +40,7 @@ package_group(
 #     ) + if_gpu2([
 #         "//third_party/iree/compiler/bindings/c:headers",
 #         "//third_party/iree/compiler/bindings/c:loader",
-#         "//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect",
+#         "//third_party/iree/llvm-external-projects/iree-dialects/google_internal:IREEInputDialect",
 #     ]),
 # )
 #
@@ -104,35 +104,6 @@ package_group(
 # )
 #
 # cc_library(
-#     name = "graph",
-#     srcs = if_gpu2(["graph.cc"]),
-#     hdrs = if_gpu2(["graph.h"]),
-#     compatible_with = [],
-#     deps = [
-#         ":hal",
-#         ":kernel",
-#         ":vm",
-#         "@com_google_absl//absl/container:inlined_vector",
-#         "@com_google_absl//absl/log",
-#         "@com_google_absl//absl/synchronization",
-#         "@com_google_absl//absl/types:span",
-#         "//tensorflow/compiler/xla:status",
-#         "//tensorflow/compiler/xla:statusor",
-#         "//tensorflow/compiler/xla:xla_data_proto_cc",
-#         "//tensorflow/compiler/xla/service:executable",
-#         "//tensorflow/compiler/xla/service/gpu:launch_dimensions",
-#         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
-#         "//tensorflow/compiler/xla/stream_executor:kernel",
-#         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_executor_header",
-#         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_graph",
-#         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
-#     ] + if_gpu2([
-#         "//third_party/iree/runtime/src/iree/hal",
-#         "//third_party/iree/runtime/src/iree/vm",
-#     ]),
-# )
-#
-# cc_library(
 #     name = "kernel",
 #     srcs = if_gpu2(["kernel.cc"]),
 #     hdrs = if_gpu2(["kernel.h"]),
@@ -188,7 +159,6 @@ package_group(
 #     compatible_with = [],
 #     deps = [
 #         ":gemm",
-#         ":graph",
 #         ":hal",
 #         ":kernel",
 #         ":memcpy",

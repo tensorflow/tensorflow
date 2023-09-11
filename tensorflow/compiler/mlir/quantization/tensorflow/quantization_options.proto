@@ -138,21 +138,44 @@ message FreezeAllVariables {
 }
 
 // Defines various calibration options.
-// NEXT ID: 2
+// NEXT ID: 3
 message CalibrationOptions {
   // Configurations for calibration methods.
-  // NEXT ID: 3
+  // NEXT ID: 4
   enum CalibrationMethod {
     CALIBRATION_METHOD_UNSPECIFIED = 0;
     // Use the min, max values of all sample datasets.
     CALIBRATION_METHOD_MIN_MAX = 1;
     // Use the average of min, max values in each sample dataset.
     CALIBRATION_METHOD_AVERAGE_MIN_MAX = 2;
+    // Use the min/max percentile value of histogram.
+    CALIBRATION_METHOD_HISTOGRAM_PERCENTILE = 3;
+  }
+
+  // Parameters required for calibration.
+  // NEXT ID: 4
+  message CalibrationParameters {
+    // The number of bins when histogram is initialized. It can be increased
+    // because histogram is dynamically expanded by sample inputs.
+    // initial_num_bins is 256 by default.
+    int32 initial_num_bins = 1;
+    // min_percentile is only used in HISTOGRAM_PERCENTILE.
+    // min_percentile is 0.001 by default.
+    float min_percentile = 2;
+    // max_percentile is only used in HISTOGRAM_PERCENTILE.
+    // max_percentile is 99.999 by default.
+    float max_percentile = 3;
   }
 
   // Determines how to calibrate.
   // The default calibration method is MIN_MAX.
   CalibrationMethod calibration_method = 1;
+
+  // Defines the parameters required for calibration. Parameters such as the
+  // number of bins in the histogram and percentile belong to it.
+  // MIN_MAX and AVERAGE_MIN_MAX don't require this parameter and methods
+  // starting with HISTOGRAM require this parameter.
+  CalibrationParameters calibration_parameters = 2;
 }
 
 // The data format of each sample in the representative dataset.
@@ -170,6 +193,37 @@ message RepresentativeDatasetFile {
   }
 }
 
+// Configuration for quantization debugger.
+// NEXT ID: 4
+message DebuggerOptions {
+  // Type of quantization debugger. Depending on the type, inputs and outputs
+  // are wired differently.
+  // NEXT ID: 3
+  enum DebuggerType {
+    DEBUGGER_TYPE_UNSPECIFIED = 0;
+    // DEBUGGER_TYPE_WHOLE_MODEL creates two tf.Savedmodel - unquantized and
+    // quantized model with DumpTensor added to outputs of quantizable layers.
+    // The DumpTensor dumps entire value of its input to a specified file. When
+    // DEBUGGER_TYPE_WHOLE_MODEL is used unquantized_dump_model_path has to be
+    // specified.
+    DEBUGGER_TYPE_WHOLE_MODEL = 1;
+    // DEBUGGER_TYPE_PER_LAYER creates a model with both quantized and original
+    // unquantized layer. Unquantized layer's input comes from previous
+    // quantized layer. DumpTensor is used save to entire value of outputs from
+    // both quantized and unquantized layer.
+    DEBUGGER_TYPE_PER_LAYER = 2;
+  }
+
+  DebuggerType debugger_type = 1;
+
+  // Path to save unquantized model with dump tensor ops attached.
+  // Used when debugger_type is WHOLE_MODEL.
+  string unquantized_dump_model_path = 2;
+
+  // Path to save debugger related logs. Defaults to '/tmp/dumps'.
+  string log_dir_path = 3;
+}
+
 // Defines various options to specify and control the behavior of the quantizer.
 // It consists of
 // 1) Model-wise quantization configuration as a default configuration. If it is
@@ -177,7 +231,7 @@ message RepresentativeDatasetFile {
 // 2) A set of supported operations.
 // 3) Unit wise quantization precision.
 // 4) Target hardware name.
-// NEXT ID: 16
+// NEXT ID: 17
 message QuantizationOptions {
   // The default quantization configuration for the model. If the below
   // unit-wise configuration does not exist, we use this quantization
@@ -256,4 +310,7 @@ message QuantizationOptions {
   // activation of static range quantization (SRQ). Quantization calibration
   // method is set to MIN_MAX by default.
   CalibrationOptions calibration_options = 15;
+
+  // Configuration related to quantization debugger.
+  DebuggerOptions debugger_options = 16;
 }

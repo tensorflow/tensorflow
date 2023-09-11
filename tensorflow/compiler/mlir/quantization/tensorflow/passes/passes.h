@@ -74,7 +74,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass(
 
 // Inserts custom aggregation operators for the calibration procedure.
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateInsertCustomAggregationOpsPass();
+CreateInsertCustomAggregationOpsPass(
+    const tensorflow::quantization::CalibrationOptions& calib_opts);
 
 // Replaces composite functions with quantized composite functions. After this
 // pass runs, functions in the given graph will be replaced with their quantized
@@ -231,6 +232,11 @@ CreateMergeDuplicateResourceOpsPass();
 // Apply quantization to weights based on the provided schemes.
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeWeightsPass(
     const tensorflow::quantization::QuantizationOptions& quant_options);
+
+// Create a pass that inserts dump tensor to quantizable layer's output.
+std::unique_ptr<OperationPass<ModuleOp>> CreateAddDumpTensorOpPass(
+    tensorflow::quantization::DebuggerOptions::DebuggerType debugger_type,
+    std::string log_dir_path);
 
 }  // namespace quant
 }  // namespace mlir

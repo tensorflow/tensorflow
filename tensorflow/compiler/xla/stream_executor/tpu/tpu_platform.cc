@@ -133,11 +133,6 @@ TpuPlatform::GetUncachedExecutor(
 
 const std::string& TpuPlatform::Name() const { return name_; }
 
-int64_t TpuPlatform::TpuMemoryLimit() {
-  return stream_executor::tpu::ExecutorApiFn()->TpuPlatform_TpuMemoryLimitFn(
-      platform_);
-}
-
 bool TpuPlatform::ShouldRegisterTpuDeviceToDeviceCopy() {
   return stream_executor::tpu::ExecutorApiFn()
       ->TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopyFn(platform_);

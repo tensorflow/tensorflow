@@ -135,7 +135,9 @@ EagerContext::EagerContext(
       num_active_steps_(0),
       step_container_(std::make_unique<ScopedStepContainer>(
           0, [this](const string& name) { ClearResourceContainer(name); })),
-      default_executor_(async, /*enable_streaming_enqueue=*/true),
+      default_executor_(async,
+                        /*enable_streaming_enqueue=*/!opts.config.experimental()
+                            .disable_eager_executor_streaming_enqueue()),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
       collective_executor_mgr_(collective_executor_mgr, /*owned=*/false),

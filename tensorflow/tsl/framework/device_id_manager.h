@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_FRAMEWORK_DEVICE_ID_MANAGER_H_
 #define TENSORFLOW_TSL_FRAMEWORK_DEVICE_ID_MANAGER_H_
 
+#include <vector>
+
 #include "tensorflow/tsl/framework/device_id.h"
 #include "tensorflow/tsl/framework/device_type.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tsl {
 
@@ -36,6 +39,10 @@ class DeviceIdManager {
   static Status TfToPlatformDeviceId(const DeviceType& type,
                                      TfDeviceId tf_device_id,
                                      PlatformDeviceId* platform_device_id);
+
+  // Gets all tf_device_ids that are on the platform with `platform_device_id`.
+  static StatusOr<std::vector<TfDeviceId>> GetTfDevicesOnPlatform(
+      const DeviceType& type, PlatformDeviceId platform_device_id);
 
   // Clears the map. Used in unit tests only.
   static void TestOnlyReset();

@@ -79,15 +79,6 @@ XlaInterpreterPlatform::GetUncachedExecutor(
   return std::move(executor);
 }
 
-void XlaInterpreterPlatform::RegisterTraceListener(
-    std::unique_ptr<TraceListener> listener) {
-  LOG(FATAL) << "not yet implemented: register executor trace listener";
-}
-
-void XlaInterpreterPlatform::UnregisterTraceListener(TraceListener* listener) {
-  LOG(FATAL) << "not yet implemented: unregister executor trace listener";
-}
-
 static void InitializeXlaInterpreterPlatform() {
   std::unique_ptr<Platform> platform(new XlaInterpreterPlatform);
   TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));

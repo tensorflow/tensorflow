@@ -148,36 +148,41 @@ HloInstruction *PadOperandToMultipleOf16(absl::Span<const int64_t> batch_dims,
   return PadOperandToTargetShape(padded_shape, x);
 }
 
-// Recursively collects unary, divide, dynamic-slice, pad or multiply operands
-// of instr until an instruction with FP8 element type is reached. Returns
-// std::nullopt when no FP8 instruction is reached.
-std::optional<std::vector<HloInstruction *>> FindF8SubgraphRecursive(
+// Recursively collects unary, divide, dynamic-slice, pad, multiply or select
+// operands of instr and the index of the operand identifying the next op in the
+// sequence until an instruction with FP8 element type is reached. Returns an
+// empty vector when no FP8 instruction is reached.
+std::vector<std::pair<HloInstruction *, int>> FindF8SubgraphRecursive(
     HloInstruction *instr, absl::flat_hash_set<int> &visited_instrs,
-    std::vector<HloInstruction *> subgraph) {
+    std::vector<std::pair<HloInstruction *, int>> subgraph) {
   // Avoid visiting the same instruction more than once.
   if (!visited_instrs.emplace(instr->unique_id()).second) {
-    return std::nullopt;
+    return {};
   }
-  subgraph.emplace_back(instr);
+  subgraph.emplace_back(std::make_pair(instr, 0));
   if (IsF8Type(instr)) {
     return subgraph;
-  } else {
-    if (instr->operand_count() == 1 || instr->opcode() == HloOpcode::kDivide ||
-        instr->opcode() == HloOpcode::kDynamicSlice ||
-        instr->opcode() == HloOpcode::kPad) {
-      return FindF8SubgraphRecursive(instr->mutable_operand(0), visited_instrs,
-                                     subgraph);
-    } else if (instr->opcode() == HloOpcode::kMultiply) {
-      for (int k = 0; k < 2; ++k) {
-        auto mult_subgraph = FindF8SubgraphRecursive(instr->mutable_operand(k),
-                                                     visited_instrs, subgraph);
-        if (mult_subgraph.has_value()) {
-          return mult_subgraph;
-        }
+  }
+  if (instr->operand_count() == 1 || instr->opcode() == HloOpcode::kDivide ||
+      instr->opcode() == HloOpcode::kDynamicSlice ||
+      instr->opcode() == HloOpcode::kPad) {
+    return FindF8SubgraphRecursive(instr->mutable_operand(0), visited_instrs,
+                                   subgraph);
+  } else if (instr->opcode() == HloOpcode::kMultiply ||
+             instr->opcode() == HloOpcode::kSelect) {
+    for (int k = 0; k < 2; ++k) {
+      // Iterate over operands 0 and 1 for multiply and operands 1 and 2 for
+      // select.
+      int operand_idx = k + (instr->opcode() == HloOpcode::kSelect);
+      subgraph.back().second = operand_idx;
+      auto binary_subgraph = FindF8SubgraphRecursive(
+          instr->mutable_operand(operand_idx), visited_instrs, subgraph);
+      if (!binary_subgraph.empty()) {
+        return binary_subgraph;
       }
     }
-    return std::nullopt;
   }
+  return {};
 }
 
 // Returns whether instr and its operands describe a pattern which is compatible
@@ -185,36 +190,38 @@ std::optional<std::vector<HloInstruction *>> FindF8SubgraphRecursive(
 // applicable, captures the operand of the Custom Call, its scaling factor,
 // whether the scaling factor is applied by multiplication and intermediate
 // unary ops.
-bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
-                          HloInstruction *&x_scale, bool &x_mult_scale,
-                          std::vector<HloInstruction *> &x_unary_ops) {
+bool IsSupportedF8Pattern(
+    HloInstruction *instr, HloInstruction *&x, HloInstruction *&x_scale,
+    bool &x_mult_scale, std::vector<std::pair<HloInstruction *, int>> &x_ops) {
   absl::flat_hash_set<int> visited_instrs;
-  std::optional<std::vector<HloInstruction *>> subgraph =
+  std::vector<std::pair<HloInstruction *, int>> subgraph =
       FindF8SubgraphRecursive(instr, visited_instrs,
-                              std::vector<HloInstruction *>{});
+                              std::vector<std::pair<HloInstruction *, int>>{});
 
-  if (!subgraph.has_value()) {
+  if (subgraph.empty()) {
     return false;
   }
-  std::reverse(subgraph->begin(), subgraph->end());
 
   // Directly operating on an FP8 operand.
-  if (subgraph->size() == 1) {
-    x = (*subgraph)[0];
+  if (subgraph.size() == 1) {
+    x = subgraph[0].first;
     return true;
   }
+
+  std::reverse(subgraph.begin(), subgraph.end());
 
   // When not operating directly on an FP8 operand, the second and
   // third instructions in the subgraph must describe a dequantization, i.e. a
   // convert instruction followed by a multiply/divide instruction.
-  if (subgraph->size() > 2 &&
-      Match((*subgraph)[2],
+  if (subgraph.size() > 2 &&
+      Match(subgraph[2].first,
             m::MultiplyAnyOrder(m::Convert(m::Op(&x)),
                                 m::Broadcast(m::Op(&x_scale))))) {
     x_mult_scale = true;
-  } else if (subgraph->size() > 2 &&
-             Match((*subgraph)[2], m::Divide(m::Convert(m::Op(&x)),
-                                             m::Broadcast(m::Op(&x_scale))))) {
+  } else if (subgraph.size() > 2 &&
+             Match(subgraph[2].first,
+                   m::Divide(m::Convert(m::Op(&x)),
+                             m::Broadcast(m::Op(&x_scale))))) {
     x_mult_scale = false;
   } else {
     VLOG(1) << "Possible intended FP8 GEMM operating on "
@@ -229,19 +236,19 @@ bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
   auto use_spmd_partitioning = [](const HloInstruction *instr) -> bool {
     return instr->GetModule()->config().use_spmd_partitioning();
   };
-  for (int i = 3; i < subgraph->size(); ++i) {
+  for (int i = 3; i < subgraph.size(); ++i) {
     // The remaining instructions must be commutative with dequantization.
-    // Bitcast, broadcast, copy, dynamic-slice, pad, reshape, slice,
+    // Bitcast, broadcast, copy, dynamic-slice, pad, reshape, select, slice,
     // all-gather, all-to-all and collective-permute instructions are supported.
     // Specifically, the all-gather, all-to-all and collective-permute
     // operations are permitted only in SPMD cases since the optimization cannot
     // be guaranteed to be applied to all replicas in the MPMD scenario.
     if (!Match(
-            (*subgraph)[i],
+            subgraph[i].first,
             m::AnyOf<HloInstruction>(
                 m::Bitcast().WithPredicate(preserves_element_type),
                 m::Broadcast(), m::Copy(), m::DynamicSlice(), m::Pad(),
-                m::Reshape(), m::Slice(),
+                m::Reshape(), m::Select(), m::Slice(),
                 m::AllGather().WithPredicate(use_spmd_partitioning),
                 m::AllToAll().WithPredicate(use_spmd_partitioning),
                 m::CollectivePermute().WithPredicate(use_spmd_partitioning)))) {
@@ -250,9 +257,20 @@ bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
               << " not rewritten into FP8 Custom Call.";
       return false;
     }
+    // One of the operands of select must be zero for the op to be commutative
+    // with dequantization.
+    if (Match(subgraph[i].first, m::Select()) &&
+        !Match(subgraph[i].first->operand(subgraph[i].second == 2 ? 1 : 2),
+               m::Broadcast(m::ConstantScalar(0)))) {
+      VLOG(1) << "Possible intended FP8 GEMM operating on "
+              << instr->ToShortString()
+              << " not rewritten into FP8 Custom Call. Select requires a zero "
+                 "operand to be exchanged with dequantization.";
+      return false;
+    }
   }
 
-  x_unary_ops = {subgraph->begin() + 3, subgraph->end()};
+  x_ops = {subgraph.begin() + 3, subgraph.end()};
   return true;
 }
 
@@ -471,25 +489,26 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_ASSIGN_OR_RETURN(bool supported_by_cublaslt,
                         GemmIsSupportedByCublasLt(*instr, gemm_backend_config));
     HloInstruction *a, *b, *a_scale = nullptr, *b_scale = nullptr;
-    std::vector<HloInstruction *> a_unary_ops, b_unary_ops;
+    // Sequence of ops between dequantization and GEMM which are mathematically
+    // commutative with dequantization. The second element of the pair gives the
+    // index of the operand identifying the next op in the sequence.
+    std::vector<std::pair<HloInstruction *, int>> a_ops, b_ops;
     bool a_mult_scale, b_mult_scale;
     if (supported_by_cublaslt &&
         Match(instr,
               m::Dot(m::Op().WithPredicate([&](const HloInstruction *instr) {
                 return IsSupportedF8Pattern(const_cast<HloInstruction *>(instr),
-                                            a, a_scale, a_mult_scale,
-                                            a_unary_ops);
+                                            a, a_scale, a_mult_scale, a_ops);
               }),
                      m::Op().WithPredicate([&](const HloInstruction *instr) {
                        return IsSupportedF8Pattern(
                            const_cast<HloInstruction *>(instr), b, b_scale,
-                           b_mult_scale, b_unary_ops);
+                           b_mult_scale, b_ops);
                      })))) {
       TF_ASSIGN_OR_RETURN(
           bool created_call,
           CreateF8CustomCall(instr, gemm_backend_config, a, b, a_scale, b_scale,
-                             a_mult_scale, b_mult_scale, a_unary_ops,
-                             b_unary_ops));
+                             a_mult_scale, b_mult_scale, a_ops, b_ops));
       if (created_call) {
         return OkStatus();
       }
@@ -785,14 +804,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  StatusOr<bool> CreateF8CustomCall(HloInstruction *instr,
-                                    GemmBackendConfig &gemm_backend_config,
-                                    HloInstruction *a, HloInstruction *b,
-                                    HloInstruction *a_scale,
-                                    HloInstruction *b_scale, bool a_mult_scale,
-                                    bool b_mult_scale,
-                                    std::vector<HloInstruction *> a_unary_ops,
-                                    std::vector<HloInstruction *> b_unary_ops) {
+  StatusOr<bool> CreateF8CustomCall(
+      HloInstruction *instr, GemmBackendConfig &gemm_backend_config,
+      HloInstruction *a, HloInstruction *b, HloInstruction *a_scale,
+      HloInstruction *b_scale, bool a_mult_scale, bool b_mult_scale,
+      std::vector<std::pair<HloInstruction *, int>> a_ops,
+      std::vector<std::pair<HloInstruction *, int>> b_ops) {
 #if GOOGLE_CUDA
     auto cuda_compute_capability_ =
         std::get<se::CudaComputeCapability>(gpu_version_);
@@ -893,14 +910,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                  "dimension.";
       return false;
     }
-    if ((a_unary_ops.empty() ? a : a_unary_ops.back())
-                    ->shape()
-                    .dimensions_size() -
+    if ((a_ops.empty() ? a : a_ops.back().first)->shape().dimensions_size() -
                 batch_dims.size() !=
             2 ||
-        (b_unary_ops.empty() ? b : b_unary_ops.back())
-                    ->shape()
-                    .dimensions_size() -
+        (b_ops.empty() ? b : b_ops.back().first)->shape().dimensions_size() -
                 batch_dims.size() !=
             2) {
       VLOG(1) << "Failed to rewrite " << instr->ToShortString()
@@ -909,38 +922,52 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return false;
     }
 
-    // Sequentially apply the collected unary, dynamic-slice and pad ops to the
-    // unconverted and unscaled operands.
-    auto shift_unary_ops =
+    // Sequentially apply the collected unary, dynamic-slice, pad and select ops
+    // to the unconverted and unscaled operands.
+    auto shift_ops =
         [&instr](HloInstruction *&x,
-                 std::vector<HloInstruction *> &x_unary_ops) -> void {
-      for (HloInstruction *unary_op : x_unary_ops) {
+                 std::vector<std::pair<HloInstruction *, int>> &x_ops) -> void {
+      for (std::pair<HloInstruction *, int> op : x_ops) {
         std::vector<HloInstruction *> operands = {x};
         // Insert the additional operands of dynamic-slice ops.
-        if (unary_op->opcode() == HloOpcode::kDynamicSlice) {
-          for (int i = 1; i < unary_op->operand_count(); ++i) {
-            operands.emplace_back(unary_op->mutable_operand(i));
+        if (op.first->opcode() == HloOpcode::kDynamicSlice) {
+          for (int i = 1; i < op.first->operand_count(); ++i) {
+            operands.emplace_back(op.first->mutable_operand(i));
           }
         }
         // Convert the second operand of pad ops.
-        if (unary_op->opcode() == HloOpcode::kPad) {
+        if (op.first->opcode() == HloOpcode::kPad) {
           HloInstruction *convert =
               instr->AddInstruction(HloInstruction::CreateConvert(
-                  ShapeUtil::ChangeElementType(unary_op->operand(1)->shape(),
+                  ShapeUtil::ChangeElementType(op.first->operand(1)->shape(),
                                                x->shape().element_type()),
-                  unary_op->mutable_operand(1)));
+                  op.first->mutable_operand(1)));
           operands.emplace_back(convert);
         }
-        x = instr->AddInstruction(unary_op->CloneWithNewOperands(
+        // Convert and insert the additional operands of select ops.
+        if (op.first->opcode() == HloOpcode::kSelect) {
+          // The first operand is the predicate.
+          operands.emplace(operands.begin(), op.first->mutable_operand(0));
+          // Convert the remaining operand.
+          int operand_idx = op.second == 2 ? 1 : 2;
+          HloInstruction *convert =
+              instr->AddInstruction(HloInstruction::CreateConvert(
+                  ShapeUtil::ChangeElementType(
+                      op.first->operand(operand_idx)->shape(),
+                      x->shape().element_type()),
+                  op.first->mutable_operand(operand_idx)));
+          operands.emplace(operands.begin() + operand_idx, convert);
+        }
+        x = instr->AddInstruction(op.first->CloneWithNewOperands(
             ShapeUtil::MakeShapeWithDenseLayout(
-                x->shape().element_type(), unary_op->shape().dimensions(),
-                unary_op->shape().layout().minor_to_major()),
+                x->shape().element_type(), op.first->shape().dimensions(),
+                op.first->shape().layout().minor_to_major()),
             operands));
       }
       return;
     };
-    shift_unary_ops(a, a_unary_ops);
-    shift_unary_ops(b, b_unary_ops);
+    shift_ops(a, a_ops);
+    shift_ops(b, b_ops);
 
     TF_ASSIGN_OR_RETURN(bool a_is_col_major,
                         MatrixIsColumnMajor(*instr, gemm_backend_config, "a"));
@@ -1010,6 +1037,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     TF_RETURN_IF_ERROR(
         ReplaceInstruction(instr, slice ? slice : new_custom_call));
+    VLOG(1) << instr->ToString() << " rewritten into FP8 Custom Call.";
     return true;
 #else  // TENSORFLOW_USE_ROCM
     return false;

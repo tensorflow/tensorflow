@@ -22,7 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -30,7 +31,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 class GpuReduceScatterCreatorTest : public HloTestBase {
  public:
@@ -89,7 +90,7 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/1,
                                                /*expect_change=*/true));
   ASSERT_THAT(module->entry_computation()->root_instruction(),
-              op::ReduceScatter(op::Parameter(0)));
+              GmockMatch(m::ReduceScatter(m::Parameter(0))));
   const auto *rs = Cast<HloReduceScatterInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_EQ(rs->scatter_dimension(), 0) << rs->ToString();
@@ -127,7 +128,7 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/1,
                                                /*expect_change=*/true));
   ASSERT_THAT(module->entry_computation()->root_instruction(),
-              op::ReduceScatter(op::Parameter(0)));
+              GmockMatch(m::ReduceScatter(m::Parameter(0))));
   const auto *rs = Cast<HloReduceScatterInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_EQ(rs->scatter_dimension(), 0) << rs->ToString();
@@ -166,7 +167,7 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/1,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Reshape(op::ReduceScatter(op::Parameter(0))));
+              GmockMatch(m::Reshape(m::ReduceScatter(m::Parameter(0)))));
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
@@ -199,7 +200,7 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/1,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Reshape(op::ReduceScatter(op::Parameter(0))));
+              GmockMatch(m::Reshape(m::ReduceScatter(m::Parameter(0)))));
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
@@ -233,7 +234,7 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/1,
                                                /*expect_change=*/true));
   ASSERT_THAT(module->entry_computation()->root_instruction(),
-              op::ReduceScatter(op::Parameter(0)));
+              GmockMatch(m::ReduceScatter(m::Parameter(0))));
   const auto *rs = Cast<HloReduceScatterInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_EQ(rs->scatter_dimension(), 2) << rs->ToString();
@@ -301,7 +302,7 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/2,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::ReduceScatter(op::Parameter(0)));
+              GmockMatch(m::ReduceScatter(m::Parameter(0))));
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
@@ -336,7 +337,7 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/2,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::ReduceScatter(op::Parameter(0)));
+              GmockMatch(m::ReduceScatter(m::Parameter(0))));
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
@@ -370,7 +371,7 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/8,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::ReduceScatter(op::Parameter(0)));
+              GmockMatch(m::ReduceScatter(m::Parameter(0))));
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
@@ -409,7 +410,7 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/4,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::ReduceScatter(op::Parameter(0)));
+              GmockMatch(m::ReduceScatter(m::Parameter(0))));
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
@@ -443,7 +444,7 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/4,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::ReduceScatter(op::Parameter(0)));
+              GmockMatch(m::ReduceScatter(m::Parameter(0))));
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
@@ -508,7 +509,7 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/8,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::ReduceScatter(op::Slice(op::Parameter(0))));
+              GmockMatch(m::ReduceScatter(m::Slice(m::Parameter(0)))));
 }
 
 }  // namespace

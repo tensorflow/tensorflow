@@ -118,8 +118,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status BlockHostUntilDone(Stream* stream) override;
 
-  int PlatformDeviceCount() override { return 1; }
-
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
   tsl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()

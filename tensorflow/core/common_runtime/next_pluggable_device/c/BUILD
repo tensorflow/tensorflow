@@ -1,9 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object", "tf_cc_test")
-load(
-    "//tensorflow/core/tpu:build_defs.bzl",
-    "if_libtpu_tf_tensor",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -93,17 +89,20 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_rendezvous_c_api_conversions",
-    srcs = ["tf_rendezvous_c_api_conversions.cc"],
-    hdrs = ["tf_rendezvous_c_api_conversions.h"],
+    name = "tf_rendezvous_c_api_helper",
+    srcs = ["tf_rendezvous_c_api_helper.cc"],
+    hdrs = ["tf_rendezvous_c_api_helper.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":outside_compilation_params",
-        ":tf_device_context_c_api_conversions",
+        ":tf_device_context_c_api",
+        ":tf_device_context_c_api_helper",
         ":tf_rendezvous_c_api",
         ":tf_rendezvous_c_api_defn",
+        ":tf_tensor_utils",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor_hdrs",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -112,21 +111,49 @@ cc_library(
         "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-    ] + if_libtpu_tf_tensor(),
+    ],
+)
+
+cc_library(
+    name = "tf_rendezvous_c_api_internal",
+    srcs = ["tf_rendezvous_c_api_internal.cc"],
+    hdrs = ["tf_rendezvous_c_api_internal.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":tf_device_context_c_api",
+        ":tf_device_context_c_api_internal",
+        ":tf_rendezvous_c_api",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor_hdrs",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/framework:allocator",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_cc_test(
-    name = "tf_rendezvous_c_api_conversions_test",
-    srcs = ["tf_rendezvous_c_api_conversions_test.cc"],
+    name = "tf_rendezvous_c_api_test",
+    srcs = ["tf_rendezvous_c_api_test.cc"],
     tags = [
         "no_mac",
         "no_windows",
     ],
     deps = [
         ":tf_rendezvous_c_api",
-        ":tf_rendezvous_c_api_conversions",
+        ":tf_rendezvous_c_api_helper",
+        ":tf_rendezvous_c_api_internal",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_tensor",
@@ -157,16 +184,51 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_device_context_c_api_conversions",
-    srcs = ["tf_device_context_c_api_conversions.cc"],
-    hdrs = ["tf_device_context_c_api_conversions.h"],
+    name = "tf_device_context_c_api_helper",
+    srcs = ["tf_device_context_c_api_helper.cc"],
+    hdrs = ["tf_device_context_c_api_helper.h"],
+    deps = [
+        ":tf_device_context_c_api",
+        ":tf_tensor_utils",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "tf_device_context_c_api_internal",
+    srcs = ["tf_device_context_c_api_internal.cc"],
+    hdrs = ["tf_device_context_c_api_internal.h"],
     deps = [
         ":tf_device_context_c_api",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-    ] + if_libtpu_tf_tensor(),
+    ],
+)
+
+cc_library(
+    name = "tf_tensor_utils",
+    srcs = ["tf_tensor_utils.cc"],
+    hdrs = ["tf_tensor_utils.h"],
+    deps = [
+        ":tf_device_context_c_api",
+        "//tensorflow/c:tf_datatype_hdrs",
+        "//tensorflow/c:tf_tensor_hdrs",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/tsl/framework:allocator",
+    ],
 )

@@ -23,6 +23,7 @@ gen_op_libraries(
     src = "ops_defs.py",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/ops:nn_ops_gen",

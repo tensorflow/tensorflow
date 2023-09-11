@@ -23,29 +23,32 @@ namespace mlir {
 namespace deallocation {
 
 SmallVector<RegionEdge> getSuccessorRegions(RegionBranchOpInterface op,
-                                            std::optional<unsigned> index) {
+                                            RegionBranchPoint point) {
   SmallVector<RegionEdge> edges;
-  if (index && op->getRegion(*index).empty()) {
-    return edges;
+  if (Region* region = point.getRegionOrNull()) {
+    if (region->empty()) {
+      return edges;
+    }
   }
 
   SmallVector<RegionSuccessor> successors;
-  op.getSuccessorRegions(index, successors);
+  op.getSuccessorRegions(point, successors);
 
   for (const auto& successor : successors) {
     auto& edge = edges.emplace_back();
-    edge.predecessorRegionIndex = index;
-    edge.predecessorOp = index ? op->getRegion(*index).front().getTerminator()
-                               : op.getOperation();
+    edge.predecessorRegionPoint = point;
+    auto* region = point.getRegionOrNull();
+    edge.predecessorOp =
+        region ? region->front().getTerminator() : op.getOperation();
     edge.predecessorOperandIndex = edge.predecessorOp->getNumOperands() -
                                    successor.getSuccessorInputs().size();
 
     if (successor.isParent()) {
-      edge.successorRegionIndex = std::nullopt;
+      edge.successorRegionPoint = point.parent();
       edge.successorOpOrRegion = op.getOperation();
       edge.successorValueIndex = 0;
     } else {
-      edge.successorRegionIndex = successor.getSuccessor()->getRegionNumber();
+      edge.successorRegionPoint = successor.getSuccessor();
       edge.successorOpOrRegion = successor.getSuccessor();
       edge.successorValueIndex = llvm::isa<scf::ForOp>(op) ? 1 : 0;
     }
@@ -55,18 +58,19 @@ SmallVector<RegionEdge> getSuccessorRegions(RegionBranchOpInterface op,
 }
 
 SmallVector<RegionEdge> getPredecessorRegions(RegionBranchOpInterface op,
-                                              std::optional<unsigned> index) {
+                                              RegionBranchPoint point) {
   SmallVector<RegionEdge> result;
-  auto checkPredecessor = [&](std::optional<unsigned> possiblePredecessor) {
-    for (const auto& successor : getSuccessorRegions(op, possiblePredecessor)) {
-      if (successor.successorRegionIndex == index) {
+  auto checkPredecessor = [&](RegionBranchPoint possiblePredecessorPoint) {
+    for (const auto& successor :
+         getSuccessorRegions(op, possiblePredecessorPoint)) {
+      if (successor.successorRegionPoint == point) {
         result.push_back(successor);
       }
     }
   };
-  checkPredecessor(std::nullopt);
-  for (unsigned i = 0; i < op->getNumRegions(); ++i) {
-    checkPredecessor(i);
+  checkPredecessor(point.parent());
+  for (Region& region : op->getRegions()) {
+    checkPredecessor(region);
   }
   return result;
 }

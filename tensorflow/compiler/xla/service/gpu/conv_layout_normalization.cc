@@ -110,7 +110,7 @@ StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
            "Call is expected to be an "
            "allocator of rank one";
     std::vector<Shape> new_tuple_shape;
-    for (Shape tuple_shape : hlo->shape().tuple_shapes()) {
+    for (const Shape& tuple_shape : hlo->shape().tuple_shapes()) {
       new_tuple_shape.emplace_back(
           ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
               tuple_shape));

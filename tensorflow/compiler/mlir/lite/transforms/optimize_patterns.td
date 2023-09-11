@@ -33,9 +33,6 @@ def FloatElementsAttr : ElementsAttrBase<
   CPred<"$_self.isa<ElementsAttr>() && $_self.cast<ElementsAttr>().getShapedType().getElementType().isa<FloatType>()">,
         "float constant tensor">;
 
-// Checks if the param passed is of NoneType.
-def IsNoneType : Constraint<CPred<"$0.getType().isa<NoneType>()">>;
-
 def ExtractSingleElementAsFloat : NativeCodeCall<
     "ExtractSingleElementAsFloat($_self.cast<ElementsAttr>())">;
 
@@ -745,26 +742,26 @@ def ConvertTrasposeReshapeTransposeToReshape : Pat<
 // TODO(b/294385379): This pattern only appears when we convert
 // from shlo due to differences in broadcasting behavior
 def UndoBroadcastFullyConnectedBiasAdd : Pat<
-  (TFL_AddOp $rhs, (Arith_ConstantOp:$const_op $bias), TFL_AF_None),
-  (TFL_AddOp $rhs, (Arith_ConstantOp (FlattenTo1D $bias)), TFL_AF_None),
-  [(AnyStaticShapeTensor $rhs),
+  (TFL_AddOp $lhs, (Arith_ConstantOp:$const_op $bias), TFL_AF_None),
+  (TFL_AddOp $lhs, (Arith_ConstantOp (FlattenTo1D $bias)), TFL_AF_None),
+  [(AnyStaticShapeTensor $lhs),
    (IsLastDimEqualToNumElements $bias, $bias),
    (HasOneUse $const_op),
    (HasRankAtMost<4> $bias),
    (HasRankAtLeast<2> $bias),
-   (IsDefinedByFullyConnectedOp $rhs)]>;
+   (IsDefinedByFullyConnectedOp $lhs)]>;
 
 // TODO(b/294385379): This pattern only appears when we convert
 // from shlo due to differences in broadcasting behavior.
 def UndoBroadcastConvBiasAdd : Pat<
-  (TFL_AddOp $rhs, (Arith_ConstantOp:$const_op $bias), TFL_AF_None),
-  (TFL_AddOp $rhs, (Arith_ConstantOp (FlattenTo1D $bias)), TFL_AF_None),
-  [(AnyStaticShapeTensor $rhs),
+  (TFL_AddOp $lhs, (Arith_ConstantOp:$const_op $bias), TFL_AF_None),
+  (TFL_AddOp $lhs, (Arith_ConstantOp (FlattenTo1D $bias)), TFL_AF_None),
+  [(AnyStaticShapeTensor $lhs),
    (IsLastDimEqualToNumElements $bias, $bias),
    (HasOneUse $const_op),
    (HasRankAtMost<4> $bias),
    (HasRankAtLeast<2> $bias),
-   (IsDefinedByConv2DOp $rhs)]>;
+   (IsDefinedByConv2DOp $lhs)]>;
 
 // Function to map final permutation to initial permutation
 // initial -> permutation1 -> permutation2 -> final
@@ -1512,9 +1509,6 @@ def FuseReshapesAroundBatchMatMulLHS1: Pat<
    (BroadcastDimsProductEqual<1> $final_shape_change, $bmm_tmp_output),
    (AreTensorSubSectionShapesEqual<1, 1> $input, $final_shape_change)]>;
 
-def AreLastTwoDimsTransposed : Constraint<CPred<
-  "TFL::AreLastTwoDimsTransposed($0)">>;
-
 // Fuse redundant TFL_TransposeOp into TFL_BatchMatMulOp
 def FuseTransposeIntoBatchMatMulRHS: Pat<
   (TFL_BatchMatMulOp $lhs,
@@ -1532,48 +1526,6 @@ def FuseTransposeIntoBatchMatMulLHS: Pat<
   (TFL_BatchMatMulOp $input, $rhs, ConstBoolAttrTrue, $adj_y, $asymmetric_quantize_inputs),
   [(AreLastTwoDimsTransposed $perm_value),
    (IsBoolAttrEqual<"false"> $adj_x)]>;
-
-def NotFromDequant : Constraint<CPred<"NotFromDequant($0)">>;
-
-// Fuses TFL_FullyConnectedOp and TFL_TransposeOp Rhs to TFL_BatchMatMulOp
-def FuseTransposeFCRhsToBatchMatmul : Pat<
-  (TFL_FullyConnectedOp
-    2DTensorOf<[F32]>:$lhs,
-    (TFL_TransposeOp TensorOf<[F32]>:$rhs, (Arith_ConstantOp:$perm_value $p0)),
-    $bias, $TFL_AF_None, $TFL_FCWO_Default,
-    $keep_num_dims, $asymmetric_quantize_inputs
-    ),
-  (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrFalse,
-                     $asymmetric_quantize_inputs),
-  [(AreLastTwoDimsTransposed $perm_value), (IsNoneType $bias),
-   (NotFromDequant $rhs)]>;
-
-def TransposeFCLastTwoDims:
-  NativeCodeCall<"TransposeLastTwoDims($0[0].getType())">;
-
-// Fuses TFL_FullyConnectedOp and TFL_TransposeOp Rhs to TFL_BatchMatMulOp when
-// it's used by TFL_BatchMatMulOp and "transpose_lhs" is true.
-def FuseTransposeFCLhsToBatchMatmul : Pat<
-  (TFL_BatchMatMulOp
-    (TFL_FullyConnectedOp:$fc_output
-      (TFL_TransposeOp TensorOf<[F32]>:$fc_lhs,
-                       (Arith_ConstantOp:$perm_value $p0)),
-      TensorOf<[F32]>:$fc_rhs,
-      $bias, $TFL_AF_None, $TFL_FCWO_Default,
-      $keep_num_dims, $asymmetric_quantize_inputs_fc
-    ),
-    $bmm_rhs, ConstBoolAttrTrue, $transpose_rhs,
-    $asymmetric_quantize_inputs_bmm
-  ),
-  (TFL_BatchMatMulOp
-    (TFL_BatchMatMulOp $fc_rhs, $fc_lhs, ConstBoolAttrFalse, ConstBoolAttrFalse,
-                       $asymmetric_quantize_inputs_fc,
-                       (returnType (TransposeFCLastTwoDims $fc_output))
-    ),
-    $bmm_rhs, ConstBoolAttrFalse, $transpose_rhs,
-    $asymmetric_quantize_inputs_bmm
-  ),
-  [(AreLastTwoDimsTransposed $perm_value), (IsNoneType $bias)]>;
 
 // Fuses TFL_TransposeOp after TFL_BatchMatMulOp into the BMM.
 def FuseTransposeAfterBatchMatmul : Pat<

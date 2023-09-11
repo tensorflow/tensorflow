@@ -79,12 +79,12 @@ py_strict_library(
     deps = [
         ":nest",
         "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:none_tensor",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:type_spec",
-        "//tensorflow/python/framework:type_spec_registry",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:tensor_array_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",

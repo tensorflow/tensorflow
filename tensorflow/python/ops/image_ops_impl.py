@@ -36,9 +36,10 @@ from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import ref_variable  # pylint: disable=unused-import
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import string_ops
@@ -4355,7 +4356,8 @@ def _ssim_per_channel(img1,
   def reducer(x):
     shape = array_ops.shape(x)
     x = array_ops.reshape(x, shape=array_ops.concat([[-1], shape[-3:]], 0))
-    y = nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1], padding='VALID')
+    y = nn_impl.depthwise_conv2d(
+        x, kernel, strides=[1, 1, 1, 1], padding='VALID')
     return array_ops.reshape(
         y, array_ops.concat([shape[:-3], array_ops.shape(y)[1:]], 0))
 
@@ -4733,7 +4735,7 @@ def sobel_edges(image):
 
   # Output tensor has shape [batch_size, h, w, d * num_kernels].
   strides = [1, 1, 1, 1]
-  output = nn.depthwise_conv2d(padded, kernels_tf, strides, 'VALID')
+  output = nn_impl.depthwise_conv2d(padded, kernels_tf, strides, 'VALID')
 
   # Reshape to [batch_size, h, w, d, num_kernels].
   shape = array_ops.concat([image_shape, [num_kernels]], 0)

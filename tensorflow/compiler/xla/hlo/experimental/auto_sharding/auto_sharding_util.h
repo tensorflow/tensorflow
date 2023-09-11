@@ -535,13 +535,15 @@ bool TileAssignmentMatchesMesh(const HloSharding& spec,
 // is replicated on that dimension.
 // For example, returned value [1,2] means the 0th tensor dim maps to the 1st
 // mesh dim, and 1st tensor dim maps to the 2nd mesh dim.
-std::vector<int64_t> GetTensorDimToMeshDim(int64_t tensor_shape_rank,
-                                           const HloSharding& spec,
-                                           const Array<int64_t>& device_mesh);
+std::vector<int64_t> GetTensorDimToMeshDim(
+    int64_t tensor_shape_rank, const HloSharding& spec,
+    const Array<int64_t>& device_mesh,
+    bool consider_reverse_device_meshes = false);
 
 absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
     int64_t tensor_shape_rank, const HloSharding& spec,
-    const Array<int64_t>& device_mesh);
+    const Array<int64_t>& device_mesh,
+    bool consider_reverse_device_meshes = false);
 
 HloSharding Tile(const Shape& tensor_shape,
                  absl::Span<const int64_t> tensor_dims,

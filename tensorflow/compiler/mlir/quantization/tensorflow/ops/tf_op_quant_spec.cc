@@ -37,14 +37,21 @@ bool IsOpWithDataMovementTrait(Operation* op) {
   // Supported data movement ops. These ops do not perform any computations and
   // has one result operand.
   return isa<TF::IdentityOp, TF::CastOp, TF::ReshapeOp, TF::XlaShardingOp,
-             TF::ExpandDimsOp, TF::SqueezeOp, TF::TransposeOp>(op);
+             TF::GatherOp, TF::GatherV2Op, TF::XlaGatherOp, TF::ExpandDimsOp,
+             TF::SqueezeOp, TF::TransposeOp>(op);
 }
 
 bool IsOpWithQuantizableTrait(Operation* op) {
   // Supported quantizable ops.
   return isa<TF::XlaConvV2Op, TF::XlaDotV2Op, TF::MatMulOp, TF::Conv2DOp,
+             TF::GatherOp, TF::GatherV2Op, TF::XlaGatherOp,
              TF::DepthwiseConv2dNativeOp, TF::Conv3DOp, TF::BatchMatMulV2Op,
              TF::EinsumOp>(op);
+}
+
+bool IsOpWithInt8TypeOperand(Operation* op) {
+  return (isa<TF::XlaConvV2Op, TF::XlaDotV2Op, TF::XlaGatherOp, TF::GatherOp,
+              TF::GatherV2Op>(op));
 }
 
 bool IsValueWithQuantizablePrecision(Value val) {

@@ -341,13 +341,14 @@ PyArray PyArray::MakeFromSingleDeviceArray(
       py_client, ifrt_array->sharding().devices(), std::move(py_memory_kind)));
   return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
                  std::move(sharding), std::move(py_client),
-                 std::move(traceback), std::move(ifrt_array), committed);
+                 std::move(traceback), std::move(ifrt_array), committed,
+                 /*skip_checks=*/true);
 }
 
 PyArray PyArray::MakeFromIfrtArrayAndSharding(
     std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
     tsl::RCReference<ifrt::Array> ifrt_array, py::object sharding,
-    bool weak_type, bool committed) {
+    bool weak_type, bool committed, bool skip_checks) {
   auto shape_span = ifrt_array->shape().dims();
   ShapedArrayCacheKey key;
   key.dims = std::vector<int64_t>(shape_span.begin(), shape_span.end());
@@ -357,7 +358,8 @@ PyArray PyArray::MakeFromIfrtArrayAndSharding(
   auto dtype = IfrtDtypeToDtype(key.dtype).value();
   return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
                  std::move(sharding), std::move(py_client),
-                 std::move(traceback), std::move(ifrt_array), committed);
+                 std::move(traceback), std::move(ifrt_array), committed,
+                 skip_checks);
 }
 
 PyArrayResultHandler::PyArrayResultHandler(py::object aval, py::object sharding,
@@ -661,7 +663,7 @@ PyArray PyArray::Clone() const {
   return PyArray(aval(), weak_type(), dtype(),
                  std::vector<int64_t>(shape().begin(), shape().end()),
                  sharding(), py_client(), traceback(), std::move(out),
-                 committed(), /* skip_checks= */ true);
+                 committed(), /*skip_checks=*/true);
 }
 
 py::handle PyArray::Storage::AsHandle() {
@@ -744,7 +746,7 @@ StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
   return PyArray(aval(), weak_type(), dtype(),
                  std::vector<int64_t>(shape_span.begin(), shape_span.end()),
                  dst_sharding, py_client(), std::move(traceback),
-                 std::move(out_array), committed(), true);
+                 std::move(out_array), committed(), /*skip_checks=*/true);
 }
 
 StatusOr<PyArray> PyArray::BatchedDevicePut(
@@ -827,7 +829,7 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
 
   return PyArray(aval, weak_type, dtype, std::move(shape), sharding,
                  dst_devices[0].client(), Traceback::Get(), ifrt_array,
-                 committed);
+                 committed, /*skip_checks=*/true);
 }
 
 std::vector<py::object> PyClient::LiveArrays() {

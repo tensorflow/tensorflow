@@ -30,6 +30,7 @@ from tensorflow.compiler.mlir.quantization.tensorflow.python.integration_test im
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
@@ -2126,7 +2127,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           {
               'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
               'has_bias': [True, False],
-              'batch_sizes': [([], []), ([2, 3], [2, 3])],
+              'batch_sizes': [([], []), ([10], [10]), ([2, 3], [2, 3])],
               'target_opset': [quant_opts_pb2.XLA],
           },
           # Test broadcastable batch sizes.
@@ -2140,6 +2141,12 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                   ([None], []),
               ],
               'target_opset': [quant_opts_pb2.XLA],
+          },
+          {
+              'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
+              'has_bias': [True, False],
+              'batch_sizes': [([], []), ([10], [10]), ([2, 3], [2, 3])],
+              'target_opset': [quant_opts_pb2.UNIFORM_QUANTIZED],
           },
       ])
   )
@@ -2174,43 +2181,12 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     tags = {tag_constants.SERVING}
 
-    quantization_options = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.STATIC_RANGE
-        ),
-        tags=tags,
-        signature_keys=['serving_default'],
-        op_set=quant_opts_pb2.TF,
-    )
-
-    converted_model = quantize_model.quantize(
-        self._input_saved_model_path,
-        self._output_saved_model_path,
-        quantization_options,
-        representative_dataset=data_gen(),
-    )
-    self.assertIsNotNone(converted_model)
-    self.assertCountEqual(
-        converted_model.signatures._signatures.keys(), {'serving_default'}
-    )
-
-    output_loader = saved_model_loader.SavedModelLoader(
-        self._output_saved_model_path
-    )
-    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
-    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
-
     input_data = ops.convert_to_tensor(
         rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
             np.float32
         )
     )
     expected_outputs = model.matmul(input_data)
-    got_outputs = converted_model.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
-    )
-    # The atol value is arbitrary.
-    self.assertAllClose(expected_outputs, got_outputs, atol=0.22)
 
     # Check the converted model in the target opset.
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -2224,7 +2200,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     converted_model = quantize_model.quantize(
         self._input_saved_model_path,
-        self._output_saved_model_path_2,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=data_gen(),
     )
@@ -2233,20 +2209,25 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(
         converted_model.signatures._signatures.keys(), {'serving_default'}
     )
-    loader = saved_model_loader.SavedModelLoader(
-        self._output_saved_model_path_2
-    )
+    loader = saved_model_loader.SavedModelLoader(self._output_saved_model_path)
     output_graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
     if target_opset == quant_opts_pb2.XLA:
       self.assertTrue(self._contains_op(output_graphdef, 'XlaDotV2'))
+    elif target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      self.assertTrue(self._contains_op(output_graphdef, 'UniformQuantizedDot'))
 
     new_outputs = converted_model.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data)
     )
     # The difference between TF and target path is expected to be small.
     # The atol value is arbitrary.
-    self.assertAllClose(new_outputs, got_outputs, atol=0.13)
-    self.assertAllClose(new_outputs, expected_outputs, atol=0.13)
+    # Currently, Uniform Quantized Opset are producing non-optimal graphs:
+    # unnecessary requantization followed by dequantization, so the error will
+    # be higher.
+    if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      self.assertAllClose(new_outputs, expected_outputs, atol=0.25)
+    else:
+      self.assertAllClose(new_outputs, expected_outputs, atol=0.13)
 
   @parameterized.named_parameters(
       {
@@ -3069,9 +3050,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         logging.set_verbosity(prev_log_level)
 
       self.assertNotEmpty(warning_logs.records)
-
-      # Warning message should contain the function name.
-      self.assertTrue(self._any_log_contains('matmul', warning_logs.records))
       self.assertTrue(
           self._any_log_contains(
               'does not have min or max values', warning_logs.records
@@ -5569,6 +5547,246 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
 
 
+class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
+
+  def _run_model_in_sess(self, model_dir, tags, signature_key, sample_input):
+    with tensorflow.compat.v1.Session(graph=tensorflow.Graph()) as sess:
+      meta_graph = saved_model_loader.load(sess, tags, export_dir=model_dir)
+      signature_def = meta_graph.signature_def[signature_key]
+
+      # DumpTensorOp only works in graph mode.
+      # Execute the model using session to run DumpTensorOp.
+      output_tensor_names = [
+          output_tensor_info.name
+          for output_tensor_info in signature_def.outputs.values()
+      ]
+
+      feed_dict = {}
+      for input_key, input_value in sample_input.items():
+        input_tensor_name = signature_def.inputs[input_key].name
+        feed_dict[input_tensor_name] = input_value
+
+      # Obtain the output of the model.
+      return sess.run(output_tensor_names, feed_dict=feed_dict)[0]
+
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'none',
+          'activation_fn': None,
+          'has_bias': False,
+      },
+      {
+          'testcase_name': 'relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': False,
+      },
+      {
+          'testcase_name': 'with_bias',
+          'activation_fn': None,
+          'has_bias': True,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': True,
+      },
+  )
+  def test_conv2d_ptq_model_whole_model_verify(self, activation_fn, has_bias):
+    input_shape = [None, None, None, 3]
+    filter_shape = [2, 3, 3, 2]
+
+    model = self._create_conv2d_model(
+        input_shape,
+        filter_shape,
+        activation_fn=activation_fn,
+        has_bias=has_bias,
+    )
+    saved_model_save.save(model, self._input_saved_model_path)
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(8):
+        yield {
+            'input_tensor': ops.convert_to_tensor(
+                np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype(
+                    'f4'
+                )
+            ),
+        }
+
+    tags = {tag_constants.SERVING}
+
+    unquantized_dump_model_path = self.create_tempdir().full_path
+    log_dir_path = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        ),
+        op_set=quant_opts_pb2.XLA,
+        debugger_options=quant_opts_pb2.DebuggerOptions(
+            debugger_type=quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL,
+            unquantized_dump_model_path=unquantized_dump_model_path,
+            log_dir_path=log_dir_path,
+        ),
+        tags=tags,
+        signature_keys=['serving_default'],
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        quantization_options,
+        representative_dataset=data_gen(),
+    )
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {'serving_default'}
+    )
+
+    sample_input = {
+        'input_tensor': np.random.uniform(low=0, high=1, size=(16, 3, 4, 3))
+    }
+
+    # Check if output of the model and value saved by DumpTensorOp matches.
+    # Verify for both unquantized model and quantized model.
+    for model_path, file_name in [
+        [unquantized_dump_model_path, 'unquantized_tensor_data.pb'],
+        [self._output_saved_model_path, 'quantized_tensor_data.pb'],
+    ]:
+      output_value = self._run_model_in_sess(
+          model_path, tags, 'serving_default', sample_input
+      )
+
+      # Find the dump file and parse it.
+      folder = os.path.join(log_dir_path, os.listdir(log_dir_path)[0])
+      dump_file_path = os.path.join(log_dir_path, folder, file_name)
+
+      dump_file_proto = tensor_pb2.TensorProto.FromString(
+          open(dump_file_path, 'rb').read()
+      )
+
+      dump_file_numpy = tensorflow.make_ndarray(dump_file_proto)
+
+      # Since the model only has one conv2d and its output is directly used as
+      # the output of the model, output of the model and conv2d's dump value
+      # should be the same.
+      self.assertAllEqual(output_value, dump_file_numpy)
+
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'none',
+          'activation_fn': None,
+          'has_bias': False,
+      },
+      {
+          'testcase_name': 'relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': False,
+      },
+      {
+          'testcase_name': 'with_bias',
+          'activation_fn': None,
+          'has_bias': True,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': True,
+      },
+  )
+  def test_conv2d_ptq_model_per_layer_verify(self, activation_fn, has_bias):
+    input_shape = [None, None, None, 3]
+    filter_shape = [2, 3, 3, 2]
+
+    model = self._create_conv2d_model(
+        input_shape,
+        filter_shape,
+        activation_fn=activation_fn,
+        has_bias=has_bias,
+    )
+    saved_model_save.save(model, self._input_saved_model_path)
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(8):
+        yield {
+            'input_tensor': ops.convert_to_tensor(
+                np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype(
+                    'f4'
+                )
+            ),
+        }
+
+    tags = {tag_constants.SERVING}
+
+    log_dir_path = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        ),
+        op_set=quant_opts_pb2.XLA,
+        debugger_options=quant_opts_pb2.DebuggerOptions(
+            debugger_type=quant_opts_pb2.DebuggerOptions.DEBUGGER_TYPE_PER_LAYER,
+            log_dir_path=log_dir_path,
+        ),
+        tags=tags,
+        signature_keys=['serving_default'],
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        quantization_options,
+        representative_dataset=data_gen(),
+    )
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {'serving_default'}
+    )
+
+    sample_input = {
+        'input_tensor': np.random.uniform(low=0, high=1, size=(16, 3, 4, 3))
+    }
+
+    unquantized_output_value = self._run_model_in_sess(
+        self._input_saved_model_path, tags, 'serving_default', sample_input
+    )
+    quantized_output_value = self._run_model_in_sess(
+        self._output_saved_model_path, tags, 'serving_default', sample_input
+    )
+
+    # Find the both quantized and unquantized dump file.
+    folder = os.path.join(log_dir_path, os.listdir(log_dir_path)[0])
+    unquantized_dump_file_path = os.path.join(
+        log_dir_path, folder, 'unquantized_tensor_data.pb'
+    )
+    quantized_dump_file_path = os.path.join(
+        log_dir_path, folder, 'quantized_tensor_data.pb'
+    )
+
+    unquantized_dump_file_proto = tensor_pb2.TensorProto.FromString(
+        open(unquantized_dump_file_path, 'rb').read()
+    )
+    quantized_dump_file_proto = tensor_pb2.TensorProto.FromString(
+        open(quantized_dump_file_path, 'rb').read()
+    )
+
+    unquantized_dump_file_numpy = tensorflow.make_ndarray(
+        unquantized_dump_file_proto
+    )
+    quantized_dump_file_numpy = tensorflow.make_ndarray(
+        quantized_dump_file_proto
+    )
+
+    # Since the model only has one conv2d and its output is directly used as
+    # the output of the model, output of the model and conv2d's dump value
+    # should be the same.
+    self.assertAllEqual(quantized_output_value, quantized_dump_file_numpy)
+    self.assertAllEqual(unquantized_output_value, unquantized_dump_file_numpy)
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
   """Test cases regarding the use of CalibrationOptions proto.
@@ -5620,6 +5838,36 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
           ),
       },
+      {
+          'testcase_name': 'with_histogram_percentile',
+          'target_opset': quant_opts_pb2.TF,
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=10,
+              ),
+          ),
+      },
+      {
+          'testcase_name': 'with_histogram_percentile_to_xla',
+          'target_opset': quant_opts_pb2.XLA,
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=10,
+              ),
+          ),
+      },
+      {
+          'testcase_name': 'with_histogram_percentile_to_uq',
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=10,
+              ),
+          ),
+      },
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model_by_calibration_options(
@@ -5641,14 +5889,11 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
     saved_model_save.save(model, self._input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(8):
-        yield {
-            'input_tensor': ops.convert_to_tensor(
-                np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype(
-                    'f4'
-                )
-            ),
-        }
+      yield {
+          'input_tensor': ops.convert_to_tensor(
+              np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype('f4')
+          ),
+      }
 
     tags = {tag_constants.SERVING}
 
@@ -5747,109 +5992,48 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
           ),
       },
+      {
+          'testcase_name': 'with_histogram_percentile',
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE
+          ),
+          'default_calibration_options': quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  initial_num_bins=256,
+                  min_percentile=0.001,
+                  max_percentile=99.999,
+              ),
+          ),
+      },
   )
   @test_util.run_in_graph_and_eager_modes
-  def test_conv_ptq_model_default_calibration_options(
+  def test_default_calibration_options(
       self,
       calibration_options: quant_opts_pb2.CalibrationOptions,
       default_calibration_options: quant_opts_pb2.CalibrationOptions,
   ):
-    input_shape = [1, 3, 4, 3]
-    filter_shape = [2, 3, 3, 2]
-    activation_fn = nn_ops.relu
-    has_bias = True
-    has_batch_norm = True
-    target_opset = quant_opts_pb2.XLA
-    model = self._create_conv2d_model(
-        input_shape, filter_shape, has_bias, has_batch_norm, activation_fn
+    quant_opts = quant_opts_pb2.QuantizationOptions(
+        calibration_options=calibration_options
     )
-    saved_model_save.save(model, self._input_saved_model_path)
+    quantize_model._populate_calibration_options(quant_opts)
 
-    def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(8):
-        yield {
-            'input_tensor': ops.convert_to_tensor(
-                np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype(
-                    'f4'
-                )
-            ),
-        }
-
-    tags = {tag_constants.SERVING}
-
-    quantization_options = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.STATIC_RANGE
-        ),
-        tags=tags,
-        signature_keys=['serving_default'],
-        op_set=target_opset,
-        enable_per_channel_quantization=False,
-        calibration_options=calibration_options,
+    self.assertEqual(
+        quant_opts.calibration_options.calibration_method,
+        default_calibration_options.calibration_method,
     )
-
-    converted_model = quantize_model.quantize(
-        self._input_saved_model_path,
-        self._output_saved_model_path,
-        quantization_options,
-        representative_dataset=data_gen(),
-        overwrite_output_directory=True,
+    self.assertEqual(
+        quant_opts.calibration_options.calibration_parameters.initial_num_bins,
+        default_calibration_options.calibration_parameters.initial_num_bins,
     )
-
-    self.assertIsNotNone(converted_model)
-    self.assertCountEqual(
-        converted_model.signatures._signatures.keys(),
-        {'serving_default'},
+    self.assertEqual(
+        quant_opts.calibration_options.calibration_parameters.min_percentile,
+        default_calibration_options.calibration_parameters.min_percentile,
     )
-
-    quantization_options_default = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.STATIC_RANGE
-        ),
-        tags=tags,
-        signature_keys=['serving_default'],
-        op_set=target_opset,
-        enable_per_channel_quantization=False,
-        calibration_options=default_calibration_options,
+    self.assertEqual(
+        quant_opts.calibration_options.calibration_parameters.max_percentile,
+        default_calibration_options.calibration_parameters.max_percentile,
     )
-
-    converted_model_default = quantize_model.quantize(
-        self._input_saved_model_path,
-        self._output_saved_model_path,
-        quantization_options_default,
-        representative_dataset=data_gen(),
-        overwrite_output_directory=True,
-    )
-
-    self.assertIsNotNone(converted_model_default)
-    self.assertCountEqual(
-        converted_model_default.signatures._signatures.keys(),
-        {'serving_default'},
-    )
-
-    sample_input = ops.convert_to_tensor(
-        np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype('f4')
-    )
-
-    original_output = converted_model.signatures['serving_default'](
-        input_tensor=sample_input
-    )['output']
-    default_output = converted_model_default.signatures['serving_default'](
-        input_tensor=sample_input
-    )['output']
-
-    def get_mean_square_error(x, y):
-      ret = tensorflow.reduce_mean(tensorflow.square(tensorflow.subtract(x, y)))
-      try:
-        ret = ret.numpy()
-      except AttributeError:
-        ret = ret.eval()
-      return ret
-
-    original_mse = get_mean_square_error(original_output, default_output)
-    average_min_max_mse = get_mean_square_error(original_output, default_output)
-
-    self.assertEqual(original_mse, average_min_max_mse)
 
   @parameterized.named_parameters(
       {

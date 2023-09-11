@@ -22,12 +22,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -38,8 +39,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace op = xla::testing::opcode_matchers;
-using ::testing::AllOf;
+namespace m = ::xla::match;
 using ::tsl::testing::IsOkAndHolds;
 
 class LayoutAssignmentTest : public HloTestBase {
@@ -122,9 +122,9 @@ TEST_F(LayoutAssignmentTest, DotLayoutUnchangedIfValid) {
                                         backend().default_stream_executor());
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Dot(op::ShapeWithLayout("f32[5,2,3]{1,2,0}"),
-                            op::ShapeWithLayout("f32[5,3,4]{1,2,0}")),
-                    op::ShapeWithLayout("f32[5,2,4]{2,1,0}")));
+              GmockMatch(m::Dot(m::Op().WithShape(F32, {5, 2, 3}, {1, 2, 0}),
+                                m::Op().WithShape(F32, {5, 3, 4}, {1, 2, 0}))
+                             .WithShape(F32, {5, 2, 4}, {2, 1, 0})));
 }
 
 TEST_F(LayoutAssignmentTest, DotLayoutSetToDefaultIfDefaultValid) {
@@ -149,9 +149,9 @@ TEST_F(LayoutAssignmentTest, DotLayoutSetToDefaultIfDefaultValid) {
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Dot(op::ShapeWithLayout("f32[5,3,2]{2,1,0}"),
-                            op::ShapeWithLayout("f32[5,4,3]{2,1,0}")),
-                    op::ShapeWithLayout("f32[5,2,4]{2,1,0}")));
+              GmockMatch(m::Dot(m::Op().WithShape(F32, {5, 3, 2}, {2, 1, 0}),
+                                m::Op().WithShape(F32, {5, 4, 3}, {2, 1, 0}))
+                             .WithShape(F32, {5, 2, 4}, {2, 1, 0})));
 }
 
 TEST_F(LayoutAssignmentTest, DotOperandLayoutSetToBatchRowsColsOtherwise) {
@@ -176,8 +176,8 @@ TEST_F(LayoutAssignmentTest, DotOperandLayoutSetToBatchRowsColsOtherwise) {
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Dot(op::ShapeWithLayout("f32[2,3,5]{0,1,2}"),
-                      op::ShapeWithLayout("f32[3,4,5]{1,0,2}")));
+              GmockMatch(m::Dot(m::Op().WithShape(F32, {2, 3, 5}, {0, 1, 2}),
+                                m::Op().WithShape(F32, {3, 4, 5}, {1, 0, 2}))));
 }
 
 TEST_F(LayoutAssignmentTest, DotOperandInconsistentDimLayouts) {
@@ -201,9 +201,10 @@ TEST_F(LayoutAssignmentTest, DotOperandInconsistentDimLayouts) {
                                         backend().default_stream_executor());
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Dot(op::ShapeWithLayout("f32[5,6,2,3]{3,2,1,0}"),
-                      op::ShapeWithLayout("f32[6,5,3,4]{3,2,0,1}")));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Dot(m::Op().WithShape(F32, {5, 6, 2, 3}, {3, 2, 1, 0}),
+                        m::Op().WithShape(F32, {6, 5, 3, 4}, {3, 2, 0, 1}))));
 }
 
 TEST_F(LayoutAssignmentTest, TransposedDotLayout) {
@@ -228,12 +229,13 @@ TEST_F(LayoutAssignmentTest, TransposedDotLayout) {
                                         backend().default_stream_executor());
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Transpose(AllOf(
-                        op::Dot(op::ShapeWithLayout("f32[5,2,3]{2,1,0}"),
-                                op::ShapeWithLayout("f32[5,3,4,6]{3,2,1,0}")),
-                        op::ShapeWithLayout("f32[5,2,4,6]{3,2,0,1}"))),
-                    op::ShapeWithLayout("f32[2,5,4,6]{3,2,1,0}")));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Transpose(
+                     m::Dot(m::Op().WithShape(F32, {5, 2, 3}, {2, 1, 0}),
+                            m::Op().WithShape(F32, {5, 3, 4, 6}, {3, 2, 1, 0}))
+                         .WithShape(F32, {5, 2, 4, 6}, {3, 2, 0, 1}))
+                     .WithShape(F32, {2, 5, 4, 6}, {3, 2, 1, 0})));
 }
 
 TEST_F(LayoutAssignmentTest, TransposedDotOfDotLayout) {
@@ -265,17 +267,16 @@ TEST_F(LayoutAssignmentTest, TransposedDotOfDotLayout) {
   // dot.1 cannot be used as layout for dot.1
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
-      AllOf(
-          op::Transpose(AllOf(
-              op::Dot(AllOf(op::Copy(AllOf(
-                                op::Dot(op::ShapeWithLayout("f32[8,50]{1,0}"),
-                                        op::ShapeWithLayout(
-                                            "f32[2,8,4,4]{3,2,0,1}")),
-                                op::ShapeWithLayout("f32[50,2,4,4]{3,2,1,0}"))),
-                            op::ShapeWithLayout("f32[50,2,4,4]{3,1,0,2}")),
-                      op::ShapeWithLayout("f32[4,38]{1,0}")),
-              op::ShapeWithLayout("f32[50,2,4,38]{3,2,1,0}"))),
-          op::ShapeWithLayout("f32[2,50,38,4]{2,3,0,1}")));
+      GmockMatch(
+          m::Transpose(
+              m::Dot(m::Copy(m::Dot(m::Op().WithShape(F32, {8, 50}, {1, 0}),
+                                    m::Op().WithShape(F32, {2, 8, 4, 4},
+                                                      {3, 2, 0, 1}))
+                                 .WithShape(F32, {50, 2, 4, 4}, {3, 2, 1, 0}))
+                         .WithShape(F32, {50, 2, 4, 4}, {3, 1, 0, 2}),
+                     m::Op().WithShape(F32, {4, 38}, {1, 0}))
+                  .WithShape(F32, {50, 2, 4, 38}, {3, 2, 1, 0}))
+              .WithShape(F32, {2, 50, 38, 4}, {2, 3, 0, 1})));
 }
 
 TEST_F(LayoutAssignmentTest, DotLayoutS8) {
@@ -298,8 +299,8 @@ TEST_F(LayoutAssignmentTest, DotLayoutS8) {
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Dot(op::ShapeWithLayout("s8[32,64]{1,0}"),
-                      op::ShapeWithLayout("s8[64,96]{0,1}")));
+              GmockMatch(m::Dot(m::Op().WithShape(S8, {32, 64}, {1, 0}),
+                                m::Op().WithShape(S8, {64, 96}, {0, 1}))));
 }
 
 TEST_F(LayoutAssignmentTest, SortLayout) {
@@ -332,9 +333,10 @@ TEST_F(LayoutAssignmentTest, SortLayout) {
                                         backend().default_stream_executor());
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
+
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Sort(op::ShapeWithLayout("f32[3,2]{1,0}"),
-                       op::ShapeWithLayout("f32[3,2]{1,0}")));
+              GmockMatch(m::Sort(m::Op().WithShape(F32, {3, 2}, {1, 0}),
+                                 m::Op().WithShape(F32, {3, 2}, {1, 0}))));
 }
 
 TEST_F(LayoutAssignmentTest, FftLayout) {
@@ -358,9 +360,9 @@ TEST_F(LayoutAssignmentTest, FftLayout) {
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Copy(op::Transpose(
-                  AllOf(op::Fft(op::ShapeWithLayout("c64[8,32]{1,0}")),
-                        op::ShapeWithLayout("c64[8,32]{1,0}")))));
+              GmockMatch(m::Copy(
+                  m::Transpose(m::Fft(m::Op().WithShape(C64, {8, 32}, {1, 0}))
+                                   .WithShape(C64, {8, 32}, {1, 0})))));
 }
 
 TEST_F(LayoutAssignmentTest, CustomCallConstrainedAlias) {

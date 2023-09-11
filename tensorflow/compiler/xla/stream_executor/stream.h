@@ -313,16 +313,6 @@ class Stream {
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output_data);
 
-  Stream &ThenConvolveQuantized(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<float> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int16> &filter_coefficients,
-      const DeviceMemory<float> &coefficient_scales,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output_data);
-
   template <typename InputType, typename OutputType>
   tsl::Status ConvolveWithAlgorithm(
       dnn::ConvolutionKind kind, const dnn::BatchDescriptor &input_descriptor,
@@ -714,21 +704,6 @@ class Stream {
       absl::Span<const DeviceMemory<float> *const> input_data,
       DeviceMemory<float> *output_data);
 
-  Stream &ThenSpaceConcatenate(
-      absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float> *const> input_data,
-      DeviceMemory<float> *output_data,
-      dnn::SpaceConcatenateMode concat_direction);
-
-  // Change the layout of the data by shrinking one dimension (or set of
-  // dimensions) and growing another dimension (or set of dimensions), while
-  // keeping the total number of data elements constant, and maintaining the
-  // current data ordering.
-  Stream &ThenReshape(const dnn::BatchDescriptor &input_dimensions,
-                      const DeviceMemory<float> &input_data,
-                      const dnn::BatchDescriptor &output_dimensions,
-                      DeviceMemory<float> *output_data);
-
   // Depth to space takes an X by Y image with depth D*M² and changes it to an
   // MX x MY image with depth D. Each input location (x,y) with depth D*M² in
   // the input image is changed to an MxM contiguous area in the output image,
@@ -754,14 +729,6 @@ class Stream {
 
   Stream &ThenElementwiseOperate(
       dnn::ElementwiseOperation operation,
-      absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float> *const> input_data,
-      const dnn::BatchDescriptor &output_dimensions,
-      DeviceMemory<float> *output_data);
-
-  Stream &ThenElementwiseOperateScaledQuantized(
-      dnn::ElementwiseOperation operation,
-      absl::Span<const int> input_multiplicands, int output_divisor,
       absl::Span<const dnn::BatchDescriptor> input_dimensions,
       absl::Span<const DeviceMemory<float> *const> input_data,
       const dnn::BatchDescriptor &output_dimensions,

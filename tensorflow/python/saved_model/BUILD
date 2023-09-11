@@ -477,10 +477,32 @@ tf_py_strict_test(
         "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ] + if_google([
-        "//tensorflow/tools/proto_splitter:constants",
-    ]),
+    ],
 )
+
+# copybara:uncomment_begin(google-only)
+#
+# tf_py_strict_test(
+#     name = "proto_splitter_save_test",
+#     srcs = ["proto_splitter_save_test.py"],
+#     tags = [
+#         "no_mac",  # TODO(b/291933687)
+#         "no_windows",  # TODO(b/291001524)
+#     ],
+#     deps = [
+#         ":save",
+#         ":save_options",
+#         "//third_party/py/numpy",
+#         "//tensorflow/python/eager:def_function",
+#         "//tensorflow/python/eager:test",
+#         "//tensorflow/python/framework:constant_op",
+#         "//tensorflow/python/module",
+#         "//tensorflow/tools/proto_splitter:constants",
+#         "@absl_py//absl/testing:parameterized",
+#     ],
+# )
+#
+# copybara:uncomment_end
 
 py_strict_library(
     name = "load",

@@ -845,6 +845,16 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
       .IgnoreLayout()(lhs, rhs);
 }
 
+/* static */ DimensionVector ShapeUtil::CreateDimensionVectorFromShape(
+    const Shape& shape) {
+  DimensionVector dimensions;
+  dimensions.reserve(shape.dimensions_size());
+  for (int i = 0; i < shape.dimensions_size(); ++i) {
+    dimensions.push_back(shape.dimensions(i));
+  }
+  return dimensions;
+}
+
 /* static */ int64_t ShapeUtil::GetDimension(const Shape& shape,
                                              int64_t dimension_number) {
   return shape.dimensions(GetDimensionNumber(shape, dimension_number));

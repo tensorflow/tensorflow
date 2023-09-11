@@ -41,6 +41,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -295,7 +297,9 @@ HloInstruction* FindFirstNonFusibleDiamondProducer(
   return diamond_producer;
 }
 
-Status FuseSoftmax(HloInstruction* root, HloInstruction* producer) {
+Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
+  auto [root, producer] = diamond_chain;
+
   std::string suggested_name = "triton_softmax";
   HloComputation::Builder builder(absl::StrCat(suggested_name, "_computation"));
   // Original instruction -> fused one.
@@ -350,21 +354,18 @@ Status FuseSoftmax(HloInstruction* root, HloInstruction* producer) {
   return OkStatus();
 }
 
-struct DiamondDescriptor {
-  HloInstruction* root;
-  HloInstruction* producer;
-};
+using DiamondDescriptor = DiamondChainDescriptor;
 
-using DiamondChainDescriptor = DiamondDescriptor;
 }  // anonymous namespace
 
-StatusOr<bool> SoftmaxRewriterTriton::Run(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+std::vector<DiamondChainDescriptor>
+SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
+    HloModule& module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) const {
   std::vector<DiamondDescriptor> matched_diamonds;
 
   for (HloComputation* comp :
-       module->MakeNonfusionComputations(execution_threads)) {
+       module.MakeNonfusionComputations(execution_threads)) {
     if (comp->IsCustomCallComputation()) {
       continue;
     }
@@ -385,7 +386,7 @@ StatusOr<bool> SoftmaxRewriterTriton::Run(
   }
 
   if (matched_diamonds.empty()) {
-    return false;
+    return {};
   }
 
   auto reduction_dimension_size_from_diamond_root =
@@ -436,6 +437,8 @@ StatusOr<bool> SoftmaxRewriterTriton::Run(
   // Crucially, this approach relies on a diamond root never being considered a
   // trivially fusible operation.
   std::vector<DiamondChainDescriptor> diamond_chains;
+  diamond_chains.reserve(matched_diamonds.size());
+
   HloInstruction* current_fusion_producer = FindFirstNonFusibleDiamondProducer(
       matched_diamonds.front().producer, gpu_version_);
   int current_reduce_dimension_size =
@@ -484,13 +487,26 @@ StatusOr<bool> SoftmaxRewriterTriton::Run(
       last_trivially_fusible_user(matched_diamonds.back().root),
       current_fusion_producer});
 
+  return diamond_chains;
+}
+
+Status SoftmaxRewriterTriton::FuseDiamondChain(
+    const DiamondChainDescriptor& diamond_chain) {
+  return FuseDiamondChainImpl(diamond_chain);
+}
+
+StatusOr<bool> SoftmaxRewriterTriton::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  std::vector<DiamondChainDescriptor> diamond_chains =
+      FindAllFusibleDiamondChains(*module, execution_threads);
+
   // The diamond chains must be emitted in reverse order, to make sure that
   // producer instructions are emitted correctly when the root of
   // diamond chain n is exactly the producer of diamond chain n+1.
   for (auto diamond_chain = diamond_chains.rbegin();
        diamond_chain != diamond_chains.rend(); ++diamond_chain) {
-    auto [root, producer] = *diamond_chain;
-    TF_RET_CHECK(FuseSoftmax(root, producer).ok());
+    TF_RET_CHECK(FuseDiamondChain(*diamond_chain).ok());
   }
   return true;
 }

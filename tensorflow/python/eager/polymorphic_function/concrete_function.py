@@ -546,7 +546,7 @@ class _TapeGradientFunctions(object):
         with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
             {"PartitionedCall": gradient_function,
              "StatefulPartitionedCall": gradient_function}):
-          forward_outputs = forward_function(*forward_inputs)
+          forward_outputs = forward_function.call_flat(*forward_inputs)
           if isinstance(forward_outputs, ops.Operation):
             # _wrapped_backward_function expects a list, but if the function has
             # no outputs its call() returns an Operation. We need to undo that
@@ -1084,6 +1084,11 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     """Return the FunctionType associated with this ConcreteFunction."""
     return self._function_type
 
+  @property
+  def inference_fn(self):
+    """Return the inference function associated with this ConcreteFunction."""
+    return self._inference_function
+
   # TODO(fmuham): Remove this property.
   @property
   def _function_spec(self):
@@ -1316,19 +1321,19 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     if (possible_gradient_type == gradients_util.POSSIBLE_GRADIENT_TYPES_NONE
         and executing_eagerly):
       # No tape is watching; skip to running the function.
-      return self._inference_function.flat_call(args)
+      return self._inference_function.call_preflattened(args)
     forward_backward = self._select_forward_and_backward_functions(
         args,
         possible_gradient_type,
         executing_eagerly)
     forward_function, args_with_tangents = forward_backward.forward()
     if executing_eagerly:
-      flat_outputs = forward_function(*args_with_tangents)
+      flat_outputs = forward_function.call_flat(*args_with_tangents)
     else:
       with default_graph._override_gradient_function(  # pylint: disable=protected-access
           {"PartitionedCall": self._get_gradient_function(),
            "StatefulPartitionedCall": self._get_gradient_function()}):
-        flat_outputs = forward_function(*args_with_tangents)
+        flat_outputs = forward_function.call_flat(*args_with_tangents)
     forward_backward.record(flat_outputs)
     return self.function_type.pack_output(flat_outputs)
 

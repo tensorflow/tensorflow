@@ -129,6 +129,18 @@ class LocalDeviceState {
   // fashion amongst the available streams.
   se::Stream* GetDeviceToDeviceStream();
 
+  // Return a stream that should be used to track when an externally-managed
+  // buffer is ready. This is intended to support dlpack on GPU. Allocates
+  // streams in a round-robin fashion amongst the available streams.
+  se::Stream* GetExternalReadyEventStream();
+
+  // Maps a raw platform-specific stream to an se::Stream* owned by this
+  // LocalDeviceState. `stream` should have been derived from a se::Stream*
+  // returned by GetExternalReadyEventStream.
+  // TODO(skyewm): this function could map other raw streams if needed. It's
+  // currently only used with external ready event streams.
+  StatusOr<se::Stream*> GetStreamFromExternalStream(std::intptr_t stream);
+
   // Returns a vector of device to device streams.
   std::vector<se::Stream*> GetDeviceToDeviceStreams();
 
@@ -193,14 +205,16 @@ class LocalDeviceState {
   std::unique_ptr<se::Stream> host_to_device_stream_;
   std::vector<std::unique_ptr<se::Stream>> device_to_host_streams_;
   std::vector<std::unique_ptr<se::Stream>> device_to_device_streams_;
+  std::vector<std::unique_ptr<se::Stream>> external_ready_event_streams_;
 
-  // Number of device-to-host and device-to-device streams.
   static constexpr int kNumDeviceToHostStreams = 4;
   static constexpr int kNumDeviceToDeviceStreams = 4;
+  static constexpr int kNumExternalReadyEventStreams = 4;
 
   absl::Mutex mu_;
   int next_device_to_host_stream_ ABSL_GUARDED_BY(mu_) = 0;
   int next_device_to_device_stream_ ABSL_GUARDED_BY(mu_) = 0;
+  int next_external_ready_event_stream_ ABSL_GUARDED_BY(mu_) = 0;
   std::stack<std::unique_ptr<se::Stream>> usage_stream_pool_
       ABSL_GUARDED_BY(mu_);
 

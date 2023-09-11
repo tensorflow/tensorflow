@@ -88,6 +88,15 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
     stream->Init();
     device_to_device_streams_.push_back(std::move(stream));
   }
+  external_ready_event_streams_.reserve(kNumExternalReadyEventStreams);
+  for (int i = 0; i < kNumExternalReadyEventStreams; ++i) {
+    auto stream = std::make_unique<se::Stream>(executor);
+    if (stream_options.has_value()) {
+      stream->implementation()->SetPriority(stream_options->priority);
+    }
+    stream->Init();
+    external_ready_event_streams_.push_back(std::move(stream));
+  }
   execute_thread_ =
       std::make_unique<WorkerThread>(tsl::Env::Default(), "py_xla_execute");
   callback_thread_ =
@@ -169,6 +178,30 @@ se::Stream* LocalDeviceState::GetDeviceToDeviceStream() {
   next_device_to_device_stream_ =
       (next_device_to_device_stream_ + 1) % device_to_device_streams_.size();
   return device_to_device_streams_.at(i).get();
+}
+
+se::Stream* LocalDeviceState::GetExternalReadyEventStream() {
+  absl::MutexLock lock(&mu_);
+  int i = next_external_ready_event_stream_;
+  next_external_ready_event_stream_ = (next_external_ready_event_stream_ + 1) %
+                                      external_ready_event_streams_.size();
+  return external_ready_event_streams_.at(i).get();
+}
+
+StatusOr<se::Stream*> LocalDeviceState::GetStreamFromExternalStream(
+    std::intptr_t stream) {
+  // TODO(skyewm): replace with map lookup if performance is an issue (currently
+  // it just iterates over 4 streams).
+  for (const std::unique_ptr<se::Stream>& se_stream :
+       external_ready_event_streams_) {
+    if (absl::bit_cast<std::intptr_t>(
+            se_stream->implementation()->GpuStreamHack()) == stream) {
+      return se_stream.get();
+    }
+  }
+  return NotFound(
+      "GetStreamFromExternalStream failed to find stream. Only GPU streams "
+      "used for dlpack imports are supported.");
 }
 
 std::vector<se::Stream*> LocalDeviceState::GetDeviceToDeviceStreams() {

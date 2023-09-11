@@ -176,15 +176,6 @@ CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   return std::move(executor);
 }
 
-void CudaPlatform::RegisterTraceListener(
-    std::unique_ptr<TraceListener> listener) {
-  LOG(FATAL) << "not yet implemented: register CUDA trace listener";
-}
-
-void CudaPlatform::UnregisterTraceListener(TraceListener* listener) {
-  LOG(FATAL) << "not yet implemented: unregister CUDA trace listener";
-}
-
 }  // namespace gpu
 
 static void InitializeCudaPlatform() {

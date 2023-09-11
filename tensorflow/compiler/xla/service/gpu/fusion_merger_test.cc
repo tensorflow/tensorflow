@@ -18,9 +18,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -28,7 +29,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 class FusionMergerTest : public HloTestBase {
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
@@ -39,10 +40,8 @@ class FusionMergerTest : public HloTestBase {
   }
 
  public:
-  FusionMerger fusion_merger_{
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-      se::CudaComputeCapability({se::CudaComputeCapability::AMPERE, 0}),
-      ShapeSizeBytesFunction()};
+  FusionMerger fusion_merger_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                              ShapeSizeBytesFunction()};
   FusionMergerTest() : HloTestBase() {}
 };
 
@@ -244,7 +243,7 @@ TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
                     .value();
   EXPECT_TRUE(fusion_merger_.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Fusion(op::Parameter()));
+              GmockMatch(m::Fusion(m::Parameter())));
 }
 
 TEST_F(FusionMergerTest, WillMergeIntoUnfusedConsumer) {
@@ -291,8 +290,9 @@ TEST_F(FusionMergerTest, WillMergeIntoUnfusedConsumer) {
     })")
                     .value();
   EXPECT_TRUE(fusion_merger_.Run(module.get()).value());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Fusion(op::Fusion(), op::Parameter(), op::Parameter()));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Fusion(), m::Parameter(), m::Parameter())));
 }
 
 TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {

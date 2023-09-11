@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
+from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_algorithm
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2 as calib_stats_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
@@ -645,26 +646,9 @@ def _get_min_max_from_calibrator(
   statistics: calib_stats_pb2.CalibrationStatistics = (
       pywrap_quantize_model.get_statistics_from_calibrator(node_id)
   )
-  calib_method = calib_opts.calibration_method
-  if calib_method == _CalibrationMethod.CALIBRATION_METHOD_MIN_MAX:
-    min_max_statistics = statistics.min_max_statistics
-    min_value = min_max_statistics.global_min
-    max_value = min_max_statistics.global_max
-  elif calib_method == _CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX:
-    average_min_max_statistics = statistics.average_min_max_statistics
-    # num_samples is guaranteed to be larger than 0 because
-    # get_statistics_from_calibrator throws an exception if num_samples == 0.
-    min_value = (
-        average_min_max_statistics.min_sum
-        / average_min_max_statistics.num_samples
-    )
-    max_value = (
-        average_min_max_statistics.max_sum
-        / average_min_max_statistics.num_samples
-    )
-  else:
-    raise ValueError('Unsupported calibration method.')
-
+  min_value, max_value = calibration_algorithm.get_min_max_value(
+      statistics, calib_opts
+  )
   return min_value, max_value
 
 
@@ -703,6 +687,42 @@ def _add_calibration_statistics(
             node_id.decode('utf-8'),
             function_def.signature.name,
         )
+
+
+def _enable_dump_tensor(graph_def: graph_pb2.GraphDef) -> None:
+  """Enable DumpTensor in the graph def.
+
+  DumpTensor is disabled by default to avoid logging data during calibration.
+  This function is called after calibration to enable DumpTensor.
+
+  Args:
+    graph_def: GraphDef to enable DumpTensor
+  """
+  for function_def in graph_def.library.function:
+    for node_def in function_def.node_def:
+      if node_def.op != 'DumpTensor':
+        continue
+
+      node_def.attr['enabled'].b = True
+
+
+def _change_dump_tensor_file_name(graph_def: graph_pb2.GraphDef) -> None:
+  """Change file_name used by DumpTensor to quantized_tensor_data.pb.
+
+  In whole model verify, DumpTensor in unquantized model uses file_name
+  unquantized_tensor_data.pb.
+  After unquantized dump model is created, this function allows quantized dump
+  model to use quantized_tensor_data.pb as file_name.
+
+  Args:
+    graph_def: GraphDef to change file_name of DumpTensor
+  """
+  for function_def in graph_def.library.function:
+    for node_def in function_def.node_def:
+      if node_def.op != 'DumpTensor':
+        continue
+
+      node_def.attr['file_name'].s = 'quantized_tensor_data.pb'.encode('utf-8')
 
 
 def _get_saver_def_or_none(
@@ -802,6 +822,36 @@ def _run_static_range_ptq(
   )
 
   _add_calibration_statistics(graph_def, quant_opts.calibration_options)
+
+  if quant_opts.HasField('debugger_options'):
+    # Since DumpTensor was disabled by default, we need to enable them.
+    _enable_dump_tensor(graph_def)
+
+    if (
+        quant_opts.debugger_options.debugger_type
+        == quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL
+    ):
+      # TODO: b/295139417 - Remove CustomAggregator op in unquantized dump model
+      # TODO: b/296916287 - Create a separate function for saving unquantized
+      # dump model
+      save_model.save_model_v1(
+          graph_def,
+          quant_opts.debugger_options.unquantized_dump_model_path,
+          signature_def_map,
+          quant_opts.tags,
+          exported_model.init_node_name,
+          _get_saver_def_or_none(exported_model),
+          exported_model.checkpoint_dir,
+          exported_model.function_aliases,
+          asset_file_defs=exported_model.asset_file_defs,
+      )
+
+      _copy_assets(
+          src_saved_model_path,
+          quant_opts.debugger_options.unquantized_dump_model_path,
+      )
+
+      _change_dump_tensor_file_name(graph_def)
 
   calibrated_model_path = tempfile.mkdtemp()
   save_model.save_model_v1(
@@ -1144,7 +1194,7 @@ def _populate_calibration_options(
     quantization_options: quant_opts_pb2.QuantizationOptions,
 ):
   """Populates default values for CalibrationOptions.
-  
+
   Args:
     quantization_options: An instance of QuantizationOptions with a field
       specifying CalibrationOptions
@@ -1158,6 +1208,17 @@ def _populate_calibration_options(
     calib_opts.calibration_method = (
         _CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
     )
+
+  if (
+      calib_opts.calibration_method
+      == _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE
+  ):
+    if not calib_opts.calibration_parameters.initial_num_bins:
+      calib_opts.calibration_parameters.initial_num_bins = 256
+    if not calib_opts.calibration_parameters.min_percentile:
+      calib_opts.calibration_parameters.min_percentile = 0.001
+    if not calib_opts.calibration_parameters.max_percentile:
+      calib_opts.calibration_parameters.max_percentile = 99.999
 
 
 def _populate_quantization_options_default_values(
@@ -1226,6 +1287,28 @@ def _populate_quantization_options_default_values(
 
   # Check and populate calibration options.
   _populate_calibration_options(quantization_options)
+
+  if quantization_options.HasField('debugger_options'):
+    if not quantization_options.debugger_options.log_dir_path:
+      quantization_options.debugger_options.log_dir_path = '/tmp/dumps'
+
+    if (
+        quantization_options.debugger_options.debugger_type
+        == quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_UNSPECIFIED
+    ):
+      raise ValueError(
+          'Debugger is enabled but debugger type was not specified.'
+      )
+
+    if (
+        quantization_options.debugger_options.debugger_type
+        == quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL
+        and not quantization_options.debugger_options.unquantized_dump_model_path
+    ):
+      raise ValueError(
+          'Debugger type whole model verify was used but'
+          ' unquantized_dump_model_path was not specified.'
+      )
 
   # Check and populate quantization component spec
   _populate_quantization_component_spec(quantization_options)

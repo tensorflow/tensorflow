@@ -279,8 +279,45 @@ Register_STABLEHLO_SUBTRACT();  // WARNING: not implemented, using this
 TfLiteRegistration*
 Register_STABLEHLO_TANH();  // WARNING: not implemented, using this
                             // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_COMPARE();  // WARNING: not implemented, using this
+                               // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_CONVERT();  // WARNING: not implemented, using this
+                               // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_DYNAMIC_SLICE();  // WARNING: not implemented, using this
+                                     // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_DYNAMIC_UPDATE_SLICE();  // WARNING: not implemented, using
+                                            // this op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_PAD();  // WARNING: not implemented, using this
+                           // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_IOTA();  // WARNING: not implemented, using this
+                            // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_DOT_GENERAL();  // WARNING: not implemented, using this
+                                   // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_REDUCE_WINDOW();  // WARNING: not implemented, using this
+                                     // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_SORT();  // WARNING: not implemented, using this
+                            // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_WHILE();  // WARNING: not implemented, using this
+                             // op will crash the runtime
 
 TfLiteRegistration* Register_STABLEHLO_SCATTER();
+
+TfLiteRegistration*
+Register_STABLEHLO_GATHER();  // WARNING: not implemented, using this
+                              // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_TRANSPOSE();  // WARNING: not implemented, using this
+                                 // op will crash the runtime
 
 }  // namespace builtin
 }  // namespace ops
