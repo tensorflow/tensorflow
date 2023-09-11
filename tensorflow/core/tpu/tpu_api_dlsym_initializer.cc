@@ -73,7 +73,29 @@ absl::Status InitializeTpuLibrary(void* library_handle) {
   return s;
 }
 
+// Gets the path of current module. It is usually tensorflow_framework.so.
+const char* GetCurrentModulePath() {
+  Dl_info DlInfo;
+  if (!dladdr((void*)GetCurrentModulePath, &DlInfo)) {
+    return nullptr;
+  }
+  return DlInfo.dli_fname;
+}
+
 absl::Status FindAndLoadTpuLibrary() {
+  // Reopen tensorflow_framework.so as RTLD_GLOBAL. So that libtpu can link to
+  // Tensorflow C API.
+  // TODO(b/299313561): Remove this dependency.
+  const char* so_name = GetCurrentModulePath();
+  if (so_name != nullptr) {
+    LOG(INFO) << "Opening library: " << so_name;
+    void* tf_lib = dlopen(so_name, RTLD_NOW | RTLD_GLOBAL);
+    if (tf_lib == nullptr) {
+      return absl::InternalError(
+          absl::StrCat("Failed to open libtensorflow ", dlerror()));
+    }
+  }
+
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path =
       env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
