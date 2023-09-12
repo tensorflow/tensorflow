@@ -44,6 +44,7 @@ add_mlir_library(MhloPasses
   expand_hlo_tuples/expand_hlo_tuples.cc
   expand_ops_simplifier/expand_ops_simplifier.cc
   group_reduction_dimensions/group_reduction_dimensions.cc
+  legalize_broadcast_to_broadcast_in_dim/legalize_broadcast_to_broadcast_in_dim.cc
   legalize_create_token_to_after_all/legalize_create_token_to_after_all.cc
   legalize_cross_replica_sum_to_all_reduce/legalize_cross_replica_sum_to_all_reduce.cc
   legalize_dot_general_to_dot/legalize_dot_general_to_dot.cc

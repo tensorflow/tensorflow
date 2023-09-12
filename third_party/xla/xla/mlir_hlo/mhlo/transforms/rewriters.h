@@ -29,6 +29,10 @@ class BufferizeTypeConverter;
 }  // namespace bufferization
 namespace mhlo {
 
+// Rewrite patterns for broadcast to equivalent broadcast_in_dim legalization.
+void populateBroadcastToBroadcastInDimPatterns(MLIRContext *context,
+                                               RewritePatternSet *patterns);
+
 // Collection of rewrite patterns for lowering a general dot product.
 void populateGeneralDotOpLoweringPatterns(RewritePatternSet *patterns,
                                           MLIRContext *ctx);

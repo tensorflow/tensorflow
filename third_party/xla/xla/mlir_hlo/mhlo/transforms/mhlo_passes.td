@@ -77,6 +77,12 @@ def HloLegalizeSortPass : Pass<"hlo-legalize-sort", "func::FuncOp"> {
                            "scf::SCFDialect", "tensor::TensorDialect"];
 }
 
+def LegalizeBroadcastToBroadcastInDimPass : Pass<"mhlo-legalize-broadcast-to-broadcast-in-dim", "func::FuncOp"> {
+  let summary = "Legalizes broadcast ops to broadcast_in_dim ops.";
+  let constructor = "createLegalizeBroadcastToBroadcastInDimPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
+}
+
 def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "func::FuncOp"> {
   let summary = "Legalize from MHLO control flow to SCF control flow.";
   let constructor = "createLegalizeControlFlowPass()";

@@ -155,6 +155,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createRankSpecializationToSCFPass(
 
 std::unique_ptr<OperationPass<func::FuncOp>> createOptimizeMhloPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerComplexPass();
+
+std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeBroadcastToBroadcastInDimPass();
 std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeCreateTokenToAfterAllPass();
