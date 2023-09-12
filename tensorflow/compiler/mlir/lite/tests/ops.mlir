@@ -3191,3 +3191,15 @@ func.func @testRightShift(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tenso
   func.return %0 : tensor<8xui32>
   // CHECK: return %0 : tensor<8xui32>
 }
+
+// -----
+
+// CHECK-LABEL: testDilate
+func.func @testDilate(%arg0: tensor<3x4x5xf32>) -> tensor<5x7x9xf32> {
+  // CHECK: "tfl.dilate"(%arg0, %cst, %cst_0)
+  %cst = arith.constant dense<1> : tensor<3xi32>
+  %cst_0 = arith.constant dense<-1.0> : tensor<f32>
+  %0 = "tfl.dilate"(%arg0, %cst, %cst_0) : (tensor<3x4x5xf32>, tensor<3xi32>, tensor<f32>) -> tensor<5x7x9xf32>
+  func.return %0 : tensor<5x7x9xf32>
+  // CHECK: return %0 : tensor<5x7x9xf32>
+}
