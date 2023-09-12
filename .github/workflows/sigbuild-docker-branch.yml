@@ -25,6 +25,9 @@ on:
     branches:
       - "r[1-9].[0-9]+"
 
+permissions:
+  contents: read
+
 jobs:
   docker:
     if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
