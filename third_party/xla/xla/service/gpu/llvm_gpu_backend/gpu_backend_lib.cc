@@ -312,23 +312,18 @@ void DumpModule(const std::string output_filename, const llvm::Module* module) {
 }
 
 const llvm::Module* GetModule(llvm::Any IR) {
-  if (llvm::any_isa<const llvm::Module*>(IR))
-    return llvm::any_cast<const llvm::Module*>(IR);
+  if (const auto** M = llvm::any_cast<const llvm::Module*>(&IR)) return *M;
 
-  if (llvm::any_isa<const llvm::Function*>(IR)) {
-    const llvm::Function* F = llvm::any_cast<const llvm::Function*>(IR);
-    return F->getParent();
+  if (const auto** F = llvm::any_cast<const llvm::Function*>(&IR)) {
+    return (*F)->getParent();
   }
 
-  if (llvm::any_isa<const llvm::LazyCallGraph::SCC*>(IR)) {
-    const llvm::LazyCallGraph::SCC* C =
-        llvm::any_cast<const llvm::LazyCallGraph::SCC*>(IR);
-    return C->begin()->getFunction().getParent();
+  if (const auto** C = llvm::any_cast<const llvm::LazyCallGraph::SCC*>(&IR)) {
+    return (*C)->begin()->getFunction().getParent();
   }
 
-  if (llvm::any_isa<const llvm::Loop*>(IR)) {
-    const llvm::Loop* L = llvm::any_cast<const llvm::Loop*>(IR);
-    const llvm::Function* F = L->getHeader()->getParent();
+  if (const auto** L = llvm::any_cast<const llvm::Loop*>(&IR)) {
+    const llvm::Function* F = (*L)->getHeader()->getParent();
     return F->getParent();
   }
 
