@@ -672,6 +672,11 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;
 
+  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
+      PjRtMemorySpace* dst_memory_space) override {
+    return Unimplemented("Implement CopyToMemorySpace");
+  }
+
   void CopyToRemoteDevice(
       PjRtFuture<StatusOr<std::string>> serialized_descriptor,
       RemoteSendCallback on_done) override;

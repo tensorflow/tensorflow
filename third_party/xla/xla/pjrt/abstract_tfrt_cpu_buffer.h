@@ -135,6 +135,11 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
     return PjRtFuture<Status>(Unimplemented("CopyRawToHost not implemented"));
   }
 
+  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
+      PjRtMemorySpace* dst_memory_space) override {
+    return Unimplemented("CopyToMemorySpace not implemented");
+  }
+
   void Delete() override;
 
   bool IsDeleted() override;
