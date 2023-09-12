@@ -302,6 +302,7 @@ build:linux --copt="-Wno-deprecated"
 build:linux --copt="-Wno-deprecated-declarations"
 build:linux --copt="-Wno-ignored-attributes"
 build:linux --copt="-Wno-array-bounds"
+build:linux --copt="-Wno-error=array-parameter"
 
 # Add unused-result as an error on Linux.
 build:linux --copt="-Wunused-result"
