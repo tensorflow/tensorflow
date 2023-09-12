@@ -1745,7 +1745,8 @@ Status IrEmitterUnnested::EmitTritonFusion(
           TritonWrapper(impl_fn_name, hlo_computation, kTritonSoftmaxFusionKind,
                         ir_emitter_context_->cuda_compute_capability(),
                         ir_emitter_context_->gpu_device_info(), config, module_,
-                        &SoftMax, *ir_emitter_context_->mlir_context()));
+                        &GetSoftMaxLaunchDimensions, &EmitSoftMax,
+                        *ir_emitter_context_->mlir_context()));
     } else {  // Must be a MatMul
       CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
       TF_ASSIGN_OR_RETURN(
@@ -1753,7 +1754,8 @@ Status IrEmitterUnnested::EmitTritonFusion(
           TritonWrapper(impl_fn_name, hlo_computation, kTritonGemmFusionKind,
                         ir_emitter_context_->cuda_compute_capability(),
                         ir_emitter_context_->gpu_device_info(), config, module_,
-                        &MatMul, *ir_emitter_context_->mlir_context()));
+                        &GetMatMulLaunchDimensions, &EmitMatMul,
+                        *ir_emitter_context_->mlir_context()));
     }
 
     llvm::Function* impl_fn = module_->getFunction(impl_fn_name);

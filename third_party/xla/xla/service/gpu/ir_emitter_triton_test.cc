@@ -215,7 +215,8 @@ ENTRY entry {
       TritonWrapper("test_fn", triton_dot_computation, kTritonGemmFusionKind,
                     se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
                                               /*minor=*/0},
-                    dev_info, config, &llvm_module, &MatMul, mlir_context),
+                    dev_info, config, &llvm_module, &GetMatMulLaunchDimensions,
+                    &EmitMatMul, mlir_context),
       tsl::testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
                              "Shared memory size limit exceeded."));
 
@@ -228,7 +229,8 @@ ENTRY entry {
       TritonWrapper("test_fn", triton_dot_computation, kTritonGemmFusionKind,
                     se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
                                               /*minor=*/0},
-                    dev_info, config, &llvm_module, &MatMul, mlir_context));
+                    dev_info, config, &llvm_module, &GetMatMulLaunchDimensions,
+                    &EmitMatMul, mlir_context));
   // Use optin shared memory which is > shared_memory_per_block.
   EXPECT_GT(launch_dimensions.SharedMemBytes(),
             dev_info.shared_memory_per_block);
@@ -642,7 +644,8 @@ ENTRY entry {
       TritonWrapper("test_fn", triton_dot_computation, kTritonGemmFusionKind,
                     se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
                                               /*minor=*/0},
-                    dev_info, config, &llvm_module, &MatMul, mlir_context),
+                    dev_info, config, &llvm_module, &GetMatMulLaunchDimensions,
+                    &EmitMatMul, mlir_context),
       tsl::testing::StatusIs(
           tsl::error::RESOURCE_EXHAUSTED,
           "Tiling complexity heuristic exceeded: 147456 > 9000"));
@@ -655,7 +658,8 @@ ENTRY entry {
       TritonWrapper("test_fn", triton_dot_computation, kTritonGemmFusionKind,
                     se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
                                               /*minor=*/0},
-                    dev_info, config, &llvm_module, &MatMul, mlir_context)
+                    dev_info, config, &llvm_module, &GetMatMulLaunchDimensions,
+                    &EmitMatMul, mlir_context)
           .status());
 }
 
@@ -1438,8 +1442,8 @@ ENTRY e {
       const LaunchDimensions launch_dimensions,
       TritonWrapper("test_fn", triton_dot_computation, kTritonGemmFusionKind,
                     GetCudaComputeCapability(), dev_info,
-                    config.triton_gemm_config(), &llvm_module, &MatMul,
-                    mlir_context));
+                    config.triton_gemm_config(), &llvm_module,
+                    &GetMatMulLaunchDimensions, &EmitMatMul, mlir_context));
   // The config is chosen so that the used memory size is slightly above the
   // 48 kB boundary of standard / optin shared memory so that any GPU that
   // has the optin one should be able to execute the test.

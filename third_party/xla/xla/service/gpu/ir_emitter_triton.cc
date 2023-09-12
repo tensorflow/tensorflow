@@ -934,14 +934,23 @@ void ValidateMatMulConfig(const AutotuneResult::TritonGemmKey& config,
 
 }  // namespace
 
+LaunchDimensions GetMatMulLaunchDimensions(
+    const TritonFusionAnalysis& analysis, const HloComputation* computation,
+    const AutotuneResult::TritonGemmKey& config) {
+  const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(
+      hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot));
+  const MatMulDims dims(config, *dot_instr, analysis);
+  const MatMulLaunchConfig launch_config(config, *dot_instr, dims);
+  return launch_config.launch_dims;
+}
+
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
 // TODO(b/270937368): Split this up into smaller functions.
-StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder builder,
-                                  absl::string_view libdevice_path,
-                                  const HloComputation* computation,
-                                  mlir::triton::FuncOp fn,
-                                  const AutotuneResult::TritonGemmKey& config,
-                                  int shmem_budget) {
+Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
+                  const TritonFusionAnalysis& analysis,
+                  const HloComputation* computation, mlir::triton::FuncOp fn,
+                  const AutotuneResult::TritonGemmKey& config,
+                  int shmem_budget) {
   const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot));
   // Use 32-bit indexing if addressing any of the inputs or the output (which
@@ -970,9 +979,6 @@ StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder builder,
   const int block_k = config.block_k();
   const int block_n = config.block_n();
 
-  TF_ASSIGN_OR_RETURN(
-      const TritonFusionAnalysis analysis,
-      TritonFusionAnalysis::Execute(*dot_instr->parent(), split_k));
   const MatMulDims dims(config, *dot_instr, analysis);
   const MatMulLaunchConfig launch_config(config, *dot_instr, dims);
   VLOG(6) << analysis.ToString();
@@ -1331,15 +1337,29 @@ StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder builder,
     b.create<mt::StoreOp>(tensor_pointer, values_out[producer], boundary_checks,
                           mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
   }
-  return launch_config.launch_dims;
+  return OkStatus();
 }
 
-StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
-                                   absl::string_view libdevice_path,
-                                   const HloComputation* computation,
-                                   mlir::triton::FuncOp fn,
-                                   const AutotuneResult::TritonGemmKey& config,
-                                   int) {
+LaunchDimensions GetSoftMaxLaunchDimensions(
+    const TritonFusionAnalysis&, const HloComputation* computation,
+    const AutotuneResult::TritonGemmKey& config) {
+  const HloInstruction* reduce = hlo_query::GetFirstInstructionWithOpcode(
+      *computation, HloOpcode::kReduce);
+  CHECK_NE(reduce, nullptr);
+  const Shape& reduce_input_shape = reduce->operand(0)->shape();
+  int num_rows = 1;
+  for (int minor_axis = 1; minor_axis < reduce_input_shape.rank();
+       ++minor_axis) {
+    num_rows *= reduce_input_shape.dimensions_minor(minor_axis);
+  }
+
+  return {{num_rows, 1, 1}, {config.num_warps() * WarpSize(), 1, 1}};
+}
+
+Status EmitSoftMax(mlir::OpBuilder builder, absl::string_view libdevice_path,
+                   const TritonFusionAnalysis& analysis,
+                   const HloComputation* computation, mlir::triton::FuncOp fn,
+                   const AutotuneResult::TritonGemmKey& config, int) {
   const HloInstruction* root = computation->root_instruction();
   auto loc = mlir::NameLoc::get(builder.getStringAttr(root->name()));
   ImplicitLocOpBuilder b(loc, builder);
@@ -1377,10 +1397,6 @@ StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
     block_row *= 2;
   }
 
-  int num_rows = 1;
-  for (int minor_axis = 1; minor_axis < reduce_input_shape.rank(); ++minor_axis)
-    num_rows *= reduce_input_shape.dimensions_minor(minor_axis);
-
   Value row_index = b.create<ma::ExtSIOp>(
       b.getI64Type(), b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X));
   Value row_stride = CreateConst(b, b.getI32Type(), row_len);
@@ -1404,8 +1420,6 @@ StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
   }
   values_out[computation->parameter_instruction(0)] = EmitParameterLoad(
       b, make_tensor_pointer(fn.getArgument(0)), boundary_checks);
-  TF_ASSIGN_OR_RETURN(const auto analysis,
-                      TritonFusionAnalysis::Execute(*computation));
   // Dimension 0 is the reduced one by construction and it's the only one
   // present in the tile shapes.
   std::vector<DimProperties> tiled_dims = {{0, row_index, block_row}};
@@ -1418,11 +1432,7 @@ StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
   b.create<mt::StoreOp>(make_tensor_pointer(fn.getArgument(1)), result,
                         std::vector<int32_t>{0}, mt::CacheModifier::NONE,
                         mt::EvictionPolicy::NORMAL);
-
-  const LaunchDimensions launch_dimensions{
-      {num_rows, 1, 1}, {config.num_warps() * WarpSize(), 1, 1}};
-
-  return launch_dimensions;
+  return OkStatus();
 }
 
 // Simplified copy of translateLLVMToLLVMIR which in addition takes
@@ -1463,7 +1473,8 @@ StatusOr<LaunchDimensions> TritonWrapper(
     absl::string_view fusion_kind, const se::CudaComputeCapability& cc,
     const GpuDeviceInfo& device_info,
     const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
-    LaunchDimensionsGenerator generator, mlir::MLIRContext& mlir_context) {
+    LaunchDimensionsGenerator launch_dims_generator, TritonIrEmitter ir_emitter,
+    mlir::MLIRContext& mlir_context) {
   if (fusion_kind == kTritonGemmFusionKind) {
     // This is a heuristic that serves as a proxy for register usage and code
     // size.
@@ -1537,8 +1548,13 @@ StatusOr<LaunchDimensions> TritonWrapper(
                                .debug_options()
                                .xla_gpu_cuda_data_dir());
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      generator(b, libdevice_path, hlo_computation, fn, config,
+  TF_ASSIGN_OR_RETURN(
+      auto analysis,
+      fusion_kind == kTritonGemmFusionKind
+          ? TritonFusionAnalysis::Execute(*hlo_computation, config.split_k())
+          : TritonFusionAnalysis::Execute(*hlo_computation));
+  TF_RETURN_IF_ERROR(ir_emitter(b, libdevice_path, analysis, hlo_computation,
+                                fn, config,
                                 device_info.shared_memory_per_block_optin));
 
   b.create<mt::ReturnOp>(loc);
@@ -1613,7 +1629,6 @@ StatusOr<LaunchDimensions> TritonWrapper(
   if (shared_mem_bytes > device_info.shared_memory_per_block_optin) {
     return ResourceExhausted("Shared memory size limit exceeded.");
   }
-  launch_dimensions.SetSharedMemBytes(shared_mem_bytes);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> ll_triton_module,
                       TranslateLLVMToLLVMIR(&llvm_module->getContext(),
@@ -1630,6 +1645,9 @@ StatusOr<LaunchDimensions> TritonWrapper(
                                    llvm::Linker::Flags::OverrideFromSrc));
   LogAndVerify(llvm_module);
 
+  LaunchDimensions launch_dimensions =
+      launch_dims_generator(analysis, hlo_computation, config);
+  launch_dimensions.SetSharedMemBytes(shared_mem_bytes);
   return launch_dimensions;
 }
 
