@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace tflite {
 namespace reference_ops {
-namespace {
+namespace detail {
 
 // Helper functions
 template <typename T>
@@ -203,7 +203,7 @@ auto GetCandidatePriorityQueue(const NonMaxSuppressionParams& params,
   return candidate_priority_queue;
 }
 
-}  // namespace
+}  // namespace detail
 
 // Implements (Single-Class) Soft-NMS (with Gaussian weighting) with
 // FLOAT32 inputs.
