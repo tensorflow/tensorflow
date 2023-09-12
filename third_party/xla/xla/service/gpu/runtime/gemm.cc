@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/executable.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
@@ -155,6 +156,17 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
                  deterministic_ops, stream);
 }
 
+static absl::Status InitCuBLASImpl(
+    const ServiceExecutableRunOptions* run_options) {
+  // Initialize (with memoization) BlasSupport here because cublasCreate fails
+  // during gpu graph capturing.
+  se::StreamExecutor* executor = run_options->stream()->parent();
+  if (!executor->AsBlas()) {
+    return absl::InternalError("Failed to initialize BLAS support");
+  }
+  return absl::OkStatus();
+}
+
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     Gemm, FunctionWrapper<GemmImpl>(), checks,
     CustomCall::Bind("xla.gpu.gemm")
@@ -172,8 +184,14 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<DotDimensionNumbers>("dot_dims")
         .Attr<absl::Span<const int32_t>>("precision"));
 
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    InitCuBLAS, FunctionWrapper<InitCuBLASImpl>(), checks,
+    CustomCall::Bind("xla.gpu.init_cublas")
+        .UserData<const ServiceExecutableRunOptions*>());
+
 void RegisterGemmCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.gemm", Gemm);
+  registry.Register("xla.gpu.init_cublas", InitCuBLAS);
 }
 
 }  // namespace gpu

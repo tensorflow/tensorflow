@@ -27,6 +27,8 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -35,6 +37,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "xla/mlir/backends/gpu/transforms/uid_generator.h"
+#include "xla/mlir/runtime/ir/rt_dialect.h"
 #include "xla/mlir/runtime/utils/custom_calls.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/stream_executor/blas.h"
@@ -85,6 +88,16 @@ class GemmOpLowering : public OpRewritePattern<GEMMOp> {
 
   LogicalResult matchAndRewrite(GEMMOp op,
                                 PatternRewriter& rewriter) const override {
+    {
+      // Set requires_blas attribute to true. The runtime pass will add cuBLAS
+      // initialization custom call to the entry function if the attribute is
+      // set to true.
+      auto module = op.getOperation()->getParentOfType<ModuleOp>();
+      ImplicitLocOpBuilder b(module.getLoc(), rewriter);
+      module->setAttr(b.getStringAttr(runtime::kRequiresBlasAttrName),
+                      BoolAttr::get(b.getContext(), true));
+    }
+
     // Get or create a custom call function declaration.
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     func::FuncOp callee = custom_calls_.GetOrCreate(b, kCustomCallTarget, op);

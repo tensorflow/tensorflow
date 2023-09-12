@@ -38,11 +38,13 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
+#include "xla/mlir/runtime/ir/rt_dialect.h"
 #include "xla/mlir/runtime/ir/rt_ops.h"
 #include "xla/mlir/runtime/transforms/compiler.h"
 #include "xla/mlir/runtime/transforms/passes.h"
@@ -349,7 +351,7 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
     if (!results_memory_layout.ok()) return results_memory_layout.status();
 
     bool requires_blas = false;
-    if (Attribute requires_blas_attr = func->getAttr("xla.requires_blas")) {
+    if (Attribute requires_blas_attr = func->getAttr(kRequiresBlasAttrName)) {
       requires_blas = cast<BoolAttr>(requires_blas_attr).getValue();
     }
 

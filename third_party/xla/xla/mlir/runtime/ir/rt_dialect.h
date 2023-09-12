@@ -35,6 +35,8 @@ namespace runtime {
 // Attribute name for marking functions exported to runtime.
 static constexpr char const* kExportedAttrName = "rt.exported";
 
+static constexpr char const* kRequiresBlasAttrName = "rt.requires_blas";
+
 }  // namespace runtime
 }  // namespace xla
 

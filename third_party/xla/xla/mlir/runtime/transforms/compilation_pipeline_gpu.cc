@@ -74,6 +74,7 @@ static void CreateDefaultXlaGpuRuntimeCompilationPipeline(
 
   // Export functions to the XLA runtime.
   pm.addPass(CreateExportRuntimeFunctionsPass());
+  pm.addPass(CreateAddInitializationsPass());
   pm.addPass(CreateConvertCustomCallsPass());
   pm.addPass(CreateConvertAssertsPass());
 
