@@ -27,6 +27,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 _TEST_DTYPES = (
+    dtypes.int4,
     dtypes.int8,
     dtypes.float32,
     dtypes.float64,

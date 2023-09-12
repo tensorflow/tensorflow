@@ -2788,6 +2788,8 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         instruction->opcode() != HloOpcode::kReshape &&
         instruction->opcode() != HloOpcode::kDynamicSlice &&
         instruction->opcode() != HloOpcode::kBitcastConvert &&
+        instruction->opcode() != HloOpcode::kSlice &&
+        instruction->opcode() != HloOpcode::kBroadcast &&
         !(instruction->opcode() == HloOpcode::kCall &&
           instruction->metadata().op_type() == "XlaCallModule") &&
         absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
