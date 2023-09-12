@@ -81,7 +81,7 @@ def heap_profile(client: Client) -> bytes:
   ...
 
 
-def make_cpu_client(*, use_tfrt: bool = ...) -> Client:
+def make_cpu_client() -> Client:
   ...
 
 

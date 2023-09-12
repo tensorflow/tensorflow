@@ -63,8 +63,7 @@ def make_interpreter_client():
   return _xla.get_interpreter_client()
 
 
-def make_cpu_client(*, use_tfrt: bool = True) -> ...:
-  assert use_tfrt
+def make_cpu_client() -> ...:
   return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 
