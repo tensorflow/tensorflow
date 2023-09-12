@@ -184,7 +184,7 @@ ENTRY main {
       SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
-TEST_F(SoftmaxRewriterTritonTest, CanNotFuseExactSoftmaxBF16) {
+TEST_F(SoftmaxRewriterTritonTest, CanFuseExactSoftmaxBF16) {
   const std::string hlo_string = R"(
 HloModule softmax
 max_computation {
@@ -212,8 +212,11 @@ ENTRY main {
 )";
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter())));
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
@@ -1098,15 +1101,31 @@ ENTRY main {
               GmockMatch(m::Fusion(m::Parameter())));
 
   // Volta (pre-Ampere)
-  EXPECT_TRUE(
-      SoftmaxRewriterTritonMatchAndRewrite(
-          se::CudaComputeCapability{se::CudaComputeCapability::VOLTA, 0},
-          volta_module.get())
-          .value());
-  EXPECT_TRUE(verifier().Run(volta_module.get()).status().ok());
   VLOG(2) << volta_module->ToString();
-  EXPECT_THAT(volta_module->entry_computation()->root_instruction(),
-              GmockMatch(m::Fusion(m::Convert(m::Parameter()))));
+
+  switch (data_type) {
+    case F32:
+    case F16:
+      EXPECT_TRUE(
+          SoftmaxRewriterTritonMatchAndRewrite(
+              se::CudaComputeCapability{se::CudaComputeCapability::VOLTA, 0},
+              volta_module.get())
+              .value());
+      EXPECT_TRUE(verifier().Run(volta_module.get()).status().ok());
+      EXPECT_THAT(volta_module->entry_computation()->root_instruction(),
+                  GmockMatch(m::Fusion(m::Convert(m::Parameter()))));
+      break;
+    case BF16:
+      // When bf16 is used, no fusion is possible on Volta.
+      EXPECT_FALSE(
+          SoftmaxRewriterTritonMatchAndRewrite(
+              se::CudaComputeCapability{se::CudaComputeCapability::VOLTA, 0},
+              volta_module.get())
+              .value());
+      break;
+    default:
+      ABSL_UNREACHABLE();
+  }
 }
 
 TEST_P(SoftmaxRewriterTritonTest, DoesNotFuseConvertWithC64DataType) {
@@ -1387,7 +1406,7 @@ ENTRY main {
 
 INSTANTIATE_TEST_SUITE_P(SoftmaxRewriterTritonTestSuite,
                          SoftmaxRewriterTritonTest,
-                         ::testing::Values(F32, F16));
+                         ::testing::Values(F32, F16, BF16));
 
 }  // anonymous namespace
 }  // namespace gpu

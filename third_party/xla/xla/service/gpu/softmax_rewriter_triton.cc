@@ -374,7 +374,7 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
       // TODO(b/281980675): ensure that code generation also works well for FP8
       // and BF16. This fails for the moment due to these data types requiring
       // float normalization.
-      if (element_ty != F16 && element_ty != F32) {
+      if (element_ty != F16 && element_ty != F32 && element_ty != BF16) {
         continue;
       }
 

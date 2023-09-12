@@ -630,8 +630,8 @@ xla_test(
         "//xla/stream_executor/cuda:cublas_plugin",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
     ],
 )

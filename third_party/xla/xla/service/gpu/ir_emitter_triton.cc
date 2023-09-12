@@ -497,9 +497,23 @@ StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
   const int block_row = input_shape.back();
   const int row_len = hlo_reduce.operand(0)->shape().dimensions_minor(0);
   CHECK_GE(block_row, row_len);
-  // We assume here that the reduction value was input as a constant, and/or has
-  // been constant-folded.
-  CHECK_EQ(hlo_reduce.operand(1)->opcode(), HloOpcode::kConstant);
+
+  const HloInstruction* operand = hlo_reduce.operand(1);
+  Value neutral;
+
+  // We assume that the reduction value was input as a constant, or in the case
+  // of a data type affected by float normalization, a convert of a constant.
+  if (operand->opcode() == HloOpcode::kConvert) {
+    CHECK_EQ(operand->operand(0)->opcode(), HloOpcode::kConstant);
+    CHECK_EQ(operand->operand(0)->shape().element_type(), BF16);
+    PrimitiveType dest_ty = operand->shape().element_type();
+    CHECK_EQ(dest_ty, F32);
+    neutral = EmitConstant(b, *operand->operand(0));
+    neutral = Cast(b, neutral, TritonType(b, dest_ty));
+  } else {
+    CHECK_EQ(operand->opcode(), HloOpcode::kConstant);
+    neutral = EmitConstant(b, *operand);
+  }
 
   // Since every shape is padded to a power of 2 in Triton, the input tile may
   // be padded with arbitrary values. These values could affect the result of
@@ -513,7 +527,6 @@ StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
     Value mask = b.create<ma::CmpIOp>(
         ma::CmpIPredicate::slt, Range(b, block_row),
         Splat(b, CreateConst(b, b.getI32Type(), row_len), block_row));
-    Value neutral = EmitConstant(b, *hlo_reduce.operand(1));
     input = b.create<ma::SelectOp>(mask, input, Splat(b, neutral, input_shape));
   }
 
