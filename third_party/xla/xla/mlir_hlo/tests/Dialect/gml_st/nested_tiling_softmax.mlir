@@ -11,7 +11,7 @@ func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
   %2 = linalg.reduce ins(%arg0 : tensor<64x128xf32>)
                      outs(%1 : tensor<64xf32>) dimensions = [1]
     (%arg1: f32, %arg2: f32) {
-      %11 = arith.maxf %arg1, %arg2 : f32
+      %11 = arith.maximumf %arg1, %arg2 : f32
       linalg.yield %11 : f32
     }
   %3 = tensor.empty() : tensor<64x128xf32>

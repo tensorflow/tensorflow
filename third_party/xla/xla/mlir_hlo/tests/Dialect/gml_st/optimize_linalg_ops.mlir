@@ -27,7 +27,7 @@ func.func @map_dense_constant_operand(%arg: tensor<32xf32>) -> tensor<32xf32> {
   %c0 = arith.constant dense<0.0> : tensor<32xf32>
   %init = tensor.empty() : tensor<32xf32>
 
-  %res = linalg.map { arith.maxf }
+  %res = linalg.map { arith.maximumf }
            ins(%arg, %c0: tensor<32xf32>, tensor<32xf32>)
            outs(%init: tensor<32xf32>)
   func.return %res : tensor<32xf32>
@@ -41,7 +41,7 @@ func.func @map_dense_constant_operand(%arg: tensor<32xf32>) -> tensor<32xf32> {
 // CHECK-SAME:       ins(%[[ARG]]
 // CHECK-SAME:       outs(%[[INIT]]
 // CHECK-NEXT:       (%[[BBARG:.*]]: f32)
-// CHECK-NEXT:         arith.maxf %[[BBARG]], %[[CST]]
+// CHECK-NEXT:         arith.maximumf %[[BBARG]], %[[CST]]
 
 // -----
 
@@ -75,7 +75,7 @@ func.func @map_fill_operand(%arg: tensor<32xf32>) -> tensor<32xf32> {
   %filled = linalg.fill ins(%c0 : f32)
               outs(%init: tensor<32xf32>) -> tensor<32xf32>
 
-  %res = linalg.map { arith.maxf }
+  %res = linalg.map { arith.maximumf }
            ins(%arg, %filled: tensor<32xf32>, tensor<32xf32>)
            outs(%init: tensor<32xf32>)
   func.return %res : tensor<32xf32>
@@ -89,7 +89,7 @@ func.func @map_fill_operand(%arg: tensor<32xf32>) -> tensor<32xf32> {
 // CHECK-SAME:       ins(%[[ARG]]
 // CHECK-SAME:       outs(%[[INIT]]
 // CHECK-NEXT:       (%[[BBARG:.*]]: f32)
-// CHECK-NEXT:         arith.maxf %[[BBARG]], %[[CST]]
+// CHECK-NEXT:         arith.maximumf %[[BBARG]], %[[CST]]
 
 // -----
 
@@ -165,7 +165,7 @@ func.func @slice_of_map(%arg: tensor<32xf32>) -> tensor<8xf32> {
   %c0 = arith.constant dense<0.0> : tensor<32xf32>
   %init = tensor.empty() : tensor<32xf32>
 
-  %map = linalg.map { arith.maxf }
+  %map = linalg.map { arith.maximumf }
            ins(%arg, %c0: tensor<32xf32>, tensor<32xf32>)
            outs(%init: tensor<32xf32>)
   %slice = tensor.extract_slice %map[0] [8] [1]

@@ -125,7 +125,7 @@ void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
     pm.addNestedPass<mlir::gpu::GPUModuleOp>(mlir::createStripDebugInfoPass());
     pm.addNestedPass<mlir::gpu::GPUModuleOp>(mlir::createConvertSCFToCFPass());
     pm.addNestedPass<mlir::gpu::GPUModuleOp>(
-        mlir::createLowerGpuOpsToNVVMOpsPass());
+        mlir::createConvertGpuOpsToNVVMOps());
   }
 }
 
