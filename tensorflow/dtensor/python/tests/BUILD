@@ -366,7 +366,7 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "NCCL_PROTO": "Simple",  # FIXME(b/272050398): Delete this when the Clang-16/NCCL incompatibility has been resolved.
+        "NCCL_PROTO": "Simple",  # FIXME(b/272050398): Delete this after the migration to LLVM-17.
     },
     tags = [
         "no_windows",
@@ -412,7 +412,7 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "NCCL_PROTO": "Simple",  # FIXME(b/272050398): Delete this when the Clang-16/NCCL incompatibility has been resolved.
+        "NCCL_PROTO": "Simple",  # FIXME(b/272050398): Delete this after the migration to LLVM-17.
     },
     tags = [
         "no_windows",
