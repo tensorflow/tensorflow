@@ -1168,6 +1168,8 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
       HANDLE_COPY(quint8)
       HANDLE_COPY(qint8)
       HANDLE_COPY(bfloat16)
+      HANDLE_COPY(int4)
+      HANDLE_COPY(uint4)
       default:
         return errors::InvalidArgument("Dtype ", DataTypeString(common_dtype),
                                        " not supported.");
