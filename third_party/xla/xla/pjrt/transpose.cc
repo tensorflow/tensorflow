@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/pjrt/transpose.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
@@ -441,6 +442,17 @@ void TransposePlan::ExecuteTyped(const char* a, char* b,
                                            scratch.get());
         } else {
           MacroKernel<T, 16, transformation>(
+              a, nodes.back().lda, outer_block_elems_a_, b, nodes.back().ldb,
+              outer_block_elems_b_, scratch.get());
+        }
+        break;
+      case 32:
+        if (nodes.size() > 1) {
+          Transpose<T, 32, transformation>(a, outer_block_elems_a_, b,
+                                           outer_block_elems_b_, nodes.data(),
+                                           scratch.get());
+        } else {
+          MacroKernel<T, 32, transformation>(
               a, nodes.back().lda, outer_block_elems_a_, b, nodes.back().ldb,
               outer_block_elems_b_, scratch.get());
         }
@@ -1109,22 +1121,23 @@ void TransposePlan::Initialize() {
     // vectorized kernel for this element size?
     int min_inner_block_elems;
     int max_inner_block_elems;
+#if defined(__AVX__)
     switch (elem_size_in_bytes_) {
       case 1:
         min_inner_block_elems = 4;
-        max_inner_block_elems = 16;
+        max_inner_block_elems = sizeof(__m256i) / sizeof(uint8_t);
         break;
       case 2:
         min_inner_block_elems = 4;
-        max_inner_block_elems = 8;
+        max_inner_block_elems = sizeof(__m256i) / sizeof(uint16_t);
         break;
       case 4:
-        min_inner_block_elems = 4;
-        max_inner_block_elems = 8;
+        min_inner_block_elems = sizeof(__m128i) / sizeof(uint32_t);
+        max_inner_block_elems = sizeof(__m256i) / sizeof(uint32_t);
         break;
       case 8:
-        min_inner_block_elems = 2;
-        max_inner_block_elems = 4;
+        min_inner_block_elems = sizeof(__m128i) / sizeof(uint64_t);
+        max_inner_block_elems = sizeof(__m256i) / sizeof(uint64_t);
         break;
       case 16:
         min_inner_block_elems = 1;
@@ -1133,6 +1146,45 @@ void TransposePlan::Initialize() {
       default:
         LOG(FATAL) << "Unreachable: element size " << elem_size_in_bytes_;
     }
+#elif defined(XLA_HAS_SSE2)
+    switch (elem_size_in_bytes_) {
+      case 1:
+        min_inner_block_elems = 4;
+        max_inner_block_elems = sizeof(__m128i) / sizeof(uint8_t);
+        break;
+      case 2:
+        min_inner_block_elems = 4;
+        max_inner_block_elems = sizeof(__m128i) / sizeof(uint16_t);
+        break;
+      case 4:
+        min_inner_block_elems = sizeof(__m128i) / sizeof(uint32_t);
+        max_inner_block_elems = sizeof(__m128i) / sizeof(uint32_t);
+        break;
+      case 8:
+        min_inner_block_elems = sizeof(__m128i) / sizeof(uint64_t);
+        max_inner_block_elems = sizeof(__m128i) / sizeof(uint64_t);
+        break;
+      case 16:
+        min_inner_block_elems = 1;
+        max_inner_block_elems = 1;
+        break;
+      default:
+        LOG(FATAL) << "Unreachable: element size " << elem_size_in_bytes_;
+    }
+#else
+    switch (elem_size_in_bytes_) {
+      case 1:
+      case 2:
+      case 4:
+      case 8:
+      case 16:
+        min_inner_block_elems = 1;
+        max_inner_block_elems = 16 / elem_size_in_bytes_;
+        break;
+      default:
+        LOG(FATAL) << "Unreachable: element size " << elem_size_in_bytes_;
+    }
+#endif
     inner_block_elems_ = max_inner_block_elems;
     while (inner_block_elems_ > std::min(a_stride1_size, b_stride1_size)) {
       inner_block_elems_ /= 2;
@@ -1144,8 +1196,10 @@ void TransposePlan::Initialize() {
     }
     outer_block_elems_a_ = FloorOfRatio<int64_t>(
         std::min<int64_t>(16, a_stride1_size), inner_block_elems_);
+    outer_block_elems_a_ = std::max<int64_t>(outer_block_elems_a_, 1);
     outer_block_elems_b_ = FloorOfRatio<int64_t>(
         std::min<int64_t>(16, b_stride1_size), inner_block_elems_);
+    outer_block_elems_b_ = std::max<int64_t>(outer_block_elems_b_, 1);
   }
 
   // Loop order heuristic: try to make loops with small strides innermost.
