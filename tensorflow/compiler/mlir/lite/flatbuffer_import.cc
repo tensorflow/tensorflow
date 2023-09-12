@@ -20,6 +20,7 @@ limitations under the License.
 #include <climits>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <set>
@@ -199,25 +200,26 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
   uint32_t flags =
       is_signed ? mlir::quant::QuantizationFlags::FlagValue::Signed : 0;
 
-  // Rejects if quantized tensors have zero scales.
+  // Zero scales we make the minimum fp value, this is because some flatbuffers
+  // contain zero scale for zero values.
+  llvm::SmallVector<double> scales;
   for (float scale : quant_params.scale) {
     if (scale == 0) {
-      return errors::InvalidArgument(
-          "Quantized tensors must have non-zero scales");
+      scales.push_back(std::numeric_limits<float>::min());
+      continue;
     }
+    scales.push_back(scale);
   }
 
   // Scale size can't be zero as it is checked before.
   if (quant_params.scale.size() != 1) {
-    llvm::SmallVector<double, 4> scales(quant_params.scale.begin(),
-                                        quant_params.scale.end());
     return mlir::quant::UniformQuantizedPerAxisType::get(
         flags, storage_type, builder.getF32Type(), scales,
         quant_params.zero_point, quant_params.quantized_dimension, storage_min,
         storage_max);
   }
   return mlir::quant::UniformQuantizedType::get(
-      flags, storage_type, builder.getF32Type(), quant_params.scale.at(0),
+      flags, storage_type, builder.getF32Type(), scales[0],
       quant_params.zero_point.at(0), storage_min, storage_max);
 }
 
