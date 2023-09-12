@@ -43,7 +43,6 @@ limitations under the License.
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #endif  // TFLITE_KERNEL_USE_XNNPACK
 
@@ -315,57 +314,6 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
           TF_LITE_MUL(reference_integer_ops, Mul, int8_t);
         }
       } else {
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-        const size_t num_input1_dims =
-            static_cast<size_t>(GetTensorShape(input1).DimensionsCount());
-        const size_t num_input2_dims =
-            static_cast<size_t>(GetTensorShape(input2).DimensionsCount());
-        if (std::max(num_input1_dims, num_input2_dims) > XNN_MAX_TENSOR_DIMS) {
-          TFLITE_LOG(
-              TFLITE_LOG_INFO,
-              "Input tensor dimensions exceed XNN_MAX_TENSOR_DIMS in Mul.");
-        } else {
-          const float prod_scale = input1->params.scale * input2->params.scale;
-          const float prod_output_scale = prod_scale / output->params.scale;
-          if (prod_output_scale < 0x1.0p-16f ||
-              prod_output_scale >= 0x1.0p+8f) {
-            TFLITE_LOG(TFLITE_LOG_INFO,
-                       "Mul product-to-output scale ratio must be in [2**-16, "
-                       "2**8) to use XNNPACK, but was instead %.7g.",
-                       prod_output_scale);
-          } else {
-            std::array<size_t, XNN_MAX_TENSOR_DIMS> input1_shape;
-            std::array<size_t, XNN_MAX_TENSOR_DIMS> input2_shape;
-            for (size_t i = 0; i < num_input1_dims; ++i) {
-              input1_shape[i] = GetTensorShape(input1).Dims(i);
-            }
-            for (size_t i = 0; i < num_input2_dims; ++i) {
-              input2_shape[i] = GetTensorShape(input2).Dims(i);
-            }
-            CpuBackendContext* cpu_backend_context =
-                CpuBackendContext::GetFromContext(context);
-            pthreadpool_t threadpool =
-                cpu_backend_context->get_xnnpack_threadpool();
-            const enum xnn_status status = xnn_run_multiply_nd_qs8(
-                num_input1_dims, input1_shape.data(),
-                static_cast<int8_t>(input1->params.zero_point),
-                input1->params.scale, num_input2_dims, input2_shape.data(),
-                static_cast<int8_t>(input2->params.zero_point),
-                input2->params.scale, GetTensorData<int8_t>(input1),
-                GetTensorData<int8_t>(input2), GetTensorData<int8_t>(output),
-                static_cast<int8_t>(output->params.zero_point),
-                output->params.scale, data->output_activation_min,
-                data->output_activation_max,
-                /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
-            if (status == xnn_status_success) {
-              return kTfLiteOk;
-            }
-            TFLITE_LOG(TFLITE_LOG_INFO,
-                       "Failed to run xnn_run_multiply_nd_qs8. Error code: %d",
-                       status);
-          }
-        }
-#endif  // TFLITE_KERNEL_USE_XNNPACK
         if (need_broadcast) {
           TF_LITE_MUL(optimized_integer_ops, BroadcastMulDispatch, int8_t);
         } else {
@@ -397,57 +345,6 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
           TF_LITE_MUL(reference_ops, Mul, uint8_t);
         }
       } else {
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-        const size_t num_input1_dims =
-            static_cast<size_t>(GetTensorShape(input1).DimensionsCount());
-        const size_t num_input2_dims =
-            static_cast<size_t>(GetTensorShape(input2).DimensionsCount());
-        if (std::max(num_input1_dims, num_input2_dims) > XNN_MAX_TENSOR_DIMS) {
-          TFLITE_LOG(
-              TFLITE_LOG_INFO,
-              "Input tensor dimensions exceed XNN_MAX_TENSOR_DIMS in Mul.");
-        } else {
-          const float prod_scale = input1->params.scale * input2->params.scale;
-          const float prod_output_scale = prod_scale / output->params.scale;
-          if (prod_output_scale < 0x1.0p-16f ||
-              prod_output_scale >= 0x1.0p+8f) {
-            TFLITE_LOG(TFLITE_LOG_INFO,
-                       "Mul product-to-output scale ratio must be in [2**-16, "
-                       "2**8) to use XNNPACK, but was instead %.7g.",
-                       prod_output_scale);
-          } else {
-            std::array<size_t, XNN_MAX_TENSOR_DIMS> input1_shape;
-            std::array<size_t, XNN_MAX_TENSOR_DIMS> input2_shape;
-            for (size_t i = 0; i < num_input1_dims; ++i) {
-              input1_shape[i] = GetTensorShape(input1).Dims(i);
-            }
-            for (size_t i = 0; i < num_input2_dims; ++i) {
-              input2_shape[i] = GetTensorShape(input2).Dims(i);
-            }
-            CpuBackendContext* cpu_backend_context =
-                CpuBackendContext::GetFromContext(context);
-            pthreadpool_t threadpool =
-                cpu_backend_context->get_xnnpack_threadpool();
-            const enum xnn_status status = xnn_run_multiply_nd_qu8(
-                num_input1_dims, input1_shape.data(),
-                static_cast<uint8_t>(input1->params.zero_point),
-                input1->params.scale, num_input2_dims, input2_shape.data(),
-                static_cast<uint8_t>(input2->params.zero_point),
-                input2->params.scale, GetTensorData<uint8_t>(input1),
-                GetTensorData<uint8_t>(input2), GetTensorData<uint8_t>(output),
-                static_cast<uint8_t>(output->params.zero_point),
-                output->params.scale, data->output_activation_min,
-                data->output_activation_max,
-                /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
-            if (status == xnn_status_success) {
-              return kTfLiteOk;
-            }
-            TFLITE_LOG(TFLITE_LOG_INFO,
-                       "Failed to run xnn_run_multiply_nd_qu8. Error code: %d",
-                       status);
-          }
-        }
-#endif  // TFLITE_KERNEL_USE_XNNPACK
         if (need_broadcast) {
           TF_LITE_MUL(optimized_ops, BroadcastMulDispatch, uint8_t);
         } else {
