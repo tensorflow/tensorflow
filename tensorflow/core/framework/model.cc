@@ -2336,7 +2336,6 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
 }
 
 void Model::RemoveNode(std::shared_ptr<Node> node) {
-  mutex_lock l(mu_);
   if (node) {
     if (node->output() && !node->output_deleted()) {
       node->output()->remove_input(node);
