@@ -76,22 +76,18 @@ tsl::Status PluginRegistry::RegisterFactoryInternal(
   }
 
   (*factories)[plugin_id] = factory;
-  plugin_names_[plugin_id] = plugin_name;
   return ::tsl::OkStatus();
 }
 
 template <typename FACTORY_TYPE>
 tsl::StatusOr<FACTORY_TYPE> PluginRegistry::GetFactoryInternal(
-    PluginId plugin_id, const std::map<PluginId, FACTORY_TYPE>& factories,
-    const std::map<PluginId, FACTORY_TYPE>& generic_factories) const {
+    PluginId plugin_id,
+    const std::map<PluginId, FACTORY_TYPE>& factories) const {
   auto iter = factories.find(plugin_id);
   if (iter == factories.end()) {
-    iter = generic_factories.find(plugin_id);
-    if (iter == generic_factories.end()) {
-      return tsl::Status(
-          absl::StatusCode::kNotFound,
-          absl::StrFormat("Plugin ID %p not registered.", plugin_id));
-    }
+    return tsl::Status(
+        absl::StatusCode::kNotFound,
+        absl::StrFormat("Plugin ID %p not registered.", plugin_id));
   }
 
   return iter->second;
@@ -162,60 +158,48 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
     }
   }
 
-  return HasFactory(generic_factories_, plugin_kind, plugin_id);
+  return false;
 }
 
 // Explicit instantiations to support types exposed in user/public API.
-#define EMIT_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE, FACTORY_VAR, PLUGIN_STRING) \
-  template tsl::StatusOr<PluginRegistry::FACTORY_TYPE>                        \
-  PluginRegistry::GetFactoryInternal<PluginRegistry::FACTORY_TYPE>(           \
-      PluginId plugin_id,                                                     \
-      const std::map<PluginId, PluginRegistry::FACTORY_TYPE>& factories,      \
-      const std::map<PluginId, PluginRegistry::FACTORY_TYPE>&                 \
-          generic_factories) const;                                           \
-                                                                              \
-  template tsl::Status                                                        \
-  PluginRegistry::RegisterFactoryInternal<PluginRegistry::FACTORY_TYPE>(      \
-      PluginId plugin_id, const std::string& plugin_name,                     \
-      PluginRegistry::FACTORY_TYPE factory,                                   \
-      std::map<PluginId, PluginRegistry::FACTORY_TYPE>* factories);           \
-                                                                              \
-  template <>                                                                 \
-  tsl::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>(  \
-      Platform::Id platform_id, PluginId plugin_id, const std::string& name,  \
-      PluginRegistry::FACTORY_TYPE factory) {                                 \
-    return RegisterFactoryInternal(plugin_id, name, factory,                  \
-                                   &factories_[platform_id].FACTORY_VAR);     \
-  }                                                                           \
-                                                                              \
-  template <>                                                                 \
-  tsl::Status PluginRegistry::RegisterFactoryForAllPlatforms<                 \
-      PluginRegistry::FACTORY_TYPE>(PluginId plugin_id,                       \
-                                    const std::string& name,                  \
-                                    PluginRegistry::FACTORY_TYPE factory) {   \
-    return RegisterFactoryInternal(plugin_id, name, factory,                  \
-                                   &generic_factories_.FACTORY_VAR);          \
-  }                                                                           \
-                                                                              \
-  template <>                                                                 \
-  tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(     \
-      Platform::Id platform_id, PluginId plugin_id) {                         \
-    if (plugin_id == PluginConfig::kDefault) {                                \
-      plugin_id = default_factories_[platform_id].FACTORY_VAR;                \
-                                                                              \
-      if (plugin_id == kNullPlugin) {                                         \
-        return tsl::Status(                                                   \
-            absl::StatusCode::kFailedPrecondition,                            \
-            "No suitable " PLUGIN_STRING                                      \
-            " plugin registered. Have you linked in a " PLUGIN_STRING         \
-            "-providing plugin?");                                            \
-      } else {                                                                \
-        VLOG(2) << "Selecting default " PLUGIN_STRING " plugin, "             \
-                << plugin_names_[plugin_id];                                  \
-      }                                                                       \
-    }                                                                         \
-    return GetFactoryInternal(plugin_id, factories_[platform_id].FACTORY_VAR, \
-                              generic_factories_.FACTORY_VAR);                \
+#define EMIT_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE, FACTORY_VAR, PLUGIN_STRING)  \
+  template tsl::StatusOr<PluginRegistry::FACTORY_TYPE>                         \
+  PluginRegistry::GetFactoryInternal<PluginRegistry::FACTORY_TYPE>(            \
+      PluginId plugin_id,                                                      \
+      const std::map<PluginId, PluginRegistry::FACTORY_TYPE>& factories)       \
+      const;                                                                   \
+                                                                               \
+  template tsl::Status                                                         \
+  PluginRegistry::RegisterFactoryInternal<PluginRegistry::FACTORY_TYPE>(       \
+      PluginId plugin_id, const std::string& plugin_name,                      \
+      PluginRegistry::FACTORY_TYPE factory,                                    \
+      std::map<PluginId, PluginRegistry::FACTORY_TYPE>* factories);            \
+                                                                               \
+  template <>                                                                  \
+  tsl::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>(   \
+      Platform::Id platform_id, PluginId plugin_id, const std::string& name,   \
+      PluginRegistry::FACTORY_TYPE factory) {                                  \
+    return RegisterFactoryInternal(plugin_id, name, factory,                   \
+                                   &factories_[platform_id].FACTORY_VAR);      \
+  }                                                                            \
+                                                                               \
+  template <>                                                                  \
+  tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(      \
+      Platform::Id platform_id, PluginId plugin_id) {                          \
+    if (plugin_id == PluginConfig::kDefault) {                                 \
+      plugin_id = default_factories_[platform_id].FACTORY_VAR;                 \
+                                                                               \
+      if (plugin_id == kNullPlugin) {                                          \
+        return tsl::Status(                                                    \
+            absl::StatusCode::kFailedPrecondition,                             \
+            "No suitable " PLUGIN_STRING                                       \
+            " plugin registered. Have you linked in a " PLUGIN_STRING          \
+            "-providing plugin?");                                             \
+      } else {                                                                 \
+        VLOG(2) << "Selecting default " PLUGIN_STRING " plugin";               \
+      }                                                                        \
+    }                                                                          \
+    return GetFactoryInternal(plugin_id, factories_[platform_id].FACTORY_VAR); \
   }
 
 EMIT_PLUGIN_SPECIALIZATIONS(BlasFactory, blas, "BLAS");

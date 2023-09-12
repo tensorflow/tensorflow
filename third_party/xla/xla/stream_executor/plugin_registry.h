@@ -62,13 +62,6 @@ class PluginRegistry {
   tsl::Status RegisterFactory(Platform::Id platform_id, PluginId plugin_id,
                               const std::string& name, FactoryT factory);
 
-  // Registers the specified factory as usable by _all_ platform types.
-  // Reports errors just as RegisterFactory.
-  template <typename FactoryT>
-  tsl::Status RegisterFactoryForAllPlatforms(PluginId plugin_id,
-                                             const std::string& name,
-                                             FactoryT factory);
-
   // Potentially sets the plugin identified by plugin_id to be the default
   // for the specified platform and plugin kind. If this routine is called
   // multiple types for the same PluginKind, the PluginId given in the last call
@@ -114,8 +107,7 @@ class PluginRegistry {
   // Actually performs the work of factory retrieval.
   template <typename FactoryT>
   tsl::StatusOr<FactoryT> GetFactoryInternal(
-      PluginId plugin_id, const std::map<PluginId, FactoryT>& factories,
-      const std::map<PluginId, FactoryT>& generic_factories) const;
+      PluginId plugin_id, const std::map<PluginId, FactoryT>& factories) const;
 
   // Returns true if the specified plugin has been registered with the specified
   // platform factories. Unlike the other overload of this method, this does
@@ -129,14 +121,8 @@ class PluginRegistry {
   // The set of registered factories, keyed by platform ID.
   std::map<Platform::Id, PluginFactories> factories_;
 
-  // Plugins supported for all platform kinds.
-  PluginFactories generic_factories_;
-
   // The sets of default factories, keyed by platform ID.
   std::map<Platform::Id, DefaultFactories> default_factories_;
-
-  // Lookup table for plugin names.
-  std::map<PluginId, std::string> plugin_names_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(PluginRegistry);
 };
