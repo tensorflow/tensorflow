@@ -117,10 +117,9 @@ Status BuildControlFlowInfo(const Graph* g, std::vector<ControlFlowInfo>* info,
 
     for (const Edge* out_edge : curr_node->out_edges()) {
       const Node* out = out_edge->dst();
-      int out_id = out->id();
-      ControlFlowInfo* out_info = &(*info)[out_id];
+      ControlFlowInfo* out_info = &(*info)[out->id()];
       const Node* out_parent = out_info->parent_frame;
-      bool is_visited = (parent_nodes[out_id] != nullptr);
+      bool is_visited = (parent_nodes[out->id()] != nullptr);
 
       // Skip Sink/Source nodes.
       if (!out->IsOp()) continue;
