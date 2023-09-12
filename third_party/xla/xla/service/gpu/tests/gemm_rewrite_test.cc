@@ -3616,6 +3616,37 @@ ENTRY test {
       )");
 }
 
+TEST_F(CublasLtGemmRewriteTest, VectorBiasF32UnpaddedWithBitcast) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3]{1,0} parameter(0)
+  y = f32[3,4]{1,0} parameter(1)
+  z = f32[2]{0} parameter(2)
+  dot_a = f32[2,4]{0,1} dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bitc = f32[4,2]{1,0} bitcast(f32[2,4]{0,1} dot_a)
+  z_bcast = f32[4,2] broadcast(z), dimensions={1}
+  ROOT add = f32[4,2]{1,0} add(bitc, z_bcast)
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Bitcast(m::CustomCall({"__cublas$lt$matmul"},
+                                          m::Parameter(0), m::Parameter(1),
+                                          m::Parameter(2).WithShape(F32, {2}))
+                                .WithShape(F32, {2, 4}))
+                     .WithShape(F32, {4, 2})));
+}
+
 // For F16, the operands are padded on GPUs with Tensor Cores (i.e. Volta and
 // newer architectures) so that the sizes of all dimensions are multiples of 8.
 TEST_F(CublasLtGemmRewriteTest, VectorBiasF16Unpadded) {

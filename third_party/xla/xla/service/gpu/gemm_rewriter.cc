@@ -1420,9 +1420,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    // In the case of high rank input, it is necessary to consider potential
-    // padding for the bias.
-    if (bitcast) {
+    // In the case of high rank input for FP8, it is necessary to consider
+    // potential padding for the bias.
+    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget && bitcast) {
       bias = PadOperandToMultipleOf16(
           config.dot_dimension_numbers().rhs_batch_dimensions(), bias);
     }
