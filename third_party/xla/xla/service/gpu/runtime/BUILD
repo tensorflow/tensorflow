@@ -256,7 +256,9 @@ cuda_library(
     name = "topk_kernel_cuda",
     srcs = if_cuda_is_configured(
         [
-            "topk_kernel.cu.cc",
+            "topk_kernel_bfloat16.cu.cc",
+            "topk_kernel_float.cu.cc",
+            "topk_kernel.cu.h",
         ],
     ),
     hdrs = if_cuda_is_configured(["topk_kernel_common.h"]),

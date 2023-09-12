@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef XLA_SERVICE_GPU_RUNTIME_TOPK_KERNEL_CU_H_
+#define XLA_SERVICE_GPU_RUNTIME_TOPK_KERNEL_CU_H_
+
 // This file contains bespoke and optimized implementation for TopK shapes. When
 // adding support for new shapes/dtypes, you also need to modify the rewritter
 // on topk_specializer.cc for these changes to be picked up.
@@ -21,11 +24,9 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
-#include "Eigen/Core"  // from @eigen_archive
 #include "xla/service/gpu/runtime/topk_kernel_common.h"
 
 namespace xla::gpu {
-namespace {
 
 // Default implementation for KV holder. Useful for testing while adding support
 // for a new type, but generally bitpacking those values is more efficient. See
@@ -265,8 +266,6 @@ __launch_bounds__(kTopKMaxThreadsPerBlock, 1) __global__
             &result_idxs[k * blockIdx.x]);
 }
 
-}  // namespace
-
 template <typename T, size_t K>
 void* GetTopKKernelForK(int n) {
   // TODO(doak): Switch to uint32_t if we don't have an efficient
@@ -276,15 +275,6 @@ void* GetTopKKernelForK(int n) {
              : reinterpret_cast<void*>(&Run<K, T, uint32_t>);
 }
 
-template void* GetTopKKernelForK<float, 1>(int n);
-template void* GetTopKKernelForK<float, 2>(int n);
-template void* GetTopKKernelForK<float, 4>(int n);
-template void* GetTopKKernelForK<float, 8>(int n);
-template void* GetTopKKernelForK<float, 16>(int n);
-template void* GetTopKKernelForK<Eigen::bfloat16, 1>(int n);
-template void* GetTopKKernelForK<Eigen::bfloat16, 2>(int n);
-template void* GetTopKKernelForK<Eigen::bfloat16, 4>(int n);
-template void* GetTopKKernelForK<Eigen::bfloat16, 8>(int n);
-template void* GetTopKKernelForK<Eigen::bfloat16, 16>(int n);
-
 }  // namespace xla::gpu
+
+#endif  // XLA_SERVICE_GPU_RUNTIME_TOPK_KERNEL_CU_H_
