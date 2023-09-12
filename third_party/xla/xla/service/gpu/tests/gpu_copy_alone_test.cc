@@ -28,13 +28,6 @@ namespace {
 // error isn't caught. We expect and CUDA_ERROR_ILLEGAL_ADDRESS to be
 // thrown with the old buggy code.
 class CopyAloneNoOptTest : public GpuCodegenTest {
-  DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    // The test MultiOutputStore contain a MOF fusion and XLA optimizer pass
-    // doesn't like this.
-    debug_options.set_xla_disable_all_hlo_passes(true);
-    return debug_options;
-  }
 };
 
 TEST_F(CopyAloneNoOptTest, CopyTranspose) {
