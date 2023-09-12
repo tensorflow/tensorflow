@@ -53,7 +53,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "xla/pjrt/gpu/nccl_id_store.h"
-#include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #endif  // GOOGLE_CUDA
 
