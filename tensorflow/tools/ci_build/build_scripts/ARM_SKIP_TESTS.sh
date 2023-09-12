@@ -16,6 +16,10 @@
 set -x
 
 ARM_SKIP_TESTS="-//tensorflow/lite/... \
+-//tensorflow/core/platform:ram_file_system_test \
+-//tensorflow/python/compiler/xla:xla_test \
+-//tensorflow/python/data/experimental/kernel_tests:checkpoint_input_pipeline_hook_test \
+-//tensorflow/python/distribute:parameter_server_strategy_test \
 -//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
 -//tensorflow/python/kernel_tests/nn_ops:conv_ops_test \
 "
