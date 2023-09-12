@@ -290,7 +290,8 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj, ifrt::Client* client,
 
   if (ifrt_array->sharding().devices().front() == to_device &&
       (!to_memory_kind.memory_kind().has_value() ||
-       (ifrt_array->sharding().memory_kind() == to_memory_kind))) {
+       !ifrt_array->sharding().memory_kind().memory_kind().has_value() ||
+       ifrt_array->sharding().memory_kind() == to_memory_kind)) {
     return DevicePutResult(
         tsl::FormRef(ifrt_array), py_array.weak_type(),
         /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));
