@@ -962,6 +962,10 @@ bool IndependentHostTasks(int64_t task_id, bool evens) {
 
 namespace {
 
+REGISTER_DATASET_EXPERIMENT("noop_task_level", RandomJobSamplePercentage<50>,
+                            IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("noop_job_level", RandomJobSamplePercentage<50>,
+                            AllTasks);
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
