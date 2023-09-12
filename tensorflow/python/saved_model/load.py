@@ -1080,7 +1080,11 @@ def load_partial(export_dir, filters, tags=None, options=None):
         fingerprint=fingerprinting_utils.to_proto(
             fingerprint).SerializeToString())
     singleprint = fingerprint.singleprint()
-  metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
+  try:
+    metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
+  except metrics.MetricException:
+    logging.info("path_and_singleprint metric could not be logged. "
+                 "Saved model loading will continue.")
 
   if filters and loader is not None:
     return {node_id: loader.get(node_id) for node_id in filters}

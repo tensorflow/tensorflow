@@ -57,9 +57,13 @@ def write_fingerprint(export_dir):
                                         fingerprint_serialized)
 
     metrics.SetWriteFingerprint(fingerprint=fingerprint_serialized)
-    metrics.SetWritePathAndSingleprint(
-        path=export_dir,
-        singleprint=singleprint_from_fingerprint_proto(export_dir))
+    try:
+      metrics.SetWritePathAndSingleprint(
+          path=export_dir,
+          singleprint=singleprint_from_fingerprint_proto(export_dir))
+    except metrics.MetricException:
+      logging.info("path_and_singleprint metric could not be set. "
+                   "Model saving will continue.")
 
 
 def singleprint_from_saved_model_proto(export_dir):
