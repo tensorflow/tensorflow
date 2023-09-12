@@ -266,7 +266,8 @@ class Node {
         processing_time_(0),
         record_metrics_(true),
         metrics_(name_),
-        output_(args.output.get()) {}
+        output_(args.output.get()),
+        output_weak_ptr_(args.output) {}
 
   virtual ~Node() {
     // Clear the sub-nodes instead of relying on implicit shared pointer
@@ -376,6 +377,7 @@ class Node {
 
   // Returns the node output.
   Node* output() const { return output_; }
+  bool output_deleted() { return output_weak_ptr_.expired(); }
 
   // Returns the parameter value.
   double parameter_value(const string& name) const TF_LOCKS_EXCLUDED(mu_) {
@@ -801,6 +803,7 @@ class Node {
   // The reference to the output node is not owned so that deletion of a
   // node results in recursive deletion of the subtree rooted in the node.
   Node* const output_;
+  std::weak_ptr<Node> output_weak_ptr_;
 };
 
 // InterleaveMany is used to model datasets whose inputs are used to create
