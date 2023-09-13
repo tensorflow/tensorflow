@@ -1305,6 +1305,9 @@ TfLiteStatus ParseConv2D(const Operator* op, ErrorReporter* error_reporter,
 
     params->dilation_width_factor = schema_params->dilation_w_factor();
     params->dilation_height_factor = schema_params->dilation_h_factor();
+    TF_LITE_ENSURE_STATUS(
+        ConvertTensorType(schema_params->quantized_bias_type(),
+                          &params->quantized_bias_type, error_reporter));
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
@@ -1519,7 +1522,9 @@ TfLiteStatus ParseFullyConnected(const Operator* op,
     params->keep_num_dims = schema_params->keep_num_dims();
     params->asymmetric_quantize_inputs =
         schema_params->asymmetric_quantize_inputs();
-
+    TF_LITE_ENSURE_STATUS(
+        ConvertTensorType(schema_params->quantized_bias_type(),
+                          &params->quantized_bias_type, error_reporter));
     switch (schema_params->weights_format()) {
       case FullyConnectedOptionsWeightsFormat_DEFAULT:
         params->weights_format = kTfLiteFullyConnectedWeightsFormatDefault;
@@ -2450,6 +2455,9 @@ TfLiteStatus ParseTransposeConv(const Operator* op,
 
     params->activation =
         ConvertActivation(transpose_conv_params->fused_activation_function());
+    TF_LITE_ENSURE_STATUS(
+        ConvertTensorType(transpose_conv_params->quantized_bias_type(),
+                          &params->quantized_bias_type, error_reporter));
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
