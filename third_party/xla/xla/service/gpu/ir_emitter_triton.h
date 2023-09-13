@@ -31,6 +31,11 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+struct TritonWrapperResult {
+  LaunchDimensions launch_dimensions;
+  int64_t shmem_bytes;
+};
+
 // Compute the launch dimensions for the given Triton MatMul.
 LaunchDimensions GetMatMulLaunchDimensions(
     const TritonFusionAnalysis& analysis, const HloComputation* computation,
@@ -65,7 +70,7 @@ using TritonIrEmitter = std::function<Status(
 // Generate Triton IR by running the provided generator, compile it into LLVM IR
 // and return launch dimensions.
 // MatMul and SoftMax above are some such IR generators.
-StatusOr<LaunchDimensions> TritonWrapper(
+StatusOr<TritonWrapperResult> TritonWrapper(
     absl::string_view fn_name, const HloComputation* hlo_computation,
     absl::string_view fusion_kind, const se::CudaComputeCapability& cc,
     const GpuDeviceInfo& device_info,

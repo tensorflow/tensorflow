@@ -1481,7 +1481,7 @@ StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
   return llvmModule;
 }
 
-StatusOr<LaunchDimensions> TritonWrapper(
+StatusOr<TritonWrapperResult> TritonWrapper(
     absl::string_view fn_name, const HloComputation* hlo_computation,
     absl::string_view fusion_kind, const se::CudaComputeCapability& cc,
     const GpuDeviceInfo& device_info,
@@ -1660,8 +1660,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
 
   LaunchDimensions launch_dimensions =
       launch_dims_generator(analysis, hlo_computation, config);
-  launch_dimensions.SetSharedMemBytes(shared_mem_bytes);
-  return launch_dimensions;
+  return {{launch_dimensions, shared_mem_bytes}};
 }
 
 }  // namespace gpu

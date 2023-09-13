@@ -278,7 +278,9 @@ StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
   }
 
   return std::make_unique<KernelThunk>(
-      fusion_op, entry.kernel_name, kernel_arguments.args(), launch_dimensions);
+      fusion_op, entry.kernel_name, kernel_arguments.args(), launch_dimensions,
+      // Shared memory is allocated statically.
+      /*shmem_bytes=*/0);
 }
 
 Status EmitExtraOutputsForReduce(llvm::IRBuilder<>* builder,

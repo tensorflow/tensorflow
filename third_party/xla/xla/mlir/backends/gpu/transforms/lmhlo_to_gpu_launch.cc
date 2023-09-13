@@ -239,9 +239,8 @@ static void Rewrite(Operation* op, OpBuilder& b, SymbolTable& symbol_table,
 
 static void LowerKernelThunkToGpuOp(
     Operation* op, OpBuilder& b, GPUModuleOp gpu_module,
-    const std::string& kernel_name, const SmallVector<Value>& kernel_args,
-    const SmallVector<bool>& kernel_args_written,
-    const LaunchDimensions& launch_dims) {
+    const KernelThunk& thunk, const SmallVector<Value>& kernel_args,
+    const SmallVector<bool>& kernel_args_written) {
   mlir::Location loc = op->getLoc();
   b.setInsertionPointToStart(gpu_module.getBody());
 
@@ -249,7 +248,7 @@ static void LowerKernelThunkToGpuOp(
       b.getType<FunctionType>(TypeRange(ValueRange(kernel_args)), TypeRange());
 
   gpu::GPUFuncOp kernel_func =
-      b.create<gpu::GPUFuncOp>(loc, kernel_name, func_type);
+      b.create<gpu::GPUFuncOp>(loc, thunk.kernel_name(), func_type);
   kernel_func->setAttr(GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
 
   for (int i = 0; i < kernel_args.size(); ++i) {
@@ -272,10 +271,11 @@ static void LowerKernelThunkToGpuOp(
   };
 
   b.setInsertionPoint(op);
+  const auto& launch_dims = thunk.launch_dimensions();
   auto grid_size = make_kernel_dim3(launch_dims.block_counts());
   auto block_size = make_kernel_dim3(launch_dims.thread_counts_per_block());
   auto shmem_size = b.create<arith::ConstantOp>(
-      loc, b.getI32IntegerAttr(launch_dims.SharedMemBytes()));
+      loc, b.getI32IntegerAttr(thunk.shmem_bytes()));
 
   b.create<LaunchFuncOp>(loc, kernel_func, grid_size, block_size, shmem_size,
                          kernel_args);
@@ -336,9 +336,8 @@ static void LowerThunkToGpuOp(Operation* op, OpBuilder& b,
       kernel_args_written.push_back(written);
     }
 
-    LowerKernelThunkToGpuOp(op, b, gpu_module, kernel_thunk->kernel_name(),
-                            kernel_args, kernel_args_written,
-                            kernel_thunk->launch_dimensions());
+    LowerKernelThunkToGpuOp(op, b, gpu_module, *kernel_thunk, kernel_args,
+                            kernel_args_written);
     return;
   }
 

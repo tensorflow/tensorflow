@@ -288,7 +288,8 @@ StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
   }
 
   return std::make_unique<KernelThunk>(
-      fusion_op, entry.kernel_name, kernel_arguments.args(), launch_dimensions);
+      fusion_op, entry.kernel_name, kernel_arguments.args(), launch_dimensions,
+      /*shmem_bytes=*/0);
 }
 
 // Derives the number of warps to use for processing a Triton Softmax fusion.
@@ -1738,10 +1739,10 @@ Status IrEmitterUnnested::EmitTritonFusion(
                                                      &backend_config));
     absl::string_view fusion_kind = backend_config.kind();
 
-    LaunchDimensions launch_dimensions;
+    TritonWrapperResult triton_wrapper_result;
     if (fusion_kind == kTritonSoftmaxFusionKind) {
       TF_ASSIGN_OR_RETURN(
-          launch_dimensions,
+          triton_wrapper_result,
           TritonWrapper(impl_fn_name, hlo_computation, kTritonSoftmaxFusionKind,
                         ir_emitter_context_->cuda_compute_capability(),
                         ir_emitter_context_->gpu_device_info(), config, module_,
@@ -1750,7 +1751,7 @@ Status IrEmitterUnnested::EmitTritonFusion(
     } else {  // Must be a MatMul
       CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
       TF_ASSIGN_OR_RETURN(
-          launch_dimensions,
+          triton_wrapper_result,
           TritonWrapper(impl_fn_name, hlo_computation, kTritonGemmFusionKind,
                         ir_emitter_context_->cuda_compute_capability(),
                         ir_emitter_context_->gpu_device_info(), config, module_,
@@ -1763,7 +1764,7 @@ Status IrEmitterUnnested::EmitTritonFusion(
 
     auto [kernel, inputs, outputs] = BuildKernelPrototype(
         *ir_emitter_context_, suggested_kernel_name, kernel_arguments.args(),
-        impl_fn->arg_size(), launch_dimensions, &b_);
+        impl_fn->arg_size(), triton_wrapper_result.launch_dimensions, &b_);
 
     // Move function body into kernel prototype.
     llvm::Function* prototype_func = b_.GetInsertBlock()->getParent();
@@ -1774,7 +1775,8 @@ Status IrEmitterUnnested::EmitTritonFusion(
     impl_fn->eraseFromParent();
 
     LogAndVerify(module_);
-    return {{kernel->getName().str(), launch_dimensions}};
+    return {{kernel->getName().str(), triton_wrapper_result.launch_dimensions,
+             triton_wrapper_result.shmem_bytes}};
   };
 
   auto [kernel, was_cached] = kernel_reuse_cache_.GetWithStatus(
@@ -1784,7 +1786,7 @@ Status IrEmitterUnnested::EmitTritonFusion(
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       op, kernel->kernel_name, kernel_arguments.args(),
-      kernel->launch_dimensions));
+      kernel->launch_dimensions, kernel->shmem_bytes));
   return OkStatus();
 }
 
@@ -2804,7 +2806,8 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
       needed_operands.size(), launch_dimensions, &b_);
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
-      op, kernel->getName().str(), kernel_arguments.args(), launch_dimensions));
+      op, kernel->getName().str(), kernel_arguments.args(), launch_dimensions,
+      /*shmem_bytes=*/0));
 
   return {{inputs, outputs}};
 }

@@ -20,18 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/translate/mhlo_to_hlo/location_exporter.h"
-#include "xla/types.h"
-#include "xla/util.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -51,10 +44,12 @@ mlir::Value RemoveTransformingOperations(mlir::Value value) {
 
 KernelThunk::KernelThunk(mlir::Operation* op, std::string kernel_name,
                          absl::Span<const KernelArgument> kernel_arguments,
-                         LaunchDimensions launch_dimensions)
+                         LaunchDimensions launch_dimensions,
+                         int64_t shmem_bytes)
     : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(op)),
       kernel_name_(std::move(kernel_name)),
-      launch_dimensions_(std::move(launch_dimensions)) {
+      launch_dimensions_(std::move(launch_dimensions)),
+      shmem_bytes_(shmem_bytes) {
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
   for (const auto& kernel_argument : kernel_arguments) {
@@ -91,8 +86,7 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<se::KernelBase> kernel,
         CreateKernel(kernel_name_, args_.size(), executable.text(),
-                     executable.binary(), executor,
-                     launch_dimensions_.SharedMemBytes()));
+                     executable.binary(), executor, shmem_bytes_));
 
     kernel_cache_.emplace(executor, std::move(kernel));
   }

@@ -54,7 +54,7 @@ class KernelThunk : public Thunk {
   // `mlir::memref::ViewOp`).
   KernelThunk(mlir::Operation* op, std::string kernel_name,
               absl::Span<const KernelArgument> kernel_arguments,
-              LaunchDimensions launch_dimensions);
+              LaunchDimensions launch_dimensions, int64_t shmem_bytes);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
@@ -81,6 +81,8 @@ class KernelThunk : public Thunk {
   const LaunchDimensions& launch_dimensions() const {
     return launch_dimensions_;
   }
+  // The shared memory required by the kernel.
+  int64_t shmem_bytes() const { return shmem_bytes_; }
   absl::Span<const mlir::Value> values() const { return values_; }
 
  private:
@@ -95,6 +97,8 @@ class KernelThunk : public Thunk {
 
   // The thread and block dimension used to launch the kernel.
   const LaunchDimensions launch_dimensions_;
+
+  int64_t shmem_bytes_;
 
   // mlir::Value(s) corresponding to the buffer slice arguments.
   std::vector<mlir::Value> values_;
