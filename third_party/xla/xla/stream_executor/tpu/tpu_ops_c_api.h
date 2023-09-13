@@ -483,6 +483,9 @@ TFTPU_CAPI_EXPORT uint64_t TpuCompile_CreateGuaranteedConstFingerprint(
 // Returns a pointer to the TPU topology struct.
 TFTPU_CAPI_EXPORT SE_TpuTopology* TpuUtil_GetTopologyPtr();
 
+// Returns XLA pad size from TPU topology.
+TFTPU_CAPI_EXPORT size_t TpuUtil_GetXlaPadSizeFromTpuTopology();
+
 XLA_TpuNodeContext* TpuNodeContext_Create(int device_ordinal,
                                           TF_Status* status);
 void TpuNodeContext_Free(XLA_TpuNodeContext* node_context);
@@ -786,6 +789,7 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_DestroyCompilationCacheKey);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CreateGuaranteedConstFingerprint);
   TFTPU_ADD_FN_IN_STRUCT(TpuUtil_GetTopologyPtr);
+  TFTPU_ADD_FN_IN_STRUCT(TpuUtil_GetXlaPadSizeFromTpuTopology);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_Create);
   TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_Free);

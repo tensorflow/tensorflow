@@ -134,6 +134,28 @@ cc_library(
     hdrs = ["tpu_compile_op_options.h"],
 )
 
+cc_library(
+    name = "sparse_core_preprocess_ops",
+    srcs = ["sparse_core_preprocess_ops.cc"],
+    hdrs = ["sparse_core_preprocess_ops.h"],
+    deps = [
+        ":sparse_core_ops_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla:util",
+        "@local_xla//xla/stream_executor/tpu:tpu_api",
+        "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
+    ],
+)
+
 tf_kernel_library(
     name = "tpu_configuration_ops",
     srcs = ["tpu_configuration_ops.cc"],
@@ -1312,5 +1334,28 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+    ],
+)
+
+cc_library(
+    name = "sparse_core_ops_utils",
+    srcs = ["sparse_core_ops_utils.cc"],
+    hdrs = ["sparse_core_ops_utils.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/numeric:bits",
+    ],
+)
+
+tf_cc_test(
+    name = "sparse_core_ops_utils_test",
+    srcs = ["sparse_core_ops_utils_test.cc"],
+    deps = [
+        ":sparse_core_ops_utils",
+        "//tensorflow/core:portable_gif_internal",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )

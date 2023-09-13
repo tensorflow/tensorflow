@@ -84,6 +84,7 @@ tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(ops_api_fn, TpuCompile_DestroyCompilationCacheKey);
   TFTPU_SET_FN(ops_api_fn, TpuCompile_CreateGuaranteedConstFingerprint);
   TFTPU_SET_FN(ops_api_fn, TpuUtil_GetTopologyPtr);
+  TFTPU_SET_FN(ops_api_fn, TpuUtil_GetXlaPadSizeFromTpuTopology);
 
   TFTPU_SET_FN(ops_api_fn, TfTpu_InitializeTpuModelServer);
 
