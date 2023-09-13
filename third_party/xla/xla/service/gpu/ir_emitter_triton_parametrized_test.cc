@@ -1038,6 +1038,9 @@ ENTRY main {
     case F16:
       tolerance = 2e-4;
       break;
+    case BF16:
+      tolerance = 2e-3;
+      break;
     default:
       ABSL_UNREACHABLE();
   }
@@ -1236,6 +1239,9 @@ ENTRY main {
     case F16:
       tolerance = 2e-4;
       break;
+    case BF16:
+      tolerance = 2e-3;
+      break;
     default:
       ABSL_UNREACHABLE();
   }
@@ -1292,6 +1298,9 @@ ENTRY main {
       break;
     case F16:
       tolerance = 2e-4;
+      break;
+    case BF16:
+      tolerance = 2e-3;
       break;
     default:
       ABSL_UNREACHABLE();
@@ -1352,6 +1361,9 @@ ENTRY main {
       break;
     case F16:
       tolerance = 2e-4;
+      break;
+    case BF16:
+      tolerance = 2e-3;
       break;
     default:
       ABSL_UNREACHABLE();
@@ -1425,6 +1437,9 @@ ENTRY main {
       break;
     case F16:
       tolerance = 2e-4;
+      break;
+    case BF16:
+      tolerance = 2e-3;
       break;
     default:
       ABSL_UNREACHABLE();
@@ -1546,6 +1561,9 @@ ENTRY main {
       break;
     case F16:
       tolerance = 2e-4;
+      break;
+    case BF16:
+      tolerance = 2e-3;
       break;
     default:
       ABSL_UNREACHABLE();
