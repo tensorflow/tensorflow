@@ -1,15 +1,11 @@
 # TPU Kernel Implementations
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-)
 load(
     "//tensorflow:tensorflow.bzl",
     "if_libtpu",
     "tf_cc_test",
     "tf_copts",
+    "tf_gen_op_wrapper_py",
 )
 load(
     "//tensorflow:tensorflow.default.bzl",
@@ -17,9 +13,14 @@ load(
     "tf_kernel_library",
 )
 load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
+load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/tpu:build_defs.bzl",
     "if_libtpu_tf_status",
@@ -1268,6 +1269,24 @@ cc_library(
         "@local_tsl//tsl/platform:macros",
     ],
     alwayslink = 1,
+)
+
+tf_kernel_library(
+    name = "global_iter_id_op",
+    srcs = ["global_iter_id.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/kernels:partitioned_function_ops",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "gen_global_iter_id_op",
+    out = "gen_global_iter_id_op.py",
+    op_allowlist = [
+        "GlobalIterId",
+    ],
+    deps = [":global_iter_id_op"],
 )
 
 tf_cc_test(
