@@ -81,6 +81,7 @@ class TensorIterationSpec {
     // of several HLO dimensions. Product of subfragments equals `count`.
     std::vector<int64_t> subfragments;
 
+    bool operator!=(const IterationSpecFragment& other) const;
     std::string ToString() const;
   };
   // Description of complex iteration over a sequence of several strides.
