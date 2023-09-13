@@ -1701,7 +1701,8 @@ static Status ProcessFusionForConversion(mlir::Region* region,
 
 #if GOOGLE_CUDA
 Status IrEmitterUnnested::EmitTritonFusion(
-    mlir::Operation* op, const AutotuneResult::TritonGemmKey& config,
+    const HloFusionAnalysis& hlo_fusion_analysis, mlir::Operation* op,
+    const AutotuneResult::TritonGemmKey& config,
     const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
         hlo_for_lmhlo) {
   // Note: In this method we can't use `BuildKernelThunk` as usual,
@@ -1740,23 +1741,35 @@ Status IrEmitterUnnested::EmitTritonFusion(
     absl::string_view fusion_kind = backend_config.kind();
 
     TritonWrapperResult triton_wrapper_result;
+    LaunchDimensions launch_dimensions;
     if (fusion_kind == kTritonSoftmaxFusionKind) {
+      TF_ASSIGN_OR_RETURN(auto analysis,
+                          TritonFusionAnalysis::Execute(*hlo_computation));
       TF_ASSIGN_OR_RETURN(
           triton_wrapper_result,
-          TritonWrapper(impl_fn_name, hlo_computation, kTritonSoftmaxFusionKind,
+          TritonWrapper(analysis, impl_fn_name, hlo_computation,
+                        kTritonSoftmaxFusionKind,
                         ir_emitter_context_->cuda_compute_capability(),
                         ir_emitter_context_->gpu_device_info(), config, module_,
-                        &GetSoftMaxLaunchDimensions, &EmitSoftMax,
-                        *ir_emitter_context_->mlir_context()));
+                        &EmitSoftMax, *ir_emitter_context_->mlir_context()));
+      launch_dimensions = GetSoftMaxLaunchDimensions(
+          hlo_fusion_analysis.fusion_roots(),
+          hlo_fusion_analysis.fusion_boundary(), config);
     } else {  // Must be a MatMul
       CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
       TF_ASSIGN_OR_RETURN(
+          auto analysis,
+          TritonFusionAnalysis::Execute(*hlo_computation, config.split_k()));
+      TF_ASSIGN_OR_RETURN(
           triton_wrapper_result,
-          TritonWrapper(impl_fn_name, hlo_computation, kTritonGemmFusionKind,
+          TritonWrapper(analysis, impl_fn_name, hlo_computation,
+                        kTritonGemmFusionKind,
                         ir_emitter_context_->cuda_compute_capability(),
                         ir_emitter_context_->gpu_device_info(), config, module_,
-                        &GetMatMulLaunchDimensions, &EmitMatMul,
-                        *ir_emitter_context_->mlir_context()));
+                        &EmitMatMul, *ir_emitter_context_->mlir_context()));
+      launch_dimensions = GetMatMulLaunchDimensions(
+          analysis, hlo_fusion_analysis.fusion_roots(),
+          hlo_fusion_analysis.fusion_boundary(), config);
     }
 
     llvm::Function* impl_fn = module_->getFunction(impl_fn_name);
@@ -1764,7 +1777,7 @@ Status IrEmitterUnnested::EmitTritonFusion(
 
     auto [kernel, inputs, outputs] = BuildKernelPrototype(
         *ir_emitter_context_, suggested_kernel_name, kernel_arguments.args(),
-        impl_fn->arg_size(), triton_wrapper_result.launch_dimensions, &b_);
+        impl_fn->arg_size(), launch_dimensions, &b_);
 
     // Move function body into kernel prototype.
     llvm::Function* prototype_func = b_.GetInsertBlock()->getParent();
@@ -1775,7 +1788,7 @@ Status IrEmitterUnnested::EmitTritonFusion(
     impl_fn->eraseFromParent();
 
     LogAndVerify(module_);
-    return {{kernel->getName().str(), triton_wrapper_result.launch_dimensions,
+    return {{kernel->getName().str(), launch_dimensions,
              triton_wrapper_result.shmem_bytes}};
   };
 
@@ -1850,7 +1863,8 @@ Status IrEmitterUnnested::EmitFusion(
           triton_config.set_num_stages(1);
           triton_config.set_num_warps(2);
         }
-        return EmitTritonFusion(fusion_op, backend_config.triton_gemm_config(),
+        return EmitTritonFusion(fusion_analysis, fusion_op,
+                                backend_config.triton_gemm_config(),
                                 hlo_for_lmhlo);
       }
       if (backend_config.kind() == kTritonSoftmaxFusionKind) {
@@ -1858,7 +1872,8 @@ Status IrEmitterUnnested::EmitFusion(
         triton_config.set_num_stages(1);
         triton_config.set_num_warps(
             DeriveNumWarpsFromTritonSoftmaxComputation(fused_computation));
-        return EmitTritonFusion(fusion_op, backend_config.triton_gemm_config(),
+        return EmitTritonFusion(fusion_analysis, fusion_op,
+                                backend_config.triton_gemm_config(),
                                 hlo_for_lmhlo);
       }
 #endif

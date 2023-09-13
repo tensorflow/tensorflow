@@ -103,16 +103,21 @@ void FindFusionParameters(
       [&](const HloInstruction&) { return TraversalResult::kVisitOperands; });
 }
 
-bool HloAnyOf(
+bool HloAnyOf(absl::Span<const HloInstruction* const> roots,
+              const FusionBoundaryFn& boundary,
+              const std::function<bool(const HloInstruction& node)>& visit) {
+  return HloFindIf(roots, boundary, visit) != nullptr;
+}
+
+const HloInstruction* HloFindIf(
     absl::Span<const HloInstruction* const> roots,
-    const std::function<bool(const HloInstruction& producer,
-                             const HloInstruction& consumer)>& boundary,
+    const FusionBoundaryFn& boundary,
     const std::function<bool(const HloInstruction& node)>& visit) {
-  bool result = false;
+  const HloInstruction* result = nullptr;
   HloBfsConsumersFirstTraversal(roots, boundary,
                                 [&](const HloInstruction& node) {
                                   if (visit(node)) {
-                                    result = true;
+                                    result = &node;
                                     return TraversalResult::kAbortTraversal;
                                   }
                                   return TraversalResult::kVisitOperands;

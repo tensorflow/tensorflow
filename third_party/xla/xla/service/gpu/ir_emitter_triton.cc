@@ -91,6 +91,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
 #include "xla/service/gpu/gpu_device_info.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
@@ -948,12 +949,17 @@ void ValidateMatMulConfig(const AutotuneResult::TritonGemmKey& config,
 }  // namespace
 
 LaunchDimensions GetMatMulLaunchDimensions(
-    const TritonFusionAnalysis& analysis, const HloComputation* computation,
+    const TritonFusionAnalysis& analysis,
+    absl::Span<const HloInstruction* const> roots,
+    const FusionBoundaryFn& fusion_boundary,
     const AutotuneResult::TritonGemmKey& config) {
-  const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(
-      hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot));
-  const MatMulDims dims(config, *dot_instr, analysis);
-  const MatMulLaunchConfig launch_config(config, *dot_instr, dims);
+  const auto* dot = static_cast<const HloDotInstruction*>(
+      HloFindIf(roots, fusion_boundary, [](const HloInstruction& node) {
+        return node.opcode() == HloOpcode::kDot;
+      }));
+  CHECK_NE(dot, nullptr);
+  const MatMulDims dims(config, *dot, analysis);
+  const MatMulLaunchConfig launch_config(config, *dot, dims);
   return launch_config.launch_dims;
 }
 
@@ -1354,10 +1360,13 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
 }
 
 LaunchDimensions GetSoftMaxLaunchDimensions(
-    const TritonFusionAnalysis&, const HloComputation* computation,
+    absl::Span<const HloInstruction* const> roots,
+    const FusionBoundaryFn& fusion_boundary,
     const AutotuneResult::TritonGemmKey& config) {
-  const HloInstruction* reduce = hlo_query::GetFirstInstructionWithOpcode(
-      *computation, HloOpcode::kReduce);
+  const HloInstruction* reduce =
+      HloFindIf(roots, fusion_boundary, [](const HloInstruction& node) {
+        return node.opcode() == HloOpcode::kReduce;
+      });
   CHECK_NE(reduce, nullptr);
   const Shape& reduce_input_shape = reduce->operand(0)->shape();
   int num_rows = 1;
@@ -1482,12 +1491,11 @@ StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
 }
 
 StatusOr<TritonWrapperResult> TritonWrapper(
-    absl::string_view fn_name, const HloComputation* hlo_computation,
-    absl::string_view fusion_kind, const se::CudaComputeCapability& cc,
-    const GpuDeviceInfo& device_info,
+    const TritonFusionAnalysis& analysis, absl::string_view fn_name,
+    const HloComputation* hlo_computation, absl::string_view fusion_kind,
+    const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
     const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
-    LaunchDimensionsGenerator launch_dims_generator, TritonIrEmitter ir_emitter,
-    mlir::MLIRContext& mlir_context) {
+    TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context) {
   if (fusion_kind == kTritonGemmFusionKind) {
     // This is a heuristic that serves as a proxy for register usage and code
     // size.
@@ -1561,11 +1569,6 @@ StatusOr<TritonWrapperResult> TritonWrapper(
                                .debug_options()
                                .xla_gpu_cuda_data_dir());
 
-  TF_ASSIGN_OR_RETURN(
-      auto analysis,
-      fusion_kind == kTritonGemmFusionKind
-          ? TritonFusionAnalysis::Execute(*hlo_computation, config.split_k())
-          : TritonFusionAnalysis::Execute(*hlo_computation));
   TF_RETURN_IF_ERROR(ir_emitter(b, libdevice_path, analysis, hlo_computation,
                                 fn, config,
                                 device_info.shared_memory_per_block_optin));
@@ -1658,9 +1661,7 @@ StatusOr<TritonWrapperResult> TritonWrapper(
                                    llvm::Linker::Flags::OverrideFromSrc));
   LogAndVerify(llvm_module);
 
-  LaunchDimensions launch_dimensions =
-      launch_dims_generator(analysis, hlo_computation, config);
-  return {{launch_dimensions, shared_mem_bytes}};
+  return {{shared_mem_bytes}};
 }
 
 }  // namespace gpu

@@ -473,6 +473,7 @@ cc_library(
     deps = [
         ":gemm_rewriter_triton",
         ":gpu_device_info",
+        ":hlo_traversal",
         ":ir_emission_utils",
         ":launch_dimensions",
         ":matmul_utils",

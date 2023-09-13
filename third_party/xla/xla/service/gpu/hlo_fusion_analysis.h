@@ -58,6 +58,9 @@ class HloFusionAnalysis {
   const std::vector<HloInstruction*>& fusion_roots() const {
     return fusion_roots_;
   }
+  const FusionBoundaryFn& fusion_boundary() const {
+    return fusion_boundary_fn_;
+  }
 
   // Determines the fusion type for the emitter.
   EmitterFusionKind GetEmitterFusionKind() const;

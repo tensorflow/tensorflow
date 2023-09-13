@@ -183,6 +183,28 @@ TEST_F(HloTraversalTest, FuseConsumer) {
                                          "mul", "p0.1", "p1.1"));
 }
 
+TEST_F(HloTraversalTest, FindIf) {
+  auto module = ParseAndReturnVerifiedModule(kTestModule).value();
+  std::vector<std::string> visited_nodes;
+  auto* result = HloFindIf(
+      {module->GetComputationWithName("fused_computation")->root_instruction()},
+      DefaultFusionBoundaryFn, [&](const HloInstruction& node) {
+        return node.opcode() == HloOpcode::kMultiply;
+      });
+  ASSERT_NE(result, nullptr);
+  ASSERT_EQ(result->name(), "mul");
+}
+
+TEST_F(HloTraversalTest, NotFound) {
+  auto module = ParseAndReturnVerifiedModule(kTestModule).value();
+  std::vector<std::string> visited_nodes;
+  auto* result = HloFindIf(
+      {module->GetComputationWithName("fused_computation")->root_instruction()},
+      DefaultFusionBoundaryFn,
+      [&](const HloInstruction& node) { return false; });
+  ASSERT_EQ(result, nullptr);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
