@@ -555,6 +555,7 @@ build:release_cpu_linux --crosstool_top="@sigbuild-r2.14-clang_config_cuda//cros
 # offset of in the current version of ubp.
 # See https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
 build:release_cpu_linux --copt=-Wno-gnu-offsetof-extensions
+build:release_cpu_linux --copt=-Wno-error=array-parameter
 # Set lld as the linker.
 build:release_cpu_linux --linkopt="-fuse-ld=lld"
 build:release_cpu_linux --linkopt="-lm"

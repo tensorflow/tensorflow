@@ -48,7 +48,7 @@ docker run --name tsl -w /tf/tsl -itd --rm \
     bash
 
 # Build TSL
-docker exec tsl bazel build \
+docker exec tsl bazel --bazelrc=/usertools/cpu.bazelrc build \
     --output_filter="" \
     --keep_going \
     --build_tag_filters=$TAGS_FILTER  \
@@ -58,7 +58,7 @@ docker exec tsl bazel build \
     -- //tsl/...
 
 # Test TSL
-docker exec tsl bazel test \
+docker exec tsl bazel --bazelrc=/usertools/cpu.bazelrc test \
     --output_filter="" \
     --keep_going \
     --flaky_test_attempts=3 \
