@@ -139,6 +139,7 @@ cc_library(
     srcs = ["sparse_core_preprocess_ops.cc"],
     hdrs = ["sparse_core_preprocess_ops.h"],
     deps = [
+        ":sparse_core_ops_stats_handler",
         ":sparse_core_ops_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
@@ -154,6 +155,11 @@ cc_library(
         "@local_xla//xla/stream_executor/tpu:tpu_api",
         "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
     ],
+)
+
+cc_library(
+    name = "sparse_core_ops_stats_handler",
+    hdrs = ["sparse_core_ops_stats_handler.h"],
 )
 
 tf_kernel_library(

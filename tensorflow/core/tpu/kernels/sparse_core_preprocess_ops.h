@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/tpu/kernels/sparse_core_ops_stats_handler.h"
 
 namespace tensorflow {
 
@@ -65,6 +66,7 @@ class GetMinibatchesInCsrWithPhysicalReplicaOp : public OpKernel {
   int feature_width_ = 1;
   int64_t num_sc_per_chip_;
   std::string table_name_;
+  std::unique_ptr<SparseCoreOpsStatsHandler> sprase_core_ops_stats_handler_;
 
  private:
   int num_replica_ = 1;

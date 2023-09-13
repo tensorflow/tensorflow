@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/tpu/kernels/sparse_core_ops_stats_handler.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_utils.h"
 
 namespace tensorflow {
@@ -58,6 +60,10 @@ GetMinibatchesInCsrWithPhysicalReplicaOp::
                   "sample_count ", sample_count_,
                   " is not divisible by the number of sparsecores per chip ",
                   num_sc_per_chip_)));
+
+  // Create default instance of stats handler. May get overwritten by subclass.
+  sprase_core_ops_stats_handler_ =
+      std::make_unique<SparseCoreOpsStatsHandler>();
 }
 
 void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
@@ -119,6 +125,9 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
       ConvertBinarySplitsToBucketSplits(binary_splits, max_division_level);
 
   const int32 num_minibatch_per_sc = bucket_splits.size() + 1;
+  sprase_core_ops_stats_handler_->Record(StatsType::NUM_MINIBATCHES_PER_SC,
+                                         num_minibatch_per_sc, device_name_,
+                                         table_name_);
 
   OP_REQUIRES(
       ctx, num_minibatch_per_sc <= max_minibatches_per_sc_,
