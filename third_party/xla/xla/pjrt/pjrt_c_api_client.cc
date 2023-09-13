@@ -1544,7 +1544,7 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
       pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args), pjrt_c_api());
 
   if (fill_future) {
-    *returned_future = pjrt::ConvertCEventToCppFuture(
+    returned_future = pjrt::ConvertCEventToCppFuture(
         args.device_complete_events[0], pjrt_c_api());
   }
   return std::move(Convert2DCBuffersToCppBuffers(
