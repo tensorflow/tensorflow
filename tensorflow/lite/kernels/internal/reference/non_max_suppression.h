@@ -241,7 +241,7 @@ inline void NonMaxSuppression(const NonMaxSuppressionParams& params,
                               float* selected_scores,
                               int* num_selected_indices) {
   auto candidate_priority_queue =
-      GetCandidatePriorityQueue(scores, num_boxes, score_threshold);
+      detail::GetCandidatePriorityQueue(scores, num_boxes, score_threshold);
 
   *num_selected_indices = 0;
   int num_outputs = std::min(static_cast<int>(candidate_priority_queue.size()),
@@ -252,7 +252,7 @@ inline void NonMaxSuppression(const NonMaxSuppressionParams& params,
   const float scale = soft_nms_sigma > 0.f ? (-0.5f / soft_nms_sigma) : 0.f;
   while (*num_selected_indices < num_outputs &&
          !candidate_priority_queue.empty()) {
-    Candidate<float> next_candidate = candidate_priority_queue.top();
+    detail::Candidate<float> next_candidate = candidate_priority_queue.top();
     const float original_score = next_candidate.score;
     candidate_priority_queue.pop();
 
@@ -268,7 +268,7 @@ inline void NonMaxSuppression(const NonMaxSuppressionParams& params,
     for (int j = *num_selected_indices - 1;
          j >= next_candidate.suppress_begin_index; --j) {
       const float iou =
-          ComputeIou(boxes, next_candidate.index, selected_indices[j]);
+          detail::ComputeIou(boxes, next_candidate.index, selected_indices[j]);
 
       // First decide whether to perform hard suppression.
       if (iou >= iou_threshold) {
@@ -353,19 +353,19 @@ inline void NonMaxSuppression(const NonMaxSuppressionParams& params,
                               T* selected_scores, int* num_selected_indices) {
   // Rescale quantized IOU threshold to restricted scale.
   const T iou_threshold_rescaled =
-      Rescale<T>(iou_threshold, params.iou_threshold_zero_point,
-                 params.iou_threshold_rescale_multiplier,
-                 params.iou_threshold_rescale_shift,
-                 params.iou_threshold_rescale_zero_point);
+      detail::Rescale<T>(iou_threshold, params.iou_threshold_zero_point,
+                         params.iou_threshold_rescale_multiplier,
+                         params.iou_threshold_rescale_shift,
+                         params.iou_threshold_rescale_zero_point);
 
   // Rescale quantized score threshold to restricted scale.
   const T score_threshold_rescaled =
-      Rescale<T>(score_threshold, params.score_threshold_zero_point,
-                 params.score_threshold_rescale_multiplier,
-                 params.score_threshold_rescale_shift,
-                 params.score_threshold_rescale_zero_point);
+      detail::Rescale<T>(score_threshold, params.score_threshold_zero_point,
+                         params.score_threshold_rescale_multiplier,
+                         params.score_threshold_rescale_shift,
+                         params.score_threshold_rescale_zero_point);
 
-  auto candidate_priority_queue = GetCandidatePriorityQueue(
+  auto candidate_priority_queue = detail::GetCandidatePriorityQueue(
       params, scores, num_boxes, score_threshold_rescaled);
 
   *num_selected_indices = 0;
@@ -378,7 +378,7 @@ inline void NonMaxSuppression(const NonMaxSuppressionParams& params,
 
   while (*num_selected_indices < num_outputs &&
          !candidate_priority_queue.empty()) {
-    Candidate<T> next_candidate = candidate_priority_queue.top();
+    detail::Candidate<T> next_candidate = candidate_priority_queue.top();
 
     const T original_score = next_candidate.score;
     candidate_priority_queue.pop();
@@ -386,8 +386,8 @@ inline void NonMaxSuppression(const NonMaxSuppressionParams& params,
     bool should_hard_suppress = false;
     for (int j = *num_selected_indices - 1;
          j >= next_candidate.suppress_begin_index; --j) {
-      const T iou =
-          ComputeIou(boxes, next_candidate.index, selected_indices[j], params);
+      const T iou = detail::ComputeIou(boxes, next_candidate.index,
+                                       selected_indices[j], params);
 
       // First decide whether to perform hard suppression.
       if (iou >= iou_threshold_rescaled) {
@@ -414,7 +414,7 @@ inline void NonMaxSuppression(const NonMaxSuppressionParams& params,
             params.selected_scores_rescale_shift);
 
         // Update score.
-        next_candidate.score = Truncate<T>(
+        next_candidate.score = detail::Truncate<T>(
             new_score_rescaled + params.selected_scores_rescale_zero_point);
       }
 
