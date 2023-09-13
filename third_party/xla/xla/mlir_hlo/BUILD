@@ -740,7 +740,6 @@ cc_library(
         "mhlo/transforms/group_reduction_dimensions/group_reduction_dimensions.cc",
         "mhlo/transforms/hlo_legalize_shape_ops_to_standard/hlo_legalize_shape_ops_to_standard.cc",
         "mhlo/transforms/hlo_legalize_to_arithmetic/hlo_legalize_to_arithmetic.cc",
-        "mhlo/transforms/hlo_legalize_to_lhlo/hlo_legalize_to_lhlo.cc",
         "mhlo/transforms/hlo_legalize_to_memref/hlo_legalize_to_memref.cc",
         "mhlo/transforms/hlo_legalize_to_stablehlo/hlo_legalize_to_stablehlo_pass.cc",
         "mhlo/transforms/legalize_broadcast_to_broadcast_in_dim/legalize_broadcast_to_broadcast_in_dim.cc",

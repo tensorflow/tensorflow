@@ -54,11 +54,6 @@ def HloCanonicalizeDotPass : Pass<"hlo-canonicalize-dot", "func::FuncOp"> {
   let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
 }
 
-def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
-  let summary = "Legalize from HLO dialect to LHLO dialect.";
-  let constructor = "createLegalizeToLhloPass()";
-}
-
 def HloLegalizeToMemrefPass :Pass<"hlo-legalize-to-memref", "ModuleOp"> {
   let summary = "Legalize from HLO dialect to memref dialect.";
   let constructor = "createLegalizeToMemrefPass()";

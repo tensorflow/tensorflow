@@ -126,31 +126,6 @@ add_mlir_library(MhloToThloConversion
   MLIRTransformUtils
 )
 
-add_mlir_library(MhloToLhloConversion
-  hlo_legalize_to_lhlo/hlo_legalize_to_lhlo.cc
-
-  DEPENDS
-  MLIRhlo_opsIncGen
-  MLIRlhlo_opsIncGen
-  MLIRMhloPassIncGen
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  MhloDialect
-  LmhloDialect
-  MLIRArithDialect
-  MLIRArithTransforms
-  MLIRFuncTransforms
-  MLIRIR
-  MLIRPass
-  MLIRMathDialect
-  MLIRShapeOpsTransforms
-  MLIRTransformUtils
-  MLIRTransforms
-)
-
 add_mlir_library(MhloToMemrefConversion
   hlo_legalize_to_memref/hlo_legalize_to_memref.cc
 
@@ -335,7 +310,6 @@ add_library(AllMhloPasses INTERFACE)
 target_link_libraries(AllMhloPasses INTERFACE
   ChloPasses
   MhloPasses
-  MhloToLhloConversion
   MhloToArithmeticConversion
   MhloToMemrefConversion
   MhloToStandard
