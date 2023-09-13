@@ -148,7 +148,9 @@ class DistributedValues(ds_types.DistributedValues):
   def _get_cross_replica(self):
     raise NotImplementedError(
         "DistributedValues._get_cross_replica should be implemented by "
-        "sub-classes which support cross-replica accesses.")
+        "sub-classes which support cross-replica accesses. "
+        f"Type name is {type(self)}"
+    )
 
   def _get_on_device_or_primary(self):
     """Returns value in same replica or device if possible, else the _primary."""
@@ -945,7 +947,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
         "DistributedVariable._as_graph_element requires a valid "
         "VariablePolicy. Please set the policy via the `var_policy` argument "
         "in the constructor, or override this method in sub-classes which "
-        "support cross-replica accesses.")
+        "support cross-replica accesses. "
+        f"Type name is {type(self)}"
+    )
 
   def _get_cross_replica(self):
     if values_util.is_saving_non_distributed():
@@ -957,7 +961,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
         "DistributedVariable._get_cross_replica requires a valid "
         "VariablePolicy. Please set the policy via the `var_policy` argument "
         "in the constructor, or override this method in sub-classes which "
-        "support cross-replica accesses.")
+        "support cross-replica accesses. "
+        f"Type name is {type(self)}"
+    )
 
   def _update_cross_replica(self, update_fn, value, **kwargs):
     """Applies updates across replicas.
@@ -993,7 +999,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
         "DistributedVariable._update_replica requires a valid VariablePolicy. "
         "Please set the policy via the `var_policy` argument in the "
         "constructor, or override this method in sub-classes which support "
-        "cross-replica accesses.")
+        "cross-replica accesses. "
+        f"Type name is {type(self)}"
+    )
 
   def _update(self, update_fn, value, **kwargs):
     """Applies updates depending on the context.
@@ -1524,23 +1532,33 @@ class VariablePolicy(object):
 
   def value(self):
     raise NotImplementedError(
-        "VariablePolicy.value should be overriden by sub-classes.")
+        "VariablePolicy.value should be overridden by sub-classes. "
+        f"Type name is {type(self)}"
+    )
 
   def _is_mirrored(self):
     raise NotImplementedError(
-        "VariablePolicy._is_mirrored should be overriden by sub-classes.")
+        "VariablePolicy._is_mirrored should be overridden by sub-classes. "
+        f"Type name is {type(self)}"
+    )
 
   def _as_graph_element(self, _):
     raise NotImplementedError(
-        "VariablePolicy._as_graph_element should be overriden by sub-classes.")
+        "VariablePolicy._as_graph_element should be overridden by sub-classes. "
+        f"Type name is {type(self)}"
+    )
 
   def _get_cross_replica(self, var):
     raise NotImplementedError(
-        "VariablePolicy._get_cross_replica should be overriden by sub-classes.")
+        "VariablePolicy._get_cross_replica should be overridden by"
+        f" sub-classes. Type name is {type(self)}"
+    )
 
   def _update_replica(self, var, update_fn, value, **kwargs):
     raise NotImplementedError(
-        "VariablePolicy._update_replica should be overriden by sub-classes.")
+        "VariablePolicy._update_replica should be overridden by sub-classes. "
+        f"Type name is {type(self)}"
+    )
 
 
 class OnReadPolicy(VariablePolicy):
