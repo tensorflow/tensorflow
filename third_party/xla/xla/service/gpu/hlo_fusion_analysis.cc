@@ -840,6 +840,8 @@ ReductionCodegenInfo HloFusionAnalysis::ComputeReductionCodegenInfo(
                             reduction_is_race_free);
   int vector_size = vectorize ? 2 : 1;
 
+  // TODO(b/283542954): Autotune num_partial_results?  This can make a big
+  // difference, e.g. by affecting register spilling.
   int num_partial_results = 1;
   if (!reduction_dimensions.is_row_reduction && vectorize) {
     int smallest_input_dtype_bits = SmallestInputDtypeBits();
@@ -861,26 +863,12 @@ ReductionCodegenInfo HloFusionAnalysis::ComputeReductionCodegenInfo(
     } else {
       num_partial_results = 2;
     }
-    reduction_tiling[kDimX] *= num_partial_results;
-  }
 
-  // TODO(b/283542954): Autotune num_partial_results?  This can make a big
-  // difference, e.g. by affecting register spilling.
-
-  // Row reductions use one shmem block per partial result, so we have to make
-  // sure we fit in budget.  Column reductions only ever use one shmem block.
-  // (Indeed I *think* "num_partial_results" is a misnomer for column
-  // reductions; I think it's the number of *complete*, i.e. not partial,
-  // results per warp.)
-  // TODO(vuson): something is wrong here:
-  // The loop was originally applied to both row and column reductions, we
-  // would need to verify that we could indeed exceed the memory usage for
-  // column reductions, in which case the outer if needs to be removed.
-  if (reduction_dimensions.is_row_reduction) {
     while (num_partial_results != 1 &&
            shmem_usage * num_partial_results > shmem_budget) {
       num_partial_results /= 2;
     }
+    reduction_tiling[kDimX] *= num_partial_results;
   }
 
   VLOG(3) << "Each thread will produce " << num_partial_results << " output(s)";
