@@ -119,7 +119,7 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
-* Add ops to tensorflow.raw_ops that were missing.
+* Add ops to `tensorflow.raw_ops` that were missing.
 * `tf.CheckpointOptions`
     * It now takes in a new argument called `experimental_write_callbacks`.
     These are callbacks that will be executed after a saving event finishes
@@ -226,7 +226,7 @@ This release contains contributions from many people at Google, as well as:
    ```
 
 * `tf.lite`
-    * Strided_Slice now supports `UINT32`.
+    * `Strided_Slice` now supports `UINT32`.
     * Add int8 and int16x8 support for LOG operator
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
