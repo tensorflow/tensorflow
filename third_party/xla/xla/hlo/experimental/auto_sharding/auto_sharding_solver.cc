@@ -594,12 +594,13 @@ bool CostComponents::operator==(const CostComponents& other) const {
   return communication_cost == other.communication_cost &&
          computation_cost == other.computation_cost &&
          resharding_cost == other.resharding_cost &&
-         overbudget_cost == other.overbudget_cost;
+         overbudget_cost == other.overbudget_cost &&
+         makespan_cost == other.makespan_cost;
 }
 
 double CostComponents::cost() const {
   return communication_cost + computation_cost + resharding_cost +
-         overbudget_cost;
+         overbudget_cost + makespan_cost;
 }
 
 bool AutoShardingEvaluation::operator==(
@@ -686,6 +687,7 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
     evaluation.lower_bound.resharding_cost +=
         *std::min_element(request.r[i].begin(), request.r[i].end());
   }
+  evaluation.total_makespan = EvaluateMakespan(request, result, evaluation);
   return evaluation;
 }
 

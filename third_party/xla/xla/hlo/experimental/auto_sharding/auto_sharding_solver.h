@@ -90,6 +90,7 @@ struct CostComponents {
   double computation_cost = 0.0;
   double resharding_cost = 0.0;
   double overbudget_cost = 0.0;
+  double makespan_cost = 0.0;
 
   double cost() const;
 
@@ -109,6 +110,9 @@ struct AutoShardingEvaluation {
   // How many instructions departed from the "default" sharding strategy.
   double total_departures = 0.0;
 
+  // The (raw) total makespan, i.e. not scaled by the makespan coefficient.
+  double total_makespan = 0.0;
+
   bool operator==(const AutoShardingEvaluation& other) const;
 };
 
@@ -126,6 +130,10 @@ std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
 MPVariable* CreateMakespanVar(const AutoShardingSolverRequest& request,
                               const std::vector<std::vector<MPVariable*>>& e,
                               MPSolver& solver);
+
+double EvaluateMakespan(const AutoShardingSolverRequest& request,
+                        const AutoShardingSolverResult& result,
+                        AutoShardingEvaluation& evaluation);
 
 }  // namespace spmd
 }  // namespace xla

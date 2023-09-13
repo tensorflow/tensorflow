@@ -30,5 +30,11 @@ MPVariable* CreateMakespanVar(const AutoShardingSolverRequest& request,
   return nullptr;  // TODO(moffitt): Implement this.
 }
 
+double EvaluateMakespan(const AutoShardingSolverRequest& request,
+                        const AutoShardingSolverResult& result,
+                        AutoShardingEvaluation& evaluation) {
+  return 0.0;  // TODO(moffitt): Implement this.
+}
+
 }  // namespace spmd
 }  // namespace xla

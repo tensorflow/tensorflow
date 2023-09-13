@@ -2473,9 +2473,13 @@ AutoShardingSolverResult CallSolver(
     LOG(INFO) << "Total Overbudget Cost: " << evaluation.total.overbudget_cost
               << " (lower bound: " << evaluation.lower_bound.overbudget_cost
               << ")";
+    LOG(INFO) << "Total Makespan Cost: " << evaluation.total.makespan_cost
+              << " (lower bound: " << evaluation.lower_bound.makespan_cost
+              << ")";
     LOG(INFO) << "Total Cost: " << evaluation.total.cost()
               << " (lower bound: " << evaluation.lower_bound.cost() << ")";
     LOG(INFO) << "Total Departures: " << evaluation.total_departures;
+    LOG(INFO) << "Total Makespan: " << evaluation.total_makespan;
     LOG(INFO) << "Total Violations: " << evaluation.violation_codes.size();
   }
   return result;
