@@ -2995,8 +2995,11 @@ xla_cc_test(
     srcs = ["all_reduce_blueconnect_test.cc"],
     deps = [
         ":all_reduce_blueconnect",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_utils",
         "@local_tsl//tsl/platform:status_matchers",
