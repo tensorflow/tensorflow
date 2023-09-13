@@ -204,9 +204,15 @@ class RamBudgetManager {
     return budget_ - legacy_prefetch_allocated_;
   }
 
+  void UpdateBudget(int64_t budget) {
+    mutex_lock l(mu_);
+    budget_ = budget;
+    VLOG(2) << "Updated ram budget to " << budget;
+  }
+
  private:
   mutable mutex mu_;
-  const int64_t budget_;
+  int64_t budget_ TF_GUARDED_BY(mu_) = 0;
   // Number of bytes allocated by legacy prefetch autotuner.
   int64_t legacy_prefetch_allocated_ TF_GUARDED_BY(mu_) = 0;
   // Number of bytes allocated by the model.
@@ -897,15 +903,27 @@ class Model {
   // Uses the given algorithm and resource budgets to periodically perform the
   // autotuning optimization.
   //
+  // `cpu_budget_func` can be used to provide the optimizer with up-to-date
+  // values in cases where CPUs budgets may be changed by the runtime
+  // dynamically.
+  //
+  // `ram_budget_func` is similar to `cpu_budget_func`. This lambda takes a
+  // parameter that is the total number of bytes currently buffered by the
+  // model.
+  //
   // To terminate the execution of the optimization loop, the caller needs to
   // invoke `cancellation_mgr->StartCancel()`.
-  Status OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+  Status OptimizeLoop(AutotuneAlgorithm algorithm,
+                      std::function<int64_t()> cpu_budget_func,
+                      std::function<int64_t(int64_t)> ram_budget_func,
                       RamBudgetManager& ram_budget_manager,
                       CancellationManager* cancellation_manager);
 
   // Uses the given algorithm and resource budgets to perform the autotuning
   // optimization.
-  void Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+  void Optimize(AutotuneAlgorithm algorithm,
+                std::function<int64_t()> cpu_budget_func,
+                std::function<int64_t(int64_t)> ram_budget_func,
                 double model_input_time, RamBudgetManager& ram_budget_manager,
                 CancellationManager* cancellation_manager);
 

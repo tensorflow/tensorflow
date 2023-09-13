@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/statusor.h"
 
@@ -2276,7 +2277,9 @@ void Model::FlushMetrics() {
   }
 }
 
-void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+void Model::Optimize(AutotuneAlgorithm algorithm,
+                     std::function<int64_t()> cpu_budget_func,
+                     std::function<int64_t(int64_t)> ram_budget_func,
                      double model_input_time,
                      RamBudgetManager& ram_budget_manager,
                      CancellationManager* cancellation_manager) {
@@ -2285,15 +2288,17 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
     tf_shared_lock l(mu_);
     snapshot = output_->Snapshot();
   }
-  int64_t ram_budget = ram_budget_manager.AvailableModelRam();
+  int64_t total_ram_budget = ram_budget_func(TotalBufferedBytes(snapshot));
+  ram_budget_manager.UpdateBudget(total_ram_budget);
+  int64_t model_ram_budget = ram_budget_manager.AvailableModelRam();
   int64_t original_model_bytes = TotalMaximumBufferedBytes(snapshot);
   if (!port::JobName().empty()) {
-    RecordAutotuneRamUsage(ram_budget, original_model_bytes);
+    RecordAutotuneRamUsage(model_ram_budget, original_model_bytes);
   }
   OptimizationParams optimization_params;
   optimization_params.set_algorithm(algorithm);
-  optimization_params.set_cpu_budget(cpu_budget);
-  optimization_params.set_ram_budget(ram_budget);
+  optimization_params.set_cpu_budget(cpu_budget_func());
+  optimization_params.set_ram_budget(model_ram_budget);
   optimization_params.set_model_input_time(model_input_time);
   switch (algorithm) {
     case AutotuneAlgorithm::DEFAULT:
@@ -2407,7 +2412,9 @@ bool Model::ShouldStop(int64_t cpu_budget, int64_t ram_budget,
 }
 
 // TODO(jsimsa): Add support for tracking and using the model input time.
-Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+Status Model::OptimizeLoop(AutotuneAlgorithm algorithm,
+                           std::function<int64_t()> cpu_budget_func,
+                           std::function<int64_t(int64_t)> ram_budget_func,
                            RamBudgetManager& ram_budget_manager,
                            CancellationManager* cancellation_manager) {
   std::function<void()> unused;
@@ -2446,8 +2453,8 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
     if (algorithm == AutotuneAlgorithm::STAGE_BASED) {
       model_input_time = ComputeTargetTimeNsec();
     }
-    Optimize(algorithm, cpu_budget, model_input_time, ram_budget_manager,
-             cancellation_manager);
+    Optimize(algorithm, cpu_budget_func, ram_budget_func, model_input_time,
+             ram_budget_manager, cancellation_manager);
     int64_t end_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
     VLOG(2) << "Optimized for " << end_ms - start_ms << " ms.";
 
