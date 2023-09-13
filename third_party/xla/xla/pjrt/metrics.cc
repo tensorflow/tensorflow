@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tsl/lib/monitoring/counter.h"
+#include "tsl/lib/monitoring/gauge.h"
 
 namespace xla {
 namespace {
@@ -30,7 +31,18 @@ auto* pjrt_executable_execution_time_usecs = tsl::monitoring::Counter<0>::New(
     "The total time spent on PjRtExecutable::ExecuteHelper in "
     "microseconds.");
 
+auto* pjrt_compiler_is_compiling_computation =
+    tsl::monitoring::Gauge<bool, 0>::New(
+        metrics::kPjrtCompilerCompileComputationMetricName,
+        "Whether the PjRT compiler is compiling computations.");
+
+auto* pjrt_compiler_is_compiling_module = tsl::monitoring::Gauge<bool, 0>::New(
+    metrics::kPjrtCompilerCompileModuleMetricName,
+    "Whether the PjRT compiler is compiling modules.");
+
 }  // namespace
+
+namespace metrics {
 
 void ReportExecutableEnqueueTime(const uint64_t running_time_usecs) {
   if (running_time_usecs > 0) {
@@ -43,4 +55,13 @@ void ReportExecutableEnqueueTime(const uint64_t running_time_usecs) {
   }
 }
 
+void RecordPjrtCompilerCompileComputationStatus(bool is_compiling) {
+  pjrt_compiler_is_compiling_computation->GetCell()->Set(is_compiling);
+}
+
+void RecordPjrtCompilerCompileModuleStatus(bool is_compiling) {
+  pjrt_compiler_is_compiling_module->GetCell()->Set(is_compiling);
+}
+
+}  // namespace metrics
 }  // namespace xla

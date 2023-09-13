@@ -290,10 +290,12 @@ cc_library(
     hdrs = ["pjrt_compiler.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":metrics",
         ":pjrt_device_description",
         ":pjrt_executable",
         "//xla/client:xla_computation",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -306,13 +308,19 @@ xla_cc_test(
     name = "pjrt_compiler_test",
     srcs = ["pjrt_compiler_test.cc"],
     deps = [
+        ":metrics",
         ":pjrt_client",
         ":pjrt_compiler",
         ":pjrt_device_description",
+        "//xla:statusor",
         "//xla/client:xla_computation",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/monitoring:cell_reader",
+        "@local_tsl//tsl/platform:status_matchers",
     ],
 )
 
@@ -356,8 +364,10 @@ cc_library(
     hdrs = ["metrics.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/lib/monitoring:counter",
+        "@local_tsl//tsl/lib/monitoring:gauge",
     ],
 )
 

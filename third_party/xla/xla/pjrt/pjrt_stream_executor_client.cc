@@ -2700,8 +2700,8 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
           fn();
         }
       });
-  ReportExecutableEnqueueTime(tsl::Env::Default()->NowMicros() -
-                              start_time_usecs);
+  metrics::ReportExecutableEnqueueTime(tsl::Env::Default()->NowMicros() -
+                                       start_time_usecs);
   return Result({/*future=*/std::move(future), /*buffers=*/std::move(outputs)});
 }
 
