@@ -129,6 +129,9 @@ def xla_cc_test(
 def auto_sharding_deps():
     return ["//xla/hlo/experimental/auto_sharding:auto_sharding_impl"]
 
+def auto_sharding_solver_deps():
+    return ["//xla/hlo/experimental/auto_sharding:auto_sharding_solver_impl"]
+
 register_extension_info(
     extension = xla_cc_test,
     label_regex_for_dep = "{extension_name}",

@@ -1,7 +1,7 @@
 # Automatic sharding annotation
 
-load("//xla:xla.bzl", "auto_sharding_deps", "xla_cc_binary", "xla_cc_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("//xla:xla.bzl", "auto_sharding_deps", "auto_sharding_solver_deps", "xla_cc_binary", "xla_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -74,9 +74,18 @@ cc_library(
 )
 
 cc_library(
+    name = "auto_sharding_solver_impl",
+    srcs = ["auto_sharding_solver_impl.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":auto_sharding_strategy",
+        "@com_google_ortools//ortools/linear_solver",
+    ],
+)
+
+cc_library(
     name = "auto_sharding_solver",
     srcs = ["auto_sharding_solver.cc"],
-    hdrs = ["auto_sharding_solver.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":auto_sharding_strategy",
@@ -93,19 +102,25 @@ cc_library(
         "@com_google_ortools//ortools/linear_solver:linear_solver_cc_proto",
         "@local_tsl//tsl/platform:hash",
         "@local_tsl//tsl/platform:types",
-    ],
+    ] + auto_sharding_solver_deps(),
 )
 
 cc_library(
     name = "auto_sharding_strategy",
-    hdrs = ["auto_sharding_strategy.h"],
+    hdrs = [
+        "auto_sharding_solver.h",
+        "auto_sharding_strategy.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
+        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_value",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_ortools//ortools/linear_solver",
     ],
 )
 
@@ -153,9 +168,9 @@ cc_library(
     deps = [
         ":auto_sharding_cost_graph",
         ":auto_sharding_option",
-        ":auto_sharding_solver",
         ":auto_sharding_strategy",
         ":auto_sharding_wrapper",
+        ":matrix",
         "//xla/hlo/utils:hlo_live_range",
     ],
 )

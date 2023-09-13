@@ -218,6 +218,10 @@ AutoShardingSolverResult Solve(const HloLiveRange& hlo_live_range,
                                const AliasSet& alias_set,
                                const AutoShardingOption& option);
 
+// Populates temporal distance values.
+void PopulateTemporalValues(const CostGraph& cost_graph,
+                            AutoShardingSolverRequest& request);
+
 }  // namespace spmd
 }  // namespace xla
 

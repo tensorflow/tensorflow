@@ -194,8 +194,8 @@ AutoShardingSolverResult CallORToolsSolver(
   // Create variables
   std::vector<std::vector<MPVariable*>> s(request.num_nodes);
   std::vector<std::vector<MPVariable*>> e(num_edges);
-  MPVariable* overbudget_var = solver->MakeNumVar(
-      0.0, request.overbudget_coeff ? MPSolver::infinity() : 0.0, "overbudget");
+  MPVariable* overbudget_var = nullptr;
+  MPVariable* makespan_var = nullptr;
 
   size_t var_vector_cnt = 0;
   for (NodeIdx i = 0; i < request.num_nodes; ++i) {
@@ -231,6 +231,15 @@ AutoShardingSolverResult CallORToolsSolver(
         request.s_len[edge.first] * request.s_len[edge.second],
         absl::StrCat("e[", edge.first, ",", edge.second, "]"), &e[i]);
     edge_map.insert({followed_edge, i});
+  }
+
+  if (request.memory_budget > 0 && request.overbudget_coeff) {
+    overbudget_var =
+        solver->MakeNumVar(0.0, MPSolver::infinity(), "overbudget");
+  }
+
+  if (request.makespan_coeff) {
+    makespan_var = CreateMakespanVar(request, e, *solver);
   }
 
   // Objective
@@ -332,7 +341,9 @@ AutoShardingSolverResult CallORToolsSolver(
           -MPSolver::infinity(),
           request.memory_budget - total_fixed_memory_cost,
           absl::StrCat("mem[", t, "] = ", str));
-      constraint->SetCoefficient(overbudget_var, -1.0);
+      if (overbudget_var) {
+        constraint->SetCoefficient(overbudget_var, -1.0);
+      }
       for (NodeIdx i : request.live[t]) {
         auto fixed_memory_cost =
             *std::min_element(request.m[i].begin(), request.m[i].end());
@@ -348,7 +359,7 @@ AutoShardingSolverResult CallORToolsSolver(
           std::max(minimum_memory_budget_required_estimate,
                    minimum_memory_budget_required_estimate_local);
     }
-    if (request.overbudget_coeff) {
+    if (overbudget_var) {
       solver->MutableObjective()->SetCoefficient(overbudget_var,
                                                  *request.overbudget_coeff);
     }
@@ -554,9 +565,13 @@ AutoShardingSolverResult CallORToolsSolver(
       }
     }
   }
-  if (request.memory_budget > 0 && request.overbudget_coeff) {
+  if (overbudget_var) {
     unsalted_objective +=
         *request.overbudget_coeff * overbudget_var->solution_value();
+  }
+  if (makespan_var) {
+    unsalted_objective +=
+        *request.makespan_coeff * makespan_var->solution_value();
   }
 
   LOG(INFO) << "Unsalted objective value: " << unsalted_objective;

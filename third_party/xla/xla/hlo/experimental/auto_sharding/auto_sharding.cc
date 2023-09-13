@@ -2330,7 +2330,7 @@ AutoShardingSolverResult CallSolver(
   for (const auto& iter : cost_graph.edge_costs_) {
     request.e.push_back(iter.first);
     std::vector<double> rij;
-    Matrix edge_cost = iter.second;
+    const Matrix& edge_cost = iter.second;
     for (NodeStrategyIdx i = 0; i < edge_cost.n_; i++) {
       for (NodeStrategyIdx j = 0; j < edge_cost.m_; j++) {
         rij.push_back(edge_cost(i, j));
@@ -2356,7 +2356,7 @@ AutoShardingSolverResult CallSolver(
       di.push_back(strategy.communication_cost +
                    cost_graph.extra_node_costs_[i][j]);
       mi.push_back(strategy.memory_cost);
-      // TOOD(moffitt): Revisit the default strategy below, which is currently
+      // TODO(moffitt): Revisit the default strategy below, which is currently
       // defined as the "trivial sharding" in hlo_sharding.h
       pi.push_back(sharding.IsReplicated() && !sharding.IsManual() ? 0.0 : 1.0);
     }
@@ -2454,6 +2454,9 @@ AutoShardingSolverResult CallSolver(
       if (node_idx >= 0) request.live[t].push_back(node_idx);
     }
   }
+
+  PopulateTemporalValues(cost_graph, request);
+
   const AutoShardingSolverResult result = CallORToolsSolver(request);
   if (result.status.ok()) {
     const AutoShardingEvaluation evaluation = Evaluate(request, result);
@@ -2482,7 +2485,7 @@ void CheckHloSharding(const HloInstructionSequence& sequence,
                       size_t total_num_devices) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
   std::vector<std::pair<size_t, std::string>> size_string;
-  for (HloInstruction* ins : instructions) {
+  for (const HloInstruction* ins : instructions) {
     if (!ins->has_sharding()) {
       continue;
     }
@@ -2504,11 +2507,11 @@ void CheckHloSharding(const HloInstructionSequence& sequence,
           if (op->sharding().IsReplicated() || ins->sharding().IsReplicated()) {
             continue;
           }
-          std::vector<int64_t> ins_sharded_dims =
+          const std::vector<int64_t> ins_sharded_dims =
               VectorGreaterThanOneElementIndices(
                   ins->sharding().tile_assignment().dimensions(),
                   ins->sharding().ReplicateOnLastTileDim());
-          std::vector<int64_t> op_sharded_dims =
+          const std::vector<int64_t> op_sharded_dims =
               VectorGreaterThanOneElementIndices(
                   op->sharding().tile_assignment().dimensions(),
                   op->sharding().ReplicateOnLastTileDim());

@@ -38,5 +38,10 @@ AutoShardingSolverResult Solve(const HloLiveRange& hlo_live_range,
       option.allow_alias_to_follower_conversion);
 }
 
+void PopulateTemporalValues(const CostGraph& cost_graph,
+                            AutoShardingSolverRequest& request) {
+  // TODO(moffitt): Implement this.
+}
+
 }  // namespace spmd
 }  // namespace xla
