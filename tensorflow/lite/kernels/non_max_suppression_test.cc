@@ -58,6 +58,8 @@ static const auto k_min_max_input =
 
 class BaseNMSOp : public SingleOpModel {
  public:
+   virtual ~BaseNMSOp() {}
+ 
   BaseNMSOp(TensorType tensor_type, const bool static_shaped_outputs,
             const int max_output_size = -1)
       : tensor_type_{tensor_type} {
