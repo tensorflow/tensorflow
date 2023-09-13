@@ -158,6 +158,7 @@ xla_cc_binary(
     linkshared = True,
     tags = [
         "noasan",
+        "nomac",  # No GPU on mac.
         "nomsan",
         "notsan",
     ],
