@@ -407,8 +407,11 @@ struct AvxSquareTransposeMicroKernelImpl {
       auto* row0_high = row0_low + 1;
       auto* row1_low = reinterpret_cast<const __m128i*>(a + lda * (i + bs / 2));
       auto* row1_high = row1_low + 1;
-      last_transpose[i] = _mm256_loadu2_m128i(row1_low, row0_low);
-      last_transpose[i + bs / 2] = _mm256_loadu2_m128i(row1_high, row0_high);
+
+      last_transpose[i] = _mm256_set_m128i(_mm_loadu_si128(row1_low),
+                                           _mm_loadu_si128(row0_low));
+      last_transpose[i + bs / 2] = _mm256_set_m128i(_mm_loadu_si128(row1_high),
+                                                    _mm_loadu_si128(row0_high));
     }
 
     last_transpose =
@@ -438,7 +441,8 @@ struct AvxRectangularTransposeMicroKernelImpl {
     for (int i = 0; i < bs / 2; ++i) {
       auto* lo = reinterpret_cast<const __m128i*>(a + lda * (i + 0));
       auto* hi = reinterpret_cast<const __m128i*>(a + lda * (i + bs / 2));
-      last_transpose[i] = _mm256_loadu2_m128i(hi, lo);
+      last_transpose[i] =
+          _mm256_set_m128i(_mm_loadu_si128(hi), _mm_loadu_si128(lo));
     }
 
     last_transpose =
@@ -465,7 +469,9 @@ struct AvxRectangularTransposeMicroKernelImpl {
     for (int i = 0; i < bs / 2; ++i) {
       auto* lo = reinterpret_cast<__m128i*>(b + ldb * (i * 2 + 0));
       auto* hi = reinterpret_cast<__m128i*>(b + ldb * (i * 2 + 1));
-      _mm256_storeu2_m128i(hi, lo, last_transpose[i]);
+
+      _mm_storeu_si128(lo, _mm256_castsi256_si128(last_transpose[i]));
+      _mm_storeu_si128(hi, _mm256_extractf128_si256(last_transpose[i], 1));
     }
   }
 };
