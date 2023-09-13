@@ -72,6 +72,8 @@
        *    `TfLiteSignatureRunnerInvoke`
        *    `TfLiteSignatureRunnerResizeInputTensor`
 
+* Android NDK r25 is supported.
+
 ### Bug Fixes and Other Changes
 
 *   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
