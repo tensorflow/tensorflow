@@ -743,8 +743,7 @@ tsl::Status GpuExecutor::BlockHostUntilDone(Stream* stream) {
 blas::BlasSupport* GpuExecutor::CreateBlas() {
   PluginRegistry* registry = PluginRegistry::Instance();
   tsl::StatusOr<PluginRegistry::BlasFactory> status =
-      registry->GetFactory<PluginRegistry::BlasFactory>(cuda::kCudaPlatformId,
-                                                        plugin_config_.blas());
+      registry->GetFactory<PluginRegistry::BlasFactory>(cuda::kCudaPlatformId);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve BLAS factory: "
                << status.status().message();
@@ -757,8 +756,7 @@ blas::BlasSupport* GpuExecutor::CreateBlas() {
 dnn::DnnSupport* GpuExecutor::CreateDnn() {
   PluginRegistry* registry = PluginRegistry::Instance();
   tsl::StatusOr<PluginRegistry::DnnFactory> status =
-      registry->GetFactory<PluginRegistry::DnnFactory>(cuda::kCudaPlatformId,
-                                                       plugin_config_.dnn());
+      registry->GetFactory<PluginRegistry::DnnFactory>(cuda::kCudaPlatformId);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve DNN factory: "
                << status.status().message();
@@ -771,8 +769,7 @@ dnn::DnnSupport* GpuExecutor::CreateDnn() {
 fft::FftSupport* GpuExecutor::CreateFft() {
   PluginRegistry* registry = PluginRegistry::Instance();
   tsl::StatusOr<PluginRegistry::FftFactory> status =
-      registry->GetFactory<PluginRegistry::FftFactory>(cuda::kCudaPlatformId,
-                                                       plugin_config_.fft());
+      registry->GetFactory<PluginRegistry::FftFactory>(cuda::kCudaPlatformId);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve FFT factory: "
                << status.status().message();

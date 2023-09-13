@@ -112,7 +112,6 @@ ROCmPlatform::DescriptionForDevice(int ordinal) const {
 tsl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
-  config.plugin_config = PluginConfig();
   config.device_options = DeviceOptions::Default();
   return GetExecutor(config);
 }

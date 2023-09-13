@@ -47,7 +47,6 @@ HostPlatform::DescriptionForDevice(int ordinal) const {
 tsl::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
-  config.plugin_config = PluginConfig();
   config.device_options = DeviceOptions::Default();
   return GetExecutor(config);
 }
@@ -61,8 +60,7 @@ tsl::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
 tsl::StatusOr<std::unique_ptr<StreamExecutor>>
 HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
-      this, std::make_unique<HostExecutor>(config.plugin_config),
-      config.ordinal);
+      this, std::make_unique<HostExecutor>(), config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
     return tsl::Status(

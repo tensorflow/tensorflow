@@ -185,19 +185,17 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
                                                                                \
   template <>                                                                  \
   tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(      \
-      Platform::Id platform_id, PluginId plugin_id) {                          \
-    if (plugin_id == PluginConfig::kDefault) {                                 \
-      plugin_id = default_factories_[platform_id].FACTORY_VAR;                 \
+      Platform::Id platform_id) {                                              \
+    auto plugin_id = default_factories_[platform_id].FACTORY_VAR;              \
                                                                                \
-      if (plugin_id == kNullPlugin) {                                          \
-        return tsl::Status(                                                    \
-            absl::StatusCode::kFailedPrecondition,                             \
-            "No suitable " PLUGIN_STRING                                       \
-            " plugin registered. Have you linked in a " PLUGIN_STRING          \
-            "-providing plugin?");                                             \
-      } else {                                                                 \
-        VLOG(2) << "Selecting default " PLUGIN_STRING " plugin";               \
-      }                                                                        \
+    if (plugin_id == kNullPlugin) {                                            \
+      return tsl::Status(                                                      \
+          absl::StatusCode::kFailedPrecondition,                               \
+          "No suitable " PLUGIN_STRING                                         \
+          " plugin registered. Have you linked in a " PLUGIN_STRING            \
+          "-providing plugin?");                                               \
+    } else {                                                                   \
+      VLOG(2) << "Selecting default " PLUGIN_STRING " plugin";                 \
     }                                                                          \
     return GetFactoryInternal(plugin_id, factories_[platform_id].FACTORY_VAR); \
   }

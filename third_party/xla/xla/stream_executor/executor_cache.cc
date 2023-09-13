@@ -46,8 +46,7 @@ tsl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   // initialization of different entries.
   absl::MutexLock lock{&entry->configurations_mutex};
   for (const auto& iter : entry->configurations) {
-    if (iter.first.plugin_config == config.plugin_config &&
-        iter.first.device_options == config.device_options) {
+    if (iter.first.device_options == config.device_options) {
       VLOG(2) << "hit in cache";
       return iter.second.get();
     }
@@ -105,8 +104,7 @@ tsl::StatusOr<StreamExecutor*> ExecutorCache::Get(
                                        config.ordinal));
   }
   for (const auto& iter : entry->configurations) {
-    if (iter.first.plugin_config == config.plugin_config &&
-        iter.first.device_options == config.device_options) {
+    if (iter.first.device_options == config.device_options) {
       VLOG(2) << "hit in cache for device ordinal " << config.ordinal;
       return iter.second.get();
     }

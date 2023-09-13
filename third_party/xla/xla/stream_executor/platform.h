@@ -59,9 +59,6 @@ struct StreamExecutorConfig {
   // The ordinal of the device to be managed by the returned StreamExecutor.
   int ordinal;
 
-  // The PluginConfig for the returned StreamExecutor.
-  PluginConfig plugin_config;
-
   // The DeviceOptions for the returned StreamExecutor.
   DeviceOptions device_options;
 };

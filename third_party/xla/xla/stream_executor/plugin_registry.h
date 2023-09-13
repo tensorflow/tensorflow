@@ -40,7 +40,7 @@ class StreamExecutorInterface;
 //
 // At runtime, a StreamExecutor object will query the singleton registry to
 // retrieve the plugin kind that StreamExecutor was configured with (refer to
-// the StreamExecutor and PluginConfig declarations).
+// the StreamExecutor declarations).
 //
 // Plugin libraries are best registered using REGISTER_MODULE_INITIALIZER,
 // but can be registered at any time. When registering a DSO-backed plugin, it
@@ -77,8 +77,7 @@ class PluginRegistry {
   // Retrieves the factory registered for the specified kind,
   // or a tsl::Status on error.
   template <typename FactoryT>
-  tsl::StatusOr<FactoryT> GetFactory(Platform::Id platform_id,
-                                     PluginId plugin_id);
+  tsl::StatusOr<FactoryT> GetFactory(Platform::Id platform_id);
 
  private:
   // Containers for the sets of registered factories, by plugin kind.
@@ -135,7 +134,7 @@ class PluginRegistry {
       PluginRegistry::FACTORY_TYPE factory);                                 \
   template <>                                                                \
   tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
-      Platform::Id platform_id, PluginId plugin_id)
+      Platform::Id platform_id)
 
 DECLARE_PLUGIN_SPECIALIZATIONS(BlasFactory);
 DECLARE_PLUGIN_SPECIALIZATIONS(DnnFactory);

@@ -142,7 +142,6 @@ CudaPlatform::DescriptionForDevice(int ordinal) const {
 tsl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
-  config.plugin_config = PluginConfig();
   config.device_options = GetDeviceOptionsFromEnv();
   return GetExecutor(config);
 }
@@ -162,8 +161,7 @@ tsl::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
 tsl::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
-      this, std::make_unique<GpuExecutor>(config.plugin_config),
-      config.ordinal);
+      this, std::make_unique<GpuExecutor>(), config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
     return tsl::Status(
