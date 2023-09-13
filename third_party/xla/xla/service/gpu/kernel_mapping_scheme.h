@@ -180,7 +180,7 @@ class ReductionCodegenInfo {
         is_race_free_(is_race_free),
         index_groups_(std::move(index_groups)),
         first_reduce_(first_reduce) {
-    if (num_partial_results > 1) {
+    if (!is_row_reduction && num_partial_results > 1) {
       CHECK_EQ(num_partial_results,
                mapping_scheme.GetTileSizeFor(TilingScheme::DimX));
     }

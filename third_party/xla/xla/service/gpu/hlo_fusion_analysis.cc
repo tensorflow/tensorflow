@@ -861,6 +861,7 @@ ReductionCodegenInfo HloFusionAnalysis::ComputeReductionCodegenInfo(
     } else {
       num_partial_results = 2;
     }
+    reduction_tiling[kDimX] *= num_partial_results;
   }
 
   // TODO(b/283542954): Autotune num_partial_results?  This can make a big
@@ -871,6 +872,13 @@ ReductionCodegenInfo HloFusionAnalysis::ComputeReductionCodegenInfo(
   // (Indeed I *think* "num_partial_results" is a misnomer for column
   // reductions; I think it's the number of *complete*, i.e. not partial,
   // results per warp.)
+  // TODO(vuson): two things are wrong here:
+  // (1) If num_partial_results == 1, and shmem_usage is big enough (or
+  // shmem_budget small enough), we will execute the loop once, turning
+  // num_partial_results to 0.
+  // (2) The loop was originally applied to both row and column reductions, we
+  // would need to verify that we could indeed exceed the memory usage for
+  // column reductions, in which case the outer if needs to be removed.
   if (reduction_dimensions.is_row_reduction) {
     while (shmem_usage * num_partial_results > shmem_budget) {
       num_partial_results /= 2;
@@ -881,7 +889,6 @@ ReductionCodegenInfo HloFusionAnalysis::ComputeReductionCodegenInfo(
   }
 
   VLOG(3) << "Each thread will produce " << num_partial_results << " output(s)";
-  reduction_tiling[kDimX] *= num_partial_results;
 
   Vector3 num_threads = {1, num_threads_y, num_threads_x};
   int virtual_thread_scaling_factor =
