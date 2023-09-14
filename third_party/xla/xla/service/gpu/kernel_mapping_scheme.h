@@ -168,7 +168,7 @@ class TilingScheme {
 
 class ReductionCodegenInfo {
  public:
-  using IndexGroups = std::vector<std::vector<HloInstruction*>>;
+  using IndexGroups = std::vector<std::vector<const HloInstruction*>>;
 
   explicit ReductionCodegenInfo(TilingScheme mapping_scheme,
                                 int num_partial_results, bool is_row_reduction,

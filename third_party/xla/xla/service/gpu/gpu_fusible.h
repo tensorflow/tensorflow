@@ -178,7 +178,8 @@ size_t GetOutputSizeOfFusible(const HloInstruction& instr);
 //
 // For input: R1
 // Expected output: [R1]
-std::vector<HloInstruction*> GetFusionRoots(const HloComputation& computation);
+std::vector<const HloInstruction*> GetFusionRoots(
+    const HloComputation& computation);
 
 // Whether the instruction is a reduction hero for the given root.
 bool IsRealReductionHero(const HloInstruction& root,
