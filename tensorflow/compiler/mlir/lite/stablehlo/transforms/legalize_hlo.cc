@@ -115,10 +115,24 @@ LogicalResult GetConstantSplatValue(Value value, SplatValueType& splat_value) {
 template <int SupportedSpatialDims>
 struct ConvertNdConvOp {
   bool IsSupportedConvOp(mhlo::ConvolutionOp conv_op) const {
-    if (!conv_op.getLhs().getType().cast<ShapedType>().hasStaticShape() ||
-        !conv_op.getRhs().getType().cast<ShapedType>().hasStaticShape() ||
-        !conv_op.getType().cast<ShapedType>().hasStaticShape())
+    if (!conv_op.getRhs().getType().cast<ShapedType>().hasStaticShape()) {
       return false;
+    }
+    if (!conv_op.getLhs().getType().cast<ShapedType>().hasStaticShape() &&
+        !conv_op.getType().cast<ShapedType>().hasStaticShape()) {
+      auto dnums = conv_op.getDimensionNumbers();
+      auto lhs_type = conv_op.getLhs().getType().cast<ShapedType>();
+      auto out_type = conv_op.getType().cast<ShapedType>();
+      int64_t input_batch_dim = dnums.getInputBatchDimension();
+      int64_t out_batch_dim = dnums.getOutputBatchDimension();
+      for (size_t i = 0; i < lhs_type.getRank(); ++i) {
+        // is this upcast of size_t or downcast
+        if ((i != input_batch_dim && lhs_type.isDynamicDim(i)) ||
+            (i != out_batch_dim && out_type.isDynamicDim(i))) {
+          return false;
+        }
+      }
+    }
 
     // All ones in "lhs_dilation" means this "mhlo.conv" op should be
     // converted to "tf.Conv2D" or "tf.DepthwiseConv2dNativeOp".
