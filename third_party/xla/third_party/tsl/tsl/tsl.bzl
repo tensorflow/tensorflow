@@ -40,14 +40,14 @@ load("@bazel_skylib//lib:new_sets.bzl", "sets")
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
 def clean_dep(target):
-    """Returns string to 'target' in @local_tsl repository.
+    """Returns string to 'target' in the TSL repository.
 
-    Use this function when referring to targets in the @local_tsl
+    Use this function when referring to targets in the TSL
     repository from macros that may be called from external repositories.
     """
 
     # A repo-relative label is resolved relative to the file in which the
-    # Label() call appears, i.e. @local_tsl.
+    # Label() call appears, e.g. @local_tsl or tsl.
     return str(Label(target))
 
 def if_cuda_or_rocm(if_true, if_false = []):
