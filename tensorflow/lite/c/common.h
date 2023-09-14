@@ -13,25 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines common C types and APIs for implementing operations,
-// delegates and other constructs in TensorFlow Lite. The actual operations and
-// delegates can be defined using C++, but the interface between the interpreter
-// and the operations are C.
-//
-// Summary of abstractions
-// TF_LITE_ENSURE - Self-sufficient error checking
-// TfLiteStatus - Status reporting
-// TfLiteIntArray - stores tensor shapes (dims),
-// TfLiteContext - allows an op to access the tensors
-// TfLiteTensor - tensor (a multidimensional array)
-// TfLiteNode - a single node or operation
-// TfLiteRegistration - the implementation of a conceptual operation.
-// TfLiteDelegate - allows delegation of nodes to alternative backends.
-//
-// Some abstractions in this file are created and managed by Interpreter.
-//
-// NOTE: The order of values in these structs are "semi-ABI stable". New values
-// should be added only to the end of structs and never reordered.
+/// \file
+///
+/// This file defines common C types and APIs for implementing operations,
+/// delegates and other constructs in TensorFlow Lite. The actual operations and
+/// delegates can be defined using C++, but the interface between the
+/// interpreter and the operations are C.
+///
+/// For documentation, see tensorflow/lite/core/c/common.h.
 
 #ifndef TENSORFLOW_LITE_C_COMMON_H_
 #define TENSORFLOW_LITE_C_COMMON_H_

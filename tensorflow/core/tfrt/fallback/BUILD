@@ -29,6 +29,7 @@ package_group(
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt/...",
+        # copybara:uncomment "//learning/infra/mira/distributed/...",
     ],
 )
 
@@ -39,10 +40,15 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:session_options",
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:device_set",
+        "//tensorflow/core/framework:device_attributes_proto_cc",
         "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/tpu:virtual_device",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -68,7 +74,6 @@ cc_library(
     visibility = [
         ":friends",
         # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
-        # copybara:uncomment "//tensorflow/core/tfrt/eager:__pkg__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
         "//tensorflow/lite/delegates/flex:__pkg__",
     ],
@@ -111,14 +116,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "device_with_custom_allocator",
+    hdrs = ["device_with_custom_allocator.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "@local_tsl//tsl/framework:allocator",
+    ],
+)
+
 tf_cc_test(
     name = "cost_recorder_test",
     srcs = ["cost_recorder_test.cc"],
     deps = [
         ":cost_recorder",
+        ":op_cost_map_proto_cc",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:status",
-        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )

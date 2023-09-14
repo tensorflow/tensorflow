@@ -37,6 +37,8 @@ class DTensorStrategyExtended(distribute_lib.StrategyExtendedV2):
   def __init__(self, container_strategy, mesh):
     super().__init__(container_strategy)
     self._mesh = mesh
+    self._num_clients = d_config.num_clients()
+    self._client_id = d_config.client_id()
 
   def _create_variable(self, next_creator, **kwargs):
     # Make sure the pop the `use_resource` which is not supported by the
@@ -165,11 +167,9 @@ class DTensorStrategyExtended(distribute_lib.StrategyExtendedV2):
   def _distribute_datasets_from_function(self, dataset_fn, options):
     # TODO(scottzhu): Implement the logic for options in future
     del options
-    # Single worker for now, this will change when deal with different input
-    # options or multiple workers.
     input_context = distribute_lib.InputContext(
-        num_input_pipelines=1,
-        input_pipeline_id=0,
+        num_input_pipelines=self._num_clients,
+        input_pipeline_id=self._client_id,
         num_replicas_in_sync=self._num_replicas_in_sync
     )
     dataset = dataset_fn(input_context)
@@ -223,7 +223,7 @@ class DTensorStrategyExtended(distribute_lib.StrategyExtendedV2):
                                mesh=self._mesh)
     return nest.map_structure(map_fn, result)
 
-  def call_for_each_replica(self, fn, args, kwargs):
+  def call_for_each_replica(self, fn, args=(), kwargs=None):
     """Run `fn` once per replica.
 
     This is a method that expected by the strategy base class in its `run()`.

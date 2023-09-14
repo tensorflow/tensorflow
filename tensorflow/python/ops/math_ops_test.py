@@ -27,6 +27,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
@@ -56,6 +57,19 @@ class ReduceTest(test_util.TensorFlowTestCase):
     expected = math_ops.cast(out_f32, dtypes.bfloat16)
 
     self.assertAllClose(out_bf16, expected, 1e-3)
+
+  def testCountNonzero(self):
+    # simple case
+    x = np.array([[0, -2, 0], [4, 0, 0]], dtype=np.int32)
+    self.assertEqual(self.evaluate(math_ops.count_nonzero(x)), 2)
+
+    # boolean input
+    x = math_ops.not_equal(x, 0)
+    self.assertEqual(self.evaluate(math_ops.count_nonzero(x)), 2)
+
+    # would overflow if int8 would be used for internal calculations
+    x = 2 * np.ones(512, dtype=np.int8)
+    self.assertEqual(self.evaluate(math_ops.count_nonzero(x)), 512)
 
   def testReduceExplicitAxes(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
@@ -771,9 +785,9 @@ class DivAndModTest(test_util.TensorFlowTestCase):
   def testWithPythonValue(self):
     # Test case for https://github.com/tensorflow/tensorflow/issues/39475
     x = math_ops.divide(5, 2)
-    self.assertIsInstance(x, ops.Tensor)
+    self.assertIsInstance(x, tensor_lib.Tensor)
     x = math_ops.divide(5, array_ops.constant(2.0))
-    self.assertIsInstance(x, ops.Tensor)
+    self.assertIsInstance(x, tensor_lib.Tensor)
 
   def intEdgeTestData(self, dtype):
     """Edge-case test data for integer types."""
@@ -1193,7 +1207,7 @@ class EqualityTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     x = constant_op.constant(4)
     try:
       result = op(x, float_literal)
-      if isinstance(result, ops.Tensor):
+      if isinstance(result, tensor_lib.Tensor):
         result = self.evaluate(result)
     except TypeError:
       # Throwing a TypeError is OK

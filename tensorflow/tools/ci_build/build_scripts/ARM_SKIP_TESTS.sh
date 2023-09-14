@@ -16,5 +16,5 @@
 set -x
 
 ARM_SKIP_TESTS="-//tensorflow/lite/... \
--//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
+-//tensorflow/core/kernels/image:resize_bicubic_op_test \
 "

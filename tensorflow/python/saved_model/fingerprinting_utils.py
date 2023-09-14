@@ -29,59 +29,116 @@ from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting as f
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.util import compat
 
+FingerprintException = fingerprinting_pywrap.FingerprintException
 
-def write_fingerprint(export_dir, saved_model_serialized):
+
+def write_fingerprint(export_dir):
   """Write fingerprint protobuf, if requested.
 
   Writes a `tf.saved_model.experimental.Fingerprint` object to a
-  `fingerprint.pb` file in the `export_dir`.
+  `fingerprint.pb` file in the `export_dir` using the `saved_model.pb` file
+  contained in `export_dir`.
 
   Args:
     export_dir: The directory in which to write the fingerprint.
-    saved_model_serialized: The serialized SavedModel proto.
   """
-
   if flags.config().saved_model_fingerprinting.value():
     fingerprint_path = file_io.join(
         compat.as_str(export_dir),
         compat.as_str(constants.FINGERPRINT_FILENAME))
     logging.info("Writing fingerprint to %s", fingerprint_path)
+
     try:
       fingerprint_serialized = fingerprinting_pywrap.CreateFingerprintDef(
-          saved_model_serialized, export_dir)
-    except fingerprinting_pywrap.FingerprintException as e:
+          export_dir)
+    except FingerprintException as e:
       raise ValueError(e) from None
     file_io.atomic_write_string_to_file(fingerprint_path,
                                         fingerprint_serialized)
-    # We need to deserialize the fingerprint in order to send its values.
-    fingerprint_proto = fingerprint_pb2.FingerprintDef()
-    fingerprint_proto.ParseFromString(fingerprint_serialized)
+
     metrics.SetWriteFingerprint(fingerprint=fingerprint_serialized)
-    fingerprint = fingerprinting.Fingerprint.from_proto(fingerprint_serialized)
-    metrics.SetWritePathAndSingleprint(path=export_dir,
-                                       singleprint=fingerprint.singleprint())
+    try:
+      metrics.SetWritePathAndSingleprint(
+          path=export_dir,
+          singleprint=singleprint_from_fingerprint_proto(export_dir))
+    except metrics.MetricException:
+      logging.info("path_and_singleprint metric could not be set. "
+                   "Model saving will continue.")
 
 
-def singleprint_from_saved_model(export_dir, saved_model_serialized):
-  """Returns the singleprint of a SavedModel in `export_dir`.
+def singleprint_from_saved_model_proto(export_dir):
+  """Returns the singleprint of `saved_model.pb` in `export_dir`.
+
+  Args:
+    export_dir: The directory that contains `saved_model.pb`.
+
+  Returns:
+    A string containing the singleprint of `saved_model.pb` in `export_dir`.
+
+  Raises:
+    ValueError: If a valid singleprint cannot be constructed from 
+    `saved_model.pb`.
+  """
+  try:
+    return fingerprinting_pywrap.SingleprintFromSM(export_dir)
+  except FingerprintException as e:
+    raise ValueError(e) from None
+
+
+def singleprint_from_fingerprint_proto(export_dir):
+  """Returns the singleprint of `fingerprint.pb` in `export_dir`.
+
+  Args:
+    export_dir: The directory that contains `fingerprint.pb`.
+
+  Returns:
+    A string containing the singleprint of `fingerprint.pb` in `export_dir`.
+
+  Raises:
+    ValueError: If a valid singleprint cannot be constructed from
+    `fingerprint.pb`.
+  """
+  try:
+    return fingerprinting_pywrap.SingleprintFromFP(export_dir)
+  except FingerprintException as e:
+    raise ValueError(e) from None
+
+
+def singleprint_from_saved_model(export_dir):
+  """Returns the singleprint of the SavedModel in `export_dir`.
+
+  First tries to construct the singleprint from `fingerprint.pb`, then from
+  `saved_model.pb`. Attempts to write the `fingerprint.pb` if not found, but
+  doesn't return an error if it isn't writeable.
 
   Args:
     export_dir: The directory that contains the SavedModel.
-    saved_model_serialized: The serialized SavedModel proto.
 
   Returns:
-    A string containing the singleprint of the SavedModel.
+    A string containing the singleprint of the SavedModel in `export_dir`.
 
   Raises:
-    ValueError: If a valid singleprint cannot be constructed from a SavedModel.
+    ValueError: If a valid singleprint cannot be constructed from the
+    SavedModel.
   """
+  # try generating the singleprint from `fingerprint.pb`
   try:
-    fingerprint_serialized = fingerprinting_pywrap.CreateFingerprintDef(
-        saved_model_serialized, export_dir)
-  except fingerprinting_pywrap.FingerprintException as e:
+    return singleprint_from_fingerprint_proto(export_dir)
+  except FingerprintException:
+    pass
+
+  # try creating `fingerprint.pb`, then generating the singleprint
+  try:
+    write_fingerprint(export_dir)
+    return singleprint_from_fingerprint_proto(export_dir)
+  except FingerprintException:
+    pass
+
+  # try generating the singleprint from `saved_model.pb`
+  try:
+    return singleprint_from_saved_model_proto(export_dir)
+  except FingerprintException as e:
     raise ValueError(e) from None
-  fingerprint = fingerprinting.Fingerprint.from_proto(fingerprint_serialized)
-  return fingerprint.singleprint()
 
 
 def to_proto(fingerprint):

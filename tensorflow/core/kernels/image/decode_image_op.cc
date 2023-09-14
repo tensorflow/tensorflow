@@ -15,28 +15,34 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc
 
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <limits>
 #include <memory>
-
-#include "tensorflow/core/lib/gtl/cleanup.h"
 
 #define EIGEN_USE_THREADS
 
-#include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gif/gif_io.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 #include "tensorflow/core/lib/png/png_io.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/byte_order.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tsl/util/byte_swap_array.h"
 
 namespace tensorflow {
 namespace {
@@ -333,9 +339,8 @@ class DecodeImageV2Op : public OpKernel {
     // `png::CommonFreeDecode()` before an `OP_REQUIRES` because if
     // `OP_REQUIRES` constraint is satisfied then the data would be freed
     // prematurely. Instead, let's use a `Cleanup` object.
-    auto cleanup = gtl::MakeCleanup([&decode]() {
-      png::CommonFreeDecode(&decode);
-    });
+    auto cleanup =
+        gtl::MakeCleanup([&decode]() { png::CommonFreeDecode(&decode); });
 
     // Verify that width and height are not too large:
     // - verify width and height don't overflow int.

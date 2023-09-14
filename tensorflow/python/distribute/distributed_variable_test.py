@@ -19,6 +19,7 @@ import os
 
 from absl.testing import parameterized
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
@@ -69,6 +70,56 @@ def mirrored_and_tpu_strategy_combinations():
       mode=["graph", "eager"])
 
 
+def checkpoint_test_helper(dvar_test, distribution,
+                           synchronization, aggregation, enable_async_ckpt):
+  # This method is added since `testCheckpointing` cannot be parameterized after
+  # the entire class is parameterized.
+  with distribution.scope():
+    v = variables_lib.Variable(
+        constant_op.constant([1., 2., 3., 4]),
+        synchronization=synchronization,
+        aggregation=aggregation)
+
+  dvar_test.evaluate(v.initializer)
+  before_save = dvar_test.evaluate(v.read_value())
+
+  # Save random weights into checkpoint.
+  checkpoint = trackable_utils.Checkpoint(v=v)
+  ckpt_options = checkpoint_options.CheckpointOptions(
+      experimental_enable_async_checkpoint=enable_async_ckpt)
+  prefix = os.path.join(dvar_test.get_temp_dir(), "ckpt")
+  with dvar_test.test_session():
+    save_path = checkpoint.save(file_prefix=prefix, options=ckpt_options)
+
+  # Assign inverted value.
+  dvar_test.evaluate(v.assign(constant_op.constant([4., 3., 2., 1.])))
+  after_assign = dvar_test.evaluate(v.read_value())
+  dvar_test.assertNotAllClose(before_save, after_assign)
+
+  # Restore from the checkpoint.
+  with dvar_test.test_session():
+    checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+  after_restore = dvar_test.evaluate(v)
+  dvar_test.assertAllClose(before_save, after_restore)
+
+  # Another round of saving/restoring to ensure that the logic of
+  # _copy_trackable_to_cpu works when a copy is already created in object_map.
+  dvar_test.evaluate(v.assign(constant_op.constant([5., 6., 7., 8.])))
+  before_save_1 = dvar_test.evaluate(v.read_value())
+  dvar_test.assertNotAllClose(before_save_1, after_restore)
+  with dvar_test.test_session():
+    save_path = checkpoint.save(file_prefix=prefix, options=ckpt_options)
+
+  dvar_test.evaluate(v.assign(constant_op.constant([8., 7., 6., 5.])))
+  after_assign_1 = dvar_test.evaluate(v.read_value())
+  dvar_test.assertNotAllClose(before_save_1, after_assign_1)
+
+  with dvar_test.test_session():
+    checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+  after_restore_1 = dvar_test.evaluate(v)
+  dvar_test.assertAllClose(before_save_1, after_restore_1)
+
+
 @combinations.generate(
     combinations.combine(
         distribution=[
@@ -104,37 +155,23 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(v, variables_lib.Variable)
 
   def testCheckpointing(self, distribution, synchronization, aggregation, mode):
-
     if (isinstance(distribution,
                    collective_all_reduce_strategy.CollectiveAllReduceStrategy)
         and mode == "graph"):
       self.skipTest("MWMS combinations tests do not work well in graph mode.")
 
-    with distribution.scope():
-      v = variables_lib.Variable(
-          constant_op.constant([1., 2., 3., 4]),
-          synchronization=synchronization,
-          aggregation=aggregation)
+    checkpoint_test_helper(self, distribution, synchronization, aggregation,
+                           enable_async_ckpt=False)
 
-    self.evaluate(v.initializer)
-    before_save = self.evaluate(v.read_value())
+  def testAsyncCheckpointing(self, distribution, synchronization,
+                             aggregation, mode):
+    if (isinstance(distribution,
+                   collective_all_reduce_strategy.CollectiveAllReduceStrategy)
+        and mode == "graph"):
+      self.skipTest("MWMS combinations tests do not work well in graph mode.")
 
-    # Save random weights into checkpoint.
-    checkpoint = trackable_utils.Checkpoint(v=v)
-    prefix = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.test_session():
-      save_path = checkpoint.save(prefix)
-
-    # Assign inverted value.
-    self.evaluate(v.assign(constant_op.constant([4., 3., 2., 1.])))
-    after_assign = self.evaluate(v.read_value())
-    self.assertNotAllClose(before_save, after_assign)
-
-    # Restore from the checkpoint.
-    with self.test_session():
-      checkpoint.restore(save_path).assert_consumed().run_restore_ops()
-    after_restore = self.evaluate(v)
-    self.assertAllClose(before_save, after_restore)
+    checkpoint_test_helper(self, distribution, synchronization, aggregation,
+                           enable_async_ckpt=True)
 
   def testTraceback(self, distribution, synchronization, aggregation):
     if context.executing_eagerly():

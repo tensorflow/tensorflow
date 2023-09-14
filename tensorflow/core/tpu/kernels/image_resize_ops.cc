@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -39,7 +41,7 @@ class TpuCustomResizeOp : public XlaOpKernel {
   xla::Shape GetOutputShape(XlaOpKernelContext* ctx) const {
     std::vector<int64_t> out_size;
     auto status = ctx->ConstantInputAsIntVector(1, &out_size);
-    CHECK_EQ(out_size.size(), 2) << status.ToString();
+    CHECK_EQ(out_size.size(), 2) << status;
     xla::Shape output_shape =
         TensorShapeToXLAShape(ctx->output_xla_type(0), ctx->InputShape(0));
     output_shape.mutable_dimensions()[1] = out_size[0];

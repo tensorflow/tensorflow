@@ -98,8 +98,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace bitcast
 
 TfLiteRegistration* Register_BITCAST() {
-  static TfLiteRegistration r = {nullptr, nullptr, bitcast::Prepare,
-                                 bitcast::Eval};
+  static TfLiteRegistration r = {
+      nullptr,
+      nullptr,
+      bitcast::Prepare,
+      bitcast::Eval,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified};
   return &r;
 }
 

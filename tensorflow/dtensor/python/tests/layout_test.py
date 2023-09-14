@@ -30,6 +30,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import test
@@ -91,9 +92,9 @@ class MeshTest(test_util.DTensorBaseTest, parameterized.TestCase):
     mesh = layout.Mesh([_MESH_DIM_BATCH, _MESH_DIM_X], device_ids,
                        np.ravel(device_ids).tolist(),
                        test_util.create_device_list((4, 2), 'CPU'))
-    self.assertIn(
-        '<Mesh object with dims=[(\'batch\', 4), (\'x\', 2)], '
-        'device_type="CPU", num_local_devices=8), size=8', repr(mesh))
+    self.assertIn('batch=4,x=2', repr(mesh))
+    self.assertIn('CPU:0', repr(mesh))
+    self.assertIn('CPU:7', repr(mesh))
 
   def test_mesh_contains_dim(self):
     self.assertTrue(_2D_MESH.contains_dim('batch'))
@@ -301,6 +302,24 @@ class MeshTest(test_util.DTensorBaseTest, parameterized.TestCase):
       layout.Mesh([_MESH_DIM_BATCH], global_ids, local_ids,
                   np.ravel(a).tolist())
 
+  def test_host_mesh(self):
+    device_ids = test_util.create_device_ids_array((4, 2))
+    mesh = layout.Mesh(
+        [_MESH_DIM_BATCH, _MESH_DIM_X],
+        device_ids,
+        np.ravel(device_ids).tolist(),
+        test_util.create_device_list((4, 2), 'GPU'),
+        mesh_name='name_not_preserved',
+    )
+    expected = layout.Mesh(
+        [_MESH_DIM_BATCH, _MESH_DIM_X],
+        device_ids,
+        np.ravel(device_ids).tolist(),
+        test_util.create_device_list((4, 2), 'CPU'),
+    )
+    host_mesh = mesh.host_mesh()
+    self.assertEqual(host_mesh, expected)
+
 
 class LayoutTest(test_util.DTensorBaseTest, parameterized.TestCase):
 
@@ -345,8 +364,7 @@ class LayoutTest(test_util.DTensorBaseTest, parameterized.TestCase):
   def test_layout_repr(self):
     tensor_layout = layout.Layout.batch_sharded(
         _2D_MESH, _MESH_DIM_BATCH, rank=2)
-    self.assertIn('Layout(sharding_specs=[\'batch\', \'unsharded\'], mesh=',
-                  repr(tensor_layout))
+    self.assertIn('batch,unsharded', repr(tensor_layout))
 
   def test_throws_for_non_mesh(self):
     with self.assertRaisesRegex(ValueError, 'mesh is not a valid Mesh object'):
@@ -389,6 +407,13 @@ class LayoutTest(test_util.DTensorBaseTest, parameterized.TestCase):
     roundtrip = layout.Layout.from_proto(tensor_layout.as_proto())
     self.assertEqual(roundtrip, tensor_layout)
 
+  def test_parted_layout(self):
+    tensor_layout = layout.Layout.batch_sharded(
+        _2D_MESH, _MESH_DIM_BATCH, rank=2
+    )
+    parted_layout = tensor_layout.to_parted()
+    self.assertEqual(parted_layout.type, layout.LayoutType.PARTED)
+
 
 class RelayoutTest(test_util.DTensorBaseTest):
 
@@ -406,6 +431,9 @@ class RelayoutTest(test_util.DTensorBaseTest):
         for device in ('CPU', 'GPU', 'TPU')
     }
     self.mesh = self.configTestMesh(mesh_dict)
+    # 1D Layouts
+    self.x_layout = layout.Layout.batch_sharded(self.mesh, _MESH_DIM_X, rank=1)
+    self.y_layout = layout.Layout.batch_sharded(self.mesh, _MESH_DIM_Y, rank=1)
     # 2D Layouts
     self.unsharded_unsharded_layout = layout.Layout.replicated(
         self.mesh, rank=2
@@ -439,6 +467,56 @@ class RelayoutTest(test_util.DTensorBaseTest):
       )
     else:
       self.assertDTensorEqual(inp, to_layout, do_relayout())
+
+  @combinations.generate(combinations.combine(is_graph=[False, True]))
+  def test_relayout_to_parted(self, is_graph):
+    data = np.array([1, 2, 3, 4.0], dtype='f4')
+    inp = api.relayout(data, self.y_layout)
+
+    def do_relayout():
+      return api.relayout(inp, self.y_layout.to_parted())
+
+    if is_graph:
+      do_relayout = polymorphic_function.function(do_relayout)
+
+    with api.default_mesh(self.mesh):
+      result = do_relayout()
+
+    self.assertDTensorEqual(data, self.y_layout.to_parted(), result)
+
+  @combinations.generate(combinations.combine(is_graph=[False, True]))
+  def test_relayout_like_simple(self, is_graph):
+    data = np.array([1, 2, 3, 4.0], dtype='f4')
+    inp = api.relayout(data, self.y_layout)
+    inp_layout = api.relayout(data, self.x_layout)
+
+    def do_relayout():
+      return api.relayout_like(inp, inp_layout)
+
+    if is_graph:
+      do_relayout = polymorphic_function.function(do_relayout)
+
+    with api.default_mesh(self.mesh):
+      result = do_relayout()
+
+    self.assertDTensorEqual(data, self.x_layout, result)
+
+  def test_relayout_like_init_scope(self):
+    data = np.array([1, 2, 3, 4.0], dtype='f4')
+    inp = api.relayout(data, self.y_layout)
+    inp_layout = api.relayout(data, self.x_layout)
+
+    @polymorphic_function.function
+    def do_relayout(x):
+      with ops.init_scope():
+        return api.relayout_like(inp, x)
+
+    with api.default_mesh(self.mesh):
+      with self.assertRaisesRegex(
+          TypeError, 'is out of scope and cannot be used here'
+      ):
+        result = do_relayout(inp_layout)
+        result.numpy()
 
   def test_nested_relayout_gradient_preserves_layout(self):
     # Test that nesting gradient tapes with relayouts preserves the layout of
@@ -502,6 +580,33 @@ class RelayoutTest(test_util.DTensorBaseTest):
       return t
 
     func_with_relayout(sharded_w)
+
+  @combinations.generate(
+      combinations.combine(size=[16, 4096], is_graph=[False, True])
+  )
+  def test_call_with_layout(self, size, is_graph):
+    layout_x = layout.Layout.batch_sharded(
+        self.mesh, batch_dim=_MESH_DIM_X, rank=1
+    )
+    layout_y = layout.Layout.batch_sharded(
+        self.mesh, batch_dim=_MESH_DIM_Y, rank=1
+    )
+
+    expected = array_ops.zeros(shape=[size])
+
+    def func():
+      tensor_x = api.call_with_layout(array_ops.zeros, layout_x, shape=[size])
+      tensor_y = api.call_with_layout(array_ops.zeros, layout_y, shape=[size])
+      return tensor_x, tensor_y
+
+    if is_graph:
+      func = polymorphic_function.function(func)
+
+    with api.default_mesh(self.mesh):
+      tensor_x, tensor_y = func()
+
+    self.assertDTensorEqual(expected, layout_x, tensor_x)
+    self.assertDTensorEqual(expected, layout_y, tensor_y)
 
 
 if __name__ == '__main__':

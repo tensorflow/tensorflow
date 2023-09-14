@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/placer.h"
 
-#include <memory>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/colocation_graph.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/port.h"
 
@@ -69,12 +71,21 @@ Status GetFileName(string base_name, string* fname) {
   const char* dir = nullptr;
   dir = getenv("TF_DUMP_GRAPH_PREFIX");
   if (!dir) {
-    return errors::Internal("Failed to get the directory for ", base_name,
-                            " because dump location is not specified through "
-                            "TF_DUMP_GRAPH_PREFIX environment variable");
+    return absl::InternalError(
+        absl::StrCat("Failed to get the directory for ", base_name,
+                     " because dump location is not specified through "
+                     "TF_DUMP_GRAPH_PREFIX environment variable"));
   }
+  std::string result = dir;
+  if (absl::EqualsIgnoreCase(result, "sponge") &&
+      !io::GetTestUndeclaredOutputsDir(&result)) {
+    return absl::InternalError(
+        "TF_DUMP_GRAPH_PREFIX=sponge but "
+        "TEST_UNDECLARED_OUTPUT_DIRS is not set");
+  }
+
   base_name = MakeUniqueFilename(base_name);
-  *fname = absl::StrCat(dir, "/", base_name);
+  *fname = absl::StrCat(result, "/", base_name);
   return OkStatus();
 }
 

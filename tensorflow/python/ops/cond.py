@@ -19,6 +19,7 @@ from tensorflow.python.eager.polymorphic_function import eager_function_run
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
@@ -207,7 +208,9 @@ def cond(pred,
     res_f_flat = nest.flatten(res_f, expand_composites=True)
 
     for (x, y) in zip(res_t_flat, res_f_flat):
-      assert isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor)
+      assert (
+          isinstance(x, tensor_lib.Tensor)
+          and isinstance(y, tensor_lib.Tensor))
       if x.dtype.base_dtype != y.dtype.base_dtype:
         raise ValueError(
             "Outputs of 'true_fn' and 'false_fn' must have the same type(s). "
@@ -355,8 +358,8 @@ def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
     # Eager tensors from a parallel device may not have a constant
     # value. Running the cond op itself would work, but we don't have logic to
     # build cond ops without wrapping in a function first.
-    if (not isinstance(true_fn, core.GenericFunction)
-        or not isinstance(false_fn, core.GenericFunction)):
+    if (not isinstance(true_fn, core.PolymorphicFunction)
+        or not isinstance(false_fn, core.PolymorphicFunction)):
       raise TypeError("When running tf.cond on a parallel device, 'true_fn' "
                       "and 'false_fn' must be decorated with `tf.function`.")
     functions_run_eagerly = eager_function_run.functions_run_eagerly()

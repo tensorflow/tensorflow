@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 
+#include <functional>
 #include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
@@ -93,7 +98,7 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
     if (!status.ok()) {
       LOG(INFO) << "Ignoring error status when releasing multi-device function "
                    "handle "
-                << status.ToString();
+                << status;
     }
   }
 }
@@ -236,6 +241,8 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
     options.xla_compile_device_type = xla_compile_device_type_.value();
   }
 
+  options.allow_soft_placement = allow_soft_placement_;
+
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
   return pflr_->IsCrossProcess(handle_, &is_cross_process_);
@@ -328,7 +335,7 @@ Status KernelAndDeviceOp::Run(
 
   Status s = context.status();
   if (TF_PREDICT_FALSE(!s.ok())) {
-    if (errors::IsUnavailable(s) && !is_distributed_communication_op_) {
+    if (absl::IsUnavailable(s) && !is_distributed_communication_op_) {
       s = errors::ReplaceErrorFromNonCommunicationOps(s, kernel_->name());
     }
     return s;
@@ -471,7 +478,7 @@ void KernelAndDeviceFunc::RunAsync(
   tsl::core::RefCountPtr<Rendezvous> created_rendezvous;
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = PrepareForRun(
       step_container, outputs, cancellation_manager, eager_func_params,
-      absl::nullopt, coordination_service_agent, &created_rendezvous);
+      std::nullopt, coordination_service_agent, &created_rendezvous);
 
   pflr_->Run(
       *opts, handle_, inputs, outputs,

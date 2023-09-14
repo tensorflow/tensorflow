@@ -282,7 +282,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       if (ctx->symbolic_checkpoint()) {
-        return writer->WriteScalar(full_name(kBatchResultsSize), 0);
+        return writer->WriteScalar(prefix(), kBatchResultsSize, 0);
       }
       mutex_lock l(*mu_);
       // Wait for all in-flight calls to complete.
@@ -291,7 +291,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       }
       DCHECK_EQ(num_calls_, 0);
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kBatchResultsSize),
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kBatchResultsSize,
                                              batch_results_.size()));
       for (size_t i = 0; i < batch_results_.size(); ++i) {
         TF_RETURN_IF_ERROR(WriteBatchResult(writer, i));
@@ -305,8 +305,8 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       DCHECK(!runner_thread_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       int64_t batch_results_size;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kBatchResultsSize),
-                                            &batch_results_size));
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kBatchResultsSize, &batch_results_size));
       DCHECK(batch_results_.empty());
       for (int i = 0; i < batch_results_size; ++i) {
         TF_RETURN_IF_ERROR(ReadBatchResult(ctx, reader, i));
@@ -549,14 +549,14 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       string batch_prefix = strings::StrCat(kBatchResults, "_", index);
       mutex_lock l(result->mu);
       result->end_of_input = reader->Contains(
-          full_name(strings::StrCat(batch_prefix, "_", kEndOfInput)));
+          prefix(), strings::StrCat(batch_prefix, "_", kEndOfInput));
       TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(strings::StrCat(batch_prefix, "_", kNumElements)),
+          prefix(), strings::StrCat(batch_prefix, "_", kNumElements),
           &result->num_elements));
       result->call_finished = reader->Contains(
-          full_name(strings::StrCat(batch_prefix, "_", kCallFinished)));
+          prefix(), strings::StrCat(batch_prefix, "_", kCallFinished));
       result->output_allocated = reader->Contains(
-          full_name(strings::StrCat(batch_prefix, "_", kOutputAllocated)));
+          prefix(), strings::StrCat(batch_prefix, "_", kOutputAllocated));
 
       TF_RETURN_IF_ERROR(ReadBatch(ctx, reader, dataset()->batch_size_,
                                    prefix(), batch_prefix, &result->output));
@@ -576,18 +576,18 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(result->mu);
       if (result->end_of_input) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(batch_prefix, "_", kEndOfInput)), ""));
+            prefix(), strings::StrCat(batch_prefix, "_", kEndOfInput), ""));
       }
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(strings::StrCat(batch_prefix, "_", kNumElements)),
+          prefix(), strings::StrCat(batch_prefix, "_", kNumElements),
           result->num_elements));
       if (result->call_finished) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(batch_prefix, "_", kCallFinished)), ""));
+            prefix(), strings::StrCat(batch_prefix, "_", kCallFinished), ""));
       }
       if (result->output_allocated) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(batch_prefix, "_", kOutputAllocated)),
+            prefix(), strings::StrCat(batch_prefix, "_", kOutputAllocated),
             ""));
       }
 

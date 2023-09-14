@@ -82,11 +82,11 @@ Status AssertReplicated(mlir::Value operand) {
 absl::flat_hash_set<std::string> ReducedMeshDimensions(
     const dtensor::Layout& input, const dtensor::Layout& output) {
   absl::flat_hash_set<std::string> mesh_dims;
-  for (const auto& dim : input.sharding_specs()) {
-    mesh_dims.insert(dim.sharding_spec());
+  for (const auto& dim : input.sharding_spec_strs()) {
+    mesh_dims.insert(dim);
   }
-  for (const auto& dim : output.sharding_specs()) {
-    mesh_dims.erase(dim.sharding_spec());
+  for (const auto& dim : output.sharding_spec_strs()) {
+    mesh_dims.erase(dim);
   }
   return mesh_dims;
 }
@@ -149,11 +149,24 @@ Status ExtractDims<mlir::TF::BiasAddGradOp>(
   return OkStatus();
 }
 
+template <>
+Status ExtractDims<mlir::TF::EncodePngOp>(
+    mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
+    bool* keep_dims, bool* matched) {
+  if (!llvm::isa<mlir::TF::EncodePngOp>(op)) return OkStatus();
+  *reduced_dims = {-3, -2, -1};
+  *keep_dims = false;
+  *matched = true;
+  return OkStatus();
+}
+
 Status ExtractReductionParameters(mlir::Operation* op,
                                   absl::flat_hash_set<int>& reduced_dims_set,
                                   bool& keep_dims) {
   llvm::SmallVector<int64_t, 4> reduced_dims;
   bool matched = false;
+  TF_RETURN_IF_ERROR(ExtractDims<mlir::TF::EncodePngOp>(op, &reduced_dims,
+                                                        &keep_dims, &matched));
   TF_RETURN_IF_ERROR(
       ExtractDims<mlir::TF::SumOp>(op, &reduced_dims, &keep_dims, &matched));
   TF_RETURN_IF_ERROR(
@@ -223,8 +236,8 @@ StatusOr<mlir::Operation*> ReduceSPMDExpander::ExpandOp(mlir::Operation* op) {
   InferSPMDExpandedLocalShape(op);
 
   mlir::Operation* reduce_op;
-  if (mlir::isa<mlir::TF::SumOp, mlir::TF::L2LossOp, mlir::TF::BiasAddGradOp>(
-          op)) {
+  if (mlir::isa<mlir::TF::SumOp, mlir::TF::L2LossOp, mlir::TF::BiasAddGradOp,
+                mlir::TF::EncodePngOp>(op)) {
     TF_ASSIGN_OR_RETURN(
         reduce_op,
         EmitAllReduce(builder, output_layout, reduced_dims, op, kReduceOpAdd));

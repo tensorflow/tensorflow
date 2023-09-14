@@ -31,7 +31,7 @@ exports_files(srcs = [
 filegroup(
     name = "legacy_lib_internal_srcs",
     srcs = [
-        "//tensorflow/tsl/platform/profile_utils:legacy_lib_internal_srcs",
+        "@local_tsl//tsl/platform/profile_utils:legacy_lib_internal_srcs",
     ],
     visibility = ["//tensorflow/core/platform:__pkg__"],
 )
@@ -41,8 +41,8 @@ cc_library(
     srcs = [
         "android_armv7a_cpu_utils_helper.h",
         "i_cpu_utils_helper.h",
-        "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
-        "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
+        "@local_tsl//tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "@local_tsl//tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],
     hdrs = [
         "cpu_utils.h",
@@ -52,10 +52,10 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/platform:macros",
-        "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/platform/profile_utils:profile_utils_cpu_utils",
         "@com_google_absl//absl/base",
+        "@local_tsl//tsl/platform:macros",
+        "@local_tsl//tsl/platform:types",
+        "@local_tsl//tsl/platform/profile_utils:profile_utils_cpu_utils",
     ],
     alwayslink = 1,
 )

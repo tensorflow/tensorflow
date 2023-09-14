@@ -1,10 +1,10 @@
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteSelectTfOps'
-  s.version          = '2.11.0'
+  s.version          = '2.13.0'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :http => "https://dl.google.com/tflite-release/ios/prod/tensorflow/lite/release/ios/release/20/20221205-133425/TensorFlowLiteSelectTfOps/2.11.0/e47bed0ee7474e55/TensorFlowLiteSelectTfOps-2.11.0.tar.gz" }
+  s.source           = { :http => "https://dl.google.com/tflite-release/ios/prod/tensorflow/lite/release/ios/release/28/20230707-140347/TensorFlowLiteSelectTfOps/2.13.0/f7ed69e4d922c040/TensorFlowLiteSelectTfOps-2.13.0.tar.gz" }
   s.summary          = 'TensorFlow Lite'
   s.description      = <<-DESC
 
@@ -14,7 +14,7 @@ Pod::Spec.new do |s|
                        DESC
 
   s.cocoapods_version = '>= 1.9.0'
-  s.ios.deployment_target = '10.0'
+  s.ios.deployment_target = '11.0'
 
   s.module_name = 'TensorFlowLiteSelectTfOps'
   s.library = 'c++'

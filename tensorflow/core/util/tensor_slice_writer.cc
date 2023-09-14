@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
+#include <memory>
 #include <utility>
 
 #include "tensorflow/core/framework/versions.pb.h"
@@ -38,7 +39,7 @@ class TableBuilder : public TensorSliceWriter::Builder {
   TableBuilder(const string& name, WritableFile* f) : name_(name), file_(f) {
     table::Options option;
     option.compression = table::kNoCompression;
-    builder_.reset(new table::TableBuilder(option, f));
+    builder_ = std::make_unique<table::TableBuilder>(option, f);
   }
   void Add(StringPiece key, StringPiece val) override {
     builder_->Add(key, val);

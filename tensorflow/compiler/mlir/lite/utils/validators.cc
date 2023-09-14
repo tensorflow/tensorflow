@@ -50,7 +50,7 @@ bool TFIntListIs1XY1(Operation *op, StringRef name, IntegerAttr *x,
   return true;
 }
 
-// Returns true if the attribute is an integer list of the form [1, X, Y, 1],
+// Returns true if the attribute is an integer list of the form [1, X, Y, 1].
 bool TFIntListIs1XY1(const Attribute attr) {
   const auto &elements = attr.cast<ArrayAttr>().getValue();
   if (elements.size() != 4 ||
@@ -60,6 +60,21 @@ bool TFIntListIs1XY1(const Attribute attr) {
 
   if (elements.front().cast<IntegerAttr>().getValue() != 1 ||
       elements.back().cast<IntegerAttr>().getValue() != 1)
+    return false;
+  return true;
+}
+
+// Returns true if the attribute is an integer list of the form [1, 1, X, Y].
+bool TFIntListIs11XY(const Attribute attr) {
+  const auto &elements = attr.cast<ArrayAttr>().getValue();
+  if (elements.size() != 4 ||
+      std::any_of(elements.begin(), elements.end(),
+                  [](Attribute e) { return !e.isa<IntegerAttr>(); }))
+    return false;
+
+  const Attribute *data = elements.data();
+  if (data[0].cast<IntegerAttr>().getValue() != 1 ||
+      data[1].cast<IntegerAttr>().getValue() != 1)
     return false;
   return true;
 }

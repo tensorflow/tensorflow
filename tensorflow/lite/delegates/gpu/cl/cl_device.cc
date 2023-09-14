@@ -258,12 +258,17 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
     info.opencl_info.supports_fp16_rtn = false;
   }
 
-  if (info.IsPowerVR() && !info.opencl_info.supports_fp16) {
-    // PowerVR doesn't have full support of fp16 and so doesn't list this
-    // extension. But it can support fp16 in MADs and as buffers/textures types,
-    // so we will use it.
-    info.opencl_info.supports_fp16 = true;
-    info.opencl_info.supports_fp16_rtn = info.opencl_info.supports_fp32_rtn;
+  if (info.IsPowerVR()) {
+    if (!info.powervr_info.IsBetterThan(PowerVRGpu::kRogueGm9xxx)) {
+      // Some GPU older than RogueGe8xxx has accuracy issue with FP16.
+      info.opencl_info.supports_fp16 = false;
+    } else if (!info.opencl_info.supports_fp16) {
+      // PowerVR doesn't have full support of fp16 and so doesn't list this
+      // extension. But it can support fp16 in MADs and as buffers/textures
+      // types, so we will use it.
+      info.opencl_info.supports_fp16 = true;
+      info.opencl_info.supports_fp16_rtn = info.opencl_info.supports_fp32_rtn;
+    }
   }
 
   if (!info.opencl_info.supports_image3d_writes &&

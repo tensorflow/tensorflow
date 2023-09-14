@@ -1,11 +1,11 @@
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "common_transformers",
     srcs = [
         "anf.py",
@@ -16,11 +16,11 @@ py_library(
         "//tensorflow/python/autograph/pyct:gast_util",
         "//tensorflow/python/autograph/pyct:templates",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "anf_test",
     srcs = ["anf_test.py"],
     python_version = "PY3",
@@ -28,10 +28,10 @@ py_test(
     tags = ["no_oss"],
     deps = [
         ":common_transformers",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/pyct:loader",
         "//tensorflow/python/autograph/pyct:parser",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@gast_archive//:gast",
+        "//tensorflow/python/platform:client_testlib",
+        "@pypi_gast//:pkg",
     ],
 )

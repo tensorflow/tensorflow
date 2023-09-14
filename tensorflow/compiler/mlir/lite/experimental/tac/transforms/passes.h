@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/experimental/tac/tac_filter.pb.h"
 
 namespace mlir {
 namespace TFL {
@@ -63,6 +64,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateGetOpCostPass();
 // Create an instance of FoldConstantsToSubgraphPass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateFoldConstantsToSubgraphPass(
     bool fold_all_constants);
+
+// Create an instance of TacFilterPass.
+std::unique_ptr<OperationPass<ModuleOp>> CreateTacFilterPass(
+    ::third_party::tensorflow::compiler::mlir::lite::experimental::tac::
+        TacFilters* tac_filters);
 
 }  // namespace tac
 }  // namespace TFL

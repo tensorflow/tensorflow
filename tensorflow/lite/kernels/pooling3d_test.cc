@@ -48,7 +48,7 @@ class BasePoolingOpModel : public SingleOpModel {
 
     CHECK(pool_operator == BuiltinOperator_AVERAGE_POOL_3D ||
           pool_operator == BuiltinOperator_MAX_POOL_3D);
-    SetBuiltinOp(pool_operator, BuiltinOptions_Pool3DOptions,
+    SetBuiltinOp(pool_operator, BuiltinOptions2_Pool3DOptions,
                  CreatePool3DOptions(builder_, padding, stride_d, stride_w,
                                      stride_h, filter_d, filter_w, filter_h)
                      .Union());

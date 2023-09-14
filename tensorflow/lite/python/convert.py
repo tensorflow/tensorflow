@@ -205,7 +205,6 @@ class OpsSet(enum.Enum):
   # The feature is in early development.
   # The code to execute StableHLO ops in the runtime is to be implemented
   # and the serialization format is not stabilized yet.
-
   EXPERIMENTAL_STABLEHLO_OPS = "EXPERIMENTAL_STABLEHLO_OPS"
 
   def __str__(self):
@@ -413,12 +412,10 @@ Alternative, use virtualenv.""")
   # Windows and TemporaryFile are not that useful together,
   # since you cannot have two readers/writers. So we have to
   # make the temporaries and close and delete them explicitly.
-  conversion_filename, model_filename, input_filename, output_filename = (
-      None,
-      None,
-      None,
-      None,
-  )
+  conversion_filename: str = None
+  model_filename: str = None
+  input_filename: str = None
+  output_filename: str = None
   try:
     # Build all input files
     with _tempfile.NamedTemporaryFile(
@@ -561,7 +558,8 @@ def build_conversion_flags(
     select_user_tf_ops=None,
     allow_all_select_tf_ops=False,
     enable_tflite_resource_variables=True,
-    unfold_batchmatmul=True,
+    unfold_batchmatmul=False,
+    legalize_custom_tensor_list_ops=False,
     lower_tensor_list_ops=True,
     default_to_single_batch_in_tensor_list_ops=False,
     accumulation_type=None,
@@ -579,6 +577,16 @@ def build_conversion_flags(
     enable_mlir_variable_quantization=False,
     disable_fuse_mul_and_fc=False,
     quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
+    mlir_dump_dir=None,
+    mlir_dump_pass_regex=None,
+    mlir_dump_func_regex=None,
+    mlir_enable_timing=None,
+    mlir_print_ir_before=None,
+    mlir_print_ir_after=None,
+    mlir_print_ir_module_scope=None,
+    mlir_elide_elementsattrs_if_larger=None,
+    use_buffer_offset=False,
+    reduce_type_precision=False,
     **_
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -637,6 +645,8 @@ def build_conversion_flags(
       Enables conversion of resource variables. (default False)
     unfold_batchmatmul: Whether to unfold tf.BatchMatMul to a set of
       tfl.fully_connected ops. If not, translate to tfl.batch_matmul.
+    legalize_custom_tensor_list_ops: Whether to legalize `tf.TensorList*` ops to
+      tfl custom if they can all be supported.
     lower_tensor_list_ops: Whether to lower tensor list ops to builtin ops. If
       not, use Flex tensor list ops.
     default_to_single_batch_in_tensor_list_ops: Whether to force to use batch
@@ -676,6 +686,31 @@ def build_conversion_flags(
       a custom method, and allows finer, modular control. This option will
       override any other existing quantization flags. We plan on gradually
       migrating all quantization-related specs into this option.
+    mlir_dump_dir: A string specifying the target directory to output MLIR dumps
+      produced during conversion. If populated, enables MLIR dumps.
+    mlir_dump_pass_regex: A string containing a regular expression for filtering
+      the pass names to be dumped. Effective only if `mlir_dump_dir` is
+      populated.
+    mlir_dump_func_regex: A string containing a regular expression for filtering
+      the function names to be dumped. Effective only if `mlir_dump_dir` is
+      populated.
+    mlir_enable_timing: A boolean, if set to true reports the execution time of
+      each MLIR pass.
+    mlir_print_ir_before: A string containing a regular expression. If
+      specified, prints MLIR before passes which match.
+    mlir_print_ir_after: A string containing a regular expression. If specified,
+      prints MLIR after passes which match.
+    mlir_print_ir_module_scope: A boolean, if set to true always print the
+      top-level operation when printing IR for print_ir_[before|after].
+    mlir_elide_elementsattrs_if_larger: An int, if specified elides
+      ElementsAttrs with '...' that have more elements than the given upper
+      limit.
+    use_buffer_offset: Force the model use buffer_offset & buffer_size fields
+      instead of data. i.e. store the constant tensor and custom op binaries
+      outside of Flatbuffers
+    reduce_type_precision: Convert some tensor types to a lower precision if all
+      values within that tensor are within the range of the lower precision.
+      This could have side effects e.g. reduced flatbuffer size.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -727,6 +762,9 @@ def build_conversion_flags(
       enable_tflite_resource_variables
   )
   conversion_flags.unfold_batchmatmul = unfold_batchmatmul
+  conversion_flags.legalize_custom_tensor_list_ops = (
+      legalize_custom_tensor_list_ops
+  )
   conversion_flags.lower_tensor_list_ops = lower_tensor_list_ops
   conversion_flags.default_to_single_batch_in_tensor_list_ops = (
       default_to_single_batch_in_tensor_list_ops
@@ -758,6 +796,34 @@ def build_conversion_flags(
   conversion_flags.disable_fuse_mul_and_fc = disable_fuse_mul_and_fc
   if quantization_options:
     conversion_flags.quantization_options.CopyFrom(quantization_options)
+
+  # Transfer debug options. Check for existence before populating in order to
+  # leverage defaults specified in proto definition.
+  if mlir_dump_dir is not None:
+    conversion_flags.debug_options.mlir_dump_dir = mlir_dump_dir
+  if mlir_dump_pass_regex is not None:
+    conversion_flags.debug_options.mlir_dump_pass_regex = mlir_dump_pass_regex
+  if mlir_dump_func_regex is not None:
+    conversion_flags.debug_options.mlir_dump_func_regex = mlir_dump_func_regex
+  if mlir_enable_timing is not None:
+    conversion_flags.debug_options.mlir_enable_timing = mlir_enable_timing
+  if mlir_print_ir_before is not None:
+    conversion_flags.debug_options.mlir_print_ir_before = mlir_print_ir_before
+  if mlir_print_ir_after is not None:
+    conversion_flags.debug_options.mlir_print_ir_after = mlir_print_ir_after
+  if mlir_print_ir_module_scope is not None:
+    conversion_flags.debug_options.mlir_print_ir_module_scope = (
+        mlir_print_ir_module_scope
+    )
+  if mlir_elide_elementsattrs_if_larger is not None:
+    conversion_flags.debug_options.mlir_elide_elementsattrs_if_larger = (
+        mlir_elide_elementsattrs_if_larger
+    )
+
+  if use_buffer_offset is not None:
+    conversion_flags.use_buffer_offset = use_buffer_offset
+  if reduce_type_precision is not None:
+    conversion_flags.reduce_type_precision = reduce_type_precision
   return conversion_flags
 
 

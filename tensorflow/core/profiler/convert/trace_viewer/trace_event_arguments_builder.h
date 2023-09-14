@@ -32,25 +32,25 @@ class TraceEventArgumentsBuilder {
 
   void Append(absl::string_view key, absl::string_view value) {
     auto* arg = args_->add_arg();
-    arg->set_name(key);
-    arg->set_str_value(value);
+    arg->set_name(key.data(), key.size());
+    arg->set_str_value(value.data(), value.size());
   }
 
   void Append(absl::string_view key, int64_t value) {
     auto* arg = args_->add_arg();
-    arg->set_name(key);
+    arg->set_name(key.data(), key.size());
     arg->set_int_value(value);
   }
 
   void Append(absl::string_view key, uint64_t value) {
     auto* arg = args_->add_arg();
-    arg->set_name(key);
+    arg->set_name(key.data(), key.size());
     arg->set_uint_value(value);
   }
 
   void Append(absl::string_view key, double value) {
     auto* arg = args_->add_arg();
-    arg->set_name(key);
+    arg->set_name(key.data(), key.size());
     arg->set_double_value(value);
   }
 

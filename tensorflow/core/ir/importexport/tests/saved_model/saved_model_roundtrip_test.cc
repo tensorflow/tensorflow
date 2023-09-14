@@ -53,9 +53,9 @@ void RunRoundTrip(const std::string& input_file) {
   auto status = mlir::tfg::ExportMlirToSavedModel(*module_ref, original_model,
                                                   &final_model);
   if (!status.ok()) {
-    LOG(ERROR) << "Export failed: " << status.ToString();
+    LOG(ERROR) << "Export failed: " << status;
   }
-  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(status.ok()) << status;
 
   tensorflow::MetaGraphDef* original_metagraph =
       original_model.mutable_meta_graphs(0);

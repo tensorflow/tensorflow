@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/debug/debug_graph_utils.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -37,7 +39,8 @@ Status ParseBoolString(const string& bool_str, bool* bool_val) {
              lower_bool_str == "1") {
     *bool_val = true;
   } else {
-    return errors::InvalidArgument("Invalid string for bool value: ", bool_str);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid string for bool value: ", bool_str));
   }
   return OkStatus();
 }
@@ -368,8 +371,8 @@ Status DebugNodeInserter::ParseDebugOpName(
   } else {
     if (l_index == string::npos || l_index == 0 ||
         r_index != debug_op_name.size() - 1) {
-      return errors::InvalidArgument("Malformed debug op name \"",
-                                     debug_op_name, "\"");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Malformed debug op name \"", debug_op_name, "\""));
     }
 
     *debug_op_name_proper = debug_op_name.substr(0, l_index);
@@ -385,24 +388,24 @@ Status DebugNodeInserter::ParseDebugOpName(
 
       const size_t eq_index = seg.find('=');
       if (eq_index == string::npos) {
-        return errors::InvalidArgument(
-            "Malformed attributes in debug op name \"", debug_op_name, "\"");
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Malformed attributes in debug op name \"", debug_op_name, "\""));
       }
 
       const string key(seg.substr(0, eq_index));
       const string value(
           seg.substr(eq_index + 1, attribute_seg.size() - eq_index - 1));
       if (key.empty() || value.empty()) {
-        return errors::InvalidArgument(
-            "Malformed attributes in debug op name \"", debug_op_name, "\"");
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Malformed attributes in debug op name \"", debug_op_name, "\""));
       }
 
       if (attributes->find(key) == attributes->end()) {
         (*attributes)[key] = value;
       } else {
-        return errors::InvalidArgument("Duplicate attribute name \"", key,
-                                       "\" found in the debug op: \"",
-                                       debug_op_name, "\"");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Duplicate attribute name \"", key,
+                         "\" found in the debug op: \"", debug_op_name, "\""));
       }
     }
   }
@@ -426,31 +429,31 @@ Status DebugNodeInserter::SetDebugNodeAttributes(
         float float_value = 0.0;
         if (!::tensorflow::strings::safe_strtof(attr_value.c_str(),
                                                 &float_value)) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Invalid value string for float-type attribute ", attr.name(),
-              "of debug node ", debug_node->name(), ": \"", attr_value, "\"");
+              "of debug node ", debug_node->name(), ": \"", attr_value, "\""));
         }
         debug_node->AddAttr<float>(attr.name(), float_value);
       } else if (attr.type() == "int") {
         int64_t int_value = 0;
         if (!::tensorflow::strings::safe_strto64(attr_value, &int_value)) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Invalid value string for int-type attribute ", attr.name(),
-              "of debug node ", debug_node->name(), ": \"", attr_value, "\"");
+              "of debug node ", debug_node->name(), ": \"", attr_value, "\""));
         }
         debug_node->AddAttr<int>(attr.name(), int_value);
       } else if (attr.type() == "bool") {
         bool bool_value;
         if (!ParseBoolString(attr_value, &bool_value).ok()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Invalid value string for bool-type attribute ", attr.name(),
-              "of debug node ", debug_node->name(), ": \"", attr_value, "\"");
+              "of debug node ", debug_node->name(), ": \"", attr_value, "\""));
         }
         debug_node->AddAttr<bool>(attr.name(), bool_value);
       } else {
-        return errors::InvalidArgument(
-            "Unsupported type of custom attribute for debug ops: ",
-            attr.type());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unsupported type of custom attribute for debug ops: ",
+                         attr.type()));
       }
 
       unfulfilled_keys.erase(attr.name());
@@ -460,10 +463,10 @@ Status DebugNodeInserter::SetDebugNodeAttributes(
   if (unfulfilled_keys.empty()) {
     return OkStatus();
   } else {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         unfulfilled_keys.size(),
         " attribute key(s) were not valid for debug node ", debug_node->name(),
-        ": ", absl::StrJoin(unfulfilled_keys, ", "));
+        ": ", absl::StrJoin(unfulfilled_keys, ", ")));
   }
 }
 
@@ -490,20 +493,20 @@ Status DebugNodeInserter::CreateDebugNode(
                      .Attr("debug_urls", debug_urls);
 
   if (!builder.Finalize(&node_def).ok()) {
-    return errors::FailedPrecondition(
-        "Failed to create node definition for debug op ", debug_op_name_proper,
-        " on watched tensor ", tensor_name);
+    return absl::FailedPreconditionError(
+        absl::StrCat("Failed to create node definition for debug op ",
+                     debug_op_name_proper, " on watched tensor ", tensor_name));
   }
   if (!FindKernelDef(DeviceType(device.device_type()), node_def, &kdef, nullptr)
            .ok()) {
-    return errors::FailedPrecondition(
-        "Failed to find kernel definition for debug op ", debug_op_name_proper,
-        " on watched tensor ", tensor_name);
+    return absl::FailedPreconditionError(
+        absl::StrCat("Failed to find kernel definition for debug op ",
+                     debug_op_name_proper, " on watched tensor ", tensor_name));
   }
   if (!NodeBuilder(builder).Finalize(graph, debug_node).ok()) {
-    return errors::FailedPrecondition("Failed to create debug node ",
-                                      debug_op_name_proper,
-                                      " on watched tensor ", tensor_name);
+    return absl::FailedPreconditionError(
+        absl::StrCat("Failed to create debug node ", debug_op_name_proper,
+                     " on watched tensor ", tensor_name));
   }
 
   // Set custom attributes (if any).

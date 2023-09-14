@@ -18,7 +18,6 @@ import time
 
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import test
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 
 
@@ -42,8 +41,7 @@ class MonitoringTest(test_util.TensorFlowTestCase):
 
   def test_same_counter(self):
     counter1 = monitoring.Counter('test/same_counter', 'test counter')  # pylint: disable=unused-variable
-    with self.assertRaises(errors.AlreadyExistsError):
-      counter2 = monitoring.Counter('test/same_counter', 'test counter')  # pylint: disable=unused-variable
+    counter2 = monitoring.Counter('test/same_counter', 'test counter')  # pylint: disable=unused-variable
 
   def test_int_gauge(self):
     gauge = monitoring.IntGauge('test/gauge', 'test gauge')

@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CC_STATUS_MACRO_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CC_STATUS_MACRO_H_
 
-#include "tensorflow/tsl/platform/macros.h"
+#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 namespace quantization {

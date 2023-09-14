@@ -17,7 +17,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/mkl_util.h"
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
 
@@ -153,10 +153,10 @@ class EigenConcatBaseOp : public OpKernel {
                const OpInputList& input_mins, const OpInputList& input_maxes,
                bool quantized_input) {
     const Tensor* concat_dim_tensor;
-    const char* axis_attribute_name =
-        AxisArgName == NAME_IS_AXIS
-            ? "axis"
-            : AxisArgName == NAME_IS_CONCAT_DIM ? "concat_dim" : "<invalid>";
+    const char* axis_attribute_name = AxisArgName == NAME_IS_AXIS ? "axis"
+                                      : AxisArgName == NAME_IS_CONCAT_DIM
+                                          ? "concat_dim"
+                                          : "<invalid>";
     OP_REQUIRES_OK(c, c->input(axis_attribute_name, &concat_dim_tensor));
     OP_REQUIRES(c, TensorShapeUtils::IsScalar(concat_dim_tensor->shape()),
                 errors::InvalidArgument(
@@ -297,7 +297,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
                const dnnl::memory& dst_data,
                const MklConcatFwdParams& concat_fwd_dims,
                std::shared_ptr<stream> fwd_stream) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
     DCHECK_EQ(in_data.size(), context_.data_mem.size());
@@ -364,7 +364,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
              const std::vector<memory::desc>& srcs_md) {
     // Create memory descriptors for concat with specified srcs format
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
-      dnnl::memory::desc source_md(memory::desc(GET_MEMORY_DESC(srcs_md[i])));
+      dnnl::memory::desc source_md((memory::desc(GET_MEMORY_DESC(srcs_md[i]))));
       context_.src_md.push_back(source_md);
       std::shared_ptr<dnnl::memory> src_mem(
           new dnnl::memory(source_md, cpu_engine_, DummyData));
@@ -397,7 +397,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
 
   struct ConcatFwdContext context_;
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_execution_mu_;
 #endif
 };
@@ -481,7 +481,7 @@ class MklConcatOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     try {
       auto cpu_engine = engine(engine::kind::cpu, 0);
-      OpInputList input_tensors;
+      OpInputList input_tensors(context, 0, 0);
       GetMklInputList(context, "values", &input_tensors);
       const int N = input_tensors.size();
       // Get Tensor shapes.
@@ -563,7 +563,8 @@ class MklConcatOp : public OpKernel {
       // That is due to an incorrect output results in DNNL 1.2 path.
       if (expected_dims == 2) invoke_eigen = true;
 
-      OpInputList input_mins, input_maxes;
+      OpInputList input_mins(context, 0, 0);
+      OpInputList input_maxes(context, 0, 0);
       bool quantized_input =
           std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
       if (quantized_input) {
@@ -760,7 +761,12 @@ class MklConcatOp : public OpKernel {
       // then since MklDnn order is NCHW, concat_dim needs to be 1.
       if (are_all_mkl_inputs)
         concat_dim = mkl_input_shapes[0].TfDimIdx(concat_dim);
-      MklDnnThreadPool eigen_tp(context);
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(context);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       if (!inputs.empty()) {
         if (are_all_mkl_inputs) {
           auto concat_pd =

@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 
 #include <algorithm>
+#include <array>
+#include <cassert>
+#include <complex>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -57,6 +60,8 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -264,16 +269,16 @@ LogicalResult BatchFunctionOp::verifySymbolUses(
 
 void BatchFunctionOp::eraseArguments(const BitVector& erase_indices) {
   const StringRef operand_segment_size_attr = getOperandSegmentSizeAttr();
-  auto operand_segment_sizes = getOperation()->getAttrOfType<DenseI32ArrayAttr>(
+  auto operandSegmentSizes = getOperation()->getAttrOfType<DenseI32ArrayAttr>(
       operand_segment_size_attr);
 
-  // `operand_segment_sizes` attribute indicates the sizes of the two
+  // `operandSegmentSizes` attribute indicates the sizes of the two
   // variadic operands of `BatchFunctionOp`: `in_tensors` and
   // `captured_tensors`. The numbers have to be updated as arguments are
   // erased.
-  const int32_t num_in_original = operand_segment_sizes[0];
+  const int32_t num_in_original = operandSegmentSizes[0];
   int32_t num_in_tensors = num_in_original;
-  int32_t num_captured_tensors = operand_segment_sizes[1];
+  int32_t num_captured_tensors = operandSegmentSizes[1];
 
   for (const unsigned operand_index : erase_indices.set_bits()) {
     operand_index < num_in_original ? num_in_tensors-- : num_captured_tensors--;
@@ -1082,35 +1087,43 @@ OpFoldResult CastOp::fold(FoldAdaptor) {
 // CollectiveReduceV2Op
 //===----------------------------------------------------------------------===//
 
-// For `CollectiveReduceV2Op` we have two cases:
-// 1) If at least one ordering token is present, then we purely rely on ordering
+// For `CollectiveReduceV2Op` we have 3 cases:
+// 1) `is_stateless` is true turns off automatic ordering and we purely rely on
+//    instance_key to distinguish collective groups. In this case, ordering
+//    tokens are irrelevant. Each collective group should have a unique
+//    instance_key at runtime.
+// 2) If at least one ordering token is present, then we purely rely on ordering
 //    tokens for side effect modeling and ignore the op-based effect
 //    `TF_CollectiveReduceOrderingEffect` for which this function is relevant
 //    (note that returning `std::nullopt` here signals exactly that).
-// 2) If no ordering token is present, then we treat the op conservatively which
-//    means that different op instances need dependencies. This is realized by
-//    always returning the same string ("") in this case. In fact, we could
-//    return any string here, as long as it is the same string for all op
-//    instances without ordering tokens.
+// 3) If `is_stateless` is false and no ordering token is present, then we treat
+//    the op conservatively which means that different op instances need
+//    dependencies. This is realized by always returning the same string ("")
+//    in this case. In fact, we could return any string here, as long as it is
+//    the same string for all op instances without ordering tokens.
 std::optional<std::string> CollectiveReduceV2Op::GetResourceInstanceStr() {
-  return getNorderingToken() == 0 ? std::optional<std::string>("")
-                                  : std::nullopt;
+  if (!getIsStateless() && getNorderingToken() == 0)
+    return std::optional<std::string>("");
+  return std::nullopt;
 }
 
 std::optional<std::string>
 CollectiveReduceScatterV2Op::GetResourceInstanceStr() {
-  return getNorderingToken() == 0 ? std::optional<std::string>("")
-                                  : std::nullopt;
+  if (!getIsStateless() && getNorderingToken() == 0)
+    return std::optional<std::string>("");
+  return std::nullopt;
 }
 
 std::optional<std::string> CollectiveAllToAllV2Op::GetResourceInstanceStr() {
-  return getNorderingToken() == 0 ? std::optional<std::string>("")
-                                  : std::nullopt;
+  if (!getIsStateless() && getNorderingToken() == 0)
+    return std::optional<std::string>("");
+  return std::nullopt;
 }
 
 std::optional<std::string> CollectiveGatherV2Op::GetResourceInstanceStr() {
-  return getNorderingToken() == 0 ? std::optional<std::string>("")
-                                  : std::nullopt;
+  if (!getIsStateless() && getNorderingToken() == 0)
+    return std::optional<std::string>("");
+  return std::nullopt;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1920,7 +1933,7 @@ static LogicalResult inferConvReturnTypeComponents(
       // Skip if input or filter size is dynamic.
       if (input_ty.isDynamicDim(dim) || filter_ty.isDynamicDim(i)) continue;
       // Calculate the expected_output_size.
-      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
           input_ty.getDimSize(dim), filter_ty.getDimSize(i),
           get_int(dilations[dim]), stride, padding, &expected_output_size,
           &pad_low, &pad_high);
@@ -2999,6 +3012,15 @@ void GatherOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 //===----------------------------------------------------------------------===//
+// GlobalIterIdOp
+//===----------------------------------------------------------------------===//
+
+// Disable side effects.
+std::optional<std::string> GlobalIterIdOp::GetResourceInstanceStr() {
+  return std::nullopt;
+}
+
+//===----------------------------------------------------------------------===//
 // IfOp
 //===----------------------------------------------------------------------===//
 
@@ -3142,6 +3164,45 @@ void IfRegionOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                              MLIRContext* context) {
   results.add<FoldConstantIfRegionOp,
               CaseOrIfRegionEliminatePassThrough<TF::IfRegionOp>>(context);
+}
+
+bool IfRegionOp::areTypesCompatible(Type t1, Type t2) {
+  // For now, we don't enforce type checking across control-flow edges.
+  return true;
+}
+
+void IfRegionOp::getRegionInvocationBounds(
+    ArrayRef<Attribute> operands,
+    SmallVectorImpl<InvocationBounds>& invocationBounds) {
+  // We invoke both `then` and `else` between zero and one times.
+  invocationBounds.assign(2, {0, 1});
+}
+
+OperandRange IfRegionOp::getEntrySuccessorOperands(RegionBranchPoint point) {
+  // IfRegionOp currently only allows one op (the condition), so there are no
+  // remaining operands for the successor.
+  assert((point.isParent() ||
+          (point == (*this)->getRegion(0) || point == (*this)->getRegion(1))) &&
+         "Invalid IfRegionOp region index.");
+  auto end = this->getOperation()->operand_end();
+  return ::mlir::OperandRange(end, end);
+}
+
+void IfRegionOp::getSuccessorRegions(
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
+  if (!point.isParent()) {
+    // The `then` and the `else` region branch back to the parent operation.
+    regions.push_back(RegionSuccessor(getResults()));
+    return;
+  } else {
+    // The parent can branch to either `then` or `else`.
+    regions.push_back(RegionSuccessor(&getThenBranch()));
+    Region* elseRegion = &this->getElseBranch();
+    if (!elseRegion->empty())
+      regions.push_back(RegionSuccessor(elseRegion));
+    else
+      regions.push_back(RegionSuccessor());
+  }
 }
 
 //===----------------------------------------------------------------------===//

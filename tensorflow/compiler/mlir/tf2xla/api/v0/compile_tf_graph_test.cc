@@ -18,12 +18,12 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/client_library.h"
+#include "xla/client/client_library.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/lib/monitoring/test_utils.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/lib/monitoring/test_utils.h"
 
 namespace tensorflow {
 namespace tf2xla {

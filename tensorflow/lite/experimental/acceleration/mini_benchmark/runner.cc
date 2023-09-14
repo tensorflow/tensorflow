@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/runner.h"
 
-#ifdef __ANDROID__
+#ifndef TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
 #include <dlfcn.h>
-#endif
+#endif  // !TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -41,17 +41,21 @@ limitations under the License.
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) && !defined(TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS)
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_executable.h"
-#endif  // __ANDROID__
+#endif  // __ANDROID__ && !TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
 
 // Implementation notes and rationale:
 //
 // This class's primary client is the mini-benchmark. The mini-benchmark tries
 // out different acceleration configurations for TFLite. The acceleration may
-// hang or crash due to driver bugs. Running in a separate process isolates the
-// application from these hangs or crashes.
+// hang or crash due to driver bugs. By Default, the mini-benchmark on Android
+// runs in a separate process that is forked from the host application. This is
+// done to prevent the benchmark from crashing or hanging the host application.
+// All other platforms run the benchmark in the same process. If
+// TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS is defined, the mini-benchmark is
+// forced to run in process..
 //
 // The separate process is implemented in native code. The main alternative
 // would be to use a separate service process at the Android application
@@ -101,9 +105,9 @@ MinibenchmarkStatus ProcessRunner::Init() {
   if (!function_pointer_) {
     return kMinibenchmarkPreconditionNotMet;
   }
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) || defined(TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS)
   return kMinibenchmarkSuccess;
-#else
+#else  // __ANDROID__ && !TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
   tflite::acceleration::AndroidInfo android_info;
   if (!tflite::acceleration::RequestAndroidInfo(&android_info).ok()) {
     return kMinibenchmarkRequestAndroidInfoFailed;
@@ -167,7 +171,7 @@ MinibenchmarkStatus ProcessRunner::Init() {
   runner_path_ = runner_path;
   soname_ = soname;
   return kMinibenchmarkSuccess;
-#endif  // !__ANDROID__
+#endif  // !__ANDROID__ || TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
 }
 
 // TODO(b/245901066): Refactor the runner to separate Multi-process
@@ -216,13 +220,13 @@ MinibenchmarkStatus ProcessRunner::Run(const Allocation* model_allocation,
   }
   int benchmark_process_status = 0;
   MinibenchmarkStatus status = kMinibenchmarkCommandFailed;
-#ifndef __ANDROID__
+#ifdef TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
   if (function_pointer_) {
     benchmark_process_status = RunInprocess(model_allocation, args);
   } else {
     return kMinibenchmarkPreconditionNotMet;
   }
-#else
+#else   // !TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
   if (runner_path_.empty()) {
     return kMinibenchmarkPreconditionNotMet;
   }
@@ -291,7 +295,7 @@ MinibenchmarkStatus ProcessRunner::Run(const Allocation* model_allocation,
   } while (length == buffer.size());
   *output = ret;
   benchmark_process_status = pclose(f);
-#endif  // !__ANDROID
+#endif  //  TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
   if (WIFEXITED(benchmark_process_status)) {
     *exitcode = WEXITSTATUS(benchmark_process_status);
     *signal = 0;
@@ -306,8 +310,7 @@ MinibenchmarkStatus ProcessRunner::Run(const Allocation* model_allocation,
 #endif  // _WIN32
 }
 
-#ifndef __ANDROID__
-
+#ifdef TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
 #ifndef __W_EXITCODE  // Mac
 #define __W_EXITCODE(ret, sig) ((ret) << 8 | (sig))
 #endif
@@ -379,7 +382,7 @@ int ProcessRunner::RunInprocess(const Allocation* model_allocation,
   }
   return exit_code;
 }
-#endif  // !__ANDROID__
+#endif  // TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
 
 namespace {
 

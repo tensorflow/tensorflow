@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/tsl/platform/resource.h"
+#include "tsl/platform/resource.h"
 
 namespace tensorflow {
 

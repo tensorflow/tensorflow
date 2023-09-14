@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -39,12 +40,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/client/local_client.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/tf_pjrt_client.h"
+#include "xla/service/executable.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -53,7 +55,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/core/tfrt/common/pjrt_util.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -169,28 +172,13 @@ Status XlaCompileOnDemandOp::Compile(
     DeviceCompilationProfiler** profiler,
     const XlaCompiler::CompilationResult** result,
     xla::PjRtLoadedExecutable** executable) {
-  // We store information about the JIT-compiled XLA computation
-  // in the ResourceMgr.
-  ResourceMgr* rm = ctx->resource_manager();
-  if (!rm) {
-    return errors::Internal("No resource manager.");
-  }
+  TF_RETURN_IF_ERROR(GetOrCreatePjRtDeviceCompilerAndProfiler(
+      *ctx, platform_info_, ctx->function_library(), pjrt_device_compiler,
+      profiler));
 
-  TF_RETURN_IF_ERROR(rm->LookupOrCreate<PjRtDeviceCompiler>(
-      rm->default_container(), "pjrt_device_compiler", pjrt_device_compiler,
-      [&](PjRtDeviceCompiler** pjrt_device_compiler) {
-        return BuildPjRtDeviceCompiler(platform_info_, ctx->function_library(),
-                                       pjrt_device_compiler);
-      }));
-  TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
-      rm->default_container(), "pjrt_device_compilation_profiler", profiler,
-      [](DeviceCompilationProfiler** profiler) {
-        *profiler = new DeviceCompilationProfiler();
-        return OkStatus();
-      }));
-
-  XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
-      *(ctx->function_library()), ctx->device(), platform_info_);
+  XlaCompiler::Options options =
+      GenerateCompilerOptionsForPjRt(*(ctx->function_library()), ctx->device(),
+                                     platform_info_, *pjrt_device_compiler);
   // No detailed logging for on demand op.
   options.detailed_logging = false;
   XlaCompiler::CompileOptions compile_options = GetCompileOptions(true);
@@ -279,9 +267,9 @@ void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
     VLOG(2) << "pjrt_executable != nullptr: " << (pjrt_executable != nullptr);
     VLOG(2) << "Executing with PJRT ...";
 
-    OP_REQUIRES_OK(ctx,
-                   RunPjRtExecutable(*pjrt_device_compiler->client(), inputs,
-                                     variables, *result, pjrt_executable, ctx));
+    OP_REQUIRES_OK(ctx, RunPjRtExecutable(inputs, variables, *result,
+                                          pjrt_device_compiler->client(),
+                                          pjrt_executable, ctx));
 
     VLOG(2) << "Completed executing with PJRT!";
   } else {

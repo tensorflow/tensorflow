@@ -17,7 +17,9 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <ostream>
 #include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -36,10 +38,14 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -51,6 +57,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/string_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -83,13 +90,20 @@ using ClusterMap = llvm::SmallDenseMap<llvm::StringRef, OpSetVector, 8>;
 #define GEN_PASS_DEF_TPUCLUSTERFORMATIONPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
-struct TPUClusterFormationPass
+class TPUClusterFormationPass
     : public impl::TPUClusterFormationPassBase<TPUClusterFormationPass> {
+ public:
+  explicit TPUClusterFormationPass(bool strict_clusters)
+      : strict_clusters_(strict_clusters) {}
+
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<tf_device::TensorFlowDeviceDialect>();
   }
 
   void runOnOperation() override;
+
+ private:
+  bool strict_clusters_;
 };
 
 // Creates a mapping from the TPUReplicateMetadata ops `_replication_info`
@@ -134,6 +148,11 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
   return success();
 }
 
+struct OpDevice {
+  Operation* op;
+  std::string device;
+};
+
 // Collects and clusters ops either based on `_replication_info` attribute
 // (replicated case) or using one single cluster (non-replicated case). Also
 // sets `device_type` if there is any cluster (note that the device type must be
@@ -147,7 +166,7 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
   bool has_local_device_name_collisions = false;
   // Use ordered set here to make error message below deterministic.
   std::set<llvm::StringRef> device_types;
-  std::unordered_map<std::string, std::string> devices;
+  absl::flat_hash_map<std::string, OpDevice> devices;
   for (Operation& op : *block) {
     LogicalResult result = TF::HasValidCompilationAndReplicationAttributes(op);
     if (failed(result)) return result;
@@ -188,10 +207,25 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
     }
     auto device_attr = op.getAttrOfType<StringAttr>(kDeviceAttr);
     std::string device_local_name;
+    bool is_tpu_device = false;
     if (device_attr && !device_attr.str().empty()) {
+      tensorflow::DeviceNameUtils::ParsedName parsed;
+      if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(device_attr.str(),
+                                                             &parsed)) {
+        op.emitWarning() << "Invalid device name " << device_attr.str();
+        return failure();
+      }
+
       device_local_name =
-          tensorflow::DeviceNameUtils::LocalName(device_attr.str());
+          tensorflow::DeviceNameUtils::LocalName(parsed.type, parsed.id);
+      is_tpu_device = parsed.type == "TPU";
     }
+
+    // Ignore non-TPU devices when clustering.
+    if (!is_tpu_device) {
+      continue;
+    }
+
     if (!has_replicated_compiled_op && !device_local_name.empty()) {
       // It is possible that a device may be same Local Name but
       // different fullname. Devices with same Local name are identical
@@ -200,24 +234,31 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
       // information such as task, replica, job etc. An example fullname is
       // "/job:foo_bar/replica:1/task:2/device:GPU:3"
       if (devices.count(device_local_name)) {
-        std::string device1 = devices[device_local_name];
+        std::string device1 = devices[device_local_name].device;
         std::string device2 = device_attr.str();
         // Is either of the two devices just a substring of the other? If
         // not, we treat them as different devices, and we have a collision.
         if (device1.find(device2) == std::string::npos &&
             device2.find(device1) == std::string::npos) {
+          Operation* previous_op = devices[device_local_name].op;
           has_local_device_name_collisions = true;
-          LOG(WARNING) << "found two devices with same local name "
-                       << device_local_name
-                       << " but conflicting fullname: " << device1 << " and "
-                       << device2;
+
+          LOG_FIRST_N(WARNING, 1)
+              << "Found two devices with same local name " << device_local_name
+              << " but conflicting fullname: " << device1 << " and " << device2
+              << ".";
+          LOG_FIRST_N(WARNING, 1)
+              << "Previous assignment came from op: "
+              << tensorflow::OpAsString(*previous_op)
+              << ". Current op is: " << tensorflow::OpAsString(op);
         }
         // Always keep the longer name.
-        if (devices[device_local_name].size() < device_attr.str().size()) {
-          devices[device_local_name] = device_attr.str();
+        if (devices[device_local_name].device.size() <
+            device_attr.str().size()) {
+          devices[device_local_name] = {&op, device_attr.str()};
         }
       } else {
-        devices.insert({device_local_name, device_attr.str()});
+        devices.insert({device_local_name, {&op, device_attr.str()}});
       }
     }
   }
@@ -237,13 +278,14 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
     if (devices.size() > 1) {
       LOG(WARNING) << "found different devices for no replication: ";
       for (const auto& device_names : devices) {
-        LOG(WARNING) << device_names.first << ", " << device_names.second;
+        LOG(WARNING) << device_names.first << ", "
+                     << device_names.second.device;
       }
     } else if (has_local_device_name_collisions) {
       LOG(WARNING) << "Not assigning device because of conflicting fullnames.";
     } else if (devices.size() == 1 &&
-               absl::StrContains(devices.begin()->second, "TPU:")) {
-      device = devices.begin()->second;
+               absl::StrContains(devices.begin()->second.device, "TPU:")) {
+      device = devices.begin()->second.device;
     }
   }
   if (!clusters->empty()) {
@@ -258,7 +300,7 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
 // Returns true iff `op` has a direct control dependency from (`incoming` ==
 // true) or to (`incoming` == false) any op in `cluster_ops` or
 // `cluster_dependent_ops`.
-bool hasOpClusterControlDependency(
+Operation* getOpClusterControlDependency(
     Operation* op, bool incoming, const OpSetVector& cluster_ops,
     const OpSetVector& cluster_dependent_ops,
     const TF::SideEffectAnalysis::Info& side_effect_analysis) {
@@ -266,19 +308,23 @@ bool hasOpClusterControlDependency(
     return cluster_ops.contains(other_op) ||
            cluster_dependent_ops.contains(other_op);
   };
-  return incoming ? !side_effect_analysis.DirectControlPredecessors(op, filter)
-                         .empty()
-                  : !side_effect_analysis.DirectControlSuccessors(op, filter)
-                         .empty();
+  auto other_ops =
+      incoming ? side_effect_analysis.DirectControlPredecessors(op, filter)
+               : side_effect_analysis.DirectControlSuccessors(op, filter);
+  if (other_ops.empty())
+    return nullptr;
+  else
+    return *other_ops.begin();
 }
 
 // Returns true iff `op` has a direct data dependency from (`incoming` == true
 // or to (`incoming` == false) any op in `cluster_ops` or
 // `cluster_dependent_ops`.
-bool hasOpClusterDataDependency(Operation* op, bool incoming,
-                                const OpSetVector& cluster_ops,
-                                const OpSetVector& cluster_dependent_ops) {
-  auto result = op->walk([&](Operation* inner_op) {
+Operation* getOpClusterDataDependency(
+    Operation* op, bool incoming, const OpSetVector& cluster_ops,
+    const OpSetVector& cluster_dependent_ops) {
+  Operation* other_op = nullptr;
+  op->walk([&](Operation* inner_op) {
     ValueRange values = incoming ? ValueRange(inner_op->getOperands())
                                  : ValueRange(inner_op->getResults());
     llvm::SmallVector<Operation*, 4> candidates;
@@ -291,20 +337,22 @@ bool hasOpClusterDataDependency(Operation* op, bool incoming,
       for (Operation* candidate_op : candidates) {
         if (cluster_ops.contains(candidate_op) ||
             cluster_dependent_ops.contains(candidate_op)) {
+          other_op = candidate_op;
           return WalkResult::interrupt();
         }
       }
     }
     return WalkResult::advance();
   });
-  return result.wasInterrupted();
+  return other_op;
 }
 
 // Collects ops that need to be moved behind the cluster due to data or control
 // dependencies.
-llvm::SmallSetVector<Operation*, 8> CollectClusterSuccessorOps(
+FailureOr<llvm::SmallSetVector<Operation*, 8>> CollectClusterSuccessorOps(
     Block* block, const OpSetVector& cluster_ops,
-    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    const TF::SideEffectAnalysis::Info& side_effect_analysis,
+    bool strict_clusters) {
   OpSetVector cluster_predecessor_ops;
   OpSetVector cluster_successor_ops;
 
@@ -317,11 +365,11 @@ llvm::SmallSetVector<Operation*, 8> CollectClusterSuccessorOps(
   for (Operation& op : llvm::make_range(rback, rfront)) {
     if (cluster_ops.contains(&op)) continue;
     bool has_dependency_to_cluster =
-        hasOpClusterDataDependency(&op, /*incoming=*/false, cluster_ops,
-                                   cluster_predecessor_ops) ||
-        hasOpClusterControlDependency(&op, /*incoming=*/false, cluster_ops,
+        getOpClusterDataDependency(&op, /*incoming=*/false, cluster_ops,
+                                   cluster_predecessor_ops) != nullptr ||
+        getOpClusterControlDependency(&op, /*incoming=*/false, cluster_ops,
                                       cluster_predecessor_ops,
-                                      side_effect_analysis);
+                                      side_effect_analysis) != nullptr;
     if (has_dependency_to_cluster) cluster_predecessor_ops.insert(&op);
   }
   // Collect non-cluster ops that have a dependency from the cluster. For this
@@ -332,13 +380,12 @@ llvm::SmallSetVector<Operation*, 8> CollectClusterSuccessorOps(
   auto back = Block::iterator(cluster_ops.back());
   for (Operation& op : llvm::make_range(front, back)) {
     if (cluster_ops.contains(&op)) continue;
-    bool has_dependency_from_cluster =
-        hasOpClusterDataDependency(&op, /*incoming=*/true, cluster_ops,
-                                   cluster_successor_ops) ||
-        hasOpClusterControlDependency(&op, /*incoming=*/true, cluster_ops,
-                                      cluster_successor_ops,
-                                      side_effect_analysis);
-    if (has_dependency_from_cluster) {
+    Operation* data_predecessor = getOpClusterDataDependency(
+        &op, /*incoming=*/true, cluster_ops, cluster_successor_ops);
+    Operation* control_predecessor = getOpClusterControlDependency(
+        &op, /*incoming=*/true, cluster_ops, cluster_successor_ops,
+        side_effect_analysis);
+    if (data_predecessor || control_predecessor) {
       if (cluster_predecessor_ops.contains(&op)) {
         // Op has a dependency from and to the cluster which is invalid. Instead
         // of erroring out we don't add the op to `cluster_successor_ops` which
@@ -349,8 +396,24 @@ llvm::SmallSetVector<Operation*, 8> CollectClusterSuccessorOps(
         // might have runtime impact for existing models.
         // We should make this message an error once there is such a contract
         // and once existing cases have been fixed.
-        op.emitWarning()
-            << "op has cyclic dependency with a compilation cluster";
+        InFlightDiagnostic error = strict_clusters
+                                       ? mlir::emitError(op.getLoc(), "")
+                                       : mlir::emitWarning(op.getLoc(), "");
+        error << "Op has cyclic dependency with a compilation cluster:\n";
+        error << "The cluster depends on\n";
+        error << op.getName() << "\n"
+              << "which is outside of cluster, but itself depends ";
+        if (data_predecessor) {
+          error << "on\n" << data_predecessor->getName() << "\n";
+        } else if (control_predecessor) {
+          error << "(via control) on\n"
+                << control_predecessor->getName() << "\n";
+        }
+        if (cluster_ops.contains(data_predecessor) ||
+            cluster_ops.contains(control_predecessor))
+          error << "which is inside the cluster.\n";
+        else
+          error << "which the cluster depends on.\n";
       } else {
         cluster_successor_ops.insert(&op);
       }
@@ -697,7 +760,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
     }
   }
 
-  // Create `ordered_tpu_replicate_inputs` which constains the final ordered
+  // Create `ordered_tpu_replicate_inputs` which contains the final ordered
   // replicate inputs. All packed arguments are moved to the end of the arg
   // list.
   llvm::SmallVector<TF::TPUReplicatedInputOp, 8> ordered_tpu_replicate_inputs =
@@ -841,7 +904,8 @@ void SetNoReplicationClusterAttrs(tf_device::ClusterOp cluster,
 //      attribute `num_replicas` is greater than 1.
 //   9. Copy over TPUReplicateMetadata attributes to `tf_device.cluster`.
 LogicalResult FormClustersInBlock(
-    Block* block, const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    Block* block, const TF::SideEffectAnalysis::Info& side_effect_analysis,
+    bool strict_clusters) {
   MetadataMap metadata_map;
   LogicalResult result = CollectMetadata(block, &metadata_map);
   if (failed(result)) return result;
@@ -853,7 +917,8 @@ LogicalResult FormClustersInBlock(
       for (Region& region : op.getRegions()) {
         if (!llvm::hasSingleElement(region))
           return op.emitOpError("Expected single block region");
-        if (failed(FormClustersInBlock(&region.front(), side_effect_analysis)))
+        if (failed(FormClustersInBlock(&region.front(), side_effect_analysis,
+                                       strict_clusters)))
           return failure();
       }
     }
@@ -882,8 +947,10 @@ LogicalResult FormClustersInBlock(
       continue;
     }
 
-    OpSetVector cluster_successor_ops =
-        CollectClusterSuccessorOps(block, cluster_ops, side_effect_analysis);
+    auto status = CollectClusterSuccessorOps(
+        block, cluster_ops, side_effect_analysis, strict_clusters);
+    if (failed(status)) return status;
+    OpSetVector cluster_successor_ops = *status;
 
     llvm::SmallVector<Value, 8> results =
         CollectClusterResults(block, cluster_ops);
@@ -925,12 +992,13 @@ LogicalResult FormClustersInBlock(
 }
 
 LogicalResult FormClustersInFunction(
-    func::FuncOp func,
-    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    func::FuncOp func, const TF::SideEffectAnalysis::Info& side_effect_analysis,
+    bool strict_clusters) {
   if (!llvm::hasSingleElement(func))
     return func.emitOpError("Expecting a single block function");
 
-  if (failed(FormClustersInBlock(&func.front(), side_effect_analysis)))
+  if (failed(FormClustersInBlock(&func.front(), side_effect_analysis,
+                                 strict_clusters)))
     return failure();
 
   // Remove TPUReplicatedInput and TPUReplicatedOutput nodes.
@@ -984,13 +1052,15 @@ void TPUClusterFormationPass::runOnOperation() {
   for (auto func : getOperation().getOps<func::FuncOp>())
     if (!func.isExternal() &&
         failed(FormClustersInFunction(
-            func, side_effect_analysis.GetAnalysisForFunc(func))))
+            func, side_effect_analysis.GetAnalysisForFunc(func),
+            strict_clusters_)))
       return signalPassFailure();
 }
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass() {
-  return std::make_unique<TPUClusterFormationPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass(
+    bool strict_clusters) {
+  return std::make_unique<TPUClusterFormationPass>(strict_clusters);
 }
 
 }  // namespace TFTPU

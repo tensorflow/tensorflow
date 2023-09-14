@@ -309,8 +309,13 @@ else_branch: A function that takes 'inputs' and returns a list of
 }
 
 def TF_YieldOp : TF_Op<"Yield",
-      [Pure, ReturnLike, Terminator,
-       ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp"]>]> {
+      [Terminator,
+       Pure,
+       NativeOpTrait<"ReturnLike", [], "", "">,
+       ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp"]>,
+       DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface,
+           ["getMutableSuccessorOperands"]>,
+      ]> {
   let summary = "Yield operation";
 
   let description = [{
@@ -325,7 +330,14 @@ def TF_YieldOp : TF_Op<"Yield",
 }
 
 def TF_IfRegionOp : TF_Op<"IfRegion",
-      [SingleBlockImplicitTerminator<"YieldOp">, NoRegionArguments]> {
+      [SingleBlockImplicitTerminator<"YieldOp">, NoRegionArguments,
+       DeclareOpInterfaceMethods<RegionBranchOpInterface, [
+           "areTypesCompatible",
+           "getEntrySuccessorOperands",
+           "getRegionInvocationBounds",
+           "getSuccessorRegions"
+       ]>
+      ]> {
   let summary = "output = cond ? then_branch output : else_branch output";
 
   let description = [{
@@ -406,6 +418,9 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
   let extraClassDeclaration = [{
     // Gets the argument operands to the called function.
     operand_range getArgOperands() { return getArgs(); }
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
+    }
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
@@ -441,8 +456,8 @@ def TF_ParseExampleOp : TF_Op<"ParseExample",
     Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_defaults,
 
     TF_ShapeAttrArray:$dense_shapes,
-    DenseI32ArrayAttr:$result_segment_sizes,
-    DenseI32ArrayAttr:$operand_segment_sizes
+    DenseI32ArrayAttr:$resultSegmentSizes,
+    DenseI32ArrayAttr:$operandSegmentSizes
   );
 
   let results = (outs
@@ -477,7 +492,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
 
     ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_sparse,
     TF_ShapeAttrArray:$dense_shapes,
-    DenseI32ArrayAttr:$result_segment_sizes
+    DenseI32ArrayAttr:$resultSegmentSizes
   );
 
   let results = (outs
@@ -569,6 +584,9 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let extraClassDeclaration = [{
     // Gets the argument operands to the called function.
     operand_range getArgOperands() { return getArgs(); }
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
+    }
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
@@ -669,6 +687,9 @@ body: A function that takes a list of tensors and returns another
 
 def TF_WhileRegionOp : TF_Op<"WhileRegion",
       [DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+       DeclareOpInterfaceMethods<RegionBranchOpInterface, [
+           "getRegionInvocationBounds", "getEntrySuccessorOperands",
+           "areTypesCompatible"]>,
        SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "while operation";
   let description = [{
@@ -688,10 +709,15 @@ def TF_WhileRegionOp : TF_Op<"WhileRegion",
   ```
 
   `cond` is the condition region and `body` is the body region. Both these
-  regions accept the current value of the iteration variables as inputs. The
-  condition region returns a tensor<i1> which, if false, will exit the loop.
-  The body region computes new values of the iteration variables. The iteration
-  variables are initialized to the Op input, and the results of the
+  regions accept the current value of the iteration variables as inputs.
+
+  The condition region yields a tensor<i1> which, if false, will exit the loop.
+  It can also, optionally and additionally, yield the iteration variables, which
+  must be unchanged.
+
+  The body region always has to yield the (possibly updated) iteration variables.
+
+  The iteration variables are initialized to the Op input, and the results of the
   tf.WhileRegion op are the final values of the iteration variables.
 
   This implies that the operand and result types for tf.WhileRegion should be
@@ -1010,6 +1036,9 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall",
   let extraClassDeclaration = [{
     // Gets the argument operands to the called function.
     operand_range getArgOperands() { return getArgs(); }
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
+    }
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
@@ -1423,18 +1452,22 @@ summary_metadata: Serialized SummaryMetadata protocol buffer containing
 
 def TF__TPUDeviceOrdinalPlaceholderOp : TF_Op<"_TPUDeviceOrdinalPlaceholder", [Pure]> {
   let summary = [{
-Placeholder device ordinal that represents device ordinal of a replicated op.
+Placeholder for a device ordinal that depends on its tf_device.replicate ancestor.
   }];
 
   let description = [{
-This op can be used when certain rewrite passes materialize ops that require a
-device ordinal of a replicated op but replication logic has been abstracted away
-using tf_device.replicate op. Subsequent rewrite passes must replace this op with
-a constant output that represents the correct device ordinal of the replicated
-operations inside a TPU host.
+This op must have a tf_device.replicate ancestor. The ancestor replica_id and
+logical_core attribute correspond to a TPU core. This op maps the TPU core to a
+device_ordinal, where the device ordinal is the index of the core relative to
+its host.
+
+The replicate_to_island pass removes and flattens tf_device.replicate, so it
+converts this op to the constant index of the core relative to its host.
   }];
 
-  let arguments = (ins);
+  let arguments = (ins
+    I64Attr:$logical_core
+  );
 
   let results = (outs
     TF_Int64Tensor:$device_ordinal
@@ -1947,6 +1980,22 @@ format which contains three 1D tensors.
     TF_Int32Tensor:$row_ids,
     TF_Int32Tensor:$col_ids,
     TF_Float32Tensor:$gains
+  );
+}
+
+def TF_GlobalIterIdOp : TF_Op<"GlobalIterId", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_GlobalIterIdEffect]> {
+  let summary = [{
+Op that gets the global step id.
+  }];
+
+  let description = [{
+This op gets the step id for each loop iteration.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_Int64Tensor:$iter_id
   );
 }
 

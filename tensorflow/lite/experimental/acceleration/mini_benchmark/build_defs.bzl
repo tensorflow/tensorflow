@@ -18,8 +18,20 @@ load(
     "//tensorflow:tensorflow.bzl",
     "clean_dep",
 )
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "add_suffix")
+load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "libjpeg_handle_deps")
 
-def embedded_binary(name, binary, array_variable_name, testonly = False):
+def _concat(lists):
+    """Concatenate a list of lists, without requiring the inner lists to be iterable.
+
+    This allows the inner lists to be obtained by calls to select().
+    """
+    result = []
+    for selected_list in lists:
+        result = result + selected_list
+    return result
+
+def embedded_binary(name, binary, array_variable_name, testonly = False, exec_properties = None):
     """Create a cc_library that embeds a binary as constant data.
 
     Args:
@@ -53,6 +65,7 @@ def embedded_binary(name, binary, array_variable_name, testonly = False):
         srcs = [cc_name],
         hdrs = [h_name],
         testonly = testonly,
+        exec_properties = exec_properties,
     )
 
 def validation_model(
@@ -158,9 +171,9 @@ def validation_test(name, validation_model, tags = [], copts = [], deps = []):
             embed_name,
             "@com_google_googletest//:gtest_main",
             "@flatbuffers",
-            "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
             "//tensorflow/lite/acceleration/configuration:configuration_fbs",
             "//tensorflow/lite/acceleration/configuration:nnapi_plugin",
+            "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:big_little_affinity",
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator",
@@ -170,5 +183,77 @@ def validation_test(name, validation_model, tags = [], copts = [], deps = []):
                 "//tensorflow/lite/acceleration/configuration:gpu_plugin",
             ],
             "//conditions:default": [],
-        }),
+        }) + libjpeg_handle_deps(),
+        linkstatic = 1,
+    )
+
+def cc_library_with_forced_in_process_benchmark_variant(
+        name,
+        deps = [],
+        forced_in_process_deps = [],
+        in_process_deps = [],
+        non_in_process_deps_selects = [],
+        **kwargs):
+    """Defines a cc_library that optionally forces benchmark runs in process.
+
+    This generates two cc_library target. The first one runs the benchmark in a
+    separate process on Android, while it runs the benchmark in process on all
+    other platforms. It doesn't have TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
+    defined.
+    The second one, which has "_in_process" appended to the name, forces
+    benchmark runs in process on all platforms. It has
+    TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS defined.
+
+    The default option for MiniBenchmark is to run the benchmark in a separate
+    process on Android, as this is safer than running the benchmark in the app
+    process. However, forcing the benchmark to run in-process on Android allows
+    the benchmark to reuse the same TF Lite runtime that is initialized in the
+    application process. These two variants may use different dependencies.
+    For example, the in-process variant uses the statically linked libjpeg
+    handle, while the other variant uses the dynamically linked libjpeg handle
+    on Android to minimize binary size.
+
+    This build rule ensures that the dependencies listed in
+    "forced_in_process_deps" are added only when
+    TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS is defined, that the dependencies
+    listed in "non_in_process_deps_selects" are added only when
+    TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS is NOT defined, and that
+    TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS is defined automatically when
+    using the "_in_process" target.
+
+
+    Args:
+      name: determines the name used for the generated cc_library targets.
+      forced_in_process_deps: dependencies that will be enabled only when the
+        benchmark is forced to run in-process on all platforms. This should be
+        used for dependencies arising from code inside
+        '#ifdef TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS'.
+      deps: dependencies that will be unconditionally included in the deps of
+        the generated cc_library targets.
+      in_process_deps: dependencies on rules that are themselves defined using
+        'cc_library_with_forced_in_process_benchmark_variant'. Must be
+        iterable, so cannot be computed by calling 'select'.
+      non_in_process_deps_selects: A list of dictionaries that will be
+        converted to dependencies with select on rules. The dependencies will
+        be enabled only when the benchmark runs in a separate process on
+        Android. This should be used for dependencies arising from code inside
+        '#ifndef TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS'.
+      **kwargs:
+        Additional cc_library parameters.
+    """
+    native.cc_library(
+        name = name,
+        deps = deps + in_process_deps + _concat([select(map) for map in non_in_process_deps_selects]) + [
+            clean_dep("//tensorflow/lite/experimental/acceleration/mini_benchmark:tflite_acceleration_in_process_default"),
+        ],
+        **kwargs
+    )
+
+    in_process_deps_renamed = [add_suffix(in_process_dep, "_in_process") for in_process_dep in in_process_deps]
+    native.cc_library(
+        name = name + "_in_process",
+        deps = deps + in_process_deps_renamed + forced_in_process_deps + [
+            clean_dep("//tensorflow/lite/experimental/acceleration/mini_benchmark:tflite_acceleration_in_process_enable"),
+        ],
+        **kwargs
     )

@@ -155,5 +155,13 @@ TEST_F(AsyncSubgraphTest, BasicTest) {
   EXPECT_NE(handle, another_handle);
 }
 
+TEST_F(AsyncSubgraphTest, OutOfBoundTest) {
+  BuildAsyncSubgraph();
+  auto* attrs = new TfLiteAttributeMap(kTfLiteAttrMapTypeBuffer);
+  EXPECT_FALSE(subgraph_->ReconcileRestrictions(42, attrs, attrs, attrs));
+  EXPECT_EQ(kTfLiteError, subgraph_->SetAttributes(42, attrs));
+  delete attrs;
+}
+
 }  // namespace async
 }  // namespace tflite

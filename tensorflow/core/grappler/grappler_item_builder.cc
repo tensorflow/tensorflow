@@ -19,6 +19,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -118,16 +120,18 @@ Status UpdatePlaceholderShape(
     const std::unordered_set<string>& signature_feed_nodes,
     GrapplerItem* new_item, NodeDef* node) {
   if (node->attr().count("dtype") == 0) {
-    return errors::Internal("Unknown type for placeholder ", node->name(),
-                            ", skipping this input");
+    return absl::InternalError(absl::StrCat("Unknown type for placeholder ",
+                                            node->name(),
+                                            ", skipping this input"));
   }
   DataType type = node->attr().at("dtype").type();
 
   // TODO(andiryxu): Consider cfg.placeholder_unknown_output_shape_dim >= 0 and
   // _output_shapes is present case.
   if (node->attr().count("shape") == 0) {
-    return errors::Internal("Unknown shape for placeholder ", node->name(),
-                            ", skipping this input");
+    return absl::InternalError(absl::StrCat("Unknown shape for placeholder ",
+                                            node->name(),
+                                            ", skipping this input"));
   }
 
   // Replace all unknown dimensions in the placeholder's tensorshape proto
@@ -139,8 +143,9 @@ Status UpdatePlaceholderShape(
   Status make_shape_status = ReplaceUnknownShapeDim(
       cfg, node->attr().at("shape").shape(), &shape_proto, &shape);
   if (!make_shape_status.ok()) {
-    return errors::Internal("Invalid shape for placeholder ", node->name(),
-                            ": ", make_shape_status, ", skipping this input");
+    return absl::InternalError(
+        absl::StrCat("Invalid shape for placeholder ", node->name(), ": ",
+                     make_shape_status.ToString(), ", skipping this input"));
   }
 
   // Some placeholder nodes have a mismatch between the node

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
@@ -250,7 +251,7 @@ TEST_F(SessionMgrTest, UnknownSessionHandle) {
   std::string session_handle = "unknown_session_handle";
   std::shared_ptr<WorkerSession> session;
   Status s = mgr_.WorkerSessionForSession(session_handle, &session);
-  EXPECT_TRUE(errors::IsAborted(s));
+  EXPECT_TRUE(absl::IsAborted(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "Session handle is not found"));
   EXPECT_TRUE(s.GetPayload(kWorkerPossiblyRestarted).has_value());
 }

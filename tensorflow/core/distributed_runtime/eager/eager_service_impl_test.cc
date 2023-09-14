@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -91,6 +93,17 @@ class FakeEagerClient : public EagerClient {
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(CloseContext);
 #undef CLIENT_METHOD
+
+#define CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(method)                   \
+  void method##Async(const method##Request* request,                     \
+                     method##Response* response, StatusCallback done,    \
+                     int64_t init_timeout_in_ms, int retries) override { \
+    done(impl_->method(request, response));                              \
+  }
+
+  CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(CreateContext);
+
+#undef CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES
 
   void EnqueueAsync(CallOptions* call_opts, const EnqueueRequest* request,
                     EnqueueResponse* response, StatusCallback done) override {
@@ -545,7 +558,7 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
       Env::Default()->SleepForMicroseconds(500000);
       call_opts.StartCancel();
       n.WaitForNotification();
-      EXPECT_TRUE(errors::IsCancelled(status)) << status.message();
+      EXPECT_TRUE(absl::IsCancelled(status)) << status.message();
     } else {
       n.WaitForNotification();
       TF_ASSERT_OK(status);
@@ -638,7 +651,7 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
     }
     n.WaitForNotification();
     if (test_cancel) {
-      EXPECT_TRUE(errors::IsCancelled(status)) << status.message();
+      EXPECT_TRUE(absl::IsCancelled(status)) << status.message();
     } else {
       TF_ASSERT_OK(status);
       // Retrieve the output.
@@ -966,7 +979,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
-      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousFactory(),
+      /*xla_compile_device_type=*/std::nullopt,
+      /*allow_soft_placement=*/false, ctx->RendezvousFactory(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -1020,7 +1034,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
-      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousFactory(),
+      /*xla_compile_device_type=*/std::nullopt,
+      /*allow_soft_placement=*/false, ctx->RendezvousFactory(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.

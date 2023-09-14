@@ -11,7 +11,10 @@ load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additiona
 visibility = [
     "//tensorflow:__subpackages__",
     "//tensorflow/dtensor:dtensor-internal",
-    "//learning/brain/python/platform:__subpackages__",
+    # copybara:uncomment "//learning/brain/python/platform:__subpackages__",
+    # copybara:uncomment "//learning/brain/contrib/eager/numlib/benchmarks/kumamon:__subpackages__",
+    # copybara:uncomment "//learning/brain/mobile/lite/tooling/model_analyzer:__subpackages__",
+    # copybara:uncomment "//tensorflow_serving/model_servers:__subpackages__",
 ]
 
 package(
@@ -45,11 +48,12 @@ py_strict_library(
     name = "benchmark",
     srcs = ["benchmark.py"],
     srcs_version = "PY3",
+    visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":gfile",
         ":tf_logging",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
+        "//tensorflow/python/client",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
@@ -68,8 +72,8 @@ py_strict_library(
     srcs = ["device_context.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:control_flow_ops",
     ],
 )
 
@@ -77,6 +81,7 @@ py_strict_library(
     name = "test",
     srcs = ["googletest.py"],
     srcs_version = "PY3",
+    visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":benchmark",
         ":flags",
@@ -157,6 +162,7 @@ tf_py_strict_test(
         "no_oss",  # TODO(b/263966250) re-enable after fixing sysconfig.get_path breakage
         "no_windows",
         "nomac",
+        "nozapfhahn",
     ],
     deps = [
         ":client_testlib",
@@ -184,10 +190,15 @@ tf_python_pybind_extension(
     srcs = ["stacktrace_handler_wrapper.cc"],
     hdrs = [
         "//tensorflow/core/platform:stacktrace_handler_hdrs",
-        "//tensorflow/tsl/platform:stacktrace_handler_hdrs",
+        "@local_tsl//tsl/platform:stacktrace_handler_hdrs",
+    ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_stacktrace_handler.pyi",
     ],
     deps = [
         "//third_party/python_runtime:headers",
+        "@local_tsl//tsl/platform:stacktrace_handler_hdrs_lib",
         "@pybind11",
     ],
 )
@@ -195,6 +206,10 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_cpu_feature_guard",
     srcs = ["cpu_feature_guard_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_cpu_feature_guard.pyi",
+    ],
     deps = [
         "//tensorflow/core/platform:cpu_feature_guard_hdr",  # Only depend on header to avoid ODR issues.
         "//third_party/python_runtime:headers",
@@ -206,10 +221,17 @@ py_strict_library(
     name = "client_testlib",
     srcs = ["test.py"],
     srcs_version = "PY3",
+    visibility = visibility + [
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/mlperf:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":test",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:gradient_checker",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:gradient_checker",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -279,6 +301,7 @@ py_strict_library(
 py_strict_library(
     name = "gfile",
     srcs = ["gfile.py"],
+    visibility = visibility + ["//third_party/py/tf_slim/training:__pkg__"],
     deps = [
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/util:deprecation",
@@ -289,6 +312,7 @@ py_strict_library(
 py_strict_library(
     name = "tf_logging",
     srcs = ["tf_logging.py"],
+    visibility = visibility + ["//third_party/py/tf_slim/training:__pkg__"],
     deps = [
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
@@ -365,6 +389,10 @@ pybind_extension(
     name = "_pywrap_tf2",
     srcs = ["enable_tf2.cc"],
     hdrs = ["//tensorflow/core/platform:enable_tf2_hdr"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_tf2.pyi",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

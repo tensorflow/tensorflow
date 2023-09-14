@@ -27,11 +27,13 @@ the same way with eager and graph execution.
 *Guides*
 
 * [TensorFlow v2.x](https://www.tensorflow.org/guide/distributed_training)
-* [TensorFlow v1.x](https://github.com/tensorflow/docs/blob/master/site/en/r1/guide/distribute_strategy.ipynb)
+* [TensorFlow
+v1.x](https://github.com/tensorflow/docs/blob/master/site/en/r1/guide/distribute_strategy.ipynb)
 
 *Tutorials*
 
-* [Distributed Training Tutorials](https://www.tensorflow.org/tutorials/distribute/)
+* [Distributed Training
+Tutorials](https://www.tensorflow.org/tutorials/distribute/)
 
   The tutorials cover how to use `tf.distribute.Strategy` to do distributed
   training with native Keras APIs, custom training loops,
@@ -185,6 +187,8 @@ the same way with eager and graph execution.
 Note that we provide a default version of `tf.distribute.Strategy` that is
 used when no other strategy is in scope, that provides the same API with
 reasonable default behavior.
+
+API docstring: tensorflow.distribute
 """
 # pylint: enable=line-too-long
 
@@ -214,6 +218,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -538,7 +543,7 @@ def in_cross_replica_context():
 
 
 @tf_export("distribute.get_strategy")
-def get_strategy():
+def get_strategy() -> "StrategyBase":
   """Returns the current `tf.distribute.Strategy` object.
 
   Typically only used in a cross-replica context:
@@ -764,6 +769,9 @@ class _CurrentDistributionContext(object):
     return self._context.strategy
 
   def __exit__(self, exception_type, exception_value, traceback):
+    if hasattr(self._context.strategy.extended, "_lazy_variable_tracker"):
+      self._context.strategy.extended._lazy_variable_tracker.initialize_all()
+
     if self._same_scope_again_count > 0:
       self._same_scope_again_count -= 1
       return
@@ -3926,7 +3934,7 @@ class ReplicaContextV1(ReplicaContextBase):
 
 def _batch_reduce_destination(x):
   """Returns the destinations for batch all-reduce."""
-  if isinstance(x, ops.Tensor):
+  if isinstance(x, tensor_lib.Tensor):
     # If this is a one device strategy.
     return x.device
   else:

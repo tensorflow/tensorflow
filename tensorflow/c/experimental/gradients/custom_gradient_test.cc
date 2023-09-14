@@ -125,19 +125,12 @@ TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
   result_tensor = nullptr;
 }
 
-#ifdef PLATFORM_GOOGLE
-INSTANTIATE_TEST_SUITE_P(
-    CustomGradientTest, CustomGradientTest,
-    ::testing::Combine(::testing::Values("graphdef", "mlir"),
-                       /*tfrt*/ ::testing::Values(true, false),
-                       /*executing_eagerly*/ ::testing::Values(true, false)));
-#else
 INSTANTIATE_TEST_SUITE_P(
     CustomGradientTest, CustomGradientTest,
     ::testing::Combine(::testing::Values("graphdef", "mlir"),
                        /*tfrt*/ ::testing::Values(false),
                        /*executing_eagerly*/ ::testing::Values(true, false)));
-#endif
+
 }  // namespace
 }  // namespace internal
 }  // namespace gradients

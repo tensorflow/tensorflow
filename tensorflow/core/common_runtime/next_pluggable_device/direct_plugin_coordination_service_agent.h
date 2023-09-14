@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 namespace tensorflow {
 

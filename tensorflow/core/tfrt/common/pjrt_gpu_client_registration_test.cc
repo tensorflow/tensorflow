@@ -25,8 +25,6 @@ namespace {
 
 TEST(PjrtGpuClientCreateTest, TestGpuCreateOption) {
   PjrtClientFactoryOptions options = PjrtClientFactoryOptions();
-  options.gpu_options.asynchronous = true;
-  options.gpu_options.allocator_config = xla::GpuAllocatorConfig();
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, xla::PjrtClientFactoryRegistry::Get().GetPjrtClient(
                        tsl::DeviceType(tensorflow::DEVICE_GPU), options));

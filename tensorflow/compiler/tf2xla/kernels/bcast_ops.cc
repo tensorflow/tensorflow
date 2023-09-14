@@ -16,12 +16,14 @@ limitations under the License.
 // XLA-specific Ops for broadcasting used in gradient
 // code.
 
+#include <vector>
+
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
-#include "tensorflow/compiler/xla/literal.h"
+#include "xla/client/value_inference.h"
+#include "xla/literal.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/bcast.h"

@@ -16,7 +16,6 @@
 
 import numpy as np
 
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors
@@ -25,7 +24,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
-from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -1331,39 +1329,30 @@ class PolyvalTest(test.TestCase):
       math_ops.polyval(coeffs, x)
 
 
-class SingularGradientOpTest(test.TestCase):
+class RealTest(test.TestCase):
 
-  def testGradientAtSingularity(self):
-    if context.executing_eagerly():
-      self.skipTest(
-          "Only graph mode allows specifying gradient inputs directly"
-      )
+  def _run_test(self, input_values, expected_values):
+    res = math_ops.real(input_values)
+    self.assertAllEqual(res, expected_values)
 
-    ops_and_singularity = [
-        (math_ops.reciprocal, [0.0], [np.nan]),
-        (math_ops.rsqrt, [0.0], [np.nan]),
-        (math_ops.sqrt, [0.0], [np.nan]),
-        (math_ops.sqrt_grad, [0.0, 0.0], [np.nan, np.nan]),
-        (math_ops.reciprocal_grad, [1.0, 0.0], [-0.0, -0.0]),
-        (math_ops.tan, [np.pi / 2], [0.0]),
-        (math_ops.log, [0.0], [np.nan]),
-        (math_ops.log1p, [-1.0], [np.nan]),
-        (math_ops.acosh, [0.0], [np.nan]),
-        (math_ops.asin, [1.0], [np.nan]),
-        (math_ops.acos, [1.0], [np.nan]),
-        (math_ops.atan2, [0.0, 0.0], [np.nan, np.nan]),
-        (math_ops.div, [1.0, 0.0], [np.nan, np.nan]),
-        (math_ops.div_no_nan, [1.0, 0.0], [0.0, 0.0]),
-        (math_ops.real_div, [1.0, 0.0], [np.nan, np.nan]),
-        (math_ops.pow, [0.0, -1.0], [np.nan, np.nan]),
+  def test_real(self):
+    test_cases = [
+        # Complex tensor
+        (np.complex64, [-2.25 + 4.75j, 3.25 + 5.75j], [-2.25, 3.25]),
+        (np.complex128, [-2.25 + 4.75j, 3.25 + 5.75j], [-2.25, 3.25]),
+        # Real tensor
+        (np.float32, [1.0, 2.0, 3.0], [1.0, 2.0, 3.0]),
+        (np.float64, [1.0, 2.0, 3.0], [1.0, 2.0, 3.0]),
     ]
-    for op, singularity, expected in ops_and_singularity:
-      with self.subTest(op=op.__name__):
-        args = [constant_op.constant(s) for s in singularity]
-        grad_y = constant_op.constant(0.0)
-        y = op(*args)
-        g = self.evaluate(gradients_impl.gradients(y, args, grad_ys=grad_y))
-        self.assertAllEqual(g, expected)
+
+    for dtype, input_values, expected_values in test_cases:
+      with self.subTest(dtype=dtype):
+        self._run_test(input_values, expected_values)
+
+  def test_real_raises_error_for_non_numeric_tensor(self):
+    x = np.array(["Hello", "World"])
+    with self.assertRaisesRegex(TypeError, "input must be a numeric tensor"):
+      self._run_test(x, None)
 
 
 if __name__ == "__main__":

@@ -1297,6 +1297,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<*xf32>
   }
 
+  func.func @xla_call_module_parsing_error(%arg0: tensor<f32>) -> tensor<*xf32> {
+    %0 = "tf.Identity"(%arg0) : (tensor<f32>) -> tensor<*xf32>
+    %1 = "tf.XlaCallModule"(%arg0, %0) {Sout = [#tf_type.shape<*>], device = "", dim_args_spec = [], module = "invalid-stablehlo-module", platforms = [], version = 4 : i64} : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+    func.return %1 : tensor<*xf32>
+  }
+
   // CHECK-LABEL: func @xla_host_compute_mlir_empty_module
   func.func @xla_host_compute_mlir_empty_module(%arg0: tensor<2xf32>) -> tensor<*xf32> {
     // CHECK: "tf._XlaHostComputeMlir"

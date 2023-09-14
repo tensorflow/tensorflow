@@ -14,7 +14,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -26,7 +26,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -56,7 +56,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:qual_names",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -71,7 +71,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:qual_names",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -83,7 +83,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -101,13 +101,13 @@ py_strict_test(
     deps = [
         ":activity",
         ":annos",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:naming",
         "//tensorflow/python/autograph/pyct:parser",
         "//tensorflow/python/autograph/pyct:qual_names",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@gast_archive//:gast",
+        "//tensorflow/python/platform:client_testlib",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -121,13 +121,13 @@ py_strict_test(
         ":activity",
         ":liveness",
         ":reaching_fndefs",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:naming",
         "//tensorflow/python/autograph/pyct:parser",
         "//tensorflow/python/autograph/pyct:qual_names",
         "//tensorflow/python/autograph/pyct:transformer",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -139,13 +139,13 @@ py_strict_test(
     deps = [
         ":activity",
         ":reaching_definitions",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:naming",
         "//tensorflow/python/autograph/pyct:parser",
         "//tensorflow/python/autograph/pyct:qual_names",
         "//tensorflow/python/autograph/pyct:transformer",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -159,10 +159,10 @@ py_strict_test(
         ":reaching_definitions",
         ":reaching_fndefs",
         ":type_inference",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:qual_names",
         "//tensorflow/python/autograph/pyct:transpiler",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

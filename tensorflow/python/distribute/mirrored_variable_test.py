@@ -31,6 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
@@ -46,7 +47,7 @@ from tensorflow.python.saved_model import save
 
 def _replica_id():
   replica_id = distribute_lib.get_replica_context().replica_id_in_sync_group
-  if not isinstance(replica_id, ops.Tensor):
+  if not isinstance(replica_id, tensor.Tensor):
     replica_id = constant_op.constant(replica_id)
   return replica_id
 

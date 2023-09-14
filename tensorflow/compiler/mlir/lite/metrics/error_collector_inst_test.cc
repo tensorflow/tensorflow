@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 
 #include <cstddef>
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -35,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace TFL {
@@ -52,7 +53,7 @@ class MockSuccessPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MockSuccessPass)
 
-  explicit MockSuccessPass() {}
+  explicit MockSuccessPass() = default;
 
  private:
   void runOnOperation() override {
@@ -73,7 +74,7 @@ class MockFailurePass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MockFailurePass)
 
-  explicit MockFailurePass() {}
+  explicit MockFailurePass() = default;
 
  private:
   void runOnOperation() override {

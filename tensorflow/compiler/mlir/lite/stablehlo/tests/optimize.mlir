@@ -102,6 +102,170 @@ func.func @testRemoveReshapeAroundDot(%arg0: tensor<1x1x512xf32>, %arg1: tensor<
 
 // -----
 
+// CHECK-LABEL: testTwoConsecutivePads
+func.func @testTwoConsecutivePads(%arg0: tensor<10x10x10xf32>) -> (tensor<12x12x12xf32>) {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = "mhlo.pad"(%arg0, %0) {edge_padding_high = dense<0> : tensor<3xi64>, edge_padding_low = dense<1> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<11x11x11xf32>
+  %2 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %3 = "mhlo.pad"(%1, %2) {edge_padding_high = dense<1> : tensor<3xi64>, edge_padding_low = dense<0> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<11x11x11xf32>, tensor<f32>) -> tensor<12x12x12xf32>
+  return %3 : tensor<12x12x12xf32>
+// CHECK:      %[[RES:.*]] = "mhlo.pad"(%arg0, %0) {
+// CHECK-SAME:     edge_padding_high = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     edge_padding_low = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     interior_padding = dense<0> : tensor<3xi64>
+// CHECK-SAME: } : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<12x12x12xf32>
+// CHECK:      return %[[RES]] : tensor<12x12x12xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testTwoConsecutivePadsNegativeLowPad
+func.func @testTwoConsecutivePadsNegativeLowPad(%arg0: tensor<10x10x10xf32>) -> (tensor<10x10x10xf32>) {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = "mhlo.pad"(%arg0, %0) {edge_padding_high = dense<0> : tensor<3xi64>, edge_padding_low = dense<-1> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<9x9x9xf32>
+  %2 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %3 = "mhlo.pad"(%1, %2) {edge_padding_high = dense<1> : tensor<3xi64>, edge_padding_low = dense<0> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<9x9x9xf32>, tensor<f32>) -> tensor<10x10x10xf32>
+  return %3 : tensor<10x10x10xf32>
+
+// CHECK:      %[[RES:.*]] = "mhlo.pad"(%arg0, %0) {
+// CHECK-SAME:     edge_padding_high = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     edge_padding_low = dense<-1> : tensor<3xi64>,
+// CHECK-SAME:     interior_padding = dense<0> : tensor<3xi64>
+// CHECK-SAME: } : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<10x10x10xf32>
+// CHECK:      return %[[RES]] : tensor<10x10x10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testTwoConsecutivePadsTwoNegativeHighPad
+func.func @testTwoConsecutivePadsTwoNegativeHighPad(%arg0: tensor<10x10x10xf32>) -> (tensor<9x9x9xf32>) {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = "mhlo.pad"(%arg0, %0) {edge_padding_high = dense<-1> : tensor<3xi64>, edge_padding_low = dense<1> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<10x10x10xf32>
+  %2 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %3 = "mhlo.pad"(%1, %2) {edge_padding_high = dense<-1> : tensor<3xi64>, edge_padding_low = dense<0> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<9x9x9xf32>
+  return %3 : tensor<9x9x9xf32>
+
+// CHECK:      %[[RES:.*]] = "mhlo.pad"(%arg0, %0) {
+// CHECK-SAME:     edge_padding_high = dense<-2> : tensor<3xi64>,
+// CHECK-SAME:     edge_padding_low = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     interior_padding = dense<0> : tensor<3xi64>
+// CHECK-SAME: } : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<9x9x9xf32>
+// CHECK:      return %[[RES]] : tensor<9x9x9xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testTwoConsecutivePadsPositiveNegativeHighPad
+func.func @testTwoConsecutivePadsPositiveNegativeHighPad(%arg0: tensor<10x10x10xf32>) -> (tensor<11x11x11xf32>) {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = "mhlo.pad"(%arg0, %0) {edge_padding_high = dense<1> : tensor<3xi64>, edge_padding_low = dense<1> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<12x12x12xf32>
+  %2 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %3 = "mhlo.pad"(%1, %2) {edge_padding_high = dense<-1> : tensor<3xi64>, edge_padding_low = dense<0> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<12x12x12xf32>, tensor<f32>) -> tensor<11x11x11xf32>
+  return %3 : tensor<11x11x11xf32>
+
+// CHECK:      %[[RES:.*]] = "mhlo.pad"(%arg0, %0) {
+// CHECK-SAME:     edge_padding_high = dense<0> : tensor<3xi64>,
+// CHECK-SAME:     edge_padding_low = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     interior_padding = dense<0> : tensor<3xi64>
+// CHECK-SAME: } : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<11x11x11xf32>
+// CHECK:      return %[[RES]] : tensor<11x11x11xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testTwoConsecutivePadsNegativePositiveHighPad
+func.func @testTwoConsecutivePadsNegativePositiveHighPad(%arg0: tensor<10x10x10xf32>) -> (tensor<11x11x11xf32>) {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = "mhlo.pad"(%arg0, %0) {edge_padding_high = dense<-1> : tensor<3xi64>, edge_padding_low = dense<1> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<10x10x10xf32>
+  %2 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %3 = "mhlo.pad"(%1, %2) {edge_padding_high = dense<1> : tensor<3xi64>, edge_padding_low = dense<0> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<11x11x11xf32>
+  return %3 : tensor<11x11x11xf32>
+
+// CHECK:      "mhlo.pad"(%arg0, %0) {
+// CHECK-SAME:     edge_padding_high = dense<-1> : tensor<3xi64>,
+// CHECK-SAME:     edge_padding_low = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     interior_padding = dense<0> : tensor<3xi64>
+// CHECK-SAME: } : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<10x10x10xf32>
+
+// CHECK:      "mhlo.pad"(%1, %0) {
+// CHECK-SAME:     edge_padding_high = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     edge_padding_low = dense<0> : tensor<3xi64>,
+// CHECK-SAME:     interior_padding = dense<0> : tensor<3xi64>
+// CHECK-SAME: } : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<11x11x11xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testTwoConsecutivePadsDifferentPadVal
+func.func @testTwoConsecutivePadsDifferentPadVal(%arg0: tensor<10x10x10xf32>) -> (tensor<14x14x14xf32>) {
+  %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  %1 = "mhlo.pad"(%arg0, %0) {edge_padding_high = dense<1> : tensor<3xi64>, edge_padding_low = dense<1> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<12x12x12xf32>
+  %2 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %3 = "mhlo.pad"(%1, %2) {edge_padding_high = dense<1> : tensor<3xi64>, edge_padding_low = dense<1> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<12x12x12xf32>, tensor<f32>) -> tensor<14x14x14xf32>
+  return %3 : tensor<14x14x14xf32>
+
+// CHECK:      "mhlo.pad"(%arg0, %1) {
+// CHECK-SAME:     edge_padding_high = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     edge_padding_low = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     interior_padding = dense<0> : tensor<3xi64>
+// CHECK-SAME: } : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<12x12x12xf32>
+
+// CHECK:      "mhlo.pad"(%2, %0) {
+// CHECK-SAME:     edge_padding_high = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     edge_padding_low = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     interior_padding = dense<0> : tensor<3xi64>
+// CHECK-SAME: } : (tensor<12x12x12xf32>, tensor<f32>) -> tensor<14x14x14xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testTwoConsecutivePadsDifferentUsers
+func.func @testTwoConsecutivePadsDifferentUsers(%arg0: tensor<10x10x10xf32>) -> (tensor<13x13x13xf32>, tensor<12x12x12xf32>) {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = "mhlo.pad"(%arg0, %0) {edge_padding_high = dense<1> : tensor<3xi64>, edge_padding_low = dense<1> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<12x12x12xf32>
+  %2 = mhlo.exponential %1 : tensor<12x12x12xf32>
+  %3 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %4 = "mhlo.pad"(%1, %3) {edge_padding_high = dense<1> : tensor<3xi64>, edge_padding_low = dense<0> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<12x12x12xf32>, tensor<f32>) -> tensor<13x13x13xf32>
+  return %4, %2 : tensor<13x13x13xf32>, tensor<12x12x12xf32>
+
+// CHECK:      "mhlo.pad"(%arg0, %0) {
+// CHECK-SAME:     edge_padding_high = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     edge_padding_low = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     interior_padding = dense<0> : tensor<3xi64>
+// CHECK-SAME: } : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<12x12x12xf32>
+
+// CHECK:      "mhlo.pad"(%1, %0) {
+// CHECK-SAME:     edge_padding_high = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     edge_padding_low = dense<0> : tensor<3xi64>,
+// CHECK-SAME:     interior_padding = dense<0> : tensor<3xi64>
+// CHECK-SAME: } : (tensor<12x12x12xf32>, tensor<f32>) -> tensor<13x13x13xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testTwoConsecutivePadsMultipleDownstreamUsers
+  func.func @testTwoConsecutivePadsMultipleDownstreamUsers(%arg0: tensor<10x10x10xf32>) -> (tensor<13x13x13xf32>, tensor<13x13x13xf32>) {
+    %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+    %1 = "mhlo.pad"(%arg0, %0) {edge_padding_high = dense<1> : tensor<3xi64>, edge_padding_low = dense<1> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<12x12x12xf32>
+    %2 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+    %3 = "mhlo.pad"(%1, %2) {edge_padding_high = dense<1> : tensor<3xi64>, edge_padding_low = dense<0> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (tensor<12x12x12xf32>, tensor<f32>) -> tensor<13x13x13xf32>
+    %4 = mhlo.exponential %3 : tensor<13x13x13xf32>
+    %5 = mhlo.tanh %3 : tensor<13x13x13xf32>
+    return %4, %5 : tensor<13x13x13xf32>, tensor<13x13x13xf32>
+
+// CHECK:      "mhlo.pad"(%arg0, %0) {
+// CHECK-SAME:     edge_padding_high = dense<2> : tensor<3xi64>,
+// CHECK-SAME:     edge_padding_low = dense<1> : tensor<3xi64>,
+// CHECK-SAME:     interior_padding = dense<0> : tensor<3xi64>
+// CHECK-SAME: } : (tensor<10x10x10xf32>, tensor<f32>) -> tensor<13x13x13xf32>
+
+// CHECK: mhlo.exponential %1 : tensor<13x13x13xf32>
+// CHECK: mhlo.tanh %1 : tensor<13x13x13xf32>
+// CHECK: return %2, %3 : tensor<13x13x13xf32>, tensor<13x13x13xf32>
+}
+
+// -----
+
 // CHECK-LABEL: testLiftDotConcatLHSSimple
 func.func @testLiftDotConcatLHSSimple(%arg0: tensor<1x1x512xf32>, %arg1: tensor<2x1x512xf32>, %arg2: tensor<3x1x512xf32>, %arg3: tensor<512x13xf32>) -> tensor<6x1x13xf32> {
   %0 = "mhlo.dot_general"(%arg0, %arg3) {

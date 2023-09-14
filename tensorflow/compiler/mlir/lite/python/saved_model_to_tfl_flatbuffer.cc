@@ -17,7 +17,9 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "llvm/ADT/StringSet.h"
@@ -46,7 +48,7 @@ limitations under the License.
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -199,6 +201,8 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   pass_config.guarantee_all_funcs_one_use =
       toco_flags.guarantee_all_funcs_one_use();
   pass_config.enable_stablehlo_conversion = toco_flags.convert_to_stablehlo();
+  pass_config.legalize_custom_tensor_list_ops =
+      toco_flags.legalize_custom_tensor_list_ops();
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(

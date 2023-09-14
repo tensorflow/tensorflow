@@ -17,6 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_PNG_H_
 
 #include "tensorflow/core/platform/platform.h"
-#include "tensorflow/tsl/platform/png.h"
+#include "tsl/platform/png.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_PNG_H_

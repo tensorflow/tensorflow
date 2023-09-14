@@ -188,18 +188,10 @@ TEST_P(UnifiedAPI, TestPartialShapeTracing) {
   ASSERT_EQ(-1, shape.dim_size(1));
 }
 
-#ifdef PLATFORM_GOOGLE
-INSTANTIATE_TEST_SUITE_P(
-    UnifiedCppAPI, UnifiedAPI,
-    ::testing::Combine(::testing::Values("graphdef", "mlir"),
-                       /*tfrt*/ ::testing::Values(true, false),
-                       /*use_function*/ ::testing::Values(true, false)));
-#else
 INSTANTIATE_TEST_SUITE_P(
     UnifiedCppAPI, UnifiedAPI,
     ::testing::Combine(::testing::Values("graphdef", "mlir"),
                        /*tfrt*/ ::testing::Values(false),
                        /*use_function*/ ::testing::Values(true, false)));
-#endif
 }  // namespace
 }  // namespace tensorflow

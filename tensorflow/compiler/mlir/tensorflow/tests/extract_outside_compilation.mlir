@@ -155,7 +155,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:[a-z_0-9]+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:       key = "host_compute_channel_0_args"
@@ -210,7 +210,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @single_outside_compiled_output_single_outside_compilation_not_replicated(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-NOT:        "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"()
     // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]], %[[PROGRAM_OUTPUT]])
@@ -239,7 +239,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"()
     // CHECK:            "tf._XlaSendFromHostV2"(%[[B_OUTPUT]], %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
@@ -271,7 +271,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK:            _xla_has_host_transfer = true
@@ -303,7 +303,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[RECV_OUTPUT]])
@@ -371,7 +371,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]]:2 = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK:            %[[B_OUTPUT:[0-9]*]]:2 = "tf.C"(%[[RECV_OUTPUT]]#0, %[[RECV_OUTPUT]]#1)
@@ -407,7 +407,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT1:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[RECV_OUTPUT1]])
@@ -446,7 +446,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:       key = "host_compute_channel_0_args"
@@ -476,7 +476,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT_1:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:      key = "host_compute_channel_0_args"
@@ -513,7 +513,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT_1:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:       key = "host_compute_channel_0_args"
@@ -576,7 +576,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:       %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:      %[[PREDICATE_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:      key = "if_predicate_channel_1"
@@ -632,7 +632,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:       %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:      %[[PREDICATE_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:      key = "if_predicate_channel_1"
@@ -683,7 +683,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @outside_compiled_ops_multiple_tf_if(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
 
-    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:       %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:           %[[PREDICATE_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:      key = "if_predicate_channel_2"
@@ -741,7 +741,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:       %[[RECV_OUTPUT:[0-9]*]]:3 = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:       key = "host_compute_channel_0_args"
@@ -792,7 +792,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:       %[[RECV_OUTPUT_PREDICATE:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:       key = "if_predicate_channel_1"
@@ -866,7 +866,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:       %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:      %[[PREDICATE_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:      key = "if_predicate_channel_1"
@@ -881,7 +881,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"
     // CHECK:            %[[G_OUTPUT:[0-9]*]] = "tf.G"
-    // CHECK:            "tf._XlaHostComputeMlir"(%6)
+    // CHECK:            "tf._XlaHostComputeMlir"(%[[G_OUTPUT]])
     // CHECK-SAME:       key = "if_predicate_channel_1"
     // CHECK-NEXT:       tf.IfRegion"(%[[G_OUTPUT]])
     // CHECK:              %[[HOST_COMPUTE_OUT:[0-9]*]] = "tf._XlaHostComputeMlir"(%[[B_OUTPUT]], %[[A_OUTPUT]])
@@ -921,7 +921,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:       %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:      %[[PREDICATE_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:      key = "if_predicate_channel_0"
@@ -932,7 +932,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"
     // CHECK:            %[[G_OUTPUT:[0-9]*]] = "tf.G"
-    // CHECK:            "tf._XlaHostComputeMlir"(%6)
+    // CHECK:            "tf._XlaHostComputeMlir"(%[[G_OUTPUT]])
     // CHECK-SAME:       key = "if_predicate_channel_0"
     // CHECK-NEXT:       tf.IfRegion"(%[[G_OUTPUT]])
     // CHECK-NEXT:         "tf.Yield"() : () -> ()
@@ -967,7 +967,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:       %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:      %[[PREDICATE_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:      key = "if_predicate_channel_2"
@@ -1041,7 +1041,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:       tf.WhileRegion"
     // CHECK-NEXT:         %[[COND_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
@@ -1099,7 +1099,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:       tf.WhileRegion"
     // CHECK-NEXT:         %[[COND_RECV_OUTPUT1:[0-9]*]]:2 = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
@@ -1156,7 +1156,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:       tf.WhileRegion"
     // CHECK-NEXT:         %[[COND_RECV_OUTPUT1:[0-9]*]]:2 = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
@@ -1217,7 +1217,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:       tf.WhileRegion"
     // CHECK-NEXT:         %[[COND_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
@@ -1282,7 +1282,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:       %[[RECV_OUTPUT:[0-9]*]]:3 = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:       key = "host_compute_channel_0_args"
@@ -1349,7 +1349,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:       %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:      %[[HOST_RECV_OUTPUT:[0-9]*]]:3 = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK:           "tf.WhileRegion"(%[[HOST_RECV_OUTPUT]]#1, %[[HOST_RECV_OUTPUT]]#2)
@@ -1403,7 +1403,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:       %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:      %[[B_OUT:.*]] = "tf.B"
     // CHECK-NEXT:      "tf._XlaSendFromHostV2"(%[[B_OUT]], %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
@@ -1558,7 +1558,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]]:2 = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:       key = "host_compute_channel_0_args"
@@ -1585,7 +1585,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[RECV_OUTPUT]])
@@ -1618,7 +1618,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"
     // CHECK:            %[[C_OUTPUT:[0-9]*]]:2 = "tf.C"(%[[RECV_OUTPUT]])
@@ -1658,7 +1658,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"
     // CHECK:            %[[C_OUTPUT:[0-9]*]]:2 = "tf.C"(%[[RECV_OUTPUT]])
@@ -1698,7 +1698,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"
     // CHECK:            %[[C_OUTPUT:[0-9]*]]:2 = "tf.C"(%[[RECV_OUTPUT]])
@@ -1748,7 +1748,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]]:2 = "tf._XlaRecvAtHostV2"
     // CHECK:            %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[RECV_OUTPUT]]#0, %[[RECV_OUTPUT]]#1)
@@ -1862,7 +1862,7 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0",
   func.func @return_from_host_only() -> (tensor<?x300xi32>, tensor<?xi32>, tensor<?x4x!tf_type.string>) attributes {tf._construction_context = "kEagerRuntime", tf.signature.is_stateful} {
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:3 = "tf_device.parallel_execute"
     // CHECK-NEXT:     %[[LAUNCH_OUTPUT:[0-9]*]]:3 = "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHost"(%[[PROGRAM_OUTPUT]])
     // CHECK:            _xla_has_host_transfer = true
     // CHECK:            %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[RECV_OUTPUT]])
@@ -1892,7 +1892,7 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0",
   func.func @return_from_host_and_tpu() -> (tensor<?xi32>, tensor<?x!tf_type.string>) attributes {tf._construction_context = "kEagerRuntime", tf.signature.is_stateful} {
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:2 = "tf_device.parallel_execute"
     // CHECK-NEXT:     %[[LAUNCH_OUTPUT:[0-9]*]] = "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHost"(%[[PROGRAM_OUTPUT]])
     // CHECK:            _xla_has_host_transfer = true
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[RECV_OUTPUT]])
@@ -1920,7 +1920,7 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0",
   func.func @return_from_host_and_tpu_v2() -> (tensor<?xi32>, tensor<?x!tf_type.string>, tensor<?x2xi32>, tensor<3x!tf_type.string>, tensor<?x3xi32>) attributes {tf._construction_context = "kEagerRuntime", tf.signature.is_stateful} {
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:5 = "tf_device.parallel_execute"
     // CHECK-NEXT:     %[[LAUNCH_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHost"(%[[PROGRAM_OUTPUT]])
     // CHECK:            _xla_has_host_transfer = true
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[RECV_OUTPUT]])
@@ -1953,7 +1953,7 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0",
   func.func @deplicated_return_from_host_and_tpu() -> (tensor<?x3xi32>, tensor<?x3xi32>, tensor<3x!tf_type.string>, tensor<3x!tf_type.string>) attributes {tf._construction_context = "kEagerRuntime", tf.signature.is_stateful} {
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:4 = "tf_device.parallel_execute"
     // CHECK-NEXT:     %[[LAUNCH_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
-    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHost"(%[[PROGRAM_OUTPUT]])
     // CHECK:            _xla_has_host_transfer = true
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[RECV_OUTPUT]])
@@ -2046,7 +2046,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func.func @single_outside_compiled_output_single_outside_compilation_not_replicated_in_generic_pipeline(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf.Const"() {value = dense<""> : tensor<3x!tf_type.string>} : () -> tensor<3x!tf_type.string>
+    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
     // CHECK-NOT:        "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"()
     // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]], %[[PROGRAM_OUTPUT]])
@@ -2075,7 +2075,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func.func @single_outside_compiled_output_device_type(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf.Const"() {value = dense<""> : tensor<3x!tf_type.string>} : () -> tensor<3x!tf_type.string>
+    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
     // CHECK-NOT:        "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"()
     // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]], %[[PROGRAM_OUTPUT]])
@@ -2096,5 +2096,207 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     }) {_xla_compile_device_type = "CPU"} : () -> tensor<2xi32>
 
     func.return %0 : tensor<2xi32>
+  }
+}
+
+// -----
+
+module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"}, tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1443 : i32}} {
+  // Tests map_outside_compilation when there is no replication.
+  // The sharding is:
+  //   type: OTHER
+  //   tile_assignment_dimensions: 2
+  //   tile_assignment_dimensions: 1
+  //   tile_assignment_devices: 0
+  //   tile_assignment_devices: 1
+  // Serialized string:
+  //   "\08\03\1A\02\02\01\22\02\00\01"
+
+  // CHECK-LABEL: func @map_outside_compilation_not_replicated
+  func.func @map_outside_compilation_not_replicated() -> () {
+    // CHECK:       "tf_device.parallel_execute"
+    // CHECK:         "tf_device.launch"
+    // CHECK:           %[[PROGRAM0:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
+    // CHECK:           %[[RECV0:.+]] = "tf._XlaRecvAtHost"(%[[PROGRAM0]])
+    // CHECK-SAME:        _xla_has_host_transfer = true
+    // CHECK-SAME:        device_ordinal = 0
+    // CHECK-SAME:        key = "host_compute_channel_0_args"
+    // CHECK:           %[[B0:.+]] = "tf.OpB"(%[[RECV0]]) : (tensor<2x2xi64>) -> tensor<2x2xi64>
+    // CHECK:           "tf._XlaSendFromHost"(%[[B0]], %[[PROGRAM0]])
+    // CHECK-SAME:        _xla_has_host_transfer = true
+    // CHECK-SAME:        device_ordinal = 0
+    // CHECK-SAME:        key = "host_compute_channel_0_retvals"
+    // CHECK:         }, {
+    // CHECK:           %[[PROGRAM1:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
+    // CHECK:           %[[RECV1:.+]] = "tf._XlaRecvAtHost"(%[[PROGRAM1]])
+    // CHECK-SAME:        _xla_has_host_transfer = true
+    // CHECK-SAME:        device_ordinal = 1
+    // CHECK-SAME:        key = "host_compute_channel_0_args"
+    // CHECK:           %[[B1:.+]] = "tf.OpB"(%[[RECV1]]) : (tensor<2x2xi64>) -> tensor<2x2xi64>
+    // CHECK:           "tf._XlaSendFromHost"(%[[B1]], %[[PROGRAM1]])
+    // CHECK-SAME:        _xla_has_host_transfer = true
+    // CHECK-SAME:        device_ordinal = 1
+    // CHECK-SAME:        key = "host_compute_channel_0_retvals"
+    // CHECK:         }, {
+    // CHECK:           "tf_device.cluster"
+    // CHECK:             %[[A:.+]] = "tf.OpA"
+    // CHECK:             %[[A_SHARD:.+]] = "tf.XlaSpmdFullToShardShape"(%[[A]]) {dim = -1 : i64, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xi64>) -> tensor<1x2xi64>
+    // CHECK:             %[[B:.+]] = "tf._XlaHostComputeMlir"(%[[A_SHARD]])
+    // CHECK-SAME:          manual_sharding = true
+    // CHECK-SAME:          recv_key = "host_compute_channel_0_retvals"
+    // CHECK-SAME:          send_key = "host_compute_channel_0_args"
+    // CHECK:             %[[B_FULL:.+]] = "tf.XlaSpmdShardToFullShape"(%[[B]]) {dim = -1 : i64, full_shape = #tf_type.shape<2x2>, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<1x2xi64>) -> tensor<2x2xi64>
+    // CHECK:             "tf.OpC"(%[[B_FULL]])
+    "tf_device.cluster"() ({
+      %0 = "tf.OpA"() {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01"} : () -> tensor<2x2xi64>
+      %1 = "tf.OpB"(%0) {_xla_map_outside_compilation = "0", _xla_outside_compilation = "from_launch"} : (tensor<2x2xi64>) -> tensor<2x2xi64>
+      "tf.OpC"(%1) : (tensor<2x2xi64>) -> ()
+      tf_device.return
+    }) {_xla_compile_device_type = "TPU", computation_shape = [], device = "", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], host_compute_core = [], num_cores_per_replica = 2 : i64, padding_map = [], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01*\02\08\01", use_spmd_for_xla_partitioning = true, use_tpu = true} : () -> ()
+    return
+  }
+}
+
+// -----
+
+module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU:2", "/job:localhost/replica:0/task:0/device:TPU:3", "/job:localhost/replica:0/task:0/device:TPU:4", "/job:localhost/replica:0/task:0/device:TPU:5", "/job:localhost/replica:0/task:0/device:TPU:6", "/job:localhost/replica:0/task:0/device:TPU:7", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"}, tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1458 : i32}} {
+  // Tests map_outside_compilation when there is replication.
+  // The sharding is:
+  //   type: OTHER
+  //   tile_assignment_dimensions: 2
+  //   tile_assignment_dimensions: 1
+  //   tile_assignment_devices: 0
+  //   tile_assignment_devices: 1
+  // Serialized string:
+  //   "\08\03\1A\02\02\01\22\02\00\01"
+
+  // CHECK-LABEL: func @map_outside_compilation_replicated
+  func.func @map_outside_compilation_replicated() -> () {
+    // CHECK:     tf_device.replicate
+    // CHECK:       "tf_device.parallel_execute"
+    // CHECK:           %[[PROGRAM0:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
+    // CHECK:           %[[DEVICE0:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
+    // CHECK-SAME:        logical_core = 0
+    // CHECK:           %[[RECV0:.+]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM0]], %[[DEVICE0]])
+    // CHECK-SAME:        _xla_has_host_transfer = true
+    // CHECK-SAME:        key = "host_compute_channel_0_args"
+    // CHECK:           %[[B0:.+]] = "tf.OpB"(%[[RECV0]]) : (tensor<2x2xi64>) -> tensor<2x2xi64>
+    // CHECK:           "tf._XlaSendFromHostV2"(%[[B0]], %[[PROGRAM0]], %[[DEVICE0]])
+    // CHECK-SAME:        _xla_has_host_transfer = true
+    // CHECK-SAME:        key = "host_compute_channel_0_retvals"
+    // CHECK:         }, {
+    // CHECK:           %[[PROGRAM1:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
+    // CHECK:           %[[DEVICE1:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
+    // CHECK-SAME:        logical_core = 1
+    // CHECK:           %[[RECV1:.+]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM1]], %[[DEVICE1]])
+    // CHECK-SAME:        _xla_has_host_transfer = true
+    // CHECK-SAME:        key = "host_compute_channel_0_args"
+    // CHECK:           %[[B1:.+]] = "tf.OpB"(%[[RECV1]]) : (tensor<2x2xi64>) -> tensor<2x2xi64>
+    // CHECK:           "tf._XlaSendFromHostV2"(%[[B1]], %[[PROGRAM1]], %[[DEVICE1]])
+    // CHECK-SAME:        _xla_has_host_transfer = true
+    // CHECK-SAME:        key = "host_compute_channel_0_retvals"
+    // CHECK:         }, {
+    // CHECK:           "tf_device.cluster"
+    // CHECK:             %[[A:.+]] = "tf.OpA"
+    // CHECK:             %[[A_SHARD:.+]] = "tf.XlaSpmdFullToShardShape"(%[[A]]) {dim = -1 : i64, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xi64>) -> tensor<1x2xi64>
+    // CHECK:             %[[B:.+]] = "tf._XlaHostComputeMlir"(%[[A_SHARD]])
+    // CHECK-SAME:          manual_sharding = true
+    // CHECK-SAME:          recv_key = "host_compute_channel_0_retvals"
+    // CHECK-SAME:          send_key = "host_compute_channel_0_args"
+    // CHECK:             %[[B_FULL:.+]] = "tf.XlaSpmdShardToFullShape"(%[[B]]) {dim = -1 : i64, full_shape = #tf_type.shape<2x2>, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<1x2xi64>) -> tensor<2x2xi64>
+    // CHECK:             "tf.OpC"(%[[B_FULL]])
+    tf_device.replicate() {n = 4 : i32} {
+      "tf_device.cluster"() ({
+        %0 = "tf.OpA"() {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01"} : () -> tensor<2x2xi64>
+        %1 = "tf.OpB"(%0) {_xla_map_outside_compilation = "0", _xla_outside_compilation = "from_launch"} : (tensor<2x2xi64>) -> tensor<2x2xi64>
+        "tf.OpC"(%1) : (tensor<2x2xi64>) -> ()
+        tf_device.return
+      }) {_xla_compile_device_type = "TPU", computation_shape = [], device = "", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1], host_compute_core = [], num_cores_per_replica = 2 : i64, padding_map = [], topology = "\0A\04\02\02\01\02\10\01\18\08\22 \00\00\00\00\00\00\00\01\01\00\00\00\01\00\00\01\00\01\00\00\00\01\00\01\01\01\00\00\01\01\00\01*\02\08\01", use_spmd_for_xla_partitioning = true, use_tpu = true} : () -> ()
+      tf_device.return
+    }
+    return
+  }
+}
+
+// -----
+
+module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"}, tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1443 : i32}} {
+  // Test that map_outside_compilation works with 0 inputs to the
+  // _XlaHostComputeMlir op. In this case, %arg0 is not input to the
+  // generated _XlaHostComputeMlir.
+  // CHECK-LABEL: func @map_outside_compilation_0_inputs
+  func.func @map_outside_compilation_0_inputs(%arg0 : tensor<2xi64>) -> () {
+    // CHECK:             "tf._XlaHostComputeMlir"()
+    "tf_device.cluster"() ({
+      %1 = "tf.OpA"(%arg0) {_xla_map_outside_compilation = "0", _xla_outside_compilation = "from_launch"} : (tensor<2xi64>) -> tensor<2xi64>
+      "tf.OpB"(%1) : (tensor<2xi64>) -> ()
+      tf_device.return
+    }) {_xla_compile_device_type = "TPU", computation_shape = [], device = "", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], host_compute_core = [], num_cores_per_replica = 2 : i64, padding_map = [], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01*\02\08\01", use_spmd_for_xla_partitioning = true, use_tpu = true} : () -> ()
+    return
+  }
+}
+
+// -----
+
+module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"}, tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1443 : i32}} {
+
+  // Test that map_outside_compilation's inputs are not unranked.
+  func.func @map_outside_compilation_must_be_ranked() -> () {
+    "tf_device.cluster"() ({
+      %0 = "tf.OpA"() : () -> tensor<*xi64>
+      // expected-error @+1 {{must be ranked}}
+      %1 = "tf.OpB"(%0) {_xla_map_outside_compilation = "0", _xla_outside_compilation = "from_launch"} : (tensor<*xi64>) -> tensor<*xi64>
+      tf_device.return
+    }) {_xla_compile_device_type = "TPU", computation_shape = [], device = "", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], host_compute_core = [], num_cores_per_replica = 2 : i64, padding_map = [], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01*\02\08\01", use_spmd_for_xla_partitioning = true, use_tpu = true} : () -> ()
+    return
+  }
+
+  // Test that map_outside_compilation's inputs have rank >= 1.
+  func.func @map_outside_compilation_must_have_rank_gte_1() -> () {
+    "tf_device.cluster"() ({
+      %0 = "tf.OpA"() : () -> tensor<i64>
+      // expected-error @+1 {{must have rank at least one}}
+      %1 = "tf.OpB"(%0) {_xla_map_outside_compilation = "0", _xla_outside_compilation = "from_launch"} : (tensor<i64>) -> tensor<i64>
+      tf_device.return
+    }) {_xla_compile_device_type = "TPU", computation_shape = [], device = "", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], host_compute_core = [], num_cores_per_replica = 2 : i64, padding_map = [], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01*\02\08\01", use_spmd_for_xla_partitioning = true, use_tpu = true} : () -> ()
+    return
+  }
+
+  // Test that map_outside_compilation's inputs shapes are divisible by num_cores_per_replica.
+  func.func @map_outside_compilation_div_num_cores_per_replica() -> () {
+    "tf_device.cluster"() ({
+      %0 = "tf.OpA"() : () -> tensor<3xi64>
+      // expected-error @+1 {{divisible by num_cores_per_replica}}
+      %1 = "tf.OpB"(%0) {_xla_map_outside_compilation = "0", _xla_outside_compilation = "from_launch"} : (tensor<3xi64>) -> tensor<3xi64>
+      tf_device.return
+    }) {_xla_compile_device_type = "TPU", computation_shape = [], device = "", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], host_compute_core = [], num_cores_per_replica = 2 : i64, padding_map = [], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01*\02\08\01", use_spmd_for_xla_partitioning = true, use_tpu = true} : () -> ()
+    return
+  }
+
+  // Test that map_outside_compilation's preceeding ops have an _XlaSharding attribute.
+  func.func @map_outside_compilation_explicit_sharding() -> () {
+    "tf_device.cluster"() ({
+      %0 = "tf.OpA"() : () -> tensor<2xi64>
+      // expected-error @+1 {{should have an explicit sharding}}
+      %1 = "tf.OpB"(%0) {_xla_map_outside_compilation = "0", _xla_outside_compilation = "from_launch"} : (tensor<2xi64>) -> tensor<2xi64>
+      tf_device.return
+    }) {_xla_compile_device_type = "TPU", computation_shape = [], device = "", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], host_compute_core = [], num_cores_per_replica = 2 : i64, padding_map = [], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01*\02\08\01", use_spmd_for_xla_partitioning = true, use_tpu = true} : () -> ()
+    return
+  }
+
+  // Test that map_outside_compilation inputs have the same sharding.
+  func.func @map_outside_compilation_same_sharding() -> () {
+    tf_device.replicate() {n = 4 : i32} {
+      "tf_device.cluster"() ({
+        %0 = "tf.OpA"() {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01"} : () -> tensor<2x2xi64>
+        %1 = "tf.OpB"() {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\02"} : () -> tensor<2x2xi64>
+        // expected-error @+1 {{should have the same sharding}}
+        %2 = "tf.OpC"(%0, %1) {_xla_map_outside_compilation = "0", _xla_outside_compilation = "from_launch"} : (tensor<2x2xi64>, tensor<2x2xi64>) -> tensor<2x2xi64>
+        "tf.OpD"(%2) : (tensor<2x2xi64>) -> ()
+        tf_device.return
+      }) {_xla_compile_device_type = "TPU", computation_shape = [], device = "", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1], host_compute_core = [], num_cores_per_replica = 2 : i64, padding_map = [], topology = "\0A\04\02\02\01\02\10\01\18\08\22 \00\00\00\00\00\00\00\01\01\00\00\00\01\00\00\01\00\01\00\00\00\01\00\01\01\01\00\00\01\01\00\01*\02\08\01", use_spmd_for_xla_partitioning = true, use_tpu = true} : () -> ()
+      tf_device.return
+    }
+    return
   }
 }

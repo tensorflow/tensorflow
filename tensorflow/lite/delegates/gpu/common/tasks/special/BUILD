@@ -17,6 +17,29 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "conv_pointwise_test",
+    srcs = ["conv_pointwise_test.cc"],
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":conv_pointwise",
+        # TODO(b/279977471) Once b/279347631 is resolved, check for heap again
+        "@com_google_googletest//:gtest_main_no_heapcheck",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:cl_test",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "//tensorflow/lite/delegates/gpu/common:precision",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
 cc_library(
     name = "dw7x7_conv2to6_concat_conv8to8",
     srcs = ["dw7x7_conv2to6_concat_conv8to8.cc"],

@@ -30,7 +30,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import indexed_slices
+from tensorflow.python.framework import none_tensor  # pylint: disable=unused-import
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
@@ -650,7 +652,7 @@ def _make_output_composite_tensors_match(op_type, branch_graphs):
     for branch_idx, branch_out in enumerate(branch_outs):
       if isinstance(branch_out, indexed_slices.IndexedSlices):
         continue
-      elif isinstance(branch_out, ops.Tensor):
+      elif isinstance(branch_out, tensor_lib.Tensor):
         with branch_graphs[branch_idx].as_default():
           branch_outputs[branch_idx][output_idx] = math_ops._as_indexed_slices(
               branch_out)

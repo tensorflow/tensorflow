@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <set>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -394,7 +395,10 @@ std::string TruncateString(const char* str, int size_limit,
 }  // namespace
 
 // Prints a dump of what tensors and what nodes are in the interpreter.
-void PrintInterpreterState(const Interpreter* interpreter) {
+void PrintInterpreterState(const Interpreter* interpreter,
+                           const int32_t tensor_name_display_length,
+                           const int32_t tensor_type_display_length,
+                           const int32_t alloc_type_display_length) {
   const size_t num_subgraphs = interpreter->subgraphs_size();
   printf("Interpreter has %zu subgraphs.\n\n", num_subgraphs);
 
@@ -420,16 +424,32 @@ void PrintInterpreterState(const Interpreter* interpreter) {
       tensor_mem_info.Update(tensor_index, *tensor);
     }
 
-    printf("Tensor %3s %-25s %-15s %-18s %-18s %-10s %-16s\n", "ID", "Name",
-           "Type", "AllocType", "Size (Bytes/MB)", "Shape", "MemAddr-Offset");
+    // To dynamically determine the format string
+    std::stringstream var_length_fs;
+    var_length_fs << "%-" << tensor_name_display_length << "s %-"
+                  << tensor_type_display_length << "s %-"
+                  << alloc_type_display_length << "s";
+
+    printf(
+        ("Tensor %3s " + var_length_fs.str() + " %-18s %-10s %-16s\n").c_str(),
+        "ID", "Name", "Type", "AllocType", "Size (Bytes/MB)", "Shape",
+        "MemAddr-Offset");
+
     for (size_t tensor_index = 0; tensor_index < subgraph.tensors_size();
          tensor_index++) {
       const TfLiteTensor* tensor =
           subgraph.tensor(static_cast<int>(tensor_index));
-      printf("Tensor %3zu %-25s %-15s %-18s %-8zu / %.2f ", tensor_index,
-             TruncateString(tensor->name, 25, /*truncate_at_end*/ true).c_str(),
-             TruncateString(TensorTypeName(tensor->type), 15).c_str(),
-             TruncateString(AllocTypeName(tensor->allocation_type), 18).c_str(),
+      printf(("Tensor %3zu " + var_length_fs.str() + " %-8zu / %.2f ").c_str(),
+             tensor_index,
+             TruncateString(tensor->name, tensor_name_display_length,
+                            /*truncate_at_end*/ true)
+                 .c_str(),
+             TruncateString(TensorTypeName(tensor->type),
+                            tensor_type_display_length)
+                 .c_str(),
+             TruncateString(AllocTypeName(tensor->allocation_type),
+                            alloc_type_display_length)
+                 .c_str(),
              tensor->bytes, (static_cast<float>(tensor->bytes) / (1 << 20)));
       PrintTfLiteIntVector(tensor->dims, /*collapse_consecutives*/ false);
       const int64_t start_offset =

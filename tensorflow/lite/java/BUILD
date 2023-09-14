@@ -124,6 +124,50 @@ filegroup(
     srcs = [x for x in JAVA_SRCS if x not in JAVA_API_SRCS and x not in JAVA_EXPERIMENTAL_SRCS],
 )
 
+# C headers for the Native APIs.
+
+# TODO(b/277186081) Move this list to `../c/BUILD` when aar_with_jni supports filegroups in the headers parameter.
+# TODO(b/279573130): add `builtin_op_data.h` to this list, it will be needed for DBA delegates.
+# LINT.IfChange(TFLITE_HEADERS)
+TFLITE_HEADERS = [
+    # TODO(b/175298345): Clean up and if possible remove c:common.h and core/c:common.h here.
+    "//tensorflow/lite:builtin_ops.h",
+    "//tensorflow/lite/c:c_api.h",
+    "//tensorflow/lite/c:c_api_experimental.h",
+    "//tensorflow/lite/c:c_api_opaque.h",
+    "//tensorflow/lite/c:c_api_types.h",
+    "//tensorflow/lite/c:common.h",
+    "//tensorflow/lite/core/c:c_api.h",
+    "//tensorflow/lite/core/c:c_api_opaque.h",
+    "//tensorflow/lite/core/c:c_api_types.h",
+    "//tensorflow/lite/core/c:c_api_experimental.h",
+    "//tensorflow/lite/core/c:common.h",
+    "//tensorflow/lite/delegates/nnapi:nnapi_delegate_c_api.h",
+]
+# LINT.ThenChange(../c/BUILD:exported_headers)
+
+filegroup(
+    name = "tflite_headers",
+    srcs = TFLITE_HEADERS,
+)
+
+# LINT.IfChange(tflite_acceleration_exported_headers)
+filegroup(
+    name = "tflite_acceleration_headers",
+    srcs = [
+        "//tensorflow/lite/acceleration/configuration/c:delegate_plugin.h",
+        "//tensorflow/lite/acceleration/configuration/c:gpu_plugin.h",
+        "//tensorflow/lite/acceleration/configuration/c:xnnpack_plugin.h",
+        "//tensorflow/lite/core/acceleration/configuration/c:delegate_plugin.h",
+        "//tensorflow/lite/core/acceleration/configuration/c:gpu_plugin.h",
+        "//tensorflow/lite/core/acceleration/configuration/c:xnnpack_plugin.h",
+    ],
+)
+# LINT.ThenChange(
+#     ../acceleration/configuration/c/BUILD:tflite_acceleration_exported_headers,
+#     ../core/acceleration/configuration/c/BUILD:tflite_acceleration_exported_headers
+# )
+
 #-----------------------------------------------------------------------------
 # AAR targets.
 
@@ -136,21 +180,7 @@ filegroup(
 aar_with_jni(
     name = "tensorflow-lite",
     android_library = ":tensorflowlite",
-    headers = [
-        # TODO(b/175298345): Clean up and if possible remove c:common.h and core/c:common.h here.
-        "//tensorflow/lite:builtin_ops.h",
-        "//tensorflow/lite/c:c_api.h",
-        "//tensorflow/lite/c:c_api_experimental.h",
-        "//tensorflow/lite/c:c_api_opaque.h",
-        "//tensorflow/lite/c:c_api_types.h",
-        "//tensorflow/lite/c:common.h",
-        "//tensorflow/lite/core/c:c_api.h",
-        "//tensorflow/lite/core/c:c_api_opaque.h",
-        "//tensorflow/lite/core/c:c_api_types.h",
-        "//tensorflow/lite/core/c:c_api_experimental.h",
-        "//tensorflow/lite/core/c:common.h",
-        "//tensorflow/lite/delegates/nnapi:nnapi_delegate_c_api.h",
-    ],
+    headers = TFLITE_HEADERS,
 )
 
 # No JNI should be in this AAR. Only package in the LICENSE.

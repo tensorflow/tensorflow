@@ -92,6 +92,9 @@ void SetAnnotation(Operation* op, std::string attribute, std::string annotation,
 void TargetAnnotationPass::SetTargetAnnotation(
     Operation* op, llvm::ArrayRef<std::string> device_specs,
     OpBuilder* builder) {
+  if (op->hasAttr(kSkipTargetAnnotation)) {
+    return;
+  }
   const InferenceType inference_type = GetInferenceType(op);
   const std::string inference_type_str = GetInferenceString(inference_type);
   SetAnnotation(op, kInferenceType, inference_type_str, builder);

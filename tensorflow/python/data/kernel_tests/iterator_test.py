@@ -35,7 +35,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
@@ -808,9 +808,8 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
-              expected_element_structure=tensor_spec.TensorSpec([],
-                                                                dtypes.float32),
-              expected_output_classes=ops.Tensor,
+              expected_element_structure=tensor.TensorSpec([], dtypes.float32),
+              expected_output_classes=tensor.Tensor,
               expected_output_types=dtypes.float32,
               expected_output_shapes=[[]])))
   def testTensorIteratorStructure(self, expected_element_structure,
@@ -872,13 +871,13 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
           combinations.combine(
               expected_element_structure={
                   "a":
-                      tensor_spec.TensorSpec([], dtypes.float32),
-                  "b": (tensor_spec.TensorSpec([1], dtypes.string),
-                        tensor_spec.TensorSpec([], dtypes.string))
+                      tensor.TensorSpec([], dtypes.float32),
+                  "b": (tensor.TensorSpec([1], dtypes.string),
+                        tensor.TensorSpec([], dtypes.string))
               },
               expected_output_classes={
-                  "a": ops.Tensor,
-                  "b": (ops.Tensor, ops.Tensor)
+                  "a": tensor.Tensor,
+                  "b": (tensor.Tensor, tensor.Tensor)
               },
               expected_output_types={
                   "a": dtypes.float32,
@@ -973,7 +972,7 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     @def_function.function
     def fn():
-      output_signature = tensor_spec.TensorSpec((), dtypes.int64)
+      output_signature = tensor.TensorSpec((), dtypes.int64)
       dataset = from_generator_op._GeneratorDataset(1, init_fn, next_fn,
                                                     finalize_fn,
                                                     output_signature)

@@ -216,14 +216,14 @@ class FilterDatasetOp::Dataset : public DatasetBase {
           dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(kInputImplEmpty), static_cast<int64_t>(!input_impl_)));
+          prefix(), kInputImplEmpty, static_cast<int64_t>(!input_impl_)));
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kFilteredElements),
-                                             filtered_elements_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kDroppedElements), dropped_elements_));
+          writer->WriteScalar(prefix(), kFilteredElements, filtered_elements_));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(prefix(), kDroppedElements, dropped_elements_));
       return OkStatus();
     }
 
@@ -232,16 +232,16 @@ class FilterDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       int64_t input_empty;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kInputImplEmpty), &input_empty));
+          reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
       if (static_cast<bool>(input_empty)) {
         input_impl_.reset();
       } else {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       }
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kFilteredElements),
-                                            &filtered_elements_));
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kDroppedElements), &dropped_elements_));
+          reader->ReadScalar(prefix(), kFilteredElements, &filtered_elements_));
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kDroppedElements, &dropped_elements_));
       return OkStatus();
     }
 

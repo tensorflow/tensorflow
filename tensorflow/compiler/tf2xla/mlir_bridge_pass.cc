@@ -173,6 +173,8 @@ MlirOptimizationPassState GetPassStateImpl(
           /*fallback_enabled*/ false,
           /*result*/ "invalid_graph");
     }
+    VLOG(3) << "Skipping MLIR CPU/GPU Bridge, "
+               "graph is not qualified to run the bridge";
     return MlirOptimizationPassState::Disabled;
   }
 

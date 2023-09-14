@@ -15,6 +15,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <numeric>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -42,12 +43,17 @@ class StridedSliceOpModel : public SingleOpModel {
                       const std::vector<int> end_data,
                       const std::vector<int> strides_data, int begin_mask,
                       int end_mask, int ellipsis_mask, int new_axis_mask,
-                      int shrink_axis_mask, bool const_tensors,
-                      bool use_simple_allocator = true) {
-    if (const_tensors) {
+                      int shrink_axis_mask, bool constant_tensors,
+                      bool offset = false) {
+    if (constant_tensors) {
       input_ =
           AddConstInput(GetTensorType<input_type>(), input_data, input_shape);
       begin_ = AddConstInput(TensorType_INT32, begin_data, begin_shape);
+      end_ = AddConstInput(TensorType_INT32, end_data, end_shape);
+      strides_ = AddConstInput(TensorType_INT32, strides_data, strides_shape);
+    } else if (offset) {
+      input_ = AddInput(GetTensorType<input_type>());
+      begin_ = AddInput(TensorType_INT32);
       end_ = AddConstInput(TensorType_INT32, end_data, end_shape);
       strides_ = AddConstInput(TensorType_INT32, strides_data, strides_shape);
     } else {
@@ -60,18 +66,49 @@ class StridedSliceOpModel : public SingleOpModel {
     SetBuiltinOp(
         BuiltinOperator_STRIDED_SLICE, BuiltinOptions_StridedSliceOptions,
         CreateStridedSliceOptions(builder_, begin_mask, end_mask, ellipsis_mask,
-                                  new_axis_mask, shrink_axis_mask)
+                                  new_axis_mask, shrink_axis_mask, offset)
             .Union());
-    BuildInterpreter({input_shape, begin_shape, end_shape, strides_shape},
-                     use_simple_allocator);
-    if (!const_tensors) {
+    BuildInterpreter({input_shape, begin_shape, end_shape, strides_shape});
+    if (!constant_tensors) {
       if (!input_data.empty()) {
         SetInput(input_data, std::is_same<std::string, input_type>());
       }
       SetBegin(begin_data);
       SetEnd(end_data);
       SetStrides(strides_data);
+    } else if (offset) {
+      if (!input_data.empty()) {
+        SetInput(input_data, std::is_same<std::string, input_type>());
+      }
+      SetBegin(begin_data);
     }
+  }
+
+  // Constant input, strides and end with offset.
+  StridedSliceOpModel(std::initializer_list<int> input_shape,
+                      std::initializer_list<int> begin_shape,
+                      std::initializer_list<int> end_shape,
+                      std::initializer_list<int> strides_shape,
+                      const std::vector<input_type> input_data,
+                      const std::vector<int> begin_data,
+                      const std::vector<int> end_data,
+                      const std::vector<int> strides_data, int begin_mask,
+                      int end_mask, int ellipsis_mask, int new_axis_mask,
+                      int shrink_axis_mask) {
+    input_ =
+        AddConstInput(GetTensorType<input_type>(), input_data, input_shape);
+    begin_ = AddInput(TensorType_INT32);
+    end_ = AddConstInput(TensorType_INT32, end_data, end_shape);
+    strides_ = AddConstInput(TensorType_INT32, strides_data, strides_shape);
+    output_ = AddOutput(GetTensorType<input_type>());
+    SetBuiltinOp(BuiltinOperator_STRIDED_SLICE,
+                 BuiltinOptions_StridedSliceOptions,
+                 CreateStridedSliceOptions(builder_, begin_mask, end_mask,
+                                           ellipsis_mask, new_axis_mask,
+                                           shrink_axis_mask, /*offset=*/true)
+                     .Union());
+    BuildInterpreter({input_shape, begin_shape, end_shape, strides_shape});
+    SetBegin(begin_data);
   }
 
   template <typename T>
@@ -99,6 +136,10 @@ class StridedSliceOpModel : public SingleOpModel {
     return ExtractVector<std::string>(output_);
   }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+  const TfLiteTensor* GetOutputTensor(int index) {
+    return interpreter_->output_tensor(index);
+  }
 
  private:
   int input_;
@@ -136,6 +177,92 @@ TYPED_TEST(StridedSliceOpTest, In1DEmpty) {
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
   }
+}
+
+TYPED_TEST(StridedSliceOpTest, Offset) {
+  for (bool constant_tensors : {true, false}) {
+    if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+      // NNAPI does not support graphs with all constant inputs.
+      continue;
+    }
+    StridedSliceOpModel<TypeParam> m(
+        {10}, {1}, {1}, {1},
+        std::vector<TypeParam>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, {1}, {3}, {1}, 0,
+        0, 0, 0, 0, constant_tensors, /*offset=*/true);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3}));
+    if (constant_tensors) {
+      EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+    } else {
+      EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+    }
+  }
+}
+
+TYPED_TEST(StridedSliceOpTest, OffsetArray) {
+  for (bool constant_tensors : {true, false}) {
+    if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+      // NNAPI does not support graphs with all constant inputs.
+      continue;
+    }
+    StridedSliceOpModel<TypeParam> m(
+        {3, 4}, {2}, {2}, {2},
+        std::vector<TypeParam>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {0, 1},
+        {2, 2}, {1, 1}, 0, 0, 0, 0, 0, constant_tensors, /*offset=*/true);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 5, 6}));
+    if (constant_tensors) {
+      EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+    } else {
+      EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+    }
+  }
+}
+
+TYPED_TEST(StridedSliceOpTest, OffsetConstant) {
+  StridedSliceOpModel<TypeParam> m(
+      {3, 4}, {2}, {2}, {2},
+      std::vector<TypeParam>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {0, 1},
+      {2, 2}, {1, 1}, 0, 0, 0, 0, 0, /*constant_tensors*/ false,
+      /*offset=*/true);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 5, 6}));
+  EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+}
+
+TYPED_TEST(StridedSliceOpTest, OffsetConstantStride) {
+  const int height = 5;
+  const int width = 6;
+  std::vector<TypeParam> input_data(height * width);
+  std::iota(input_data.begin(), input_data.end(), 0);
+
+  StridedSliceOpModel<TypeParam> m({height, width}, {2}, {2}, {2}, input_data,
+                                   {0, 1}, {4, 3}, {2, 2}, 0, 0, 0, 0, 0,
+                                   /*constant_tensors*/ false,
+                                   /*offset=*/true);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3, 13, 15}));
+  EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+}
+
+TYPED_TEST(StridedSliceOpTest, OffsetConstantNegativeStride) {
+  const int height = 5;
+  const int width = 6;
+  std::vector<TypeParam> input_data(height * width);
+  std::iota(input_data.begin(), input_data.end(), 0);
+
+  StridedSliceOpModel<TypeParam> m({height, width}, {2}, {2}, {2}, input_data,
+                                   {4, 4}, {-4, -3}, {-2, -2}, 0, 0, 0, 0, 0,
+                                   /*constant_tensors*/ false,
+                                   /*offset=*/true);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({28, 26, 16, 14}));
+  EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
 }
 
 TYPED_TEST(StridedSliceOpTest, In1D) {
@@ -943,7 +1070,6 @@ TEST(StridedSliceOpTest, In5D_String_IdentityShrinkAxis1) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 1, 2}));
   EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"1", "2", "3", "4"}));
 }
-}  // namespace
 TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxis_Endmask_AtSameAxis) {
   for (bool constant_tensors : {true, false}) {
     if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
@@ -1194,5 +1320,13 @@ TYPED_TEST(StridedSliceOpTest, NegEndMask) {
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 2, 1, 6, 5, 4}));
   }
+}
+TYPED_TEST(StridedSliceOpTest, NoopOffset) {
+  StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
+                                   {0, -1}, {2, -3}, {1, -1}, 0, 0b10, 0, 0, 0);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 2, 1, 6, 5, 4}));
+}
 }  // namespace
 }  // namespace tflite

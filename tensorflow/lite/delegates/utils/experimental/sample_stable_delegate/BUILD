@@ -158,3 +158,20 @@ genrule(
         ' > $@
     """,
 )
+
+cc_binary(
+    name = "sample_app_using_stable_delegate",
+    testonly = True,
+    srcs = ["sample_app_using_stable_delegate.cc"],
+    data = [
+        ":tensorflowlite_sample_stable_delegate",
+        "//tensorflow/lite:testdata/add.bin",
+    ],
+    deps = [
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+)

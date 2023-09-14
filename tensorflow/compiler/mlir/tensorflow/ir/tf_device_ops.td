@@ -39,6 +39,7 @@ def TfDevice_Dialect : Dialect {
 }];
 
   let cppNamespace = "::mlir::tf_device";
+  let usePropertiesForAttributes = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -262,7 +263,7 @@ For example:
     Variadic<AnyType>:$replicated_inputs,
     Variadic<AnyType>:$packed_inputs,
 
-    DenseI32ArrayAttr:$operand_segment_sizes,
+    DenseI32ArrayAttr:$operandSegmentSizes,
     ConfinedAttr<I32Attr, [IntMinValue<2>]>:$n,
     OptionalAttr<DictionaryAttr>:$devices
   );

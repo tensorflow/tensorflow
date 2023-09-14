@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 
@@ -24,6 +25,8 @@ namespace tensorflow {
 
 struct TfrtPipelineOptions
     : public mlir::PassPipelineOptions<TfrtPipelineOptions> {
+  Option<std::string> saved_model_dir{*this, "saved-model-dir",
+                                      llvm::cl::desc(""), llvm::cl::init("")};
   Option<std::string> default_device{
       *this, "default-device", llvm::cl::desc("default device assignment"),
       llvm::cl::init("/job:localhost/replica:0/task:0/device:CPU:0")};
@@ -98,10 +101,11 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, target GPU compiler passes."),
       llvm::cl::init(false)};
 
-  // TODO(b/260915352): Remove the flag and default to using bridge.
-  Option<bool> use_bridge_for_gpu{
-      *this, "use-bridge-for-gpu",
-      llvm::cl::desc("If true, GPU bridge is used."), llvm::cl::init(false)};
+  // TODO(b/294895431): Remove the flag and default to the fused op.
+  Option<bool> use_gpu_compile_and_execute_op{
+      *this, "use-gpu-compile-and-execute-op",
+      llvm::cl::desc("If true, gpurt.compile_and_execute is used for GPU"),
+      llvm::cl::init(false)};
 
   Option<bool> func_use_fallback_tensor{
       *this, "func-use-fallback-tensor",
@@ -151,26 +155,6 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, streams with inter data depenedencies will be "
                      "preferred to be merged for inline execution."),
       llvm::cl::init(false)};
-
-  // A set of flags to control auto-fusion: automatic clustering of Tensorflow
-  // operations and compiling outlined regions using MLIR based compilation
-  // stack.
-  //
-  // WARNING: These flags are experimental and are intended for manual testing
-  // of different auto-fusion strategies. They will be removed in the future.
-
-  ListOption<std::string> auto_fusion_oplist{
-      *this, "auto-fusion-oplist",
-      llvm::cl::desc("A list of Tensorflow operations to cluster together for "
-                     "JIT compilation. Alternatively use 'tier1', ..., 'all' "
-                     "to allow clustering for all operations included in the "
-                     "given clustering tier.")};
-
-  Option<int> auto_fusion_min_cluster_size{
-      *this, "auto-fusion-min-cluster-size",
-      llvm::cl::desc("Minimum size of the cluster that should be outlined for "
-                     "compilation"),
-      llvm::cl::init(2)};
 };
 
 }  // namespace tensorflow

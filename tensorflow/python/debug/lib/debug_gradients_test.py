@@ -23,6 +23,7 @@ from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.lib import debug_gradients
 from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import gradients_impl
@@ -68,17 +69,17 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
 
     # Fetch the gradient tensor with the x-tensor object.
     w_grad = grad_debugger.gradient_tensor(self.w)
-    self.assertIsInstance(w_grad, ops.Tensor)
+    self.assertIsInstance(w_grad, tensor.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
     # Fetch the gradient tensor with the x-tensor's name.
     w_grad = grad_debugger.gradient_tensor(self.w.name)
-    self.assertIsInstance(w_grad, ops.Tensor)
+    self.assertIsInstance(w_grad, tensor.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
     # Fetch the gradient tensor with the x-tensor name.
     w_grad = grad_debugger.gradient_tensor(self.w.name)
-    self.assertIsInstance(w_grad, ops.Tensor)
+    self.assertIsInstance(w_grad, tensor.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
   def testIdentifyGradientGivesCorrectTensorObjectWithTfGradients(self):
@@ -99,17 +100,17 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
 
     # Fetch the gradient tensor with the x-tensor object.
     w_grad = grad_debugger.gradient_tensor(self.w)
-    self.assertIsInstance(w_grad, ops.Tensor)
+    self.assertIsInstance(w_grad, tensor.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
     # Fetch the gradient tensor with the x-tensor's name.
     w_grad = grad_debugger.gradient_tensor(self.w.name)
-    self.assertIsInstance(w_grad, ops.Tensor)
+    self.assertIsInstance(w_grad, tensor.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
     # Fetch the gradient tensor with the x-tensor name.
     w_grad = grad_debugger.gradient_tensor(self.w.name)
-    self.assertIsInstance(w_grad, ops.Tensor)
+    self.assertIsInstance(w_grad, tensor.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
   def testCallingIdentifyGradientTwiceWithTheSameGradientsDebuggerErrors(self):
@@ -137,8 +138,8 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
 
     dz1_dy = grad_debugger_1.gradient_tensor(y)
     dz2_dy = grad_debugger_2.gradient_tensor(y)
-    self.assertIsInstance(dz1_dy, ops.Tensor)
-    self.assertIsInstance(dz2_dy, ops.Tensor)
+    self.assertIsInstance(dz1_dy, tensor.Tensor)
+    self.assertIsInstance(dz2_dy, tensor.Tensor)
     self.assertIsNot(dz1_dy, dz2_dy)
 
     self.sess.run(variables.global_variables_initializer())
@@ -187,7 +188,7 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
 
     # Fetch the gradient tensor with the x-tensor object.
     w_grad = grad_debugger.gradient_tensor(self.w)
-    self.assertIsInstance(w_grad, ops.Tensor)
+    self.assertIsInstance(w_grad, tensor.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
   def testWatchGradientsByXTensorNamesWorks(self):
@@ -209,11 +210,11 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
     self.assertAllClose(2.0, self.sess.run(v_grad))
 
     w_grad = grad_debugger.gradient_tensor(self.w)
-    self.assertIsInstance(w_grad, ops.Tensor)
+    self.assertIsInstance(w_grad, tensor.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
     w_grad = grad_debugger.gradient_tensor("w:0")
-    self.assertIsInstance(w_grad, ops.Tensor)
+    self.assertIsInstance(w_grad, tensor.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
   def testWatchGradientsByXTensorNamesWorksWithoutContextManager(self):
@@ -235,11 +236,11 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
     self.assertAllClose(2.0, self.sess.run(v_grad))
 
     w_grad = grad_debugger.gradient_tensor(self.w)
-    self.assertIsInstance(w_grad, ops.Tensor)
+    self.assertIsInstance(w_grad, tensor.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
     w_grad = grad_debugger.gradient_tensor("w:0")
-    self.assertIsInstance(w_grad, ops.Tensor)
+    self.assertIsInstance(w_grad, tensor.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
   def testWatchGradientsWorksOnRefTensor(self):
@@ -272,7 +273,7 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(2, len(grad_debugger.gradient_tensors()))
     self.assertIs(u_grad, grad_debugger.gradient_tensor("u:0"))
-    self.assertIsInstance(grad_debugger.gradient_tensor("w:0"), ops.Tensor)
+    self.assertIsInstance(grad_debugger.gradient_tensor("w:0"), tensor.Tensor)
 
     self.sess.run(variables.global_variables_initializer())
     self.assertAllClose(1.0, self.sess.run(
@@ -317,8 +318,8 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
 
     dz1_dy = grad_debugger_1.gradient_tensor(y)
     dz2_dy = grad_debugger_2.gradient_tensor(y)
-    self.assertIsInstance(dz1_dy, ops.Tensor)
-    self.assertIsInstance(dz2_dy, ops.Tensor)
+    self.assertIsInstance(dz1_dy, tensor.Tensor)
+    self.assertIsInstance(dz2_dy, tensor.Tensor)
     self.assertIsNot(dz1_dy, dz2_dy)
 
     self.sess.run(variables.global_variables_initializer())

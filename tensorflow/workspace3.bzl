@@ -3,8 +3,12 @@
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("//third_party:tf_runtime/workspace.bzl", tf_runtime = "repo")
 load("//third_party/llvm:workspace.bzl", llvm = "repo")
+load("//third_party:repo.bzl", "tf_vendored")
 
 def workspace():
+    tf_vendored(name = "local_xla", relpath = "third_party/xla")
+    tf_vendored(name = "local_tsl", relpath = "third_party/xla/third_party/tsl")
+
     http_archive(
         name = "io_bazel_rules_closure",
         sha256 = "5b00383d08dd71f28503736db0500b6fb4dda47489ff5fc6bed42557c07c6ba9",
@@ -30,10 +34,10 @@ def workspace():
     http_archive(
         name = "rules_pkg",
         urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.7.1/rules_pkg-0.7.1.tar.gz",
-            "https://github.com/bazelbuild/rules_pkg/releases/download/0.7.1/rules_pkg-0.7.1.tar.gz",
+            "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.9.1/rules_pkg-0.9.1.tar.gz",
+            "https://github.com/bazelbuild/rules_pkg/releases/download/0.9.1/rules_pkg-0.9.1.tar.gz",
         ],
-        sha256 = "451e08a4d78988c06fa3f9306ec813b836b1d076d0f055595444ba4ff22b867f",
+        sha256 = "8f9ee2dc10c1ae514ee599a8b42ed99fa262b757058f65ad3c384289ff70c4b8",
     )
 
     # Maven dependencies.

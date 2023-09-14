@@ -14,12 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/analysis/cost_analysis.h"
 
+#include <algorithm>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/constants.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
+#include "tfrt/compiler/opdefs/tfrt_op_interfaces.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_compiler {
@@ -157,6 +160,12 @@ void CostAnalysis::AnalyzeBlock(mlir::Block* block) {
 }
 
 void CostAnalysis::EvaluateCost(mlir::Operation* op) {
+  if (auto cost_function =
+          mlir::dyn_cast<tfrt::compiler::CostFunctionInterface>(op)) {
+    cost_map_[op] = cost_function.cost();
+    return;
+  }
+
   if (!llvm::isa<mlir::TF::TensorFlowDialect>(op->getDialect())) {
     cost_map_[op] = max_arg_size_;
     return;
@@ -178,7 +187,7 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
     const auto op_key_attr =
         op->getAttrOfType<mlir::IntegerAttr>(kOpKeyAttrName);
     if (op_key_attr) {
-      cost_map_[op] = cost_recorder_->GetCostNanosecond(op_key_attr.getInt());
+      cost_map_[op] = cost_recorder_->GetCost(op_key_attr.getInt());
       return;
     }
   }

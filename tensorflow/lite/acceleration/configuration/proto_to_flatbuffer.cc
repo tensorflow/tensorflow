@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/acceleration/configuration/configuration.pb.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
@@ -63,6 +64,8 @@ Delegate ConvertDelegate(proto::Delegate delegate) {
       return Delegate_EDGETPU_CORAL;
     case proto::Delegate::CORE_ML:
       return Delegate_CORE_ML;
+    case proto::Delegate::ARMNN:
+      return Delegate_ARMNN;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Unexpected value for Delegate: %d",
                   delegate);
@@ -265,7 +268,8 @@ Offset<StableDelegateLoaderSettings> ConvertStableDelegateLoaderSettings(
     const proto::StableDelegateLoaderSettings& settings,
     FlatBufferBuilder& builder) {
   return CreateStableDelegateLoaderSettings(
-      builder, builder.CreateString(settings.delegate_path()));
+      builder, builder.CreateString(settings.delegate_path()),
+      builder.CreateString(settings.delegate_name()));
 }
 
 Offset<CPUSettings> ConvertCPUSettings(const proto::CPUSettings& settings,
@@ -291,6 +295,43 @@ Offset<tflite::EdgeTpuDeviceSpec> ConvertEdgeTpuDeviceSpec(
       static_cast<tflite::EdgeTpuDeviceSpec_::PlatformType>(
           device_spec.platform_type()),
       device_spec.num_chips(), device_paths_fb, device_spec.chip_family());
+}
+
+Offset<GoogleEdgeTpuSettings> ConvertGoogleEdgeTpuSettings(
+    const proto::GoogleEdgeTpuSettings& settings, FlatBufferBuilder& builder) {
+  Offset<String> model_identifier = 0;
+  if (settings.has_model_identifier()) {
+    model_identifier = builder.CreateString(settings.model_identifier());
+  }
+
+  Offset<Vector<uint8_t>> extension_data = 0;
+  if (settings.has_extension_data()) {
+    extension_data = builder.CreateVector(
+        reinterpret_cast<const uint8_t*>(settings.extension_data().data()),
+        settings.extension_data().size());
+  }
+
+  GoogleEdgeTpuSettingsBuilder builder_(builder);
+  builder_.add_log_verbosity(settings.log_verbosity());
+  builder_.add_enable_tracing(settings.enable_tracing());
+  builder_.add_priority(static_cast<tflite::GoogleEdgeTpuSettings_::Priority>(
+      settings.priority()));
+  builder_.add_model_identifier(model_identifier);
+  builder_.add_use_async_api(settings.use_async_api());
+  builder_.add_delegate_should_manage_cache_for_inputs(
+      settings.delegate_should_manage_cache_for_inputs());
+  builder_.add_delegate_should_manage_cache_for_outputs(
+      settings.delegate_should_manage_cache_for_outputs());
+  builder_.add_prefer_cache_coherency_for_inputs(
+      static_cast<tflite::GoogleEdgeTpuSettings_::TriState>(
+          settings.prefer_cache_coherency_for_inputs()));
+  builder_.add_prefer_cache_coherency_for_outputs(
+      static_cast<tflite::GoogleEdgeTpuSettings_::TriState>(
+          settings.prefer_cache_coherency_for_outputs()));
+  builder_.add_allow_fp16_precision_for_fp32(
+      settings.allow_fp16_precision_for_fp32());
+  builder_.add_extension_data(extension_data);
+  return builder_.Finish();
 }
 
 Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
@@ -374,7 +415,9 @@ Offset<TFLiteSettings> ConvertTfliteSettings(
       ConvertFallbackSettings(settings.fallback_settings(), builder),
       settings.disable_default_delegates(),
       ConvertStableDelegateLoaderSettings(
-          settings.stable_delegate_loader_settings(), builder));
+          settings.stable_delegate_loader_settings(), builder),
+      ConvertGoogleEdgeTpuSettings(settings.google_edgetpu_settings(),
+                                   builder));
 }
 
 Offset<ModelFile> ConvertModelFile(const proto::ModelFile& model_file,

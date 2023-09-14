@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -91,10 +93,11 @@ constexpr char kAutotuneBufferSizesOpt[] = "autotune_buffer_sizes";
 constexpr char kDisablePrefetchLegacyAutotuneOpt[] =
     "disable_prefetch_legacy_autotune";
 constexpr char kMakeSloppyOpt[] = "make_sloppy";
-constexpr char kUseChooseFastestOpt[] = "use_choose_fastest";
 constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
 constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
 constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
+constexpr char kInjectIoPrefetchEligibleOpt[] = "inject_io_prefetch_eligible";
+constexpr char kInjectIoPrefetchOpt[] = "inject_io_prefetch";
 constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
@@ -216,14 +219,6 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kInjectPrefetchOpt);
     } else {
       optimization_disabled->insert(kInjectPrefetchOpt);
-    }
-  }
-  if (optimization_options.optional_warm_start_case() ==
-      OptimizationOptions::kWarmStart) {
-    if (optimization_options.warm_start()) {
-      optimization_enabled->insert(kWarmStartOpt);
-    } else {
-      optimization_disabled->insert(kWarmStartOpt);
     }
   }
 }
@@ -588,6 +583,13 @@ void GetOptimizations(const Options& options,
       optimizations_disabled->insert(kSlackOpt);
     }
   }
+  if (options.optional_warm_start_case() == Options::kWarmStart) {
+    if (options.warm_start()) {
+      optimizations_enabled->insert(kWarmStartOpt);
+    } else {
+      optimizations_disabled->insert(kWarmStartOpt);
+    }
+  }
 }
 
 Tensor MaybeCopySubSlice(const Tensor& tensor, int64 index) {
@@ -726,7 +728,7 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
                     IteratorContext* ctx, std::vector<Tensor>* output,
                     bool* end_of_sequence, std::vector<Tensor>* batch) {
   if (num_elements == 0) {
-    if (status.ok() || errors::IsOutOfRange(status)) {
+    if (status.ok() || absl::IsOutOfRange(status)) {
       *end_of_sequence = true;
       return OkStatus();
     } else {
@@ -734,7 +736,7 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
       return status;
     }
   }
-  if (!status.ok() && !errors::IsOutOfRange(status)) {
+  if (!status.ok() && !absl::IsOutOfRange(status)) {
     *end_of_sequence = false;
     return status;
   }
@@ -857,14 +859,16 @@ Status CopyBatch(CopyBatchParams params,
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
   const auto& autotune_options = options.autotune_options();
-  std::array<tstring, 7> autotune_only_optimizations = {
+  std::array<tstring, 9> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt,
       kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt,
       kEnableGradientDescentOpt,
       kFilterParallelizationOpt,
       kMapParallelizationOpt,
-      kInjectPrefetchOpt};
+      kInjectPrefetchOpt,
+      kInjectIoPrefetchEligibleOpt,
+      kInjectIoPrefetchOpt};
 
   if (autotune_options.optional_enabled_case() == AutotuneOptions::kEnabled &&
       !autotune_options.enabled()) {
@@ -921,6 +925,16 @@ int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
   return std::min(kAutotuneDefaultParallelism, ctx->runner_threadpool_size());
 }
 
+IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
+  // Strips out any split providers so that they don't apply to sub-iterators.
+  if (ctx->split_providers().empty()) {
+    return *ctx;
+  }
+  IteratorContext::Params params(ctx);
+  params.split_providers.clear();
+  return IteratorContext(std::move(params));
+}
+
 // static
 void DatasetExperimentRegistry::Register(const string& experiment,
                                          JobSelector job_selector,
@@ -948,11 +962,14 @@ bool IndependentHostTasks(int64_t task_id, bool evens) {
 
 namespace {
 
+REGISTER_DATASET_EXPERIMENT("noop_task_level", RandomJobSamplePercentage<50>,
+                            IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("noop_job_level", RandomJobSamplePercentage<50>,
+                            AllTasks);
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
-                            RandomJobSamplePercentage<25>,
-                            IndependentHostTasks);
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",
@@ -965,8 +982,16 @@ REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
                             RandomJobSamplePercentage<0>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
                             RandomJobSamplePercentage<0>, IndependentHostTasks);
-REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<1>,
+REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("file_locality", RandomJobSamplePercentage<0>,
                             IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("no_compression", RandomJobSamplePercentage<50>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("inject_io_prefetch", RandomJobSamplePercentage<50>,
+                            AllTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

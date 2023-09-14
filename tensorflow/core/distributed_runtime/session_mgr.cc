@@ -33,11 +33,11 @@ limitations under the License.
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
-#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
-#include "tensorflow/tsl/protobuf/distributed_runtime_payloads.pb.h"
+#include "tsl/distributed_runtime/coordination/coordination_service.h"
+#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tsl/protobuf/coordination_config.pb.h"
+#include "tsl/protobuf/coordination_service.pb.h"
+#include "tsl/protobuf/distributed_runtime_payloads.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -108,7 +108,8 @@ SessionMgr::SessionMgr(
 /* static */
 std::string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
   return strings::StrCat("/job:", server_def.job_name(),
-                         "/replica:0/task:", server_def.task_index());
+                         "/replica:", server_def.replica(),
+                         "/task:", server_def.task_index());
 }
 
 Status SessionMgr::CreateSession(const std::string& session,
@@ -268,6 +269,7 @@ Status SessionMgr::CreateSession(
   CoordinationServiceConfig coordination_config =
       server_def.default_session_config().experimental().coordination_config();
   if (!coordination_config.service_type().empty() &&
+      !coordination_config.force_disable() &&
       coordination_service_agent_ == nullptr) {
     std::unique_ptr<CoordinationClientCache> client_cache;
     TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&client_cache));

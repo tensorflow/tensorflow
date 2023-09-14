@@ -24,11 +24,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/python/framework/offset_counter_helper.h"
 #include "tensorflow/python/framework/op_reg_offset.pb.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/init_main.h"
-#include "tensorflow/tsl/platform/strcat.h"
-#include "tensorflow/tsl/platform/types.h"
-#include "tensorflow/tsl/util/command_line_flags.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/init_main.h"
+#include "tsl/platform/strcat.h"
+#include "tsl/platform/types.h"
+#include "tsl/util/command_line_flags.h"
 
 inline constexpr absl::string_view kUsage =
     "offset_counter reads C++ source codes, scans for the location of where "

@@ -59,7 +59,8 @@ using gpuError_t = hipError_t;
 #if GOOGLE_CUDA
 
 #define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
-  extern __shared__ __align__(ALIGN) TYPE NAME[]
+  extern __shared__ __align__(ALIGN)                   \
+  TYPE NAME[]
 
 #elif TENSORFLOW_USE_ROCM
 
@@ -169,6 +170,15 @@ __host__ __device__ inline float tf_max(float x, float y) {
 __host__ __device__ inline double tf_max(double x, double y) {
   return fmax(x, y);
 }
+
+#ifdef _MSC_VER
+#if _MSC_VER >= 1930
+using std::max;
+using std::min;
+__host__ __device__ inline int tf_min(int x, int y) { return min(x, y); }
+__host__ __device__ inline int tf_max(int x, int y) { return max(x, y); }
+#endif
+#endif
 
 // ROCM TODO re-enable them after adding fp16 support logic
 #if GOOGLE_CUDA

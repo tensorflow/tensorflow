@@ -24,10 +24,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import gen_training_ops
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.optimizers.Adamax')
 class Adamax(optimizer_v2.OptimizerV2):
   """Optimizer that implements the Adamax algorithm.
 

@@ -5,6 +5,7 @@ load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "KERAS_API_INIT_FILES", "TENSORFLOW_API_INIT_FILES")
 load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "KERAS_API_INIT_FILES_V1", "TENSORFLOW_API_INIT_FILES_V1")
 load("//tensorflow/python/tools/api/generator:api_gen.bzl", "TENSORFLOW_API_GEN_PACKAGES")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -24,7 +25,6 @@ py_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         ":doc_srcs",
-        "//tensorflow/python/util:module_wrapper",  # build_cleaner: keep
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
     ],
@@ -50,7 +50,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":doc_srcs",
-        "//tensorflow/python:no_contrib",  # build_cleaner: keep
+        "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -69,7 +69,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":doc_srcs",
-        "//tensorflow/python:no_contrib",  # build_cleaner: keep
+        "//tensorflow/python:no_contrib",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -90,13 +90,19 @@ py_strict_test(
         "no_pip",
     ],
     deps = [
-        "//tensorflow/lite/python:analyzer",  # build_cleaner: keep
-        "//tensorflow/lite/python:lite",  # build_cleaner: keep
-        "//tensorflow/lite/python/authoring",  # build_cleaner: keep
-        "//tensorflow/python:modules_with_exports",  # build_cleaner: keep
-        "//tensorflow/python:no_contrib",  # build_cleaner: keep
+        "//tensorflow/dtensor/python:dtensor",
+        "//tensorflow/lite/python:analyzer",
+        "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python/authoring",
+        "//tensorflow/python:modules_with_exports",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
         "//tensorflow/python/util:tf_decorator",
     ],
+)
+
+bzl_library(
+    name = "api_init_files",
+    srcs = ["api_init_files.bzl"],
+    visibility = ["//tensorflow/python/tools/api/generator2:__subpackages__"],
 )

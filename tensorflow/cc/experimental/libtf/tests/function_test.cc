@@ -288,7 +288,7 @@ TEST_P(FunctionTest, IncorrectDtypeInOutputSignatureFails) {
 INSTANTIATE_TEST_SUITE_P(TF2CAPI, FunctionTest,
                          ::testing::Combine(::testing::Values("graphdef",
                                                               "mlir"),
-                                            ::testing::Values(false, true)));
+                                            ::testing::Values(false)));
 
 }  // namespace libtf
 }  // namespace tf

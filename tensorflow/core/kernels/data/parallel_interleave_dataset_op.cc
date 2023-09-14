@@ -1451,7 +1451,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             *instantiated_captured_func_.get(), prefix(), &iterator,
             model_node()));
       }
-      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, iterator));
+      IteratorContext nested_ctx = MakeNestedIteratorContext(ctx);
+      TF_RETURN_IF_ERROR(RestoreInput(&nested_ctx, reader, iterator));
+      ctx->MergeCheckpoint(nested_ctx.checkpoint());
       mutex_lock l(*mu_);
       element->iterator = std::move(iterator);
       *out = std::move(element);

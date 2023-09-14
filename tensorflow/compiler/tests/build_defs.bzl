@@ -1,6 +1,7 @@
 """Build rules for Tensorflow/XLA testing."""
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -21,6 +22,7 @@ def tf_xla_py_test(
         disabled_backends = None,
         use_xla_device = True,
         enable_mlir_bridge = True,
+        test_rule = py_test,
         **kwargs):
     """Generates py_test targets, one per XLA backend.
 
@@ -111,7 +113,7 @@ def tf_xla_py_test(
             extra_tag = []
             updated_name = test_name
 
-            mlir_bridge_dep = "//tensorflow/python:is_mlir_bridge_test_true"
+            mlir_bridge_dep = "//tensorflow/python/framework:is_mlir_bridge_test_true"
             has_mlir_dep = (mlir_bridge_dep in deps)
             if mlir_option:
                 if updated_name.endswith("_test"):
@@ -130,7 +132,7 @@ def tf_xla_py_test(
                 # version.
                 continue
 
-            py_test(
+            test_rule(
                 name = updated_name,
                 srcs = srcs,
                 srcs_version = "PY3",
@@ -144,6 +146,9 @@ def tf_xla_py_test(
             )
             test_names.append(updated_name)
     native.test_suite(name = name, tests = test_names)
+
+def tf_xla_py_strict_test(**kwargs):
+    tf_xla_py_test(test_rule = py_strict_test, **kwargs)
 
 def generate_backend_suites(backends = []):
     """Generates per-backend test_suites that run all tests for a backend."""

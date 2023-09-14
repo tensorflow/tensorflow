@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/test_utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -35,8 +38,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/work_sharder.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
-#include "tensorflow/tsl/util/determinism_test_util.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/util/determinism_test_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -192,6 +195,36 @@ TEST(DatasetUtilsTest, BoolConstructor) {
   EXPECT_TRUE(DeterminismPolicy(false).IsNondeterministic());
   EXPECT_FALSE(DeterminismPolicy(false).IsDeterministic());
   EXPECT_FALSE(DeterminismPolicy(false).IsDefault());
+}
+
+class TestSplitProvider : public SplitProvider {
+ public:
+  Status GetNext(Tensor* split, bool* end_of_splits) override {
+    return OkStatus();
+  }
+
+  Status Reset() override { return OkStatus(); }
+
+  Status Save(std::function<std::string(std::string)> key_name_fn,
+              IteratorStateWriter* writer) override {
+    return OkStatus();
+  }
+
+  Status Restore(std::function<std::string(std::string)> key_name_fn,
+                 IteratorStateReader* reader) override {
+    return OkStatus();
+  }
+};
+
+TEST(DatasetUtilsTest, MakeNestedIteratorContext) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<TestContext> test_ctx,
+                          TestContext::Create());
+  IteratorContext::Params params(test_ctx->op_ctx());
+  params.split_providers.push_back(std::make_unique<TestSplitProvider>());
+  IteratorContext iter_ctx(params);
+  IteratorContext nested_ctx = MakeNestedIteratorContext(&iter_ctx);
+  EXPECT_FALSE(iter_ctx.split_providers().empty());
+  EXPECT_TRUE(nested_ctx.split_providers().empty());
 }
 
 REGISTER_DATASET_EXPERIMENT("test_only_experiment_0",
@@ -639,17 +672,15 @@ GetOptimizationsTestCase GetOptimizationTestCase4() {
   options.mutable_optimization_options()->set_parallel_batch(true);
   options.mutable_optimization_options()->set_shuffle_and_repeat_fusion(true);
   options.mutable_optimization_options()->set_inject_prefetch(true);
-  options.mutable_optimization_options()->set_warm_start(true);
   options.set_slack(true);
-  return {
-      options,
-      /*expected_enabled=*/
-      {"filter_fusion", "filter_parallelization", "make_sloppy",
-       "map_and_batch_fusion", "map_and_filter_fusion", "map_fusion",
-       "map_parallelization", "noop_elimination", "parallel_batch",
-       "shuffle_and_repeat_fusion", "slack", "inject_prefetch", "warm_start"},
-      /*expected_disabled=*/{},
-      /*expected_default=*/{}};
+  return {options,
+          /*expected_enabled=*/
+          {"filter_fusion", "filter_parallelization", "make_sloppy",
+           "map_and_batch_fusion", "map_and_filter_fusion", "map_fusion",
+           "map_parallelization", "noop_elimination", "parallel_batch",
+           "shuffle_and_repeat_fusion", "slack", "inject_prefetch"},
+          /*expected_disabled=*/{},
+          /*expected_default=*/{}};
 }
 
 class GetOptimizationsTest

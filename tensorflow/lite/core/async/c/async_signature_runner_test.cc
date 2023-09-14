@@ -43,7 +43,8 @@ using ::testing::Return;
 namespace tflite {
 namespace async {
 
-class AsyncSignatureRunnerTest : public InterpreterTest {
+class AsyncSignatureRunnerTest : public InterpreterTest,
+                                 public ::testing::WithParamInterface<bool> {
  protected:
   void SetUp() override {
     kernel_ =
@@ -63,13 +64,23 @@ class AsyncSignatureRunnerTest : public InterpreterTest {
     void* builtin_data_1 = malloc(sizeof(int));
     interpreter->AddNodeWithParameters({0, 0}, {1}, nullptr, 0, builtin_data_1,
                                        reg);
-    const char kSignatureKey[] = "serving_default";
-    BuildSignature(interpreter.get(), kSignatureKey, {{"input", 0}},
-                   {{"output", 1}});
-    interpreter->ModifyGraphWithDelegate(backend_->get_delegate());
     tflite_interpreter_.impl = std::move(interpreter);
-    runner_ = TfLiteInterpreterGetAsyncSignatureRunner(&tflite_interpreter_,
-                                                       kSignatureKey);
+  }
+
+  void BuildRunner(bool has_signature) {
+    auto* interpreter = tflite_interpreter_.impl.get();
+    if (has_signature) {
+      const char kSignatureKey[] = "serving_default";
+      BuildSignature(interpreter, kSignatureKey, {{"input", 0}},
+                     {{"output", 1}});
+      interpreter->ModifyGraphWithDelegate(backend_->get_delegate());
+      runner_ = TfLiteInterpreterGetAsyncSignatureRunner(&tflite_interpreter_,
+                                                         kSignatureKey);
+    } else {
+      interpreter->ModifyGraphWithDelegate(backend_->get_delegate());
+      runner_ = TfLiteInterpreterGetAsyncSignatureRunner(&tflite_interpreter_,
+                                                         nullptr);
+    }
     ASSERT_NE(nullptr, runner_);
   }
 
@@ -83,7 +94,11 @@ class AsyncSignatureRunnerTest : public InterpreterTest {
   TfLiteInterpreter tflite_interpreter_{};
 };
 
-TEST_F(AsyncSignatureRunnerTest, RegisterBufferTest) {
+INSTANTIATE_TEST_SUITE_P(AsyncSignatureRunnerTest, AsyncSignatureRunnerTest,
+                         ::testing::Bool());
+
+TEST_P(AsyncSignatureRunnerTest, RegisterBufferTest) {
+  BuildRunner(GetParam());
   EXPECT_CALL(*kernel_, RegisterBuffer(_, _, _, _, _))
       .WillOnce(Return(kTfLiteOk));
   EXPECT_CALL(*kernel_, RegisterBufferSlice(_, _, _, _))
@@ -102,7 +117,8 @@ TEST_F(AsyncSignatureRunnerTest, RegisterBufferTest) {
   TfLiteBackendBufferDelete(buf);
 }
 
-TEST_F(AsyncSignatureRunnerTest, SupportedTypesTest) {
+TEST_P(AsyncSignatureRunnerTest, SupportedTypesTest) {
+  BuildRunner(GetParam());
   const char* const* buffer_types = nullptr;
   size_t num_buffer_types = 0;
   EXPECT_EQ(kTfLiteOk,
@@ -119,19 +135,29 @@ TEST_F(AsyncSignatureRunnerTest, SupportedTypesTest) {
   EXPECT_STREQ("sync_type", sync_types[0]);
 }
 
-TEST_F(AsyncSignatureRunnerTest, ReconcileTest) {
+TEST_P(AsyncSignatureRunnerTest, ReconcileTest) {
+  bool has_signature = GetParam();
+  BuildRunner(has_signature);
   EXPECT_CALL(*kernel_, ReconcileRestrictions(_, _, _, _, _, _))
       .WillOnce(Return(true));
   EXPECT_CALL(*kernel_, SetAttributes(_, _, _, _)).WillOnce(Return(kTfLiteOk));
   auto* attr = TfLiteAttributeMapCreate(kTfLiteAttrMapTypeBuffer);
-  EXPECT_TRUE(TfLiteAsyncSignatureRunnerReconcileRestrictions(
-      runner_, kTfLiteIoTypeInput, "input", attr, attr, nullptr));
-  EXPECT_EQ(kTfLiteOk, TfLiteAsyncSignatureRunnerSetAttributes(
-                           runner_, kTfLiteIoTypeInput, "input", attr));
+  if (has_signature) {
+    EXPECT_TRUE(TfLiteAsyncSignatureRunnerReconcileRestrictions(
+        runner_, kTfLiteIoTypeInput, "input", attr, attr, nullptr));
+    EXPECT_EQ(kTfLiteOk, TfLiteAsyncSignatureRunnerSetAttributes(
+                             runner_, kTfLiteIoTypeInput, "input", attr));
+  } else {
+    EXPECT_TRUE(TfLiteAsyncSignatureRunnerReconcileRestrictionsByIndex(
+        runner_, 0, attr, attr, nullptr));
+    EXPECT_EQ(kTfLiteOk,
+              TfLiteAsyncSignatureRunnerSetAttributesByIndex(runner_, 0, attr));
+  }
   TfLiteAttributeMapDelete(attr);
 }
 
-TEST_F(AsyncSignatureRunnerTest, ExecutionTest) {
+TEST_P(AsyncSignatureRunnerTest, ExecutionTest) {
+  BuildRunner(GetParam());
   EXPECT_CALL(*kernel_, Prepare(_, _)).WillOnce(Return(kTfLiteOk));
   EXPECT_CALL(*kernel_, Eval(_, _, _)).WillOnce(Return(kTfLiteOk));
   EXPECT_CALL(*kernel_, Wait(_, _)).WillOnce(Return(kTfLiteOk));
@@ -146,20 +172,61 @@ TEST_F(AsyncSignatureRunnerTest, ExecutionTest) {
   EXPECT_EQ(kTfLiteOk, TfLiteAsyncSignatureRunnerFinish(runner_, task));
 }
 
-TEST_F(AsyncSignatureRunnerTest, InputsTest) {
+TEST_P(AsyncSignatureRunnerTest, InputsTest) {
+  bool has_signature = GetParam();
+  BuildRunner(has_signature);
   EXPECT_EQ(1, TfLiteAsyncSignatureRunnerGetInputCount(runner_));
-  EXPECT_STREQ("input", TfLiteAsyncSignatureRunnerGetInputName(runner_, 0));
-  EXPECT_STREQ("x",
-               TfLiteOpaqueTensorName(
-                   TfLiteAsyncSignatureRunnerGetInputTensor(runner_, "input")));
+  if (has_signature) {
+    EXPECT_STREQ("input", TfLiteAsyncSignatureRunnerGetInputName(runner_, 0));
+    EXPECT_STREQ(
+        "x", TfLiteOpaqueTensorName(
+                 TfLiteAsyncSignatureRunnerGetInputTensor(runner_, "input")));
+  } else {
+    EXPECT_EQ(nullptr, TfLiteAsyncSignatureRunnerGetInputName(runner_, 0));
+    EXPECT_EQ(nullptr,
+              TfLiteAsyncSignatureRunnerGetInputTensor(runner_, "input"));
+  }
 }
 
-TEST_F(AsyncSignatureRunnerTest, OutputsTest) {
+TEST_P(AsyncSignatureRunnerTest, OutputsTest) {
+  bool has_signature = GetParam();
+  BuildRunner(has_signature);
   EXPECT_EQ(1, TfLiteAsyncSignatureRunnerGetOutputCount(runner_));
-  EXPECT_STREQ("output", TfLiteAsyncSignatureRunnerGetOutputName(runner_, 0));
-  EXPECT_STREQ(
-      "a", TfLiteOpaqueTensorName(
-               TfLiteAsyncSignatureRunnerGetOutputTensor(runner_, "output")));
+  if (has_signature) {
+    EXPECT_STREQ("output", TfLiteAsyncSignatureRunnerGetOutputName(runner_, 0));
+    EXPECT_STREQ(
+        "a", TfLiteOpaqueTensorName(
+                 TfLiteAsyncSignatureRunnerGetOutputTensor(runner_, "output")));
+  } else {
+    EXPECT_EQ(nullptr, TfLiteAsyncSignatureRunnerGetOutputName(runner_, 0));
+    EXPECT_EQ(nullptr,
+              TfLiteAsyncSignatureRunnerGetOutputTensor(runner_, "output"));
+  }
+}
+
+TEST_P(AsyncSignatureRunnerTest, InputByIndexTest) {
+  BuildRunner(GetParam());
+  EXPECT_EQ(1, TfLiteAsyncSignatureRunnerGetInputCount(runner_));
+  auto* indices = TfLiteAsyncSignatureRunnerInputTensorIndices(runner_);
+  EXPECT_NE(nullptr, indices);
+  auto indice = indices[0];
+  EXPECT_STREQ("x", TfLiteOpaqueTensorName(
+                        TfLiteAsyncSignatureRunnerGetTensor(runner_, indice)));
+}
+
+TEST_P(AsyncSignatureRunnerTest, OutputsByIndexTest) {
+  BuildRunner(GetParam());
+  EXPECT_EQ(1, TfLiteAsyncSignatureRunnerGetOutputCount(runner_));
+  auto* indices = TfLiteAsyncSignatureRunnerOutputTensorIndices(runner_);
+  EXPECT_NE(nullptr, indices);
+  auto indice = indices[0];
+  EXPECT_STREQ("a", TfLiteOpaqueTensorName(
+                        TfLiteAsyncSignatureRunnerGetTensor(runner_, indice)));
+}
+
+TEST_P(AsyncSignatureRunnerTest, IndexOutOfBound) {
+  BuildRunner(GetParam());
+  EXPECT_EQ(nullptr, TfLiteAsyncSignatureRunnerGetTensor(runner_, 42));
 }
 
 }  // namespace async

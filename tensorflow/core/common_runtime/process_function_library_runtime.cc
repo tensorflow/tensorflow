@@ -59,7 +59,7 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
@@ -105,8 +105,9 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
       device_mgr_(device_mgr),
       lib_def_(lib_def),
       default_thread_pool_(default_thread_pool),
-      flr_map_(new std::unordered_map<Device*,
-                                      std::unique_ptr<FunctionLibraryRuntime>>),
+      flr_map_(
+          new std::unordered_map<Device*,
+                                 core::RefCountPtr<FunctionLibraryRuntime>>),
       next_handle_(0),
       session_metadata_(session_metadata),
       rendezvous_factory_(std::move(rendezvous_factory)),
@@ -586,10 +587,10 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   optimized_graph_info->function_graph->mutable_flib_def()
       ->set_default_registry(&(optimized_graph_info->lib_def));
 
-  TF_ASSIGN_OR_RETURN(
-      auto subgraphs,
-      PreprocessAndPartitionGraph(function_name, *optimized_graph_info, options,
-                                  *dev_set, lib_def_, composite_devices, env_));
+  TF_ASSIGN_OR_RETURN(auto subgraphs, PreprocessAndPartitionGraph(
+                                          function_name, *optimized_graph_info,
+                                          options, *dev_set, lib_def_,
+                                          composite_devices, cpu_device, env_));
   const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
   const uint64 graph_optimization_duration =
       optimization_end_time_usecs - optimization_start_time_usecs;

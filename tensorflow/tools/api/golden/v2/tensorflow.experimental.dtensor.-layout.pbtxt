@@ -19,6 +19,10 @@ tf_class {
     name: "sharding_specs"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "type"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'sharding_specs\', \'mesh\'], varargs=None, keywords=None, defaults=None"
@@ -82,6 +86,10 @@ tf_class {
   member_method {
     name: "replicated"
     argspec: "args=[\'cls\', \'mesh\', \'rank\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_parted"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "to_string"

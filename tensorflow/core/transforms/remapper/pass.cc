@@ -185,11 +185,77 @@ static std::unique_ptr<OperationState> GetContractionBiasAddOpState(
   return state;
 }
 
+// AsString + StringToHashBucketFast -> _TensorToHashBucketFast
+class MatchStringToHashBucket : public RemapperPatternBase {
+ public:
+  explicit MatchStringToHashBucket(OpPropertyHelper &helper)
+      : RemapperPatternBase("tfg.StringToHashBucketFast", helper,
+                            PatternBenefit(/*benefit=*/1)) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    // Not allowing control flow on op
+    if (helper_.HasControlOperandsOrResultUsers(op)) return failure();
+
+    if (op->getOperands().size() < 1) return failure();
+
+    TFOp stringtohash_wrapper(op);
+
+    // AsString op
+    Operation *as_string_op = op->getOperand(0).getDefiningOp();
+    if (!as_string_op) return failure();
+
+    // Input to StringToHashBucket should be the AsString op
+    if (!this->helper_.getDialect()->IsAsString(as_string_op)) return failure();
+
+    if (helper_.HasControlOperandsOrResultUsers(as_string_op) ||
+        !helper_.HasAtMostOneUserOfResult0(as_string_op)) {
+      return failure();
+    }
+
+    // DataType of AsString must be int8/16/32/64
+    TypeAttr dtype_attr = as_string_op->getAttrOfType<TypeAttr>("T");
+    if (!dtype_attr) return failure();
+    Type dtype = dtype_attr.getValue();
+    if (!dtype.isa<IntegerType>()) return failure();
+
+    // width/fill attributes must be default values
+    auto width_attr = as_string_op->getAttrOfType<IntegerAttr>("width");
+    if (!width_attr) return failure();
+    if (width_attr.getInt() != -1) return failure();
+    auto fill_attr = as_string_op->getAttrOfType<StringAttr>("fill");
+    if (!fill_attr) return failure();
+    if (fill_attr.getValue() != "") return failure();
+
+    // An input to the AsString must exist to determine the device.
+    if (as_string_op->getOperands().size() < 1) return failure();
+
+    // AsString op's input
+    Value input_value = as_string_op->getOperand(0);
+    Operation *input_op = input_value.getDefiningOp();
+
+    SmallVector<Value> operands;
+    operands.push_back(input_value);
+    // Control operands come after regular operands.
+    llvm::append_range(operands, stringtohash_wrapper.getControlOperands());
+
+    NamedAttrList fused_attrs(op->getAttrs());
+    fused_attrs.set("T", dtype_attr);
+
+    Operation *fused_op = rewriter.create(
+        op->getLoc(), rewriter.getStringAttr("tfg._TensorToHashBucketFast"),
+        operands, op->getResultTypes(), fused_attrs);
+    TFOp(fused_op).setRequestedDevice(TFOp(input_op).deviceAttr());
+    rewriter.replaceOp(op, fused_op->getResults());
+    return success();
+  }
+};
+
 // Convert Softplus+Tanh+Mul to Mish
 // Mul(x, Tanh(Softplus(x))) --> _MklFusedMish
-class MatchSofplusTanhMul : public RemapperPatternBase {
+class MatchSoftplusTanhMul : public RemapperPatternBase {
  public:
-  explicit MatchSofplusTanhMul(OpPropertyHelper &helper)
+  explicit MatchSoftplusTanhMul(OpPropertyHelper &helper)
       : RemapperPatternBase("tfg.Mul", helper, PatternBenefit(1)) {}
 
   LogicalResult matchAndRewrite(Operation *op,
@@ -676,13 +742,14 @@ class Remapper : public impl::RemapperBase<Remapper> {
     }
     if (enable_onednn_patterns_) {
       patterns.insert<MatchMulSigmoid>(context);
-      patterns.insert<MatchSofplusTanhMul>(helper_);
+      patterns.insert<MatchSoftplusTanhMul>(helper_);
       // TODO(chiahungduan): Currently, the only pattern implemented in PDLL is
       // the same one as `MatchMulSigmoid`. Remove the one of them when there's
       // a decision that which one is preferred.
       populateRemapperPDLLPatterns(patterns);
     }
     patterns.insert<ContractionBiasAddRewriter>(helper_);
+    patterns.insert<MatchStringToHashBucket>(helper_);
     // Insert multiple pattern rewriters from template instantiations by
     // activation ops.
     InsertPatterns<ContractionBiasAddActivationRewriter, OpKind::Relu,

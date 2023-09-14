@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -58,6 +59,19 @@ bool IsOpValid(Operation* op) {
   std::string device_str = launch_op.getDeviceAttr().getValue().str();
   return device_str == tensorflow::GetDeviceAliasForHostOfLogicalCore(0) ||
          device_str == "/job:localhost/replica:0/task:0/device:CPU:0";
+}
+
+// Check if we can move TPUCopyWithDynamicShapeOp out of a launch. This is the
+// case if its results aren't used by other ops except for the return op.
+bool CanMove(Operation* op) {
+  auto launch_op = llvm::dyn_cast<tf_device::LaunchOp>(op->getParentOp());
+  if (!launch_op) return false;
+  for (Value result : op->getResults()) {
+    for (Operation* user : result.getUsers()) {
+      if (user != launch_op.GetBody().getTerminator()) return false;
+    }
+  }
+  return true;
 }
 
 // Get the new launch op results. This is the results if the copy op is removed
@@ -156,7 +170,9 @@ void ExtractTPUCopyWithDynamicShapeOpPass::runOnOperation() {
   getOperation().walk([&](Operation* op) {
     if (isa<TF::TPUCopyWithDynamicShapeOp>(op)) {
       if (!IsOpValid(op)) return signalPassFailure();
-      tpu_copy_with_dynamic_shape_ops.push_back(op);
+      if (CanMove(op)) {
+        tpu_copy_with_dynamic_shape_ops.push_back(op);
+      }
     }
   });
 

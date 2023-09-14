@@ -119,6 +119,7 @@ def initialize_multi_client_cluster(job_name: str,
 def initialize_accelerator_system(
     device_type: Optional[str] = None,
     enable_coordination_service: Optional[bool] = True,
+    num_logical_cpu_devices: Optional[int] = None,
     experimental_reset_context: Optional[bool] = False,
 ) -> str:
   """Initializes accelerators and communication fabrics for DTensor.
@@ -160,6 +161,10 @@ def initialize_accelerator_system(
     enable_coordination_service: If true, enable distributed coordination
       service to make sure that workers know the devices on each other, when
       there is more than 1 client.
+    num_logical_cpu_devices: the number of logical CPU devices per DTensor
+      client. Default to the current number of logical CPU
+      (`dtensor.num_local_devices("CPU")`),when `device_type` is CPU, otherwise
+      set automatially to match the number of local GPU/TPU devices.
     experimental_reset_context: Reset the tensorflow context. Behaviors of
       existing TensorFlow objects (e.g. Tensors) are undefined. Set this to True
       as an escape hatch, if there is no clear way to refactor your code to call
@@ -217,10 +222,25 @@ def initialize_accelerator_system(
   # Configure logical host CPU devices for accelerators.
   if device_type in ("GPU", "TPU"):
     num_local_devices = config.num_local_devices(device_type)
-    if config.num_local_devices("CPU") < num_local_devices:
-      tf_config.set_logical_device_configuration(
-          tf_config.list_physical_devices("CPU")[0],
-          [context.LogicalDeviceConfiguration()] * num_local_devices)
+    if num_logical_cpu_devices is None:
+      num_logical_cpu_devices = max(
+          config.num_local_devices("CPU"), num_local_devices
+      )
+    else:
+      if num_logical_cpu_devices < num_local_devices:
+        raise ValueError(
+            "If set, `num_logical_cpu_devices`"
+            f" (={num_logical_cpu_devices}) must be greater than or"
+            f" equal to the number of local {device_type} devices"
+            f" (={num_local_devices})"
+        )
+
+  if num_logical_cpu_devices is not None:
+    tf_config.set_logical_device_configuration(
+        tf_config.list_physical_devices("CPU")[0],
+        [context.LogicalDeviceConfiguration()]
+        * num_logical_cpu_devices,
+    )
 
   if not config.is_local_mode():
     initialize_multi_client_cluster(

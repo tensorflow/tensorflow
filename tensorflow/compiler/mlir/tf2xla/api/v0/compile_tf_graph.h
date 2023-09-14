@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/types/variant.h"
-#include "tensorflow/compiler/xla/client/compile_only_client.h"
-#include "tensorflow/compiler/xla/pjrt/compile_options.pb.h"
+#include "xla/client/compile_only_client.h"
+#include "xla/pjrt/compile_options.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"

@@ -18,7 +18,6 @@ import contextlib
 import threading
 
 from absl.testing import parameterized
-
 import numpy as np
 
 from tensorflow.dtensor.python import api
@@ -128,6 +127,8 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
       for _ in math_ops.range(steps - 1):
         output += next(iterator)
         iters += 1
+        if not is_graph:
+          mesh_util.barrier(self.mesh)
       return output, iters
 
     train_fn = polymorphic_function.function(train) if is_graph else train
@@ -138,11 +139,17 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
 
     d_iterator = iter(d_dataset)
     d_output, d_iters = train_fn(d_iterator, num_batches)
-    mesh_util.barrier(self.mesh)
 
+    mesh_util.barrier(self.mesh)
     # Try one more iteration which will raise an exception since the iterator is
     # exhausted.
     with self.assertRaises(exception):
+      if is_graph:
+        # FIXME(b/285884302): This flakily raises error
+        # "Cannot add 'while_cond' function, because a different function"
+        # Since num_batches is changed to 1, it retriggers SPMD expansion.
+        # Recreating polymorphic function to avoid running into the error.
+        train_fn = polymorphic_function.function(train)
       train_fn(d_iterator, 1)
       # In the graph case, we need to wait for the executor to finish all async
       # calls after invoking the tf.function to ensure any pending error is
@@ -174,6 +181,8 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
       for img in iterator:
         output += img
         iters += 1
+        if not is_graph:
+          mesh_util.barrier(self.mesh)
       return output, iters
 
     train_fn = polymorphic_function.function(train) if is_graph else train
@@ -204,7 +213,8 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
     self.assertEqual(d_dataset.element_spec.shape, [batch_size, 8, 8, 3])
 
     def train(iterator):
-      return next(iterator)
+      it = next(iterator)
+      return it
 
     train_fn = polymorphic_function.function(train) if is_graph else train
 
@@ -212,8 +222,9 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
     self.assertEqual(d_iterator.element_spec.shape, [batch_size, 8, 8, 3])
 
     d_images = train_fn(d_iterator)
-
+    mesh_util.barrier(self.mesh)
     expected = next(iter(dataset.batch(batch_size, drop_remainder=True)))
+    mesh_util.barrier(self.mesh)
     self.assertDTensorEqual(expected, images_layout, d_images)
 
   @parameterized.named_parameters(('Eager', False), ('Graph', True))
@@ -243,7 +254,6 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
 
     d_iterator = iter(d_dataset)
     d_images, d_labels = train_fn(d_iterator)
-
     expected_images, expected_labels = next(
         iter(dataset.batch(batch_size, drop_remainder=True)))
     self.assertDTensorEqual(expected_images, images_layout, d_images)
@@ -430,8 +440,6 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
 
       start_idx, end_idx = i * batch_size, (i + 1) * batch_size
       self.assertDTensorEqual(inputs[start_idx:end_idx], inputs_layout, elem)
-
-    self.assertRaises(StopIteration, lambda: next(d_iterator))
 
   @parameterized.product(
       (

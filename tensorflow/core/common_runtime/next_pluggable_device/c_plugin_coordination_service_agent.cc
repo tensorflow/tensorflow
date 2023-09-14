@@ -26,8 +26,8 @@ Status CPluginCoordinationServiceAgent::InsertKeyValue(
     const std::string& key, const std::string& value) {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Status* status = c_status_ptr.get();
-  TF_CoordinationServiceInsertKeyValue(key.data(), value.data(), agent_,
-                                       status);
+  TF_CoordinationServiceInsertKeyValue(key.data(), key.size(), value.data(),
+                                       value.size(), agent_, status);
   return StatusFromTF_Status(status);
 }
 
@@ -36,7 +36,7 @@ StatusOr<std::string> CPluginCoordinationServiceAgent::GetKeyValue(
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Status* status = c_status_ptr.get();
   TF_Buffer* result_buf =
-      TF_CoordinationServiceGetKeyValue(key.data(), agent_, status);
+      TF_CoordinationServiceGetKeyValue(key.data(), key.size(), agent_, status);
 
   if (TF_GetCode(status) != TF_OK) {
     return StatusFromTF_Status(status);
@@ -51,7 +51,7 @@ StatusOr<std::string> CPluginCoordinationServiceAgent::GetKeyValue(
 Status CPluginCoordinationServiceAgent::DeleteKeyValue(const std::string& key) {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Status* status = c_status_ptr.get();
-  TF_CoordinationServiceDeleteKeyValue(key.data(), agent_, status);
+  TF_CoordinationServiceDeleteKeyValue(key.data(), key.size(), agent_, status);
   return StatusFromTF_Status(status);
 }
 

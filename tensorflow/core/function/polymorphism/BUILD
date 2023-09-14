@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(
@@ -16,7 +17,9 @@ pytype_strict_library(
         "type_dispatch.py",
     ],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         ":function_type",
     ],
@@ -59,7 +62,7 @@ py_strict_test(
         ":function_cache",
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:array_ops",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types:trace",
     ],
@@ -76,6 +79,7 @@ pytype_strict_library(
         "//tensorflow/core/function/polymorphism:function_type_proto_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/core/function/trace_type:serialization",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/types:trace",
         "@absl_py//absl/logging",
     ],
@@ -90,14 +94,18 @@ tf_proto_library(
     protodeps = [
         "//tensorflow/core/function/trace_type:serialization_proto",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "function_type_py_pb2",
 #     api_version = 2,
-#     visibility = ["//tensorflow:internal"],
+#     visibility = [
+#         "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+#     ],
 #     deps = [":function_type_proto"],
 # )
 # copybara:uncomment_end

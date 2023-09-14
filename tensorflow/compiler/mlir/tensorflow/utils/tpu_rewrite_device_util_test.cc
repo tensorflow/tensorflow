@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <tuple>
+#include <vector>
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"

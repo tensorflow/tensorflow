@@ -19,7 +19,6 @@ from absl.testing import parameterized
 import numpy as onp
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import numpy_ops as np
 # Needed for ndarray.reshape.
 from tensorflow.python.ops.numpy_ops import np_array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops.numpy_ops import np_dtypes
@@ -31,10 +30,10 @@ from tensorflow.python.platform import test
 class SeedTest(test.TestCase):
 
   def test(self):
-    np.random.seed(1)
-    np.random.seed(np.int32(1))
+    np_random.seed(1)
+    np_random.seed(np_dtypes.int32(1))
     with self.assertRaises(ValueError):
-      np.random.seed((1, 3))
+      np_random.seed((1, 3))
 
 
 class RandomTestBase(test.TestCase, parameterized.TestCase):
@@ -61,7 +60,7 @@ class RandomTestBase(test.TestCase, parameterized.TestCase):
 class RandNTest(RandomTestBase):
 
   def setUp(self):
-    self.np_func = np.random.randn
+    self.np_func = np_random.randn
     self.onp_func = onp.random.randn
     super(RandNTest, self).setUp()
 
@@ -71,13 +70,13 @@ class RandNTest(RandomTestBase):
 
   @parameterized.parameters((), (2), ((2,)), (2, 3))
   def test_float32(self, *dims):
-    self._test(*dims, allow_float64=False, onp_dtype=np.float32)
+    self._test(*dims, allow_float64=False, onp_dtype=np_dtypes.float32)
 
 
 class StandardNormalTest(RandomTestBase):
 
   def setUp(self):
-    self.np_func = np.random.standard_normal
+    self.np_func = np_random.standard_normal
     self.onp_func = onp.random.standard_normal
     super(StandardNormalTest, self).setUp()
 
@@ -89,7 +88,7 @@ class StandardNormalTest(RandomTestBase):
 class UniformTest(RandomTestBase):
 
   def setUp(self):
-    self.np_func = np.random.uniform
+    self.np_func = np_random.uniform
     self.onp_func = onp.random.uniform
     super(UniformTest, self).setUp()
 
@@ -103,21 +102,21 @@ class UniformTest(RandomTestBase):
       ((), (), (2, 2, 2)),
   )
   def test_broadcast(self, low_shape, high_shape, size):
-    low = np.zeros(low_shape).astype(np.float64)
-    high = np.ones(high_shape).astype(np.float64)
+    low = np_array_ops.zeros(low_shape).astype(np_dtypes.float64)
+    high = np_array_ops.ones(high_shape).astype(np_dtypes.float64)
     self._test(low=low, high=high, size=size)
 
   def test_float32(self):
-    self._test(0, 1, (1, 2), allow_float64=False, onp_dtype=np.float32)
+    self._test(0, 1, (1, 2), allow_float64=False, onp_dtype=np_dtypes.float32)
 
   def test_dtype_cast(self):
-    self._test(np.int8(0), np.uint8(1), (1, 2))
+    self._test(np_dtypes.int8(0), np_dtypes.uint8(1), (1, 2))
 
 
 class PoissonTest(RandomTestBase):
 
   def setUp(self):
-    self.np_func = np.random.poisson
+    self.np_func = np_random.poisson
     self.onp_func = onp.random.poisson
     super(PoissonTest, self).setUp()
 
@@ -129,7 +128,7 @@ class PoissonTest(RandomTestBase):
 class RandomTest(RandomTestBase):
 
   def setUp(self):
-    self.np_func = np.random.random
+    self.np_func = np_random.random
     self.onp_func = onp.random.random
     super(RandomTest, self).setUp()
 
@@ -141,7 +140,7 @@ class RandomTest(RandomTestBase):
 class RandTest(RandomTestBase):
 
   def setUp(self):
-    self.np_func = np.random.rand
+    self.np_func = np_random.rand
     self.onp_func = onp.random.rand
     super(RandTest, self).setUp()
 
@@ -153,13 +152,18 @@ class RandTest(RandomTestBase):
 class RandIntTest(RandomTestBase):
 
   def setUp(self):
-    self.np_func = np.random.randint
+    self.np_func = np_random.randint
     self.onp_func = onp.random.randint
     super(RandIntTest, self).setUp()
 
-  @parameterized.parameters((0, 1, None, 'l'), (0, 1, None, np.int64),
-                            (0, 1, 2, np.int32), (0, 1, (), np.int32),
-                            (0, 1, (2), np.int64), (0, 1, (2, 2), 'l'))
+  @parameterized.parameters(
+      (0, 1, None, 'l'),
+      (0, 1, None, np_dtypes.int64),
+      (0, 1, 2, np_dtypes.int32),
+      (0, 1, (), np_dtypes.int32),
+      (0, 1, (2), np_dtypes.int64),
+      (0, 1, (2, 2), 'l'),
+  )
   def test(self, low, high, size, dtype):
     self._test(low, high, size=size, dtype=dtype)
 
@@ -171,8 +175,9 @@ class RandNDistriutionTest(test.TestCase):
       self.assertAllClose(a, b, **kwargs)
     except AssertionError:
       return
-    raise AssertionError('The two values are close at all %d elements' %
-                         np.size(a))
+    raise AssertionError(
+        'The two values are close at all %d elements' % np_array_ops.size(a)
+    )
 
   def testDistribution(self):
 
@@ -187,17 +192,20 @@ class RandNDistriutionTest(test.TestCase):
       for output in outputs:
         self.assertEqual(output.shape, tuple(args))
         default_dtype = (
-            np.float64 if np_dtypes.is_allow_float64() else np.float32)
+            np_dtypes.float64
+            if np_dtypes.is_allow_float64()
+            else np_dtypes.float32
+        )
         self.assertEqual(output.dtype.as_numpy_dtype, default_dtype)
 
-      if np.prod(args):  # Don't bother with empty arrays.
+      if np_array_ops.prod(args):  # Don't bother with empty arrays.
         outputs = [output.tolist() for output in outputs]
 
         # Test that the properties of normal distribution are satisfied.
-        mean = np.mean(outputs, axis=0)
-        stddev = np.std(outputs, axis=0)
-        self.assertAllClose(mean, np.zeros(args), atol=tol)
-        self.assertAllClose(stddev, np.ones(args), atol=tol)
+        mean = np_array_ops.mean(outputs, axis=0)
+        stddev = np_array_ops.std(outputs, axis=0)
+        self.assertAllClose(mean, np_array_ops.zeros(args), atol=tol)
+        self.assertAllClose(stddev, np_array_ops.ones(args), atol=tol)
 
         # Test that outputs are different with different seeds.
         np_random.seed(20)

@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -74,8 +74,8 @@ bool BuildAndRunPipeline(absl::string_view module_string,
 std::function<void(PassManager*)> legalizeTFPasses() {
   return [](PassManager* pm) {
     pm->addPass(mlir::mhlo::createLegalizeTFPass(
-        /* allow_partial_conversion=*/false, /* legalize_chlo=*/true,
-        llvm::StringRef("gpu/xpu"), /* prefer_tf2xla=*/false));
+        /* legalize_chlo=*/true, llvm::StringRef("gpu/xpu"),
+        /* prefer_tf2xla=*/false));
   };
 }
 

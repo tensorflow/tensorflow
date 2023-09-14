@@ -72,7 +72,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(
         ValueError, "session_root path points to a non-empty directory"):
       dumping_wrapper.DumpingDebugWrapperSession(
-          session.Session(), session_root=self.session_root, log_usage=False)
+          session.Session(), session_root=self.session_root)
 
   def testConstructWrapperWithExistingFileDumpRootRaisesException(self):
     file_path = os.path.join(self.session_root, "foo")
@@ -82,19 +82,19 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(ValueError,
                                 "session_root path points to a file"):
       dumping_wrapper.DumpingDebugWrapperSession(
-          session.Session(), session_root=file_path, log_usage=False)
+          session.Session(), session_root=file_path)
 
   def testConstructWrapperWithNonexistentSessionRootCreatesDirectory(self):
     new_dir_path = os.path.join(tempfile.mkdtemp(), "new_dir")
     dumping_wrapper.DumpingDebugWrapperSession(
-        session.Session(), session_root=new_dir_path, log_usage=False)
+        session.Session(), session_root=new_dir_path)
     self.assertTrue(gfile.IsDirectory(new_dir_path))
     # Cleanup.
     gfile.DeleteRecursively(new_dir_path)
 
   def testDumpingOnASingleRunWorks(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(
-        self.sess, session_root=self.session_root, log_usage=False)
+        self.sess, session_root=self.session_root)
     sess.run(self.inc_v)
 
     dump_dirs = glob.glob(os.path.join(self.session_root, "run_*"))
@@ -109,7 +109,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def testDumpingOnASingleRunWorksWithRelativePathForDebugDumpDir(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(
-        self.sess, session_root=self.session_root, log_usage=False)
+        self.sess, session_root=self.session_root)
     sess.run(self.inc_v)
     dump_dirs = glob.glob(os.path.join(self.session_root, "run_*"))
     cwd = os.getcwd()
@@ -123,7 +123,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def testDumpingOnASingleRunWithFeedDictWorks(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(
-        self.sess, session_root=self.session_root, log_usage=False)
+        self.sess, session_root=self.session_root)
     feed_dict = {self.ph: 3.2}
     sess.run(self.inc_w_ph, feed_dict=feed_dict)
 
@@ -139,7 +139,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def testDumpingOnMultipleRunsWorks(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(
-        self.sess, session_root=self.session_root, log_usage=False)
+        self.sess, session_root=self.session_root)
     for _ in range(3):
       sess.run(self.inc_v)
 
@@ -161,8 +161,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
       dumping_wrapper.DumpingDebugWrapperSession(
           self.sess,
           session_root=self.session_root,
-          watch_fn=bad_watch_fn,
-          log_usage=False)
+          watch_fn=bad_watch_fn)
 
   def testDumpingWithLegacyWatchFnOnFetchesWorks(self):
     """Use a watch_fn that returns different allowlists for different runs."""
@@ -180,8 +179,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     sess = dumping_wrapper.DumpingDebugWrapperSession(
         self.sess,
         session_root=self.session_root,
-        watch_fn=watch_fn,
-        log_usage=False)
+        watch_fn=watch_fn)
 
     for _ in range(3):
       sess.run(self.inc_v)
@@ -216,8 +214,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     sess = dumping_wrapper.DumpingDebugWrapperSession(
         self.sess,
         session_root=self.session_root,
-        watch_fn=watch_fn,
-        log_usage=False)
+        watch_fn=watch_fn)
 
     sess.run(self.inc_v)
 
@@ -243,8 +240,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     sess = dumping_wrapper.DumpingDebugWrapperSession(
         self.sess,
         session_root=self.session_root,
-        watch_fn=watch_fn,
-        log_usage=False)
+        watch_fn=watch_fn)
 
     sess.run(self.inc_v)
 
@@ -261,7 +257,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertNotIn("delta", dumped_nodes)
 
   def testDumpingDebugHookWithoutWatchFnWorks(self):
-    dumping_hook = hooks.DumpingDebugHook(self.session_root, log_usage=False)
+    dumping_hook = hooks.DumpingDebugHook(self.session_root)
     mon_sess = monitored_session._HookedSession(self.sess, [dumping_hook])
     mon_sess.run(self.inc_v)
 
@@ -293,7 +289,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
             op_type_regex_allowlist=r"^$")
 
     dumping_hook = hooks.DumpingDebugHook(
-        self.session_root, watch_fn=counting_watch_fn, log_usage=False)
+        self.session_root, watch_fn=counting_watch_fn)
     mon_sess = monitored_session._HookedSession(self.sess, [dumping_hook])
     for _ in range(4):
       mon_sess.run(self.inc_v)
@@ -331,7 +327,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
         return "DebugIdentity", r"$^", r"$^"
 
     dumping_hook = hooks.DumpingDebugHook(
-        self.session_root, watch_fn=counting_watch_fn, log_usage=False)
+        self.session_root, watch_fn=counting_watch_fn)
     mon_sess = monitored_session._HookedSession(self.sess, [dumping_hook])
     for _ in range(4):
       mon_sess.run(self.inc_v)
@@ -355,7 +351,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def testDumpingFromMultipleThreadsObeysThreadNameFilter(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(
-        self.sess, session_root=self.session_root, log_usage=False,
+        self.sess, session_root=self.session_root,
         thread_name_filter=r"MainThread$")
 
     self.assertAllClose(1.0, sess.run(self.delta))
@@ -376,7 +372,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def testDumpingWrapperWithEmptyFetchWorks(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(
-        self.sess, session_root=self.session_root, log_usage=False)
+        self.sess, session_root=self.session_root)
     sess.run([])
 
 

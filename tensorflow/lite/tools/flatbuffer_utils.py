@@ -18,7 +18,6 @@ All functions that are commonly used to work with FlatBuffers.
 
 Refer to the tensorflow lite flatbuffer schema here:
 tensorflow/lite/schema/schema.fbs
-
 """
 
 import copy
@@ -28,6 +27,7 @@ import struct
 import sys
 
 import flatbuffers
+
 from tensorflow.lite.python import schema_py_generated as schema_fb
 from tensorflow.lite.python import schema_util
 from tensorflow.python.platform import gfile
@@ -70,6 +70,9 @@ def read_model_with_mutable_tensors(input_tflite_file):
   Similar to read_model() with the addition that the returned object has
   mutable tensors (read_model() returns an object with immutable tensors).
 
+  NOTE: This API only works for TFLite generated with
+  _experimental_use_buffer_offset=false
+
   Args:
     input_tflite_file: Full path name to the input tflite file
 
@@ -83,18 +86,22 @@ def read_model_with_mutable_tensors(input_tflite_file):
   return copy.deepcopy(read_model(input_tflite_file))
 
 
-def convert_object_to_bytearray(model_object):
+def convert_object_to_bytearray(model_object, extra_buffer=b''):
   """Converts a tflite model from an object to a immutable bytearray."""
   # Initial size of the buffer, which will grow automatically if needed
   builder = flatbuffers.Builder(1024)
   model_offset = model_object.Pack(builder)
   builder.Finish(model_offset, file_identifier=_TFLITE_FILE_IDENTIFIER)
   model_bytearray = bytes(builder.Output())
+  model_bytearray = model_bytearray + extra_buffer
   return model_bytearray
 
 
 def write_model(model_object, output_tflite_file):
   """Writes the tflite model, a python object, into the output file.
+
+  NOTE: This API only works for TFLite generated with
+  _experimental_use_buffer_offset=false
 
   Args:
     model_object: A tflite model as a python object
@@ -149,7 +156,7 @@ def randomize_weights(model, random_seed=0, buffers_to_skip=None):
     model: The model in which to randomize weights.
     random_seed: The input to the random number generator (default value is 0).
     buffers_to_skip: The list of buffer indices to skip. The weights in these
-                     buffers are left unmodified.
+      buffers are left unmodified.
   """
 
   # The input to the random seed generator. The default value is 0.
@@ -393,7 +400,8 @@ def count_resource_variables(model):
       continue
     for op in subgraph.operators:
       builtin_code = schema_util.get_builtin_code_from_operator_code(
-          model.operatorCodes[op.opcodeIndex])
+          model.operatorCodes[op.opcodeIndex]
+      )
       if builtin_code == schema_fb.BuiltinOperator.VAR_HANDLE:
         unique_shared_names.add(op.builtinOptions.sharedName)
   return len(unique_shared_names)

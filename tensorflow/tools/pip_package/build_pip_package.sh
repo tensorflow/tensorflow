@@ -17,6 +17,12 @@
 
 set -e
 
+# Read the value of VERSION from vercod.bzl
+VERSION=$(grep 'VERSION = ' tensorflow/tensorflow.bzl | sed -E 's/VERSION = "(.*)"/\1/g')
+VERSION_MAJOR=$(echo "$VERSION" | cut -d '.' -f1)
+echo TensorFlow Version: ${VERSION}
+echo TensorFlow Major Version: ${VERSION_MAJOR}
+
 function is_absolute {
   [[ "$1" = /* ]] || [[ "$1" =~ ^[a-zA-Z]:[/\\].* ]]
 }
@@ -31,7 +37,7 @@ function cp_external() {
 
   pushd .
   cd "$src_dir"
-  for f in `find . ! -type d ! -name '*.py' ! -path '*local_config_cuda*' ! -path '*local_config_tensorrt*' ! -path '*local_config_syslibs*' ! -path '*org_tensorflow*' ! -path '*llvm-project/llvm/*'`; do
+  for f in `find . ! -type d ! -name '*.py' ! -path '*local_config_cuda*' ! -path '*local_config_tensorrt*' ! -path '*pypi*' ! -path '*python_x86_64*' ! -path '*python_aarch64*' ! -path '*local_config_syslibs*' ! -path '*org_tensorflow*' ! -path '*llvm-project/llvm/*' ! -path '*local_tsl*' ! -path '*local_xla*'`; do
     mkdir -p "${dest_dir}/$(dirname ${f})"
     cp "${f}" "${dest_dir}/$(dirname ${f})/"
   done
@@ -39,6 +45,22 @@ function cp_external() {
 
   mkdir -p "${dest_dir}/local_config_cuda/cuda/cuda/"
   cp "${src_dir}/local_config_cuda/cuda/cuda/cuda_config.h" "${dest_dir}/local_config_cuda/cuda/cuda/"
+}
+
+function cp_local_config_python() {
+  local src_dir=$1
+  local dest_dir=$2
+  pushd .
+  cd "$src_dir"
+  mkdir -p "${dest_dir}/local_config_python/numpy_include/"
+  cp -r "pypi_numpy/site-packages/numpy/core/include/numpy" "${dest_dir}/local_config_python/numpy_include/"
+  mkdir -p "${dest_dir}/local_config_python/python_include/"
+  if is_windows; then
+    cp -r python_*/include/* "${dest_dir}/local_config_python/python_include/"
+  else
+    cp -r python_*/include/python*/* "${dest_dir}/local_config_python/python_include/"
+  fi
+  popd
 }
 
 function copy_xla_aot_runtime_sources() {
@@ -95,6 +117,8 @@ function reorganize_includes() {
   move_to_root_if_exists external/com_google_protobuf/src/google
   rm -rf external/com_google_protobuf/python
 
+  cp -R external/ml_dtypes ./
+
   popd
 }
 
@@ -123,6 +147,7 @@ function prepare_src() {
 
   TMPDIR="${1%/}"
   mkdir -p "$TMPDIR"
+  echo TMPDIR: ${TMPDIR}
   EXTERNAL_INCLUDES="${TMPDIR}/tensorflow/include/external"
   XLA_AOT_RUNTIME_SOURCES="${TMPDIR}/tensorflow/xla_aot_runtime_src"
 
@@ -134,25 +159,28 @@ function prepare_src() {
   fi
 
   if is_windows; then
-    rm -rf ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
-    mkdir -p ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
-    echo "Unzipping simple_console_for_windows.zip to create runfiles tree..."
-    unzip -o -q ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_windows.zip -d ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
-    echo "Unzip finished."
-    # runfiles structure after unzip the python binary
     cp -L \
-      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/LICENSE \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow/LICENSE \
       "${TMPDIR}"
-    cp -LR \
-      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/tensorflow \
-      "${TMPDIR}"
+      
+    # Change the format of file path (TMPDIR-->TMPDIR_rsync) which is input to the rsync from
+    # Windows-compatible to Linux-compatible to resolve the error below 
+    # error: ssh: Could not resolve hostname c: No such host is known. 
+    
+    TMPDIR_rsync=`cygpath $TMPDIR`  
+    rsync -a \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow/tensorflow \
+      "${TMPDIR_rsync}"
     cp_external \
-      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles \
+      "${EXTERNAL_INCLUDES}/"
+    cp_local_config_python \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles \
       "${EXTERNAL_INCLUDES}/"
     copy_xla_aot_runtime_sources \
-      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow \
       "${XLA_AOT_RUNTIME_SOURCES}/"
-    RUNFILES=bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow
+    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow
     # If oneDNN was built with openMP then copy the omp libs over
     if [ -f "bazel-bin/external/llvm_openmp/libiomp5md.dll" ]; then
       cp bazel-bin/external/llvm_openmp/libiomp5md.dll ${TMPDIR}/tensorflow/python
@@ -160,6 +188,25 @@ function prepare_src() {
     fi
   else
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
+    # Resolved the issue of a missing symlink to libtensorflow_cc.so.2 b/264967822#comment25
+    if is_macos; then
+      if [ ! -L "${RUNFILES}/tensorflow/libtensorflow_cc.${VERSION_MAJOR}.dylib" ]; then
+        ln -s "$(dirname "$(readlink "${RUNFILES}/tensorflow/libtensorflow_cc.${VERSION}.dylib")")/libtensorflow_cc.${VERSION_MAJOR}.dylib" \
+         "${RUNFILES}/tensorflow/libtensorflow_cc.${VERSION_MAJOR}.dylib"
+        echo "Created symlink: $(dirname "$(readlink "${RUNFILES}/tensorflow/libtensorflow_cc.${VERSION}.dylib")")/libtensorflow_cc.${VERSION_MAJOR}.dylib -> \
+          ${RUNFILES}/tensorflow/libtensorflow_cc.${VERSION_MAJOR}.dylib"
+      else
+        echo "Symlink already exists: ${RUNFILES}/tensorflow/libtensorflow_cc.${VERSION_MAJOR}.dylib"
+      fi
+    else
+      # cp -P ${RUNFILES}/tensorflow/libtensorflow_cc.so.${VERSION} ${RUNFILES}/tensorflow/libtensorflow_cc.so.${VERSION_MAJOR}
+      if [ ! -L "${RUNFILES}/tensorflow/libtensorflow_cc.so.${VERSION_MAJOR}" ]; then
+        ln -s "$(dirname "$(readlink "${RUNFILES}/tensorflow/libtensorflow_cc.so.${VERSION}")")/libtensorflow_cc.so.${VERSION_MAJOR}" \
+          "${RUNFILES}/tensorflow/libtensorflow_cc.so.${VERSION_MAJOR}"
+      else
+        echo "Symlink already exists: ${RUNFILES}/tensorflow/libtensorflow_cc.so.${VERSION_MAJOR}"
+      fi
+    fi
     cp -L \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
       "${TMPDIR}"
@@ -173,37 +220,46 @@ function prepare_src() {
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${EXTERNAL_INCLUDES}"
+      cp_local_config_python \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
+        "${EXTERNAL_INCLUDES}"
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
       cp_external \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
+        "${EXTERNAL_INCLUDES}"
+      cp_local_config_python \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${EXTERNAL_INCLUDES}"
     fi
     copy_xla_aot_runtime_sources \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow \
       "${XLA_AOT_RUNTIME_SOURCES}"
+    # Move vendored files into proper locations
+    # This is required because TSL/XLA don't publish their own wheels
+    cp -r bazel-bin/external/local_tsl/tsl/ ${TMPDIR}/tensorflow/tsl
+    cp -r bazel-bin/external/local_xla/xla/ ${TMPDIR}/tensorflow/compiler/xla
+    # Fix the proto stubs
+    if is_macos; then
+      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from tsl\./from tensorflow.tsl./' {} \;
+      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from local_xla\.xla/from tensorflow.compiler.xla/' {} \;
+      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from xla/from tensorflow.compiler.xla/' {} \;
+    else
+      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from tsl\./from tensorflow.tsl./' {} \;
+      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from local_xla\.xla/from tensorflow.compiler.xla/' {} \;
+      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from xla/from tensorflow.compiler.xla/' {} \;
+    fi
     # Copy MKL libs over so they can be loaded at runtime
-    # TODO(b/271299337): shared libraries that depend on libbfloat16.so.so have
-    # their NEEDED and RUNPATH set corresponding to a dependency on
-    # RUNFILES/_solib_local/libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so,
-    # which is a symlink to tensorflow/tsl/python/lib/core/libbfloat16.so in
-    # the Bazel build tree. We do not export the file in _solib_local (nor
-    # symlinks in general, I think Python wheels have poor support for them?)
     so_lib_dir=$(ls $RUNFILES | grep solib)
     if is_macos; then
-      chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
-      install_name_tool -change "@loader_path/../../../../../${so_lib_dir}//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/libbfloat16.so.so" ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
-      install_name_tool -change "@loader_path/../../${so_lib_dir}//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/../tsl/python/lib/core/libbfloat16.so.so" ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
     else
-      chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
-      patchelf --replace-needed libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so libbfloat16.so.so ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
-      patchelf --replace-needed libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so libbfloat16.so.so ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
-      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so):\$ORIGIN ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
-      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so):\$ORIGIN/../tsl/python/lib/core ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
-      patchelf --shrink-rpath ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
+      chmod +rw ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
+      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so):\$ORIGIN/../../tensorflow/tsl/python/lib/core ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so):\$ORIGIN/../../../../../python ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
       patchelf --shrink-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      patchelf --shrink-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
     fi
     mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
     if [ -n "${mkl_so_dir}" ]; then
@@ -262,12 +318,21 @@ function build_wheel() {
   if [[ -e tools/python_bin_path.sh ]]; then
     source tools/python_bin_path.sh
   fi
-
+  if is_windows; then
+    PY_DIR=$(find -L ./bazel-tensorflow/external -maxdepth 1 -type d -name "python_*")
+    FULL_DIR="$(real_path "$PY_DIR")/python"
+    export PYTHONPATH="$PYTHONPATH:$PWD/bazel-tensorflow/external/pypi_wheel/site-packages/"
+  else
+    PY_DIR=$(find ./bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/ -maxdepth 1 -type d -name "python_*")
+    FULL_DIR="$(real_path "$PY_DIR")/bin/python3"
+    export PYTHONPATH="$PYTHONPATH:$PWD/bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/pypi_wheel/site-packages/"
+  fi
+  
   pushd ${TMPDIR} > /dev/null
 
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
-  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${PKG_NAME_FLAG} >/dev/null
+  $FULL_DIR setup.py bdist_wheel ${PKG_NAME_FLAG} >/dev/null
   mkdir -p ${DEST}
   cp dist/* ${DEST}
   popd > /dev/null
@@ -288,6 +353,7 @@ function usage() {
   echo "  Options:"
   echo "    --project_name <name> set project name to name"
   echo "    --cpu                 build tensorflow_cpu"
+  echo "    --tpu                 build tensorflow_tpu"
   echo "    --gpudirect           build tensorflow_gpudirect"
   echo "    --rocm                build tensorflow_rocm"
   echo "    --nightly_flag        build tensorflow nightly"
@@ -299,6 +365,7 @@ function main() {
   PKG_NAME_FLAG=""
   PROJECT_NAME=""
   CPU_BUILD=0
+  TPU_BUILD=0
   GPUDIRECT_BUILD=0
   ROCM_BUILD=0
   NIGHTLY_BUILD=0
@@ -313,6 +380,8 @@ function main() {
       NIGHTLY_BUILD=1
     elif [[ "$1" == "--cpu" ]]; then
       CPU_BUILD=1
+    elif [[ "$1" == "--tpu" ]]; then
+      TPU_BUILD=1
     elif [[ "$1" == "--gpudirect" ]]; then
       GPUDIRECT_BUILD=1
     elif [[ "$1" == "--rocm" ]]; then
@@ -340,8 +409,8 @@ function main() {
     fi
   done
 
-  if [[ $(( CPU_BUILD + GPUDIRECT_BUILD + ROCM_BUILD )) -gt "1" ]]; then
-    echo "Only one of [--cpu, --gpudirect, --rocm] may be provided."
+  if [[ $(( TPU_BUILD + CPU_BUILD + GPUDIRECT_BUILD + ROCM_BUILD )) -gt "1" ]]; then
+    echo "Only one of [--tpu, --cpu, --gpudirect, --rocm] may be provided."
     usage
     exit 1
   fi
@@ -372,6 +441,8 @@ function main() {
     PKG_NAME_FLAG="--project_name tf_nightly_rocm"
   elif [[ ${NIGHTLY_BUILD} == "1" && ${CPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly_cpu"
+  elif [[ ${NIGHTLY_BUILD} == "1" && ${TPU_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly_tpu"
   elif [[ ${NIGHTLY_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly"
   elif [[ ${GPUDIRECT_BUILD} == "1" ]]; then
@@ -380,6 +451,8 @@ function main() {
     PKG_NAME_FLAG="--project_name tensorflow_rocm"
   elif [[ ${CPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tensorflow_cpu"
+  elif [[ ${TPU_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tensorflow_tpu"
   fi
 
   build_wheel "$SRCDIR" "$DSTDIR" "$PKG_NAME_FLAG"

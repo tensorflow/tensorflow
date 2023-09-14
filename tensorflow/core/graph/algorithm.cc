@@ -204,7 +204,8 @@ void GetPostOrder(const Graph& g, std::vector<Node*>* order,
                   const NodeComparator& stable_comparator,
                   const EdgeFilter& edge_filter) {
   order->clear();
-  DFS(g, nullptr, [order](Node* n) { order->push_back(n); }, stable_comparator,
+  DFS(
+      g, nullptr, [order](Node* n) { order->push_back(n); }, stable_comparator,
       edge_filter);
 }
 
@@ -267,6 +268,56 @@ bool FixupSourceAndSinkEdges(Graph* g) {
     }
   }
   return changed;
+}
+
+namespace {
+template <class T>
+void BreadthFirstTraversalHelper(const Graph& g, gtl::ArraySlice<T> start,
+                                 const std::function<void(T)>& visit,
+                                 NodeComparator stable_comparator) {
+  std::deque<T> stack;
+  if (start.empty()) {
+    for (T n : g.nodes()) {
+      if (n->in_edges().empty()) {
+        stack.push_back(n);
+      }
+    }
+  }
+
+  std::vector<bool> seen(g.num_node_ids(), false);
+  while (!stack.empty()) {
+    T n = stack.front();
+    stack.pop_front();
+
+    seen[n->id()] = true;
+    visit(n);
+
+    std::vector<T> nodes_sorted;
+    for (const Edge* out_edge : n->out_edges()) {
+      if (!seen[out_edge->dst()->id()]) {
+        seen[out_edge->dst()->id()] = true;
+        nodes_sorted.emplace_back(out_edge->dst());
+      }
+    }
+    std::sort(nodes_sorted.begin(), nodes_sorted.end(), stable_comparator);
+    for (T out : nodes_sorted) {
+      stack.push_back(out);
+    }
+  }
+}
+}  // namespace
+
+void BreadthFirstTraversal(const Graph& g, gtl::ArraySlice<const Node*> start,
+                           const std::function<void(const Node*)>& visit,
+                           NodeComparator stable_comparator) {
+  return BreadthFirstTraversalHelper<const Node*>(g, start, visit,
+                                                  stable_comparator);
+}
+
+void BreadthFirstTraversal(Graph& g, gtl::ArraySlice<Node*> start,
+                           const std::function<void(Node*)>& visit,
+                           NodeComparator stable_comparator) {
+  return BreadthFirstTraversalHelper<Node*>(g, start, visit, stable_comparator);
 }
 
 }  // namespace tensorflow

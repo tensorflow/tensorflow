@@ -38,6 +38,18 @@ message MeshDimensionProto {
 message LayoutProto {
   repeated ShardingSpec sharding_specs = 1;
   MeshProto mesh_config = 2;
+  enum LayoutType {
+    UNKNOWN = 0;
+    STATIC = 1;  // A tiled layout for static and evenly shaped local shards.
+    PARTED = 2;  // A parted layout contains axes that are treated as
+                 // independent by most of SPMD expanders.
+                 // FIXME(b/285905569): The exact semantics is still being
+                 // investigated.
+
+    SINGLE_DEVICE = 3;  // A single device layout that represents DTensor on a
+                        // single device Mesh.
+  }
+  LayoutType type = 3;
 }
 
 // Proto representation of a Mesh.

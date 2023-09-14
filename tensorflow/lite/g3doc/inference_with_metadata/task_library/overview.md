@@ -65,7 +65,7 @@ hardware acceleration of TensorFlow Lite models by leveraging on-device
 accelerators such as the [GPU](https://www.tensorflow.org/lite/performance/gpu)
 and [Coral Edge TPU](https://coral.ai/). Utilizing them for neural network
 operations provides huge benefits in terms of latency and power efficiency. For
-example, GPUs can provide upto a
+example, GPUs can provide up to a
 [5x speedup](https://blog.tensorflow.org/2020/08/faster-mobile-gpu-inference-with-opencl.html)
 in latency on mobile devices, and Coral Edge TPUs inference
 [10x faster](https://coral.ai/docs/edgetpu/benchmarks/) than desktop CPUs.
@@ -106,7 +106,7 @@ default.
 
 Step 2. Configure GPU delegate in the task options through
 [BaseOptions](https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/task/core/BaseOptions.Builder).
-For example, you can set up GPU in `ObjectDetecor` as follows:
+For example, you can set up GPU in `ObjectDetector` as follows:
 
 ```java
 // Turn on GPU delegation.

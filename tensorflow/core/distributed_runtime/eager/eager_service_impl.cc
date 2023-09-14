@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/fixed_array.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
@@ -48,8 +49,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
-#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tsl/distributed_runtime/preemption/preemption_notifier.h"
+#include "tsl/protobuf/coordination_config.pb.h"
 namespace tensorflow {
 namespace eager {
 
@@ -59,7 +60,7 @@ Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
                      int* num_retvals) {
   const tensorflow::OpRegistrationData* op_reg_data = nullptr;
   auto status = tensorflow::OpRegistry::Global()->LookUp(op_name, &op_reg_data);
-  if (errors::IsNotFound(status)) {
+  if (absl::IsNotFound(status)) {
     status = context->FindFunctionOpData(op_name, &op_reg_data);
   }
   TF_RETURN_IF_ERROR(status);

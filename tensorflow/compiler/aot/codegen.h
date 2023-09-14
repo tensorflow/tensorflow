@@ -48,6 +48,9 @@ struct CodegenOpts {
   // If true, emit a serialized HloProfilePrinterData protobuf that can be used
   // to pretty print HLO profile counters.
   bool gen_hlo_profile_printer_data = false;
+
+  // If true, sets this executable as an XLA Runtime one.
+  bool use_xla_runtime = false;
 };
 
 // Describes a generated metadata object file.

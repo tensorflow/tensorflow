@@ -23,10 +23,12 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -621,21 +623,39 @@ class SparseSegmentReductionHelper(SegmentReductionHelper):
     return self._segmentReduce(
         segment_indices, x[indices], op1, op2, num_segments=num_segments)
 
-  def _sparseSegmentReduceGrad(self, ygrad, indices, segment_ids, output_dim0,
-                               mode):
+  def _sparseSegmentReduceGradWeights(self, ygrad, segment_ids, mode):
     assert mode in ("sum", "mean", "sqrtn")
-    if mode != "sum":
+    if mode == "sum":
+      weights = np.ones(ygrad.shape[0], ygrad.dtype)
+    else:
       weights = np.zeros(ygrad.shape[0], ygrad.dtype)
       for segment in segment_ids:
         weights[segment] += 1
       weights = 1. / weights if mode == "mean" else 1. / np.sqrt(weights)
+    return weights
+
+  def _sparseSegmentReduceGrad(
+      self, ygrad, indices, segment_ids, output_dim0, mode
+  ):
+    assert mode in ("sum", "mean", "sqrtn")
+    weights = self._sparseSegmentReduceGradWeights(ygrad, segment_ids, mode)
     xgrad = np.zeros([output_dim0, ygrad.shape[1]], ygrad.dtype)
     for segment, index in zip(segment_ids, indices):
-      if mode == "sum":
-        xgrad[index] += ygrad[segment]
-      else:
-        xgrad[index] += ygrad[segment] * weights[segment]
+      xgrad[index] += ygrad[segment] * weights[segment]
     return xgrad
+
+  def _sparseSegmentReduceGradV2(self, ygrad, indices, segment_ids, mode):
+    assert mode in ("sum", "mean", "sqrtn")
+    unique_indices, unique_indices_inverse = np.unique(
+        indices, return_inverse=True
+    )
+    weights = self._sparseSegmentReduceGradWeights(ygrad, segment_ids, mode)
+    xgrad_unique = np.zeros(
+        [unique_indices.shape[0], ygrad.shape[1]], ygrad.dtype
+    )
+    for segment, unique_index in zip(segment_ids, unique_indices_inverse):
+      xgrad_unique[unique_index] += ygrad[segment] * weights[segment]
+    return xgrad_unique, unique_indices
 
 
 class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
@@ -1042,6 +1062,82 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
           tf_xgrad = tf_op(tf_ygrad, indices, segment_ids, output_dim0)
           self.assertAllClose(tf_xgrad, np_xgrad)
 
+  def testGradientV2Explicit(self):
+    # Note that the GPU implem has different paths for different inner sizes.
+    for inner_size in (1, 2, 3, 32):
+      with self.session():
+        tf_ygrad, np_ygrad = self._input(
+            [3, inner_size], dtype=dtypes_lib.float32
+        )
+        segment_ids = [0, 1, 2, 2, 2]
+        indices = [8, 3, 0, 9, 3]
+        output_dim0 = 10
+        ops_list = [
+            (math_ops.sparse_segment_sum_grad_v2, "sum"),
+            (math_ops.sparse_segment_mean_grad_v2, "mean"),
+            (math_ops.sparse_segment_sqrt_n_grad_v2, "sqrtn"),
+        ]
+        for tf_op, mode in ops_list:
+          np_xgrad, np_unique_indices = self._sparseSegmentReduceGradV2(
+              np_ygrad, indices, segment_ids, mode
+          )
+          tf_xgrad, tf_unique_indices = tf_op(
+              tf_ygrad, indices, segment_ids, output_dim0
+          )
+          self.assertAllClose(tf_xgrad, np_xgrad)
+          self.assertAllClose(tf_unique_indices, np_unique_indices)
+
+  def testGradientV2ExplicitSingleOutput(self):
+    # The GPU implem has a special case when there is a single output.
+    for inner_size in (1, 2, 3, 32):
+      with self.session():
+        tf_ygrad, np_ygrad = self._input(
+            [3, inner_size], dtype=dtypes_lib.float32
+        )
+        segment_ids = [0, 1, 2, 2, 2]
+        indices = [0, 0, 0, 0, 0]
+        output_dim0 = 1
+        ops_list = [
+            (math_ops.sparse_segment_sum_grad_v2, "sum"),
+            (math_ops.sparse_segment_mean_grad_v2, "mean"),
+            (math_ops.sparse_segment_sqrt_n_grad_v2, "sqrtn"),
+        ]
+        for tf_op, mode in ops_list:
+          np_xgrad, np_unique_indices = self._sparseSegmentReduceGradV2(
+              np_ygrad, indices, segment_ids, mode
+          )
+          tf_xgrad, tf_unique_indices = tf_op(
+              tf_ygrad, indices, segment_ids, output_dim0
+          )
+          self.assertAllClose(tf_xgrad, np_xgrad)
+          self.assertAllClose(tf_unique_indices, np_unique_indices)
+
+  @test_util.run_deprecated_v1
+  def testSparseGradient(self):
+    shape = [10, 4]
+
+    segment_indices = [0, 1, 2, 2]
+    num_indices = len(segment_indices)
+    for tf_op in [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]:
+      with self.cached_session():
+        tf_indices, _, tf_x, np_x = self._sparse_input(
+            shape, num_indices, dtype=dtypes_lib.float64
+        )
+        with gradients.GradientTape() as g:
+          g.watch(tf_x)
+          s = tf_op(
+              data=tf_x,
+              indices=tf_indices,
+              segment_ids=segment_indices,
+              sparse_gradient=True,
+          )
+        tf_dx = g.gradient(s, tf_x)
+        self.assertIsInstance(tf_dx, indexed_slices.IndexedSlices)
+        jacob_t, jacob_n = gradient_checker.compute_gradient(
+            tf_x, shape, s, [3, 4], x_init_value=np_x.astype(np.double), delta=1
+        )
+      self.assertAllClose(jacob_t, jacob_n)
+
   def testGradientValid(self):
     # Baseline for the testGradient*Invalid* methods below.
     tf_x, _ = self._input([3, 4], dtype=dtypes_lib.float32)
@@ -1146,6 +1242,119 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError(r"Segment id 0 out of range \[0, 0\)"):
           self.evaluate(s)
+
+  def testGradientV2Valid(self):
+    # Baseline for the testGradientV2*Invalid* methods below.
+    tf_x, _ = self._input([3, 4], dtype=dtypes_lib.float32)
+    ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    segment_indices = [0, 1, 2, 2]
+    tf_indices = [8, 3, 0, 9]
+    with self.session(use_gpu=False):
+      for tf_op in ops_list:
+        s, j = tf_op(tf_x, tf_indices, segment_indices, 10)
+        self.evaluate([s, j])
+
+  @test_util.run_deprecated_v1
+  def testGradientV2IndicesInvalid1(self):
+    tf_x, _ = self._input([3, 4], dtype=dtypes_lib.float32)
+    ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    segment_indices = [0, 1, 2, 2]
+    tf_indices = [8, 3, 0, 10]
+    with self.session(use_gpu=False):
+      for tf_op in ops_list:
+        s, j = tf_op(tf_x, tf_indices, segment_indices, 10)
+        with self.assertRaisesOpError(r"Index 10 out of range \[0, 10\)"):
+          self.evaluate([s, j])
+
+  @test_util.run_deprecated_v1
+  def testGradientV2IndicesInvalid2(self):
+    tf_x, _ = self._input([3, 4], dtype=dtypes_lib.float32)
+    ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    segment_indices = [0, 1, 2, 2]
+    tf_indices = [8, 3, -1, 9]
+    with self.session(use_gpu=False):
+      for tf_op in ops_list:
+        s, j = tf_op(tf_x, tf_indices, segment_indices, 10)
+        with self.assertRaisesOpError(r"Index -1 out of range \[0, 10\)"):
+          self.evaluate([s, j])
+
+  @test_util.run_deprecated_v1
+  def testGradientV2SegmentsInvalid1(self):
+    tf_x, _ = self._input(
+        [3, 4], dtype=dtypes_lib.float32
+    )  # expecting 3 segments
+    ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    segment_indices = [0, 1, 1, 4]  # 5 segments
+    tf_indices = [8, 3, 0, 9]
+    with self.session(use_gpu=False):
+      for tf_op in ops_list:
+        s, j = tf_op(tf_x, tf_indices, segment_indices, 10)
+        with self.assertRaisesOpError("Invalid number of segments"):
+          self.evaluate([s, j])
+
+  @test_util.run_deprecated_v1
+  def testGradientV2SegmentsInvalid2(self):
+    tf_x, _ = self._input([1, 4], dtype=dtypes_lib.float32)
+    ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    segment_indices = [0, 1, 2, 0]
+    tf_indices = [8, 3, 0, 9]
+    with self.session(use_gpu=False):
+      for tf_op in ops_list:
+        s, j = tf_op(tf_x, tf_indices, segment_indices, 10)
+        with self.assertRaisesOpError(r"Segment id 1 out of range \[0, 1\)"):
+          self.evaluate([s, j])
+
+  @test_util.run_deprecated_v1
+  def testGradientV2SegmentsInvalid3(self):
+    tf_x, _ = self._input([2, 4], dtype=dtypes_lib.float32)
+    ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    segment_indices = [-1, 0, 1, 1]
+    tf_indices = [8, 3, 0, 9]
+    with self.session(use_gpu=False):
+      for tf_op in ops_list:
+        s, j = tf_op(tf_x, tf_indices, segment_indices, 10)
+        with self.assertRaisesOpError(r"Segment id -1 out of range \[0, 2\)"):
+          self.evaluate([s, j])
+
+  @test_util.run_deprecated_v1
+  def testGradientV2SegmentsInvalid4(self):
+    tf_x, _ = self._input([0, 4], dtype=dtypes_lib.float32)
+    ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    segment_indices = [0, 1, 2, -1]
+    tf_indices = [8, 3, 0, 9]
+    with self.session(use_gpu=False):
+      for tf_op in ops_list:
+        s, j = tf_op(tf_x, tf_indices, segment_indices, 10)
+        with self.assertRaisesOpError(r"Segment id 0 out of range \[0, 0\)"):
+          self.evaluate([s, j])
 
 
 class SegmentReductionOpBenchmark(test.Benchmark):

@@ -260,6 +260,12 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }
+      field {
+        name: "disable_eager_executor_streaming_enqueue"
+        number: 26
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
       enum_type {
         name: "MlirBridgeRollout"
         value {
