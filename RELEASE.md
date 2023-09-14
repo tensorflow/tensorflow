@@ -9,6 +9,9 @@
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
+* `tf.types.experimental.GenericFunction` has been renamed to
+  `tf.types.experimental.PolymorphicFunction`.
+
 ### Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
@@ -20,7 +23,7 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
-* Making the tf.function type system fully available:
+* Making the `tf.function` type system fully available:
     * `tf.types.experimental.TraceType` now allows custom tf.function inputs to
        declare Tensor decomposition and type casting support.
     * Introducing `tf.types.experimental.FunctionType` as the comprehensive

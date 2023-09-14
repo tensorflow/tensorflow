@@ -183,7 +183,12 @@ class ConcreteFunction(Callable, metaclass=abc.ABCMeta):
     """Returns the original `AtomicFunction` owned by this ConcreteFunction."""
 
 
-@tf_export("types.experimental.PolymorphicFunction", v1=[])
+# TODO(fmuham): Remove the export as GenericFunction in future release.
+@tf_export(
+    "types.experimental.PolymorphicFunction",
+    "types.experimental.GenericFunction",  # Deprecated
+    v1=[],
+)
 class PolymorphicFunction(Callable, metaclass=abc.ABCMeta):
   """Base class for polymorphic graph functions.
 
@@ -362,13 +367,6 @@ class PolymorphicFunction(Callable, metaclass=abc.ABCMeta):
       TypeError: When called with input in graph mode.
     """
     pass
-
-
-# TODO(b/297237997): Delete this once all usages are removed.
-@tf_export("types.experimental.GenericFunction", v1=[])
-class GenericFunction(PolymorphicFunction):
-  """Please use tf.types.experimental.PolymorphicFunction instead."""
-  pass
 
 
 @runtime_checkable

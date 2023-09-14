@@ -448,13 +448,14 @@ class OptionalXlaContext:
       self.xla_context.Exit()
 
 
-# TODO(b/297237997): Use PolymorphicFunction here after migrating uses.
 @tf_export("__internal__.function.Function", v1=[])
-class Function(core.GenericFunction, trackable.Trackable):
+class Function(core.PolymorphicFunction, trackable.Trackable):
   """A `tf.types.experimental.PolymorphicFunction` created by `tf.function`.
 
   Currently, individual methods/attributes under this class are not guaranteed
   by the TF API contract, and are subject to future changes.
+
+  (Previously also known as `tf.types.experimental.GenericFunction`)
   """
 
   def __init__(self,
