@@ -59,6 +59,10 @@ void SetOptionOverride(OptionOverrideProto& option, int64_t value) {
   option.set_int_field(value);
 }
 
+void SetOptionOverride(OptionOverrideProto& option, double value) {
+  option.set_double_field(value);
+}
+
 }  // namespace
 
 StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
@@ -127,6 +131,12 @@ StatusOr<CompileOptions> CompileOptions::FromProto(
             {env_option_override.first,
              CompileOptions::OptionOverride(
                  env_option_override.second.int_field())});
+        break;
+      case OptionOverrideProto::kDoubleField:
+        output.env_option_overrides.push_back(
+            {env_option_override.first,
+             CompileOptions::OptionOverride(
+                 env_option_override.second.double_field())});
         break;
       case OptionOverrideProto::VALUE_NOT_SET:
         return InternalError("OptionOverrideProto value not set.");
@@ -386,6 +396,16 @@ Status CompileOptions::ApplyOption(const std::string& key,
                    tsl::protobuf::FieldDescriptor::TYPE_INT64 &&
                std::holds_alternative<int64_t>(value)) {
       reflection->SetInt64(&debug_options, xla_field, std::get<int64_t>(value));
+      return OkStatus();
+    } else if (xla_field->type() ==
+                   tsl::protobuf::FieldDescriptor::TYPE_FLOAT &&
+               std::holds_alternative<double>(value)) {
+      reflection->SetFloat(&debug_options, xla_field, std::get<double>(value));
+      return OkStatus();
+    } else if (xla_field->type() ==
+                   tsl::protobuf::FieldDescriptor::TYPE_DOUBLE &&
+               std::holds_alternative<double>(value)) {
+      reflection->SetDouble(&debug_options, xla_field, std::get<double>(value));
       return OkStatus();
     } else {
       return InvalidArgument(
