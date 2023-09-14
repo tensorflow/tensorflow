@@ -42,21 +42,22 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -99,12 +100,12 @@ struct LaunchConv2DBackpropFilterOp<CPUDevice, T> {
     int64_t expected_out_rows, expected_out_cols;
     // The function is guaranteed to succeed because we checked the output and
     // padding was valid earlier.
-    TF_CHECK_OK(GetWindowedOutputSizeVerboseV2(
+    TF_CHECK_OK(GetWindowedOutputSizeVerbose(
         dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
         row_dilation, row_stride, padding, &expected_out_rows, &padding_top,
         &padding_bottom));
     DCHECK_EQ(dims.spatial_dims[0].output_size, expected_out_rows);
-    TF_CHECK_OK(GetWindowedOutputSizeVerboseV2(
+    TF_CHECK_OK(GetWindowedOutputSizeVerbose(
         dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
         col_dilation, col_stride, padding, &expected_out_cols, &padding_left,
         &padding_right));
@@ -205,12 +206,12 @@ void LaunchConv2DBackpropFilterOpImpl(
   int64_t expected_out_rows, expected_out_cols;
   // The function is guaranteed to succeed because we checked the output and
   // padding was valid earlier.
-  TF_CHECK_OK(GetWindowedOutputSizeVerboseV2(
+  TF_CHECK_OK(GetWindowedOutputSizeVerbose(
       dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
       row_dilation, row_stride, padding, &expected_out_rows, &padding_top,
       &padding_bottom));
   DCHECK_EQ(dims.spatial_dims[0].output_size, expected_out_rows);
-  TF_CHECK_OK(GetWindowedOutputSizeVerboseV2(
+  TF_CHECK_OK(GetWindowedOutputSizeVerbose(
       dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
       col_dilation, col_stride, padding, &expected_out_cols, &padding_left,
       &padding_right));
@@ -260,11 +261,10 @@ void LaunchConv2DBackpropFilterOpImpl(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    OP_REQUIRES_OK(
-        ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                                  se::blas::Transpose::kTranspose, n, m, k,
-                                  a_ptr, n, b_ptr, m, &c_ptr, n,
-                                  se::blas::kDefaultComputePrecision));
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
+                                             se::blas::Transpose::kTranspose, n,
+                                             m, k, a_ptr, n, b_ptr, m, &c_ptr,
+                                             n, GetNumericOptions()));
     return;
   } else if (dims.spatial_dims[0].filter_size ==
                  dims.spatial_dims[0].input_size &&
@@ -286,11 +286,10 @@ void LaunchConv2DBackpropFilterOpImpl(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    OP_REQUIRES_OK(
-        ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                                  se::blas::Transpose::kTranspose, n, m, k,
-                                  b_ptr, n, a_ptr, m, &c_ptr, n,
-                                  se::blas::kDefaultComputePrecision));
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
+                                             se::blas::Transpose::kTranspose, n,
+                                             m, k, b_ptr, n, a_ptr, m, &c_ptr,
+                                             n, GetNumericOptions()));
     return;
   }
 

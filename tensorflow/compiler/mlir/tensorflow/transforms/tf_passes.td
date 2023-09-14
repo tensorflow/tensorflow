@@ -354,12 +354,6 @@ def TransformEinsumPass : Pass<"tf-einsum", "mlir::func::FuncOp"> {
   let constructor = "TF::CreateTransformEinsumPass()";
 }
 
-def LegalizeHloToTfPass : Pass<"tf-legalize-hlo", "mlir::func::FuncOp"> {
-  let summary = "Legalize from HLO to the TF dialect";
-  let dependentDialects = ["TF::TensorFlowDialect"];
-  let constructor = "TF::CreateLegalizeHloToTfPass()";
-}
-
 def LegalizeTFGToTFPass : Pass<"tfe-legalize-tfg", "ModuleOp"> {
   let summary = "Legalize from TFG to the TFE dialect";
   let constructor = "TF::CreateLegalizeTFGToTFEPass()";
@@ -399,6 +393,59 @@ def EmbeddingPipeliningPass : Pass<"tf-embedding-pipelining", "mlir::ModuleOp"> 
     let description = [{
     For architectures that support accelerated embedding lookups, this pass will
     rewrite the graph to use pipelining for better device utilization.
+  }];
+}
+
+def EmbeddingProgramKeyPass : Pass<"tf-embedding-program-key", "mlir::func::FuncOp"> {
+  let summary = "Sets the program key for embedding ops.";
+  let constructor = "TFDevice::CreateEmbeddingProgramKeyPass()";
+    let description = [{
+    Passes in the program key to embedding ops. Will move the embedding ops
+    after a _TPUCompileMlir op if there is no predecessor _TPUCompileMlir op.
+    Both the embedding op and compile op are assumed to be wrapped in separate
+    tf_device.launch() ops. This is because the embedding op is head outside
+    compiled and the compile op is wrapped in launch to execute on host
+    during TPURewritePass.
+
+    For example, the tf.OpA with the `mini_batch_splits` attribute will be
+    moved after _TPUCompileMlir and the first input will use the
+    _TPUCompileMlir program output:
+
+    ```mlir
+    "tf_device.launch"() ({
+     %cst_0 = "tf.Const"() {value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+     "tf.OpA"(%cst_0) { mini_batch_splits = ""} : (tensor<1x!tf_type.string>) -> ()
+     tf_device.return
+   }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
+   %0:2 = "tf_device.launch"() ({
+     %compilation_status, %program = "tf._TPUCompileMlir"() { metadata = "...", mlir_module = "..." } : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+     tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
+   }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+   ```
+
+   becomes:
+
+   ```mlir
+     %0:2 = "tf_device.launch"() ({
+       %compilation_status, %program = "tf._TPUCompileMlir"() {metadata = "...", mlir_module = "..."} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+       tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
+     }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+     "tf_device.launch"() ({
+       %cst = "tf.Const"() {value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+       "tf.OpA"(%0#1) {mini_batch_splits = ""} : (tensor<3x!tf_type.string>) -> ()
+       tf_device.return
+     }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
+   ```
+  }];
+}
+
+def EmbeddingSequencingPass : Pass<"tf-embedding-sequencing", "mlir::ModuleOp"> {
+  let summary = "Rewrite graph for sequential execution of embeddings";
+  let constructor = "TFDevice::CreateEmbeddingSequencingPass()";
+    let description = [{
+    This is a strictly sequential and formally correct fallback option for the
+    embedding pipelining pass intended for debugging during pipelining
+    development.
   }];
 }
 
@@ -1124,13 +1171,6 @@ def ClusterOutliningPass : Pass<"tf-device-cluster-outlining", "ModuleOp"> {
   }];
 
   let constructor = "TFDevice::CreateClusterOutliningPass()";
-
-  let options = [
-    Option<"globally_unique_func_names_", "globally-unique-func-names", "bool",
-           /*default=*/"true",
-           "If true, the pass adds extra identifiers to make function names "
-           "globally unique within a process, not just within a module.">
-  ];
 }
 
 def ConvertTfControlFlowToScfPass : Pass<"convert-tf-control-flow-to-scf", "ModuleOp"> {
@@ -1295,7 +1335,7 @@ def ExtractOutsideCompilationPass : Pass<"tf-extract-outside-compilation", "Modu
     func @outside_compilation() -> tensor<f32> {
       %0 = "tf_device.parallel_execute"() ( {
         "tf_device.launch"() ( {
-          %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
+          %1 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
           %2 = "tf._XlaRecvAtHost"(%1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_args"} : (tensor<3x!tf_type.string>) -> tensor<f32>
           %3 = "tf.Identity"(%2) : (tensor<f32>) -> tensor<f32>
           "tf._XlaSendFromHost"(%3, %1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_retvals"} : (tensor<f32>, tensor<3x!tf_type.string>) -> ()
@@ -1415,6 +1455,14 @@ def FunctionalControlFlowToRegionsPass : Pass<"tf-functional-control-flow-to-reg
   }];
 
   let constructor = "TF::CreateTFFunctionalControlFlowToRegions()";
+
+  let options = [
+    Option<"allow_passthrough_args_", "allow-passthrough-args", "bool",
+           /*default=*/"false",
+           "Allows to switch on passthrough args for control flow logic. This "
+           "allows the pass to create blocks that better match MLIR interfaces, "
+           "but might break assumptions in existing passes.">
+  ];
 }
 
 def RegionControlFlowToFunctionalPass : Pass<"tf-region-control-flow-to-functional", "ModuleOp"> {
@@ -1904,42 +1952,6 @@ def LowerQuantizedPass : Pass<"tf-lower-quantized", "mlir::func::FuncOp"> {
   }];
 
   let constructor = "TF::CreateLowerQuantizedPass()";
-}
-
-def OutsideCompiledToHostLaunchPass : Pass<"tf-outside-compiled-to-host-launch", "ModuleOp"> {
-  let summary = "Wraps each op with the _xla_outside_compiled attribute in a separate tf_device.launch on replicated host device.";
-
-  let description = [{
-    This pass wraps ops with the same `_xla_outside_compilation`
-    attribute value in a tf_device.launch op with host device assignment.
-
-    A simple example:
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf.B"() {_xla_outside_compilation = "cluster1"}
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-
-    Would become the following ops (unimportant attribute, type are omitted):
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf_device.launch"() {
-          "tf.B"() {_xla_outside_compilation = "cluster1"}
-          tf_device.return
-        } {device = "TPU_REPLICATED_HOST_0"} : () -> ()
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-  }];
-
-  let constructor = "TFTPU::CreateOutsideCompiledToHostLaunchPass()";
 }
 
 def TPUHostComputationExpansionPass : Pass<"tf-tpu-host-computation-expansion", "mlir::func::FuncOp"> {
@@ -2773,4 +2785,14 @@ def XlaCallModuleSerializationPass
   ];
 
   let constructor = "TF::CreateXlaCallModuleSerializationPass()";
+}
+
+def ColocateTPUCopyWithDynamicShapePass : Pass<"tf-colocate-tpu-copy-with-dynamic-shape", "ModuleOp"> {
+  let summary = "Adjusts the device annotation of TPUCopyWithDynamicShape ops";
+  let description = [{
+    Adjusts the device annotation of TPUCopyWithDynamicShape ops such
+    that it matches that of the subsequent TPUExecute{,AndUpdateVariables}
+    op.
+  }];
+  let constructor = "TFTPU::CreateColocateTPUCopyWithDynamicShapePass()";
 }

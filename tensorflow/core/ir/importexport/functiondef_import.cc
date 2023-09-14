@@ -136,6 +136,13 @@ class ValueMapManager {
     if (value_info.size() <= output_num)
       value_info.resize(output_num + 1, Value{});
     if (!value_info[output_num]) {
+      // Guard against accessing OOB. This probably should have been caught
+      // earlier.
+      if (base_operation.size() == 1)
+        return InvalidArgument(
+            "Requested result from op that produces no values, but not "
+            "considered control dep");
+
       // Create a tfg.get_result for this output.
       value_info[output_num] = builder_.create<GetResultOp>(
           loc_, base_operation[1], output_name, output_num);

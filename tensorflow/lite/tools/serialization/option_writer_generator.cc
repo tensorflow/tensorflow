@@ -14,12 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include <ctype.h>
 
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
-#include "flatbuffers/minireflect.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 
 namespace tflite {
@@ -77,6 +82,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteSplitParams",
                                       "TfLiteSplitVParams",
                                       "TfLiteSqueezeParams",
+                                      "TfLiteStablehloScatterParams",
                                       "TfLiteStridedSliceParams",
                                       "TfLiteSubParams",
                                       "TfLiteSVDFParams",
@@ -225,6 +231,30 @@ class OpOptionData {
     op_to_option_["BITCAST"] = "";
     op_to_option_["BITWISE_XOR"] = "";
     op_to_option_["RIGHT_SHIFT"] = "";
+    op_to_option_["STABLEHLO_LOGISTIC"] = "";
+    op_to_option_["STABLEHLO_ADD"] = "";
+    op_to_option_["STABLEHLO_DIVIDE"] = "";
+    op_to_option_["STABLEHLO_MULTIPLY"] = "";
+    op_to_option_["STABLEHLO_MAXIMUM"] = "";
+    op_to_option_["STABLEHLO_MINIMUM"] = "";
+    op_to_option_["STABLEHLO_RESHAPE"] = "";
+    op_to_option_["STABLEHLO_CLAMP"] = "";
+    op_to_option_["STABLEHLO_ABS"] = "";
+    op_to_option_["STABLEHLO_AND"] = "";
+    op_to_option_["STABLEHLO_COSINE"] = "";
+    op_to_option_["STABLEHLO_EXPONENTIAL"] = "";
+    op_to_option_["STABLEHLO_FLOOR"] = "";
+    op_to_option_["STABLEHLO_LOG"] = "";
+    op_to_option_["STABLEHLO_OR"] = "";
+    op_to_option_["STABLEHLO_NEGATE"] = "";
+    op_to_option_["STABLEHLO_POWER"] = "";
+    op_to_option_["STABLEHLO_REMAINDER"] = "";
+    op_to_option_["STABLEHLO_RSQRT"] = "";
+    op_to_option_["STABLEHLO_SELECT"] = "";
+    op_to_option_["STABLEHLO_SUBTRACT"] = "";
+    op_to_option_["STABLEHLO_TANH"] = "";
+    op_to_option_["STABLEHLO_CONVERT"] = "";
+    op_to_option_["STABLEHLO_DYNAMIC_UPDATE_SLICE"] = "";
 
     // TODO(aselle): These are undesirable hacks. Consider changing C structs
     option_to_struct_["Pool2DOptions"] = "TfLitePoolParams";
@@ -248,6 +278,17 @@ class OpOptionData {
           break;
         }
       }
+      // add second union into the check
+      auto d2 = tflite::BuiltinOptions2TypeTable();
+      for (int i = 0; i < d2->num_elems; i++) {
+        std::string option_name = d2->names[i];
+        std::string collapsed_option_name = ToCollapsed(option_name);
+        if (collapsed_option_name_guess == collapsed_option_name) {
+          op_to_option_.insert(std::make_pair(op_name, option_name));
+          break;
+        }
+      }
+
       auto it = op_to_option_.find(op_name);
       if (it == op_to_option_.end()) {
         std::cerr << "Didn't find option for  " << op_name << std::endl;
@@ -373,10 +414,10 @@ void GenerateImportForOp(FILE* fp, const std::string& op_name,
 
   for (size_t i = 0; i < options->num_elems; i++) {
     std::string elem_name = options->names[i];
-    bool is_int_vector = false;
-    bool is_float_vector = false;
+    bool is_vector = false;
     std::string vector_name = elem_name;
     std::string vector_size;
+    std::string vector_type;
     // TODO(aselle): Irregular naming in builtins
     if (elem_name == "fused_activation_function")
       elem_name = "activation";
@@ -397,30 +438,41 @@ void GenerateImportForOp(FILE* fp, const std::string& op_name,
 
     // Vector fields treated specially.
     if (elem_name == "new_shape") {
-      is_int_vector = true;
+      is_vector = true;
       vector_name = "shape";
       vector_size = "num_dimensions";
+      vector_type = "int";
     } else if (elem_name == "squeeze_dims") {
-      is_int_vector = true;
+      is_vector = true;
       vector_size = "num_squeeze_dims";
+      vector_type = "int";
     } else if (elem_name == "boundaries") {
-      is_float_vector = true;
+      is_vector = true;
       vector_size = "num_boundaries";
+      vector_type = "float";
+    } else if (elem_name == "update_window_dims") {
+      is_vector = true;
+      vector_name = "update_window_dims";
+      vector_size = "num_update_window_dims";
+      vector_type = "int64_t";
+    } else if (elem_name == "inserted_window_dims") {
+      is_vector = true;
+      vector_name = "inserted_window_dims";
+      vector_size = "num_inserted_window_dims";
+      vector_type = "int64_t";
+    } else if (elem_name == "scatter_dims_to_operand_dims") {
+      is_vector = true;
+      vector_name = "scatter_dims_to_operand_dims";
+      vector_size = "num_scatter_dims_to_operand_dims";
+      vector_type = "int64_t";
     }
 
-    if (is_int_vector) {
+    if (is_vector) {
       fprintf(fp,
               "    auto val%zu = fbb->CreateVector("
-              "std::vector<int>(params->%s, params->%s + params->%s));\n",
-              i, vector_name.c_str(), vector_name.c_str(), vector_size.c_str());
-      continue;
-    }
-
-    if (is_float_vector) {
-      fprintf(fp,
-              "    auto val%zu = fbb->CreateVector("
-              "std::vector<float>(params->%s, params->%s + params->%s));\n",
-              i, vector_name.c_str(), vector_name.c_str(), vector_size.c_str());
+              "std::vector<%s>(params->%s, params->%s + params->%s));\n",
+              i, vector_type.c_str(), vector_name.c_str(), vector_name.c_str(),
+              vector_size.c_str());
       continue;
     }
 

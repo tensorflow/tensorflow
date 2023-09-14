@@ -23,7 +23,6 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.dtensor.python import config
-from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python import _pywrap_dtensor_device
 from tensorflow.python.eager import context
@@ -98,39 +97,6 @@ class DTensorDevice(object):
     ]
     return global_device_ids, local_device_ids, local_device_list
 
-  def _create_embedding_host_mesh(self, tpu_mesh: layout_lib.Mesh):
-    """Returns Embedding host mesh for each client."""
-    if tpu_mesh.device_type().upper() != "TPU":
-      raise ValueError("Must pass input of a tpu mesh.")
-
-    # Global device ids are global host ids, while local device ids contains
-    # local host id.
-
-    ts_local_device_ids = []
-    ts_local_devices = []
-    for local_device_str in tpu_mesh.local_devices():
-      # We only need to keep TPU:0 for each client.
-      if not local_device_str.endswith("TPU:0"):
-        continue
-
-      device_spec = tf_device.DeviceSpec.from_string(local_device_str)
-      ts_local_device_ids.append(device_spec.task)
-      ts_local_devices.append(device_spec.replace(device_type="CPU"))
-
-    if not ts_local_device_ids or not ts_local_device_ids:
-      logging.info(
-          "Cannot create tpu system mesh as %s has no `TPU:0` local device "
-          "found", tpu_mesh.to_string())
-      return None
-
-    ts_global_device_ids = np.arange(config.num_clients())
-    # TODO(zhonglinhan): parse global device specs as input when not None.
-    return layout_lib.Mesh(
-        dim_names=[tpu_mesh.dim_names[0]],  # 1D mesh.
-        global_device_ids=ts_global_device_ids,
-        local_device_ids=ts_local_device_ids,
-        local_devices=ts_local_devices)
-
   def _register_mesh(self, mesh: layout_lib.Mesh):
     """Idempotently register `mesh` with the dtensor device."""
     with self._mesh_lock:
@@ -147,25 +113,10 @@ class DTensorDevice(object):
               self._device_info, mesh.host_mesh().to_string(), True
           )
           self._meshes.add(mesh.host_mesh())
-          embedding_host_mesh = self._create_embedding_host_mesh(mesh)
-          if embedding_host_mesh:
-            logging.info(
-                "Registering embedding host mesh %s on each client for mesh %s",
-                embedding_host_mesh.to_string(), mesh.to_string())
-            _pywrap_dtensor_device.AddMesh(
-                self._device_info, embedding_host_mesh.to_string(), False
-            )
-            self._meshes.add(embedding_host_mesh)
 
   @property
   def meshes(self) -> Set[layout_lib.Mesh]:
     return self._meshes
-
-  def copy_to_mesh(self, tensor, new_layout) -> ops.Tensor:
-    """Copy `tensor` to `device` with the given layout."""
-    self._register_mesh(new_layout.mesh)
-    with ops.device(self.name):
-      return gen_dtensor_ops.copy_to_mesh(tensor, layout=new_layout.to_string())
 
   def pack(self, tensors: Sequence[Any], layout: layout_lib.Layout) -> Any:
     """Packs tensors into a DTensor handle on this DTensor device.
@@ -357,7 +308,7 @@ class DTensorDevice(object):
         self._device_info,
         tpu_core_locations)
 
-  def _get_function_cache_stats(self):
+  def _get_stats(self):
     """Returns the number of cache hit and miss for function compilation.
 
     Returns:
@@ -367,7 +318,7 @@ class DTensorDevice(object):
         'size': size of cache;
       miss count.
     """
-    return _pywrap_dtensor_device.GetFunctionCacheStats(
+    return _pywrap_dtensor_device.GetStats(
         context.context()._handle,  # pylint: disable=protected-access,
         self._device_info,
     )

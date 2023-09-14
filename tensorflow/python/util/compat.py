@@ -41,6 +41,8 @@ sets of python types:
 * `complex_types`
 * `integral_types`
 * `real_types`
+
+API docstring: tensorflow.compat
 """
 
 import numbers as _numbers

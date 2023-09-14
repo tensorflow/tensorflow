@@ -22,12 +22,14 @@ limitations under the License.
 #define TENSORFLOW_LITE_UTIL_H_
 
 #include <stddef.h>
+#include <stdlib.h>
 
 #include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
@@ -106,14 +108,7 @@ inline bool IsResourceOrVariant(const TfLiteTensor* tensor) {
 TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
                            size_t* bytes, TfLiteContext* context);
 
-/// UNIQUE PTR WRAPPERS ///
-struct TfLiteIntArrayDeleter {
-  void operator()(TfLiteIntArray* a) {
-    if (a) {
-      TfLiteIntArrayFree(a);
-    }
-  }
-};
+// `unique_ptr` wrapper for `TfLiteTensor`s.
 struct TfLiteTensorDeleter {
   void operator()(TfLiteTensor* t) {
     if (t) {
@@ -123,12 +118,6 @@ struct TfLiteTensorDeleter {
   }
 };
 
-// `unique_ptr` wrapper for `TfLiteIntArray`s.
-using IntArrayUniquePtr =
-    std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter>;
-IntArrayUniquePtr BuildTfLiteIntArray(const std::vector<int>& data);
-
-// `unique_ptr` wrapper for `TfLiteTensor`s.
 using TensorUniquePtr = std::unique_ptr<TfLiteTensor, TfLiteTensorDeleter>;
 TensorUniquePtr BuildTfLiteTensor();
 TensorUniquePtr BuildTfLiteTensor(TfLiteType type, const std::vector<int>& dims,

@@ -1,12 +1,8 @@
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites", "tf_xla_py_strict_test")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load(
-    "//tensorflow/compiler/tests:build_defs.bzl",
-    "generate_backend_suites",
-)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -107,7 +103,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adadelta",
         "//third_party/py/numpy",
     ],
 )
@@ -127,7 +123,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adagrad",
         "//third_party/py/numpy",
     ],
 )
@@ -149,7 +145,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adagrad_da",
         "//third_party/py/numpy",
     ],
 )
@@ -173,7 +169,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adam",
         "//third_party/py/numpy",
     ],
 )
@@ -182,6 +178,10 @@ tf_xla_py_strict_test(
     name = "add_n_test",
     size = "small",
     srcs = ["add_n_test.py"],
+    # copybara:uncomment_begin
+    # #TODO(b/286470564): Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
     # TensorList ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
     enable_mlir_bridge = False,
@@ -209,6 +209,7 @@ tf_xla_py_strict_test(
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "noasan",  # times out consistently from 2023-08-24
     ],
     deps = [
         ":xla_test",
@@ -234,7 +235,6 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -245,6 +245,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -267,10 +268,10 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops_gen",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -307,13 +308,13 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:stateless_random_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -346,6 +347,10 @@ tf_xla_py_strict_test(
     name = "cond_test",
     size = "small",
     srcs = ["cond_test.py"],
+    # copybara:uncomment_begin
+    # #TODO(b/286470564): Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
     enable_mlir_bridge = False,
     python_version = "PY3",
     tags = [
@@ -449,11 +454,11 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:linalg_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -470,9 +475,10 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/ops:linalg_ops",
         "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/platform:sysconfig",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -486,6 +492,7 @@ tf_xla_py_strict_test(
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
+        "no_oss",  # TODO(b/295649328): fix failed nightly tests
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
@@ -513,12 +520,12 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -531,10 +538,11 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "noasan",  # Timed out on 2023-07-12
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:pywrap_sanitizers",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
@@ -542,6 +550,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -559,11 +568,11 @@ tf_xla_py_strict_test(
     deps = [
         ":test_utils",
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -580,13 +589,15 @@ tf_xla_py_strict_test(
     use_xla_device = False,  # Uses tf.function(jit_compile=True)
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/platform:sysconfig",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -601,15 +612,18 @@ tf_xla_py_strict_test(
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
     deps = [
+        ":test_utils",
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradient_checker",
         "//tensorflow/python/ops:nn_grad",
         "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:nn_ops_gen",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -627,12 +641,12 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:nn_grad",
+        "//tensorflow/python/ops:nn_impl",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
@@ -674,10 +688,10 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:special_math_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -711,10 +725,10 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:data_flow_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -740,6 +754,10 @@ tf_xla_py_strict_test(
     name = "eager_test",
     size = "medium",
     srcs = ["eager_test.py"],
+    # copybara:uncomment_begin
+    # #TODO(b/287111047): Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
     enable_mlir_bridge = False,
     python_version = "PY3",
     tags = [
@@ -749,7 +767,6 @@ tf_xla_py_strict_test(
     deps = [
         ":xla_test",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -769,6 +786,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:random_ops_gen",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:while_loop",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/training:adam",
         "//third_party/py/numpy",
     ],
@@ -807,11 +825,11 @@ tf_xla_py_strict_test(
     deps = [
         ":xla_test",
         "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops/signal",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -828,11 +846,11 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -852,7 +870,9 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adagrad",
+        "//tensorflow/python/training:ftrl",
+        "//tensorflow/python/training:gradient_descent",
         "//third_party/py/numpy",
     ],
 )
@@ -868,11 +888,11 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:resource_variable_ops",
-        "//tensorflow/python/training",
+        "//tensorflow/python/platform:test",
+        "//tensorflow/python/training:training_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -888,11 +908,11 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -917,11 +937,11 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:image_ops",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:image_ops",
         "//tensorflow/python/ops:image_ops_gen",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
@@ -959,13 +979,13 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/ops:nn_ops_gen",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -981,10 +1001,10 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:manip_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -1024,9 +1044,9 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_gen",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -1048,7 +1068,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:momentum",
         "//third_party/py/numpy",
     ],
 )
@@ -1064,11 +1084,11 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -1084,9 +1104,9 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -1103,14 +1123,15 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -1152,7 +1173,8 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adagrad",
+        "//tensorflow/python/training:proximal_adagrad",
         "//third_party/py/numpy",
     ],
 )
@@ -1172,7 +1194,8 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:gradient_descent",
+        "//tensorflow/python/training:proximal_gradient_descent",
         "//third_party/py/numpy",
     ],
 )
@@ -1242,12 +1265,12 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops/distributions:special_math",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1265,12 +1288,12 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1288,10 +1311,10 @@ tf_xla_py_strict_test(
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -1373,7 +1396,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:rmsprop",
         "//third_party/py/numpy",
     ],
 )
@@ -1415,11 +1438,11 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/client",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -1492,6 +1515,10 @@ tf_xla_py_strict_test(
     name = "stateful_random_ops_test",
     size = "medium",
     srcs = ["stateful_random_ops_test.py"],
+    disabled_backends = [
+        "gpu",
+        "gpu_a100",
+    ],
     enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 10,
@@ -1511,6 +1538,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/kernel_tests/random:util",
+        "//tensorflow/python/ops:random_ops_util",
         "//tensorflow/python/ops:stateful_random_ops",
         "//tensorflow/python/ops:stateful_random_ops_gen",
         "//tensorflow/python/ops:variables",
@@ -1525,6 +1553,10 @@ tf_xla_py_strict_test(
     name = "stateless_random_ops_test",
     size = "medium",
     srcs = ["stateless_random_ops_test.py"],
+    disabled_backends = [
+        "gpu",
+        "gpu_a100",
+    ],
     enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 10,
@@ -1543,9 +1575,45 @@ tf_xla_py_strict_test(
         "//tensorflow/python/kernel_tests/random:util",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:random_ops_util",
         "//tensorflow/python/ops:stateless_random_ops",
         "//tensorflow/python/ops:stateless_random_ops_v2_gen",
         "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_strict_test(
+    name = "stochastic_cast_op_test",
+    size = "medium",
+    srcs = ["stochastic_cast_op_test.py"],
+    # TODO(b/232442915): Enable GPUs.
+    disabled_backends = [
+        "gpu",
+        "gpu_a100",
+    ],
+    # TODO(b/232442915): Enable MLIR.
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    shard_count = 20,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/kernel_tests/random:util",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:standard_ops",
+        "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/ops:stochastic_cast_op",
+        "//tensorflow/python/ops:tensor_array_ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -1592,6 +1660,10 @@ tf_xla_py_strict_test(
     name = "tensor_list_ops_test",
     size = "small",
     srcs = ["tensor_list_ops_test.py"],
+    # copybara:uncomment_begin
+    # #TODO(b/286470564): Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
     # TensorList ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
     enable_mlir_bridge = False,
@@ -1625,12 +1697,12 @@ tf_xla_py_strict_test(
     deps = [
         ":xla_test",
         "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:math_ops_gen",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1646,10 +1718,10 @@ tf_xla_py_strict_test(
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "noasan",  #times out
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
@@ -1658,6 +1730,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -1676,10 +1749,10 @@ tf_xla_py_strict_test(
     deps = [
         ":test_utils",
         ":xla_test",
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradient_checker",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
@@ -1699,7 +1772,6 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
@@ -1713,7 +1785,8 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:state_ops_gen",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
-        "//tensorflow/python/training",
+        "//tensorflow/python/platform:test",
+        "//tensorflow/python/training:gradient_descent",
         "//third_party/py/numpy",
     ],
 )
@@ -1722,6 +1795,10 @@ tf_xla_py_strict_test(
     name = "while_test",
     size = "small",
     srcs = ["while_test.py"],
+    # copybara:uncomment_begin
+    # #TODO(b/291130193): Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
     enable_mlir_bridge = False,
     python_version = "PY3",
     tags = [
@@ -1758,11 +1835,11 @@ tf_xla_py_strict_test(
     use_xla_device = False,  # Uses tf.function(jit_compile=True)
     deps = [
         ":xla_test",
-        "//tensorflow/python:image_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_switch_case",
+        "//tensorflow/python/ops:image_ops",
         "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -1780,12 +1857,12 @@ tf_xla_py_strict_test(
     use_xla_device = False,  # Uses tf.function(jit_compile=True)
     deps = [
         ":xla_test",
-        "//tensorflow/python:image_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:image_ops",
         "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
@@ -1871,10 +1948,12 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:sort_ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -2210,10 +2289,10 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_gen",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -2229,10 +2308,10 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -2248,13 +2327,13 @@ tf_xla_py_strict_test(
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:bitwise_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -2263,6 +2342,10 @@ tf_xla_py_strict_test(
     name = "xla_ops_test",
     size = "medium",
     srcs = ["xla_ops_test.py"],
+    disabled_backends = [
+        "gpu",
+        "gpu_a100",
+    ],
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
@@ -2272,8 +2355,6 @@ tf_xla_py_strict_test(
         ":xla_test",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/compiler/xla:xla_data_proto_py",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
@@ -2283,9 +2364,11 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
-        "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/ops:random_ops_util",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "@local_xla//xla:xla_data_proto_py",
     ],
 )
 
@@ -2309,6 +2392,7 @@ tf_xla_py_strict_test(
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/ops:random_ops",
@@ -2356,11 +2440,11 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/layers",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -2377,12 +2461,12 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops/linalg:linalg_impl",
         "//tensorflow/python/platform:client_testlib",
@@ -2402,7 +2486,6 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -2413,6 +2496,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:stateless_random_ops",
         "//tensorflow/python/ops/linalg:linalg_impl",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -2480,13 +2564,13 @@ tf_xla_py_strict_test(
     deps = [
         ":xla_test",
         "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:image_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:image_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
@@ -2544,7 +2628,6 @@ tf_xla_py_strict_test(
     srcs = ["where_op_test.py"],
     args = [
         "--tpu_use_tfrt=true",
-        # TODO(b/274633087): Set tf_use_pjrt=true after fixing bug.
     ],
     disabled_backends = [
         "cpu",
@@ -2570,28 +2653,6 @@ tf_xla_py_strict_test(
 )
 
 tf_xla_py_strict_test(
-    name = "risc_ops_test",
-    size = "small",
-    srcs = ["risc_ops_test.py"],
-    enabled_backends = ["cpu"],
-    python_version = "PY3",
-    tags = [
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-    ],
-    deps = [
-        ":xla_test",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:is_mlir_bridge_test_true",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops/risc:risc_ops",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-tf_xla_py_strict_test(
     name = "const_arg_test",
     size = "small",
     srcs = ["const_arg_test.py"],
@@ -2603,9 +2664,9 @@ tf_xla_py_strict_test(
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -2643,6 +2704,7 @@ tpu_py_strict_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/platform:flags",
@@ -2716,7 +2778,7 @@ tf_xla_py_strict_test(
         "//tensorflow/compiler/mlir/stablehlo",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
@@ -2724,6 +2786,70 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_xla_py_strict_test(
+    name = "xla_call_module_no_platform_check_test",
+    size = "small",
+    srcs = ["xla_call_module_test.py"],
+    # cpu_ondemand overrides the TF_XLA_FLAGS
+    disabled_backends = ["cpu_ondemand"],
+    enable_mlir_bridge = False,
+    env = {"TF_XLA_FLAGS": "--tf_xla_call_module_disabled_checks=platform"},
+    main = "xla_call_module_test.py",
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    use_xla_device = False,  # Uses tf.function(jit_compile=True)
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/mlir/stablehlo",
+        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_xla_py_strict_test(
+    name = "xla_call_module_no_shape_assertions_check_test",
+    size = "small",
+    srcs = ["xla_call_module_test.py"],
+    disabled_backends = ["cpu_ondemand"],  # cpu_ondemand overrides the TF_XLA_FLAGS
+    enable_mlir_bridge = False,
+    env = {"TF_XLA_FLAGS": "--tf_xla_call_module_disabled_checks=shape_assertions"},
+    main = "xla_call_module_test.py",
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    use_xla_device = False,  # Uses tf.function(jit_compile=True)
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/mlir/stablehlo",
+        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -2740,9 +2866,9 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/ops:math_ops_gen",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -2762,11 +2888,32 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_gen",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
+    ],
+)
+
+tpu_py_strict_test(
+    name = "mean_op_test",
+    size = "small",
+    srcs = ["mean_op_test.py"],
+    disable_experimental = False,
+    disable_mlir_bridge = False,
+    tags = [
+        "notsan",  # timesout
+    ],
+    deps = [
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

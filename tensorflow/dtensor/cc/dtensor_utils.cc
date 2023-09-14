@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/tsl/util/env_var.h"
+#include "tsl/util/env_var.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -147,5 +147,40 @@ bool EnableAllToAllForRelayout() {
   return is_enabled;
 }
 
+int AllReduceCombineOptimizationGroupSize() {
+  char* group_size_str =
+      std::getenv("DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_GROUP_SIZE");
+  if (group_size_str == nullptr) return 0;
+  int group_size;
+  if (absl::SimpleAtoi(group_size_str, &group_size)) return group_size;
+  LOG(WARNING) << "Invalid DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_GROUP_SIZE, "
+                  "using the default value 0.";
+  return 0;
+}
+
+int AllReduceCombineOptimizationTopologicalDistance() {
+  int64_t topo_dist;
+  absl::Status status = tsl::ReadInt64FromEnvVar(
+      "DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_TOPOLOGICAL_DISTANCE",
+      /*default_val=*/0, &topo_dist);
+  if (!status.ok()) {
+    LOG(WARNING) << "Invalid DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_TOPOLOGICAL"
+                    "_DISTANCE, using the default value 0.";
+    return 0;
+  } else if (topo_dist < 0) {
+    LOG(WARNING) << "Invalid DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_TOPOLOGICAL"
+                    "_DISTANCE, value must be a positive integer, using the "
+                    "default value 0.";
+    return 0;
+  }
+  return topo_dist;
+}
+
+bool EnableMultiDeviceMode() {
+  bool multi_device_mode;
+  absl::Status status = tsl::ReadBoolFromEnvVar(
+      "DTENSOR_ENABLE_MULTI_DEVICE_EXPANSION", false, &multi_device_mode);
+  return status.ok() && multi_device_mode;
+}
 }  // namespace dtensor
 }  // namespace tensorflow

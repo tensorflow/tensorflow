@@ -66,7 +66,7 @@ llvm::Expected<tensorflow::Tensor> DecodeDenseAttrToTfTensor(
         dht.takeError());
   }
 
-  return tfrt::TFRTTensorToTFTensor(*dht, host);
+  return tfrt::TFRTTensorToTFTensor(*dht);
 }
 
 llvm::Error FillAttrValueMapUsingArray(const OpAttrsRawEntry& entry,

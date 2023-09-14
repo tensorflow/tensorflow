@@ -30,6 +30,9 @@ inline constexpr const char* kDebugGroupOpStacktrace = "op_stacktrace";
 inline constexpr const char* kDebugGroupGraphOptPass = "graph_opt_pass";
 inline constexpr const char* kDebugGroupBridgePhase1 = "bridge_phase1";
 inline constexpr const char* kDebugGroupBridgePhase2 = "bridge_phase2";
+inline constexpr const char* kDebugGroupDTensorMlir = "dtensor_mlir";
+inline constexpr const char* kDebugGroupDTensorGraph = "dtensor_graph";
+inline constexpr const char* kDebugGroupDTensorLayout = "dtensor_layout";
 
 namespace tensorflow {
 

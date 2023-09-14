@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/graph/regularization/util.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
@@ -31,13 +33,15 @@ uint64 ComputeHash(const GraphDef& graph_def) {
   return tensorflow::Fingerprint64(graph_def_string);
 }
 
-StatusOr<int> GetSuffixUID(absl::string_view function_name) {
-  std::vector<std::string> v = absl::StrSplit(function_name, '_');
-  int uid;
-  if (!strings::safe_strto32(v.back(), &uid)) {
+StatusOr<int64_t> GetSuffixUID(absl::string_view function_name) {
+  std::vector<absl::string_view> v = absl::StrSplit(function_name, '_');
+
+  int64_t uid;
+  if (!strings::safe_strto64(v.back(), &uid)) {
     return errors::InvalidArgument(absl::StrCat(
         "Function name: `", function_name, "` does not end in an integer."));
   }
+
   return uid;
 }
 }  // namespace tensorflow::graph_regularization

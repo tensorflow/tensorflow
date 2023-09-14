@@ -170,7 +170,13 @@ absl::Status ParseInputsWithConstTensorImpl(
       } else {
         Tensor<HWC, DataTypeT> tensor;
         RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
-        *tensor_or_scalar = std::move(tensor);
+        // If case of degenerate 3d tensor, which represents a single value, we
+        // convert is to scalar.
+        if (tensor.data.size() == 1) {
+          *tensor_or_scalar = static_cast<T>(tensor.data[0]);
+        } else {
+          *tensor_or_scalar = std::move(tensor);
+        }
       }
     }
   }
@@ -2157,8 +2163,19 @@ class SelectV2OperationParser : public TFLiteOperationParser {
       if_tensor.data.push_back(if_scalar_tensor.data[0]);
     }
     if (!attr.broadcast_false) {
-      if (is_else_constant) {
-        RETURN_IF_ERROR(reader->ReadTensor(2, &else_tensor));
+      // Support 3D version of the else_tensor if needed. Convert it to 4D.
+      if (is_else_constant &&
+          absl::IsInvalidArgument(reader->ReadTensor(2, &else_tensor))) {
+        Tensor<HWC, DataType::FLOAT32> else_tensor_3d;
+        RETURN_IF_ERROR(reader->ReadTensor(2, &else_tensor_3d));
+        else_tensor.shape =
+            BHWC(1, else_tensor_3d.shape.h, else_tensor_3d.shape.w,
+                 else_tensor_3d.shape.c);
+        else_tensor.id = else_tensor_3d.id;
+        else_tensor.data.reserve(else_tensor_3d.data.size());
+        for (int i = 0; i < else_tensor_3d.data.size(); ++i) {
+          else_tensor.data.push_back(else_tensor_3d.data[i]);
+        }
       }
     } else {
       Tensor<Scalar, DataType::FLOAT32> else_scalar_tensor;
@@ -3250,7 +3267,6 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<UnpackOperationParser>();
     case kTfLiteBuiltinCustom: {
       const absl::string_view custom_name = registration->custom_name;
-      fprintf(stderr, "Found Custom Op: %s\n", registration->custom_name);
       if (custom_name == "Convolution2DTransposeBias") {
         return std::make_unique<TransposeConvCustomOperationParser>();
       }

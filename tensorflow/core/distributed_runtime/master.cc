@@ -55,7 +55,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/protobuf/rpc_options.pb.h"
+#include "tsl/protobuf/rpc_options.pb.h"
 
 namespace tensorflow {
 

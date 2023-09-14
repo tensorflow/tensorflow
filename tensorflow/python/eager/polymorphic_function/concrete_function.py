@@ -13,10 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=unidiomatic-typecheck
-"""Implementation for Monomorphic Functions (including Differentiable ones)."""
+"""Implementation for ConcreteFunction."""
 
 import collections
-import pprint
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
@@ -36,8 +35,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import default_gradient
@@ -61,65 +60,6 @@ def _is_type_subset(a, b):
   return True
 
 
-def _parse_func_attr_value(key, value):
-  """Converts a python object to an attr_value_pb2.AttrValue object."""
-  if isinstance(value, attr_value_pb2.AttrValue):
-    return value
-  # bool type check has to happen before int since bool is a subclass of int.
-  elif isinstance(value, bool):
-    return attr_value_pb2.AttrValue(b=value)
-  elif isinstance(value, int):
-    return attr_value_pb2.AttrValue(i=value)
-  elif isinstance(value, float):
-    return attr_value_pb2.AttrValue(f=value)
-  elif isinstance(value, (str, bytes)):
-    return attr_value_pb2.AttrValue(s=compat.as_bytes(value))
-  elif isinstance(value, list):
-    list_value = attr_value_pb2.AttrValue.ListValue()
-    for v in value:
-      if isinstance(v, bool):
-        list_value.b.append(v)
-      elif isinstance(v, int):
-        list_value.i.append(v)
-      elif isinstance(v, float):
-        list_value.f.append(v)
-      elif isinstance(v, (str, bytes)):
-        list_value.s.append(compat.as_bytes(v))
-      else:
-        raise ValueError(
-            f"Attributes for {key} must be bool, int, float, or string. "
-            f"Got {type(v)}."
-        )
-    return attr_value_pb2.AttrValue(list=list_value)
-  else:
-    raise ValueError(
-        f"Attribute {key} must be bool, int, float, string, list, or"
-        f"AttrValue. Got {type(value)}."
-    )
-
-
-def _parse_func_attrs(attributes):
-  """Convert the keyword arguments into function_def attributes.
-
-  Currently only support primitive types: bool, int, float and string.
-
-  Args:
-    attributes: the dictionary of attributes.
-  Returns:
-    A dict of attributes where the key is the name of attribute and the value
-      is the AttrValue proto.
-  Raises:
-    ValueError: If the kwargs contains unallowlisted name or unsupported value
-      types.
-  """
-  attrs = {}
-  for key, value in attributes.items():
-    if key not in attributes_lib.MONOMORPHIC_FUNCTION_ALLOWLIST:
-      raise ValueError(
-          f"ConcreteFunction does not support `{key}` as an attribute.")
-    attrs[key] = _parse_func_attr_value(key, value)
-  return attrs
-
 _FORWARD_PREFIX = "__forward_"
 _BACKWARD_PREFIX = "__backward_"
 _INFERENCE_PREFIX = "__inference_"
@@ -140,7 +80,9 @@ def _inference_name(n):
   return "%s%s_%s" % (_INFERENCE_PREFIX, n, ops.uid())
 
 
-def _create_forward_backward_with_graph(attrs, forward_graph, backwards_graph):
+def _create_forward_backward_with_graph(
+    attrs, forward_graph, backwards_graph: func_graph_module.FuncGraph
+):
   """Creates forward and backward functions from the function graphs."""
   forward_function_name = _forward_name(forward_graph.name)
   common_attributes = dict(attrs)
@@ -151,7 +93,7 @@ def _create_forward_backward_with_graph(attrs, forward_graph, backwards_graph):
   # See for more details:
   # https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md#appendix-future-support-for-optimizing-gradient-functions
   common_attributes.pop(attributes_lib.IMPLEMENTS, None)
-  backward_function_attr = _parse_func_attrs(
+  backward_function_attr = attributes_lib.parse_func_attrs(
       {attributes_lib.FORWARD_FUNCTION: forward_function_name})
   backward_function_attr.update(common_attributes)
   # TODO(fmuham): Include inputs as well.
@@ -160,33 +102,33 @@ def _create_forward_backward_with_graph(attrs, forward_graph, backwards_graph):
       backwards_graph.structured_outputs,
       backwards_graph.function_captures.capture_types,
   )
-  backward_function = ConcreteFunction(
-      backwards_graph, attrs=backward_function_attr, function_type=function_type
+  backward_function = ConcreteFunction.from_func_graph(
+      backwards_graph, function_type, attrs=backward_function_attr
   )
-  forward_function_attr = _parse_func_attrs({
-      attributes_lib.BACKWARD_FUNCTION:
-      backward_function.name})
+  forward_function_attr = attributes_lib.parse_func_attrs(
+      {attributes_lib.BACKWARD_FUNCTION: backward_function.name}
+  )
   forward_function_attr.update(common_attributes)
   forward_function = atomic_function.from_func_graph(
-      forward_function_name, forward_graph, forward_graph.inputs,
-      forward_graph.outputs, forward_function_attr)
+      forward_function_name, forward_graph, forward_function_attr
+  )
   return forward_function, backward_function
 
 
 class _DelayedRewriteGradientFunctions(object):
   """Caches forward/backward functions with a delayed forward rewrite."""
 
-  def __init__(self, func_graph, attrs, func_graph_deleter):
+  def __init__(
+      self, atomic_fn: atomic_function.AtomicFunction, func_graph_deleter
+  ):
     """Construct an inference function and initialize caches."""
     # A map from the number of forward function outputs with accepted gradients
     # to forward and backward functions, used to cache non-tape backward
     # function generation.
     self._cached_function_pairs = {}
-    self._func_graph = func_graph
-    self._inference_function = atomic_function.from_func_graph(
-        _inference_name(self._func_graph.name), self._func_graph,
-        self._func_graph.inputs, self._func_graph.outputs, attrs)
-    self._attrs = attrs
+    self._func_graph = atomic_fn.graph
+    self._inference_function = atomic_fn
+    self._attrs = atomic_fn.attributes
     self._gradient_name = None
     # Note that the FuncGraph is mutated later, so we need to inspect it now to
     # figure out the user-specified outputs of the inference function.
@@ -230,7 +172,7 @@ class _DelayedRewriteGradientFunctions(object):
     signature = []
     for t in trainable_outputs:
       signature.append(
-          tensor_spec.TensorSpec(*default_gradient.shape_and_dtype(t)))
+          tensor_lib.TensorSpec(*default_gradient.shape_and_dtype(t)))
 
     def _backprop_function(*grad_ys):
       with ops.device(None):
@@ -265,7 +207,7 @@ class _DelayedRewriteGradientFunctions(object):
           self._attrs, self._func_graph, backwards_graph)
       return forward_function, backward_function
 
-  def _rewrite_forward_and_call_backward(self, op, *doutputs):
+  def _rewrite_forward_and_call_backward(self, op: ops.Operation, *doutputs):
     """Add outputs to the forward call and feed them to the grad function."""
     forward_function, backwards_function = self.forward_backward(len(doutputs))
     if not backwards_function.outputs:
@@ -294,7 +236,9 @@ class _DelayedRewriteGradientFunctions(object):
       output_type = forward_function.function_type.flat_outputs[i]
       handle_data = output_type.dtype._handle_data
       if handle_data:
-        handle_data_util.set_handle_data(op.outputs[i], handle_data)
+        handle_data_util.set_handle_data(
+            op.outputs[i], handle_data.shape_inference
+        )
     # pylint: enable=protected-access
 
     capture_mapping = dict(
@@ -419,9 +363,15 @@ class _TapeGradientFunctions(object):
   determines whether higher-order tape gradients are possible.
   """
 
-  def __init__(self, func_graph, attrs, func_graph_deleter,
-               forwardprop_input_indices, delayed_rewrite_functions,
-               need_gradients_for_jvps):
+  def __init__(
+      self,
+      func_graph: func_graph_module.FuncGraph,
+      attrs,
+      func_graph_deleter,
+      forwardprop_input_indices,
+      delayed_rewrite_functions,
+      need_gradients_for_jvps,
+  ):
     self._func_graph = func_graph
     self._forward_graph = None
     self._attrs = attrs
@@ -595,7 +545,7 @@ class _TapeGradientFunctions(object):
         with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
             {"PartitionedCall": gradient_function,
              "StatefulPartitionedCall": gradient_function}):
-          forward_outputs = forward_function(*forward_inputs)
+          forward_outputs = forward_function.call_flat(*forward_inputs)
           if isinstance(forward_outputs, ops.Operation):
             # _wrapped_backward_function expects a list, but if the function has
             # no outputs its call() returns an Operation. We need to undo that
@@ -739,41 +689,60 @@ class _TapeGradientFunctions(object):
       A forward atomic_function.AtomicFunction.
     """
     if self._forward is None:
-      (self._forward, self._forward_graph, self._backward,
-       self._forwardprop_output_indices, self._num_forwardprop_outputs) = (
-           self._forward_and_backward_functions(inference_args, input_tangents))
+      (
+          self._forward,
+          self._forward_graph,
+          self._backward,
+          self._forwardprop_output_indices,
+          self._num_forwardprop_outputs,
+      ) = self._forward_and_backward_functions(inference_args, input_tangents)
     return self._forward
 
-  def _wrap_backward_function(self, forward_graph, backward, outputs):
+  def _wrap_backward_function(
+      self, forward_graph: func_graph_module.FuncGraph, backward, outputs
+  ):
     """Create a backward function given `outputs` from the forward function."""
     capture_mapping = dict(
-        zip((ops.tensor_id(t) for t in forward_graph.outputs), outputs))
+        zip((ops.tensor_id(t) for t in forward_graph.outputs), outputs)
+    )
     captured_inputs = backward.captured_inputs
     remapped_captures = [
         capture_mapping.get(ops.tensor_id(capture), capture)
         for capture in captured_inputs
     ]
-    if any(t.graph is forward_graph for t in remapped_captures
-           if not isinstance(t, ops.EagerTensor)):
-      incorrect_mapping = [t for t in remapped_captures
-                           if (not isinstance(t, ops.EagerTensor) and
-                               t.graph is not forward_graph)]
-      raise errors.InternalError("Failed to map all backward graph captures to "
-                                 "the forward graph. Incorrectly mapped: "
-                                 f"{incorrect_mapping}.")
+    if any(
+        t.graph is forward_graph
+        for t in remapped_captures
+        if not isinstance(t, ops.EagerTensor)
+    ):
+      incorrect_mapping = [
+          t
+          for t in remapped_captures
+          if (
+              not isinstance(t, ops.EagerTensor)
+              and t.graph is not forward_graph
+          )
+      ]
+      raise errors.InternalError(
+          "Failed to map all backward graph captures to "
+          "the forward graph. Incorrectly mapped: "
+          f"{incorrect_mapping}."
+      )
     # We may need to use zeros_like to get a zero for variant Tensors with
     # unconnected gradients. We do that in advance so we don't have to hold on
     # to the outputs themselves, which may not be needed otherwise.
     variant_zeros_like = {}
-    backward_function_inputs = (len(backward.inputs) - len(captured_inputs))
+    backward_function_inputs = len(backward.inputs) - len(captured_inputs)
     recorded_outputs = []
     trainable_recorded_outputs = 0
     skip_positions = []
     if self._num_forwardprop_outputs and not self._need_gradients_for_jvps:
       relevant_outputs = (
-          outputs[:self._num_inference_outputs]
-          + outputs[self._num_inference_outputs
-                    + self._num_forwardprop_outputs:])
+          outputs[: self._num_inference_outputs]
+          + outputs[
+              self._num_inference_outputs + self._num_forwardprop_outputs :
+          ]
+      )
     else:
       relevant_outputs = outputs
     for output_index, output in enumerate(relevant_outputs):
@@ -837,32 +806,51 @@ class _TapeGradientFunctions(object):
         operation.
     """
     backward_function, to_record = self._wrap_backward_function(
-        self._forward_graph, self._backward, flat_outputs)
+        self._forward_graph, self._backward, flat_outputs
+    )
     if self._forwardprop_output_indices:
       record.record_operation_backprop_only(
           self._forward.cached_definition.signature.name,
-          to_record, inference_args,
-          backward_function)
+          to_record,
+          inference_args,
+          backward_function,
+      )
       record.record_operation_forwardprop_only(
           self._forward.cached_definition.signature.name,
-          flat_outputs, inference_args + input_tangents,
+          flat_outputs,
+          inference_args + input_tangents,
           backward_function,
-          self._forwardprop_output_indices)
+          self._forwardprop_output_indices,
+      )
     else:
-      record.record_operation(self._forward.cached_definition.signature.name,
-                              to_record, inference_args + input_tangents,
-                              backward_function)
+      record.record_operation(
+          self._forward.cached_definition.signature.name,
+          to_record,
+          inference_args + input_tangents,
+          backward_function,
+      )
 
 
 class _FirstOrderTapeGradientFunctions(_TapeGradientFunctions):
   """Caches tape-friendly functions for first-order gradients."""
 
-  def __init__(self, func_graph, attrs, func_graph_deleter,
-               forwardprop_input_indices, delayed_rewrite_functions,
-               need_gradients_for_jvps):
-    super().__init__(func_graph, attrs, func_graph_deleter,
-                     forwardprop_input_indices, delayed_rewrite_functions,
-                     need_gradients_for_jvps)
+  def __init__(
+      self,
+      func_graph: func_graph_module.FuncGraph,
+      attrs,
+      func_graph_deleter,
+      forwardprop_input_indices,
+      delayed_rewrite_functions,
+      need_gradients_for_jvps,
+  ):
+    super().__init__(
+        func_graph,
+        attrs,
+        func_graph_deleter,
+        forwardprop_input_indices,
+        delayed_rewrite_functions,
+        need_gradients_for_jvps,
+    )
     self._func_graph_deleter = func_graph_deleter
     self._forwardprop_input_indices = forwardprop_input_indices
 
@@ -1010,37 +998,37 @@ class _ForwardBackwardCall(object):
   def forward(self):
     """Builds or retrieves a forward function for this call."""
     forward_function = self._functions.forward(
-        self._inference_args, self._input_tangents)
+        self._inference_args, self._input_tangents
+    )
     return forward_function, self._inference_args + self._input_tangents
 
   def record(self, flat_outputs):
     """Given outputs from the execution of `forward`, records the operation."""
-    if (self._tape_watching
+    if (
+        self._tape_watching
         and not isinstance(flat_outputs, ops.Operation)
-        and flat_outputs is not None):
+        and flat_outputs is not None
+    ):
       # We only record function calls which have outputs, and then only when a
       # tape is watching.
       self._functions.record(
-          flat_outputs, self._inference_args, self._input_tangents)
+          flat_outputs, self._inference_args, self._input_tangents
+      )
 
 
 class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
   """A `tf.types.experimental.ConcreteFunction` created from `tf.function`."""
 
   def __init__(
-      self, func_graph, attrs=None, shared_func_graph=True, function_type=None
+      self, atomic_fn: atomic_function.AtomicFunction, shared_func_graph=True
   ):
     """Initialize a `ConcreteFunction`.
 
     Args:
-      func_graph: An instance of FuncGraph: the function body to wrap.
-      attrs: (optional) dict mapping names of attributes to their AttrValue
-        values. Attributes in `attrs` will be included in this function's
-        definition.
+     atomic_fn: Inference atomic function to form basis of forward pass.
      shared_func_graph: If False, the ConcreteFunction takes ownership of
        `func_graph` and will break reference cycles when it is deleted. This
        makes the FuncGraph inoperable.
-     function_type: Defines the structured input/output contract.
 
     Raises:
       ValueError: If number of input_placeholders is not equal to the number
@@ -1051,68 +1039,54 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     self._arg_keywords = None
     self._num_positional_args = None
 
-    self._func_graph = func_graph
+    self._func_graph = atomic_fn.graph
     self._captured_inputs = (
         self._func_graph.external_captures
         + self._func_graph.deferred_external_captures
     )
-    self._function_type = function_type
-    if func_graph.structured_outputs is not None and self.function_type is None:
-      raise ValueError(
-          "Must specify FunctionType if structured outputs are expected"
-      )
+    self._function_type = atomic_fn.function_type
 
-    if attrs and attributes_lib.IMPLEMENTS in attrs:
-      # The alternative is to silently drop "implements" tag
-      # but it seems likely it would lead to hard to catch bugs.
-      # Another alternative is to make func_body to preserve the order
-      # of arguments if variables are present. Yet another option
-      # is to automatically replace variables as arguments to functions
-      # to v.read_value() whenever "implements" tag is present
-      # Anytime we annotate existing function we probably want to wrap
-      # it with safe read_value for backward compatibility.
-      has_resource_vars = any(
-          inp.dtype == dtypes.resource for inp in self.inputs)
-
-      assert not any((has_resource_vars, self._captured_inputs)), (
-          'Function {name} has "{attr}={value}" attribute and thus can not '
-          "depend on any tensors outside of its signature or modify variables. "
-          "\n\nNote: variables are always captured and cause function "
-          "re-tracing for every variable called.\n"
-          "  inputs: {inputs}\n  captures: {captured}\n\n"
-          "To pass a variable to such function use  "
-          "use variable.read_value().".format(
-              name=func_graph.name,
-              attr=attributes_lib.IMPLEMENTS,
-              value=attrs[attributes_lib.IMPLEMENTS],
-              inputs=self.inputs,
-              captured=self._captured_inputs))
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
-    self._attrs = _parse_func_attrs(attrs or {})
+    self._attrs = attributes_lib.parse_func_attrs(
+        atomic_fn.attributes or {}
+    )
 
     if shared_func_graph:
       self._garbage_collector = None
     else:
-      self._garbage_collector = ConcreteFunctionGarbageCollector(func_graph)
+      self._garbage_collector = ConcreteFunctionGarbageCollector(
+          atomic_fn.graph
+      )
 
     # Pairs of forward and backward functions used for computing gradients.
     #
     # These each get a reference to the FuncGraph deleter since they use the
     # FuncGraph directly.
     self._delayed_rewrite_functions = _DelayedRewriteGradientFunctions(
-        func_graph, self._attrs, self._garbage_collector)
+        atomic_fn, self._garbage_collector)
     self._first_order_tape_functions = {}
     self._higher_order_tape_functions = {}
     # Cache the inference function to avoid a (Python) function call when not
     # building gradients.
     self._inference_function = self._delayed_rewrite_functions.forward()
 
+  @classmethod
+  def from_func_graph(cls, graph, function_type, attrs, shared_func_graph=True):
+    atomic_fn = atomic_function.from_func_graph(
+        _inference_name(graph.name), graph, attrs, function_type
+    )
+    return ConcreteFunction(atomic_fn, shared_func_graph=shared_func_graph)
+
   @property
   def function_type(self):
     """Return the FunctionType associated with this ConcreteFunction."""
-    # TODO(fmuham): Ensure this is never None.
     return self._function_type
+
+  @property
+  def inference_fn(self):
+    """Return the inference function associated with this ConcreteFunction."""
+    return self._inference_function
 
   # TODO(fmuham): Remove this property.
   @property
@@ -1207,10 +1181,10 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         except TypeError as structured_err:
           try:
             return self._call_with_flat_signature(args, kwargs)
-          except TypeError as flat_err:
+          except (TypeError, ValueError) as flat_err:
             raise TypeError(  # pylint: disable=raise-missing-from
                 str(structured_err)
-                + "\n Fallback to flat signature also failed due to: "
+                + "\nFallback to flat signature also failed due to: "
                 + str(flat_err)
             )
 
@@ -1262,7 +1236,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
 
     for i, arg in enumerate(args):
       if not isinstance(
-          arg, (ops.Tensor, resource_variable_ops.BaseResourceVariable)):
+          arg, (tensor_lib.Tensor, resource_variable_ops.BaseResourceVariable)):
         raise TypeError(f"{self._flat_signature_summary()}: expected argument "
                         f"#{i}(zero-based) to be a Tensor; "
                         f"got {type(arg).__name__} ({arg}).")
@@ -1282,23 +1256,20 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       TypeError: if `args` and `kwargs` do not match the structured signature
         of this `ConcreteFunction`.
     """
-    args, kwargs, filtered_flat_args = (
+    bound_args = (
         function_type_utils.canonicalize_function_inputs(
             args, kwargs, self.function_type)
     )
+    filtered_flat_args = self.function_type.unpack_inputs(bound_args)
     return self._call_flat(
         filtered_flat_args,
         captured_inputs=self.captured_inputs)
 
-  def _call_flat(self, args, captured_inputs):
+  def _call_flat(self, tensor_inputs, captured_inputs):
     """Executes the wrapped function.
 
     Args:
-      args: a list of Tensors or Variables. Arguments from the Python function
-        should be filtered before calling this method: objects aside from
-        Tensors, CompositeTensors, and Variables are ignored. Any
-        CompositeTensors other than ResourceVariables should be expanded before
-        calling this method.
+      tensor_inputs: a list of only Tensors generated from args, kwargs.
       captured_inputs: the captured inputs that are also part of the input args
         to the actual execution. By default, it should be self._captured_inputs.
     Returns:
@@ -1320,23 +1291,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       for v in self._func_graph.variables:
         resource_variable_ops.variable_accessed(v)
 
-    tensor_inputs = []
-    variables_used = set([])
-    for i, arg in enumerate(args):
-      if isinstance(arg, resource_variable_ops.BaseResourceVariable):
-        # We can pass a variable more than once, and in this case we need to
-        # pass its handle only once.
-        if id(arg.handle) in variables_used:
-          continue
-        resource_variable_ops.variable_accessed(arg)
-        tensor_inputs.append(arg.handle)
-        variables_used.add(id(arg.handle))
-      elif isinstance(arg, ops.Tensor):
-        tensor_inputs.append(arg)
-      else:
-        raise ValueError(f"{i:d}-th input {arg} must be a Tensor, got "
-                         f"{type(arg)} when calling {self._func_graph.name}.")
-
+    # TODO(fmuham): check in eager mode too.
     if not executing_eagerly:
       for i, tensor_input in enumerate(tensor_inputs):
         # Can not compare shapes in these cases
@@ -1365,21 +1320,21 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     if (possible_gradient_type == gradients_util.POSSIBLE_GRADIENT_TYPES_NONE
         and executing_eagerly):
       # No tape is watching; skip to running the function.
-      return self._build_call_outputs(self._inference_function(*args))
+      return self._inference_function.call_preflattened(args)
     forward_backward = self._select_forward_and_backward_functions(
         args,
         possible_gradient_type,
         executing_eagerly)
     forward_function, args_with_tangents = forward_backward.forward()
     if executing_eagerly:
-      flat_outputs = forward_function(*args_with_tangents)
+      flat_outputs = forward_function.call_flat(*args_with_tangents)
     else:
       with default_graph._override_gradient_function(  # pylint: disable=protected-access
           {"PartitionedCall": self._get_gradient_function(),
            "StatefulPartitionedCall": self._get_gradient_function()}):
-        flat_outputs = forward_function(*args_with_tangents)
+        flat_outputs = forward_function.call_flat(*args_with_tangents)
     forward_backward.record(flat_outputs)
-    return self._build_call_outputs(flat_outputs)
+    return self.function_type.pack_output(flat_outputs)
 
   @property
   def name(self):
@@ -1495,7 +1450,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     concrete_fn.replace_capture_with_deferred_capture(
         bool_captured_tensor,
         bool_closure,
-        spec=tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool))
+        spec=tensor_lib.TensorSpec(shape=(), dtype=dtypes.bool))
 
     print(concrete_fn())  # tf.Tensor([5.], shape=(1,), dtype=float32)
     ```
@@ -1693,23 +1648,6 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         self._delayed_rewrite_functions, args, input_tangents.tangents,
         tape_watching=False)
 
-  def _build_call_outputs(self, result):
-    """Maps the fdef output list to actual output structure.
-
-    Args:
-      result: Output lists defined by FunctionDef.
-    Returns:
-      The actual call output.
-    """
-    if self._func_graph.structured_outputs is None:
-      return result
-
-    if isinstance(result, ops.Operation):
-      # We get an op when there are no tensor outputs.
-      return self.function_type.pack_output([])
-    else:
-      return self.function_type.pack_output(result)
-
   @property
   def _as_name_attr_list(self):
     """Returns a `NameAttrList` representing this function."""
@@ -1717,42 +1655,6 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     for name, value in self._attrs.items():
       ret.attr[name].CopyFrom(value)
     return ret
-
-  def _structured_signature_summary(self, default_values=False):
-    """Returns a string summarizing this function's structured signature.
-
-    Args:
-      default_values: If true, then include default values in the signature.
-
-    Returns:
-      A `string`.
-    """
-    # Note: we can't just use str(self.function_type), because
-    # that would show "BOUND_VALUE" as the default value for all arguments.
-    assert self.function_type is not None
-    arg_specs, kwarg_specs = self.structured_input_signature
-    arg_names = function_type_utils.to_arg_names(self.function_type)
-
-    # If an explicit input_signature is provided to @tf.function, then any
-    # arguments with defaults that are not covered by that explicit signature
-    # are simply dropped from the signature.
-    # TODO(b/159639913) Look into whether dropping arguments with default values
-    # from the signature is the right thing to do.
-    arg_names = arg_names[:len(arg_specs)]
-
-    if default_values:
-      for i in range(len(arg_names)):
-        if not _contains_type_spec(arg_specs[i]):
-          arg_names[i] += "={}".format(arg_specs[i])
-    if kwarg_specs:
-      arg_names.append("*")
-      for name, spec in kwarg_specs.items():
-        arg_names.append(name)
-        if default_values and not _contains_type_spec(spec):
-          arg_names[-1] += "={}".format(spec)
-    signature = f"{self._func_graph.name}({', '.join(arg_names)})"
-
-    return signature
 
   def _flat_signature_summary(self):
     """Returns a string summarizing this function's flat signature."""
@@ -1767,79 +1669,29 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
 
   def pretty_printed_signature(self, verbose=True):
     """Returns a string summarizing the signature of this concrete function."""
-    if not verbose:
-      return self._structured_signature_summary(default_values=True)
-
-    def pretty_print_spec(spec):
-      """Returns a string describing the spec for a single argument."""
-      if isinstance(spec, tensor_spec.TensorSpec):
-        return "{} Tensor, shape={}".format(spec.dtype.name, spec.shape)
-      elif nest.is_nested(spec):
-        pieces = nest.flatten(spec, expand_composites=False)
-        markers = [_Marker("<{}>".format(i + 1)) for i in range(len(pieces))]
-        structure = nest.pack_sequence_as(spec, markers)
-        # Ensure dictionaries are sorted by key (for determinism)
-        result = pprint.pformat(structure, width=10000)
-        for (marker, piece) in zip(markers, pieces):
-          result += "\n      {}: {}".format(marker, pretty_print_spec(piece))
-        return result
-      else:
-        return repr(spec)
-
-    lines = [self._structured_signature_summary(default_values=True)]
-    arg_specs, kwarg_specs = self.structured_input_signature
-    names = function_type_utils.to_arg_names(self.function_type)
-
-    # If an explicit input_signature is provided to @tf.function, then any
-    # arguments with defaults that are not covered by that explicit signature
-    # are simply dropped from the signature.
-    # TODO(b/159639913) Look into whether dropping arguments with default values
-    # from the signature is the right thing to do.
-
-    # Note: we can skip bound args, since we already displayed their bound
-    # value in the signature summary.
-    arg_details = []
-    for (name, spec) in zip(names[:len(arg_specs)], list(arg_specs)):
-      if _contains_type_spec(spec):
-        arg_details.append("    {}: {}".format(name, pretty_print_spec(spec)))
-
-    if kwarg_specs:
-      for kwarg in sorted(kwarg_specs):
-        spec = kwarg_specs[kwarg]
-        if _contains_type_spec(spec):
-          arg_details.append("    {}: {}".format(
-              kwarg, pretty_print_spec(spec)))
-
-    if arg_details:
-      lines.append("  Args:")
-      lines.extend(arg_details)
-    lines.append("  Returns:")
-
-    def spec_from_value(value):
-      # For loaded function, structured_outputs are already specs.
-      if isinstance(value, type_spec.TypeSpec):
-        return value
-      return type_spec.type_spec_from_value(value)
-
-    lines.append("    {}".format(
-        pretty_print_spec(
-            nest.map_structure(spec_from_value, self.structured_outputs))))
-
-    return "\n".join(lines)
+    assert self.function_type is not None
+    if verbose:
+      return repr(self.function_type)
+    else:
+      return str(self.function_type)
 
   def __repr__(self):
     if self.function_type is not None:
       return "<ConcreteFunction {} at 0x{:X}>".format(
-          self.pretty_printed_signature(verbose=False), id(self))
+          self.pretty_printed_signature(verbose=False), id(self)
+      )
     elif not (self._num_positional_args is None or self._arg_keywords is None):
       return "<ConcreteFunction {} at 0x{:X}>".format(
-          self._flat_signature_summary(), id(self))
+          self._flat_signature_summary(), id(self)
+      )
     else:
       return object.__repr__(self)
 
   def __str__(self):
     if self.function_type is not None:
-      return "ConcreteFunction {}".format(self.pretty_printed_signature())
+      return "ConcreteFunction {}".format(
+          self.pretty_printed_signature(verbose=True)
+      )
     else:
       return self.__repr__()
 
@@ -1883,7 +1735,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     return []
 
 
-_pywrap_utils.RegisterType("Tensor", ops.Tensor)
+_pywrap_utils.RegisterType("Tensor", tensor_lib.Tensor)
 _pywrap_utils.RegisterType("EagerTensor", ops.EagerTensor)
 _pywrap_utils.RegisterType("IndexedSlices", indexed_slices.IndexedSlices)
 

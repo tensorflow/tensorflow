@@ -41,14 +41,17 @@ cc_library(
     ],
     deps = [
         ":distributed_tpu_rewrite_helpers",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/tpu:tpu_init_mode",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_options",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:logging",
+        "@local_xla//xla:status_macros",
     ],
 )
 
@@ -57,11 +60,11 @@ cc_library(
     srcs = ["distributed_tpu_rewrite_helpers.cc"],
     hdrs = ["distributed_tpu_rewrite_helpers.h"],
     deps = [
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:device_set",
         "//tensorflow/core/tpu:tpu_defs",
+        "@local_xla//xla:status_macros",
     ],
 )
 
@@ -70,7 +73,6 @@ cc_library(
     srcs = ["variable_merger_pass.cc"],
     hdrs = ["variable_merger_pass.h"],
     deps = [
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -79,6 +81,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_xla//xla:status_macros",
     ],
 )
 
@@ -96,19 +99,25 @@ cc_library(
         "//tensorflow/compiler/jit:xla_cluster_util",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
-        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
+        "//tensorflow/core/common_runtime:function_body",
+        "//tensorflow/core/common_runtime:function_utils",
         "//tensorflow/core/tpu:tpu_compile_interface",
         "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla:status_macros",
     ] + if_static(
         [
             "//tensorflow/core/common_runtime:function",
@@ -122,10 +131,7 @@ cc_library(
     name = "distributed_tpu_rewrite_pass_internal",
     srcs = ["distributed_tpu_rewrite_pass_internal.cc"],
     hdrs = ["distributed_tpu_rewrite_pass_internal.h"],
-    deps = [
-        "//tensorflow/core:framework",
-        "@com_google_absl//absl/random",
-    ],
+    deps = ["@com_google_absl//absl/random"],
 )
 
 cc_library(
@@ -144,23 +150,13 @@ cc_library(
         ":incomplete_nodedef_builder",
         "//tensorflow/compiler/jit:encapsulate_util",
         "//tensorflow/compiler/jit:shape_inference",
+        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/compiler/tf2xla:sharding_util",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:array3d",
-        "//tensorflow/compiler/xla:array4d",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla:xla_proto_cc",
-        "//tensorflow/compiler/xla/client:sharding_builder",
-        "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_interface",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_topology_external",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -177,9 +173,27 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
+        "@local_xla//xla:array2d",
+        "@local_xla//xla:array3d",
+        "@local_xla//xla:array4d",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla:xla_proto_cc",
+        "@local_xla//xla/client:sharding_builder",
+        "@local_xla//xla/service:computation_placer",
+        "@local_xla//xla/stream_executor/tpu:c_api_decl",
+        "@local_xla//xla/stream_executor/tpu:tpu_api",
+        "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
+        "@local_xla//xla/stream_executor/tpu:tpu_platform_interface",
+        "@local_xla//xla/stream_executor/tpu:tpu_topology_external",
     ] + if_static(
         [
             "//tensorflow/core/common_runtime:function",
@@ -201,12 +215,11 @@ cc_library(
     srcs = ["incomplete_nodedef_builder.cc"],
     hdrs = ["incomplete_nodedef_builder.h"],
     deps = [
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
@@ -216,12 +229,12 @@ cc_library(
     hdrs = ["cond_builder.h"],
     deps = [
         ":incomplete_nodedef_builder",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -238,15 +251,21 @@ cc_library(
         ":distributed_tpu_rewrite_pass_internal",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
-        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:node_def_util",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_set",
-        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:tstring",
+        "@local_xla//xla:status_macros",
     ],
 )
 
@@ -272,21 +291,23 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_embedding_rewrite_pass_utils",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
         "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
         "//tensorflow/core/tpu/ops:tpu_embedding_ops",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:logging",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
     ],
 )
 
@@ -300,12 +321,12 @@ cc_library(
     ],
     deps = [
         ":distributed_tpu_rewrite_helpers",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_embedding_configuration_proto_rewrite",
+        "@local_xla//xla:status_macros",
     ],
 )
 
@@ -324,7 +345,6 @@ cc_library(
     srcs = ["tpu_embedding_software_deduplication_rewrite_pass.cc"],
     hdrs = ["tpu_embedding_software_deduplication_rewrite_pass.h"],
     deps = [
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -337,6 +357,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@local_xla//xla:status_macros",
     ],
 )
 
@@ -350,7 +371,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/tf2xla:side_effect_util",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -358,5 +378,6 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
+        "@local_xla//xla:status_macros",
     ],
 )

@@ -1,1 +1,187 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenModule.cpp b/clang/lib/CodeGen/CodeGenModule.cpp
+--- a/clang/lib/CodeGen/CodeGenModule.cpp
++++ b/clang/lib/CodeGen/CodeGenModule.cpp
+@@ -697,7 +697,6 @@
+ void CodeGenModule::clear() {
+   DeferredDeclsToEmit.clear();
+   EmittedDeferredDecls.clear();
+-  DeferredAnnotations.clear();
+   if (OpenMPRuntime)
+     OpenMPRuntime->clear();
+ }
+@@ -3094,10 +3093,6 @@
+ }
+ 
+ void CodeGenModule::EmitGlobalAnnotations() {
+-  for (const auto& [MangledName, VD] : DeferredAnnotations)
+-    AddGlobalAnnotations(VD, GetGlobalValue(MangledName));
+-  DeferredAnnotations.clear();
+-
+   if (Annotations.empty())
+     return;
+ 
+@@ -3602,14 +3597,6 @@
+ 
+   // Ignore declarations, they will be emitted on their first use.
+   if (const auto *FD = dyn_cast<FunctionDecl>(Global)) {
+-    // Update deferred annotations with the latest declaration if the function
+-    // function was already used or defined.
+-    if (FD->hasAttr<AnnotateAttr>()) {
+-      StringRef MangledName = getMangledName(GD);
+-      if (GetGlobalValue(MangledName))
+-        DeferredAnnotations[MangledName] = FD;
+-    }
+-
+     // Forward declarations are emitted lazily on first use.
+     if (!FD->doesThisDeclarationHaveABody()) {
+       if (!FD->doesDeclarationForceExternallyVisibleDefinition())
+@@ -4383,11 +4370,6 @@
+       llvm::Function::Create(FTy, llvm::Function::ExternalLinkage,
+                              Entry ? StringRef() : MangledName, &getModule());
+ 
+-  // Store the declaration associated with this function so it is potentially
+-  // updated by further declarations or definitions and emitted at the end.
+-  if (D && D->hasAttr<AnnotateAttr>())
+-    DeferredAnnotations[MangledName] = cast<ValueDecl>(D);
+-
+   // If we already created a function with the same mangled name (but different
+   // type) before, take its name and add it to the list of functions to be
+   // replaced with F at the end of CodeGen.
+@@ -5682,6 +5664,8 @@
+     AddGlobalCtor(Fn, CA->getPriority());
+   if (const DestructorAttr *DA = D->getAttr<DestructorAttr>())
+     AddGlobalDtor(Fn, DA->getPriority(), true);
++  if (D->hasAttr<AnnotateAttr>())
++    AddGlobalAnnotations(D, Fn);
+   if (getLangOpts().OpenMP && D->hasAttr<OMPDeclareTargetDeclAttr>())
+     getOpenMPRuntime().emitDeclareTargetFunction(D, GV);
+ }
+diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenModule.h b/clang/lib/CodeGen/CodeGenModule.h
+--- a/clang/lib/CodeGen/CodeGenModule.h
++++ b/clang/lib/CodeGen/CodeGenModule.h
+@@ -431,10 +431,6 @@
+   /// Global annotations.
+   std::vector<llvm::Constant*> Annotations;
+ 
+-  // Store deferred function annotations so they can be emitted at the end with
+-  // most up to date ValueDecl that will have all the inherited annotations.
+-  llvm::DenseMap<StringRef, const ValueDecl *> DeferredAnnotations;
+-
+   /// Map used to get unique annotation strings.
+   llvm::StringMap<llvm::Constant*> AnnotationStrings;
+ 
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/annotations-declaration.c b/clang/test/CodeGen/annotations-declaration.c
+--- a/clang/test/CodeGen/annotations-declaration.c
++++ b/clang/test/CodeGen/annotations-declaration.c
+@@ -1,17 +0,0 @@
+-// RUN: %clang_cc1 %s -emit-llvm -o - | FileCheck %s
+-
+-// Test annotation attributes are emitted for declarations.
+-
+-__attribute__((annotate("bar"))) int foo();
+-
+-int main() {
+-  return foo();
+-}
+-
+-// CHECK: target triple
+-// CHECK-DAG: private unnamed_addr constant [4 x i8] c"bar\00", section "llvm.metadata"
+-
+-// CHECK: @llvm.global.annotations = appending global [1 x { ptr, ptr, ptr, i32, ptr }] [{
+-// CHECK-SAME: { ptr @foo,
+-// CHECK-SAME: }], section "llvm.metadata"
+-
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/annotations-decl-use-decl.c b/clang/test/CodeGen/annotations-decl-use-decl.c
+--- a/clang/test/CodeGen/annotations-decl-use-decl.c
++++ b/clang/test/CodeGen/annotations-decl-use-decl.c
+@@ -1,16 +0,0 @@
+-// RUN: %clang_cc1 %s -emit-llvm -o - | FileCheck %s
+-
+-// Test annotation attributes are still emitted when the function is used before
+-// it is defined with annotations.
+-
+-void foo(void);
+-void *xxx = (void*)foo;
+-void __attribute__((annotate("bar"))) foo();
+-
+-// CHECK: target triple
+-// CHECK-DAG: private unnamed_addr constant [4 x i8] c"bar\00", section "llvm.metadata"
+-
+-// CHECK: @llvm.global.annotations = appending global [1 x { ptr, ptr, ptr, i32, ptr }] [{
+-// CHECK-SAME: { ptr @foo,
+-// CHECK-SAME: }], section "llvm.metadata"
+-
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/annotations-decl-use-define.c b/clang/test/CodeGen/annotations-decl-use-define.c
+--- a/clang/test/CodeGen/annotations-decl-use-define.c
++++ b/clang/test/CodeGen/annotations-decl-use-define.c
+@@ -1,16 +0,0 @@
+-// RUN: %clang_cc1 %s -emit-llvm -o - | FileCheck %s
+-
+-// Test annotation attributes are still emitted when the function is used before
+-// it is defined with annotations.
+-
+-void foo(void);
+-void *xxx = (void*)foo;
+-void __attribute__((annotate("bar"))) foo() {}
+-
+-// CHECK: target triple
+-// CHECK-DAG: private unnamed_addr constant [4 x i8] c"bar\00", section "llvm.metadata"
+-
+-// CHECK: @llvm.global.annotations = appending global [1 x { ptr, ptr, ptr, i32, ptr }] [{
+-// CHECK-SAME: { ptr @foo,
+-// CHECK-SAME: }], section "llvm.metadata"
+-
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/annotations-global.c b/clang/test/CodeGen/annotations-global.c
+--- a/clang/test/CodeGen/annotations-global.c
++++ b/clang/test/CodeGen/annotations-global.c
+@@ -33,15 +33,15 @@
+ // CHECK: @llvm.global.annotations = appending global [11 x { ptr, ptr, ptr, i32, ptr }] [{
+ // CHECK-SAME: { ptr @a.bar,
+ // CHECK-SAME: { ptr @a.bar,
++// CHECK-SAME: { ptr @a,
++// CHECK-SAME: { ptr @a,
++// CHECK-SAME: { ptr @a,
++// CHECK-SAME: { ptr @a,
+ // CHECK-SAME: { ptr @sfoo,
+ // CHECK-SAME: { ptr @sfoo,
+ // CHECK-SAME: { ptr @foo,
+ // CHECK-SAME: { ptr @foo,
+ // CHECK-SAME: { ptr addrspacecast (ptr addrspace(1) @addrspace1_var to ptr),
+-// CHECK-SAME: { ptr @a,
+-// CHECK-SAME: { ptr @a,
+-// CHECK-SAME: { ptr @a,
+-// CHECK-SAME: { ptr @a,
+ // CHECK-SAME: }], section "llvm.metadata"
+ 
+ // AS1-GLOBALS: target datalayout = "{{.+}}-A5-G1"
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/attr-annotate.cpp b/clang/test/CodeGenCXX/attr-annotate.cpp
+--- a/clang/test/CodeGenCXX/attr-annotate.cpp
++++ b/clang/test/CodeGenCXX/attr-annotate.cpp
+@@ -3,9 +3,9 @@
+ //CHECK: @[[STR1:.*]] = private unnamed_addr constant [{{.*}} x i8] c"{{.*}}attr-annotate.cpp\00", section "llvm.metadata"
+ //CHECK: @[[STR2:.*]] = private unnamed_addr constant [4 x i8] c"abc\00", align 1
+ //CHECK: @[[STR:.*]] = private unnamed_addr constant [5 x i8] c"test\00", section "llvm.metadata"
+-//CHECK: @[[ARGS:.*]] = private unnamed_addr constant { %struct.Struct } { %struct.Struct { ptr @_ZN1AIjLj9EE2SVE, ptr getelementptr (i8, ptr @_ZN1AIjLj9EE2SVE, i64 4) } }, section "llvm.metadata"
+-//CHECK: @[[ARGS2:.*]] = private unnamed_addr constant { i32, ptr, i32 } { i32 9, ptr @[[STR2:.*]], i32 8 }, section "llvm.metadata"
+-//CHECK: @llvm.global.annotations = appending global [2 x { ptr, ptr, ptr, i32, ptr }] [{ ptr, ptr, ptr, i32, ptr } { ptr @_ZN1AIjLj9EE5test2Ev, ptr @.str.6, ptr @.str.1, i32 24, ptr @[[ARGS]] }, { ptr, ptr, ptr, i32, ptr } { ptr @_ZN1AIjLj9EE4testILi8EEEvv, ptr @[[STR:.*]], ptr @[[STR1:.*]], i32 {{.*}}, ptr @[[ARGS2:.*]] }]
++//CHECK: @[[ARGS:.*]] = private unnamed_addr constant { i32, ptr, i32 } { i32 9, ptr @[[STR2:.*]], i32 8 }, section "llvm.metadata"
++//CHECK: @[[ARGS2:.*]] = private unnamed_addr constant { %struct.Struct } { %struct.Struct { ptr @_ZN1AIjLj9EE2SVE, ptr getelementptr (i8, ptr @_ZN1AIjLj9EE2SVE, i64 4) } }, section "llvm.metadata"
++//CHECK: @llvm.global.annotations = appending global [2 x { ptr, ptr, ptr, i32, ptr }] [{ ptr, ptr, ptr, i32, ptr } { ptr @_ZN1AIjLj9EE4testILi8EEEvv, ptr @[[STR:.*]], ptr @[[STR1:.*]], i32 {{.*}}, ptr @[[ARGS:.*]] }, { ptr, ptr, ptr, i32, ptr } { ptr @_ZN1AIjLj9EE5test2Ev, ptr @.str.6, ptr @.str.1, i32 24, ptr @[[ARGS2]] }]
+ 
+ constexpr const char* str() {
+   return "abc";
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/attr-annotate-destructor.cpp b/clang/test/CodeGenCXX/attr-annotate-destructor.cpp
+--- a/clang/test/CodeGenCXX/attr-annotate-destructor.cpp
++++ b/clang/test/CodeGenCXX/attr-annotate-destructor.cpp
+@@ -1,10 +0,0 @@
+-// RUN: %clang_cc1 %s -S -emit-llvm -triple x86_64-unknown-linux-gnu -o - | FileCheck %s
+-
+-// Test annotation attributes on destructors doesn't crash.
+-
+-struct k {
+-  ~k() __attribute__((annotate(""))) {}
+-};
+-void m() { k(); }
+-
+-// CHECK: @llvm.global.annotations = appending global [2 x { ptr, ptr, ptr, i32, ptr }] [{

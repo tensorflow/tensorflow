@@ -106,9 +106,8 @@ def parse_saved_model(export_dir):
       file_content = f.read()
     try:
       saved_model.ParseFromString(file_content)
-      return saved_model
     except message.DecodeError as e:
-      raise IOError(f"Cannot parse file {path_to_pb}: {str(e)}.")
+      raise IOError(f"Cannot parse file {path_to_pb}: {str(e)}.") from e
   elif file_io.file_exists(path_to_pbtxt):
     with file_io.FileIO(path_to_pbtxt, "rb") as f:
       file_content = f.read()

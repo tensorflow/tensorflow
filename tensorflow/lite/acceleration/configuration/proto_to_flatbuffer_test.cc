@@ -76,5 +76,31 @@ TEST(ConversionTest, TFLiteSettings) {
   EXPECT_EQ(output_edgetpu_settings->public_model_id()->str(), kPublicModelId);
 }
 
+TEST(ConversionTest, StableDelegateLoaderSettings) {
+  // Define the fields to be tested.
+  const std::string kDelegatePath = "TEST_DELEGATE_PATH";
+  const std::string kDelegateName = "TEST_DELEGATE_NAME";
+
+  // Create the proto settings.
+  proto::TFLiteSettings input_settings;
+  auto* stable_delegate_loader_settings =
+      input_settings.mutable_stable_delegate_loader_settings();
+  stable_delegate_loader_settings->set_delegate_path(kDelegatePath);
+  stable_delegate_loader_settings->set_delegate_name(kDelegateName);
+  flatbuffers::FlatBufferBuilder flatbuffers_builder;
+
+  // Convert.
+  auto output_settings = ConvertFromProto(input_settings, &flatbuffers_builder);
+
+  // Verify the conversion results.
+  const auto* output_stable_delegate_loader_settings =
+      output_settings->stable_delegate_loader_settings();
+  ASSERT_NE(output_stable_delegate_loader_settings, nullptr);
+  EXPECT_EQ(output_stable_delegate_loader_settings->delegate_path()->str(),
+            kDelegatePath);
+  EXPECT_EQ(output_stable_delegate_loader_settings->delegate_name()->str(),
+            kDelegateName);
+}
+
 }  // namespace
 }  // namespace tflite

@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env.h"
@@ -31,15 +33,18 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
 #include "tensorflow/core/profiler/convert/preprocess_single_host_xplane.h"
+#include "tensorflow/core/profiler/convert/process_megascale_dcn.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_to_json.h"
+#include "tensorflow/core/profiler/convert/xplane_to_dcn_collective_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tool_names.h"
 #include "tensorflow/core/profiler/convert/xplane_to_trace_container.h"
+#include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
@@ -51,10 +56,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/profiler/convert/xplane_to_trace_events.h"
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/profiler/convert/xplane_to_trace_events.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -109,6 +114,7 @@ StatusOr<std::string> ConvertXSpaceToTraceEvents(
           "streaming trace viewer hasn't been supported in Cloud AI");
     }
     if (!Env::Default()->FileExists(*sstable_path).ok()) {
+      ProcessMegascaleDcn(xspace.get());
       TraceEventsContainer trace_container;
       ConvertXSpaceToTraceEventsContainer(host_name, *xspace, &trace_container);
       TF_RETURN_IF_ERROR(trace_container.StoreAsLevelDbTable(*sstable_path));
@@ -116,7 +122,8 @@ StatusOr<std::string> ConvertXSpaceToTraceEvents(
     TF_ASSIGN_OR_RETURN(TraceViewOption trace_option,
                         GetTraceViewOption(options));
     auto visibility_filter = std::make_unique<TraceVisibilityFilter>(
-        MilliSpan(trace_option.start_time_ms, trace_option.end_time_ms),
+        tsl::profiler::MilliSpan(trace_option.start_time_ms,
+                                 trace_option.end_time_ms),
         trace_option.resolution);
     TraceEventsContainer trace_container;
     // Trace smaller than threshold will be disabled from streaming.
@@ -288,6 +295,24 @@ StatusOr<std::string> PreprocessXSpace(
   return xspace->SerializeAsString();
 }
 
+StatusOr<std::string> ConvertDcnCollectiveStatsToToolData(
+    const SessionSnapshot& session_snapshot, const ToolOptions& options) {
+  // <options> must provide a host_name field.
+  std::optional<std::string> hostname =
+      GetParam<std::string>(options, "host_name");
+  if (!hostname.has_value() || hostname->empty()) {
+    return absl::InvalidArgumentError(
+        "Cannot find host_name from options for dcn_collective_stats tool.");
+  }
+
+  // Load DcnSlackAnalysis for a host.
+  TF_ASSIGN_OR_RETURN(
+      DcnSlackAnalysis dcnSlackAnalysis,
+      GetDcnSlackAnalysisByHostName(session_snapshot, hostname.value()));
+
+  return dcnSlackAnalysis.SerializeAsString();
+}
+
 }  // namespace
 
 StatusOr<std::string> ConvertMultiXSpacesToToolData(
@@ -315,6 +340,8 @@ StatusOr<std::string> ConvertMultiXSpacesToToolData(
     return ConvertMultiXSpacesToOpProfileViewer(session_snapshot);
   } else if (tool_name == "memory_viewer" || tool_name == "graph_viewer") {
     return ConvertHloProtoToToolData(session_snapshot, tool_name, options);
+  } else if (tool_name == "dcn_collective_stats") {
+    return ConvertDcnCollectiveStatsToToolData(session_snapshot, options);
   } else if (tool_name == "tool_names") {
     return GetAvailableToolNames(session_snapshot);
   } else if (tool_name == "_xplane.pb") {  // internal test only.

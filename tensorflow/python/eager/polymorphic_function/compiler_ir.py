@@ -44,7 +44,7 @@ def make_handledata_tensor_specs(resource_vars):
 
   def to_resource_spec(traced_input):
     try:
-      handle_data = traced_input.dtype._handle_data  # pylint: disable=protected-access
+      handle_data = traced_input.dtype._handle_data.shape_inference  # pylint: disable=protected-access
       shape_and_type = handle_data.shape_and_type[0]
       spec = tensor_spec.TensorSpec(
           shape=shape_and_type.shape, dtype=shape_and_type.dtype

@@ -43,6 +43,7 @@ cuda_py_strict_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
+        "@pypi_portpicker//:pkg",
     ],
 )
 
@@ -134,10 +135,10 @@ cuda_py_strict_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:distributed_framework_test_lib",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops:while_loop",

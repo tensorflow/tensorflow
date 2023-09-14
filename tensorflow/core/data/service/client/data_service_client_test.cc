@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -88,6 +88,8 @@ class TestDataServiceContext : public DataServiceContext {
               (override));
   MOCK_METHOD(void, RecordBufferDequeue, (const std::vector<Tensor>& element),
               (override));
+
+  double GetTargetProcessingTimeNsec() const override { return 1.0e6; }
 };
 
 std::unique_ptr<TestDataServiceContext> GetTestDataServiceContext() {

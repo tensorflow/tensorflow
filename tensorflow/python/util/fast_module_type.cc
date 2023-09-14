@@ -127,6 +127,27 @@ static PyObject *FastDictGet(FastModuleObject *self, PyObject *args) {
   return nullptr;
 }
 
+// Gets a value from a key in the cache 'attr_map'
+// of the FastModuleObject object corresponding to 'self'.
+static PyObject *FastDictPop(FastModuleObject *self, PyObject *args) {
+  PyObject *name;
+  if (!PyArg_ParseTuple(args, "O", &name)) {
+    PyErr_SetString(PyExc_TypeError, "_fastdict_pop: incorrect inputs");
+    return nullptr;
+  }
+  auto &attr_map = self->attr_map;
+  auto result = attr_map.find(name);
+  if (result != attr_map.end()) {
+    PyObject *value = result->second;
+    Py_INCREF(value);
+    attr_map.erase(result);
+    return value;
+  }
+  // Copied from CPython's moduleobject.c
+  PyErr_Format(PyExc_KeyError, "module has no attribute '%U'", name);
+  return nullptr;
+}
+
 // Returns true if a key exists in the cache 'attr_map'
 // of the FastModuleObject object corresponding to 'self',
 // otherwise returns false.
@@ -170,6 +191,8 @@ static PyMethodDef FastModule_methods[] = {
      METH_VARARGS, "Registers a method to the fast lookup table."},
     {"_fastdict_get", reinterpret_cast<PyCFunction>(FastDictGet), METH_VARARGS,
      "Gets a method from the fast lookup table."},
+    {"_fastdict_pop", reinterpret_cast<PyCFunction>(FastDictPop), METH_VARARGS,
+     "Removes a method in the fast lookup table."},
     {"_fastdict_key_in", reinterpret_cast<PyCFunction>(FastDictContains),
      METH_VARARGS, "Checks if a method exists in the fast lookup table."},
     {"set_getattribute_callback", SetGetattributeCallback, METH_VARARGS,

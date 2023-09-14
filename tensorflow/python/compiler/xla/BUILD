@@ -26,20 +26,20 @@ py_strict_library(
 cuda_py_strict_test(
     name = "jit_test",
     size = "small",
-    srcs = ["jit_test.py"],
+    srcs = ["tests/jit_test.py"],
     tags = [
         "no_windows",  # TODO(b/171385770)
     ],
     xla_enabled = True,
     deps = [
         ":compiler_py",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
@@ -50,7 +50,7 @@ cuda_py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "xla",
     srcs = ["xla.py"],
     srcs_version = "PY3",
@@ -78,7 +78,7 @@ py_library(
 
 cuda_py_strict_test(
     name = "xla_test",
-    srcs = ["xla_test.py"],
+    srcs = ["tests/xla_test.py"],
     tags = [
         "no_mac",
         "no_windows",
@@ -107,7 +107,7 @@ cuda_py_strict_test(
 
 cuda_py_strict_test(
     name = "jit_compile_test",
-    srcs = ["jit_compile_test.py"],
+    srcs = ["tests/jit_compile_test.py"],
     python_version = "PY3",
     tags = [
         "no_mac",
@@ -129,9 +129,9 @@ cuda_py_strict_test(
 
 tf_py_strict_test(
     name = "pjrt_compile_test",
-    srcs = ["pjrt_compile_test.py"],
+    srcs = ["tests/pjrt_compile_test.py"],
     env = {
-        "TF_XLA_FLAGS": "--tf_xla_use_device_api --tf_xla_enable_xla_devices",
+        "TF_XLA_FLAGS": "--tf_xla_use_device_api --tf_xla_enable_xla_devices --tf_xla_enable_device_api_for_gpu",
     },
     python_version = "PY3",
     tags = [
@@ -148,6 +148,35 @@ tf_py_strict_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:variables",
+    ],
+)
+
+tf_py_strict_test(
+    name = "pjrt_compile_virtual_device_test",
+    srcs = ["pjrt_compile_virtual_device_test.py"],
+    env = {
+        "TF_XLA_FLAGS": "--tf_xla_use_device_api --tf_xla_enable_xla_devices --tf_xla_enable_device_api_for_gpu",
+    },
+    python_version = "PY3",
+    tags = [
+        "config-cuda-only",
+        "gpu",
+        "no_oss",
+        "requires-gpu-nvidia",
+        "xla",
+    ],
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variables",
     ],
 )

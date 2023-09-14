@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 // This provides utility macros and functions that are inherently platform
-// specific.
+// specific or shared across runtime & converter.
 #ifndef TENSORFLOW_LITE_CORE_MACROS_H_
 #define TENSORFLOW_LITE_CORE_MACROS_H_
 
@@ -63,6 +63,16 @@ limitations under the License.
 #else
 #define TFLITE_ATTRIBUTE_WEAK
 #define TFLITE_HAS_ATTRIBUTE_WEAK 0
+#endif
+
+#ifndef TF_LITE_STATIC_MEMORY
+// maximum size of a valid flatbuffer
+inline constexpr unsigned int flatbuffer_size_max = 2147483648;
+// If none zero then the buffer is stored outside of the flatbuffers, string
+inline constexpr char tflite_metadata_buffer_location[] = "buffer_location";
+// field for minimum runtime version, string
+inline constexpr char tflite_metadata_min_runtime_version[] =
+    "min_runtime_version";
 #endif
 
 #endif  // TENSORFLOW_LITE_CORE_MACROS_H_

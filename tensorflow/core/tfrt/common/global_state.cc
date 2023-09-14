@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "xla/pjrt/utils.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
@@ -33,8 +34,9 @@ tfrt::HostContext* GetStaticHostContext() {
     auto decoded_diagnostic_handler =
         [&](const ::tfrt::DecodedDiagnostic& diag) { abort(); };
     std::unique_ptr<::tfrt::ConcurrentWorkQueue> work_queue =
-        ::tfrt::CreateMultiThreadedWorkQueue(/*num_threads=*/4,
-                                             /*num_blocking_threads=*/64);
+        ::tfrt::CreateMultiThreadedWorkQueue(
+            /*num_threads=*/xla::DefaultThreadPoolSize(),
+            /*num_blocking_threads=*/64);
     std::unique_ptr<::tfrt::HostAllocator> host_allocator =
         ::tfrt::CreateMallocAllocator();
     return new ::tfrt::HostContext(decoded_diagnostic_handler,

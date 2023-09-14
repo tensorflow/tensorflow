@@ -17,7 +17,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_MLIR_GRAPH_OPTIMIZATION_PASS_H_
 
 #include <functional>
+#include <memory>
+#include <set>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project

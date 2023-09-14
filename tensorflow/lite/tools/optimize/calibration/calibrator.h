@@ -15,12 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATOR_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATOR_H_
 
-#include <unordered_map>
+#include <memory>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
 
 namespace tflite {
@@ -63,7 +63,8 @@ TfLiteStatus BuildLoggingInterpreter(
 TfLiteStatus BuildLoggingInterpreter(
     const tflite::Model* model, ErrorReporter* error_reporter,
     const OpResolver& op_resolver, std::unique_ptr<Interpreter>* interpreter,
-    std::unique_ptr<CalibrationReader>* calibration_reader);
+    std::unique_ptr<CalibrationReader>* calibration_reader,
+    const Allocation* allocation = nullptr);
 
 }  // namespace calibration
 }  // namespace optimize

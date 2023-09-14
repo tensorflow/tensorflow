@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 namespace mlir {
@@ -66,7 +67,7 @@ static PassRegistration<IssueIDsOfCustomAggregationOpsPass> pass;
 void IssueIDsOfCustomAggregationOpsPass::issueIdToCustomAggregator(
     Operation* op) {
   // Return early when only aggregator operators are given.
-  if (op->getName().getStringRef() != "tf.CustomAggregator") return;
+  if (!dyn_cast_or_null<TF::CustomAggregatorOp>(op)) return;
 
   // Issue id based on the number of aggregators found.
   OpBuilder builder(op);

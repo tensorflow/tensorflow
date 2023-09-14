@@ -1,12 +1,13 @@
 # Description: Operations defined for XRT
 
+# Placeholder: load py_proto_library
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_custom_op_py_library",
     "tf_gen_op_wrapper_py",
 )
-load("//tensorflow:tensorflow.default.bzl", "tf_gen_op_libs")
+load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_strict_library", "tf_gen_op_libs")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -31,9 +32,9 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla:xla_proto",
-        "//tensorflow/compiler/xla/service:hlo_proto",
+        "@local_xla//xla:xla_data_proto",
+        "@local_xla//xla:xla_proto",
+        "@local_xla//xla/service:hlo_proto",
     ],
     visibility = ["//visibility:public"],
 )
@@ -49,11 +50,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/jit:xla_device",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_node_context",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_configuration",
+        "@local_xla//xla/client:local_client",
+        "@local_xla//xla/stream_executor/tpu:tpu_node_context",
     ],
 )
 
@@ -82,22 +83,6 @@ cc_library(
         ":xrt_proto_cc",
         "//tensorflow/compiler/jit:xla_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla:xla_proto_cc",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/service:backend",
-        "//tensorflow/compiler/xla/service:executable",
-        "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
-        "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -109,6 +94,22 @@ cc_library(
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
+        "@local_xla//xla:debug_options_flags",
+        "@local_xla//xla:literal",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla:statusor",
+        "@local_xla//xla:types",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla:xla_proto_cc",
+        "@local_xla//xla/client:local_client",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/service:backend",
+        "@local_xla//xla/service:executable",
+        "@local_xla//xla/service:shaped_buffer",
+        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:device_memory_allocator",
+        "@local_xla//xla/stream_executor:tf_allocator_adapter",
     ],
 )
 
@@ -127,6 +128,13 @@ tf_gen_op_libs(
 tf_gen_op_wrapper_py(
     name = "xrt_ops_wrapper_py",
     out = "xrt_ops.py",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+    py_lib_rule = py_strict_library,
     deps = [
         ":xrt_compile_ops_op_lib",
         ":xrt_execute_op_op_lib",
@@ -134,7 +142,7 @@ tf_gen_op_wrapper_py(
     ],
 )
 
-tf_custom_op_py_library(
+tf_custom_op_py_strict_library(
     name = "xrt_ops",
     kernels = ["//tensorflow/compiler/xrt/kernels:xrt_ops"],
     visibility = ["//visibility:public"],

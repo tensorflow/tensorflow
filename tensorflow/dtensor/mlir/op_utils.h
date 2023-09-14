@@ -77,6 +77,14 @@ void RemoveDTensorLayoutOps(mlir::ModuleOp module,
 //   %2 = tf.Add(%1, %1)
 mlir::LogicalResult ReplaceAuxiliaryDTensorLayoutOpsWithIdentity(
     mlir::ModuleOp module);
+
+// For all constants with multiple usages, clone the constants so that each
+// constant operation has at most 1 usage.
+void DuplicateConstants(mlir::Operation* op);
+
+// Constructs the dtensor Operation name from a module object.
+std::string GetOperationName(mlir::ModuleOp module);
+
 }  // namespace dtensor
 }  // namespace tensorflow
 

@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
@@ -1741,17 +1741,6 @@ TEST(FrozenStackTrace, GetUserFramesWithLowLimitSlicesFrames) {
 
   EXPECT_THAT(frozen_stack_trace.GetUserFrames(2),
               ElementsAre(Eq(frames[0]), Eq(frames[1])));
-}
-
-TEST(FrozenStackTrace, ToUncachedFramesReturnsAllFrames) {
-  std::vector<StackFrame> frames = std::vector<StackFrame>{
-      {"some/path/alpha.cc", 20, "bar"},
-      {"some/path/beta.cc", 30, "fox"},
-      {"some/path/subdir/gamma.cc", 40, "trot"},
-  };
-  FrozenStackTrace frozen_stack_trace(frames);
-
-  EXPECT_THAT(frozen_stack_trace.ToUncachedFrames(), ElementsAreArray(frames));
 }
 
 TEST(FrozenStackTrace, LastUserFrameReturnsLastFrame) {

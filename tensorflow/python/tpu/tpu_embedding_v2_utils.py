@@ -410,7 +410,11 @@ class Adagrad(_Optimizer):
     return ["accumulators"]
 
   def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
-    return [init_ops_v2.Constant(self.initial_accumulator_value)]
+    return [
+        init_ops_v2.Constant(
+            self.initial_accumulator_value, support_partition=True
+        )
+    ]
 
   def _set_optimization_parameters(
       self, parameters: optimization_parameters_pb2.OptimizationParameters):
@@ -548,10 +552,14 @@ class AdagradMomentum(_Optimizer):
     return ["accumulators", "momenta"]
 
   def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
-    return [init_ops_v2.Constant(), init_ops_v2.Constant()]
+    return [
+        init_ops_v2.Constant(support_partition=True),
+        init_ops_v2.Constant(support_partition=True),
+    ]
 
   def _set_optimization_parameters(
-      self, parameters: optimization_parameters_pb2.OptimizationParameters):
+      self, parameters: optimization_parameters_pb2.OptimizationParameters
+  ):
     super()._set_optimization_parameters(parameters)
     parameters.adagrad_momentum.SetInParent()
     parameters.adagrad_momentum.momentum = self.momentum
@@ -716,12 +724,15 @@ class FTRL(_Optimizer):
 
   def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
     return [
-        init_ops_v2.Constant(self.initial_accumulator_value),
-        init_ops_v2.Constant()
+        init_ops_v2.Constant(
+            self.initial_accumulator_value, support_partition=True
+        ),
+        init_ops_v2.Constant(support_partition=True),
     ]
 
   def _set_optimization_parameters(
-      self, parameters: optimization_parameters_pb2.OptimizationParameters):
+      self, parameters: optimization_parameters_pb2.OptimizationParameters
+  ):
     super()._set_optimization_parameters(parameters)
     ftrl = parameters.ftrl
     ftrl.l1 = self.l1_regularization_strength
@@ -884,10 +895,14 @@ class Adam(_Optimizer):
     return ["momenta", "velocities"]
 
   def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
-    return [init_ops_v2.Constant(), init_ops_v2.Constant()]
+    return [
+        init_ops_v2.Constant(support_partition=True),
+        init_ops_v2.Constant(support_partition=True),
+    ]
 
   def _set_optimization_parameters(
-      self, parameters: optimization_parameters_pb2.OptimizationParameters):
+      self, parameters: optimization_parameters_pb2.OptimizationParameters
+  ):
     super(Adam, self)._set_optimization_parameters(parameters)
     parameters.adam.beta1 = self.beta_1
     parameters.adam.beta2 = self.beta_2
@@ -1119,18 +1134,19 @@ class TableConfig:
     # We handle the learning rate separately here and don't allow the
     # optimization class to handle this, as it doesn't know about dynamic
     # rates.
-    if callable(self.optimizer.learning_rate):
-      parameters.learning_rate.dynamic.tag = (
-          learning_rate_index[self.optimizer.learning_rate])
-    else:
-      parameters.learning_rate.constant = self.optimizer.learning_rate
+    if self.optimizer:
+      if callable(self.optimizer.learning_rate):
+        parameters.learning_rate.dynamic.tag = (
+            learning_rate_index[self.optimizer.learning_rate])
+      else:
+        parameters.learning_rate.constant = self.optimizer.learning_rate
+      if self.optimizer.low_dimensional_packing_status:
+        parameters.low_dimensional_packing_status = (
+            optimization_parameters_pb2.LowDimensionalPackingStatus.Status.ENABLED
+        )
+      # Use optimizer to handle the rest of the parameters.
+      self.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
 
-    if self.optimizer.low_dimensional_packing_status:
-      parameters.low_dimensional_packing_status = (
-          optimization_parameters_pb2.LowDimensionalPackingStatus.Status.ENABLED
-      )
-    # Use optimizer to handle the rest of the parameters.
-    self.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
     if self.quantization_config:
       self.quantization_config._set_optimization_parameters(parameters)  # pylint: disable=protected-access
 

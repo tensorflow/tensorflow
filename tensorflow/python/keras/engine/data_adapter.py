@@ -32,9 +32,9 @@ from tensorflow.python.distribute import input_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
@@ -49,7 +49,6 @@ from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
 
 class DataAdapter(object, metaclass=abc.ABCMeta):
@@ -566,7 +565,7 @@ class CompositeTensorDataAdapter(DataAdapter):
       return _is_scipy_sparse(v)
 
     def _is_tensor_or_composite(v):
-      if isinstance(v, (ops.Tensor, np.ndarray)):
+      if isinstance(v, (tensor.Tensor, np.ndarray)):
         return True
       return _is_composite(v)
 
@@ -1460,7 +1459,7 @@ def expand_1d(data):
 
   def _expand_single_1d_tensor(t):
     # Leaves `CompositeTensor`s as-is.
-    if (isinstance(t, ops.Tensor) and
+    if (isinstance(t, tensor.Tensor) and
         isinstance(t.shape, tensor_shape.TensorShape) and t.shape.rank == 1):
       return array_ops.expand_dims_v2(t, axis=-1)
     return t
@@ -1528,7 +1527,6 @@ def train_validation_split(arrays, validation_split):
   return train_arrays, val_arrays
 
 
-@keras_export("keras.utils.unpack_x_y_sample_weight", v1=[])
 def unpack_x_y_sample_weight(data):
   """Unpacks user-provided data tuple.
 
@@ -1590,7 +1588,6 @@ def unpack_x_y_sample_weight(data):
     raise ValueError(error_msg)
 
 
-@keras_export("keras.utils.pack_x_y_sample_weight", v1=[])
 def pack_x_y_sample_weight(x, y=None, sample_weight=None):
   """Packs user-provided data into a tuple.
 
@@ -1669,9 +1666,9 @@ def _get_tensor_types():
   try:
     import pandas as pd  # pylint: disable=g-import-not-at-top
 
-    return (ops.Tensor, np.ndarray, pd.Series, pd.DataFrame)
+    return (tensor.Tensor, np.ndarray, pd.Series, pd.DataFrame)
   except ImportError:
-    return (ops.Tensor, np.ndarray)
+    return (tensor.Tensor, np.ndarray)
 
 
 def _is_scipy_sparse(x):

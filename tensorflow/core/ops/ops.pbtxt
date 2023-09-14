@@ -4061,6 +4061,35 @@ op {
     }
   }
   attr {
+    name: "low_priority_max_batch_size"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "low_priority_batch_timeout_micros"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "low_priority_allowed_batch_sizes"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "low_priority_max_enqueued_batches"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
     name: "Tin"
     type: "list(type)"
     has_minimum: true
@@ -8193,6 +8222,13 @@ op {
     }
   }
   attr {
+    name: "is_stateless"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "Nordering_token"
     type: "int"
     default_value {
@@ -8610,6 +8646,13 @@ op {
     }
   }
   attr {
+    name: "is_stateless"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "Nordering_token"
     type: "int"
     default_value {
@@ -8863,6 +8906,13 @@ op {
     }
   }
   attr {
+    name: "is_stateless"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "Nordering_token"
     type: "int"
     default_value {
@@ -8955,6 +9005,13 @@ op {
     type: "float"
     default_value {
       f: 0
+    }
+  }
+  attr {
+    name: "is_stateless"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
   attr {
@@ -9709,6 +9766,92 @@ op {
 }
 op {
   name: "ControlTrigger"
+}
+op {
+  name: "Conv"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+        s: "EXPLICIT"
+      }
+    }
+  }
+  attr {
+    name: "explicit_paddings"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "CHANNELS_LAST"
+    }
+    allowed_values {
+      list {
+        s: "CHANNELS_FIRST"
+        s: "CHANNELS_LAST"
+      }
+    }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "batch_dims"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "groups"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
 }
 op {
   name: "Conv2D"
@@ -10566,7 +10709,7 @@ op {
     type_attr: "T"
   }
   attr {
-    name: "layout"
+    name: "mesh"
     type: "string"
   }
   attr {
@@ -10587,13 +10730,6 @@ op {
   output_arg {
     name: "output"
     type_attr: "T"
-  }
-  attr {
-    name: "reference_layout"
-    type: "string"
-    default_value {
-      s: ""
-    }
   }
   attr {
     name: "T"
@@ -15513,6 +15649,106 @@ op {
   is_stateful: true
 }
 op {
+  name: "DynamicEnqueueTPUEmbeddingRaggedTensorBatch"
+  input_arg {
+    name: "sample_splits"
+    type_attr: "T1"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "embedding_indices"
+    type_attr: "T2"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "aggregation_weights"
+    type_attr: "T3"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "mode_override"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "device_ordinal"
+    type: DT_INT32
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T3"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "combiners"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "table_ids"
+    type: "list(int)"
+  }
+  attr {
+    name: "max_sequence_lengths"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "num_features"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "DynamicPartition"
   input_arg {
     name: "data"
@@ -18987,6 +19223,38 @@ op {
   }
 }
 op {
+  name: "FFTND"
+  input_arg {
+    name: "input"
+    type_attr: "Tcomplex"
+  }
+  input_arg {
+    name: "fft_length"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "axes"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tcomplex"
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "FIFOQueue"
   output_arg {
     name: "handle"
@@ -20935,6 +21203,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -22065,6 +22334,38 @@ op {
   }
 }
 op {
+  name: "IFFTND"
+  input_arg {
+    name: "input"
+    type_attr: "Tcomplex"
+  }
+  input_arg {
+    name: "fft_length"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "axes"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tcomplex"
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "IRFFT"
   input_arg {
     name: "input"
@@ -22154,6 +22455,51 @@ op {
   }
   input_arg {
     name: "fft_length"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Treal"
+  }
+  attr {
+    name: "Treal"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "IRFFTND"
+  input_arg {
+    name: "input"
+    type_attr: "Tcomplex"
+  }
+  input_arg {
+    name: "fft_length"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "axes"
     type: DT_INT32
   }
   output_arg {
@@ -38245,6 +38591,51 @@ op {
   }
   input_arg {
     name: "fft_length"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tcomplex"
+  }
+  attr {
+    name: "Treal"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "RFFTND"
+  input_arg {
+    name: "input"
+    type_attr: "Treal"
+  }
+  input_arg {
+    name: "fft_length"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "axes"
     type: DT_INT32
   }
   output_arg {
@@ -54371,6 +54762,13 @@ op {
       }
     }
   }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseSegmentMeanGrad"
@@ -54393,6 +54791,71 @@ op {
   output_arg {
     name: "output"
     type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "SparseSegmentMeanGradV2"
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "segment_ids"
+    type_attr: "Tsegmentids"
+  }
+  input_arg {
+    name: "dense_output_dim0"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sorted_unique_indices"
+    type_attr: "Tidx"
   }
   attr {
     name: "T"
@@ -54506,6 +54969,13 @@ op {
       }
     }
   }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseSegmentSqrtN"
@@ -54563,6 +55033,13 @@ op {
       }
     }
   }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseSegmentSqrtNGrad"
@@ -54585,6 +55062,71 @@ op {
   output_arg {
     name: "output"
     type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "SparseSegmentSqrtNGradV2"
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "segment_ids"
+    type_attr: "Tsegmentids"
+  }
+  input_arg {
+    name: "dense_output_dim0"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sorted_unique_indices"
+    type_attr: "Tidx"
   }
   attr {
     name: "T"
@@ -54698,6 +55240,13 @@ op {
       }
     }
   }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseSegmentSum"
@@ -54763,6 +55312,13 @@ op {
       }
     }
   }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseSegmentSumGrad"
@@ -54785,6 +55341,71 @@ op {
   output_arg {
     name: "output"
     type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "SparseSegmentSumGradV2"
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "segment_ids"
+    type_attr: "Tsegmentids"
+  }
+  input_arg {
+    name: "dense_output_dim0"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sorted_unique_indices"
+    type_attr: "Tidx"
   }
   attr {
     name: "T"
@@ -54904,6 +55525,13 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
+    }
+  }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -58733,6 +59361,46 @@ op {
   }
   input_arg {
     name: "buffer_size"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_TENSOR
+        args {
+          type_id: TFT_STRING
+        }
+      }
+    }
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "TFRecordDatasetV2"
+  input_arg {
+    name: "filenames"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "compression_type"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "buffer_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "byte_offsets"
     type: DT_INT64
   }
   output_arg {
@@ -64297,6 +64965,13 @@ op {
   }
   attr {
     name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "debug_name"
     type: "string"
     default_value {
       s: ""

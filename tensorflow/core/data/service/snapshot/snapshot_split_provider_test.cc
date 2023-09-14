@@ -28,15 +28,15 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/lib/io/compression.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
-#include "tensorflow/tsl/platform/test.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/lib/io/compression.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/test.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -75,9 +75,10 @@ SnapshotTaskDef TestSnapshotTask() {
 }
 
 Status WriteSplits(const SnapshotTaskDef& snapshot_task, int64_t num_splits) {
-  std::string source_dir = RepetitionDirectory(
-      snapshot_task.base_path(), snapshot_task.stream_index(), /*source_id=*/0,
-      /*repetition_index=*/0);
+  std::string source_dir =
+      RepetitionDirectory(snapshot_task.base_path(),
+                          snapshot_task.stream_index(), /*source_index=*/0,
+                          /*repetition_index=*/0);
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(source_dir));
   for (int64_t i = 0; i < num_splits; ++i) {
     std::string split_filename = absl::StrCat("split_", i, "_", i);

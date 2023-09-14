@@ -1,17 +1,27 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":__subpackages__",
+        ":friends",
         "//tensorflow/compiler/mlir:__subpackages__",
         "//tensorflow/core:__subpackages__",
         "//tensorflow/core:dependency_allowlist",
         "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
+)
+
+package_group(
+    name = "friends",
+    packages = [
+        "//learning/brain/contrib/tpu_modeling/inference_converter_v2/mlir/...",
+        "//waymo/ml/cn/...",
+        "//waymo/ml/compiler/mlir/...",
+    ],
 )
 
 cc_library(
@@ -97,9 +107,9 @@ cc_library(
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/tsl/platform:float8",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
@@ -198,7 +208,6 @@ cc_library(
         ":convert_tensor",
         ":convert_types",
         ":mangling",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir:Dialect",
@@ -209,6 +218,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_xla//xla:status_macros",
     ],
 )
 
@@ -230,6 +240,7 @@ tf_cc_binary(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = ["//tensorflow/core/ir:test_utilities"],
     driver = "//tensorflow/core/ir:run_lit.sh",
     exclude = [],

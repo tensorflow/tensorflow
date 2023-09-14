@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/util/debug_data_dumper.h"
 
+#include <optional>
+#include <set>
+#include <string>
+#include <vector>
+
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"

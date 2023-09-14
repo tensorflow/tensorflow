@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
@@ -55,12 +56,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
-#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/translate.h"
+#include "xla/translate/hlo_to_mhlo/translate.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 using mlir::MLIRContext;
 using mlir::ModuleOp;
@@ -153,16 +154,19 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "TF GraphDef to TFLite FlatBuffer converter\n");
 
-  MLIRContext context;
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  MLIRContext context(registry);
   llvm::SourceMgr source_mgr;
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
-  mlir::DialectRegistry registry;
 
   if (input_mlir) {
     // TODO(@zichuanwei): hack to enable mlir conversion via this tool, will get
     // back to do it properly in the future
+    mlir::DialectRegistry registry;
     RegisterAllTensorFlowDialects(registry);
-    registry.insert<mlir::func::FuncDialect>();
+    registry
+        .insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect>();
     context.appendDialectRegistry(registry);
   }
 
@@ -288,10 +292,9 @@ int main(int argc, char **argv) {
   pass_config.outline_tf_while = true;
   pass_config.preserve_assert_op = preserve_assert_op;
   pass_config.enable_stablehlo_conversion = enable_stablehlo_conversion;
-
-  if (enable_hlo_to_tf_conversion) {
-    pass_config.enable_hlo_to_tf_conversion = true;
-  }
+  pass_config.legalize_custom_tensor_list_ops = legalize_custom_tensor_list_ops;
+  pass_config.enable_hlo_to_tf_conversion = enable_hlo_to_tf_conversion;
+  pass_config.reduce_type_precision = reduce_type_precision;
 
   toco::TocoFlags toco_flags;
   toco_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
@@ -300,6 +303,10 @@ int main(int argc, char **argv) {
   toco_flags.set_allow_all_select_tf_ops(allow_all_select_tf_ops);
   toco_flags.set_enable_dynamic_update_slice(enable_dynamic_update_slice);
   toco_flags.set_post_training_quantize(post_training_quantization);
+  toco_flags.set_use_buffer_offset(use_buffer_offset);
+  toco_flags.set_legalize_custom_tensor_list_ops(
+      legalize_custom_tensor_list_ops);
+  toco_flags.set_reduce_type_precision(reduce_type_precision);
   // Read list of user select ops.
   llvm::SmallVector<llvm::StringRef, 2> user_ops;
   (llvm::StringRef(select_user_tf_ops))
@@ -314,8 +321,11 @@ int main(int argc, char **argv) {
   if (bundle) session = bundle->GetSession();
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.value().get(), output_mlir, toco_flags, pass_config, tags,
-      /*saved_model_dir=*/"", session, &result);
-  if (!status.ok()) return kTrFailure;
+      /*saved_model_dir=*/"", session, &result, serialize_stablehlo_ops);
+  if (!status.ok()) {
+    llvm::errs() << status.message() << '\n';
+    return kTrFailure;
+  }
 
   std::string error_msg;
   auto output = mlir::openOutputFile(output_file_name, &error_msg);

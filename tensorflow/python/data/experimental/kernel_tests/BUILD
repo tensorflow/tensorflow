@@ -89,6 +89,7 @@ tf_py_strict_test(
     name = "checkpoint_input_pipeline_hook_test",
     size = "medium",
     srcs = ["checkpoint_input_pipeline_hook_test.py"],
+    tags = ["no_windows"],  # b/287333711
     deps = [
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/experimental/ops:iterator_ops",
@@ -312,7 +313,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/ops:parsing_ops",
         "//tensorflow/python/platform:client_testlib",
@@ -536,6 +537,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:parsing_ops",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/platform:client_testlib",
@@ -587,7 +589,6 @@ tf_py_strict_test(
     srcs = ["rebatch_dataset_test.py"],
     shard_count = 4,
     deps = [
-        "//tensorflow/python:image_ops",
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
@@ -598,6 +599,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/ops:image_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",

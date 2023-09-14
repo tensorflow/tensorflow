@@ -2,8 +2,8 @@ FROM linaro/tensorflow-arm64-build:2.14-multipython
 
 ARG py_major_minor_version='3.10'
 
-ENV TF_PYTHON_VERSION=python${py_major_minor_version}
-ENV PYTHON_BIN_PATH=/usr/bin/${TF_PYTHON_VERSION}
+ENV TF_PYTHON_VERSION=${py_major_minor_version}
+ENV PYTHON_BIN_PATH=/usr/bin/python${TF_PYTHON_VERSION}
 
 RUN ln -s ${PYTHON_BIN_PATH} /usr/local/bin/python && \
     ln -s ${PYTHON_BIN_PATH} /usr/local/bin/python3 && \

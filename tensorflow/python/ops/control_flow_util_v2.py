@@ -19,7 +19,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import concrete_function
-from tensorflow.python.eager.polymorphic_function import tracing_compiler
+from tensorflow.python.eager.polymorphic_function import tracing_compilation
 from tensorflow.python.eager.polymorphic_function import transform
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
@@ -68,8 +68,7 @@ def create_new_tf_function(func_graph):
     The name of the new TF_Function.
   """
   transform.apply_func_graph_transforms(func_graph)
-  func = atomic_function.from_func_graph(
-      func_graph.name, func_graph, func_graph.inputs, func_graph.outputs, {})
+  func = atomic_function.from_func_graph(func_graph.name, func_graph, {})
 
   func_graph.outer_graph._add_function_recursive(func)  # pylint: disable=protected-access
   return func_graph.name
@@ -333,10 +332,10 @@ def get_func_graph(op, input_shapes, func_name):
     if operation.type in ["PartitionedCall", "StatefulPartitionedCall"]:
       f = graph._get_function(operation.get_attr("f").name)  # pylint: disable=protected-access
       try:
-        cf = concrete_function.ConcreteFunction(
+        cf = concrete_function.ConcreteFunction.from_func_graph(
             f.graph,
+            f.function_type,
             attrs=f.cached_definition.attr,
-            function_type=f.function_type,
         )
       except AttributeError:
         # f is not found or f is a _DefinedFunction that doesn't have a graph.
@@ -390,10 +389,12 @@ def run_as_function_for_tape_gradients(make_op, inputs):
       # wrapped once, we stop wrapping to avoid infinite recursion.
       and not (ops.get_default_graph().building_function
                and "cflow_gradient_wrapper" in ops.get_default_graph().name)):
-    results = tracing_compiler.TracingCompiler(
-        make_op,
-        "cflow_gradient_wrapper",
-        autograph=False)(inputs)
+    results = tracing_compilation.call_function(
+        (inputs,),
+        tracing_options=tracing_compilation.TracingOptions(
+            make_op, "cflow_gradient_wrapper", autograph=False
+        ),
+    )
     return results
   else:
     return make_op(inputs)

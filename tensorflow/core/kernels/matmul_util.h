@@ -16,8 +16,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
-#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "xla/stream_executor/device_memory.h"
 #include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {

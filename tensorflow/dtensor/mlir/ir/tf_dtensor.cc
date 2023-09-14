@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 
 #include <cstdint>
+#include <string>
 
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -210,8 +211,8 @@ mlir::LogicalResult DTensorAllToAllOp::verify() {
 
   int32_t num_split_dims = 0;
   int32_t num_concat_dims = 0;
-  tensorflow::dtensor::ShardingSpec split_spec;
-  tensorflow::dtensor::ShardingSpec concat_spec;
+  std::string split_spec;
+  std::string concat_spec;
   for (int32_t i = 0; i < input_layout.rank(); ++i) {
     if (input_layout.sharding_spec(i) == output_layout.sharding_spec(i))
       continue;
@@ -220,17 +221,17 @@ mlir::LogicalResult DTensorAllToAllOp::verify() {
         tensorflow::dtensor::Layout::IsShardedDimension(
             output_layout.sharding_spec(i))) {
       num_split_dims++;
-      split_spec = output_layout.dim(i);
+      split_spec = output_layout.sharding_spec(i);
     } else if (tensorflow::dtensor::Layout::IsShardedDimension(
                    input_layout.sharding_spec(i)) &&
                tensorflow::dtensor::Layout::IsUnshardedDimension(
                    output_layout.sharding_spec(i))) {
       num_concat_dims++;
-      concat_spec = input_layout.dim(i);
+      concat_spec = input_layout.sharding_spec(i);
     }
   }
   if (num_split_dims != 1 || num_concat_dims != 1 ||
-      split_spec.sharding_spec() != concat_spec.sharding_spec()) {
+      split_spec != concat_spec) {
     return op.emitOpError() << "must have one mesh dimension which is being "
                                "unsharded in one axis and sharded in another";
   }

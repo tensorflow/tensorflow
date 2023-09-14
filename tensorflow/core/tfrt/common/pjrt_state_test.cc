@@ -19,8 +19,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status_matchers.h"
@@ -96,6 +96,25 @@ TEST_F(PjRtStateTestFixture, DeleteNotExistPjRtClient) {
   EXPECT_THAT(pjrt_state_->MovePjRtClientToUnused(tensorflow::DEVICE_CPU),
               StatusIs(tensorflow::error::NOT_FOUND,
                        HasSubstr("PjRt client not found for device type")));
+}
+
+TEST_F(PjRtStateTestFixture, GetOrCreatePjRtClientExist) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto pjrt_client,
+      xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1));
+  auto pjrt_client_ptr = pjrt_client.get();
+  TF_ASSERT_OK(pjrt_state_->SetPjRtClient(tensorflow::DEVICE_CPU,
+                                          std::move(pjrt_client)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto pjrt_client_get,
+      pjrt_state_->GetOrCreatePjRtClient(tensorflow::DEVICE_CPU));
+  EXPECT_THAT(pjrt_client_get, pjrt_client_ptr);
+}
+
+TEST_F(PjRtStateTestFixture, GetOrCreatePjRtClientNotExist) {
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, pjrt_state_->GetOrCreatePjRtClient(
+                                                tensorflow::DEVICE_CPU));
+  EXPECT_THAT(pjrt_client, testing::NotNull());
 }
 
 }  // namespace

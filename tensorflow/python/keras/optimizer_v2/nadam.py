@@ -25,10 +25,8 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.optimizers.Nadam')
 class Nadam(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the NAdam algorithm.
   Much like Adam is essentially RMSprop with momentum, Nadam is Adam with

@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_stats.h"
 
+#include <algorithm>
+#include <utility>
+#include <vector>
+
 #include "google/protobuf/any.pb.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -83,6 +87,10 @@ PodStatsDatabase ConvertOpStatsToPodStats(const OpStats& op_stats) {
 
   for (const auto& step_sequence : op_stats.step_db().step_sequence()) {
     for (const auto& entry : step_sequence.step_info_per_core()) {
+      if (!core_id_map.contains(entry.first)) {
+        LOG(WARNING) << "core_id_map does not contain " << entry.first;
+        continue;
+      }
       const CoreDetails& details = core_id_map.at(entry.first);
       *pod_stats_db.add_pod_stats_record() =
           CreatePodStatsRecord(details.hostname(), entry.second);

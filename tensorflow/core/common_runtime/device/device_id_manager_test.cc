@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
 
+#include <vector>
+
+#include <gmock/gmock.h>
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
+using ::testing::IsEmpty;
+using ::testing::UnorderedElementsAre;
 
 PlatformDeviceId TfToPlatformDeviceId(const DeviceType& type, TfDeviceId tf) {
   PlatformDeviceId platform_device_id;
@@ -97,5 +103,41 @@ TEST(DeviceIdManagerTest, TwoDevices) {
   ASSERT_FALSE(
       DeviceIdManager::TfToPlatformDeviceId("FOO", key_0, &value_0).ok());
 }
+
+TEST(DeviceIdManagerTest, GetTfDevicesOnSamePlatform) {
+  // Setup 0 --> 0 and 1 --> 0 mapping for device GPU.
+  DeviceType device_gpu("GPU");
+  TfDeviceId tf_device_0(0);
+  PlatformDeviceId platform_0(0);
+  TF_ASSERT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(
+      device_gpu, tf_device_0, platform_0));
+  TfDeviceId tf_device_1(1);
+  TF_ASSERT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(
+      device_gpu, tf_device_1, platform_0));
+
+  // Setup 2 --> 3 mapping for device XPU.
+  DeviceType device_xpu("XPU");
+  TfDeviceId tf_device_2(2);
+  PlatformDeviceId platform_1(3);
+  TF_ASSERT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(
+      device_xpu, tf_device_2, platform_1));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<TfDeviceId> tf_device_ids_gpu,
+      DeviceIdManager::GetTfDevicesOnPlatform(device_gpu, platform_0));
+  EXPECT_THAT(tf_device_ids_gpu,
+              UnorderedElementsAre(tf_device_0, tf_device_1));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      tf_device_ids_gpu,
+      DeviceIdManager::GetTfDevicesOnPlatform(device_gpu, platform_1));
+  EXPECT_THAT(tf_device_ids_gpu, IsEmpty());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<TfDeviceId> tf_device_ids_xpu,
+      DeviceIdManager::GetTfDevicesOnPlatform(device_xpu, platform_1));
+  EXPECT_THAT(tf_device_ids_xpu, UnorderedElementsAre(tf_device_2));
+}
+
 }  // namespace
 }  // namespace tensorflow

@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -252,6 +252,10 @@ bool HasModelParallelism(mlir::tf_device::ClusterOp cluster);
 
 // Returns true if the devices list contain any TPU devices
 bool HasTPUDevice(const mlir::TF::RuntimeDevices& devices);
+
+// Returns the host device used for outside compilation in generic pipeline.
+mlir::LogicalResult GetHostDeviceOutsideCompilationInGenericPipeline(
+    mlir::TF::RuntimeDevices devices, std::string* host_device);
 
 // Parses XLA compilation and execution devices from a tf_device.cluster and
 // returns the host device for the head and tail computations. For TPU device,

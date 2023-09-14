@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_PASSES_H_
 
 #include <memory>
-#include <string>
 
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.pb.h"
 
@@ -33,6 +32,15 @@ namespace stablehlo {
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
     ::stablehlo::quantization::QuantizationComponentSpec
         quantization_component_spec);
+
+// Creates a pass that prepares static range quantization of StableHLO graph.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass(
+    ::stablehlo::quantization::QuantizationOptions quantization_options);
+
+// Creates an instance of the StableHLO dialect PrepareSrqQuantize pass without
+// any arguments. Preset method of SRQ is set to the quantization option by
+// default.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass();
 
 }  // namespace stablehlo
 }  // namespace mlir

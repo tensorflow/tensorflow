@@ -53,12 +53,20 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "int4"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
     name: "numpy"
     mtype: "<type \'module\'>"
   }
   member {
     name: "tensorrt"
     mtype: "<type \'module\'>"
+  }
+  member {
+    name: "uint4"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member_method {
     name: "async_clear_error"
@@ -83,6 +91,10 @@ tf_module {
   member_method {
     name: "dispatch_for_unary_elementwise_apis"
     argspec: "args=[\'x_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_strict_mode"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "function_executor_type"

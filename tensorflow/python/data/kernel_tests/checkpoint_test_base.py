@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor_value
@@ -43,7 +44,7 @@ def remove_variants(get_next_op):
   """Remove variants from a nest structure, so sess.run will execute."""
 
   def _remove_variant(x):
-    if isinstance(x, ops.Tensor) and x.dtype == dtypes.variant:
+    if isinstance(x, tensor.Tensor) and x.dtype == dtypes.variant:
       return ()
     else:
       return x

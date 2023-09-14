@@ -1,6 +1,8 @@
 # Description:
 #   Contains the Keras Utilities (internal TensorFlow version).
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove non-keras deps from TF.
@@ -60,6 +62,7 @@ py_library(
         ":generic_utils",
         ":io_utils",
         ":tf_inspect",
+        "//tensorflow/python/framework:tensor",
     ],
 )
 
@@ -94,7 +97,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:smart_cond",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:control_flow_ops",
@@ -151,11 +154,13 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":engine_utils",
         ":generic_utils",
         ":tf_utils",
         "//tensorflow/python/distribute",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:check_ops",

@@ -62,7 +62,7 @@ class BitcastOpModel : public SingleOpModel {
   int output_;
 };
 
-TEST(BitcastOpModel, BitastInt32ToUint32) {
+TEST(BitcastOpModel, BitcastInt32ToUint32) {
   BitcastOpModel m({TensorType_INT32, {2, 3}}, {TensorType_UINT32, {2, 3}});
   std::vector<int32_t> input = {INT32_MIN, -100, -1, 0, 100, INT32_MAX};
   m.PopulateTensor<int32_t>(m.input(), input);
@@ -74,7 +74,29 @@ TEST(BitcastOpModel, BitastInt32ToUint32) {
   EXPECT_THAT(m.ExtractVector<uint32_t>(m.output()), ElementsAreArray(output));
 }
 
-TEST(BitcastOpModel, BitastUInt32Toint32) {
+TEST(BitcastOpModel, BitcastUInt32ToInt32Inplace) {
+  BitcastOpModel m({TensorType_UINT32, {2, 3}}, {TensorType_INT32, {2, 3}});
+  std::vector<uint32_t> input = {0,
+                                 1,
+                                 100,
+                                 bit_cast<uint32_t>(INT32_MAX),
+                                 bit_cast<uint32_t>(INT32_MIN),
+                                 UINT32_MAX};
+  m.PopulateTensor<uint32_t>(m.input(), input);
+  const int kInplaceTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  std::vector<int32_t> output;
+
+  std::transform(input.cbegin(), input.cend(), std::back_inserter(output),
+                 [](uint32_t a) { return bit_cast<std::uint32_t>(a); });
+  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()), ElementsAreArray(output));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
+TEST(BitcastOpModel, BitcastUInt32ToInt32) {
   BitcastOpModel m({TensorType_UINT32, {2, 3}}, {TensorType_INT32, {2, 3}});
   std::vector<uint32_t> input = {0,
                                  1,

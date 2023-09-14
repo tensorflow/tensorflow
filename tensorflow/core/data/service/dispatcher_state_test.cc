@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace data {
@@ -637,6 +637,19 @@ TEST(DispatcherState, ListSnapshotPaths) {
     TF_EXPECT_OK(Snapshot(snapshot_path, state));
   }
   EXPECT_EQ(state.ListSnapshotPaths(), snapshot_paths);
+}
+
+TEST(DispatcherState, GetNumberOfRegisteredWorkers) {
+  DispatcherState state;
+  std::string address_1 = "address_1";
+  std::string address_2 = "address_2";
+  EXPECT_EQ(state.GetNumberOfRegisteredWorkers(), 0);
+
+  TF_EXPECT_OK(RegisterWorker(address_1, state));
+  EXPECT_EQ(state.GetNumberOfRegisteredWorkers(), 1);
+
+  TF_EXPECT_OK(RegisterWorker(address_2, state));
+  EXPECT_EQ(state.GetNumberOfRegisteredWorkers(), 2);
 }
 
 }  // namespace data

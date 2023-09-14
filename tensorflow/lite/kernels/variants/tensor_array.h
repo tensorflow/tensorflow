@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <utility>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/util.h"
 
@@ -34,6 +33,8 @@ namespace variants {
 // calls across all affected instances must be properly synchronized. Calling
 // non-const functions on any of the linked objects requires exclusive access to
 // all of them.
+//
+// TODO(b/288302706) Implement standard container methods.
 class TensorArray : public AbstractVariantData<TensorArray> {
  public:
   // Takes ownership of `element_shape` input.

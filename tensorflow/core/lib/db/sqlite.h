@@ -60,7 +60,7 @@ class SqliteTransaction;
 class TF_LOCKABLE Sqlite : public core::RefCounted {
  public:
   /// \brief Closes SQLite connection, which can take milliseconds.
-  virtual ~Sqlite();
+  ~Sqlite() override;
 
   /// \brief Opens SQLite database file.
   ///

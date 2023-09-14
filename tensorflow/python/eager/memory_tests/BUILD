@@ -32,7 +32,6 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":memory_test_util",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
@@ -40,6 +39,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variables",
     ],

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
+#include <utility>
 
 #include "absl/functional/bind_front.h"
 #include "tensorflow/core/platform/logging.h"

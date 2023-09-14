@@ -294,6 +294,7 @@ class GraphOptimizerStagePipeline {
 
   std::vector<string> StageNames() {
     std::vector<string> names;
+    names.reserve(stages_.size());
     for (const auto& stage : stages_) {
       names.push_back(stage->stage_name());
     }

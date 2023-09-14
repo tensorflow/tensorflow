@@ -8,7 +8,13 @@ package(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
+    # TODO: b/288344501 - Enable OSS tests again when stable-quant-opt works well.
+    default_tags = [
+        "no_oss",
+        "no_pip",
+    ],
     driver = "//tensorflow/compiler/mlir/quantization/stablehlo:run_lit.sh",
     size_override = {
     },
@@ -22,10 +28,10 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:stablehlo-quant-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
         "@llvm-project//mlir:run_lit.sh",
-        # TODO(b/254144841): Add tests in this directory with the proper stablehlo-opt.
     ],
 )
 
@@ -35,8 +41,8 @@ tf_cc_test(
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:fill_quantization_options",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_cc",
-        "//tensorflow/tsl/platform:protobuf",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )

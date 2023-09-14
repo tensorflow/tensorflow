@@ -171,6 +171,12 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
           [](const tensorflow::data::SnapshotTaskProgressWrapper&
                  snapshot_task_progress_wrapper) -> int {
             return snapshot_task_progress_wrapper.snapshot_task_stream_index;
+          })
+      .def_property_readonly(
+          "completed",
+          [](const tensorflow::data::SnapshotTaskProgressWrapper&
+                 snapshot_task_progress_wrapper) -> bool {
+            return snapshot_task_progress_wrapper.completed;
           });
   py::class_<tensorflow::data::SnapshotStreamInfoWrapper>
       snapshot_stream_info_wrapper(m, "SnapshotStreamInfoWrapper");

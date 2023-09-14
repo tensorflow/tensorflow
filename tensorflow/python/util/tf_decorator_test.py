@@ -78,12 +78,6 @@ def test_decorated_function(x):
   return x * 2
 
 
-@test_injectable_decorator_square
-@test_injectable_decorator_increment
-def test_rewrappable_decorated(x):
-  return x * 2
-
-
 @test_tfdecorator('decorator')
 class TestDecoratedClass(object):
   """Test Decorated Class."""
@@ -300,6 +294,11 @@ class TfDecoratorRewrapTest(test.TestCase):
 
   def testRewrapMutatesAffectedFunction(self):
 
+    @test_injectable_decorator_square
+    @test_injectable_decorator_increment
+    def test_rewrappable_decorated(x):
+      return x * 2
+
     def new_target(x):
       return x * 3
 
@@ -309,6 +308,11 @@ class TfDecoratorRewrapTest(test.TestCase):
     self.assertEqual((1 * 3 + 1)**2, test_rewrappable_decorated(1))
 
   def testRewrapOfDecoratorFunction(self):
+
+    @test_injectable_decorator_square
+    @test_injectable_decorator_increment
+    def test_rewrappable_decorated(x):
+      return x * 2
 
     def new_target(x):
       return x * 3

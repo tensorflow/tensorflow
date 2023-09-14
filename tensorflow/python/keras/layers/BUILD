@@ -1,6 +1,8 @@
 # Description:
 #   Contains the Keras layers (internal TensorFlow version).
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove non-keras deps from TF.
@@ -69,7 +71,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":pooling",
-        "//tensorflow/python:nn",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/keras:activations",
@@ -82,6 +83,7 @@ py_library(
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/util:tf_export",
     ],
@@ -114,7 +116,6 @@ py_library(
     srcs = ["core.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:nn",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -136,6 +137,7 @@ py_library(
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/ops:sparse_ops",
         "//tensorflow/python/ops:standard_ops",
         "//tensorflow/python/ops:variable_scope",
@@ -154,7 +156,6 @@ py_library(
     srcs = ["dense_attention.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion",
@@ -165,6 +166,7 @@ py_library(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -193,12 +195,12 @@ py_library(
     srcs = ["merge.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:nn",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:base_layer",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -208,7 +210,6 @@ py_library(
     srcs = ["pooling.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:base_layer",
@@ -216,6 +217,7 @@ py_library(
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/util:tf_export",
     ],
 )

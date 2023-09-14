@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef LIBTPU_EXCLUDE_C_API_IMPL
+
 #include <sstream>
 #include <string>
 
@@ -130,3 +132,5 @@ TF_ATTRIBUTE_UNUSED static bool IsBitcastOpRegistered = []() {
   }
   return true;
 }();
+
+#endif  // LIBTPU_EXCLUDE_C_API_IMPL

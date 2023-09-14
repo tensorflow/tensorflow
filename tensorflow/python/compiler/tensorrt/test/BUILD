@@ -99,17 +99,20 @@ cuda_py_strict_test(
     name = "base_test",
     srcs = ["base_test.py"],
     python_version = "PY3",
-    tags = base_tags + ["no_oss"],  # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
+    tags = base_tags + [
+        "no_oss",  # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
+        "notap",  # TODO(b/291653036): Some of the base tests are failing w/ TensorRT-8
+    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
-        "//tensorflow/python:nn",
         "//tensorflow/python/compiler/tensorrt:trt_convert_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -140,11 +143,11 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
-        "//tensorflow/python:image_ops",
         "//tensorflow/python/compiler/tensorrt:trt_convert_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:image_ops_impl",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -162,7 +165,6 @@ cuda_py_strict_test(
     deps = [
         ":tf_trt_integration_test_base_srcs",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:nn",
         "//tensorflow/python/compiler/tensorrt:trt_convert_py",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
@@ -170,6 +172,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:tf_logging",
@@ -187,11 +190,11 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -204,12 +207,12 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_gen",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -288,9 +291,9 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -318,11 +321,11 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -350,11 +353,11 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -367,12 +370,12 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -385,11 +388,11 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -402,10 +405,10 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -418,11 +421,11 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -501,11 +504,11 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:signature_constants",
@@ -554,10 +557,11 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:nn",
+        "//tensorflow/python/ops:nn_impl",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -571,10 +575,11 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:nn",
+        "//tensorflow/python/ops:nn_impl",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
     ],

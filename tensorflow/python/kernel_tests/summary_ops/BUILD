@@ -56,9 +56,9 @@ cuda_py_strict_test(
     srcs = ["summary_v1_image_op_test.py"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:image_ops",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:image_ops",
         "//tensorflow/python/ops:nn_grad",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/summary:summary_py",

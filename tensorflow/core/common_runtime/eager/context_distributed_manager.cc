@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <numeric>
@@ -47,7 +48,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/device_filters.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tsl/protobuf/coordination_config.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
@@ -63,6 +64,20 @@ limitations under the License.
 #endif  // !IS_MOBILE_PLATFORM
 
 namespace tensorflow {
+
+// We don't use the TF_RETURN_IF_ERROR macro directly since that destroys the
+// server object (which currently CHECK-fails) and we miss the error, instead,
+// we log the error, and then return to allow the user to see the error
+// message.
+#define LOG_AND_RETURN_IF_ERROR(...)                  \
+  do {                                                \
+    const tensorflow::Status _status = (__VA_ARGS__); \
+    if (TF_PREDICT_FALSE(!_status.ok())) {            \
+      LOG(ERROR) << _status.message();                \
+      return _status;                                 \
+    }                                                 \
+  } while (0);
+
 #if !defined(IS_MOBILE_PLATFORM)
 namespace {
 
@@ -221,7 +236,8 @@ Status CreateRemoteContexts(EagerContext* context,
                             int keep_alive_secs, const ServerDef& server_def,
                             eager::EagerClientCache* remote_eager_workers,
                             bool async,
-                            const eager::CreateContextRequest& base_request) {
+                            const eager::CreateContextRequest& base_request,
+                            int64_t init_timeout_in_ms, int retries) {
   int num_remote_workers = remote_workers.size();
   BlockingCounter counter(num_remote_workers);
   std::vector<Status> statuses(num_remote_workers);
@@ -280,7 +296,8 @@ Status CreateRemoteContexts(EagerContext* context,
           statuses[i] = s;
           delete response;
           counter.DecrementCount();
-        });
+        },
+        init_timeout_in_ms, retries);
   }
   counter.Wait();
   StatusGroup sg;
@@ -397,7 +414,8 @@ Status UpdateRemoteContexts(EagerContext* context,
 
 Status UpdateContextWithServerDef(EagerContext* context,
                                   const ServerDef& server_def,
-                                  bool reset_context, int keep_alive_secs) {
+                                  bool reset_context, int keep_alive_secs,
+                                  int64_t init_timeout_in_ms, int retries) {
   // We don't use the TF_RETURN_IF_ERROR macro directly since that destroys the
   // server object (which currently CHECK-fails) and we miss the error, instead,
   // we log the error, and then return to allow the user to see the error
@@ -445,6 +463,8 @@ Status UpdateContextWithServerDef(EagerContext* context,
   }
 
   uint64 context_id = context->GetContextId();
+  // TODO(b/291142876) Check for invalid context id here (instead of in the C
+  // API).
   uint64 context_view_id = context->GetContextViewId();
   if (reset_context) {
     context_id = EagerContext::NewContextId();
@@ -553,19 +573,20 @@ Status UpdateContextWithServerDef(EagerContext* context,
   }
 
   // Initialize remote eager workers.
+  Status reset_context_status = OkStatus();
   if (reset_context) {
-    const Status s = CreateRemoteContexts(
+    reset_context_status = CreateRemoteContexts(
         context, remote_workers, context_id, context_view_id, keep_alive_secs,
         server_def, remote_eager_workers.get(), context->Executor().Async(),
-        base_request);
+        base_request, init_timeout_in_ms, retries);
     // NOTE: the remote tasks could fail after `GetAllRemoteDevices` and cause
     // the CreateRemoteContexts to fail. We currently only log instead of
     // directly returning the error, since returning here will cause the server
     // object to be destroyed (which currently CHECK-fails). The client will
     // see additional errors if ops are subsequently sent to the failed workers.
-    if (TF_PREDICT_FALSE(!s.ok())) {
+    if (TF_PREDICT_FALSE(!reset_context_status.ok())) {
       LOG(ERROR) << "Error when creating contexts on remote targets: "
-                 << s.message()
+                 << reset_context_status.message()
                  << "\nExecuting remote ops or functions on these remote "
                     "targets will fail.";
     }
@@ -582,7 +603,8 @@ Status UpdateContextWithServerDef(EagerContext* context,
       sg.Update(CreateRemoteContexts(
           context, added_workers, context_id, context_view_id + 1,
           keep_alive_secs, server_def, remote_eager_workers.get(),
-          context->Executor().Async(), base_request));
+          context->Executor().Async(), base_request, init_timeout_in_ms,
+          /*retries=*/0));
     }
     if (!existing_workers.empty()) {
       if (VLOG_IS_ON(1)) {
@@ -641,14 +663,16 @@ Status UpdateContextWithServerDef(EagerContext* context,
                                           added_workers, removed_workers));
     LOG_AND_RETURN_IF_ERROR(sg.as_summary_status());
   }
-#undef LOG_AND_RETURN_IF_ERROR
 
-  return OkStatus();
+  // Propagate the status from CreateRemoteContexts for the `reset_context` is
+  // True case. Always returns OkStatus() if `reset_context` is False.
+  return reset_context_status;
 }
 }  // namespace
 
 Status EagerContextDistributedManager::SetOrUpdateServerDef(
-    const ServerDef& server_def, bool reset_context, int keep_alive_secs) {
+    const ServerDef& server_def, bool reset_context, int keep_alive_secs,
+    int64_t init_timeout_in_ms, int retries) {
   if (server_def.has_cluster_device_filters()) {
     if (reset_context) {
       const auto& cdf = server_def.cluster_device_filters();
@@ -672,8 +696,9 @@ Status EagerContextDistributedManager::SetOrUpdateServerDef(
                       "when updating the server def.";
     }
   }
-  Status s = UpdateContextWithServerDef(context_, server_def, reset_context,
-                                        keep_alive_secs);
+  Status s =
+      UpdateContextWithServerDef(context_, server_def, reset_context,
+                                 keep_alive_secs, init_timeout_in_ms, retries);
   // If context is reset, make sure pointer is set to the new agent.
   coordination_service_agent_ =
       context_->GetServer()
@@ -682,21 +707,76 @@ Status EagerContextDistributedManager::SetOrUpdateServerDef(
   return s;
 }
 
+Status EagerContextDistributedManager::InitializeLocalOnlyContext(
+    const ServerDef& server_def, int keep_alive_secs) {
+  string worker_name =
+      strings::StrCat("/job:", server_def.job_name(),
+                      "/replica:0/task:", server_def.task_index());
+  // New server created for new server_def. Unused if updating server_def.
+  std::unique_ptr<ServerInterface> new_server;
+  ServerInterface* server;
+  DeviceMgr* device_mgr = AreLocalDevicesCompatible(context_, server_def)
+                              ? context_->local_device_mgr()
+                              : nullptr;
+  LOG_AND_RETURN_IF_ERROR(
+      NewServerWithOptions(server_def, {device_mgr}, &new_server));
+  server = new_server.get();
+  uint64 context_id = EagerContext::NewContextId();
+  // Make master eager context accessible by local eager service, which might
+  // receive send tensor requests from remote workers.
+  LOG_AND_RETURN_IF_ERROR(
+      server->AddMasterEagerContextToEagerService(context_id, context_));
+
+  std::vector<DeviceAttributes> local_device_attributes;
+  server->worker_env()->device_mgr->ListDeviceAttributes(
+      &local_device_attributes);
+
+  auto session_name = strings::StrCat("eager_", context_id);
+  auto* session_mgr = server->worker_env()->session_mgr;
+  tsl::core::RefCountPtr<RemoteRendezvous> r =
+      server->worker_env()->rendezvous_mgr->Find(context_id);
+  std::shared_ptr<WorkerSession> worker_session;
+  protobuf::RepeatedPtrField<DeviceAttributes> device_attributes(
+      local_device_attributes.begin(), local_device_attributes.end());
+  LOG_AND_RETURN_IF_ERROR(session_mgr->CreateSession(
+      session_name, server_def, device_attributes,
+      context_->session_options().config.isolate_session_state()));
+  LOG_AND_RETURN_IF_ERROR(server->SetCoordinationServiceAgentInstance(
+      session_mgr->GetCoordinationServiceAgent()));
+  LOG_AND_RETURN_IF_ERROR(
+      session_mgr->WorkerSessionForSession(session_name, &worker_session));
+
+  // Initialize remote tensor communication based on worker session.
+  LOG_AND_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
+
+  DistributedFunctionLibraryRuntime* cluster_flr =
+      eager::CreateClusterFLR(context_id, context_, worker_session.get());
+  auto remote_mgr = std::make_unique<eager::RemoteMgr>(
+      /*is_master=*/true, context_);
+
+  // The remote workers and device manager are ignored since this initialization
+  // is local only.
+  LOG_AND_RETURN_IF_ERROR(context_->InitializeRemoteMaster(
+      std::move(new_server), server->worker_env(), worker_session,
+      /*remote_eager_workers=*/nullptr, /*remote_device_manager=*/nullptr,
+      /*remote_contexts=*/{}, context_id, std::move(r),
+      server->worker_env()->device_mgr, keep_alive_secs, cluster_flr,
+      std::move(remote_mgr)));
+
+  // NOTE: We start the server after all other initialization, because the
+  // GrpcServer cannot be destroyed after it is started.
+  LOG_AND_RETURN_IF_ERROR(server->Start());
+
+  // If context is reset, make sure pointer is set to the new agent.
+  coordination_service_agent_ =
+      context_->GetServer()
+          ->worker_env()
+          ->session_mgr->GetCoordinationServiceAgent();
+  return OkStatus();
+}
+
 Status EagerContextDistributedManager::EnableCollectiveOps(
     const ServerDef& server_def) {
-  // We don't use the TF_RETURN_IF_ERROR macro directly since that destroys the
-  // server object (which currently CHECK-fails) and we miss the error, instead,
-  // we log the error, and then return to allow the user to see the error
-  // message.
-#define LOG_AND_RETURN_IF_ERROR(...)                  \
-  do {                                                \
-    const tensorflow::Status _status = (__VA_ARGS__); \
-    if (TF_PREDICT_FALSE(!_status.ok())) {            \
-      LOG(ERROR) << _status.message();                \
-      return _status;                                 \
-    }                                                 \
-  } while (0);
-
   ServerInterface* server = context_->GetServer();
   if (server == nullptr) {
     std::unique_ptr<ServerInterface> new_server;
@@ -789,7 +869,6 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
         /*new_server=*/nullptr, server->worker_env()->device_mgr,
         server->worker_env()->collective_executor_mgr.get()));
   }
-#undef LOG_AND_RETURN_IF_ERROR
   return OkStatus();
 }
 

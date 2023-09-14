@@ -25,15 +25,15 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/test_utils.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/test_util.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/lib/io/compression.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/random.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/platform/test.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/lib/io/compression.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/random.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace data {
@@ -142,8 +142,9 @@ TEST_P(SnapshotStreamWriterParameterizedTest, VaryingCheckpointInterval) {
           /*max_chunk_size_bytes=*/1, /*checkpoint_interval=*/
           absl::Milliseconds(tsl::random::New64() % 1000)));
   TF_ASSERT_OK(
-      partial_writer.WriteCommittedChunks({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
-  TF_ASSERT_OK(partial_writer.WriteCheckpoints({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
+      partial_writer.WriteCommittedChunks({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}));
+  TF_ASSERT_OK(
+      partial_writer.WriteCheckpoints({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}));
 
   SnapshotWriterParams writer_params{
       snapshot_path,
@@ -167,7 +168,7 @@ INSTANTIATE_TEST_SUITE_P(Compression, SnapshotStreamWriterParameterizedTest,
                                                 tsl::io::compression::kSnappy,
                                                 tsl::io::compression::kZlib}));
 
-TEST(SnapshotStreamWriterCheckpointTest, NoCheckpoint) {
+TEST(SnapshotStreamWriterCheckpointTest, SingleCheckpoint) {
   int64_t range = 10;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
                           testing::TestIterator(testing::RangeDataset(range)));
@@ -186,10 +187,8 @@ TEST(SnapshotStreamWriterCheckpointTest, NoCheckpoint) {
   EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
               IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
-
-  // Since there is only one chunk, no checkpoint is needed.
   EXPECT_THAT(NumCheckpoints(snapshot_path, /*stream_index=*/0),
-              IsOkAndHolds(0));
+              IsOkAndHolds(1));
 }
 
 TEST(SnapshotStreamWriterCheckpointTest, WithCheckpoint) {

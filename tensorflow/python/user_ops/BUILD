@@ -17,6 +17,7 @@ package(
 tf_gen_op_wrapper_private_py(
     name = "user_ops_gen",
     out = "ops/gen_user_ops.py",
+    py_lib_rule = py_strict_library,
 )
 
 # This target is deprecated.

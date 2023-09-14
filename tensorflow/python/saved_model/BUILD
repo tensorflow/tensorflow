@@ -76,6 +76,7 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:tf_logging",
@@ -187,6 +188,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:test_ops",
         "//tensorflow/python/lib/io:lib",
@@ -248,11 +250,11 @@ tf_py_strict_test(
         ":utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
@@ -275,6 +277,7 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
@@ -324,9 +327,9 @@ py_strict_library(
         ":signature_constants",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager/polymorphic_function:attributes",
         "//tensorflow/python/framework:composite_tensor",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/types:core",
@@ -384,6 +387,7 @@ py_strict_library(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:concrete_function",
         "//tensorflow/python/eager/polymorphic_function:saved_model_exported_concrete",
         "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
         "//tensorflow/python/framework",
@@ -408,6 +412,7 @@ py_strict_library(
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:object_identity",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_stack",
         "@absl_py//absl/logging",
     ] + if_google([
         "//tensorflow/tools/proto_splitter/python:saved_model",
@@ -472,10 +477,32 @@ tf_py_strict_test(
         "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ] + if_google([
-        "//tensorflow/tools/proto_splitter:constants",
-    ]),
+    ],
 )
+
+# copybara:uncomment_begin(google-only)
+#
+# tf_py_strict_test(
+#     name = "proto_splitter_save_test",
+#     srcs = ["proto_splitter_save_test.py"],
+#     tags = [
+#         "no_mac",  # TODO(b/291933687)
+#         "no_windows",  # TODO(b/291001524)
+#     ],
+#     deps = [
+#         ":save",
+#         ":save_options",
+#         "//third_party/py/numpy",
+#         "//tensorflow/python/eager:def_function",
+#         "//tensorflow/python/eager:test",
+#         "//tensorflow/python/framework:constant_op",
+#         "//tensorflow/python/module",
+#         "//tensorflow/tools/proto_splitter:constants",
+#         "@absl_py//absl/testing:parameterized",
+#     ],
+# )
+#
+# copybara:uncomment_end
 
 py_strict_library(
     name = "load",
@@ -576,7 +603,6 @@ cuda_py_strict_test(
         ":save_options",
         ":tag_constants",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:saveable_compat",
         "//tensorflow/python/client:session",
@@ -603,6 +629,7 @@ cuda_py_strict_test(
         "//tensorflow/python/module",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond_v2",
+        "//tensorflow/python/ops:custom_gradient",
         "//tensorflow/python/ops:lookup_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
@@ -726,7 +753,6 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager/polymorphic_function:function_type_utils",
@@ -734,9 +760,10 @@ py_strict_library(
         "//tensorflow/python/framework:function_def_to_graph",
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:custom_gradient",
         "//tensorflow/python/ops:default_gradient",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/util:compat",
@@ -770,10 +797,9 @@ tf_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:extension_type",
-        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:type_spec",
@@ -879,6 +905,7 @@ tf_python_pybind_extension(
     ] + if_google([
         "pywrap_saved_model_merger.h",
     ]),
+    enable_stub_generation = True,
     # This fails Windows builds. Please check b/266870200 for details.
     #    dynamic_deps = ["//tensorflow/python:_pywrap_tensorflow_internal.so"] + select({
     #        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
@@ -887,6 +914,13 @@ tf_python_pybind_extension(
     #    }),
     #    static_deps = tf_python_pybind_static_deps(),
     features = ["-layering_check"],
+    pytype_srcs = [
+        "pywrap_saved_model/__init__.pyi",
+        "pywrap_saved_model/constants.pyi",
+        "pywrap_saved_model/fingerprinting.pyi",
+        "pywrap_saved_model/merger.pyi",
+        "pywrap_saved_model/metrics.pyi",
+    ],
     visibility = [
         "//tensorflow/python/checkpoint:__subpackages__",
         "//tensorflow/python/tpu:__pkg__",
@@ -894,7 +928,10 @@ tf_python_pybind_extension(
     ],
     deps = [
         ":pywrap_saved_model_headers",
+        # placeholder for index annotation deps
+        "@com_google_absl//absl/log",
         "//tensorflow/cc/experimental/libexport:save",
+        "//tensorflow/cc/saved_model:reader",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",

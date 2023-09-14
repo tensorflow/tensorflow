@@ -16,6 +16,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_COMMON_H_
 
 #include <algorithm>
+#include <cstddef>
+
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #ifndef ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
 #ifdef GEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
 #define ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
@@ -34,6 +37,118 @@ limitations under the License.
 namespace tflite {
 
 constexpr int kReverseShift = -1;
+
+// Reduces and compresses dimensions so that broadcast handling becomes more
+// efficient. Returns true if the output shape is broadcastable; it doesn't
+// contain any degenerate dimension, i.e. shape dimension = 0. False otherwise.
+template <int MAX_DIM = 6>
+bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
+                                  const RuntimeShape& input2_shape,
+                                  size_t* compressed_input1_stride,
+                                  size_t* compressed_input2_stride,
+                                  size_t* compressed_output_shape) {
+  size_t num_compressed_dims = 0;
+  size_t compressed_input1_shape[MAX_DIM];
+  size_t compressed_input2_shape[MAX_DIM];
+  std::fill(compressed_input1_shape, compressed_input1_shape + MAX_DIM, 1);
+  std::fill(compressed_input2_shape, compressed_input2_shape + MAX_DIM, 1);
+  std::fill(compressed_output_shape, compressed_output_shape + MAX_DIM, 1);
+  bool broadcast_input1 = false;
+  bool broadcast_input2 = false;
+  bool first_nonunit = true;
+  const size_t num_input1_dims = input1_shape.DimensionsCount();
+  const size_t num_input2_dims = input2_shape.DimensionsCount();
+  const int32_t* input1_dims = input1_shape.DimsData();
+  const int32_t* input2_dims = input2_shape.DimsData();
+  const size_t num_common_dims =
+      (num_input1_dims < num_input2_dims) ? num_input1_dims : num_input2_dims;
+  for (size_t i = 1; i <= num_common_dims; i++) {
+    const size_t input1_dim = input1_dims[num_input1_dims - i];
+    const size_t input2_dim = input2_dims[num_input2_dims - i];
+    if (input1_dim == 0 || input2_dim == 0) {
+      return false;
+    }
+    if (input1_dim == 1 && input2_dim == 1) {
+      continue;
+    }
+    assert(!broadcast_input1 || !broadcast_input2);
+
+    if (input1_dim == 1) {
+      if (!broadcast_input1) {
+        broadcast_input1 = true;
+        broadcast_input2 = false;
+        num_compressed_dims++;
+      }
+      compressed_input2_shape[num_compressed_dims - 1] *= input2_dim;
+      compressed_output_shape[num_compressed_dims - 1] *= input2_dim;
+    } else if (input2_dim == 1) {
+      if (!broadcast_input2) {
+        broadcast_input1 = false;
+        broadcast_input2 = true;
+        num_compressed_dims++;
+      }
+      compressed_input1_shape[num_compressed_dims - 1] *= input1_dim;
+      compressed_output_shape[num_compressed_dims - 1] *= input1_dim;
+    } else {
+      TFLITE_DCHECK(input1_dim == input2_dim);
+      if (broadcast_input1 || broadcast_input2 || first_nonunit) {
+        broadcast_input1 = false;
+        broadcast_input2 = false;
+        num_compressed_dims++;
+      }
+      compressed_input1_shape[num_compressed_dims - 1] *= input1_dim;
+      compressed_input2_shape[num_compressed_dims - 1] *= input1_dim;
+      compressed_output_shape[num_compressed_dims - 1] *= input1_dim;
+    }
+    first_nonunit = false;
+  }
+  if (num_input1_dims > num_input2_dims) {
+    if (!broadcast_input2) {
+      num_compressed_dims++;
+    }
+    for (size_t i = 0; i < num_input1_dims - num_input2_dims; i++) {
+      const size_t input1_dim = input1_dims[i];
+      if (input1_dim == 0) {
+        return false;
+      }
+      compressed_input1_shape[num_compressed_dims - 1] *= input1_dim;
+      compressed_output_shape[num_compressed_dims - 1] *= input1_dim;
+    }
+  } else if (num_input2_dims > num_input1_dims) {
+    if (!broadcast_input1) {
+      num_compressed_dims++;
+    }
+    for (size_t i = 0; i < num_input2_dims - num_input1_dims; i++) {
+      const size_t input2_dim = input2_dims[i];
+      if (input2_dim == 0) {
+        return false;
+      }
+      compressed_input2_shape[num_compressed_dims - 1] *= input2_dim;
+      compressed_output_shape[num_compressed_dims - 1] *= input2_dim;
+    }
+  }
+  num_compressed_dims = (num_compressed_dims > 1) ? num_compressed_dims : 1;
+
+  int input1_stride = 1;
+  int input2_stride = 1;
+  for (int i = 0; i < MAX_DIM; ++i) {
+    compressed_input1_stride[i] = input1_stride;
+    input1_stride *= compressed_input1_shape[i];
+    compressed_input2_stride[i] = input2_stride;
+    input2_stride *= compressed_input2_shape[i];
+  }
+  for (int i = 0; i < MAX_DIM; ++i) {
+    if (compressed_input1_shape[i] != compressed_input2_shape[i]) {
+      if (compressed_input1_shape[i] == 1) {
+        compressed_input1_stride[i] = 0;
+      } else {
+        TFLITE_DCHECK_EQ(compressed_input2_shape[i], 1);
+        compressed_input2_stride[i] = 0;
+      }
+    }
+  }
+  return true;
+}
 
 inline void GetActivationMinMax(FusedActivationFunctionType ac,
                                 float* output_activation_min,

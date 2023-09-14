@@ -27,9 +27,9 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -70,10 +70,8 @@ class SnapshotSplitProvider : public SplitProvider {
 
   // Reads from the split directory and returns a map of split index to absolute
   // file path of the split, starting at `start_index`.
-  Status GetSplitsFiles(
-      int64_t start_index,
-      absl::btree_map<int64_t, std::string>& split_to_file_map,
-      int64_t& repetition_index) const;
+  StatusOr<absl::btree_map<int64_t, std::string>> GetSplitsFiles(
+      int64_t start_index) const;
 
   // Verifies `split_files` contains consecutive splits starting at
   // `start_index`.

@@ -39,9 +39,13 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
-        "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
-        "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "//tensorflow/tsl/python/lib/core:numpy_hdr",
+        "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
+        "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "@local_tsl//tsl/python/lib/core:numpy_hdr",
+    ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_tf_session.pyi",
     ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
@@ -56,11 +60,11 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        "//tensorflow/tsl/python/lib/core:numpy",
-        "//third_party/eigen3",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/types:optional",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/python/lib/core:numpy",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
@@ -70,13 +74,13 @@ tf_python_pybind_extension(
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
             "//tensorflow/core:version_lib",
-            "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
         ],
         otherwise = [
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
-            "//tensorflow/tsl/protobuf:coordination_service_proto_cc_headers_only",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc_headers_only",
         ],
     ),
 )
@@ -84,6 +88,10 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_debug_events_writer",
     srcs = ["debug_events_writer_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_debug_events_writer.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -173,6 +181,10 @@ py_strict_library(
 tf_python_pybind_extension(
     name = "_pywrap_device_lib",
     srcs = ["device_lib_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_device_lib.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_internal_headers_lib",
         "//tensorflow/core:protos_all_cc",
@@ -230,11 +242,11 @@ tf_cuda_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:safe_ptr",
-        "//tensorflow/c:tf_buffer",
         "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core",
         "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -245,9 +257,9 @@ tf_cuda_library(
         "//tensorflow/python/lib/core:ndarray_tensor",
         "//tensorflow/python/lib/core:ndarray_tensor_bridge",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        "//tensorflow/tsl/python/lib/core:numpy",
-        "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/python/lib/core:numpy",
     ],
     alwayslink = 1,
 )
@@ -273,6 +285,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:stack",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:session_ops",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training/experimental:mixed_precision_global_state",
@@ -281,7 +294,7 @@ py_strict_library(
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@wrapt",
+        "@pypi_wrapt//:pkg",
     ],
 )
 
@@ -324,7 +337,6 @@ tf_py_strict_test(
     deps = [
         ":session",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework",
@@ -345,6 +357,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:control_flow_ops_gen",
         "//tensorflow/python/ops:data_flow_ops",
+        "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
@@ -369,7 +382,6 @@ tf_py_strict_test(
     tags = [
         "no_gpu",
         "no_oss",
-        "no_pip",
         "no_pip_gpu",
         "notap",
     ],
@@ -427,13 +439,13 @@ tf_py_strict_test(
     ],
     deps = [
         ":session",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/training:server_lib",
     ],
 )

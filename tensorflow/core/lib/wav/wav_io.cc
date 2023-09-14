@@ -15,14 +15,16 @@ limitations under the License.
 
 // Functions to write audio in WAV format.
 
+#include "tensorflow/core/lib/wav/wav_io.h"
+
 #include <math.h>
 #include <string.h>
+
 #include <algorithm>
 
 #include "absl/base/casts.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/wav/wav_io.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -294,8 +296,9 @@ Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
         "Bad bytes per sample in WAV header: Expected ",
         expected_bytes_per_sample, " but got ", bytes_per_sample);
   }
-  const uint32 expected_bytes_per_second = bytes_per_sample * *sample_rate;
-  if (bytes_per_second != expected_bytes_per_second) {
+  const uint64 expected_bytes_per_second =
+      static_cast<uint64>(bytes_per_sample) * *sample_rate;
+  if (static_cast<uint64>(bytes_per_second) != expected_bytes_per_second) {
     return errors::InvalidArgument(
         "Bad bytes per second in WAV header: Expected ",
         expected_bytes_per_second, " but got ", bytes_per_second,

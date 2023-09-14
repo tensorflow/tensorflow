@@ -118,8 +118,8 @@ class MinibenchmarkImplementationRegistry {
 }  // namespace acceleration
 }  // namespace tflite
 
-#define TFLITE_REGISTER_MINI_BENCMARK_FACTORY_FUNCTION(name, f) \
-  static auto* g_tflite_mini_benchmark_##name##_ =              \
+#define TFLITE_REGISTER_MINI_BENCHMARK_FACTORY_FUNCTION(name, f) \
+  static auto* g_tflite_mini_benchmark_##name##_ =               \
       new MinibenchmarkImplementationRegistry::Register(#name, f);
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_MINI_BENCHMARK_H_

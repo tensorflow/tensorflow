@@ -25,13 +25,14 @@ from tensorflow.python.eager import function as function_lib
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import custom_gradient as custom_gradient_lib
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import compat
 
-_TensorType = Union[ops.EagerTensor, ops.Tensor]
+_TensorType = Union[ops.EagerTensor, tensor.Tensor]
 _FunctionDefTransformerType = Callable[[function_pb2.FunctionDef], None]
 
 
@@ -195,7 +196,7 @@ def transform_function(
       if atomic_name in nested_functions:
         atomic_transform_fn = nested_fn_transforms.get(atomic_name, [])
         atomic_mlir_pipeline = nested_mlir_transforms.get(atomic_name, [])
-        transformed_atomic = transform_eager_defined_function(
+        transformed_atomic = transform_atomic_function(
             rt,
             nested_functions[atomic_name],
             atomic_transform_fn,
@@ -233,8 +234,8 @@ def transform_function(
   # Set handle data.
   for i, output in enumerate(cf.outputs):
     func_graph_output = func_graph.outputs[i]
-    if isinstance(output, ops.Tensor) and isinstance(
-        func_graph_output, ops.Tensor
+    if isinstance(output, tensor.Tensor) and isinstance(
+        func_graph_output, tensor.Tensor
     ):
       func_graph_output.set_shape(output.shape)
       handle_data_util.copy_handle_data(output, func_graph_output)
@@ -251,8 +252,8 @@ def transform_function(
 
   # pylint: disable=protected-access
   # Get the new ConcreteFunction.
-  updated_cf = function_lib.ConcreteFunction(
-      func_graph, attrs=fndef.attr, function_type=cf.function_type
+  updated_cf = function_lib.ConcreteFunction.from_func_graph(
+      func_graph, cf.function_type, attrs=fndef.attr
   )
 
   # Set arg_keywords and positional_args
@@ -272,7 +273,7 @@ def transform_function(
   return updated_cf
 
 
-def transform_eager_defined_function(
+def transform_atomic_function(
     rt: runtime_client.Runtime,
     f: function_lib.AtomicFunction,
     transform_fn: Union[
@@ -315,8 +316,6 @@ def transform_eager_defined_function(
   atomic = function_lib.from_func_graph(
       fndef.signature.name,
       func_graph,
-      func_graph.inputs,
-      func_graph.outputs,
       fndef.attr,
   )
   # pylint: enable=protected-access

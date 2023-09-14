@@ -270,7 +270,7 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     return self._name
 
   @property
-  def shape(self):
+  def shape(self) -> tensor_shape.TensorShape:
     """Returns a `tf.TensorShape` that represents the shape of this tensor.
 
     >>> t = tf.constant([1,2,3,4,5])
@@ -357,7 +357,7 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
         backward_function=lambda x: [x],
         forward_function=lambda x: [x])
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     """Returns a `tf.TensorShape` that represents the shape of this tensor.
 
     In eager execution the shape is always fully-known.
@@ -743,7 +743,12 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
 
   def __tf_tracing_type__(self, signature_context):
     if self.dtype == dtypes.resource or self.dtype == dtypes.variant:
-      handle_data = handle_data_util.get_handle_data(self)
+      shape_inference_handle_data = handle_data_util.get_handle_data(self)
+      handle_data = (
+          dtypes.HandleData(shape_inference_handle_data)
+          if shape_inference_handle_data
+          else None
+      )
       dtype = dtypes.DType(self.dtype._type_enum, handle_data)
     else:
       dtype = self.dtype
@@ -920,7 +925,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
   >>> tf.TensorSpec.from_tensor(t)
   TensorSpec(shape=(2, 3), dtype=tf.int32, name=None)
 
-  Contains metadata for describing the the nature of `tf.Tensor` objects
+  Contains metadata for describing the nature of `tf.Tensor` objects
   accepted or returned by some TensorFlow APIs.
 
   For example, it can be used to constrain the type of inputs accepted by
@@ -1002,7 +1007,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     )
 
   def placeholder_value(self, placeholder_context):
-    """Generates a graph_placholder with the given TensorSpec information."""
+    """Generates a graph placholder with the given TensorSpec information."""
     if placeholder_context.unnest_only:
       return self
 
@@ -1026,10 +1031,10 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     handle_data = self.dtype._handle_data  # pylint: disable=protected-access
     if (
         handle_data is not None
-        and handle_data.is_set
-        and handle_data.shape_and_type
+        and handle_data.shape_inference.is_set
+        and handle_data.shape_inference.shape_and_type
     ):
-      handle_data_util.set_handle_data(placeholder, handle_data)
+      handle_data_util.set_handle_data(placeholder, handle_data.shape_inference)
 
     # Record the composite device as an attribute to the placeholder.
     # This attribute would be propagated into the arg_attr of the FunctionDef.
@@ -1073,21 +1078,25 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
         (result,) = callback_outputs
     return result
 
-  def _to_tensors(self, value):
-    assert isinstance(value, Tensor)
+  def to_tensors(self, value):
+    value = self.cast(value, trace_type.InternalCastContext())
+    if not value.shape.is_subtype_of(self.shape):
+      raise TypeError(
+          f"Received tensor of shape {value.shape} instead of {self.shape}"
+      )
     return [value]
 
-  def _from_tensors(self, tensors):
+  def from_tensors(self, tensors):
     tensor = next(tensors)
     handle_data = self.dtype._handle_data  # pylint: disable=protected-access
     if handle_data:
-      handle_data_util.set_handle_data(tensor, handle_data)
+      handle_data_util.set_handle_data(tensor, handle_data.shape_inference)
     return tensor
 
-  def _flatten(self):
+  def flatten(self):
     return [self]
 
-  def _cast(self, value, casting_context):
+  def cast(self, value, casting_context):
     """Cast value to a tensor that is a subtype of this TensorSpec."""
     # This method is mainly used to cast Python primitives to tensor.
     # Currently, cast tensor to tensor with different types are not supported.
@@ -1096,16 +1105,24 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
       assert value.is_subtype_of(self), f"Can not cast {value!r} to {self!r}"
       return self
 
-    value = tensor_conversion_registry.convert(value, self.dtype)
+    if not isinstance(value, Tensor):
+      value = tensor_conversion_registry.convert(value, self.dtype)
     value_spec = TensorSpec(value.shape, value.dtype, self.name)
 
     if not value_spec.is_subtype_of(self):
       if self.is_subtype_of(value_spec):
         value.set_shape(self.shape)
       else:
-        raise AssertionError(f"Can not cast {value_spec!r} to {self!r}")
+        raise TypeError(f"Can not cast {value_spec!r} to {self!r}")
 
     return value
+
+  def _alias_id(self):
+    """Returns an id specifying identical tensors to avoid duplication."""
+    alias_id = None
+    if self.dtype._handle_data:  # pylint: disable=protected-access
+      alias_id = self.dtype._handle_data.alias_id  # pylint: disable=protected-access
+    return alias_id
 
   @classmethod
   def from_spec(cls, spec, name=None):
@@ -1370,13 +1387,13 @@ class BoundedTensorSpec(TensorSpec, trace_type.Serializable):
     """Returns a NumPy array specifying the maximum bounds (inclusive)."""
     return self._maximum
 
-  def _cast(self, value, casting_context):
+  def cast(self, value, casting_context):
     if casting_context.allow_specs and isinstance(value, BoundedTensorSpec):
       assert value.is_subtype_of(self), f"Can not cast {value!r} to {self!r}"
       return self
 
     actual_spec = TensorSpec(shape=self.shape, dtype=self.dtype, name=self.name)
-    return actual_spec._cast(value, casting_context)  # pylint: disable=protected-access
+    return actual_spec.cast(value, casting_context)  # pylint: disable=protected-access
 
   def __repr__(self):
     s = "BoundedTensorSpec(shape={}, dtype={}, name={}, minimum={}, maximum={})"

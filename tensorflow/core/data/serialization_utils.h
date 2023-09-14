@@ -16,16 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERIALIZATION_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SERIALIZATION_UTILS_H_
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -74,6 +77,12 @@ class VariantTensorDataReader : public IteratorStateReader {
                             StringPiece key, Tensor* val) const;
   Status ReadDatasetInternal(FunctionLibraryRuntime* flr, StringPiece name,
                              StringPiece key, Tensor* val) const;
+  // Produces all key/value pairs stored in this reader. Useful for debugging.
+  std::map<string, Tensor> ReadAllTensors();
+
+  // For access to ReadAllTensors()
+  friend tsl::StatusOr<absl::flat_hash_map<std::string, int64_t>>
+  CheckpointStats(const std::string& checkpoint_bytes);
 
   std::map<string, std::map<string, size_t>> map_;
   std::map<string, const VariantTensorData*> data_;  // Not owned.
@@ -199,6 +208,11 @@ Status AsGraphDef(const DatasetBase* dataset,
 Status AsGraphDefForRewrite(OpKernelContext* ctx, const DatasetBase* input,
                             std::vector<std::pair<string, Tensor>>* input_list,
                             GraphDef* result, string* dataset_node);
+
+// Analyzes the bytes of a tf.data iterator checkpoint to identify all of the
+// keys in the checkpoint along with their sizes in bytes.
+tsl::StatusOr<absl::flat_hash_map<std::string, int64_t>> CheckpointStats(
+    const std::string& checkpoint_bytes);
 
 }  // namespace data
 }  // namespace tensorflow

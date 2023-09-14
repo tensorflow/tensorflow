@@ -62,7 +62,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
   def test_variable_creation(self, init_value, convert_callable):
     if convert_callable:
       init_value = init_value()
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     with strategy.scope():
       v = variables.Variable(init_value)
 
@@ -71,7 +71,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertEqual(v.layout, layout.Layout.replicated(self.mesh, rank=1))
 
   def test_variable_creation_with_dtype(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     with strategy.scope():
       v = variables.Variable(
           0, dtype='int64',
@@ -80,37 +80,37 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertEqual(v.dtype, dtypes.int64)
 
   def test_mesh(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
-    self.assertEqual(strategy._mesh, self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
+    self.assertEqual(strategy.mesh, self.mesh)
 
   def test_strategy_extension(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     self.assertIsInstance(strategy.extended, distribute_lib.StrategyExtendedV2)
 
   def test_num_replica_in_sync(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     self.assertEqual(strategy.num_replicas_in_sync, 2)
 
   def test_worker_devices(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     worker_devices = strategy.extended.worker_devices
     self.assertLen(worker_devices, 2)
     self.assertEqual(worker_devices, tuple(self.mesh.local_devices()))
 
   def test_parameter_devices(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     parameter_devices = strategy.extended.parameter_devices
     self.assertLen(parameter_devices, 2)
     self.assertEqual(parameter_devices, tuple(self.mesh.local_devices()))
 
   def test_variable_created_in_scope(self):
-    strategy1 = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy1 = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     with strategy1.scope():
       v1 = variables.Variable(constant_op.constant([1.0, 2.0]))
 
     v2 = variables.Variable(constant_op.constant([1.0, 2.0]))
 
-    strategy2 = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy2 = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     with strategy2.scope():
       v3 = variables.Variable(constant_op.constant([1.0, 2.0]))
 
@@ -120,7 +120,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertTrue(strategy2.extended.variable_created_in_scope(v3))
 
   def test_colocate_vars_with(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     with strategy.scope():
       v1 = variables.Variable(constant_op.constant([1.0, 2.0]))
       with strategy.extended.colocate_vars_with(v1):
@@ -130,11 +130,11 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertEqual(v1.layout, v2.layout)
 
   def test_in_multi_worker_mode(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     self.assertFalse(strategy.extended._in_multi_worker_mode())
 
   def test_run_with_tensor_inputs(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     tensor_input = constant_op.constant(3.0)
 
     @def_function.function
@@ -150,7 +150,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     # test case was raising an error, but the graph context will run, by treat
     # the inputs as a global inputs.
     # TODO(scottzhu): Mitigate this eager/graph behavior difference in future.
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
 
     @def_function.function
     def replica_fn(inputs):
@@ -166,7 +166,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertEqual(result, constant_op.constant(6.0))
 
   def test_run_with_unsupported_input_types(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     random_inputs = [123, '456']
 
     @def_function.function
@@ -178,7 +178,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
       strategy.run(replica_fn, args=(random_inputs,))
 
   def test_run_with_distribute_value_input(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
 
     def value_fn(value_context):
       return value_context.replica_id_in_sync_group
@@ -201,7 +201,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertAllClose(result.values[1], constant_op.constant([2]))
 
   def test_run_without_input(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
 
     @def_function.function
     def replica_fn():
@@ -215,7 +215,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertAllClose(result.values[1], constant_op.constant([1.0]))
 
   def test_nested_structure_output(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     array_value = np.array([3., 2., 1.])
     def value_fn(ctx):
       value = array_value[ctx.replica_id_in_sync_group]
@@ -253,7 +253,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     def replica_fn_2(inputs):
       return inputs + 1.0
 
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     tensor_input = constant_op.constant(3.0)
     d_tensor_input = strategy.experimental_distribute_values_from_function(
         lambda _: tensor_input)
@@ -276,7 +276,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     def replica_fn():
       return constant_op.constant([3.0])
 
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     result = strategy.run(replica_fn)
 
     self.assertIsInstance(result, dtensor_util.DTensorDistributedValue)
@@ -284,7 +284,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertAllClose(result.values[1], constant_op.constant([3.0]))
 
   def test_get_replica_context(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
 
     tensor_input = constant_op.constant(3)
     d_tensor_input = strategy.experimental_distribute_values_from_function(
@@ -308,14 +308,14 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertAllClose(result.values[1], constant_op.constant([6]))
 
   def test_gather_non_dtensor_value(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     tensor_input = constant_op.constant(3.0)
 
     result = strategy.gather(tensor_input, axis=0)
     self.assertAllClose(result, tensor_input)
 
   def test_gather_dtensor_value(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
 
     def value_fn(value_context):
       start = value_context.replica_id_in_sync_group
@@ -336,7 +336,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertAllClose(result, [[[0, 1, 2, 1, 2, 3], [3, 4, 5, 4, 5, 6]]])
 
   def test_reduce_mean_non_dtensor_value(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     tensor_input = constant_op.constant([[3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
 
     with self.assertRaisesRegex(
@@ -344,7 +344,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
       strategy.reduce(reduce_util.ReduceOp.MEAN, tensor_input, axis=0)
 
   def test_reduce_sum_non_dtensor_value(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     tensor_input = constant_op.constant([[3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
 
     with self.assertRaisesRegex(
@@ -352,7 +352,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
       strategy.reduce(reduce_util.ReduceOp.SUM, tensor_input, axis=0)
 
   def test_reduce_mean_distribute_value(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
 
     @def_function.function
     def value_fn(value_context):
@@ -378,7 +378,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertAllClose(result, constant_op.constant([2.5, 4.5]))
 
   def test_reduce_sum_distribute_value(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
 
     @def_function.function
     def value_fn(value_context):
@@ -404,7 +404,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertAllClose(result, constant_op.constant([10.0, 18.0]))
 
   def test_reduce_mean_mirrored_value(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
 
     with  strategy.scope():
       v = variables.Variable(constant_op.constant([[1.0, 2.0], [3.0, 4.0]]))
@@ -418,7 +418,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertAllClose(result, constant_op.constant([1.5, 3.5]))
 
   def test_reduce_sum_mirrored_value(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
 
     with  strategy.scope():
       v = variables.Variable(constant_op.constant([[1.0, 2.0], [3.0, 4.0]]))
@@ -432,7 +432,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertAllClose(result, constant_op.constant([3.0, 7.0]))
 
   def test_reduce_value_device(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     tensor_input = constant_op.constant([[3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
 
     result = strategy.reduce(reduce_util.ReduceOp.MEAN, tensor_input, axis=None)
@@ -443,7 +443,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     def replica_fn():
       return constant_op.constant([3.0])
 
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     result = strategy.run(replica_fn)
     local_result = strategy.experimental_local_results(result)
 
@@ -453,7 +453,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertEqual(local_result[1], constant_op.constant([3.0]))
 
   def test_experimental_local_results_with_inputs(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     array_value = np.array([3., 2.])
     def value_fn(ctx):
       value = array_value[ctx.replica_id_in_sync_group]
@@ -498,7 +498,7 @@ class InvalidMeshTest(test_util.DTensorBaseTest):
   def test_invalid_mesh_shape(self):
     with self.assertRaisesRegex(
         ValueError, 'The mesh for MirroredStrategy must be 1D, received: 2D'):
-      mirrored_strategy.MirroredStrategy(self.mesh_2d)
+      mirrored_strategy.MirroredStrategy(mesh=self.mesh_2d)
 
 
 class StrategyCreationTest(test_util.DTensorBaseTest):
@@ -513,7 +513,7 @@ class StrategyCreationTest(test_util.DTensorBaseTest):
   def test_explicit_device_list(self):
     device_list = [f'/{self.device_type}:{i}' for i in range(2)]
     strategy = mirrored_strategy.MirroredStrategy(devices=device_list)
-    mesh = strategy._mesh
+    mesh = strategy.mesh
     self.assertEqual(mesh.num_local_devices(), 2)
     self.assertEqual(mesh.shape(), [2,])
     self.assertEqual(mesh.dim_names, ['batch'])
@@ -528,7 +528,7 @@ class StrategyCreationTest(test_util.DTensorBaseTest):
 
   def test_implicit_device_list(self):
     strategy = mirrored_strategy.MirroredStrategy()
-    mesh = strategy._mesh
+    mesh = strategy.mesh
     self.assertEqual(mesh.num_local_devices(), 2)
     self.assertEqual(mesh.shape(), [2,])
     self.assertIn(
@@ -570,7 +570,7 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
         (self.images, self.labels)).repeat()
 
   def test_create_batched_dataset(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     global_batch_size = 8
     dataset = self.dataset.batch(global_batch_size).prefetch(2)
 
@@ -588,7 +588,7 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
     elements = [[1, 2, 3], [1, 2], [1, 2, 3, 4]]
     dataset = dataset_ops.Dataset.from_generator(
         lambda: elements, dtypes.int64).repeat()
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     with self.assertRaisesRegex(ValueError, 'requires a static batch size'):
       strategy.experimental_distribute_dataset(dataset)
 
@@ -598,7 +598,7 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
     dataset = dataset_ops.Dataset.from_tensors(
         (self.images, self.labels)).repeat(30)  # There is a last partial batch
 
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     global_batch_size = 8
     dataset = dataset.batch(global_batch_size).prefetch(2)
 
@@ -617,7 +617,7 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
       self.assertLen(d_api.unpack(batched_label), self.mesh.num_local_devices())
 
   def test_deprecated_strategy_methods(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     with self.assertRaisesRegex(
         NotImplementedError, 'only available in the V1 API'):
       strategy.make_dataset_iterator(self.dataset)
@@ -634,7 +634,7 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
       return dataset_ops.Dataset.from_tensors(
           (self.images, self.labels)).repeat().batch(
               local_batch_size, drop_remainder=True).prefetch(2)
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     distributed_dataset = strategy.distribute_datasets_from_function(
         dataset_fn, None)
     iterator = iter(distributed_dataset)
@@ -661,7 +661,7 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
     array_value = np.array([3., 2., 1.])
     def value_fn(ctx):
       return array_value[ctx.replica_id_in_sync_group]
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     distributed_values = (
         strategy.experimental_distribute_values_from_function(
             value_fn))
@@ -676,7 +676,7 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
       value = array_value[ctx.replica_id_in_sync_group]
       return {'a': value,
               'b': constant_op.constant([value + 1.0, value + 2.0])}
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     distributed_values = (
         strategy.experimental_distribute_values_from_function(
             value_fn))
@@ -698,7 +698,7 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
         distributed_values['b'])
 
   def test_distribute_dataset_in_tf_function(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     local_batch_size = 4
     global_batch_size = 8
     dataset = self.dataset.batch(global_batch_size).prefetch(2)

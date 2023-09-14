@@ -2,10 +2,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow/compiler/tf2xla:internal",
-        "//tensorflow/core/tpu:__subpackages__",
-    ],
+    default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
     licenses = ["notice"],
 )
 
@@ -31,20 +28,20 @@ XLA_OPS_DEPS = [
     "//tensorflow/compiler/tf2xla:xla_compiler",
     "//tensorflow/compiler/tf2xla:xla_helpers",
     "//tensorflow/compiler/tf2xla:xla_op_registry",
-    "//tensorflow/compiler/xla:executable_run_options",
-    "//tensorflow/compiler/xla:status_macros",
-    "//tensorflow/compiler/xla:statusor",
-    "//tensorflow/compiler/xla/client:client_library",
-    "//tensorflow/compiler/xla/client:local_client",
-    "//tensorflow/compiler/xla/service:compiler",
-    "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
+    "@local_xla//xla:executable_run_options",
+    "@local_xla//xla:status_macros",
+    "@local_xla//xla:statusor",
+    "@local_xla//xla/client:client_library",
+    "@local_xla//xla/client:local_client",
+    "@local_xla//xla/service:compiler",
+    "@local_xla//xla/service/gpu:gpu_executable_run_options",
     "//tensorflow/core:core_cpu_internal",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:state_ops_op_lib",
     "//tensorflow/core/platform:stream_executor_no_cuda",
     "//tensorflow/core/profiler/lib:traceme",
-    "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
+    "@local_xla//xla/stream_executor:tf_allocator_adapter",
     "@com_google_absl//absl/types:optional",
 ]
 
@@ -56,13 +53,14 @@ cc_library(
     deps = XLA_OPS_DEPS + [
         "//tensorflow/compiler/jit:device_compilation_cache",
         "//tensorflow/compiler/jit:device_compilation_profiler",
+        "//tensorflow/compiler/jit:pjrt_compile_util",
         "//tensorflow/compiler/jit:tf_graph_to_hlo_compiler",
         "//tensorflow/compiler/jit:tf_to_hlo_compiler",
         "//tensorflow/compiler/jit:xla_compile_util",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core/platform:refcount",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/pjrt:pjrt_client",
     ],
     alwayslink = 1,
 )

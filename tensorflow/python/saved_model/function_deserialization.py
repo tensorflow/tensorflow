@@ -30,7 +30,7 @@ from tensorflow.python.framework import func_graph as func_graph_lib
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
@@ -44,7 +44,8 @@ from tensorflow.python.util import tf_inspect
 
 
 def _is_tensor(t):
-  return isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
+  return isinstance(
+      t, (tensor.Tensor, resource_variable_ops.BaseResourceVariable))
 
 
 # TODO(b/205016027): Update this to just use ConcreteFunction.__call__ with the
@@ -72,11 +73,11 @@ def _call_concrete_function(function, inputs):
   flatten_expected = nest.flatten(expected_structure, expand_composites=True)
   tensor_inputs = []
   for arg, expected in zip(flatten_inputs, flatten_expected):
-    if isinstance(expected, tensor_spec.TensorSpec):
+    if isinstance(expected, tensor.TensorSpec):
       tensor_inputs.append(
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
     elif isinstance(expected, resource_variable_ops.VariableSpec):
-      tensor_inputs.append(arg)
+      tensor_inputs.append(arg.handle)
   result = function._call_flat(tensor_inputs, function.captured_inputs)  # pylint: disable=protected-access
   if isinstance(result, ops.Operation):
     return None
@@ -89,7 +90,7 @@ def _try_convert_to_tensor_spec(arg, dtype_hint):
     # Note: try conversion in a FuncGraph to avoid polluting current context.
     with func_graph_lib.FuncGraph(name="guess_conversion").as_default():
       result = ops.convert_to_tensor(arg, dtype_hint=dtype_hint)
-      return tensor_spec.TensorSpec(shape=result.shape, dtype=result.dtype)
+      return tensor.TensorSpec(shape=result.shape, dtype=result.dtype)
   except (TypeError, ValueError):
     return None
 
@@ -103,10 +104,10 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
     return False
 
   for arg, expected in zip(flatten_inputs, nest.flatten(expected_structure)):
-    if isinstance(expected, tensor_spec.TensorSpec):
+    if isinstance(expected, tensor.TensorSpec):
       if allow_conversion:
         arg = _try_convert_to_tensor_spec(arg, dtype_hint=expected.dtype)
-      if not _is_tensor(arg) and not isinstance(arg, tensor_spec.TensorSpec):
+      if not _is_tensor(arg) and not isinstance(arg, tensor.TensorSpec):
         return False
       if arg.dtype != expected.dtype:
         return False
@@ -180,7 +181,7 @@ def set_preinitialized_function_spec(concrete_fn, spec):
   )
   arg_specs, kwarg_specs = concrete_fn.structured_input_signature
 
-  _, input_function_type, _ = function_type_lib.canonicalize_to_monomorphic(
+  input_function_type, _ = function_type_lib.canonicalize_to_monomorphic(
       arg_specs,
       {
           function_type_lib.sanitize_arg_name(k): v
@@ -263,12 +264,6 @@ class RestoredFunction(def_function.Function):
 
   def _list_all_concrete_functions_for_serialization(self):
     return self.concrete_functions
-
-  def _compiler_with_scope(self, scope):
-    func = super(RestoredFunction, self)._compiler_with_scope(scope)
-    func._function_type = self._function_type  # pylint: disable=protected-access
-    func._default_values = self._default_values  # pylint: disable=protected-access
-    return func
 
 
 def recreate_function(saved_function, concrete_functions):
@@ -484,9 +479,8 @@ def load_function_def_library(library,
         func_graph.structured_outputs,
         func_graph.function_captures.capture_types,
     )
-    func = function_lib.ConcreteFunction(
-        func_graph, attrs=fdef.attr, function_type=function_type
-    )
+    func = function_lib.ConcreteFunction.from_func_graph(
+        func_graph, function_type, attrs=fdef.attr)
     if wrapper_function:
       func = wrapper_function(func)
     func.add_to_graph(graph)

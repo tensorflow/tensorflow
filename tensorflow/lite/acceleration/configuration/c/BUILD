@@ -22,6 +22,17 @@ load(
 )
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 
+# LINT.IfChange(tflite_acceleration_exported_headers)
+exports_files([
+    "delegate_plugin.h",
+    "gpu_plugin.h",
+    "xnnpack_plugin.h",
+])
+# LINT.ThenChange(
+#     ../../../core/acceleration/configuration/c/BUILD:tflite_acceleration_exported_headers,
+#     ../../../java/BUILD:tflite_acceleration_exported_headers
+# )
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],

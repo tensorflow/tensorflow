@@ -1577,6 +1577,81 @@ TF_CAPI_EXPORT extern void TF_RegisterLogListener(
 TF_CAPI_EXPORT extern void TF_RegisterFilesystemPlugin(
     const char* plugin_filename, TF_Status* status);
 
+// Apis that are corresponding to python c api. --------------------
+
+// Add control input to `op`.
+TF_CAPI_EXPORT extern void TF_AddOperationControlInput(TF_Graph* graph,
+                                                       TF_Operation* op,
+                                                       TF_Operation* input);
+
+// Changes an attr value in the node_def Protocol Buffer and sets a status upon
+// completion.
+TF_CAPI_EXPORT extern void TF_SetAttr(TF_Graph* graph, TF_Operation* op,
+                                      const char* attr_name,
+                                      TF_Buffer* attr_value_proto,
+                                      TF_Status* status);
+
+// Clears the attr in the node_def Protocol Buffer and sets a status upon
+// completion.
+TF_CAPI_EXPORT extern void TF_ClearAttr(TF_Graph* graph, TF_Operation* op,
+                                        const char* attr_name,
+                                        TF_Status* status);
+
+// Sets the experimental_type` field in the node_def Protocol Buffer.
+TF_CAPI_EXPORT extern void TF_SetFullType(TF_Graph* graph, TF_Operation* op,
+                                          const TF_Buffer* full_type_proto);
+
+// Set the requested device for `graph`.
+TF_CAPI_EXPORT extern void TF_SetRequestedDevice(TF_Graph* graph,
+                                                 TF_Operation* op,
+                                                 const char* device);
+
+// Remove all the control inputs from `op` in `graph`.
+TF_CAPI_EXPORT extern void TF_RemoveAllControlInputs(TF_Graph* graph,
+                                                     TF_Operation* op);
+
+// Set if `graph` requires shape inference functions.
+TF_CAPI_EXPORT extern void TF_SetRequireShapeInferenceFns(TF_Graph* graph,
+                                                          bool require);
+
+// Extends `session` with any new operations added to its associated graph.
+// Usually this happens automatically in TF_SessionRun. After this is called,
+// TF_SessionRun will no longer extend the session on every call.
+//
+// We expose this here to allow fine-grained synchronization in multi-threaded
+// workloads, which is required since the Python implementation depends on the
+// above mutation methods. This allows us to prevent modifications to nodes in
+// the graph after the session has been made aware of them.
+TF_CAPI_EXPORT extern void TF_ExtendSession(TF_Session* session,
+                                            TF_Status* status);
+
+// Returns the serialized CppShapeInferenceResult::HandleData proto for
+// `output` if its a resource or variant tensor, or otherwise returns the empty
+// string.
+TF_CAPI_EXPORT extern TF_Buffer* TF_GetHandleShapeAndType(TF_Graph* graph,
+                                                          TF_Output output);
+
+// Sets `output` based on `proto`, which should be a serialized
+// CppShapeInferenceResult::HandleData proto. `output` should be a resource
+// or variant tensor.
+// NOTE(skyewm): `proto` is passed a void*/size_t pair instead of a std::string
+// because I couldn't get SWIG to work otherwise.
+TF_CAPI_EXPORT extern void TF_SetHandleShapeAndType(TF_Graph* graph,
+                                                    TF_Output output,
+                                                    const void* proto,
+                                                    size_t proto_len,
+                                                    TF_Status* status);
+
+// This method is used to add a new input edge to 'dst', which must be a While
+// op. The While op's "T" attribute must have already been updated to include
+// the new edge. This is used to construct tf.while_loop gradients.
+TF_CAPI_EXPORT extern void TF_AddWhileInputHack(TF_Graph* graph,
+                                                TF_Output new_src,
+                                                TF_Operation* dst,
+                                                TF_Status* status);
+
+// ----------------------------------------------------------------
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

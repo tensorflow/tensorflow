@@ -23,12 +23,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
-#define RETURN_IF_ERROR(s) \
-  {                        \
-    auto c = (s);          \
-    if (!c.ok()) return c; \
-  }
-
 namespace tensorflow {
 namespace libexport {
 
@@ -41,11 +35,11 @@ tensorflow::StatusOr<TFPackage> TFPackage::Load(const std::string& path) {
   const string saved_model_pbtxt_path =
       io::JoinPath(path, kSavedModelFilenamePbTxt);
   if (Env::Default()->FileExists(saved_model_pb_path).ok()) {
-    RETURN_IF_ERROR(ReadBinaryProto(Env::Default(), saved_model_pb_path,
-                                    &tf_package.saved_model_proto_));
+    TF_RETURN_IF_ERROR(ReadBinaryProto(Env::Default(), saved_model_pb_path,
+                                       &tf_package.saved_model_proto_));
   } else if (Env::Default()->FileExists(saved_model_pbtxt_path).ok()) {
-    RETURN_IF_ERROR(ReadTextProto(Env::Default(), saved_model_pbtxt_path,
-                                  &tf_package.saved_model_proto_));
+    TF_RETURN_IF_ERROR(ReadTextProto(Env::Default(), saved_model_pbtxt_path,
+                                     &tf_package.saved_model_proto_));
   } else {
     return Status(absl::StatusCode::kNotFound,
                   "Could not find SavedModel .pb or .pbtxt at supplied export "
@@ -65,7 +59,7 @@ tensorflow::StatusOr<TFPackage> TFPackage::Load(const std::string& path) {
     tf_package.variable_reader_ = std::make_unique<tensorflow::BundleReader>(
         tensorflow::Env::Default(), tf_package.variables_filepath_);
     tensorflow::Tensor object_graph_tensor;
-    RETURN_IF_ERROR(tf_package.variable_reader_->Lookup(
+    TF_RETURN_IF_ERROR(tf_package.variable_reader_->Lookup(
         tensorflow::kObjectGraphProtoKey, &object_graph_tensor));
     const auto* object_graph_string =
         reinterpret_cast<const tensorflow::tstring*>(

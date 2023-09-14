@@ -16,28 +16,46 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
 
-#include "absl/strings/string_view.h"
+#include <string>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 
 namespace tensorflow {
 
-inline constexpr absl::string_view kInputShardingAttr =
+inline constexpr llvm::StringRef kInputShardingAttr =
     "input_sharding_configuration";
-inline constexpr absl::string_view kOutputShardingAttr =
+inline constexpr llvm::StringRef kOutputShardingAttr =
     "output_sharding_configuration";
+
+// Parses the sharding string. This sharding string can be binary (serialized)
+// or human readable.
+mlir::LogicalResult DecodeShardingAttribute(const std::string& shard_str,
+                                            xla::OpSharding& sharding,
+                                            bool report_error = true);
+
+// Encodes the sharding in human readable form.
+mlir::LogicalResult DecodeShardingAttribute(mlir::Attribute shard_attr,
+                                            xla::OpSharding& sharding,
+                                            bool report_error = true);
+
+// Parses the sharding attr. This sharding attr can be binary (serialized)
+// or human readable.
+void EncodeSharding(mlir::Operation* op, llvm::StringRef shard_str);
 
 // Parses "input_sharding_configuration" attribute and returns a list where i-th
 // element is a list of mlir::Value's which represent inputs for the TPU
-// computation correponding to i-th logical device. If the attribute does not
+// computation corresponding to i-th logical device. If the attribute does not
 // exist, the all inputs are placed on logical core 0.
 mlir::LogicalResult ExtractInputsForLogicalDevices(
     int num_cores_per_replica, mlir::tf_device::ClusterFuncOp cluster_func,
@@ -78,6 +96,31 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
 // argument index.
 llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> GetMetadataArgumentMapping(
     const tpu::TPUCompileMetadataProto& metadata);
+
+// Gets the proper tensor dimension from XLA OpSharding.
+// "replicate_on_last_tile_dim" and "last_tile_dims" should be deducted from the
+// real Tensor dimensions when tiled.
+// For example:
+// f32[8,512](sharding={devices=[1,1,2]0,1 last_tile_dims={REPLICATED})
+// also means a replicated tensor over all devices.
+//
+// See xla_data.proto for detailed explanations on the fields.
+int GetDimsFromXLAShardingTiled(const xla::OpSharding& xla_sharding);
+
+// A sharding with OTHER type may be REPLICATED if:
+// 'replicate_on_last_tile_dim' is true OR
+// 'last_tile_dims' is not empty
+// AND
+// other than replicated last tile dims, all other dims are not sharded.
+bool IsOtherReplicatedSharding(const xla::OpSharding& xla_sharding);
+
+// Returns whether the sharding is split sharding. i.e. A sharding with OTHER
+// type but not replicated.
+bool IsSplitSharding(const xla::OpSharding& sharding);
+
+// Returns whether the sharding is replicated. It includes sharding with
+// REPLICATED type and replicated OTHER type.
+bool IsReplicatedSharding(const xla::OpSharding& sharding);
 
 }  // namespace tensorflow
 

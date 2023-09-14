@@ -132,9 +132,9 @@ bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
 // 'hit': cache hit count,
 // 'miss': cache miss count,
 // 'size': number of entries in the cache.
-std::unordered_map<std::string, int> GetFunctionCacheStats(TFE_Context* context,
-                                                           void* device_info,
-                                                           TF_Status* status);
+std::unordered_map<std::string, int> GetStats(TFE_Context* context,
+                                              void* device_info,
+                                              TF_Status* status);
 
 // Sets the layouts for the elements emitted by an iterator resource tensor.
 void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,

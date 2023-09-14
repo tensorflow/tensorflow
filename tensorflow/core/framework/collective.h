@@ -158,6 +158,7 @@ struct CollectiveParams : public core::RefCounted {
   OpKernel* final_op = nullptr;  // reduction only
   string ToString() const;
   bool run_group_initialization = true;
+  bool is_stateless = false;
 };
 
 class CollectiveExecutor;

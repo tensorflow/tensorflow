@@ -337,6 +337,40 @@ class TPUMirroredVariable(TPUVariableMixin, values.MirroredVariable):
     raise NotImplementedError
 
 
+class TPULazyDistributedVariable(TPUDistributedVariable):
+  """TPU Mirrored variable to be initialized lazily in a batch."""
+
+  def _initialize_if_uninitialized(self):
+    if getattr(self, "_is_lazily_initialized", False):
+      return
+    self._lazy_scope.initialize_all()
+
+    self._is_lazily_initialized = True
+
+  def assign_sub(self, value, use_locking=False, name=None, read_value=True):
+    self._initialize_if_uninitialized()
+    return super().assign_sub(
+        value, use_locking, name, read_value
+    )
+
+  def assign_add(self, value, use_locking=False, name=None, read_value=True):
+    self._initialize_if_uninitialized()
+    return super().assign_add(
+        value, use_locking, name, read_value
+    )
+
+  def assign(self, value, use_locking=False, name=None, read_value=True):
+    self._initialize_if_uninitialized()
+
+    return super().assign(
+        value, use_locking, name, read_value
+    )
+
+  def read_value(self):
+    self._initialize_if_uninitialized()
+    return super().read_value()
+
+
 class TPUSyncOnReadVariable(TPUVariableMixin, values.SyncOnReadVariable):
   """Holds a map from replica to variables whose values are reduced on save."""
 

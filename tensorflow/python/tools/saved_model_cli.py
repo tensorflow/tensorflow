@@ -20,6 +20,7 @@ https://www.tensorflow.org/guide/saved_model#cli_to_inspect_and_execute_savedmod
 """
 
 import argparse
+import platform
 
 import ast
 import os
@@ -183,11 +184,26 @@ _SMCLI_VARIABLES_TO_FEED = flags.DEFINE_string(
     'will NOT be frozen, and their values will be uninitialized in the compiled'
     ' object.')
 
-_SMCLI_TARGET_TRIPLE = flags.DEFINE_string(
-    name='target_triple', default='x86_64-pc-linux',
-    help='Triple identifying a target variation, containing information such as'
-    ' processor architecture, vendor, operating system, and environment. '
-    'Defaults to \'x86_64-pc-linux\'.')
+if platform.machine() == 's390x':
+  _SMCLI_TARGET_TRIPLE = flags.DEFINE_string(
+      name='target_triple',
+      default='',
+      help=(
+          'Triple identifying a target variation, containing information suchas'
+          ' processor architecture, vendor, operating system, and environment.'
+          " Defaults to ''."
+      ),
+  )
+else:
+  _SMCLI_TARGET_TRIPLE = flags.DEFINE_string(
+      name='target_triple',
+      default='x86_64-pc-linux',
+      help=(
+          'Triple identifying a target variation, containing information such'
+          ' as processor architecture, vendor, operating system, and'
+          " environment. Defaults to 'x86_64-pc-linux'."
+      ),
+  )
 
 _SMCLI_TARGET_CPU = flags.DEFINE_string(
     name='target_cpu', default='',
@@ -994,7 +1010,11 @@ def run():
     AttributeError: An error when neither --inputs nor --input_exprs is passed
     to run command.
   """
-  if not _SMCLI_INPUTS.value and not _SMCLI_INPUT_EXPRS.value and not _SMCLI_INPUT_EXAMPLES.value:
+  if (
+      not _SMCLI_INPUTS.value
+      and not _SMCLI_INPUT_EXPRS.value
+      and not _SMCLI_INPUT_EXAMPLES.value
+  ):
     raise AttributeError(
         'At least one of --inputs, --input_exprs or --input_examples must be '
         'required')

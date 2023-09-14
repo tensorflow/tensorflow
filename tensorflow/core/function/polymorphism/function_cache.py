@@ -23,7 +23,8 @@ from tensorflow.core.function.polymorphism import type_dispatch
 
 class FunctionContext(NamedTuple):
   """Contains information regarding tf.function execution context."""
-  context: Any
+  context: Any = None
+  scope_type: Any = None
 
 
 class FunctionCache:
@@ -42,7 +43,7 @@ class FunctionCache:
   def lookup(self, function_type: function_type_lib.FunctionType,
              context: Optional[FunctionContext] = None) -> Optional[Any]:
     """Looks up a function based on the context and type."""
-    context = context or FunctionContext(None)
+    context = context or FunctionContext()
     if context in self._dispatch_dict:
       dispatch_type = self._dispatch_dict[context].dispatch(function_type)
       if dispatch_type:
@@ -54,7 +55,7 @@ class FunctionCache:
              context: Optional[FunctionContext] = None,
              ) -> bool:
     """Deletes a function given the context and type."""
-    context = context or FunctionContext(None)
+    context = context or FunctionContext()
     if (context, function_type) not in self._primary:
       return False
 
@@ -70,7 +71,7 @@ class FunctionCache:
       fn: The function to be added to the cache.
       context: A FunctionContext representing the current context.
     """
-    context = context or FunctionContext(None)
+    context = context or FunctionContext()
     self._primary[(context, fn.function_type)] = fn
     if context not in self._dispatch_dict:
       self._dispatch_dict[context] = type_dispatch.TypeDispatchTable()
@@ -97,3 +98,6 @@ class FunctionCache:
   def values(self):
     """Returns a list of all functions held by this cache."""
     return list(self._primary.values())
+
+  def __len__(self):
+    return len(self._primary)

@@ -32,14 +32,15 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
+#include "tensorflow/lite/kernels/internal/reference/mul.h"
 #include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
 #endif
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/core/c/common.h"
@@ -76,7 +77,7 @@ using reference_ops::Broadcast4DSlowLessEqual;
 using reference_ops::Broadcast4DSlowLessEqualWithScaling;
 using reference_ops::Broadcast4DSlowLessWithScaling;
 using reference_ops::BroadcastAdd6DSlow;
-using reference_ops::BroadcastMul4DSlow;
+using reference_ops::BroadcastMul6DSlow;
 using reference_ops::BroadcastSub16POTSlow;
 using reference_ops::BroadcastSubSlow;
 using reference_ops::Concatenation;
@@ -1994,7 +1995,7 @@ inline void MulNoActivation(const ArithmeticParams& params,
     auto scalar = input1_data[0];
     output_map.array() = scalar * input2_map.array();
   } else {
-    reference_ops::BroadcastMul4DSlow(params, input1_shape, input1_data,
+    reference_ops::BroadcastMul6DSlow(params, input1_shape, input1_data,
                                       input2_shape, input2_data, output_shape,
                                       output_data);
   }
@@ -2249,7 +2250,7 @@ inline void BroadcastMulDispatch(
     const T* input1_data, const RuntimeShape& input2_shape,
     const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
   if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
-    return BroadcastMul4DSlow(params, input1_shape, input1_data, input2_shape,
+    return BroadcastMul6DSlow(params, input1_shape, input1_data, input2_shape,
                               input2_data, output_shape, output_data);
   }
 

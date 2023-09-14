@@ -308,6 +308,14 @@ class MaxPoolV2Transposer : public LayoutSensitiveOpTransposer {
                        utils::MutableNodeView* node) override;
 };
 
+class MaxPool3DTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit MaxPool3DTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
 class MaxPoolGradTransposer : public LayoutSensitiveOpTransposer {
  public:
   explicit MaxPoolGradTransposer() : LayoutSensitiveOpTransposer() {}
@@ -626,6 +634,8 @@ bool IsTernaryOp(const NodeDef& node);
 bool IsUnaryGrad(const NodeDef& node);
 
 bool IsMaxPoolV2(const NodeDef& node);
+
+bool IsMaxPool3D(const NodeDef& node);
 
 bool IsMaxPoolGradV2(const NodeDef& node);
 

@@ -26,6 +26,13 @@ pytype_strict_library(
 tf_gen_op_wrapper_py(
     name = "gen_tpu_embedding_ops",
     out = "gen_tpu_embedding_ops.py",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+    py_lib_rule = pytype_strict_library,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/ops:tpu_configuration_ops_op_lib",

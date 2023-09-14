@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -201,6 +201,8 @@ using ConcatV2Op = ConcatBaseOp<Device, T, NAME_IS_AXIS>;
                           ConcatV2Op<CPUDevice, type>)
 
 TF_CALL_POD_STRING_TYPES(REGISTER_CONCAT);
+TF_CALL_float8_e5m2(REGISTER_CONCAT);
+TF_CALL_float8_e4m3fn(REGISTER_CONCAT);
 REGISTER_CONCAT(quint8);
 REGISTER_CONCAT(qint8);
 REGISTER_CONCAT(quint16);
@@ -225,6 +227,8 @@ REGISTER_CONCAT(qint32);
 
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
+TF_CALL_float8_e5m2(REGISTER_GPU);
+TF_CALL_float8_e4m3fn(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

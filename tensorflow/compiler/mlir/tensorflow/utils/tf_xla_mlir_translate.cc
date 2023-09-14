@@ -31,7 +31,9 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -47,10 +49,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -326,15 +328,17 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
       custom_legalization_passes{};
   XlaCompilationResult compilation_result;
   auto compilation_status =
-      via_builder ? CompileMlirToXlaHloViaBuilder(
-                        module_op, arg_shapes, device_type, &compilation_result,
-                        custom_legalization_passes)
-                  : CompileMlirToXlaHlo(
-                        module_op, arg_shapes, device_type, emit_use_tuple_arg,
-                        /*analyse_graph=*/false, emit_return_tuple,
-                        /*use_resource_updates_for_aliases=*/true,
-                        /*shape_determination_fns=*/{}, &compilation_result,
-                        custom_legalization_passes);
+      via_builder
+          ? CompileMlirToXlaHloViaBuilder(module_op, arg_shapes, device_type,
+                                          &compilation_result,
+                                          custom_legalization_passes)
+          : CompileMlirToXlaHlo(module_op, arg_shapes, device_type,
+                                emit_use_tuple_arg,
+                                /*analyse_graph=*/false, emit_return_tuple,
+                                /*use_resource_updates_for_aliases=*/true,
+                                /*shape_determination_fns=*/{},
+                                &compilation_result, custom_legalization_passes)
+                .status();
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: " << compilation_status;
     return mlir::failure();
@@ -375,7 +379,9 @@ static void RegisterMlirInputDialects(mlir::DialectRegistry& registry) {
   // TODO(b/259459405): Remove support for stablehlo as an input.
   registry
       .insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-              mlir::TF::TensorFlowDialect, mlir::stablehlo::StablehloDialect>();
+              mlir::TF::TensorFlowDialect, mlir::stablehlo::StablehloDialect,
+              mlir::quant::QuantizationDialect>();
+  mlir::func::registerAllExtensions(registry);
 }
 
 static void RegisterGraphInputDialects(mlir::DialectRegistry& registry) {

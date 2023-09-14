@@ -36,7 +36,6 @@ cuda_py_strict_test(
     ],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -47,6 +46,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:check_ops",
+        "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
@@ -85,7 +85,7 @@ cuda_py_strict_test(
     srcs = ["collective_ops_test.py"],
     shard_count = 4,
     tags = [
-        "multi_and_single_gpu",
+        # "multi_and_single_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
         "no_tfrt",  # TODO(b/185944042)
     ],
     deps = [
@@ -236,7 +236,6 @@ tf_py_strict_test(
     shard_count = 20,
     tags = ["no_windows_gpu"],
     deps = [
-        "//tensorflow/python:metrics",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -246,6 +245,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:data_flow_grad",
         "//tensorflow/python/ops:data_flow_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:metrics",
         "//tensorflow/python/ops:nn_grad",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:variables",
@@ -291,7 +291,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:gradient_descent",
     ],
 )
 

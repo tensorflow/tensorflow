@@ -35,7 +35,6 @@ from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers import rnn_cell_wrapper_v2
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_inspect as inspect
-from tensorflow.python.util.tf_export import keras_export
 
 ALL_MODULES = (base_layer, input_layer, advanced_activations, convolutional,
                convolutional_recurrent, core, dense_attention,
@@ -95,12 +94,10 @@ def populate_deserializable_objects():
   LOCAL.ALL_OBJECTS['dot'] = merge.dot
 
 
-@keras_export('keras.layers.serialize')
 def serialize(layer):
   return generic_utils.serialize_keras_object(layer)
 
 
-@keras_export('keras.layers.deserialize')
 def deserialize(config, custom_objects=None):
   """Instantiates a layer from a config dictionary.
 

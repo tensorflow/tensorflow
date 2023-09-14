@@ -261,6 +261,7 @@ int PyInstanceChecker::cost() const { return py_classes_.size(); }
 std::string PyInstanceChecker::DebugString() const {
   DCheckPyGilState();
   std::vector<const char*> type_names;
+  type_names.reserve(py_classes_.size());
   for (const auto& py_class : py_classes_) {
     type_names.push_back(
         reinterpret_cast<PyTypeObject*>(py_class.get())->tp_name);

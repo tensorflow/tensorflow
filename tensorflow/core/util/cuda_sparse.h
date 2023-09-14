@@ -47,7 +47,7 @@ using gpusparseSpMMAlg_t = cusparseSpMMAlg_t;
 #elif TENSORFLOW_USE_ROCM
 
 #include "rocm/rocm_config.h"
-#include "tensorflow/compiler/xla/stream_executor/rocm/hipsparse_wrapper.h"
+#include "xla/stream_executor/rocm/hipsparse_wrapper.h"
 
 using gpusparseStatus_t = hipsparseStatus_t;
 using gpusparseOperation_t = hipsparseOperation_t;
@@ -65,7 +65,7 @@ using gpusparseSpMMAlg_t = hipsparseSpMMAlg_t;
 
 #endif
 
-#include "tensorflow/compiler/xla/stream_executor/data_type.h"
+#include "xla/stream_executor/data_type.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -74,7 +74,7 @@ using gpusparseSpMMAlg_t = hipsparseSpMMAlg_t;
 #include "tensorflow/core/public/version.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
+#include "xla/stream_executor/cuda/cuda_blas_utils.h"
 #endif
 
 // Macro that specializes a sparse method for all 4 standard

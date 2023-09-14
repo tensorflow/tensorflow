@@ -13,9 +13,9 @@ py_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
+        "@local_xla//xla:xla_data_proto_py",
     ],
 )
 
@@ -26,13 +26,13 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":xla_sharding",
-        "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:absltest",
+        "@local_xla//xla:xla_data_proto_py",
     ],
 )

@@ -46,7 +46,7 @@ from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.tsl.protobuf import coordination_config_pb2
+from tsl.protobuf import coordination_config_pb2
 
 
 GRAPH_MODE = 0
@@ -2232,7 +2232,7 @@ def _reset_jit_compiler_flags():
   pywrap_tfe.TF_ResetJitCompilerFlags()
 
 
-def context():
+def context() -> Context:
   """Returns a singleton context object."""
   if _context is None:
     _create_context()

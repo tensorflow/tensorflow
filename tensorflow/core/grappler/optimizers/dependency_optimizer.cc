@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_set>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -134,7 +135,7 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
             << " to NoOp. Node has side effect.";
     return false;
   }
-  if (node.op().rfind("Submodel", 0) == 0) {
+  if (absl::StartsWith(node.op(), "Submodel")) {
     return false;
   }
   const OpDef* op_def = nullptr;

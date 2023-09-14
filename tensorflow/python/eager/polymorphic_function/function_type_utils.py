@@ -18,16 +18,12 @@ import functools
 import inspect
 from typing import Any, Dict, Tuple
 
-import numpy as np
 import six
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
-from tensorflow.python.eager.polymorphic_function import composite_tensor_utils
-from tensorflow.python.framework import composite_tensor
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
@@ -169,7 +165,7 @@ def to_input_signature(function_type):
           trace_type.InternalPlaceholderContext(unnest_only=True)
       )
       if any(
-          not isinstance(arg, tensor_spec.TensorSpec)
+          not isinstance(arg, tensor.TensorSpec)
           for arg in nest.flatten([constraint], expand_composites=True)
       ):
         # input_signature only supports contiguous TensorSpec composites
@@ -334,7 +330,12 @@ class FunctionSpec(object):
     """
     summary = f"{self._function_type!r}"
     if default_values:
-      summary += f", defaults: {self.default_values!r}"
+      summary += "\nDefaults:"
+      if self.default_values:
+        for name, value in self.default_values.items():
+          summary += f"\n  {name}: {value!r}"
+      else:
+        summary += "\n  None"
     return summary
 
 
@@ -363,7 +364,6 @@ def make_canonicalized_monomorphic_type(
     kwargs: Any,
     capture_types: Any,
     polymorphic_type,
-    default_values,
 ) -> Tuple[function_type_lib.FunctionType, trace_type.InternalTracingContext]:
   """Generates function type given the function arguments."""
   kwargs = {
@@ -371,9 +371,9 @@ def make_canonicalized_monomorphic_type(
       for name, value in kwargs.items()
   }
 
-  _, function_type, type_context = (
+  function_type, type_context = (
       function_type_lib.canonicalize_to_monomorphic(
-          args, kwargs, default_values, capture_types, polymorphic_type
+          args, kwargs, {}, capture_types, polymorphic_type
       )
   )
 
@@ -419,12 +419,10 @@ def canonicalize_function_inputs(
   default_values = {} if not default_values else default_values
   if is_pure:
     args, kwargs = _convert_variables_to_tensors(args, kwargs)
-  args, kwargs = bind_function_inputs(
+  bound_arguments = bind_function_inputs(
       args, kwargs, function_type, default_values
   )
-  filtered_flat_args = filter_function_inputs(args, kwargs)
-
-  return args, kwargs, filtered_flat_args
+  return bound_arguments
 
 
 def bind_function_inputs(args, kwargs, function_type, default_values):
@@ -450,7 +448,7 @@ def bind_function_inputs(args, kwargs, function_type, default_values):
         f"Received args: {args} and kwargs: {sanitized_kwargs} for signature:"
         f" {function_type}."
     ) from e
-  return bound_arguments.args, bound_arguments.kwargs
+  return bound_arguments
 
 
 def _validate_signature(signature):
@@ -472,13 +470,13 @@ def _validate_signature(signature):
     )
 
   if any(
-      not isinstance(arg, tensor_spec.TensorSpec)
+      not isinstance(arg, tensor.TensorSpec)
       for arg in nest.flatten(signature, expand_composites=True)
   ):
     bad_args = [
         arg
         for arg in nest.flatten(signature, expand_composites=True)
-        if not isinstance(arg, tensor_spec.TensorSpec)
+        if not isinstance(arg, tensor.TensorSpec)
     ]
     raise TypeError(
         "input_signature must be a possibly nested sequence of "
@@ -490,7 +488,7 @@ def _validate_signature(signature):
 def _to_tensor_or_tensor_spec(x):
   return (
       x
-      if isinstance(x, (ops.Tensor, tensor_spec.TensorSpec))
+      if isinstance(x, (tensor.Tensor, tensor.TensorSpec))
       else ops.convert_to_tensor(x)
   )
 
@@ -501,44 +499,6 @@ def _convert_variables_to_tensors(args, kwargs):
   return tuple(args), kwargs
 
 
-# TODO(fmuham): Migrate to use TraceType/FunctionType _to_tensors.
-def filter_function_inputs(args, kwargs):
-  """Filters and flattens args and kwargs."""
-  flat_inputs = composite_tensor_utils.flatten_with_variables(
-      args
-  ) + composite_tensor_utils.flatten_with_variables(kwargs)
-
-  for index, flat_input in enumerate(flat_inputs):
-    if hasattr(flat_input, "__array__") and not (
-        hasattr(flat_input, "_should_act_as_resource_variable")
-        or isinstance(
-            flat_input,
-            (
-                ops.Tensor,
-                resource_variable_ops.BaseResourceVariable,
-                np.str_,
-                type,
-                composite_tensor.CompositeTensor,
-            ),
-        )
-    ):
-      ndarray = flat_input.__array__()
-      if not isinstance(ndarray, np.ndarray):
-        raise TypeError(
-            "The output of __array__ must be an np.ndarray, "
-            f"got {type(ndarray)} from {flat_input}."
-        )
-      flat_inputs[index] = constant_op.constant(ndarray)
-
-  filtered_flat_inputs = [
-      t
-      for t in flat_inputs
-      if isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
-  ]
-
-  return filtered_flat_inputs
-
-
 def _get_variable_specs(args):
   """Returns `VariableSpecs` from `args`."""
   variable_specs = []
@@ -547,7 +507,7 @@ def _get_variable_specs(args):
       continue
     if isinstance(arg, resource_variable_ops.VariableSpec):
       variable_specs.append(arg)
-    elif not isinstance(arg, tensor_spec.TensorSpec):
+    elif not isinstance(arg, tensor.TensorSpec):
       # arg is a CompositeTensor spec.
       variable_specs.extend(_get_variable_specs(arg._component_specs))  # pylint: disable=protected-access
   return variable_specs

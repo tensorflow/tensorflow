@@ -286,6 +286,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:logging_ops",
         "//tensorflow/python/ops:random_ops_gen",
+        "//tensorflow/python/ops:random_ops_util",
         "//tensorflow/python/ops:stateful_random_ops",
         "//tensorflow/python/ops:stateful_random_ops_gen",
         "//tensorflow/python/ops:variables",
