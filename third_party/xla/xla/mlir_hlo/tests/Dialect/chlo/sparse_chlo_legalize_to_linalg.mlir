@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt --sparse-chlo-legalize-to-linalg %s | FileCheck %s
+// RUN: mlir-hlo-opt --legalize-sparse-ops="legalize-to-custom-calls=false" %s | FileCheck %s
 
 #CSR = #sparse_tensor.encoding<{
   lvlTypes = ["dense", "compressed"]

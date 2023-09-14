@@ -165,7 +165,8 @@ static Status CreateHloXlaPipeline(
     // invoke the needed passes to lower such CHLO operations to HLO after we
     // rewrite the custom calls back to such CHLO unary operations.
     pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createLegalizeSparseChloToLinalgPass());
+        mlir::mhlo::createLegalizeSparseOperationsPass(
+            /*legalizeToCustomCalls=*/false));
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createChloLegalizeToHloPass());
     pm.addNestedPass<mlir::func::FuncOp>(

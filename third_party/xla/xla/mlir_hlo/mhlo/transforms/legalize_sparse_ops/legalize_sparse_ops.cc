@@ -15,13 +15,11 @@ limitations under the License.
 
 // This file implements logic for converting CHLO dialect to Linalg dialect.
 
-#include <algorithm>
 #include <memory>
-#include <numeric>
-#include <string>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
+#include "mhlo/transforms/passes.h"
 #include "mhlo/transforms/rewriters.h"
 #include "mhlo/utils/legalize_to_linalg_utils.h"
 #include "mhlo/utils/type_conversion.h"
@@ -45,13 +43,19 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 
-#define GEN_PASS_DEF_CHLOLEGALIZETOLINALGPASS
+#define GEN_PASS_DEF_LEGALIZESPARSEOPSPASS
 #include "mhlo/transforms/mhlo_passes.h.inc"
 
 namespace {
 
-struct ChloLegalizeToLinalgPass
-    : public impl::ChloLegalizeToLinalgPassBase<ChloLegalizeToLinalgPass> {
+struct LegalizeSparseOpsPass
+    : public impl::LegalizeSparseOpsPassBase<LegalizeSparseOpsPass> {
+  explicit LegalizeSparseOpsPass(bool legalizeToCustomCalls)
+      : impl::LegalizeSparseOpsPassBase<
+            LegalizeSparseOpsPass>::LegalizeSparseOpsPassBase() {
+    this->legalize_to_custom_calls_ = legalizeToCustomCalls;
+  }
+
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<bufferization::BufferizationDialect, linalg::LinalgDialect,
@@ -63,8 +67,12 @@ struct ChloLegalizeToLinalgPass
     RewritePatternSet patterns(ctx);
     ConversionTarget target(*ctx);
     mhlo::RemoveSignTypeConverter typeConverter;
-    mhlo::populateLegalizeSparseChloToLinalgPatterns(ctx, typeConverter,
-                                                     &patterns);
+    if (legalize_to_custom_calls_) {
+      mhlo::populateLegalizeSparseOpsToCustomCallPatterns(ctx, typeConverter,
+                                                          &patterns);
+    } else {
+      mhlo::populateLegalizeSparseCHLOPatterns(ctx, typeConverter, &patterns);
+    }
     target.addLegalDialect<bufferization::BufferizationDialect,
                            linalg::LinalgDialect, tensor::TensorDialect,
                            sparse_tensor::SparseTensorDialect>();
@@ -127,9 +135,9 @@ ADD_OP(chlo::TanOp)
 
 }  // namespace impl
 
-void populateLegalizeSparseChloToLinalgPatterns(MLIRContext* context,
-                                                TypeConverter& typeConverter,
-                                                RewritePatternSet* patterns) {
+void populateLegalizeSparseCHLOPatterns(MLIRContext* context,
+                                        TypeConverter& typeConverter,
+                                        RewritePatternSet* patterns) {
   patterns->add<PointwiseToLinalgConverter<chlo::AsinOp>,
                 PointwiseToLinalgConverter<chlo::AsinhOp>,
                 PointwiseToLinalgConverter<chlo::AtanOp>,
@@ -140,9 +148,9 @@ void populateLegalizeSparseChloToLinalgPatterns(MLIRContext* context,
                                                                context);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeSparseChloToLinalgPass() {
-  return std::make_unique<ChloLegalizeToLinalgPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeSparseOperationsPass(
+    bool legalizeToCustomCalls) {
+  return std::make_unique<LegalizeSparseOpsPass>(legalizeToCustomCalls);
 }
 
 }  // namespace mhlo
