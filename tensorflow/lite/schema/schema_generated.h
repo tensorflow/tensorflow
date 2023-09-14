@@ -133,6 +133,10 @@ struct StablehloScatterOptions;
 struct StablehloScatterOptionsBuilder;
 struct StablehloScatterOptionsT;
 
+struct StablehloRngBitGeneratorOptions;
+struct StablehloRngBitGeneratorOptionsBuilder;
+struct StablehloRngBitGeneratorOptionsT;
+
 struct Conv2DOptions;
 struct Conv2DOptionsBuilder;
 struct Conv2DOptionsT;
@@ -1202,11 +1206,12 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_STABLEHLO_GATHER = 201,
   BuiltinOperator_STABLEHLO_TRANSPOSE = 202,
   BuiltinOperator_DILATE = 203,
+  BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR = 204,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_DILATE
+  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[204] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[205] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1411,13 +1416,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[204] {
     BuiltinOperator_STABLEHLO_WHILE,
     BuiltinOperator_STABLEHLO_GATHER,
     BuiltinOperator_STABLEHLO_TRANSPOSE,
-    BuiltinOperator_DILATE
+    BuiltinOperator_DILATE,
+    BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[205] = {
+  static const char * const names[206] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1622,13 +1628,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "STABLEHLO_GATHER",
     "STABLEHLO_TRANSPOSE",
     "DILATE",
+    "STABLEHLO_RNG_BIT_GENERATOR",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_DILATE)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -4117,11 +4124,12 @@ enum BuiltinOptions2 : uint8_t {
   BuiltinOptions2_StablehloGatherOptions = 16,
   BuiltinOptions2_StablehloTransposeOptions = 17,
   BuiltinOptions2_DilateOptions = 18,
+  BuiltinOptions2_StablehloRngBitGeneratorOptions = 19,
   BuiltinOptions2_MIN = BuiltinOptions2_NONE,
-  BuiltinOptions2_MAX = BuiltinOptions2_DilateOptions
+  BuiltinOptions2_MAX = BuiltinOptions2_StablehloRngBitGeneratorOptions
 };
 
-inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[19] {
+inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[20] {
   static const BuiltinOptions2 values[] = {
     BuiltinOptions2_NONE,
     BuiltinOptions2_StablehloConcatenateOptions,
@@ -4141,13 +4149,14 @@ inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[19] {
     BuiltinOptions2_StablehloWhileOptions,
     BuiltinOptions2_StablehloGatherOptions,
     BuiltinOptions2_StablehloTransposeOptions,
-    BuiltinOptions2_DilateOptions
+    BuiltinOptions2_DilateOptions,
+    BuiltinOptions2_StablehloRngBitGeneratorOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions2() {
-  static const char * const names[20] = {
+  static const char * const names[21] = {
     "NONE",
     "StablehloConcatenateOptions",
     "StablehloBroadcastInDimOptions",
@@ -4167,13 +4176,14 @@ inline const char * const *EnumNamesBuiltinOptions2() {
     "StablehloGatherOptions",
     "StablehloTransposeOptions",
     "DilateOptions",
+    "StablehloRngBitGeneratorOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions2(BuiltinOptions2 e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOptions2_NONE, BuiltinOptions2_DilateOptions)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOptions2_NONE, BuiltinOptions2_StablehloRngBitGeneratorOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions2()[index];
 }
@@ -4254,6 +4264,10 @@ template<> struct BuiltinOptions2Traits<tflite::DilateOptions> {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_DilateOptions;
 };
 
+template<> struct BuiltinOptions2Traits<tflite::StablehloRngBitGeneratorOptions> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloRngBitGeneratorOptions;
+};
+
 template<typename T> struct BuiltinOptions2UnionTraits {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_NONE;
 };
@@ -4328,6 +4342,10 @@ template<> struct BuiltinOptions2UnionTraits<tflite::StablehloTransposeOptionsT>
 
 template<> struct BuiltinOptions2UnionTraits<tflite::DilateOptionsT> {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_DilateOptions;
+};
+
+template<> struct BuiltinOptions2UnionTraits<tflite::StablehloRngBitGeneratorOptionsT> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloRngBitGeneratorOptions;
 };
 
 struct BuiltinOptions2Union {
@@ -4504,6 +4522,14 @@ struct BuiltinOptions2Union {
     return type == BuiltinOptions2_DilateOptions ?
       reinterpret_cast<const tflite::DilateOptionsT *>(value) : nullptr;
   }
+  tflite::StablehloRngBitGeneratorOptionsT *AsStablehloRngBitGeneratorOptions() {
+    return type == BuiltinOptions2_StablehloRngBitGeneratorOptions ?
+      reinterpret_cast<tflite::StablehloRngBitGeneratorOptionsT *>(value) : nullptr;
+  }
+  const tflite::StablehloRngBitGeneratorOptionsT *AsStablehloRngBitGeneratorOptions() const {
+    return type == BuiltinOptions2_StablehloRngBitGeneratorOptions ?
+      reinterpret_cast<const tflite::StablehloRngBitGeneratorOptionsT *>(value) : nullptr;
+  }
 };
 
 bool VerifyBuiltinOptions2(::flatbuffers::Verifier &verifier, const void *obj, BuiltinOptions2 type);
@@ -4621,6 +4647,39 @@ inline const char *EnumNameStablehloComparisonType(StablehloComparisonType e) {
   if (::flatbuffers::IsOutRange(e, StablehloComparisonType_STABLEHLO_COMPARISON_TYPE_NOTYPE, StablehloComparisonType_STABLEHLO_COMPARISON_TYPE_UNSIGNED)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesStablehloComparisonType()[index];
+}
+
+enum RngAlgorithm : int8_t {
+  RngAlgorithm_DEFAULT = 0,
+  RngAlgorithm_PHILOX = 1,
+  RngAlgorithm_THREEFRY = 2,
+  RngAlgorithm_MIN = RngAlgorithm_DEFAULT,
+  RngAlgorithm_MAX = RngAlgorithm_THREEFRY
+};
+
+inline const RngAlgorithm (&EnumValuesRngAlgorithm())[3] {
+  static const RngAlgorithm values[] = {
+    RngAlgorithm_DEFAULT,
+    RngAlgorithm_PHILOX,
+    RngAlgorithm_THREEFRY
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesRngAlgorithm() {
+  static const char * const names[4] = {
+    "DEFAULT",
+    "PHILOX",
+    "THREEFRY",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameRngAlgorithm(RngAlgorithm e) {
+  if (::flatbuffers::IsOutRange(e, RngAlgorithm_DEFAULT, RngAlgorithm_THREEFRY)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesRngAlgorithm()[index];
 }
 
 enum Padding : int8_t {
@@ -7512,6 +7571,58 @@ inline ::flatbuffers::Offset<StablehloScatterOptions> CreateStablehloScatterOpti
 }
 
 ::flatbuffers::Offset<StablehloScatterOptions> CreateStablehloScatterOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloScatterOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct StablehloRngBitGeneratorOptionsT : public ::flatbuffers::NativeTable {
+  typedef StablehloRngBitGeneratorOptions TableType;
+  tflite::RngAlgorithm algorithm = tflite::RngAlgorithm_DEFAULT;
+};
+
+struct StablehloRngBitGeneratorOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef StablehloRngBitGeneratorOptionsT NativeTableType;
+  typedef StablehloRngBitGeneratorOptionsBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_ALGORITHM = 4
+  };
+  tflite::RngAlgorithm algorithm() const {
+    return static_cast<tflite::RngAlgorithm>(GetField<int8_t>(VT_ALGORITHM, 0));
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_ALGORITHM, 1) &&
+           verifier.EndTable();
+  }
+  StablehloRngBitGeneratorOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(StablehloRngBitGeneratorOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<StablehloRngBitGeneratorOptions> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloRngBitGeneratorOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct StablehloRngBitGeneratorOptionsBuilder {
+  typedef StablehloRngBitGeneratorOptions Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_algorithm(tflite::RngAlgorithm algorithm) {
+    fbb_.AddElement<int8_t>(StablehloRngBitGeneratorOptions::VT_ALGORITHM, static_cast<int8_t>(algorithm), 0);
+  }
+  explicit StablehloRngBitGeneratorOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<StablehloRngBitGeneratorOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<StablehloRngBitGeneratorOptions>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<StablehloRngBitGeneratorOptions> CreateStablehloRngBitGeneratorOptions(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    tflite::RngAlgorithm algorithm = tflite::RngAlgorithm_DEFAULT) {
+  StablehloRngBitGeneratorOptionsBuilder builder_(_fbb);
+  builder_.add_algorithm(algorithm);
+  return builder_.Finish();
+}
+
+::flatbuffers::Offset<StablehloRngBitGeneratorOptions> CreateStablehloRngBitGeneratorOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloRngBitGeneratorOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct Conv2DOptionsT : public ::flatbuffers::NativeTable {
   typedef Conv2DOptions TableType;
@@ -14882,6 +14993,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const tflite::DilateOptions *builtin_options_2_as_DilateOptions() const {
     return builtin_options_2_type() == tflite::BuiltinOptions2_DilateOptions ? static_cast<const tflite::DilateOptions *>(builtin_options_2()) : nullptr;
   }
+  const tflite::StablehloRngBitGeneratorOptions *builtin_options_2_as_StablehloRngBitGeneratorOptions() const {
+    return builtin_options_2_type() == tflite::BuiltinOptions2_StablehloRngBitGeneratorOptions ? static_cast<const tflite::StablehloRngBitGeneratorOptions *>(builtin_options_2()) : nullptr;
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint32_t>(verifier, VT_OPCODE_INDEX, 4) &&
@@ -15485,6 +15599,10 @@ template<> inline const tflite::StablehloTransposeOptions *Operator::builtin_opt
 
 template<> inline const tflite::DilateOptions *Operator::builtin_options_2_as<tflite::DilateOptions>() const {
   return builtin_options_2_as_DilateOptions();
+}
+
+template<> inline const tflite::StablehloRngBitGeneratorOptions *Operator::builtin_options_2_as<tflite::StablehloRngBitGeneratorOptions>() const {
+  return builtin_options_2_as_StablehloRngBitGeneratorOptions();
 }
 
 struct OperatorBuilder {
@@ -17205,6 +17323,32 @@ inline ::flatbuffers::Offset<StablehloScatterOptions> CreateStablehloScatterOpti
       _index_vector_dim,
       _unique_indices,
       _update_computation_subgraph_index);
+}
+
+inline StablehloRngBitGeneratorOptionsT *StablehloRngBitGeneratorOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<StablehloRngBitGeneratorOptionsT>(new StablehloRngBitGeneratorOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void StablehloRngBitGeneratorOptions::UnPackTo(StablehloRngBitGeneratorOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = algorithm(); _o->algorithm = _e; }
+}
+
+inline ::flatbuffers::Offset<StablehloRngBitGeneratorOptions> StablehloRngBitGeneratorOptions::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloRngBitGeneratorOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateStablehloRngBitGeneratorOptions(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<StablehloRngBitGeneratorOptions> CreateStablehloRngBitGeneratorOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloRngBitGeneratorOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const StablehloRngBitGeneratorOptionsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _algorithm = _o->algorithm;
+  return tflite::CreateStablehloRngBitGeneratorOptions(
+      _fbb,
+      _algorithm);
 }
 
 inline Conv2DOptionsT *Conv2DOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
@@ -23901,6 +24045,10 @@ inline bool VerifyBuiltinOptions2(::flatbuffers::Verifier &verifier, const void 
       auto ptr = reinterpret_cast<const tflite::DilateOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions2_StablehloRngBitGeneratorOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloRngBitGeneratorOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -23992,6 +24140,10 @@ inline void *BuiltinOptions2Union::UnPack(const void *obj, BuiltinOptions2 type,
       auto ptr = reinterpret_cast<const tflite::DilateOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions2_StablehloRngBitGeneratorOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloRngBitGeneratorOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -24071,6 +24223,10 @@ inline ::flatbuffers::Offset<void> BuiltinOptions2Union::Pack(::flatbuffers::Fla
       auto ptr = reinterpret_cast<const tflite::DilateOptionsT *>(value);
       return CreateDilateOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions2_StablehloRngBitGeneratorOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloRngBitGeneratorOptionsT *>(value);
+      return CreateStablehloRngBitGeneratorOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -24147,6 +24303,10 @@ inline BuiltinOptions2Union::BuiltinOptions2Union(const BuiltinOptions2Union &u)
     }
     case BuiltinOptions2_DilateOptions: {
       value = new tflite::DilateOptionsT(*reinterpret_cast<tflite::DilateOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions2_StablehloRngBitGeneratorOptions: {
+      value = new tflite::StablehloRngBitGeneratorOptionsT(*reinterpret_cast<tflite::StablehloRngBitGeneratorOptionsT *>(u.value));
       break;
     }
     default:
@@ -24243,6 +24403,11 @@ inline void BuiltinOptions2Union::Reset() {
     }
     case BuiltinOptions2_DilateOptions: {
       auto ptr = reinterpret_cast<tflite::DilateOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions2_StablehloRngBitGeneratorOptions: {
+      auto ptr = reinterpret_cast<tflite::StablehloRngBitGeneratorOptionsT *>(value);
       delete ptr;
       break;
     }

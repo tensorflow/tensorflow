@@ -144,6 +144,18 @@ TfLiteMirrorPaddingMode ConvertMirrorPadding(MirrorPadMode padding) {
   return kTfLiteMirrorPaddingUnknown;
 }
 
+TfLiteRngAlgorithm ConvertRngAlgorithm(RngAlgorithm algorithm) {
+  switch (algorithm) {
+    case RngAlgorithm_THREEFRY:
+      return kTfLiteRngAlgorithmThreefry;
+    case RngAlgorithm_PHILOX:
+      return kTfLiteRngAlgorithmPhilox;
+    case RngAlgorithm_DEFAULT:
+      return kTfLiteRngAlgorithmDefault;
+  }
+  return kTfLiteRngAlgorithmUnknown;
+}
+
 #ifndef TF_LITE_STATIC_MEMORY
 TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
                                ErrorReporter* error_reporter,
@@ -898,6 +910,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
 
       *builtin_data = params.release();
       return kTfLiteOk;
+    }
+    case BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR: {
+      return ParseStablehloRngBitGenerator(op, error_reporter, allocator,
+                                           builtin_data);
     }
 
     // TODO: skip param parsing for now since ops below don't have kernels
@@ -2078,6 +2094,32 @@ TfLiteStatus ParseResizeNearestNeighbor(const Operator* op,
   } else {
     params->align_corners = false;
     params->half_pixel_centers = false;
+  }
+
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseStablehloRngBitGenerator(const Operator* op,
+                                           ErrorReporter* error_reporter,
+                                           BuiltinDataAllocator* allocator,
+                                           void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteStablehloRngBitGeneratorParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteStablehloRngBitGeneratorParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const StablehloRngBitGeneratorOptions* schema_params =
+      op->builtin_options_2_as_StablehloRngBitGeneratorOptions();
+  if (schema_params != nullptr) {
+    params->algorithm = ConvertRngAlgorithm(schema_params->algorithm());
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();

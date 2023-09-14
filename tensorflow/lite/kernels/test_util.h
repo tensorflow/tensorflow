@@ -1113,6 +1113,7 @@ TensorType GetTensorType() {
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
   if (std::is_same<T, uint32_t>::value) return TensorType_UINT32;
   if (std::is_same<T, int64_t>::value) return TensorType_INT64;
+  if (std::is_same<T, uint64_t>::value) return TensorType_UINT64;
   if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
   if (std::is_same<T, string>::value) return TensorType_STRING;
   if (std::is_same<T, bool>::value) return TensorType_BOOL;

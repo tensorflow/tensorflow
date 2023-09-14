@@ -570,6 +570,24 @@ typedef struct {
   int update_computation_subgraph_index;
 } TfLiteStablehloScatterParams;
 
+typedef enum {
+  kTfLiteRngAlgorithmUnknown = 0,
+  // An algorithm auto-selected by the system according to device type.
+  kTfLiteRngAlgorithmDefault,
+  // The Philox algorithm, as described in paper
+  // ['Parallel Random Numbers: As Easy as 1, 2, 3']
+  // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+  kTfLiteRngAlgorithmPhilox,
+  // The ThreeFry algorithm, as described in paper
+  // ['Parallel Random Numbers: As Easy as 1, 2, 3']
+  // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+  kTfLiteRngAlgorithmThreefry,
+} TfLiteRngAlgorithm;
+
+typedef struct {
+  TfLiteRngAlgorithm algorithm;
+} TfLiteStablehloRngBitGeneratorParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
