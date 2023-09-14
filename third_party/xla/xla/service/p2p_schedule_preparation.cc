@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/latency_hiding_scheduler_preparation.h"
+#include "xla/service/p2p_schedule_preparation.h"
 
 #include <memory>
 #include <vector>
@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_reachability.h"
+#include "xla/statusor.h"
 
 namespace xla {
 
@@ -138,7 +139,7 @@ bool OperationChainHasP2P(
 
 }  // namespace
 
-StatusOr<bool> LatencyHidingSchedulerPreparation::Run(
+StatusOr<bool> P2PSchedulePreparation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

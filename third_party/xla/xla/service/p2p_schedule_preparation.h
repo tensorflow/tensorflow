@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_LATENCY_HIDING_SCHEDULER_PREPARATION_H_
-#define XLA_SERVICE_LATENCY_HIDING_SCHEDULER_PREPARATION_H_
+#ifndef XLA_SERVICE_P2P_SCHEDULE_PREPARATION_H_
+#define XLA_SERVICE_P2P_SCHEDULE_PREPARATION_H_
 
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
-// LatencyHidingSchedulerPreparation is a pass to linearize certain operations
-// to prepare for the latency hiding scheduler (LHS). In particular, this pass
-// currently does the following:
+// P2PSchedulePreparation is a pass to linearize point-to-point operation chain
+// to prepare for any HLO scheduler. In particular, this pass currently does the
+// following:
 //
 // Adds control prececessors/successors to ensure that a P2P Send-Recv sequence
 // on a non-host device will be scheduled before other operations that use the
@@ -74,14 +74,14 @@ namespace xla {
 // recv-data and while-init to be scheduled before send-done. However, doing so
 // would complicate the implementation. We leave this to future improvement if
 // we will find out it can actually help performance in real practice.
-class LatencyHidingSchedulerPreparation : public HloModulePass {
+class P2PSchedulePreparation : public HloModulePass {
  public:
   absl::string_view name() const override {
     return "latency-hiding-scheduler-preparation";
   }
 
   using HloPassInterface::Run;
-  // Runs LatencyHidingSchedulerPreparation pass on computations in 'module'.
+  // Runs P2PSchedulePreparation pass on computations in 'module'.
   // Returns whether the 'module' was changed.
   StatusOr<bool> Run(
       HloModule* module,
@@ -90,4 +90,4 @@ class LatencyHidingSchedulerPreparation : public HloModulePass {
 
 }  // namespace xla
 
-#endif  // XLA_SERVICE_LATENCY_HIDING_SCHEDULER_PREPARATION_H_
+#endif  // XLA_SERVICE_P2P_SCHEDULE_PREPARATION_H_

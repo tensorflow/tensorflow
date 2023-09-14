@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/latency_hiding_scheduler_preparation.h"
+#include "xla/service/p2p_schedule_preparation.h"
 
 #include <memory>
 #include <string>
@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using LatencyHidingSchedulerPreparationTest = HloTestBase;
+using P2PSchedulePreparationTest = HloTestBase;
 
 constexpr char kEmpty[] = "";
 constexpr char kHostTransfer[] = ", is_host_transfer=true";
@@ -111,27 +111,27 @@ std::string GetHloModuleString(bool whileP2PIsHost = false,
                          chain);
 }
 
-TEST_F(LatencyHidingSchedulerPreparationTest, WhileP2PIsHostNotTransformed) {
+TEST_F(P2PSchedulePreparationTest, WhileP2PIsHostNotTransformed) {
   std::string kModuleStr = GetHloModuleString(/*whileP2PIsHost=*/true);
   VLOG(0) << kModuleStr;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((kModuleStr)));
-  LatencyHidingSchedulerPreparation preparation;
+  P2PSchedulePreparation preparation;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
-TEST_F(LatencyHidingSchedulerPreparationTest, MainP2PIsHostNotTransformed) {
+TEST_F(P2PSchedulePreparationTest, MainP2PIsHostNotTransformed) {
   std::string kModuleStr = GetHloModuleString(/*whileP2PIsHost=*/false,
                                               /*mainP2PIsHost=*/true);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((kModuleStr)));
-  LatencyHidingSchedulerPreparation preparation;
+  P2PSchedulePreparation preparation;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
-TEST_F(LatencyHidingSchedulerPreparationTest, MainP2PNotChainedNotTransformed) {
+TEST_F(P2PSchedulePreparationTest, MainP2PNotChainedNotTransformed) {
   std::string kModuleStr =
       GetHloModuleString(/*whileP2PIsHost=*/false,
                          /*mainP2PIsHost=*/false,
@@ -139,16 +139,16 @@ TEST_F(LatencyHidingSchedulerPreparationTest, MainP2PNotChainedNotTransformed) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((kModuleStr)));
-  LatencyHidingSchedulerPreparation preparation;
+  P2PSchedulePreparation preparation;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
-TEST_F(LatencyHidingSchedulerPreparationTest, ChainedWithNestedP2PTransformed) {
+TEST_F(P2PSchedulePreparationTest, ChainedWithNestedP2PTransformed) {
   std::string kModuleStr = GetHloModuleString();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((kModuleStr)));
-  LatencyHidingSchedulerPreparation preparation;
+  P2PSchedulePreparation preparation;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_TRUE(changed);
 

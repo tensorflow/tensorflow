@@ -1234,28 +1234,25 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "latency_hiding_scheduler_preparation",
-    srcs = ["latency_hiding_scheduler_preparation.cc"],
-    hdrs = ["latency_hiding_scheduler_preparation.h"],
+    name = "p2p_schedule_preparation",
+    srcs = ["p2p_schedule_preparation.cc"],
+    hdrs = ["p2p_schedule_preparation.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":collective_ops_utils",
         ":hlo_pass",
+        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_reachability",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/graphcycles",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
     ],
 )
 
 xla_cc_test(
-    name = "latency_hiding_scheduler_preparation_test",
-    srcs = ["latency_hiding_scheduler_preparation_test.cc"],
+    name = "p2p_schedule_preparation_test",
+    srcs = ["p2p_schedule_preparation_test.cc"],
     deps = [
         ":hlo_parser",
-        ":latency_hiding_scheduler_preparation",
+        ":p2p_schedule_preparation",
         "//xla:test",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
