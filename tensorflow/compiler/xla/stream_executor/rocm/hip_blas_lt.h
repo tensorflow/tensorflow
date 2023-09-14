@@ -18,9 +18,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/tsl/platform/status.h"
 
+#include "rocm/rocm_config.h"
 #if TF_HIPBLASLT
 
-#include "rocm/rocm_config.h"
+#if TF_ROCM_VERSION < 50700
+#define hipblasltDatatype_t hipblasDatatype_t
+#define HIPBLASLT_R_16F HIPBLAS_R_16F
+#define HIPBLASLT_R_16B HIPBLAS_R_16B
+#define HIPBLASLT_R_32F HIPBLAS_R_32F
+#define HIPBLASLT_R_64F HIPBLAS_R_64F
+#define HIPBLASLT_R_8I HIPBLAS_R_8I
+#define HIPBLASLT_R_32I HIPBLAS_R_32I
+#define HIPBLASLT_C_32F HIPBLAS_R_32F
+#define HIPBLASLT_C_64F HIPBLAS_R_64F
+#endif
+
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/hipblaslt_wrapper.h"
@@ -54,7 +66,7 @@ class BlasLt {
         std::optional<int64_t> leading_dim_stride = std::nullopt,
         std::optional<int64_t> batch_stride = std::nullopt);
 
-    hipblasDatatype_t type() const;
+    hipblasltDatatype_t type() const;
 
     hipblasLtMatrixLayout_t get() const { return handle_.get(); }
 
@@ -92,7 +104,7 @@ class BlasLt {
         PointerMode pointer_mode = PointerMode::kHost);
 
     hipblasLtComputeType_t compute_type() const;
-    hipblasDatatype_t scale_type() const;
+    hipblasltDatatype_t scale_type() const;
     hipblasPointerMode_t pointer_mode() const;
 
     hipblasLtMatmulDesc_t get() const { return handle_.get(); }
