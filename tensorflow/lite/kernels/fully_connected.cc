@@ -1340,9 +1340,13 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
           bool has_non_zero_point = input->params.zero_point ||
                                     filter->params.zero_point ||
                                     output->params.zero_point;
-          if (kernel_type == kGenericOptimized &&
-              data->quantized_bias_type == kTfLiteInt32 &&
-              !has_non_zero_point) {
+          if (kernel_type == kReference || has_non_zero_point ||
+              (bias && bias->type == kTfLiteInt64)) {
+            is_per_channel ? FullyConnectedPerChannelInt16<kernel_type>(
+                                 data, input, filter, bias, output)
+                           : FullyConnectedInt16<kernel_type>(
+                                 data, input, filter, bias, output);
+          } else {
             is_per_channel
                 ? optimized_integer_ops::FullyConnectedPerChannel(
                       op_params, data->per_channel_output_multiplier.data(),
@@ -1359,11 +1363,6 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                       GetTensorData<int32_t>(bias), GetTensorShape(output),
                       GetTensorData<int16_t>(output),
                       CpuBackendContext::GetFromContext(context));
-          } else {
-            is_per_channel ? FullyConnectedPerChannelInt16<kernel_type>(
-                                 data, input, filter, bias, output)
-                           : FullyConnectedInt16<kernel_type>(
-                                 data, input, filter, bias, output);
           }
         } else if (kernel_type == kReference) {
           reference_ops::FullyConnected(
