@@ -1729,11 +1729,10 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
     return {};
   }
   CHECK_EQ(chunks.size(), sliced_buffer_interval.num_slices() + 1);
-  // The extra chunk is for colocations, so merge the last two chunks.
-  Chunk last = chunks.back();
+  // The extra chunk is to ensure that colocations of larger sizes can fit.
+  // However, we don't need that extra space for the buffer for which we found
+  // chunks.
   chunks.pop_back();
-  chunks.back() = Chunk::FromOffsetSize(chunks.back().offset,
-                                        chunks.back().size + last.size);
 
   return chunks;
 }
@@ -1743,13 +1742,8 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunk(
     const GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval&
         buffer_interval,
     GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk chunk) {
-  // Update the maximum heap size according to the one determined by the chunk
-  // candidate. In case of colocations of different sizes, the chunk size
-  // returned is the maximum of all colocations, so use this value to update the
-  // heap size.
+  CHECK_EQ(chunk.size, buffer_interval.size);
   result_.heap_size = result_.UpdatedHeapSize(chunk);
-  // Now, update the chunk size to the actual size of the buffer interval.
-  chunk.size = buffer_interval.size;
   interval_tree_.Add(buffer_interval.start, buffer_interval.end, chunk);
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
     auto colocation_interval = buffer_intervals_[colocation];
@@ -1757,9 +1751,10 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunk(
     // of the colocated interval in case the colocations are of different sizes.
     Chunk colocation_chunk =
         Chunk::FromOffsetSize(chunk.offset, colocation_interval.size);
-    AddToChunkMap(colocation, colocation_chunk);
+    result_.heap_size = result_.UpdatedHeapSize(colocation_chunk);
     interval_tree_.Add(colocation_interval.start, colocation_interval.end,
                        colocation_chunk);
+    AddToChunkMap(colocation, colocation_chunk);
   }
 
   AddToChunkMap(buffer_interval.buffer, chunk);
