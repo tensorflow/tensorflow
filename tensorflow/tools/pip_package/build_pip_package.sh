@@ -235,20 +235,6 @@ function prepare_src() {
     copy_xla_aot_runtime_sources \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow \
       "${XLA_AOT_RUNTIME_SOURCES}"
-    # Move vendored files into proper locations
-    # This is required because TSL/XLA don't publish their own wheels
-    cp -r bazel-bin/external/local_tsl/tsl/ ${TMPDIR}/tensorflow/tsl
-    cp -r bazel-bin/external/local_xla/xla/ ${TMPDIR}/tensorflow/compiler/xla
-    # Fix the proto stubs
-    if is_macos; then
-      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from tsl\./from tensorflow.tsl./' {} \;
-      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from local_xla\.xla/from tensorflow.compiler.xla/' {} \;
-      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from xla/from tensorflow.compiler.xla/' {} \;
-    else
-      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from tsl\./from tensorflow.tsl./' {} \;
-      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from local_xla\.xla/from tensorflow.compiler.xla/' {} \;
-      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from xla/from tensorflow.compiler.xla/' {} \;
-    fi
     # Copy MKL libs over so they can be loaded at runtime
     so_lib_dir=$(ls $RUNFILES | grep solib)
     if is_macos; then
@@ -266,6 +252,21 @@ function prepare_src() {
       mkdir "${TMPDIR}/${so_lib_dir}"
       cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
     fi
+  fi
+
+  # Move vendored files into proper locations
+  # This is required because TSL/XLA don't publish their own wheels
+  cp -r bazel-bin/external/local_tsl/tsl/ ${TMPDIR}/tensorflow/tsl
+  cp -r bazel-bin/external/local_xla/xla/ ${TMPDIR}/tensorflow/compiler/xla
+  # Fix the proto stubs
+  if is_macos; then
+    find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from tsl\./from tensorflow.tsl./' {} \;
+    find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from local_xla\.xla/from tensorflow.compiler.xla/' {} \;
+    find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from xla/from tensorflow.compiler.xla/' {} \;
+  else
+    find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from tsl\./from tensorflow.tsl./' {} \;
+    find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from local_xla\.xla/from tensorflow.compiler.xla/' {} \;
+    find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from xla/from tensorflow.compiler.xla/' {} \;
   fi
 
   mkdir -p ${TMPDIR}/third_party
