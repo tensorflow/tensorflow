@@ -128,6 +128,13 @@ void AddSalt(const std::string& name, double saltiplier, double* coeff) {
   *coeff = *coeff * (1.0 + salt) + salt;
 }
 
+AutoShardingSolverResult SolveAndExtractSolution(
+    const AutoShardingSolverRequest& request,
+    const std::vector<std::vector<MPVariable*>>& s,
+    const std::vector<std::vector<MPVariable*>>& e,
+    const MPVariable* overbudget_var, const MPVariable* makespan_var,
+    MPSolver& solver);
+
 // We formulate the auto sharding process as the following ILP problem:
 // Variables:
 //   s[i]: Sharding strategy one-hot vector.
@@ -485,20 +492,29 @@ AutoShardingSolverResult CallORToolsSolver(
           << "Memory budget: " << request.memory_budget / (1024 * 1024 * 1024)
           << "GB\n"
           << "Number of ILP constraints: " << solver->NumConstraints();
-  auto status = solver->Solve();
+  return SolveAndExtractSolution(request, s, e, overbudget_var, makespan_var,
+                                 *solver);
+}
 
+AutoShardingSolverResult SolveAndExtractSolution(
+    const AutoShardingSolverRequest& request,
+    const std::vector<std::vector<MPVariable*>>& s,
+    const std::vector<std::vector<MPVariable*>>& e,
+    const MPVariable* overbudget_var, const MPVariable* makespan_var,
+    MPSolver& solver) {
+  auto status = solver.Solve();
   if (status == operations_research::MPSolver::INFEASIBLE) {
     LOG(ERROR) << "MPSolver could not find any feasible solution.";
 #ifdef PLATFORM_GOOGLE
     if (request.compute_iis) {
       operations_research::MPModelRequest model_request;
-      solver->ExportModelToProto(model_request.mutable_model());
-      if (solver->ProblemType() ==
+      solver.ExportModelToProto(model_request.mutable_model());
+      if (solver.ProblemType() ==
           operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
         model_request.set_solver_type(
             operations_research::MPModelRequest::SAT_INTEGER_PROGRAMMING);
-      } else if (solver->ProblemType() == operations_research::MPSolver::
-                                              SCIP_MIXED_INTEGER_PROGRAMMING) {
+      } else if (solver.ProblemType() == operations_research::MPSolver::
+                                             SCIP_MIXED_INTEGER_PROGRAMMING) {
         model_request.set_solver_type(operations_research::MPModelRequest::
                                           SCIP_MIXED_INTEGER_PROGRAMMING);
       }
@@ -530,9 +546,9 @@ AutoShardingSolverResult CallORToolsSolver(
   }
 
   LOG(INFO) << "Solver Status: " << status
-            << " Objective value: " << solver->Objective().Value();
-  if (solver->Objective().Value() >= kInfinityCost) {
-    LOG(WARNING) << "Objective (" << solver->Objective().Value()
+            << " Objective value: " << solver.Objective().Value();
+  if (solver.Objective().Value() >= kInfinityCost) {
+    LOG(WARNING) << "Objective (" << solver.Objective().Value()
                  << ") is larger than kInfinityCost. It means the solver "
                     "chooses a solution with kInfinityCost and there may be "
                     "numerical issues when the solver considering other costs.";
@@ -541,16 +557,17 @@ AutoShardingSolverResult CallORToolsSolver(
     // Print solver information for debugging. This hasn't been useful so far,
     // so leave it at VLOG level 10.
     operations_research::MPModelProto model_proto;
-    solver->ExportModelToProto(&model_proto);
+    solver.ExportModelToProto(&model_proto);
     VLOG(10) << "MODEL:";
     XLA_VLOG_LINES(10, model_proto.DebugString());
     VLOG(10) << "RESPONSE:";
     operations_research::MPSolutionResponse response;
-    solver->FillSolutionResponseProto(&response);
+    solver.FillSolutionResponseProto(&response);
     XLA_VLOG_LINES(10, response.DebugString());
   }
 
   // Return value
+  size_t num_edges = request.e.size();
   double unsalted_objective = 0.0;
   std::vector<NodeStrategyIdx> chosen_strategy(request.num_nodes, -1);
   std::vector<EdgeStrategyIdx> e_val(num_edges, -1);
