@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -379,11 +380,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   bool has_dynamic_dimensions() const override;
 
-  absl::Span<const bool> is_dynamic_dimension() const override {
-    LOG(FATAL) << "PjRtCApiBuffer::is_dynamic_dimension() not implemented. "
-               << "Considering using has_dynamic_dimensions() or "
-                  "logical_dimensions() if applicable.";
-  }
+  absl::Span<const bool> is_dynamic_dimension() const override;
 
   StatusOr<std::vector<int64_t>> logical_dimensions() override;
 
@@ -469,6 +466,9 @@ class PjRtCApiBuffer : public PjRtBuffer {
   std::shared_ptr<PjRtFuture<Status>::Promise> readiness_promise_;
   // Set and cached the first time layout() is called.
   mutable std::optional<xla::Layout> layout_;
+  // Set and cached the first time is_dynamic_dimension() is called.
+  mutable std::optional<absl::InlinedVector<bool, InlineRank()>>
+      is_dynamic_dimension_;
   // Used to synchronize concurrent setting of cached values.
   mutable absl::Mutex mu_;
 };

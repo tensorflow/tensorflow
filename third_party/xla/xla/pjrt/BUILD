@@ -784,6 +784,27 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "pjrt_c_api_client_test",
+    srcs = ["pjrt_c_api_client_test.cc"],
+    tags = [
+        "nomsan",
+    ],
+    deps = [
+        ":pjrt_api",
+        ":pjrt_c_api_client",
+        ":pjrt_client",
+        ":pjrt_executable",
+        "//xla:shape_util",
+        "//xla/client:xla_builder",
+        "//xla/pjrt/c:pjrt_c_api_cpu_internal",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
 cc_library(
     name = "tf_pjrt_client",
     srcs = ["tf_pjrt_client.cc"],
