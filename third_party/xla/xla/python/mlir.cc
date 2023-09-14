@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <string>
 
+#include "mhlo/transforms/passes.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
@@ -32,7 +33,6 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "xla/client/xla_computation.h"
 #include "xla/mlir/utils/error_util.h"
-#include "xla/mlir_hlo/_virtual_includes/mhlo_passes/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"

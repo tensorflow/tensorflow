@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "mhlo/IR/hlo_ops.h"
 #include "mlir/Conversion/AsyncToLLVM/AsyncToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/mlir/runtime/ir/tests/testlib.h"
 #include "xla/mlir/runtime/transforms/compiler.h"
 #include "xla/mlir/runtime/transforms/passes.h"
-#include "xla/mlir_hlo/_virtual_includes/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 
