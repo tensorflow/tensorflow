@@ -1180,23 +1180,6 @@ Status DataServiceDispatcherImpl::GetSnapshotSplit(
   return OkStatus();
 }
 
-std::optional<absl::flat_hash_map<std::string, std::string>>
-DataServiceDispatcherImpl::WorkerCompressionInfoByProtocol() {
-  for (const auto& worker : state_.ListWorkers()) {
-    if (absl::c_find(worker->tags, kColocatedWorkerTag) != worker->tags.end()) {
-      continue;
-    }
-    absl::flat_hash_map<std::string, std::string>
-        worker_compression_info_by_protocol;
-    for (const auto& transfer_server : worker->transfer_servers) {
-      worker_compression_info_by_protocol[transfer_server.protocol()] =
-          transfer_server.compatibility_info();
-    }
-    return worker_compression_info_by_protocol;
-  }
-  return std::nullopt;
-}
-
 Status DataServiceDispatcherImpl::DisableCompressionAtRuntime(
     const DisableCompressionAtRuntimeRequest* request,
     DisableCompressionAtRuntimeResponse* response) {
@@ -1215,34 +1198,15 @@ Status DataServiceDispatcherImpl::DisableCompressionAtRuntime(
         *compression_disabled_at_runtime);
     return OkStatus();
   }
-  auto journal = [&](bool disable_compression_at_runtime)
-                     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> Status {
-    Update update;
-    CompressionDisabledAtRuntimeUpdate* compression_disabled_at_runtime =
-        update.mutable_compression_disabled_at_runtime();
-    compression_disabled_at_runtime->set_dataset_id(request->dataset_id());
-    compression_disabled_at_runtime->set_compression_disabled(
-        disable_compression_at_runtime);
-    TF_RETURN_IF_ERROR(Apply(update));
-    return OkStatus();
-  };
-  if (request->trainer_is_ineligible()) {
-    response->set_compression_disabled_at_runtime(false);
-    TF_RETURN_IF_ERROR(journal(false));
-    return OkStatus();
-  }
-  std::optional<absl::flat_hash_map<std::string, std::string>>
-      worker_compression_info_by_protocol = WorkerCompressionInfoByProtocol();
-  if (!worker_compression_info_by_protocol.has_value()) {
-    response->set_not_enough_information(true);
-    return OkStatus();
-  }
-  TF_ASSIGN_OR_RETURN(bool disable_compression_at_runtime,
-                      tensorflow::data::DisableCompressionAtRuntime(
-                          request->trainer_compression_info(),
-                          *worker_compression_info_by_protocol));
-  response->set_compression_disabled_at_runtime(disable_compression_at_runtime);
-  TF_RETURN_IF_ERROR(journal(disable_compression_at_runtime));
+  response->set_compression_disabled_at_runtime(
+      request->disable_compression_at_runtime());
+  Update update;
+  CompressionDisabledAtRuntimeUpdate* compression_disabled_at_runtime =
+      update.mutable_compression_disabled_at_runtime();
+  compression_disabled_at_runtime->set_dataset_id(request->dataset_id());
+  compression_disabled_at_runtime->set_compression_disabled(
+      request->disable_compression_at_runtime());
+  TF_RETURN_IF_ERROR(Apply(update));
   return OkStatus();
 }
 
