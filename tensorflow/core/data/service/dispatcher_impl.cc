@@ -1286,7 +1286,7 @@ Status DataServiceDispatcherImpl::PopulateTaskDef(
 }
 
 Status DataServiceDispatcherImpl::CheckStarted() TF_LOCKS_EXCLUDED(mu_) {
-  mutex_lock l(mu_);
+  tf_shared_lock l(mu_);
   if (!started_) {
     return errors::Unavailable("Dispatcher has not started yet.");
   }
