@@ -418,6 +418,14 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeout(
     TFE_Context* ctx, int keep_alive_secs, const void* proto, size_t proto_len,
     int64_t init_timeout_in_ms, TF_Status* status);
 
+// Set server def with retries and timeout. This is helpful for fault-tolerant
+// initial connection in high-preemption environments, such as
+// ParameterServerStrategy training.
+// This API is for experimental usage and may be subject to change.
+TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeoutAndRetries(
+    TFE_Context* ctx, int keep_alive_secs, const void* proto, size_t proto_len,
+    int64_t init_timeout_in_ms, int retries, TF_Status* status);
+
 // Checks whether a remote worker is alive or not. This will return true even if
 // the context doesn't exist on the remote worker.
 TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
