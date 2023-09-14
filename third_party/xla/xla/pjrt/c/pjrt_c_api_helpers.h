@@ -138,7 +138,8 @@ xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
 // `cpp_value_map`, so `cpp_value_map` must outlive the returned list. It will
 // raise errors for unsupported PjRtValueType.
 xla::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
-    const absl::flat_hash_map<std::string, xla::PjRtValueType>& cpp_value_map);
+    const absl::flat_hash_map<std::string, xla::PjRtValueType>& cpp_value_map,
+    int api_minor_version);
 
 absl::flat_hash_map<std::string, xla::PjRtValueType>
 ConvertFromPjRtNamedValueList(PJRT_NamedValue* c_value_list, size_t list_size);

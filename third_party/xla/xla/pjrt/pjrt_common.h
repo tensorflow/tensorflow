@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_COMMON_H_
 #define XLA_PJRT_PJRT_COMMON_H_
 
+#include <cstdint>
 #include <string>
 #include <variant>
 #include <vector>
@@ -23,7 +24,7 @@ limitations under the License.
 namespace xla {
 
 using PjRtValueType =
-    std::variant<std::string, int64_t, std::vector<int64_t>, float>;
+    std::variant<std::string, int64_t, std::vector<int64_t>, float, bool>;
 
 }  // namespace xla
 

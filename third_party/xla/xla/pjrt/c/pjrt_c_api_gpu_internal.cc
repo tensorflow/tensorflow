@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
@@ -20,10 +21,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "tsl/platform/errors.h"
 
 namespace pjrt {
 namespace gpu_plugin {
@@ -38,13 +46,42 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
                                           args->num_options);
   const auto kExpectedOptionNameAndTypes =
       absl::flat_hash_map<std::string, PJRT_NamedValue_Type>(
-          {{"visible_devices",
+          {{"allocator", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
+           {"memory_fraction", PJRT_NamedValue_Type::PJRT_NamedValue_kFloat},
+           {"preallocate", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+           {"visible_devices",
             PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List},
            {"node_id", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
            {"num_nodes", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64}});
   PJRT_RETURN_IF_ERROR(
       ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
 
+  xla::GpuAllocatorConfig allocator_config;
+  if (auto it = create_options.find("allocator"); it != create_options.end()) {
+    auto allocator_name = std::get<std::string>(it->second);
+    if (allocator_name == "default") {
+      allocator_config.kind = xla::GpuAllocatorConfig::Kind::kDefault;
+    } else if (allocator_name == "platform") {
+      allocator_config.kind = xla::GpuAllocatorConfig::Kind::kPlatform;
+    } else if (allocator_name == "bfc") {
+      allocator_config.kind = xla::GpuAllocatorConfig::Kind::kBFC;
+    } else if (allocator_name == "cuda_async") {
+      allocator_config.kind = xla::GpuAllocatorConfig::Kind::kCudaAsync;
+    } else {
+      return new PJRT_Error{absl::UnimplementedError(absl::StrFormat(
+          "Allocator %s not supported for PJRT GPU plugin. Supported allocator "
+          "options are: 'default', 'platform', 'bfc' and 'cuda_async'.",
+          allocator_name))};
+    }
+  }
+  if (auto it = create_options.find("memory_fraction");
+      it != create_options.end()) {
+    allocator_config.memory_fraction = std::get<float>(it->second);
+  }
+  if (auto it = create_options.find("preallocate");
+      it != create_options.end()) {
+    allocator_config.preallocate = std::get<bool>(it->second);
+  }
   std::optional<std::set<int>> visible_devices;
   if (auto it = create_options.find("visible_devices");
       it != create_options.end()) {
@@ -60,9 +97,6 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
     num_nodes = std::get<int64_t>(it->second);
   }
 
-  // TODO(b/261916900) initializing allocator_config is important as should be
-  // passed through the args later.
-  xla::GpuAllocatorConfig allocator_config;
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetStreamExecutorGpuClient(
                             /*asynchronous=*/true, allocator_config, node_id,

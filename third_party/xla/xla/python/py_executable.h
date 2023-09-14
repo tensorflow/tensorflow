@@ -139,7 +139,7 @@ class PyLoadedExecutable
 
   StatusOr<absl::flat_hash_map<
       std::string,
-      std::variant<std::string, int64_t, std::vector<int64_t>, float>>>
+      std::variant<std::string, int64_t, std::vector<int64_t>, float, bool>>>
   GetCostAnalysis() const {
     return ifrt_loaded_executable_->GetCostAnalysis();
   }
