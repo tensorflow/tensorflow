@@ -781,6 +781,17 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   std::vector<Chunk> FindChunkCandidates(
       const SlicedBufferInterval& sliced_buffer_interval,
       int64_t preferred_offset = -1) const;
+  // The following 3 methods are used to implement FindChunkCandidates.
+  int64_t GetMaxColocationSize(const BufferInterval& buffer_interval) const;
+  SlicedAllocationFinder CreateSlicedAllocationFinder(
+      const SlicedBufferInterval& sliced_interval, int64_t max_colocation_size,
+      int64_t preferred_offset,
+      absl::AnyInvocable<bool(int64_t) const> is_offset_allowed =
+          &SlicedAllocationFinder::AllOffsetsAllowed) const;
+  std::vector<Chunk> PostProcessFindChunkCandidatesResult(
+      const SlicedBufferInterval& sliced_interval,
+      std::vector<Chunk> chunks) const;
+
   void CommitChunk(const BufferInterval& buffer_interval, Chunk chunk);
 
   // Adds the buffer and the chunk to the result chunk map.
