@@ -607,6 +607,7 @@ StatusOr<Value> EmitScope(
     } else if (hlo->opcode() == HloOpcode::kTuple) {
       TF_RET_CHECK(hlo->IsRoot()) << hlo->ToString();
     } else if (hlo->opcode() == HloOpcode::kBitcast ||
+               hlo->opcode() == HloOpcode::kTranspose ||
                hlo->opcode() == HloOpcode::kReshape) {
       result = values[hlo->operand(0)];
     } else {

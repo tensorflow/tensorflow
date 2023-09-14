@@ -687,6 +687,36 @@ ENTRY e {
                   .status());
 }
 
+// Normally optimized HLO should contain `copy` instead of `transpose` but
+// it's also possible to get transposes by modifying the compiler's pipeline.
+// The emitter just has to skip through the transpose - it's handled by the
+// tiled fusion analysis.
+TEST_F(TritonGemmTest, TritonEmitterCanHandleTransposes) {
+  MatchOptimizedHlo(R"(
+t {
+  p0 = f16[55,77,111]{2,1,0} parameter(0)
+  p1 = f16[111,77,99]{2,1,0} parameter(1)
+  t = f16[77,99,111]{2,1,0} transpose(p1), dimensions={1,2,0}
+  ROOT d = f16[77,55,99]{2,1,0} dot(p0, t),
+    lhs_batch_dims={1}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={2}
+}
+
+ENTRY e {
+  p0 = f16[55,77,111]{2,1,0} parameter(0)
+  p1 = f16[111,77,99]{2,1,0} parameter(1)
+  ROOT r = f16[77,55,99]{2,1,0} fusion(p0, p1), kind=kCustom,
+    calls=t, backend_config={"kind":"__triton_gemm"}
+})",
+                    // This partially optimized HLO will go through the
+                    // autotuner which will run the fusion through the emitter
+                    // multiple times and assign block sizes on success.
+                    R"(
+; CHECK: f16[77,99,111]{2,1,0} transpose
+; CHECK: block_m
+)");
+}
+
 class TritonGemmTestAny : public TritonGemmTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
