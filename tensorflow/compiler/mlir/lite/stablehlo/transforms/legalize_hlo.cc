@@ -406,13 +406,19 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
 
     mhlo::ConvDimensionNumbersAttr dnums = conv_op.getDimensionNumbers();
     const int input_feature_dimension = dnums.getInputFeatureDimension();
+    const int kernel_input_feature_dimension =
+        dnums.getKernelInputFeatureDimension();
     const int input_channels =
         conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
             input_feature_dimension);
+    const int kernel_input_channels =
+        conv_op.getRhs().getType().cast<ShapedType>().getDimSize(
+            kernel_input_feature_dimension);
     int feature_group_count = conv_op.getFeatureGroupCount();
 
-    if (feature_group_count != 1 && feature_group_count != input_channels) {
-      // Group convolution is not supported yet.
+    // check if group count is valid
+    if (feature_group_count != input_channels / kernel_input_channels ||
+        input_channels % kernel_input_channels != 0) {
       return failure();
     }
 

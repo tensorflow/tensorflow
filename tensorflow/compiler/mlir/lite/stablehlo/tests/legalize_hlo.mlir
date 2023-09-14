@@ -2066,6 +2066,20 @@ func.func @convert_conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16
   func.return %0 : tensor<1x8x8x16xf32>
 }
 
+// CHECK-LABEL:   func @convert_group_conv2d(
+// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<1x14x14x2240xf32>,
+// CHECK-SAME:                         %[[VAL_1:.*]]: tensor<3x3x112x2240xf32>) -> tensor<1x7x7x2240xf32> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Conv2D"(%[[VAL_0]], %[[VAL_1]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [0, 0, 1, 1, 1, 1, 0, 0], padding = "EXPLICIT", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x14x14x2240xf32>, tensor<3x3x112x2240xf32>) -> tensor<1x7x7x2240xf32>
+// CHECk:           return %[[VAL_2]] : tensor<1x7x7x2240xf32>
+// CHECK:         }
+func.func @convert_group_conv2d(%arg0: tensor<1x14x14x2240xf32>, %arg1: tensor<3x3x112x2240xf32>) -> tensor<1x7x7x2240xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {batch_group_count = 1 :i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
+    feature_group_count = 20 : i64, lhs_dilation = dense<1> : tensor<2xi64>, padding = dense<1> : tensor<2x2xi64>, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>], rhs_dilation = dense<1> : tensor<2xi64>, window_reversal = dense<false> : tensor<2xi1>, window_strides = dense<2> : tensor<2xi64>} :
+    (tensor<1x14x14x2240xf32>, tensor<3x3x112x2240xf32>) -> tensor<1x7x7x2240xf32>
+  func.return %0 : tensor<1x7x7x2240xf32>
+}
+
 // CHECK-LABEL:   func @convert_conv2d_no_padding(
 // CHECK-SAME:                         %[[VAL_0:.*]]: tensor<1x6x6x207xf32>,
 // CHECK-SAME:                         %[[VAL_1:.*]]: tensor<3x3x207x16xf32>) -> tensor<1x4x4x16xf32> {
