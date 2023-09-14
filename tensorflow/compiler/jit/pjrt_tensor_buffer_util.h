@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,7 +31,7 @@ namespace tensorflow {
 // device memory. It also owns the PjRtBuffer.
 //
 // TODO(b/289001822): Create a unit test to cover this function.
-Tensor MakeTensorFromPjRtStreamExecutorBuffer(
+absl::StatusOr<Tensor> MakeTensorFromPjRtBuffer(
     DataType dtype, const TensorShape& shape,
     std::unique_ptr<xla::PjRtBuffer> pjrt_buffer);
 
@@ -39,13 +40,13 @@ class PjRtTensorBufferUtil {
  public:
   // Takes the device memory pointer from the PjRtBuffer and create a
   // PjRtTensorBuffer. The PjRtTensorBuffer holds the pointer to the device
-  // memory. It also owns the PjRtBuffer. If output_tensor is using
-  // se::DeviceMemoryBase and the buffer is the same, update the
+  // memory. It also owns the PjRtBuffer. If output_tensor does not use
+  // PjRtTensorBuffer and the opaque device memory is the same, update the
   // output_tensor->buf_ so that the same device memory will not be double-free.
   // Otherwise a new Tensor will be created with the PjRtTensorBuffer.
   //
   // TODO(b/289001822): Create a unit test to cover this function.
-  static void UpdateOrMakeTensorWithPjRtStreamExecutorBuffer(
+  static absl::Status UpdateOrMakeTensorWithPjRtBuffer(
       DataType dtype, const TensorShape& shape,
       std::unique_ptr<xla::PjRtBuffer> pjrt_buffer, Tensor* output_tensor);
 };
