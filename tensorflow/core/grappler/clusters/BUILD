@@ -25,7 +25,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/gpu:gpu_id",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_combiner.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/power_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/topology.pb.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
@@ -80,6 +82,24 @@ void CombineStepDatabase(
   }
 }
 
+void CombinePowerMetrics(const RunEnvironment& src, RunEnvironment* dst) {
+  const size_t src_hosts = src.hostnames_size();
+  const size_t dst_hosts = dst->hostnames_size();
+  const double src_weight = src_hosts * 1.0 / (src_hosts + dst_hosts);
+  const double dst_weight = dst_hosts * 1.0 / (src_hosts + dst_hosts);
+  // Always assume src/dst have the same number of power components.
+  for (const auto& src_metric : src.power_metrics().power_component_metrics()) {
+    for (auto& dst_metric :
+         *dst->mutable_power_metrics()->mutable_power_component_metrics()) {
+      if (src_metric.component_name() != dst_metric.component_name()) continue;
+      dst_metric.set_max_power(
+          std::max(src_metric.max_power(), dst_metric.max_power()));
+      dst_metric.set_avg_power(src_metric.avg_power() * src_weight +
+                               dst_metric.avg_power() * dst_weight);
+    }
+  }
+}
+
 void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
   dst->mutable_hostnames()->insert(src.hostnames().begin(),
                                    src.hostnames().end());
@@ -103,17 +123,16 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
   }
   dst->set_host_trace_level(src.host_trace_level());
   dst->set_is_training(src.is_training());
+  CombinePowerMetrics(src, dst);
 }
 
 // Combines the src PerfEnv into the dst PerfEnv.
 void CombinePerfEnv(const PerfEnv& src, PerfEnv* dst) {
   dst->set_peak_tera_flops_per_second(src.peak_tera_flops_per_second());
-  if (src.peak_bws_giga_bytes_per_second_size() > 0) {
-    for (int i = MemBwType::MEM_BW_TYPE_FIRST; i <= MemBwType::MEM_BW_TYPE_MAX;
-         ++i) {
-      dst->add_peak_bws_giga_bytes_per_second(
-          src.peak_bws_giga_bytes_per_second(i));
-    }
+  if (src.peak_bws_giga_bytes_per_second_size() > 0 &&
+      dst->peak_bws_giga_bytes_per_second_size() == 0) {
+    *dst->mutable_peak_bws_giga_bytes_per_second() =
+        src.peak_bws_giga_bytes_per_second();
   }
   dst->set_ridge_point(src.ridge_point());
 }

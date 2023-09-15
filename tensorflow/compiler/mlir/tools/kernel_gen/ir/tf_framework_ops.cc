@@ -28,7 +28,7 @@ limitations under the License.
 
 // Generated dialect definitions.
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_dialect.cc.inc"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace mlir {
 namespace kernel_gen {

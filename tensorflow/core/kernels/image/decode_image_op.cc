@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/tsl/util/byte_swap_array.h"
+#include "tsl/util/byte_swap_array.h"
 
 namespace tensorflow {
 namespace {

@@ -43,9 +43,9 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/tsl/c/tsl_status_internal.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/tsl/framework/cancellation.h"
+#include "tsl/c/tsl_status_internal.h"
+#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tsl/framework/cancellation.h"
 
 using tensorflow::string;
 

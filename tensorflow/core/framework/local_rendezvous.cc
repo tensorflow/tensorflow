@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/refcount.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/refcount.h"
 
 namespace tensorflow {
 

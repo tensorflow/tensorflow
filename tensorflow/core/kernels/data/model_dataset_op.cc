@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/model_dataset_op.h"
 
+#include <cstdint>
+
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 
@@ -191,9 +193,15 @@ class ModelDatasetOp::Dataset : public DatasetBase {
         auto ram_budget_manager = ctx->ram_budget_manager();
         model_thread_ =
             ctx->StartThread("tf_data_model", [this, ram_budget_manager]() {
+              int64_t captured_cpu_budget = cpu_budget_;
+              int64_t captured_ram_budget = ram_budget_;
               Status status = model_->OptimizeLoop(
-                  dataset()->algorithm_, cpu_budget_, *ram_budget_manager,
-                  cancellation_manager_.get());
+                  dataset()->algorithm_,
+                  [captured_cpu_budget]() { return captured_cpu_budget; },
+                  [captured_ram_budget](int64_t) {
+                    return captured_ram_budget;
+                  },
+                  *ram_budget_manager, cancellation_manager_.get());
               if (!status.ok()) {
                 LOG(WARNING)
                     << "Optimization loop failed: " << status.ToString();

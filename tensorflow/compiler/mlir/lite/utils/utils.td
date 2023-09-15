@@ -27,6 +27,11 @@ def NotFromQuantOpOrSameQuantType : Constraint<
 def SameElementType : Constraint<
   CPred<"getElementTypeOrSelf($0) == getElementTypeOrSelf($1)">>;
 
+// Returns a ShapedType for a permutation and the shape of input after
+// applying the permutation to the given shape through a transpose.
+class GetTransposedType<string perm> : NativeCodeCall<
+  "GetTransposedType($0, " # perm # ")">;
+
 // Checks if all of an ops inputs are the same static shape.
 // BUILD NOTE: "OpHasSameStaticShapes" here refers to the C++ function defined 
 // in `utils/utils.h`. The `utils.h` header is included in `tfl_ops.h` so all
@@ -35,3 +40,12 @@ def SameElementType : Constraint<
 def OpHasSameStaticShapesPred : CPred<"OpHasSameStaticShapes($0.getDefiningOp())">;
 def OpHasSameStaticShapes : Constraint<OpHasSameStaticShapesPred, "op must have static same input shapes">;
 def OpHasNotSameStaticShapes : Constraint<Neg<OpHasSameStaticShapesPred>, "op must have not static same input shapes">;
+
+def TransposeFCLastTwoDims:
+  NativeCodeCall<"TransposeLastTwoDims($0[0].getType())">;
+
+def AreLastTwoDimsTransposed : Constraint<CPred<
+  "TFL::AreLastTwoDimsTransposed($0)">>;
+
+// Checks if the param passed is of NoneType.
+def IsNoneType : Constraint<CPred<"$0.getType().isa<NoneType>()">>;

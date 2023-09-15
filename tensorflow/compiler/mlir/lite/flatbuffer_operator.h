@@ -36,6 +36,9 @@ limitations under the License.
 
 namespace mlir {
 
+// Returns true if the op_code belongs to a stablehlo operation.
+bool IsStablehloOp(const tflite::OperatorCodeT &op_code);
+
 // Returns the MLIR op name for the flatbuffer operator corresponding to
 // `op_code`.
 std::string GetMlirOpNameFromOpCode(const ::tflite::OperatorCodeT &op_code);

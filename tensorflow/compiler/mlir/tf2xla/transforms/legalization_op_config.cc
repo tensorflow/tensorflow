@@ -117,10 +117,6 @@ const llvm::DenseSet<mlir::TypeID>& MlirAlwaysOps() {
       // legalization in TF2XLA fallback. By legalization with MLIR, we can fix
       // the bug. b/195583695 describes the motivation of this change.
       // See b/216355804 how to reproduce the bug regarding tf.RandomUniform Op
-      // See b/216353817 how to reproduce the bug regarding tf.StridedSlice Op
-      // See b/245615401 how to reproduce the bug regarding tf.SliceOp
-      TypeID::get<TF::StridedSliceOp>(),
-      TypeID::get<TF::SliceOp>(),
 
       // Conditional ops
       TypeID::get<TF::IfRegionOp>(),
@@ -294,6 +290,7 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
             TypeID::get<TF::SeluOp>(),
             TypeID::get<TF::SigmoidGradOp>(),
             TypeID::get<TF::SinOp>(),
+            TypeID::get<TF::SliceOp>(),
             TypeID::get<TF::SoftplusGradOp>(),
             TypeID::get<TF::SoftsignGradOp>(),
             TypeID::get<TF::SoftsignOp>(),
@@ -317,6 +314,7 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
             TypeID::get<TF::StatelessRandomUniformIntV2Op>(),
             TypeID::get<TF::StatelessTruncatedNormalOp>(),
             TypeID::get<TF::StatelessTruncatedNormalV2Op>(),
+            TypeID::get<TF::StridedSliceOp>(),
             TypeID::get<TF::SubOp>(),
             TypeID::get<TF::SvdOp>(),
             TypeID::get<TF::TanOp>(),
@@ -455,6 +453,7 @@ bool IsOpTypeAllowedTf2XlaPreferred(const TypeID& type_id) {
     TypeID::get<TF::StatelessParameterizedTruncatedNormalOp>(),
     TypeID::get<TF::StatefulPartitionedCallOp>(),
     TypeID::get<TF::StopGradientOp>(),
+    TypeID::get<TF::StridedSliceOp>(),
     TypeID::get<TF::StridedSliceGradOp>(),
     TypeID::get<TF::SumOp>(),
     TypeID::get<TF::TanhGradOp>(),

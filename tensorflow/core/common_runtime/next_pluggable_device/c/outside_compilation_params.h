@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_OUTSIDE_COMPILATION_PARAMS_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_OUTSIDE_COMPILATION_PARAMS_H_
 
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
 
 #ifdef __cplusplus

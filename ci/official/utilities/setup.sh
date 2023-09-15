@@ -74,23 +74,6 @@ exec > >(tee "$TFCI_OUTPUT_DIR/script.log") 2>&1
 # instead.
 tfrun() { "$@"; }
 
-# For Google-internal jobs, run copybara, which will overwrite the source tree.
-# Never useful for outside users. Requires that the Kokoro job define a gfile
-# resource pointing to copybara.sh, which is then loaded into the GFILE_DIR.
-# See: cs/official/copybara.sh
-if [[ "$TFCI_COPYBARA_ENABLE" == 1 ]]; then
-  if [[ -e "$KOKORO_GFILE_DIR/copybara.sh" ]]; then
-    source "$KOKORO_GFILE_DIR/copybara.sh"
-  else
-    echo "TF_CI_COPYBARA_ENABLE is 1, but \$KOKORO_GFILE_DIR/copybara.sh"
-    echo "could not be found. If you are an internal user, make sure your"
-    echo "Kokoro job has a gfile_resources item pointing to the right file."
-    echo "If you are an external user, Copybara is useless for you, and you"
-    echo "should set TFCI_COPYBARA_ENABLE=0"
-    exit 1
-  fi
-fi
-
 # Run all "tfrun" commands under Docker. See docker.sh for details
 if [[ "$TFCI_DOCKER_ENABLE" == 1 ]]; then
   source ./ci/official/utilities/docker.sh

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <ostream>
@@ -64,7 +65,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/util/byte_swap_array.h"
+#include "tsl/util/byte_swap_array.h"
 
 namespace tensorflow {
 
@@ -366,6 +367,40 @@ PROTO_TRAITS(quint16, int32, int);
 #undef PROTO_TRAITS
 
 template <>
+struct ProtoHelper<int4> {
+  typedef protobuf::RepeatedField<int> FieldType;
+  static FieldType::const_iterator Begin(const TensorProto& proto) {
+    return proto.int_val().begin();
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    return proto.int_val().size();
+  }
+  static void Fill(const int4* data, size_t n, TensorProto* proto) {
+    proto->mutable_int_val()->Reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+      proto->mutable_int_val()->AddAlreadyReserved(static_cast<int>(data[i]));
+    }
+  }
+};
+
+template <>
+struct ProtoHelper<uint4> {
+  typedef protobuf::RepeatedField<int> FieldType;
+  static FieldType::const_iterator Begin(const TensorProto& proto) {
+    return proto.int_val().begin();
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    return proto.int_val().size();
+  }
+  static void Fill(const uint4* data, size_t n, TensorProto* proto) {
+    proto->mutable_int_val()->Reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+      proto->mutable_int_val()->AddAlreadyReserved(static_cast<int>(data[i]));
+    }
+  }
+};
+
+template <>
 struct ProtoHelper<int64_t> {
   static protobuf::RepeatedField<int64_t>::const_iterator Begin(
       const TensorProto& proto) {
@@ -588,6 +623,42 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
   }
 
   return buf;
+}
+
+template <typename T>
+TensorBuffer* Int4FromProtoField(Allocator* a, const TensorProto& in,
+                                 int64_t n) {
+  n = std::max<int64_t>(n, 0);
+  Buffer<T>* buf = new Buffer<T>(a, n);
+  int8_t* data = buf->template base<int8_t>();
+  if (data == nullptr) {
+    buf->Unref();
+    return nullptr;
+  }
+  const int64_t in_n = in.int_val().size();
+  auto begin = in.int_val().begin();
+  if (n <= in_n) {
+    std::copy_n(begin, n, data);
+  } else if (in_n > 0) {
+    std::copy_n(begin, in_n, data);
+    const uint16 last = *(data + in_n - 1);
+    std::fill_n(data + in_n, n - in_n, last);
+  } else {
+    std::fill_n(data, n, 0);
+  }
+  return buf;
+}
+
+template <>
+TensorBuffer* FromProtoField<int4>(Allocator* a, const TensorProto& in,
+                                   int64_t n) {
+  return Int4FromProtoField<int4>(a, in, n);
+}
+
+template <>
+TensorBuffer* FromProtoField<uint4>(Allocator* a, const TensorProto& in,
+                                    int64_t n) {
+  return Int4FromProtoField<uint4>(a, in, n);
 }
 
 // Separate implementation for `ResourceHandle` to handle the case when the
@@ -878,6 +949,8 @@ int Tensor::RefCount() const {
     CASE(Variant, SINGLE_ARG(STMTS))                           \
     CASE(float8_e5m2, SINGLE_ARG(STMTS))                       \
     CASE(float8_e4m3fn, SINGLE_ARG(STMTS))                     \
+    CASE(int4, SINGLE_ARG(STMTS))                              \
+    CASE(uint4, SINGLE_ARG(STMTS))                             \
     case DT_INVALID:                                           \
       INVALID;                                                 \
       break;                                                   \
@@ -1168,6 +1241,14 @@ inline float PrintOneElement(float8_e4m3fn f, bool print_v2) {
   return static_cast<float>(f);
 }
 
+inline int16_t PrintOneElement(int4 a, bool print_v2) {
+  return static_cast<int16_t>(a);
+}
+
+inline uint16_t PrintOneElement(uint4 a, bool print_v2) {
+  return static_cast<uint16_t>(a);
+}
+
 // Print from left dim to right dim recursively.
 template <typename T>
 void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
@@ -1388,6 +1469,10 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
     case DT_STRING:
       return SummarizeArray<tstring>(limit, num_elts, shape_, data, print_v2);
       break;
+    case DT_INT4:
+      return SummarizeArray<int4>(limit, num_elts, shape_, data, print_v2);
+    case DT_UINT4:
+      return SummarizeArray<uint4>(limit, num_elts, shape_, data, print_v2);
     default: {
       // All irregular cases
       string ret;

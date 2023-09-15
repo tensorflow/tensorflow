@@ -38,12 +38,15 @@ namespace tflite {
 
 constexpr int kReverseShift = -1;
 
+// Reduces and compresses dimensions so that broadcast handling becomes more
+// efficient. Returns true if the output shape is broadcastable; it doesn't
+// contain any degenerate dimension, i.e. shape dimension = 0. False otherwise.
 template <int MAX_DIM = 6>
-inline void ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
-                                         const RuntimeShape& input2_shape,
-                                         size_t* compressed_input1_stride,
-                                         size_t* compressed_input2_stride,
-                                         size_t* compressed_output_shape) {
+bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
+                                  const RuntimeShape& input2_shape,
+                                  size_t* compressed_input1_stride,
+                                  size_t* compressed_input2_stride,
+                                  size_t* compressed_output_shape) {
   size_t num_compressed_dims = 0;
   size_t compressed_input1_shape[MAX_DIM];
   size_t compressed_input2_shape[MAX_DIM];
@@ -53,7 +56,6 @@ inline void ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
   bool broadcast_input1 = false;
   bool broadcast_input2 = false;
   bool first_nonunit = true;
-  bool degenerate_shape = false;
   const size_t num_input1_dims = input1_shape.DimensionsCount();
   const size_t num_input2_dims = input2_shape.DimensionsCount();
   const int32_t* input1_dims = input1_shape.DimsData();
@@ -63,8 +65,9 @@ inline void ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
   for (size_t i = 1; i <= num_common_dims; i++) {
     const size_t input1_dim = input1_dims[num_input1_dims - i];
     const size_t input2_dim = input2_dims[num_input2_dims - i];
-    degenerate_shape |= input1_dim == 0;
-    degenerate_shape |= input2_dim == 0;
+    if (input1_dim == 0 || input2_dim == 0) {
+      return false;
+    }
     if (input1_dim == 1 && input2_dim == 1) {
       continue;
     }
@@ -105,7 +108,9 @@ inline void ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
     }
     for (size_t i = 0; i < num_input1_dims - num_input2_dims; i++) {
       const size_t input1_dim = input1_dims[i];
-      degenerate_shape |= input1_dim == 0;
+      if (input1_dim == 0) {
+        return false;
+      }
       compressed_input1_shape[num_compressed_dims - 1] *= input1_dim;
       compressed_output_shape[num_compressed_dims - 1] *= input1_dim;
     }
@@ -115,15 +120,14 @@ inline void ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
     }
     for (size_t i = 0; i < num_input2_dims - num_input1_dims; i++) {
       const size_t input2_dim = input2_dims[i];
-      degenerate_shape |= input2_dim == 0;
+      if (input2_dim == 0) {
+        return false;
+      }
       compressed_input2_shape[num_compressed_dims - 1] *= input2_dim;
       compressed_output_shape[num_compressed_dims - 1] *= input2_dim;
     }
   }
   num_compressed_dims = (num_compressed_dims > 1) ? num_compressed_dims : 1;
-
-  // Early exit without setting up context if any shape dimension is zero.
-  TFLITE_DCHECK(!degenerate_shape);
 
   int input1_stride = 1;
   int input2_stride = 1;
@@ -143,6 +147,7 @@ inline void ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
       }
     }
   }
+  return true;
 }
 
 inline void GetActivationMinMax(FusedActivationFunctionType ac,

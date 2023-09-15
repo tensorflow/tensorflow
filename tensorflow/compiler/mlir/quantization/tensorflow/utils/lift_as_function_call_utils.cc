@@ -15,16 +15,30 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <queue>
 #include <stack>
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace mlir {
 namespace quant {
@@ -52,19 +66,86 @@ StringAttr InsertToSymbolTable(Operation *module, Operation *function,
   return symbol_table.insert(function);
 }
 
-ValueRange createFusedFnCall(OpBuilder builder, Location location,
-                             StringRef func_name, TypeRange output_types,
-                             ValueRange args) {
+// Creates the TF::PartitionedCallOp with the given arguments and output types.
+// This function call op is for invoking the TF subgraphs.
+ValueRange createTFPartitionedCallOp(OpBuilder builder, Location location,
+                                     StringRef func_name,
+                                     TypeRange output_types, ValueRange args) {
   TF::PartitionedCallOp call_op = builder.create<TF::PartitionedCallOp>(
       location, output_types, args,
       FlatSymbolRefAttr::get(builder.getStringAttr(func_name)),
       /*config=*/"", /*config_proto=*/"", /*executor_type=*/"");
+
+  // Set the attribute to annotate this function call op as a quantizable spot.
   call_op->setAttr(
       kQuantTraitAttrName,
       builder.getStringAttr(llvm::StringRef(
           std::string(QuantTraitValues[QuantizationTrait::FullyQuantizable]))));
 
   return call_op.getOutput();
+}
+
+// Creates the TF::XlaCallModuleOp with the given arguments and output types.
+// This function call op is for invoking the StableHLO subgraphs.
+ValueRange createTFXlaCallModuleOp(OpBuilder builder, Location location,
+                                   StringRef func_name, TypeRange output_types,
+                                   ValueRange args) {
+  auto ctx = builder.getContext();
+  // Collect the shapes of the output to fill up the Sout attribute.
+  SmallVector<Attribute> shape_attrs;
+  for (const Type result_type : output_types) {
+    shape_attrs.push_back(
+        tf_type::ShapeAttr::get(ctx, result_type.cast<ShapedType>()));
+  }
+  auto empty_array_attr = ArrayAttr::get(ctx, {});
+
+  TF::XlaCallModuleOp call_op = builder.create<TF::XlaCallModuleOp>(
+      location,
+      /*output=*/output_types,
+      /*args=*/args,
+      /*version=*/5, /*module=*/"",
+      /*Sout=*/ArrayAttr::get(ctx, shape_attrs),
+      /*dim_args_spec=*/empty_array_attr,
+      /*platforms=*/empty_array_attr,
+      /*function_list=*/empty_array_attr,
+      /*has_token_input_output=*/false,
+      /*disabled_checks=*/empty_array_attr);
+
+  // Set the function name. This will be controlled by the
+  // XlaCallModuleSerialization related passes directly, which means that the
+  // function name can be changed by those passes.
+  call_op->setAttr(TF::kStablehloEntryFunctionAttrName,
+                   FlatSymbolRefAttr::get(builder.getStringAttr(func_name)));
+  // Store the custom attribute to restore the function name when loading it
+  // back in the post calibration stage. As mentioned above, the above entry
+  // function attribute is not reliable.
+  call_op->setAttr(kOriginalStablehloEntryFunctionAttrName,
+                   builder.getStringAttr(func_name));
+
+  // Set the attribute to annotate this function call op as a quantizable spot.
+  call_op->setAttr(
+      kQuantTraitAttrName,
+      builder.getStringAttr(llvm::StringRef(
+          std::string(QuantTraitValues[QuantizationTrait::FullyQuantizable]))));
+
+  return call_op.getOutput();
+}
+
+// Creates the function call op based on the given call_op_type argument.
+ValueRange createFunctionCallOp(OpBuilder builder, Location location,
+                                FunctionCallOpType call_op_type,
+                                StringRef func_name, TypeRange output_types,
+                                ValueRange args) {
+  switch (call_op_type) {
+    case FunctionCallOpType::TFXlaCallModuleOp:
+      return createTFXlaCallModuleOp(builder, location, func_name, output_types,
+                                     args);
+    case FunctionCallOpType::TFPartitionedCallOp:
+      return createTFPartitionedCallOp(builder, location, func_name,
+                                       output_types, args);
+    default:
+      llvm_unreachable("unhandled call op type");
+  }
 }
 
 // Finds ops in the paths from arguments to results. The ops is listed in an
@@ -173,8 +254,8 @@ LogicalResult SetAttributeMap(
 
 // Creates a function to wrap the section between arguments and results.
 llvm::SmallVector<Value, 4> LiftAsFunctionCall(
-    OpBuilder builder, Location location, StringRef func_name,
-    const llvm::SmallVector<Value> &arguments,
+    OpBuilder builder, Location location, FunctionCallOpType call_op_type,
+    StringRef func_name, const llvm::SmallVector<Value> &arguments,
     const llvm::SmallVector<Value> &results,
     const llvm::SmallVector<NamedAttribute> &attributes) {
   MLIRContext *context = builder.getContext();
@@ -199,6 +280,10 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   }
   auto wrap_func = builder.create<func::FuncOp>(location, func_name, func_type);
   wrap_func.setVisibility(SymbolTable::Visibility::Private);
+  // The callee function for TF::XlaCallModuleOp must have this attribute.
+  if (call_op_type == FunctionCallOpType::TFXlaCallModuleOp) {
+    wrap_func->setAttr(TF::kFromXlaCallModuleAttrName, builder.getUnitAttr());
+  }
   wrap_func->setAttr(kFusedFunctionAttr, builder.getUnitAttr());
   builder.createBlock(&wrap_func.getBody(), wrap_func.begin(), arg_types,
                       arg_locs);
@@ -226,18 +311,19 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   StringAttr new_func_name =
       InsertToSymbolTable(module, wrap_func, func_name.str());
   builder.setInsertionPointAfter(result_op);
-  ValueRange new_results = createFusedFnCall(
-      builder, location, new_func_name.getValue(), result_types, arguments);
+  ValueRange new_results =
+      createFunctionCallOp(builder, location, call_op_type,
+                           new_func_name.getValue(), result_types, arguments);
   return llvm::SmallVector<Value, 4>(new_results.begin(), new_results.end());
 }
 
 llvm::SmallVector<Value, 4> LiftAsFunctionCall(
-    OpBuilder builder, Location location, StringRef func_name,
-    const llvm::SmallVector<Value> &arguments,
+    OpBuilder builder, Location location, FunctionCallOpType call_op_type,
+    StringRef func_name, const llvm::SmallVector<Value> &arguments,
     const llvm::SmallVector<Value> &results) {
   llvm::SmallVector<NamedAttribute> attributes;
-  return LiftAsFunctionCall(builder, location, func_name, arguments, results,
-                            attributes);
+  return LiftAsFunctionCall(builder, location, call_op_type, func_name,
+                            arguments, results, attributes);
 }
 
 llvm::SmallVector<Value> AppendToVector(

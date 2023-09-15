@@ -134,7 +134,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // Returns information about the decision to disable compression at runtime
   // for a given dataset.
   Status DisableCompressionAtRuntime(
-      const DisableCompressionAtRuntimeRequest& request,
+      const std::string& dataset_id, bool disable_compression_at_runtime,
       DisableCompressionAtRuntimeResponse& response);
 
  protected:

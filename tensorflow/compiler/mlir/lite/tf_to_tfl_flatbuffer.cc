@@ -68,7 +68,7 @@ limitations under the License.
 #include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
 #include "tensorflow/lite/tools/optimize/quantize_weights.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -256,9 +256,9 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
 
       tensorflow::quantization::QuantizationOptions quantization_options;
 
-      quantization_options.mutable_quantization_method()
-          ->set_experimental_method(
-              tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE);
+      quantization_options.mutable_quantization_method()->set_preset_method(
+          tensorflow::quantization::QuantizationMethod::
+              METHOD_DYNAMIC_RANGE_INT8);
       quantization_options.set_op_set(
           tensorflow::quantization::UNIFORM_QUANTIZED);
       quantization_options.set_min_num_elements_for_weights(

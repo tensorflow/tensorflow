@@ -1,9 +1,9 @@
 """Rules to generate the TensorFlow public API from annotated files."""
 
+load("@bazel_skylib//lib:paths.bzl", "paths")
+load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
 load(":apis.bzl", _APIS = "APIS")
 load(":patterns.bzl", "any_match")
-load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
-load("@bazel_skylib//lib:paths.bzl", "paths")
 
 APIS = _APIS.keys()
 
@@ -112,7 +112,7 @@ api_extractor = aspect(
     # required_providers = [PyInfo],
     attrs = {
         "_extractor_bin": attr.label(
-            default = Label("//tensorflow/python/tools/api/generator2/extractor:extractor"),
+            default = Label("//tensorflow/python/tools/api/generator2/extractor:main"),
             executable = True,
             cfg = "exec",
         ),
@@ -150,13 +150,32 @@ extract_api = rule(
     provides = [ApiInfo, PyInfo],
 )
 
+def _get_module_by_path(dir_path, output_dir):
+    """Get module that corresponds to the path.
+
+    bazel-out/k8-opt/bin/tensorflow/_api/v2/compat/v2/compat/v2/compat/__init__.py
+    to
+    tensorflow._api.v2.compat.v2.compat.v2.compat
+
+    Args:
+    dir_path: Path to the directory.
+    output_dir: Path to the directory.
+
+    Returns:
+    Name of module that corresponds to the given directory.
+    """
+    dir_path = dir_path.split(output_dir)[1]
+    dir_path = dir_path.replace("__init__.py", "")
+
+    return dir_path.replace("/", ".").strip(".")
+
 def _generate_api_impl(ctx):
     args = ctx.actions.args()
     args.set_param_file_format("multiline")
     args.use_param_file("--flagfile=%s")
 
     args.add_joined("--output_files", ctx.outputs.output_files, join_with = ",")
-    args.add("--output_dir", paths.join(ctx.bin_dir.path, ctx.attr.output_dir, ctx.label.package))
+    args.add("--output_dir", paths.join(ctx.bin_dir.path, ctx.label.package, ctx.attr.output_dir))
     if ctx.file.root_init_template:
         args.add("--root_init_template", ctx.file.root_init_template)
     args.add("--apiversion", ctx.attr.api_version)
@@ -164,7 +183,8 @@ def _generate_api_impl(ctx):
     args.add_joined("--compat_init_templates", ctx.files.compat_init_templates, join_with = ",")
     args.add("--output_package", ctx.attr.output_package)
     args.add_joined("--packages_to_ignore", ctx.attr.packages_to_ignore, join_with = ",")
-    args.add("--module_prefix", _MODULE_PREFIX)
+    if _MODULE_PREFIX:
+        args.add("--module_prefix", _MODULE_PREFIX)
     if ctx.attr.use_lazy_loading:
         args.add("--use_lazy_loading")
     else:
@@ -172,6 +192,8 @@ def _generate_api_impl(ctx):
     if ctx.attr.proxy_module_root:
         args.add("--proxy_module_root", ctx.attr.proxy_module_root)
     args.add_joined("--file_prefixes_to_strip", [ctx.bin_dir.path, ctx.genfiles_dir.path], join_with = ",")
+    if ctx.attr.root_file_name:
+        args.add("--root_file_name", ctx.attr.root_file_name)
 
     inputs = depset(transitive = [
         dep[ApiInfo].transitive_api
@@ -198,6 +220,15 @@ def _generate_api_impl(ctx):
         progress_message = "Generating APIs for %{label} to %{output}.",
     )
 
+    # Convert output_paths to the list of corresponding modules for the further testing
+    if ctx.outputs.api_packages_path:
+        output_modules = sorted([
+            _get_module_by_path(f.path, ctx.bin_dir.path)
+            for f in ctx.outputs.output_files
+            if "__init__.py" in f.path
+        ])
+        ctx.actions.write(ctx.outputs.api_packages_path, "\n".join(output_modules))
+
 generate_api = rule(
     doc = "Generate Python API for all targets in transitive dependencies.",
     implementation = _generate_api_impl,
@@ -211,6 +242,9 @@ generate_api = rule(
         "root_init_template": attr.label(
             doc = "Template for the top level __init__.py file",
             allow_single_file = True,
+        ),
+        "api_packages_path": attr.output(
+            doc = "Name of the file with the list of all API packages.",
         ),
         "api_version": attr.int(
             doc = "The API version to generate (1 or 2)",
@@ -247,6 +281,9 @@ generate_api = rule(
         "packages_to_ignore": attr.string_list(
             doc = "List of packages to ignore tf_exports from.",
         ),
+        "root_file_name": attr.string(
+            doc = "The file name that should be generated for the top level API.",
+        ),
         "_generator_bin": attr.label(
             default = Label("//tensorflow/python/tools/api/generator2/generator:main"),
             executable = True,
@@ -257,7 +294,7 @@ generate_api = rule(
 
 def generate_apis(
         name,
-        apis = [],
+        apis = ["tensorflow"],
         deps = [
             "//tensorflow/python:no_contrib",
             "//tensorflow/python:modules_with_exports",
@@ -267,6 +304,7 @@ def generate_apis(
         ],
         output_files = TENSORFLOW_API_INIT_FILES,
         root_init_template = None,
+        api_packages_file_name = None,
         api_version = 2,
         compat_api_versions = [],
         compat_init_templates = [],
@@ -274,6 +312,7 @@ def generate_apis(
         output_dir = "",
         proxy_module_root = None,
         packages_to_ignore = [],
+        root_file_name = None,
         visibility = ["//visibility:private"]):
     """Generate TensorFlow APIs for a set of libraries.
 
@@ -284,6 +323,7 @@ def generate_apis(
         output_files: The list of files that the API generator is exected to create.
         root_init_template: The template for the top level __init__.py file generated.
             "#API IMPORTS PLACEHOLDER" comment will be replaced with imports.
+        api_packages_file_name: Name of the file with the list of all API packages. Stores in output_dir.
         api_version: THhe API version to generate. (1 or 2)
         compat_api_versions: Additional versions to generate in compat/ subdirectory.
         compat_init_templates: Template for top level __init__.py files under the compat modules.
@@ -295,6 +335,7 @@ def generate_apis(
             `from proxy_module_root.proxy_module import *` will be created to enable import
             resolution under TensorFlow.
         packages_to_ignore: List of packages to ignore tf_exports from.
+        root_file_name: The file name that should be generated for the top level API.
         visibility: Visibility of the target containing the generated files.
     """
     extract_api_targets = []
@@ -308,11 +349,19 @@ def generate_apis(
         )
         extract_api_targets.append(extract_name)
 
-    if proxy_module_root != None:
+    if root_file_name != None and root_file_name != "__init__.py":
+        # Rename file for top-level API.
+        output_files = [root_file_name if f == "__init__.py" else f for f in output_files]
+    elif proxy_module_root != None:
         # Avoid conflicts between the __init__.py file of TensorFlow and proxy module.
         output_files = [f for f in output_files if f != "__init__.py"]
 
     all_output_files = [paths.join(output_dir, f) for f in output_files]
+
+    if api_packages_file_name:
+        api_packages_path = "%s%s" % (output_dir, api_packages_file_name)
+    else:
+        api_packages_path = None
 
     generate_api(
         name = name,
@@ -336,4 +385,6 @@ def generate_apis(
         use_lazy_loading = False,
         # copybara:comment_end
         output_package = output_package,
+        root_file_name = root_file_name,
+        api_packages_path = api_packages_path,
     )

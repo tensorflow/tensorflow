@@ -1,7 +1,11 @@
+load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+# Placeholder: load py_proto_library
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "if_static",
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+    "tf_gen_op_wrapper_py",
 )
 load(
     "//tensorflow:tensorflow.default.bzl",
@@ -9,12 +13,11 @@ load(
     "tf_kernel_library",
     "tf_py_strict_test",
 )
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-    "tf_gen_op_wrapper_py",
-)
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -34,8 +37,12 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
     deps = [
-        ":calibration_statistics_collector",
+        ":calibration_statistics_collector_average_min_max",
+        ":calibration_statistics_collector_base",
+        ":calibration_statistics_collector_histogram",
+        ":calibration_statistics_collector_min_max",
         ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -51,14 +58,85 @@ cc_library(
     hdrs = ["calibrator_singleton.h"],
     compatible_with = get_compatible_with_portable(),
     deps = if_static([":calibrator_singleton_impl"]) + [
-        ":calibration_statistics_collector",
+        ":calibration_statistics_collector_base",
         ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "calibration_statistics_collector_base",
+    hdrs = ["calibration_statistics_collector_base.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":calibration_statistics_proto_cc",
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "calibration_statistics_collector_min_max",
+    srcs = ["calibration_statistics_collector_min_max.cc"],
+    hdrs = ["calibration_statistics_collector_min_max.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":calibration_statistics_collector_base",
+        ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "calibration_statistics_collector_average_min_max",
+    srcs = ["calibration_statistics_collector_average_min_max.cc"],
+    hdrs = ["calibration_statistics_collector_average_min_max.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":calibration_statistics_collector_base",
+        ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "calibration_statistics_collector_histogram",
+    srcs = ["calibration_statistics_collector_histogram.cc"],
+    hdrs = ["calibration_statistics_collector_histogram.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":calibration_statistics_collector_base",
+        ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+    ],
+)
+
+pytype_strict_library(
+    name = "calibration_algorithm",
+    srcs = ["calibration_algorithm.py"],
+    deps = [
+        ":calibration_statistics_proto_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+pytype_strict_contrib_test(
+    name = "calibration_algorithm_test",
+    srcs = ["calibration_algorithm_test.py"],
+    deps = [
+        ":calibration_algorithm",
+        ":calibration_statistics_proto_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -79,24 +157,14 @@ tf_proto_library(
 # )
 # copybara:uncomment_end
 
-cc_library(
-    name = "calibration_statistics_collector",
-    srcs = ["calibration_statistics_collector.cc"],
-    hdrs = ["calibration_statistics_collector.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":calibration_statistics_proto_cc",
-        "//tensorflow/core:framework",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
 tf_cc_test(
     name = "calibration_statistics_collector_test",
     size = "small",
     srcs = ["calibration_statistics_collector_test.cc"],
     deps = [
-        ":calibration_statistics_collector",
+        ":calibration_statistics_collector_average_min_max",
+        ":calibration_statistics_collector_base",
+        ":calibration_statistics_collector_min_max",
         ":calibration_statistics_proto_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -127,6 +195,7 @@ tf_kernel_library(
     ],
     deps = [
         ":calibrator_singleton_impl",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:framework",
     ],
 )
@@ -155,6 +224,7 @@ tf_py_strict_test(
         ":calibration_statistics_proto_py",
         ":gen_custom_aggregator_op_wrapper",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_quantize_model",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/framework:dtypes",

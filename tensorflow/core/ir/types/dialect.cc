@@ -35,8 +35,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -554,6 +552,9 @@ TensorFlowType TensorFlowRefType::get(Type type) {
     switch (itype.getWidth()) {
       case 1:
         return BoolRefType::get(ctx);
+      case 4:
+        return itype.isUnsigned() ? TensorFlowType(Uint4RefType::get(ctx))
+                                  : Int4RefType::get(ctx);
       case 8:
         return itype.isUnsigned() ? TensorFlowType(Uint8RefType::get(ctx))
                                   : Int8RefType::get(ctx);
@@ -589,10 +590,13 @@ Type TensorFlowRefType::RemoveRef() {
   if (isa<Float8E4M3FNType>()) return FloatType::getFloat8E4M3FN(ctx);
   if (isa<Float8E5M2Type>()) return FloatType::getFloat8E5M2(ctx);
   if (isa<BoolRefType>()) return IntegerType::get(ctx, 1);
+  if (isa<Int4RefType>()) return IntegerType::get(ctx, 4, IntegerType::Signed);
   if (isa<Int8RefType>()) return IntegerType::get(ctx, 8);
   if (isa<Int16RefType>()) return IntegerType::get(ctx, 16);
   if (isa<Int32RefType>()) return IntegerType::get(ctx, 32);
   if (isa<Int64RefType>()) return IntegerType::get(ctx, 64);
+  if (isa<Uint4RefType>())
+    return IntegerType::get(ctx, 4, IntegerType::Unsigned);
   if (isa<Uint8RefType>())
     return IntegerType::get(ctx, 8, IntegerType::Unsigned);
   if (isa<Uint16RefType>())

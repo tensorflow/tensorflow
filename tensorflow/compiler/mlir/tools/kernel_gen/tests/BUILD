@@ -20,8 +20,8 @@ filegroup(
     data = [
         "//tensorflow/compiler/mlir:tf-opt",
         "//tensorflow/compiler/mlir/tools/kernel_gen:kernel-gen-opt",
-        "//tensorflow/compiler/xla/mlir_hlo:mlir-hlo-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//mlir:run_lit.sh",
+        "@local_xla//xla/mlir_hlo:mlir-hlo-opt",
     ],
 )

@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/protobuf.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace data {

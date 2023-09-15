@@ -1,9 +1,8 @@
 #TFCI_UPLOAD_LIB_URI="gs://tensorflow-release-packages/$RELEASE_VERSION/$KOKORO_GIT_COMMIT_tensorflow"
 #TFCI_UPLOAD_WHL_GCS_URI="gs://tensorflow-release-packages/$RELEASE_VERSION/$KOKORO_GIT_COMMIT_tensorflow"
 TFCI_BAZEL_BAZELRC_ARGS=(--bazelrc ./ci/official/bazelrcs/cpu.bazelrc)
-TFCI_BAZEL_COMMON_ARGS=(--config sigbuild_remote_cache_push --config resultstore --repo_env=TF_PYTHON_VERSION=3.10 --define=with_tpu_support=true)
+TFCI_BAZEL_COMMON_ARGS=(--config sigbuild_remote_cache_push --config resultstore --repo_env=TF_PYTHON_VERSION=3.10 --define=with_tpu_support=true --config=opt --define=framework_shared_object=true --copt=-DLIBTPU_ON_GCE)
 TFCI_BUILD_PIP_PACKAGE_ARGS=(--tpu --nightly_flag)
-TFCI_COPYBARA_ENABLE=0
 TFCI_DOCKER_ARGS=()
 TFCI_DOCKER_ENABLE=1
 TFCI_DOCKER_IMAGE=tensorflow/build:latest-python3.10

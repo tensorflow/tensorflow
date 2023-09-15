@@ -30,11 +30,11 @@ limitations under the License.
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/cpu_function_runtime.h"
-#include "tensorflow/compiler/xla/service/compiler.h"
-#include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/cpu_function_runtime.h"
+#include "xla/service/compiler.h"
+#include "xla/service/cpu/buffer_info_util.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -551,12 +551,12 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
       GenNameToIndexCode(config.fetch(), opts.gen_name_to_index);
   const string include_xla_data_proto =
       opts.gen_program_shape
-          ? R"(#include "tensorflow/compiler/xla/xla_data.pb.h")"
+          ? R"(#include "xla/xla_data.pb.h")"
           : "";
 
   const string include_hlo_profile_printer_data_proto =
       opts.gen_hlo_profile_printer_data
-          ? R"(#include "tensorflow/compiler/xla/service/hlo_profile_printer_data.pb.h")"
+          ? R"(#include "xla/service/hlo_profile_printer_data.pb.h")"
           : "";
 
   // When HLO profiling is disabled we only forward declare the

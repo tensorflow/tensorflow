@@ -9,6 +9,9 @@
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
+* `tf.types.experimental.GenericFunction` has been renamed to
+  `tf.types.experimental.PolymorphicFunction`.
+
 ### Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
@@ -20,13 +23,78 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
+* Making the `tf.function` type system fully available:
+    * `tf.types.experimental.TraceType` now allows custom tf.function inputs to
+       declare Tensor decomposition and type casting support.
+    * Introducing `tf.types.experimental.FunctionType` as the comprehensive
+      representation of the signature of `tf.function` callables. It can be
+      accessed through the `function_type` property of `tf.function`s and
+      `ConcreteFunction`s. See the `tf.types.experimental.FunctionType`
+      documentation for more details.
+* Introducing `tf.types.experimental.AtomicFunction` as the fastest way to
+  perform TF computations in Python.
+    * Can be accessed through `inference_fn` property of `ConcreteFunction`s
+    * Does not support gradients.
+    * See `tf.types.experimental.AtomicFunction` documentation for how to call
+      and use it.
+
+*   `tf.data`:
+
+    *   Moved option `warm_start` from
+        `tf.data.experimental.OptimizationOptions` to `tf.data.Options`.
+
+*   `tf.lite`:
+
+    *   `mul_op` supports broadcasting up to 6 dimensions.
+
+    *  The `tflite::SignatureRunner` class, which provides support for named
+       parameters and for multiple named computations within a single TF Lite
+       model, is no longer considered experimental. Likewise for the following
+       signature-related methods of `tflite::Interpreter`:
+
+       *   `tflite::Interpreter::GetSignatureRunner`
+       *   `tflite::Interpreter::signature_keys`
+       *   `tflite::Interpreter::signature_inputs`
+       *   `tflite::Interpreter::signature_outputs`
+       *   `tflite::Interpreter::input_tensor_by_signature`
+       *   `tflite::Interpreter::output_tensor_by_signature`
+
+    *  Similarly, the following signature runner functions in the TF Lite C API
+       are no longer considered experimental:
+
+       *    `TfLiteInterpreterGetSignatureCount`
+       *    `TfLiteInterpreterGetSignatureKey`
+       *    `TfLiteInterpreterGetSignatureRunner`
+       *    `TfLiteSignatureRunnerAllocateTensors`
+       *    `TfLiteSignatureRunnerGetInputCount`
+       *    `TfLiteSignatureRunnerGetInputName`
+       *    `TfLiteSignatureRunnerGetInputTensor`
+       *    `TfLiteSignatureRunnerGetOutputCount`
+       *    `TfLiteSignatureRunnerGetOutputName`
+       *    `TfLiteSignatureRunnerGetOutputTensor`
+       *    `TfLiteSignatureRunnerInvoke`
+       *    `TfLiteSignatureRunnerResizeInputTensor`
+
+* Android NDK r25 is supported.
+
 ### Bug Fixes and Other Changes
 
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
+*   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+*   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+*   <NOTES SHOULD BE GROUPED PER AREA>
 
-* Add TensorFlow Quantizer to TensorFlow pip package.
+*   Add TensorFlow Quantizer to TensorFlow pip package.
+
+*   `tf.sparse.segment_sum` `tf.sparse.segment_mean` `tf.sparse.segment_sqrt_n`
+    `SparseSegmentSum/Mean/SqrtN[WithNumSegments]`
+
+    *   Added `sparse_gradient` option (default=false) that makes the gradient
+        of these functions/ops sparse (`IndexedSlices`) instead of dense
+        (`Tensor`), using new `SparseSegmentSum/Mean/SqrtNGradV2` ops.
+
+*   `tf.nn.embedding_lookup_sparse`
+
+    *   Optimized this function for some cases by fusing internal operations.
 
 ## Keras
 
@@ -54,11 +122,22 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
-* Add ops to tensorflow.raw_ops that were missing.
+* Add ops to `tensorflow.raw_ops` that were missing.
 * `tf.CheckpointOptions`
     * It now takes in a new argument called `experimental_write_callbacks`.
     These are callbacks that will be executed after a saving event finishes
     writing the checkpoint file.
+* Add an option `disable_eager_executer_streaming_enqueue` to
+  `tensorflow.ConfigProto.Experimental` to control the eager runtime's behavior
+  around parallel remote function invocations; when set to `True`, the eager
+  runtime will be allowed to execute multiple function invocations in parallel.
+* `tf.constant_initializer`
+    * It now takes a new argument called `support_partition`.
+    If True, constant_initializers can create sharded variables.
+    This is disabled by default, similar to existing behavior.
+
+* `tf.lite`
+    * Added support for `stablehlo.scatter`.
 
 ## Thanks to our Contributors
 
@@ -109,6 +188,14 @@ This release contains contributions from many people at Google, as well as:
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+*   The `tensorflow` pip package has a new, optional installation method for
+    Linux that installs necessary Nvidia CUDA libraries through pip. As long as
+    the Nvidia driver is already installed on the system, you may now run `pip
+    install tensorflow[and-cuda]` to install TensorFlow's Nvidia CUDA library
+    dependencies in the Python environment. Aside from the Nvidia driver, no
+    other pre-existing Nvidia CUDA packages are necessary.
+
 * `tf.keras`
     * `Model.compile` now support `steps_per_execution='auto'` as a parameter,
     allowing automatic tuning of steps per execution during `Model.fit`,
@@ -142,7 +229,7 @@ This release contains contributions from many people at Google, as well as:
    ```
 
 * `tf.lite`
-    * Strided_Slice now supports `UINT32`.
+    * `Strided_Slice` now supports `UINT32`.
     * Add int8 and int16x8 support for LOG operator
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -180,6 +267,10 @@ This release contains contributions from many people at Google, as well as:
 
 * `tf.ones`, `tf.zeros`, `tf.fill`, `tf.ones_like`, `tf.zeros_like` now take an
     additional Layout argument that controls the output layout of their results.
+
+*  Limited support of unified n-d FFT Ops: `tf.signal.fftn`,
+   `tf.signal.ifftn`, `tf.signal.rfftn`, `tf.signal.irfftn`.
+   Note that they only support up to 3d and gradients are unsupported.
 
 * `tf.nest` and `tf.data` now support user defined classes implementing
   `__tf_flatten__` and `__tf_unflatten__` methods. See [

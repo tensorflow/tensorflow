@@ -56,8 +56,8 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/thread_annotations.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
 // types. Use this macro to expand `m(T)` once for each primitive type
@@ -846,6 +846,8 @@ class IteratorContext {
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
 
   bool warm_start() { return params_.warm_start; }
+
+  RunMode run_mode() { return params_.run_mode; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {

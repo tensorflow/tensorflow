@@ -140,6 +140,22 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                                                    0,
                                                    dtype=dtypes.int32)).run()
 
+  @parameterized.parameters(dtypes.int4, dtypes.uint4)
+  def testInt4(self, dtype):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(1, dtype=dtype)
+      self.assertAllEqual(1, v.numpy())
+      v.assign(2)
+      self.assertAllEqual(2, v.numpy())
+
+      if test_util.is_gpu_available():
+        with ops.device("gpu:0"):
+          v = resource_variable_ops.ResourceVariable(3, dtype=dtype)
+          self.assertEqual(
+              "/job:localhost/replica:0/task:0/device:GPU:0", v.device
+          )
+          self.assertAllEqual(3, v.numpy())
+
   @test_util.run_gpu_only
   def testGPUBfloat16(self):
     with context.eager_mode(), ops.device("gpu:0"):

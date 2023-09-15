@@ -282,10 +282,10 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
   def testLiteral(self):
     trace_float = default_types.Literal(1.5)
     ctx = trace_type.InternalCastContext()
-    value = trace_float._cast(1.5, ctx)
+    value = trace_float.cast(1.5, ctx)
     self.assertEqual(value, 1.5)
     with self.assertRaises(ValueError):
-      _ = trace_float._cast(1, ctx)
+      _ = trace_float.cast(1, ctx)
 
   @parameterized.parameters(list, tuple)
   def testTupleAndList(self, container_type):
@@ -297,7 +297,7 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
     bar = (1, 2)
     bar = container_type(bar)
     ctx = trace_type.InternalCastContext()
-    value = trace_foo._cast(bar, ctx)
+    value = trace_foo.cast(bar, ctx)
 
     self.assertIsInstance(value, container_type)
     self.assertLen(value, len(bar))
@@ -318,7 +318,7 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
     bar = type_b(bar)
     ctx = trace_type.InternalCastContext()
     with self.assertRaises(AssertionError):
-      _ = trace_foo._cast(bar, ctx)
+      _ = trace_foo.cast(bar, ctx)
 
   def testNamedTuple(self):
     Foo = collections.namedtuple('Foo', ['x', 'y'])
@@ -328,7 +328,7 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
     trace_foo = trace_type.from_value(foo)
     bar = Foo(1, 2)
     ctx = trace_type.InternalCastContext()
-    value = trace_foo._cast(bar, ctx)
+    value = trace_foo.cast(bar, ctx)
 
     self.assertIsInstance(value, Foo)
     self.assertLen(value, len(bar))
@@ -343,7 +343,7 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
     trace_foo = trace_type.from_value(foo)
     bar = TestAttrsClass(1, 2)
     ctx = trace_type.InternalCastContext()
-    value = trace_foo._cast(bar, ctx)
+    value = trace_foo.cast(bar, ctx)
 
     self.assertIsInstance(value, TestAttrsClass)
     self.assertEqual(value.a.dtype, dtypes.float32)
@@ -355,7 +355,7 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
     trace_foo = trace_type.from_value(foo)
     bar = {'x': 1, 'y': 2}
     ctx = trace_type.InternalCastContext()
-    value = trace_foo._cast(bar, ctx)
+    value = trace_foo.cast(bar, ctx)
 
     self.assertIsInstance(value, dict)
     self.assertSequenceEqual(
@@ -389,7 +389,7 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
     trace_mt = trace_type.from_value(mt)
     self.assertIsInstance(trace_mt, custom_nest_trace_type.CustomNestTraceType)
 
-    mt2_casted = trace_mt._cast(mt2, ctx)
+    mt2_casted = trace_mt.cast(mt2, ctx)
     self.assertIsInstance(mt2_casted, MaskedTensor)
     self.assertEqual(mt2_casted.mask, mt2.mask)
     self.assertEqual(mt2_casted.value.dtype, mt.value.dtype)
@@ -402,7 +402,7 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
     ctx = trace_type.InternalCastContext()
     trace_mt = trace_type.from_value(mt)
     with self.assertRaisesRegex(ValueError, 'Metadata mismatch'):
-      trace_mt._cast(mt2, ctx)
+      trace_mt.cast(mt2, ctx)
 
 
 class SignatureToTraceTypeTest(test.TestCase):

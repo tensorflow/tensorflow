@@ -79,7 +79,7 @@ inline void BatchQuantizeFloats4Bit(const float* float_data_ptr, int n_batch,
  */
 inline void AssignBiasAndComputeOffsets(const int32_t* input_offsets,
                                         const float* batch_scales,
-                                        const float* filter_scales,
+                                        float* filter_scales,
                                         const float* bias_ptr,
                                         float* output_ptr, int output_depth,
                                         int batch_size) {

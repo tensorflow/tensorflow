@@ -40,13 +40,14 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringprintf.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -149,7 +150,13 @@ std::shared_ptr<Parameter> MakeNonTunableParameter(const string& name,
 // class and move all ram budget management to the model autotuner.
 class RamBudgetManager {
  public:
-  explicit RamBudgetManager(int64_t budget) : budget_(budget) {}
+  explicit RamBudgetManager(int64_t budget) : budget_(budget) {
+    if (budget <= 0) {
+      LOG(WARNING) << "RAM budget is " << budget
+                   << " which could prevent autotuner from properly adjusting "
+                      "buffer sizes.";
+    }
+  }
 
   // Requests a new total memory allocation for the parts of the dataset
   // tuned by the model.
@@ -197,9 +204,15 @@ class RamBudgetManager {
     return budget_ - legacy_prefetch_allocated_;
   }
 
+  void UpdateBudget(int64_t budget) {
+    mutex_lock l(mu_);
+    budget_ = budget;
+    VLOG(2) << "Updated ram budget to " << budget;
+  }
+
  private:
   mutable mutex mu_;
-  const int64_t budget_;
+  int64_t budget_ TF_GUARDED_BY(mu_) = 0;
   // Number of bytes allocated by legacy prefetch autotuner.
   int64_t legacy_prefetch_allocated_ TF_GUARDED_BY(mu_) = 0;
   // Number of bytes allocated by the model.
@@ -259,7 +272,8 @@ class Node {
         processing_time_(0),
         record_metrics_(true),
         metrics_(name_),
-        output_(args.output.get()) {}
+        output_(args.output.get()),
+        output_weak_ptr_(args.output) {}
 
   virtual ~Node() {
     // Clear the sub-nodes instead of relying on implicit shared pointer
@@ -369,6 +383,7 @@ class Node {
 
   // Returns the node output.
   Node* output() const { return output_; }
+  bool output_deleted() { return output_weak_ptr_.expired(); }
 
   // Returns the parameter value.
   double parameter_value(const string& name) const TF_LOCKS_EXCLUDED(mu_) {
@@ -794,6 +809,7 @@ class Node {
   // The reference to the output node is not owned so that deletion of a
   // node results in recursive deletion of the subtree rooted in the node.
   Node* const output_;
+  std::weak_ptr<Node> output_weak_ptr_;
 };
 
 // InterleaveMany is used to model datasets whose inputs are used to create
@@ -887,15 +903,27 @@ class Model {
   // Uses the given algorithm and resource budgets to periodically perform the
   // autotuning optimization.
   //
+  // `cpu_budget_func` can be used to provide the optimizer with up-to-date
+  // values in cases where CPUs budgets may be changed by the runtime
+  // dynamically.
+  //
+  // `ram_budget_func` is similar to `cpu_budget_func`. This lambda takes a
+  // parameter that is the total number of bytes currently buffered by the
+  // model.
+  //
   // To terminate the execution of the optimization loop, the caller needs to
   // invoke `cancellation_mgr->StartCancel()`.
-  Status OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+  Status OptimizeLoop(AutotuneAlgorithm algorithm,
+                      std::function<int64_t()> cpu_budget_func,
+                      std::function<int64_t(int64_t)> ram_budget_func,
                       RamBudgetManager& ram_budget_manager,
                       CancellationManager* cancellation_manager);
 
   // Uses the given algorithm and resource budgets to perform the autotuning
   // optimization.
-  void Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+  void Optimize(AutotuneAlgorithm algorithm,
+                std::function<int64_t()> cpu_budget_func,
+                std::function<int64_t(int64_t)> ram_budget_func,
                 double model_input_time, RamBudgetManager& ram_budget_manager,
                 CancellationManager* cancellation_manager);
 

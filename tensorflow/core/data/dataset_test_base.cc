@@ -82,7 +82,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
-#include "tensorflow/tsl/framework/fixedpoint/FixedPoint.h"
+#include "tsl/framework/fixedpoint/FixedPoint.h"
 
 namespace tensorflow {
 namespace data {

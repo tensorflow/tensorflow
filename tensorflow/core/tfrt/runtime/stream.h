@@ -17,6 +17,7 @@ under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -36,34 +37,11 @@ under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/tfrt/runtime/channel.h"
-#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/core/tfrt/runtime/step_id.h"
+#include "tsl/platform/env.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
-
-template <typename Derived>
-struct SafeId {
-  SafeId() : id(0) {}
-  explicit constexpr SafeId(int64_t id) : id(id) {}
-
-  using Base = SafeId;
-
-  int64_t id;
-
-  friend bool operator==(const Derived& x, const Derived& y) {
-    return x.id == y.id;
-  }
-
-  template <typename Sink>
-  friend void AbslStringify(Sink& sink, const Derived& x) {
-    absl::Format(&sink, "%d", x.id);
-  }
-
-  template <typename H>
-  friend H AbslHashValue(H h, const Derived& x) {
-    return H::combine(std::move(h), x.id);
-  }
-};
 
 struct StreamedResult {
   absl::flat_hash_map<std::string, tensorflow::Tensor> tensors;
@@ -72,13 +50,6 @@ struct StreamedResult {
 
 struct StreamCallbackId : SafeId<StreamCallbackId> {
   using Base::Base;
-};
-
-struct StepId : SafeId<StepId> {
-  using Base::Base;
-
-  bool valid() const { return id != 0; }
-  static constexpr StepId GetInvalidStepId() { return StepId(0); }
 };
 
 // An interface that abstracts communication between the
@@ -127,6 +98,10 @@ class ScopedStreamCallback;
 
 class StreamInterfaceFactory {
  public:
+  using CreateWorkerStreamInterfaceFn =
+      std::function<absl::StatusOr<std::unique_ptr<StreamWorkerInterface>>(
+          absl::string_view)>;
+
   void RegisterController(
       absl::AnyInvocable<
           absl::StatusOr<std::unique_ptr<StreamControllerInterface>>() const>
@@ -141,18 +116,14 @@ class StreamInterfaceFactory {
     return controller_interface_factory_();
   }
 
-  void RegisterWorker(
-      absl::AnyInvocable<
-          absl::StatusOr<std::unique_ptr<StreamWorkerInterface>>() const>
-          interface_factory) {
+  void RegisterWorker(CreateWorkerStreamInterfaceFn interface_factory) {
     absl::MutexLock lock(&mu_);
     worker_interface_factory_ = std::move(interface_factory);
   }
 
-  absl::StatusOr<std::unique_ptr<StreamWorkerInterface>>
-  CreateWorkerStreamInterface() const {
+  CreateWorkerStreamInterfaceFn CreateWorkerStreamInterface() const {
     absl::MutexLock lock(&mu_);
-    return worker_interface_factory_();
+    return worker_interface_factory_;
   }
 
  private:
@@ -163,9 +134,9 @@ class StreamInterfaceFactory {
         return absl::InternalError(
             "The factory for StreamControllerInterface is not registered.");
       };
-  absl::AnyInvocable<absl::StatusOr<std::unique_ptr<StreamWorkerInterface>>()
-                         const>
-      worker_interface_factory_ ABSL_GUARDED_BY(mu_) = []() {
+
+  CreateWorkerStreamInterfaceFn worker_interface_factory_ ABSL_GUARDED_BY(mu_) =
+      [](absl::string_view) {
         return absl::InternalError(
             "The factory for StreamWorkerInterface is not registered.");
       };

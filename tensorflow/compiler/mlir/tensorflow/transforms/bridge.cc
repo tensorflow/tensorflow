@@ -29,11 +29,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/inference/inference_passes.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
+#include "tsl/platform/error_logging.h"
 
 namespace mlir {
 namespace {
@@ -45,7 +47,7 @@ void EnableDetailedLogging(PassManager *pm,
   // multi-threading as well.
   pm->getContext()->disableMultithreading();
   pm->enableIRPrinting(std::make_unique<::tensorflow::DataDumperLoggerConfig>(
-      [module_name](const std::string &pass_tag_name) {
+      [module_name](const std::string &pass_tag_name, mlir::Operation *op) {
         return DEBUG_DATA_DUMPER()->GetDumpFilename(
             module_name.str(), kDebugGroupBridgePhase1, pass_tag_name);
       },
@@ -53,6 +55,10 @@ void EnableDetailedLogging(PassManager *pm,
       /*print_module_scope=*/true));
   pm->enableTiming();
 }
+
+// Name of component for error logging. This name is fixed and required to
+// enable logging.
+constexpr char kBridgeComponent[] = "TFXLABridge";
 }  // namespace
 
 namespace TFTPU {
@@ -233,6 +239,8 @@ void CreateTPUBridgePipelineImpl(
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(TFDevice::CreateExtractHeadTailOutsideCompilationPass());
   pm.addPass(TFDevice::CreateExtractOutsideCompilationPass());
+  pm.addNestedPass<func::FuncOp>(
+      TFDevice::CreateVerifyNoOutsideCompilationMarkersPass());
 
   pm.addNestedPass<func::FuncOp>(TFDevice::CreateClusterConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
@@ -256,7 +264,10 @@ void CreateTPUBridgePipelineImpl(
   pm.addNestedPass<func::FuncOp>(
       TF::CreateHoistReplicateInvariantResourceWritesPass());
   pm.addNestedPass<func::FuncOp>(CreateTPUColocateCompositeResourceOps());
-  pm.addPass(CreateTPUVariableRuntimeReformattingPass());
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_tpu_variable_runtime_reformatting_pass) {
+    pm.addPass(CreateTPUVariableRuntimeReformattingPass());
+  }
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 }  // namespace
@@ -269,6 +280,8 @@ void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
+  pm.addPass(tf2xla::internal::CreateInferenceMetricsPass());
+
   // Convert to unified compilation and replication attributes.
   pm.addNestedPass<func::FuncOp>(
       TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
@@ -320,6 +333,11 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
   tsl::OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
       status);
+  if (!status.ok()) {
+    tsl::error_logging::Log(kBridgeComponent, "TFXLA_PHASE_ONE_MLIR_TPU_BRIDGE",
+                            status.ToString())
+        .IgnoreError();
+  }
   return status;
 }
 tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool fallback_enabled) {
@@ -334,6 +352,12 @@ tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool fallback_enabled) {
   });
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v1", fallback_enabled, status.ok() ? "success" : "failure");
+  if (!status.ok()) {
+    tsl::error_logging::Log(kBridgeComponent,
+                            "TFXLA_PHASE_ONE_MLIR_TPU_V1_COMPAT_BRIDGE",
+                            status.ToString())
+        .IgnoreError();
+  }
   return status;
 }
 
@@ -517,6 +541,12 @@ tensorflow::Status RunTFXLABridge(ModuleOp module,
       /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
       /*fallback_enabled*/ false,
       /*result*/ status.ok() ? "success" : "failure");
+  if (!status.ok()) {
+    tsl::error_logging::Log(kBridgeComponent,
+                            "TFXLA_PHASE_ONE_MLIR_CPU/GPU_BRIDGE",
+                            status.ToString())
+        .IgnoreError();
+  }
   return status;
 }
 

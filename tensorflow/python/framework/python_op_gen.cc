@@ -89,7 +89,12 @@ const std::unordered_map<string, string> dtype_type{
     {"_dtypes.quint16", "_atypes.QUInt16"},
     {"_dtypes.qint32", "_atypes.QInt32"},
     {"_dtypes.resource", "_atypes.Resource"},
-    {"_dtypes.variant", "_atypes.Variant"}};
+    {"_dtypes.variant", "_atypes.Variant"},
+    {"_dtypes.float8_e4m3fn", "_atypes.Float8e4m3fn"},
+    {"_dtypes.float8_e5m2", "_atypes.Float8e5m2"},
+    {"_dtypes.int4", "_atypes.Int4"},
+    {"_dtypes.uint4", "_atypes.UInt4"},
+};
 
 string AttrVarName(const string& attr_name,
                    std::unordered_map<string, string>* attr_expressions) {

@@ -18,7 +18,7 @@ from absl.testing import absltest
 import numpy as np
 
 from google.protobuf.message import DecodeError
-from tensorflow.compiler.xla import xla_data_pb2
+from local_xla.xla import xla_data_pb2
 from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes

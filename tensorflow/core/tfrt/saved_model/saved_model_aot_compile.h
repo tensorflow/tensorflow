@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
-#include "tensorflow/compiler/xla/service/compiler.h"
+#include "xla/service/compiler.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 
 namespace tensorflow::tfrt_stub {

@@ -21,10 +21,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#ifdef TFLITE_HAVE_CPUINFO
-#include "include/cpuinfo.h"
-#endif
-
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -41,6 +37,15 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
+
+#ifdef TFLITE_HAVE_CPUINFO
+#include "include/cpuinfo.h"
+#endif
+
+#if defined(__APPLE__) || defined(__linux__) || defined(__Fuchsia__)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
 
 namespace tflite {
 namespace ops {
@@ -130,6 +135,7 @@ struct OpData {
   bool ledger_initialized;
   // Used for 4bit hybrid
   std::unique_ptr<optimized_4bit::OpData4Bit> op_data_4bit = nullptr;
+  TfLiteType quantized_bias_type = kTfLiteNoType;
 };
 
 constexpr int kInputTensor = 0;
@@ -143,7 +149,6 @@ constexpr int kQuantizedInputTensor = 0;
 constexpr int kScalingFactorsTensor = 1;
 constexpr int kAccumulatorTensor = 2;
 constexpr int kInputOffsetsTensor = 3;
-constexpr int kPackedCacheTensor = 4;
 
 inline TfLiteStatus CheckTypes(TfLiteContext* context,
                                const TfLiteTensor* input,
@@ -241,8 +246,6 @@ TfLiteStatus PrepareImpl4Bit(TfLiteContext* context, TfLiteNode* node,
                              int lhs_width, int rhs_width, int depth,
                              int batch_size, int cols, int output_depth) {
   const int units = output_depth;
-  const int lhs_layout_rows =
-      (units + (optimized_4bit::FilterWidth - 1)) & ~(lhs_width - 1);
   const int lhs_layout_cols =
       (cols + (optimized_4bit::FilterDepth - 1)) & ~(depth - 1);
   const int rhs_layout_rows = (batch_size + (rhs_width - 1)) & ~(rhs_width - 1);
@@ -263,31 +266,43 @@ TfLiteStatus PrepareImpl4Bit(TfLiteContext* context, TfLiteNode* node,
       GetTemporarySafe(context, node, kQuantizedInputTensor, &input_quantized));
   input_quantized->type = kTfLiteInt8;
   input_quantized->allocation_type = kTfLiteArenaRw;
-  TfLiteIntArray* input_quantized_size = TfLiteIntArrayCreate(2);
-  input_quantized_size->data[0] = rhs_layout_rows;
-  input_quantized_size->data[1] = rhs_layout_cols;
-  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_quantized,
-                                                   input_quantized_size));
+  const int input_quantized_dims[2] = {rhs_layout_rows, rhs_layout_cols};
+  if (!TfLiteIntArrayEqualsArray(input_quantized->dims, 2,
+                                 input_quantized_dims)) {
+    TfLiteIntArray* input_quantized_size = TfLiteIntArrayCreate(2);
+    input_quantized_size->data[0] = input_quantized_dims[0];
+    input_quantized_size->data[1] = input_quantized_dims[1];
+    TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_quantized,
+                                                     input_quantized_size));
+  }
   TfLiteTensor* scaling_factors;
   TF_LITE_ENSURE_OK(
       context,
       GetTemporarySafe(context, node, kScalingFactorsTensor, &scaling_factors));
   scaling_factors->type = kTfLiteFloat32;
   scaling_factors->allocation_type = kTfLiteArenaRw;
-  TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
-  scaling_factors_size->data[0] = rhs_layout_rows;
-  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
-                                                   scaling_factors_size));
+  const int scaling_factors_dims[1] = {rhs_layout_rows};
+  if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1,
+                                 scaling_factors_dims)) {
+    TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
+    scaling_factors_size->data[0] = scaling_factors_dims[0];
+    TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
+                                                     scaling_factors_size));
+  }
 
   TfLiteTensor* accum_scratch;
   TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, kAccumulatorTensor,
                                               &accum_scratch));
   accum_scratch->type = kTfLiteInt32;
   accum_scratch->allocation_type = kTfLiteArenaRw;
-  TfLiteIntArray* accum_size = TfLiteIntArrayCreate(2);
-  accum_size->data[0] = dst_layout_rows, accum_size->data[1] = dst_layout_cols;
-  TF_LITE_ENSURE_OK(context,
-                    context->ResizeTensor(context, accum_scratch, accum_size));
+  const int accum_scratch_dims[2] = {dst_layout_rows, dst_layout_cols};
+  if (!TfLiteIntArrayEqualsArray(accum_scratch->dims, 2, accum_scratch_dims)) {
+    TfLiteIntArray* accum_size = TfLiteIntArrayCreate(2);
+    accum_size->data[0] = accum_scratch_dims[0];
+    accum_size->data[1] = accum_scratch_dims[1];
+    TF_LITE_ENSURE_OK(
+        context, context->ResizeTensor(context, accum_scratch, accum_size));
+  }
 
   TfLiteTensor* input_offsets;
   TF_LITE_ENSURE_OK(
@@ -295,23 +310,13 @@ TfLiteStatus PrepareImpl4Bit(TfLiteContext* context, TfLiteNode* node,
       GetTemporarySafe(context, node, kInputOffsetsTensor, &input_offsets));
   input_offsets->type = kTfLiteInt32;
   input_offsets->allocation_type = kTfLiteArenaRw;
-  TfLiteIntArray* input_offsets_size = TfLiteIntArrayCreate(1);
-  input_offsets_size->data[0] = rhs_layout_rows;
-  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_offsets,
-                                                   input_offsets_size));
-
-  TfLiteTensor* packed_cache;
-  TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, kPackedCacheTensor,
-                                              &packed_cache));
-  packed_cache->type = kTfLiteUInt8;
-  packed_cache->allocation_type = kTfLiteArenaRwPersistent;
-  TfLiteIntArray* packed_cache_size = TfLiteIntArrayCreate(1);
-  const uintptr_t padding = optimized_4bit::kDefaultAlignmentPadding;
-  packed_cache_size->data[0] =
-      padding + (lhs_layout_rows * lhs_layout_cols / 2);
-  TF_LITE_ENSURE_OK(
-      context, context->ResizeTensor(context, packed_cache, packed_cache_size));
-  data->op_data_4bit->needs_prepack = true;
+  const int input_offsets_dims[1] = {rhs_layout_rows};
+  if (!TfLiteIntArrayEqualsArray(input_offsets->dims, 1, input_offsets_dims)) {
+    TfLiteIntArray* input_offsets_size = TfLiteIntArrayCreate(1);
+    input_offsets_size->data[0] = input_offsets_dims[0];
+    TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_offsets,
+                                                     input_offsets_size));
+  }
 
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
@@ -460,6 +465,15 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
   if (input->type == kTfLiteInt16 && output->type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+
+    // Check quantized_bias_type is either kTfLiteInt64 or kTfLiteInt32.
+    if (params->quantized_bias_type != kTfLiteFloat32) {
+      TF_LITE_ENSURE(context, params->quantized_bias_type == kTfLiteInt32 ||
+                                  params->quantized_bias_type == kTfLiteInt64);
+      TF_LITE_ENSURE(context, (bias == nullptr) ||
+                                  bias->type == params->quantized_bias_type);
+      data->quantized_bias_type = params->quantized_bias_type;
+    }
   }
 
   // If we have to perform on-the-fly quantization (with quantized weights and
@@ -875,8 +889,8 @@ TfLiteStatus EvalHybridDense4Bit(
     TfLiteFullyConnectedParams* params, OpData* data, const TfLiteTensor* input,
     const TfLiteTensor* filter, const TfLiteTensor* bias,
     TfLiteTensor* input_quantized, TfLiteTensor* scaling_factors,
-    TfLiteTensor* accum_scratch, TfLiteTensor* prepacked_cache,
-    TfLiteTensor* input_offsets, TfLiteTensor* output) {
+    TfLiteTensor* accum_scratch, TfLiteTensor* input_offsets,
+    TfLiteTensor* output) {
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
   int8_t* quant_data = GetTensorData<int8_t>(input_quantized);
   int32_t* input_offset_ptr = GetTensorData<int32_t>(input_offsets);
@@ -893,18 +907,40 @@ TfLiteStatus EvalHybridDense4Bit(
   const int rhs_layout_cols = lhs_layout_cols;
   const int dst_layout_rows = rhs_layout_rows;
   const int dst_layout_cols = lhs_layout_rows;
-  uint8_t* prepacked_cache_ptr = GetTensorData<uint8_t>(prepacked_cache);
-  const uintptr_t padding = optimized_4bit::kDefaultAlignmentPadding;
-  const uintptr_t aligned =
-      (reinterpret_cast<uintptr_t>(prepacked_cache_ptr) + padding) & ~padding;
-  prepacked_cache_ptr = reinterpret_cast<uint8_t*>(aligned);
   if (data->op_data_4bit->needs_prepack) {
-    optimized_4bit::Prepack(prepacked_cache_ptr, GetTensorData<int8_t>(filter),
-                            lhs_layout_rows, lhs_layout_cols, output_depth,
-                            cols, lhs_width, depth);
+    const int weight_size = lhs_layout_rows * lhs_layout_cols / 2;
+    const int required_size =
+        optimized_4bit::kDefaultAlignmentPadding + weight_size;
+    data->op_data_4bit->AllocatePackedRegion(required_size);
+    const int8_t* weight_ptr = GetTensorData<int8_t>(filter);
+    optimized_4bit::api::Prepack(data->op_data_4bit->prepacked_cache,
+                                 weight_ptr, lhs_layout_rows, lhs_layout_cols,
+                                 output_depth, cols, lhs_width, depth);
     data->op_data_4bit->needs_prepack = false;
+#ifdef MADV_PAGEOUT
+    // After prepacking, we will never use the weights from the model file. Mark
+    // them with MADV_PAGEOUT so the kernel can reclaim the pages, decreasing
+    // the resident memory size.
+    //
+    // This is Linux specific. There is no effect on other platforms (e.g. on
+    // Windows, but possibly other POSIX platforms!). It requires a minimum
+    // Kernel version of 5.4 - on older kernels the call will return with an
+    // error, but we ignore it. The kernel might also ignore this hint.
+    //
+    // Note, due to rounding the pointer up (which is necessary due to madvise
+    // requiring an address that aligns with the page size), the first partial
+    // page will not be reclaimed. Madvise also rounds the end of the hinted
+    // range down, so the last partial page is also unaffected. Because of this
+    // behavior, on average one memory page (usually 4 kiB) per buffer holding 4
+    // bit data will not be paged out.
+    static const uintptr_t pagesize = sysconf(_SC_PAGESIZE);
+    int8_t* up_aligned_ptr = reinterpret_cast<int8_t*>(
+        ((reinterpret_cast<uintptr_t>(weight_ptr) + pagesize - 1) / pagesize) *
+        pagesize);
+    const auto rounding_size = up_aligned_ptr - weight_ptr;
+    madvise(up_aligned_ptr, weight_size - rounding_size, MADV_PAGEOUT);
+#endif
   }
-  data->op_data_4bit->prepacked_cache = prepacked_cache_ptr;
 
   std::vector<float> filter_scales(lhs_layout_rows, filter->params.scale);
   auto* filter_params =
@@ -919,17 +955,17 @@ TfLiteStatus EvalHybridDense4Bit(
       }
     }
   }
-  optimized_4bit::BatchQuantizeFloats4Bit(
+  optimized_4bit::api::BatchQuantizeFloats4Bit(
       GetTensorData<float>(input), batch_size, cols, quant_data,
       scaling_factors_ptr, rhs_width, depth, input_offset_ptr);
   const float* bias_ptr =
       bias != nullptr ? GetTensorData<float>(bias) : nullptr;
-  optimized_4bit::AssignBiasAndComputeOffsets(
+  optimized_4bit::api::AssignBiasAndComputeOffsets(
       input_offset_ptr, scaling_factors_ptr, filter_scales.data(), bias_ptr,
       GetTensorData<float>(output), output_depth, batch_size);
   const uint8_t* lhs = data->op_data_4bit->prepacked_cache;
   int32_t* dst = GetTensorData<int32_t>(accum_scratch);
-  optimized_4bit::RunAndUnpack(
+  optimized_4bit::api::RunAndUnpack(
       data->op_data_4bit->rows_right, lhs, quant_data, dst, output_depth,
       batch_size, lhs_layout_rows, lhs_layout_cols, rhs_layout_rows,
       rhs_layout_cols, dst_layout_rows, dst_layout_cols,
@@ -1071,17 +1107,18 @@ void FullyConnectedInt16(const OpData* data, const TfLiteTensor* input,
   op_params.output_shift = data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
-  if (bias && bias->type == kTfLiteInt64) {
+
+  if (data->quantized_bias_type == kTfLiteInt32) {
     reference_integer_ops::FullyConnected(
         op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
         GetTensorShape(filter), GetTensorData<int8_t>(filter),
-        GetTensorShape(bias), GetTensorData<int64_t>(bias),
+        GetTensorShape(bias), GetTensorData<int32_t>(bias),
         GetTensorShape(output), GetTensorData<int16_t>(output));
   } else {
     reference_integer_ops::FullyConnected(
         op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
         GetTensorShape(filter), GetTensorData<int8_t>(filter),
-        GetTensorShape(bias), GetTensorData<int32_t>(bias),
+        GetTensorShape(bias), GetTensorData<int64_t>(bias),
         GetTensorShape(output), GetTensorData<int16_t>(output));
   }
 }
@@ -1135,13 +1172,14 @@ void FullyConnectedPerChannelInt16(const OpData* data,
   op_params.output_offset = output->params.zero_point;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
-  if (bias && bias->type == kTfLiteInt64) {
+
+  if (data->quantized_bias_type == kTfLiteInt32) {
     reference_integer_ops::FullyConnectedPerChannel(
         op_params, data->per_channel_output_multiplier.data(),
         data->per_channel_output_shift.data(), GetTensorShape(input),
         GetTensorData<int16_t>(input), GetTensorShape(filter),
         GetTensorData<int8_t>(filter), GetTensorShape(bias),
-        GetTensorData<int64_t>(bias), GetTensorShape(output),
+        GetTensorData<int32_t>(bias), GetTensorShape(output),
         GetTensorData<int16_t>(output));
   } else {
     reference_integer_ops::FullyConnectedPerChannel(
@@ -1149,7 +1187,7 @@ void FullyConnectedPerChannelInt16(const OpData* data,
         data->per_channel_output_shift.data(), GetTensorShape(input),
         GetTensorData<int16_t>(input), GetTensorShape(filter),
         GetTensorData<int8_t>(filter), GetTensorShape(bias),
-        GetTensorData<int32_t>(bias), GetTensorShape(output),
+        GetTensorData<int64_t>(bias), GetTensorShape(output),
         GetTensorData<int16_t>(output));
   }
 }
@@ -1211,13 +1249,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     TF_LITE_ENSURE_OK(
         context, GetTemporarySafe(context, node, /*index=*/3, &input_offsets));
     if (data->op_data_4bit) {
-      TfLiteTensor* packed_cache;
-      TF_LITE_ENSURE_OK(
-          context,
-          GetTemporarySafe(context, node, kPackedCacheTensor, &packed_cache));
-      return EvalHybridDense4Bit(
-          context, node, params, data, input, filter, bias, input_quantized,
-          scaling_factors, accum_scratch, packed_cache, input_offsets, output);
+      return EvalHybridDense4Bit(context, node, params, data, input, filter,
+                                 bias, input_quantized, scaling_factors,
+                                 accum_scratch, input_offsets, output);
     }
     TfLiteTensor* row_sums;
     TF_LITE_ENSURE_OK(context,

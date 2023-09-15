@@ -1,11 +1,11 @@
 # Description:
 #  Tools for building the TensorFlow pip package.
 
-load("//tensorflow:tensorflow.bzl", "filegroup_as_file", "if_windows", "transitive_hdrs")
-load("//third_party/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
+load("//tensorflow:tensorflow.bzl", "filegroup_as_file", "transitive_hdrs")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
+load("//third_party/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 
 package(default_visibility = ["//visibility:private"])
 
@@ -42,7 +42,7 @@ transitive_hdrs(
         "//tensorflow/c/experimental/grappler:grappler_hdrs",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:ops_hdrs",
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+        "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
         # TODO(rostam): Revisit these after cc_shared_library everywhere
         "//tensorflow/cc:client_session",
@@ -67,7 +67,7 @@ transitive_hdrs(
         "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python/client:tf_session_helper",
         "//third_party/eigen3",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "@local_xla//xla/stream_executor:stream_executor_headers",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
     ]),
@@ -170,6 +170,8 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/summary:summary_py",
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
+    "//tensorflow/python/tools/api/generator2/extractor:extractor",
+    "//tensorflow/python/tools/api/generator2/generator:generator",
     "//tensorflow/python/tpu",
     "//tensorflow/python/util:deprecated_module",
     "//tensorflow/python/util:deprecated_module_new",
@@ -187,7 +189,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/common:test_module1",
     "//tensorflow/tools/common:traverse",
     "//tensorflow/tools/docs:tf_doctest_lib",
-    "//tensorflow/tsl/profiler/protobuf:trace_events_proto_py",
+    "@local_tsl//tsl/profiler/protobuf:trace_events_proto_py",
     "//tensorflow/python/distribute:parameter_server_strategy_v2",
     "//tensorflow/python/distribute/coordinator:cluster_coordinator",
     "//tensorflow/python/distribute/coordinator:remote_eager_lib",
@@ -202,31 +204,25 @@ filegroup(
     data = [
         "//:LICENSE",
         "//third_party/icu/data:LICENSE",
-        "@astunparse_archive//:LICENSE",
         "@com_google_absl//:LICENSE",
         "@com_google_protobuf//:LICENSE",
         "@curl//:COPYING",
-        "@dill_archive//:LICENSE",
         "@ducc//:LICENSE",
         "@flatbuffers//:LICENSE",
-        "@gast_archive//:PKG-INFO",
         "@gemmlowp//:LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
         "@llvm-project//llvm:LICENSE.TXT",
         "@llvm-project//mlir:LICENSE.TXT",
         "@local_config_tensorrt//:LICENSE",
         "@ml_dtypes//:LICENSE",
-        "@opt_einsum_archive//:LICENSE",
+        "@org_brotli//:LICENSE",
         "@pasta//:LICENSE",
         "@png//:LICENSE",
         "@ruy//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@stablehlo//:LICENSE",
-        "@tblib_archive//:LICENSE",
-        "@termcolor_archive//:COPYING.txt",
         "@tf_runtime//:LICENSE",
-        "@typing_extensions_archive//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -236,7 +232,7 @@ filegroup(
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
     }) + select({
-        "//tensorflow/tsl:with_numa_support": [
+        "@local_tsl//tsl:with_numa_support": [
             "@hwloc//:COPYING",
         ],
         "//conditions:default": [],
@@ -266,6 +262,8 @@ sh_binary(
            select({
                "//tensorflow:dynamic_loaded_kernels": DYNAMIC_LOADED_KERNELS,
                "//conditions:default": [],
-           }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+           }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]) + [
+        "//tensorflow:tf_python_api_gen_v2",
+    ],
     visibility = ["//visibility:public"],
 )

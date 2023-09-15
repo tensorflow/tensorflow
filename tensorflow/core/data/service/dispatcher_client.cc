@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
@@ -364,12 +364,14 @@ Status DataServiceDispatcherClient::GetDataServiceConfig(
 }
 
 Status DataServiceDispatcherClient::DisableCompressionAtRuntime(
-    const DisableCompressionAtRuntimeRequest& request,
+    const std::string& dataset_id, bool disable_compression_at_runtime,
     DisableCompressionAtRuntimeResponse& response) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   grpc::ClientContext ctx;
-  DisableCompressionAtRuntimeRequest mine = request;
-  grpc::Status s = stub_->DisableCompressionAtRuntime(&ctx, mine, &response);
+  DisableCompressionAtRuntimeRequest request;
+  request.set_dataset_id(dataset_id);
+  request.set_disable_compression_at_runtime(disable_compression_at_runtime);
+  grpc::Status s = stub_->DisableCompressionAtRuntime(&ctx, request, &response);
   if (!s.ok()) {
     return grpc_util::WrapError(
         "Failed to get runtime compression disabling decision", s);

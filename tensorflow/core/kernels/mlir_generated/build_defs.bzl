@@ -6,7 +6,7 @@ load(
     "rocm_gpu_architectures",
 )
 load(
-    "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
+    "@local_xla//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")

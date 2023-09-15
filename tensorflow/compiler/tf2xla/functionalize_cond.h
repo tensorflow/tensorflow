@@ -19,7 +19,7 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 

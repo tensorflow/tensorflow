@@ -20,7 +20,6 @@ TFCI_BAZEL_COMMON_ARGS=(--config sigbuild_remote_cache --disk_cache=build_output
 
 # Disable all CI-specific behavior. You never need any of these if you are
 # running a script locally.
-TFCI_COPYBARA_ENABLE=0
 TFCI_INDEX_HTML_ENABLE=
 TFCI_UPLOAD_LIB_ENABLE=
 TFCI_UPLOAD_LIB_LATEST_ENABLE=

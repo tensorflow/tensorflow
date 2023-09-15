@@ -91,6 +91,19 @@ cc_library(
 )
 
 tf_cuda_library(
+    name = "tensor_metadata",
+    hdrs = ["tensor_metadata.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":type_util",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:tensor_shape",
+        "@tf_runtime//:support",
+        "@tf_runtime//:tensor",
+    ],
+)
+
+tf_cuda_library(
     name = "tensor_util",
     srcs = ["tensor_util.cc"],
     hdrs = [
@@ -98,7 +111,7 @@ tf_cuda_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":type_util",
+        ":tensor_metadata",
         "//tensorflow/c:tf_datatype",
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/framework:types_proto_cc",
@@ -153,8 +166,8 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:protobuf",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",

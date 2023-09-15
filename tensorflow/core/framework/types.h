@@ -20,7 +20,7 @@ limitations under the License.
 #include <set>
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/framework/device_type.h"
+#include "tsl/framework/device_type.h"
 
 namespace tensorflow {
 
@@ -242,7 +242,9 @@ constexpr DataTypeSet kAllTypes =
     ToSet(DT_BOOL) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) | ToSet(DT_QINT16) |
     ToSet(DT_QUINT16) | ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_RESOURCE) |
     ToSet(DT_VARIANT) | ToSet(DT_UINT32) | ToSet(DT_UINT64) |
-    ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT8_E5M2) | ToSet(DT_FLOAT8_E4M3FN);
+    ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT8_E5M2) | ToSet(DT_FLOAT8_E4M3FN) |
+    ToSet(DT_INT4) | ToSet(DT_UINT4);
+
 inline const DataTypeSet& AllTypes() { return kAllTypes; }
 
 #if !defined(IS_MOBILE_PLATFORM) || defined(SUPPORT_SELECTIVE_REGISTRATION)
@@ -252,7 +254,7 @@ constexpr DataTypeSet kRealNumberTypes =
     ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT32) | ToSet(DT_INT64) |
     ToSet(DT_UINT8) | ToSet(DT_INT16) | ToSet(DT_INT8) | ToSet(DT_UINT16) |
     ToSet(DT_HALF) | ToSet(DT_UINT32) | ToSet(DT_UINT64) | ToSet(DT_BFLOAT16);
-inline const DataTypeSet RealNumberTypes() { return kRealNumberTypes; }
+inline const DataTypeSet& RealNumberTypes() { return kRealNumberTypes; }
 
 // Return the list of all numeric types.
 // Includes complex and quantized types.
@@ -378,6 +380,8 @@ MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
 MATCH_TYPE_AND_ENUM(Eigen::half, DT_HALF);
 MATCH_TYPE_AND_ENUM(float8_e5m2, DT_FLOAT8_E5M2);
 MATCH_TYPE_AND_ENUM(float8_e4m3fn, DT_FLOAT8_E4M3FN);
+MATCH_TYPE_AND_ENUM(int4, DT_INT4);
+MATCH_TYPE_AND_ENUM(uint4, DT_UINT4);
 MATCH_TYPE_AND_ENUM(ResourceHandle, DT_RESOURCE);
 MATCH_TYPE_AND_ENUM(Variant, DT_VARIANT);
 
@@ -455,7 +459,7 @@ constexpr DataTypeSet kDataTypesCanUseMemcpy =
     ToSet(DT_UINT64) | ToSet(DT_BOOL) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
     ToSet(DT_QINT16) | ToSet(DT_QUINT16) | ToSet(DT_QINT32) |
     ToSet(DT_BFLOAT16) | ToSet(DT_HALF) | ToSet(DT_FLOAT8_E5M2) |
-    ToSet(DT_FLOAT8_E4M3FN);
+    ToSet(DT_FLOAT8_E4M3FN) | ToSet(DT_INT4) | ToSet(DT_UINT4);
 inline bool DataTypeCanUseMemcpy(DataType dt) {
   return kDataTypesCanUseMemcpy.Contains(dt);
 }
@@ -484,22 +488,25 @@ inline bool DataTypeIsQuantized(DataType dt) {
 
 // Is the dtype nonquantized integral?
 constexpr DataTypeSet kDataTypeIsInteger =
-    ToSet(DT_INT8) | ToSet(DT_UINT8) | ToSet(DT_INT16) | ToSet(DT_UINT16) |
-    ToSet(DT_INT32) | ToSet(DT_UINT32) | ToSet(DT_INT64) | ToSet(DT_UINT64);
+    ToSet(DT_INT4) | ToSet(DT_UINT4) | ToSet(DT_INT8) | ToSet(DT_UINT8) |
+    ToSet(DT_INT16) | ToSet(DT_UINT16) | ToSet(DT_INT32) | ToSet(DT_UINT32) |
+    ToSet(DT_INT64) | ToSet(DT_UINT64);
 inline bool DataTypeIsInteger(DataType dt) {
   return kDataTypeIsInteger.Contains(dt);
 }
 
 // Is the dtype a signed integral type?
-constexpr DataTypeSet kDataTypeIsSigned =
-    ToSet(DT_INT8) | ToSet(DT_INT16) | ToSet(DT_INT32) | ToSet(DT_INT64);
+constexpr DataTypeSet kDataTypeIsSigned = ToSet(DT_INT4) | ToSet(DT_INT8) |
+                                          ToSet(DT_INT16) | ToSet(DT_INT32) |
+                                          ToSet(DT_INT64);
 inline bool DataTypeIsSigned(DataType dt) {
   return kDataTypeIsSigned.Contains(dt);
 }
 
 // Is the dtype an unsigned integral type?
-constexpr DataTypeSet kDataTypeIsUnsigned =
-    ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_UINT32) | ToSet(DT_UINT64);
+constexpr DataTypeSet kDataTypeIsUnsigned = ToSet(DT_UINT4) | ToSet(DT_UINT8) |
+                                            ToSet(DT_UINT16) |
+                                            ToSet(DT_UINT32) | ToSet(DT_UINT64);
 inline bool DataTypeIsUnsigned(DataType dt) {
   return kDataTypeIsUnsigned.Contains(dt);
 }

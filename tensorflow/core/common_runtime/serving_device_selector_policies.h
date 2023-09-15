@@ -21,6 +21,10 @@ limitations under the License.
 
 namespace tensorflow {
 
+enum class ServingDeviceSelectorPolicy {
+  kRoundRobin,
+};
+
 class RoundRobinPolicy : public ServingDeviceSelector::Policy {
  public:
   RoundRobinPolicy() : ordinal_(0) {}

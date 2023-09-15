@@ -54,9 +54,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
-#include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
-#include "tensorflow/tsl/protobuf/rpc_options.pb.h"
+#include "tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "tsl/distributed_runtime/rpc/grpc_call.h"
+#include "tsl/protobuf/rpc_options.pb.h"
 
 namespace tensorflow {
 

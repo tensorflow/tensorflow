@@ -155,6 +155,12 @@ struct TfrtCompileOptions {
   // Whether to use gpurt.compile_and_execute for GPU.
   // TODO(b/294895431): Remove the flag and default to the fused op.
   bool use_gpu_compile_and_execute_op = false;
+
+  // If true, MLIR module will be serialized to aot_packages.
+  bool serialize_mlir_module_to_aot_packages = false;
+
+  // Serialized MLIR module file under aot_packages.
+  std::string aot_mlir_module_file;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

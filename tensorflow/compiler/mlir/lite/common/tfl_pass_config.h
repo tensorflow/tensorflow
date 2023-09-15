@@ -31,72 +31,61 @@ namespace TFL {
 // A config that controls which passes get run as part TFLite converter.
 struct PassConfig {
   explicit PassConfig(quant::QuantizationSpecs specs)
-      : emit_builtin_tflite_ops(true),
-        lower_tensor_list_ops(false),
-        trim_functions_allowlist({}),
-        quant_specs(std::move(specs)),
-        form_clusters(false),
-        unfold_batch_matmul(true),
-        shape_inference(true),
-        runtime_verification(true),
-        enable_tflite_variables(false),
-        disable_variable_freezing(false),
-        unfold_large_splat_constant(false),
-        guarantee_all_funcs_one_use(false),
-        enable_hlo_to_tf_conversion(false),
-        enable_dynamic_update_slice(false),
-        preserve_assert_op(false),
-        enable_stablehlo_conversion(false),
-        legalize_custom_tensor_list_ops(false) {}
+      : quant_specs(std::move(specs)) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
-  bool emit_builtin_tflite_ops;
+  bool emit_builtin_tflite_ops = true;
   // If `lower_tensor_list_ops` is true, tensorlist ops will be lowered to basic
   // TF ops before legalization to TF Lite dialect.
-  bool lower_tensor_list_ops;
+  bool lower_tensor_list_ops = false;
   // The allowlist of functions that would be preserved after trimming.
   llvm::ArrayRef<std::string> trim_functions_allowlist;
   // All information about quantization.
   quant::QuantizationSpecs quant_specs;
   // If `form_clusters` is true , clusters are formed by grouping consecutive
   // ops of the same device, under a `tf_device.launch` op.
-  bool form_clusters;
-  // if `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
+  bool form_clusters = false;
+  // If `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
   // of tfl.fully_connected ops.
-  bool unfold_batch_matmul;
+  bool unfold_batch_matmul = true;
   // Whether to outline WhileOp at the end of the pipeline.
   bool outline_tf_while = false;
   // Whether to do shape inference.
-  bool shape_inference;
+  bool shape_inference = true;
   // Whether to do TFLite runtime verification.
-  bool runtime_verification;
+  bool runtime_verification = true;
   // Whether to enable TFLite variables or not, this will allow
   // mutable variables and produce ReadVariable/AssignVariable ops in TFLite.
-  bool enable_tflite_variables;
+  bool enable_tflite_variables = false;
   // Whether to disable the variable freezing pass or not.
   // By default we freeze all variables and disallow mutable variables. When
   // 'enable_tflite_variables' is true then we allow mutable variable only.
-  bool disable_variable_freezing;
+  bool disable_variable_freezing = false;
   // Whether to unfold large splat constant tensors and replace them with
   // fill operation.
-  bool unfold_large_splat_constant;
+  bool unfold_large_splat_constant = false;
   // Whether to run the `GuaranteeAllFuncsOneUsePass` to ensure each function
   // has a single use.
-  bool guarantee_all_funcs_one_use;
+  bool guarantee_all_funcs_one_use = false;
   // Whether to enable the hlo/stablehlo to tf conversion. This also supports
   // the case where a saved model contains both TF module and serialized
   // StableHLO module.
-  bool enable_hlo_to_tf_conversion;
+  bool enable_hlo_to_tf_conversion = false;
   // Whether to enable to use DynamicUpdateSlice op.
-  bool enable_dynamic_update_slice;
+  bool enable_dynamic_update_slice = false;
   // Whether to preserve AssertOp during legalization.
-  bool preserve_assert_op;
+  bool preserve_assert_op = false;
   // Whether to enable TF->stablehlo passes.
-  bool enable_stablehlo_conversion;
+  bool enable_stablehlo_conversion = false;
   // Whether to convert `tf.TensorList*` to `tfl.custom_op` if they can all
   // be supported.
-  bool legalize_custom_tensor_list_ops;
+  bool legalize_custom_tensor_list_ops = false;
+  // Whether to convert some tensor types to a lower precision if all values
+  // within that tensor are within the range of the lower precision. This could
+  // have side effects e.g. reduced flatbuffer size. Only certain type
+  // conversions are supported.
+  bool reduce_type_precision = false;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -124,7 +113,9 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << "\nenable_stablehlo_conversion: "
             << pass_config.enable_stablehlo_conversion
             << "\nlegalize_custom_tensor_list_ops: "
-            << pass_config.legalize_custom_tensor_list_ops << "\n";
+            << pass_config.legalize_custom_tensor_list_ops
+            << "\nreduce_type_precision: " << pass_config.reduce_type_precision
+            << "\n";
 }
 
 }  // namespace TFL

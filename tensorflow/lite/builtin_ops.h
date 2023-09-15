@@ -217,6 +217,21 @@ typedef enum {
   kTfLiteBuiltinStablehloSelect = 187,
   kTfLiteBuiltinStablehloSubtract = 188,
   kTfLiteBuiltinStablehloTanh = 189,
+  kTfLiteBuiltinStablehloScatter = 190,
+  kTfLiteBuiltinStablehloCompare = 191,
+  kTfLiteBuiltinStablehloConvert = 192,
+  kTfLiteBuiltinStablehloDynamicSlice = 193,
+  kTfLiteBuiltinStablehloDynamicUpdateSlice = 194,
+  kTfLiteBuiltinStablehloPad = 195,
+  kTfLiteBuiltinStablehloIota = 196,
+  kTfLiteBuiltinStablehloDotGeneral = 197,
+  kTfLiteBuiltinStablehloReduceWindow = 198,
+  kTfLiteBuiltinStablehloSort = 199,
+  kTfLiteBuiltinStablehloWhile = 200,
+  kTfLiteBuiltinStablehloGather = 201,
+  kTfLiteBuiltinStablehloTranspose = 202,
+  kTfLiteBuiltinDilate = 203,
+  kTfLiteBuiltinStablehloRngBitGenerator = 204,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

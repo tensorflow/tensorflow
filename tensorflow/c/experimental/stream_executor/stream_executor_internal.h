@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/compiler/xla/stream_executor/executor_cache.h"
-#include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "xla/stream_executor/executor_cache.h"
+#include "xla/stream_executor/platform.h"
 
 namespace stream_executor {
 
@@ -76,12 +76,6 @@ class CPlatform : public Platform {
       const StreamExecutorConfig& config) override;
   tsl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) override;
-
-  // Trace listener is not supported
-  void RegisterTraceListener(std::unique_ptr<TraceListener> listener) override {
-    LOG(FATAL) << "RegisterTraceListener is not supported by pluggable device";
-  }
-  void UnregisterTraceListener(TraceListener* listener) override {}
 
   void DestroyAllExecutors() { executor_cache_.DestroyAllExecutors(); }
 

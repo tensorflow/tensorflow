@@ -42,7 +42,7 @@ tensorflow::IsMklEnabled
 [//tensorflow/compiler/tf2xla:tf2xla_opset] # tf2xla_opset
 tensorflow::GetRegisteredXlaOpsForDevice
 
-[//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl] # stat_summarizer
+[//external/local_xla/xla/stream_executor:stream_executor_pimpl] # stat_summarizer
 stream_executor::StreamExecutor::EnablePeerAccessTo
 stream_executor::StreamExecutor::CanEnablePeerAccessTo
 
@@ -59,7 +59,7 @@ tensorflow::tfprof::SerializeToString
 [//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool] # graph_analyze
 tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 
-[//tensorflow/tsl/python/lib/core:ml_dtypes_lib] # bfloat16, float8
+[//external/local_tsl/tsl/python/lib/core:ml_dtypes_lib] # bfloat16, float8
 tsl::ml_dtypes::RegisterTypes
 tsl::ml_dtypes::GetBfloat16Dtype
 tsl::ml_dtypes::GetFloat8E4m3b11fnuzDtype
@@ -307,7 +307,7 @@ tensorflow::AddWhileInputHack
 tensorflow::RecordMutation
 tensorflow::Graph::IsControlEdge
 
-[//tensorflow/tsl/python/lib/core:numpy] # tf_session
+[//external/local_tsl/tsl/python/lib/core:numpy] # tf_session
 tsl::ImportNumpy
 _tsl_numpy_api
 
@@ -393,13 +393,13 @@ tensorflow::grappler::GetNumAvailableLogicalCPUCores
 [//tensorflow/core/profiler/internal:traceme_recorder_impl] # profiler
 tensorflow::profiler::TraceMeRecorder::Record
 
-[//tensorflow/tsl/profiler/lib:profiler_session_impl] # profiler
+[//external/local_tsl/tsl/profiler/lib:profiler_session_impl] # profiler
 tsl::ProfilerSession::Create
 tsl::ProfilerSession::CollectData
 tsl::ProfilerSession::Status
 tsl::ProfilerSession::~ProfilerSession
 
-[//tensorflow/tsl/profiler/rpc:profiler_server_impl] # profiler
+[//external/local_tsl/tsl/profiler/rpc:profiler_server_impl] # profiler
 tsl::profiler::ProfilerServer::StartProfilerServer
 tsl::profiler::ProfilerServer::~ProfilerServer
 
@@ -412,7 +412,7 @@ tensorflow::profiler::RemoteProfilerSession::GetServiceAddress
 tensorflow::profiler::RemoteProfilerSession::WaitForCompletion
 tensorflow::profiler::RemoteProfilerSession::~RemoteProfilerSession
 
-[//tensorflow/tsl/profiler/rpc/client:profiler_client_impl] # profiler
+[//external/local_tsl/tsl/profiler/rpc/client:profiler_client_impl] # profiler
 tsl::profiler::ProfileGrpc
 tsl::profiler::NewSessionGrpc
 tsl::profiler::MonitorGrpc
@@ -421,14 +421,14 @@ tsl::profiler::RemoteProfilerSession::GetServiceAddress
 tsl::profiler::RemoteProfilerSession::WaitForCompletion
 tsl::profiler::RemoteProfilerSession::~RemoteProfilerSession
 
-[//tensorflow/compiler/xla:status_macros] # tfcompile
+[//external/local_xla/xla:status_macros] # tfcompile
 xla::status_macros::MakeErrorStream::Impl::Impl
 xla::status_macros::MakeErrorStream::Impl::~Impl
 xla::status_macros::MakeErrorStream::Impl::GetStatus
 xla::status_macros::MakeErrorStream::CheckNotDone
 xla::status_macros::MakeErrorStream::add_ret_check_failure
 
-[//tensorflow/compiler/xla/hlo/ir:hlo] # tfcompile
+[//external/local_xla/xla/hlo/ir:hlo] # tfcompile
 xla::DfsHloVisitorBase::SetVisited
 xla::DfsHloVisitorBase<class xla::HloInstruction.*>::SetVisited
 xla::HloComputation::Accept
@@ -485,7 +485,7 @@ tensorflow::GetMlirCommonFlags
 tensorflow::GetXlaDeviceFlags
 tensorflow::ResetJitCompilerFlags
 
-[//tensorflow/tsl/platform:tensor_float_32_utils] # tensor_float_32
+[//external/local_tsl/tsl/platform:tensor_float_32_utils] # tensor_float_32
 tsl::enable_tensor_float_32_execution
 tsl::tensor_float_32_execution_enabled
 
@@ -559,6 +559,7 @@ tensorflow::quantization::QuantizeQatModel
 tensorflow::quantization::QuantizePtqModelPreCalibration
 tensorflow::quantization::QuantizePtqModelPostCalibration
 tensorflow::quantization::QuantizePtqDynamicRange
+tensorflow::quantization::QuantizeWeightOnly
 
 [//tensorflow/dtensor/cc:dtensor_device_cc] # DTensor
 tensorflow::dtensor::AllocateDTensorDevice

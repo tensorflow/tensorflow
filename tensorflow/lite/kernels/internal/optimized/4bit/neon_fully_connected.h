@@ -153,7 +153,7 @@ inline void RunKernel<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
 #endif
 
 // Compute sum of lhs * rhs columnwise and write output to output_ptr.
-inline void RunAndUnpack(int rhs_width, const uint8_t* lhs, int8_t* rhs,
+inline void RunAndUnpack(int rhs_width, const uint8_t* lhs, const int8_t* rhs,
                          int32_t* dst, int output_depth, int batch_size,
                          int lhs_layout_rows, int lhs_layout_cols,
                          int rhs_layout_rows, int rhs_layout_cols,

@@ -415,3 +415,89 @@ func.func @uniform_quantize_cast_dequantize(%arg0: tensor<1xf32>) -> tensor<1xf3
   // CHECK: return %[[int_3]] : tensor<1xf32>
   func.return %2 : tensor<1xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_clip_min_cast
+func.func @uniform_quantize_clip_min_cast(%arg0: tensor<1x2x2x1x!tf_type.qint32>, %arg1: tensor<i32>) -> tensor<1x2x2x1x!tf_type.qint32> {
+  %scale = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %zp = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK-DAG: %[[MIN_QINT:.*]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<i32>) -> tensor<!tf_type.qint32>
+  %q_min = "tf.Cast"(%arg1) {Truncate = false} : (tensor<i32>) -> tensor<!tf_type.qint32>
+
+  // CHECK-DAG: %[[INPUT_QINT:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1x2x2x1xi32>) -> tensor<1x2x2x1x!tf_type.qint32>
+  // CHECK: "tf.UniformQuantizedClipByValue"(%[[INPUT_QINT]], %[[MIN_QINT]], %[[MIN_QINT]]
+  %output = "tf.UniformQuantizedClipByValue"(%arg0, %q_min, %q_min, %scale, %zp)
+    {quantization_axis = -1 : i64, quantization_max_val = 2147483647 : i64, quantization_min_val = -2147483648 : i64} :
+    (tensor<1x2x2x1x!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<f32>, tensor<i32>) -> tensor<1x2x2x1x!tf_type.qint32>
+  return %output : tensor<1x2x2x1x!tf_type.qint32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_clip_input_cast
+func.func @uniform_quantize_clip_input_cast(%arg0: tensor<1x2x2x1xi32>, %arg1: tensor<!tf_type.qint32>) -> tensor<1x2x2x1x!tf_type.qint32> {
+  %scale = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %zp = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK-DAG: %[[INPUT_QINT:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1x2x2x1xi32>) -> tensor<1x2x2x1x!tf_type.qint32>
+  %q_input = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1x2x2x1xi32>) -> tensor<1x2x2x1x!tf_type.qint32>
+
+  // CHECK-DAG: %[[MIN_QINT:.*]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<i32>) -> tensor<!tf_type.qint32>
+  // CHECK-DAG: %[[MAX_QINT:.*]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<i32>) -> tensor<!tf_type.qint32>
+  // CHECK: "tf.UniformQuantizedClipByValue"(%[[INPUT_QINT]], %[[MIN_QINT]], %[[MAX_QINT]]
+  %output = "tf.UniformQuantizedClipByValue"(%q_input, %arg1, %arg1, %scale, %zp)
+    {quantization_axis = -1 : i64, quantization_max_val = 2147483647 : i64, quantization_min_val = -2147483648 : i64} :
+    (tensor<1x2x2x1x!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<f32>, tensor<i32>) -> tensor<1x2x2x1x!tf_type.qint32>
+  return %output : tensor<1x2x2x1x!tf_type.qint32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_clip_output_cast
+func.func @uniform_quantize_clip_output_cast(%arg0: tensor<1x2x2x1x!tf_type.qint32>, %arg1: tensor<!tf_type.qint32>) -> tensor<1x2x2x1xi32> {
+  %scale = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %zp = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK-DAG: %[[INPUT_QINT:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1x2x2x1xi32>) -> tensor<1x2x2x1x!tf_type.qint32>
+  // CHECK-DAG: %[[MIN_QINT:.*]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<i32>) -> tensor<!tf_type.qint32>
+  // CHECK-DAG: %[[MAX_QINT:.*]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<i32>) -> tensor<!tf_type.qint32>
+  // CHECK: %[[OUTPUT_QINT:.*]] = "tf.UniformQuantizedClipByValue"(%[[INPUT_QINT]], %[[MIN_QINT]], %[[MAX_QINT]]
+  %q_output = "tf.UniformQuantizedClipByValue"(%arg0, %arg1, %arg1, %scale, %zp)
+    {quantization_axis = -1 : i64, quantization_max_val = 2147483647 : i64, quantization_min_val = -2147483648 : i64} :
+    (tensor<1x2x2x1x!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<f32>, tensor<i32>) -> tensor<1x2x2x1x!tf_type.qint32>
+
+  // CHECK: %[[OUTPUT:.*]] = "tf.Cast"(%[[OUTPUT_QINT]]) {Truncate = false} : (tensor<1x2x2x1x!tf_type.qint32>) -> tensor<1x2x2x1xi32>
+  %output = "tf.Cast"(%q_output) {Truncate = false} : (tensor<1x2x2x1x!tf_type.qint32>) -> tensor<1x2x2x1xi32>
+
+  return %output : tensor<1x2x2x1xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_clip_output_cast_multiple_uses
+func.func @uniform_quantize_clip_output_cast_multiple_uses(%arg0: tensor<1x2x2x1x!tf_type.qint32>, %arg1: tensor<!tf_type.qint32>) -> tensor<1x2x2x1xi32> {
+  %scale = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %zp = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK-DAG: %[[INPUT_QINT:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1x2x2x1xi32>) -> tensor<1x2x2x1x!tf_type.qint32>
+  // CHECK-DAG: %[[MIN_QINT:.*]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<i32>) -> tensor<!tf_type.qint32>
+  // CHECK-DAG: %[[MAX_QINT:.*]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<i32>) -> tensor<!tf_type.qint32>
+  // CHECK: %[[OUTPUT_QINT:.*]] = "tf.UniformQuantizedClipByValue"(%[[INPUT_QINT]], %[[MIN_QINT]], %[[MAX_QINT]]
+  %q_output = "tf.UniformQuantizedClipByValue"(%arg0, %arg1, %arg1, %scale, %zp)
+    {quantization_axis = -1 : i64, quantization_max_val = 2147483647 : i64, quantization_min_val = -2147483648 : i64} :
+    (tensor<1x2x2x1x!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<f32>, tensor<i32>) -> tensor<1x2x2x1x!tf_type.qint32>
+
+  // CHECK-DAG: %[[OUTPUT_1:.*]] = "tf.Cast"(%[[OUTPUT_QINT]]) {Truncate = false} : (tensor<1x2x2x1x!tf_type.qint32>) -> tensor<1x2x2x1xi32>
+  %output = "tf.Cast"(%q_output) {Truncate = false} : (tensor<1x2x2x1x!tf_type.qint32>) -> tensor<1x2x2x1xi32>
+
+  // CHECK-DAG: %[[OUTPUT_2:.*]] = "tf.Cast"(%[[OUTPUT_QINT]]) {Truncate = false} : (tensor<1x2x2x1x!tf_type.qint32>) -> tensor<1x2x2x1xi32>
+  // CHECK-DAG: %[[OUTPUT_QINT_1:.*]] = "tf.Cast"(%[[OUTPUT_1]]) {Truncate = false} : (tensor<1x2x2x1xi32>) -> tensor<1x2x2x1x!tf_type.qint32>
+  // CHECK: "tf.UniformDequantize"(%[[OUTPUT_QINT_1:.*]]
+  %dq = "tf.UniformDequantize"(%q_output, %scale, %zp) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<1x2x2x1x!tf_type.qint32>, tensor<f32>, tensor<i32>) -> tensor<1x2x2x1xf32>
+
+  return %output : tensor<1x2x2x1xi32>
+}

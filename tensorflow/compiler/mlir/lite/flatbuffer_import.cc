@@ -20,6 +20,7 @@ limitations under the License.
 #include <climits>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <set>
@@ -32,8 +33,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -60,10 +62,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -71,6 +75,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/offset_buffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
@@ -84,14 +89,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/string_util.h"
 
@@ -119,16 +124,11 @@ namespace tfl = mlir::TFL;
 
 namespace {
 
+constexpr char kScatterRegionFuncName[] = "update_computation_func_name";
+
 using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
-
-// Check if the model is using custom_option_offset to store custom op
-// buffers.
-// when this field is not set by the user, then Flatbuffer will omit the
-// field and interpret this as 0, so to ensure this field is populated,
-// Exporter will always set it to 1, but it's also not valid. So it's only
-// valid when it's > 1
-inline bool IsValidBufferOffset(const uint64_t val) { return val > 1; }
+using ::tflite::IsValidBufferOffset;
 
 bool IsQuantized(const TensorT& tensor) {
   return (tensor.quantization != nullptr) &&
@@ -200,25 +200,26 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
   uint32_t flags =
       is_signed ? mlir::quant::QuantizationFlags::FlagValue::Signed : 0;
 
-  // Rejects if quantized tensors have zero scales.
+  // Zero scales we make the minimum fp value, this is because some flatbuffers
+  // contain zero scale for zero values.
+  llvm::SmallVector<double> scales;
   for (float scale : quant_params.scale) {
     if (scale == 0) {
-      return errors::InvalidArgument(
-          "Quantized tensors must have non-zero scales");
+      scales.push_back(std::numeric_limits<float>::min());
+      continue;
     }
+    scales.push_back(scale);
   }
 
   // Scale size can't be zero as it is checked before.
   if (quant_params.scale.size() != 1) {
-    llvm::SmallVector<double, 4> scales(quant_params.scale.begin(),
-                                        quant_params.scale.end());
     return mlir::quant::UniformQuantizedPerAxisType::get(
         flags, storage_type, builder.getF32Type(), scales,
         quant_params.zero_point, quant_params.quantized_dimension, storage_min,
         storage_max);
   }
   return mlir::quant::UniformQuantizedType::get(
-      flags, storage_type, builder.getF32Type(), quant_params.scale.at(0),
+      flags, storage_type, builder.getF32Type(), scales[0],
       quant_params.zero_point.at(0), storage_min, storage_max);
 }
 
@@ -859,7 +860,7 @@ ConvertSubgraphIdxsToFunctionAttrs(tflite::BuiltinOptionsUnion options,
   return llvm::SmallVector<mlir::NamedAttribute, 4>{};
 }
 
-Status ConvertSubgraphIdxToReduceRegion(
+Status ConvertSubgraphIdxToStablehloRegion(
     const tflite::OperatorT& op, const std::vector<std::string>& func_names,
     Builder builder, OperationState& op_state) {
   if (auto* opts = op.builtin_options_2.AsStablehloReduceOptions()) {
@@ -872,6 +873,67 @@ Status ConvertSubgraphIdxToReduceRegion(
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
 
     op_state.addAttribute("body", body_attr);
+
+    return ::tensorflow::OkStatus();
+  }
+  if (auto* opts = op.builtin_options_2.AsStablehloReduceWindowOptions()) {
+    int32_t body_idx = opts->body_subgraph_index;
+    if (body_idx >= func_names.size()) {
+      return absl::AbortedError("subgraph with index not found: " +
+                                std::to_string(body_idx));
+    }
+    auto body_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
+
+    op_state.addAttribute("body", body_attr);
+
+    return ::tensorflow::OkStatus();
+  }
+  if (auto* opts = op.builtin_options_2.AsStablehloSortOptions()) {
+    int32_t comparator_idx = opts->comparator_subgraph_index;
+    if (comparator_idx >= func_names.size()) {
+      return absl::AbortedError("subgraph with index not found: " +
+                                std::to_string(comparator_idx));
+    }
+    auto comparator_attr = mlir::SymbolRefAttr::get(
+        builder.getContext(), func_names.at(comparator_idx));
+
+    op_state.addAttribute("comparator", comparator_attr);
+
+    return ::tensorflow::OkStatus();
+  }
+  if (auto* opts = op.builtin_options_2.AsStablehloWhileOptions()) {
+    int32_t body_idx = opts->body_subgraph_index;
+    int32_t cond_idx = opts->cond_subgraph_index;
+    if (body_idx >= func_names.size()) {
+      return absl::AbortedError("subgraph with index not found: " +
+                                std::to_string(body_idx));
+    }
+    if (cond_idx >= func_names.size()) {
+      return absl::AbortedError("subgraph with index not found: " +
+                                std::to_string(cond_idx));
+    }
+    auto body_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
+    auto cond_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(cond_idx));
+
+    op_state.addAttribute("body", body_attr);
+    op_state.addAttribute("cond", cond_attr);
+
+    return ::tensorflow::OkStatus();
+  }
+  if (auto* opts = op.builtin_options_2.AsStablehloScatterOptions()) {
+    uint32_t subgraph_idx = opts->update_computation_subgraph_index;
+
+    if (subgraph_idx >= func_names.size()) {
+      return absl::AbortedError(
+          absl::StrCat("subgraph with index not found: ", subgraph_idx));
+    }
+    mlir::FlatSymbolRefAttr subgraph_attr = mlir::SymbolRefAttr::get(
+        builder.getContext(), func_names.at(subgraph_idx));
+
+    op_state.addAttribute(kScatterRegionFuncName, subgraph_attr);
 
     return ::tensorflow::OkStatus();
   }
@@ -1028,7 +1090,12 @@ StatusOr<Operation*> ConvertOp(
       }
     }
   }
-  if (op_name == "stablehlo.reduce") {
+  if (op_name == "stablehlo.reduce" || op_name == "stablehlo.reduce_window" ||
+      op_name == "stablehlo.sort" || op_name == "stablehlo.scatter") {
+    op_state.addRegion();
+  }
+  if (op_name == "stablehlo.while") {
+    op_state.addRegion();
     op_state.addRegion();
   }
 
@@ -1068,7 +1135,7 @@ StatusOr<Operation*> ConvertOp(
   op_state.addAttributes(function_ref_attrs);
   // Handle conversion from subgraph to regions in StableHLO ops.
   auto status =
-      ConvertSubgraphIdxToReduceRegion(op, func_names, builder, op_state);
+      ConvertSubgraphIdxToStablehloRegion(op, func_names, builder, op_state);
   if (!status.ok()) {
     return emitError(loc, status.ToString()), status;
   }
@@ -1715,6 +1782,47 @@ void AddRegionsForStableHLOOp(mlir::ModuleOp module) {
         reduce_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
     InlineStablehloOpRegion(reduce_op.getBody(), body);
     reduce_op->removeAttr("body");
+    to_delete_funcs.push_back(body);
+  });
+  module.walk([&](mlir::stablehlo::ReduceWindowOp reduce_window_op) {
+    auto body = symbol_table.lookup<mlir::func::FuncOp>(
+        reduce_window_op->getAttr("body")
+            .cast<mlir::FlatSymbolRefAttr>()
+            .getValue());
+    InlineStablehloOpRegion(reduce_window_op.getBody(), body);
+    reduce_window_op->removeAttr("body");
+    to_delete_funcs.push_back(body);
+  });
+  module.walk([&](mlir::stablehlo::SortOp sort_op) {
+    auto comparator = symbol_table.lookup<mlir::func::FuncOp>(
+        sort_op->getAttr("comparator")
+            .cast<mlir::FlatSymbolRefAttr>()
+            .getValue());
+    InlineStablehloOpRegion(sort_op.getComparator(), comparator);
+    sort_op->removeAttr("comparator");
+    to_delete_funcs.push_back(comparator);
+  });
+  module.walk([&](mlir::stablehlo::WhileOp while_op) {
+    auto cond = symbol_table.lookup<mlir::func::FuncOp>(
+        while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
+    InlineStablehloOpRegion(while_op.getCond(), cond);
+    while_op->removeAttr("cond");
+    auto body = symbol_table.lookup<mlir::func::FuncOp>(
+        while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
+    InlineStablehloOpRegion(while_op.getBody(), body);
+    while_op->removeAttr("body");
+    to_delete_funcs.push_back(body);
+    to_delete_funcs.push_back(cond);
+  });
+  module.walk([&](mlir::stablehlo::ScatterOp scatter_op) {
+    auto update_computation = symbol_table.lookup<mlir::func::FuncOp>(
+        scatter_op->getAttr(kScatterRegionFuncName)
+            .cast<mlir::FlatSymbolRefAttr>()
+            .getValue());
+    InlineStablehloOpRegion(scatter_op.getUpdateComputation(),
+                            update_computation);
+    scatter_op->removeAttr(kScatterRegionFuncName);
+    to_delete_funcs.push_back(update_computation);
   });
   for (auto& func : to_delete_funcs) {
     func.erase();
