@@ -1,7 +1,7 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -197,6 +197,7 @@ cc_library(
         ":rename_entrypoint_to_main",
         ":smuggle_disallowed_ops",
         ":tf_stablehlo",
+        ":unfold_splat_constant_pass",
         ":unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
@@ -360,6 +361,31 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/mlir_hlo",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "unfold_splat_constant_pass",
+    srcs = [
+        "transforms/unfold_splat_constant_pass.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":passes_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
     ],

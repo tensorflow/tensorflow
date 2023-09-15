@@ -184,6 +184,14 @@ void AddConvertHloToTfPass(std::string entry_function_name,
       mlir::mhlo::createFlattenTuplePass());
 
   mlir::odml::AddMhloOptimizationPasses(*pass_manager);
+
+  // Undo the MHLO::BroadcastInDimOp folding pattern on splat constants. This
+  // pass must be added right before the legalization because pattern rewriter
+  // driver applies folding by default.
+  // TODO(b/295966255): Remove this pass after moving MHLO folders to a separate
+  // pass.
+  pass_manager->addPass(mlir::odml::CreateUnfoldSplatConstantPass());
+
   // TFLite dialect passes.
   if (!pass_config.disable_hlo_to_tfl_conversion) {
     pass_manager->addPass(mlir::odml::CreateLegalizeHloToTfLitePass());

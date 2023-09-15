@@ -2620,7 +2620,8 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
     }
 
     DenseFPElementsAttr divisor;
-    if (matchPattern(div_op.getRhs(), m_Constant(&divisor))) {
+    auto div_rhs = recursivelyWalkUp<mhlo::BroadcastInDimOp>(div_op.getRhs());
+    if (matchPattern(div_rhs, m_Constant(&divisor))) {
       // If the divisor is a constant then check that it matches with the number
       // of elements inside the window what is required for a VALID AvgPool.
       if (!divisor.isSplat()) return failure();
@@ -2641,7 +2642,9 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
           window_strides, "VALID", data_format, rewriter);
     }
 
-    Value actual_divisor = recursivelyWalkUpDivisor(div_op.getRhs());
+    Value actual_divisor =
+        recursivelyWalkUp<mhlo::BroadcastInDimOp, mhlo::ReshapeOp>(
+            div_op.getRhs());
     auto rw_rhs =
         dyn_cast_or_null<mhlo::ReduceWindowOp>(actual_divisor.getDefiningOp());
     if (rw_rhs && rw_rhs.getNumResults() == 1) {
@@ -2652,8 +2655,10 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       // Check that the RHS is a reduce_window over a constant 1 operand with 0
       // as the init value.
       DenseFPElementsAttr rhs_operand;
+      auto rw_rhs_operand =
+          recursivelyWalkUp<mhlo::BroadcastInDimOp>(rw_rhs.getInputs()[0]);
       if (!isFloatZero(rw_rhs.getInitValues()[0]) ||
-          !matchPattern(rw_rhs.getInputs()[0], m_Constant(&rhs_operand)) ||
+          !matchPattern(rw_rhs_operand, m_Constant(&rhs_operand)) ||
           !rhs_operand.isSplat() ||
           !rhs_operand.getSplatValue<APFloat>().isExactlyValue(1.0))
         return failure();
@@ -2705,16 +2710,16 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
     return failure();
   }
 
-  // Walks up the divisor and ignore all precedding reshape/broadcast op.
-  // Returns the first producer op which is neither reshape nor broadcast.
-  Value recursivelyWalkUpDivisor(Value divisor) const {
-    while (llvm::isa_and_nonnull<mhlo::BroadcastInDimOp, mhlo::ReshapeOp>(
-        divisor.getDefiningOp())) {
-      Operation* producer = divisor.getDefiningOp();
-      divisor = producer->getOperand(/*idx=*/0);
+  // Walks up the op and ignore all precedding ops of type Tys.
+  // Returns the first producer op whose type is not in Tys.
+  template <typename... Tys>
+  Value recursivelyWalkUp(Value op) const {
+    while (llvm::isa_and_nonnull<Tys...>(op.getDefiningOp())) {
+      Operation* producer = op.getDefiningOp();
+      op = producer->getOperand(/*idx=*/0);
     }
 
-    return divisor;
+    return op;
   }
 };
 
