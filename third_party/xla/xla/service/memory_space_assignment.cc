@@ -5109,6 +5109,10 @@ void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
          colocations) {
       repack_block->colocations = colocations;
     }
+  } else {
+    for (RepackAllocationBlock& allocation_block : repack_allocation_blocks_) {
+      allocation_block.colocations.push_back(&allocation_block);
+    }
   }
   ClearPendingChunks();
 }

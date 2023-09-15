@@ -6838,6 +6838,63 @@ TEST_P(MemorySpaceAssignmentTest, ReduceReservedScopedVmemIfOperandInVmem) {
   EXPECT_TRUE(check_reserved_scoped_memory_fn("p"));
   EXPECT_TRUE(check_reserved_scoped_memory_fn("q"));
 }
+
+TEST_P(MemorySpaceAssignmentTest, ScopedAllocationWithDifferentOffset) {
+  // This is test is designed against a bug when
+  // allocate_reserved_scoped_memory_at_same_offset to false, repack block of
+  // scoped allocation has empty colocations. This is resolved by adding each
+  // block itself as its own collocation. We test this by checking colocation
+  // sizes during repacking.
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[8,3] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    a = f32[2,4] sine(param1)
+    b = f32[2,4] cosine(param1)
+    c = f32[8,3] negate(param0)
+    j = f32[2,4] negate(a)
+    d = f32[8,3] tanh(param0)
+    k = f32[2,4] negate(j)
+    l = f32[2,4] add(b, k)
+    m = f32[8,3] negate(d)
+    n = f32[2,4] sine(l)
+    o = f32[8,3] negate(m)
+    p = f32[2,4] negate(n)
+    q = f32[8,3] negate(m)
+    ROOT tuple = (f32[2,4], f32[8,3], f32[8,3]) tuple(p, q, o)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto check_fun =
+      [](absl::Span<MemorySpaceAssignmentRepacker::AllocationBlock*>
+             allocations) {
+        for (MemorySpaceAssignmentRepacker::AllocationBlock* block :
+             allocations) {
+          if (block->start_time == block->end_time) {
+            EXPECT_GT(block->colocations.size(), 0);
+          }
+        }
+      };
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map, check_fun);
+  Options options = DefaultMemorySpaceOptions();
+  // Scoped allocation needs to have non zero limit.
+  options.reserved_scoped_memory_fn =
+      [&](const HloInstruction* instruction,
+          const absl::flat_hash_set<std::pair<int, ShapeIndex>>
+              operands_in_alternate_memory,
+          const absl::flat_hash_set<ShapeIndex> outputs_in_alternate_memory) {
+        return 1;
+      };
+  options.max_repacks = 1;
+  options.repacker = &repacker;
+  options.allocate_reserved_scoped_memory_at_same_offset = false;
+  AssignMemorySpace(module.get(), options);
+}
 TEST_P(MemorySpaceAssignmentTest,
        RepackShouldntEraseRequiredAssignmentForConditionalOutput) {
   // This is a test case for b/171040271. Repacks erase the required assignments
