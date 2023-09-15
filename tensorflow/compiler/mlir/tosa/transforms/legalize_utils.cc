@@ -44,8 +44,8 @@ std::optional<Value> convertTFConv2DCommon(
     Value input, Value filter, Value bias, ArrayAttr strides_attr,
     ArrayAttr dilations_attr, ArrayAttr explicit_padding_attr,
     StringRef padding_ref, StringRef data_format_ref) {
-  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType filter_type = filter.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type = dyn_cast<RankedTensorType>(input.getType());
+  RankedTensorType filter_type = dyn_cast<RankedTensorType>(filter.getType());
   // Not a ranked tensor output
   if (!input_type) return std::nullopt;
   if (!filter_type) return std::nullopt;
