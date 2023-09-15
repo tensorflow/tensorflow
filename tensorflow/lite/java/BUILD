@@ -31,7 +31,9 @@ exports_files([
     "src/testdata/uint8.bin",
     "src/testdata/with_custom_op.lite",
     "AndroidManifest.xml",
+    "AndroidManifestApi.xml",
     "AndroidManifestGpu.xml",
+    "AndroidManifestGpuApi.xml",
     "proguard.flags",
     "tflite_version_script.lds",
 ])
@@ -269,7 +271,7 @@ android_library_with_tflite(
 android_library(
     name = "tensorflowlite_api",
     srcs = [":java_api_srcs"],
-    manifest = "AndroidManifest.xml",
+    manifest = "AndroidManifestApi.xml",
     proguard_specs = ["proguard.flags"],
     deps = [
         "@org_checkerframework_qual",
@@ -318,7 +320,7 @@ tflite_flex_android_library(
 # EXPERIMENTAL: Android target for GPU acceleration. Note that this library
 # contains *only* the GPU delegate and its Java wrapper; clients must also
 # include the core `tensorflowlite` runtime.
-# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
+# Note that AndroidManifestGpuApi.xml usage requires AGP 4.2.0+.
 alias(
     name = "tensorflowlite_gpu",
     actual = "tensorflowlite_gpu_impl",
@@ -327,7 +329,7 @@ alias(
 # EXPERIMENTAL: Android target for the implementation of the GPU acceleration API, including the
 # native library. Note that this library contains *only* the GPU delegate and its Java wrapper;
 # clients must also include the core `tensorflowlite` runtime.
-# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
+# Note that AndroidManifestGpuApi.xml usage requires AGP 4.2.0+.
 android_library(
     name = "tensorflowlite_gpu_impl",
     # Note that we need to directly includes all the Java source files we intend to ship directly in
@@ -339,7 +341,7 @@ android_library(
     # Note that this uses the standard manifest and doesn't export it: the declaration is required
     # because android_library targets require a non-empty Android package in Bazel. The API target
     # exports the GPU manifest.
-    manifest = "AndroidManifest.xml",
+    manifest = "AndroidManifestGpu.xml",
     exports = [
         ":tensorflowlite_gpu_api",
         ":tensorflowlite_gpu_native",
@@ -388,12 +390,12 @@ android_library(
 # EXPERIMENTAL: Android target for GPU acceleration API, EXCLUDING implementation.
 # Note that this library contains *only* the GPU delegate API; clients must also include
 # an implementation, as well as the core `tensorflowlite` runtime.
-# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
+# Note that AndroidManifestGpuApi.xml usage requires AGP 4.2.0+.
 android_library(
     name = "tensorflowlite_gpu_api",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
     exports_manifest = 1,
-    manifest = "AndroidManifestGpu.xml",
+    manifest = "AndroidManifestGpuApi.xml",
     proguard_specs = ["proguard.flags"],
     deps = [":tensorflowlite_api"],
 )
