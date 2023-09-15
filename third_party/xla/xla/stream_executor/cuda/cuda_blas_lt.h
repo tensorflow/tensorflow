@@ -22,49 +22,21 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cublasLt.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
-<<<<<<< HEAD:tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h
-#else
-#include "rocm/rocm_config.h"
-#endif
-
-#include "tensorflow/compiler/xla/stream_executor/blas.h"
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
-#else
-#if TF_HIPBLASLT
-#include "../rocm/hipblaslt_wrapper.h"
-namespace stream_executor {
-hipblasDatatype_t AsHipblasDataType(blas::DataType type);
-hipblasLtComputeType_t AsHipblasComputeType(blas::ComputationType type);
-hipblasOperation_t AsHipblasOperation(blas::Transpose trans);
-};
-#endif
-#endif
-#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
-#include "tensorflow/tsl/platform/status.h"
-=======
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host_or_device_scalar.h"
 #include "tsl/platform/status.h"
->>>>>>> upstream/master:third_party/xla/xla/stream_executor/cuda/cuda_blas_lt.h
 
 namespace stream_executor {
 namespace gpu {
 class GpuExecutor;
 }  // namespace gpu
 
-#if GOOGLE_CUDA
 namespace cuda {
-#else
-namespace rocm {
-#endif
 
 class BlasLt {
   template <typename T>

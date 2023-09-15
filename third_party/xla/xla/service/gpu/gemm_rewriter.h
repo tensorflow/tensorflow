@@ -17,18 +17,10 @@ limitations under the License.
 
 #include <optional>
 
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/gemm_rewriter.h
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
-=======
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/gpu_types.h"
 #include "xla/service/hlo_pass_interface.h"
->>>>>>> upstream/master:third_party/xla/xla/service/gpu/gemm_rewriter.h
 
 namespace xla {
 namespace gpu {

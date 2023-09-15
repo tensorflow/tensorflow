@@ -548,7 +548,10 @@ xla_test(
         "gpu",
     ],
     shard_count = 10,
-    tags = ["nomac"],
+    tags = [
+        "nomac",
+        "no_rocm",
+    ],
     deps = [
         ":backend_configs_cc",
         ":gpu_device_info",
@@ -1601,7 +1604,7 @@ cc_library(
 xla_cc_test(
     name = "dot_dimension_sorter_test",
     srcs = ["dot_dimension_sorter_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = [
         ":dot_dimension_sorter",
         "//xla/service:gpu_plugin",
@@ -3625,6 +3628,7 @@ xla_test(
     srcs = ["float_support_test.cc"],
     backend_tags = {"gpu": [
         "requires-gpu-sm80",
+        "no_rocm",
     ]},
     backends = [
         "gpu",
@@ -3638,7 +3642,7 @@ xla_test(
 xla_cc_test(
     name = "conv_layout_normalization_test",
     srcs = ["conv_layout_normalization_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = [
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/tests:hlo_test_base",

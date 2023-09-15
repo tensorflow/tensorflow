@@ -28,7 +28,6 @@ load(
     "tf_fingerprint_deps",
 )
 load(
-<<<<<<< HEAD
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
     "mkl_deps",
@@ -41,8 +40,6 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 load(
-=======
->>>>>>> upstream/master
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
     "tf_cuda_tests_tags",
@@ -3486,26 +3483,17 @@ tf_kernel_library(
         ":loose_headers",
         "@local_tsl//tsl/framework/contraction:eigen_contraction_kernel",
     ] + mkl_deps() + if_cuda([
-<<<<<<< HEAD
-        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
-    ]) + if_rocm_hipblaslt([
-        "//tensorflow/compiler/xla/stream_executor/rocm:hipblas_lt_header",
-=======
-        ":matmul_util",
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
-        "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
-        "@local_xla//xla/stream_executor/gpu:redzone_allocator",
-        "@local_xla//xla/stream_executor:tf_allocator_adapter",
-        "//tensorflow/core/profiler/lib:scoped_annotation",
->>>>>>> upstream/master
+    ]) + if_rocm_hipblaslt([
+        "@local_xla//xla/stream_executor/rocm:hipblas_lt_header",
     ]) + if_cuda_or_rocm([
         ":conv_ops_gpu_hdrs",
         ":gpu_utils",
         ":conv_ops",
         ":matmul_util",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
-        "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
-        "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
+        "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
+        "@local_xla//xla/stream_executor/gpu:redzone_allocator",
+        "@local_xla//xla/stream_executor:tf_allocator_adapter",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         ":numeric_options_utils",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
@@ -3526,16 +3514,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "//tensorflow/core/util:env_var",
-<<<<<<< HEAD
     ]) + if_cuda([
-        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
-    ]) + if_rocm([
-        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
-        "//tensorflow/compiler/xla/stream_executor/rocm:hipblas_lt_header",
-=======
         "@local_xla//xla/stream_executor/cuda:cublas_lt_header",
->>>>>>> upstream/master
+    ]) + if_rocm([
+        "@local_xla//xla/stream_executor/platform:dso_loader",
+        "@local_xla//xla/stream_executor/rocm:hipblas_lt_header",
     ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 

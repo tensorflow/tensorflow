@@ -563,14 +563,7 @@ try-import %workspace%/.bazelrc.user
 # Build TensorFlow v2.
 test:release_base --test_size_filters=small,medium
 
-<<<<<<< HEAD
-# TODO(b/290857564): Remove from mainline after 2.14 branch cut 
-test:release_base --flaky_test_attempts=3
-
-build:release_cpu_linux --config=release_base
-=======
 # Target the AVX instruction set
->>>>>>> upstream/master
 build:release_cpu_linux --config=avx_linux
 # Use the Clang toolchain to compile
 build:release_cpu_linux --crosstool_top="@sigbuild-r2.14-clang_config_cuda//crosstool:toolchain"

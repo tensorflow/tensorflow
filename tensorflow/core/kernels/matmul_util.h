@@ -22,21 +22,16 @@ limitations under the License.
 #if GOOGLE_CUDA || TF_HIPBLASLT
 
 #include "absl/container/flat_hash_map.h"
-<<<<<<< HEAD
-#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/tsl/platform/types.h"
-=======
-#include "xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "xla/stream_executor/device_memory.h"
->>>>>>> upstream/master
+#include "tsl/platform/types.h"
 #include "tensorflow/core/framework/types.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "xla/stream_executor/cuda/cuda_blas_lt.h"
 #endif
 
 #if TF_HIPBLASLT
-#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
+#include "xla/stream_executor/rocm/hip_blas_lt.h"
 #define CUDA_R_32F HIPBLAS_R_32F
 #endif
 

@@ -1270,6 +1270,7 @@ xla_test(
     backend_tags = {"gpu": [
         "gpu",
         "requires-gpu-sm80",
+        "no_rocm",
     ]},
     backends = ["gpu"],
     deps = [
@@ -2163,6 +2164,9 @@ xla_test(
     backends = [
         "cpu",
         "gpu",
+    ],
+    tags = [
+        "no_rocm", # doesn't work in CI with reduced resources
     ],
     deps = [
         ":hlo_test_base",

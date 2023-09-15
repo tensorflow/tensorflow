@@ -1098,13 +1098,6 @@ tf_cuda_library(
     features = ["-parse_headers"],
     deps = [
         "//tensorflow/core:lib",
-<<<<<<< HEAD
-        "//tensorflow/tsl/platform",
-    ] + if_rocm_is_configured([
-        "//tensorflow/compiler/xla/stream_executor/rocm:miopen_plugin",
-    ]),
-
-=======
         "@local_tsl//tsl/platform",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:dnn",
@@ -1116,8 +1109,10 @@ tf_cuda_library(
         "@local_xla//xla/stream_executor/host:host_platform_id",
         "@local_xla//xla/stream_executor/platform:dso_loader",
         "@local_xla//xla/stream_executor/rocm:rocm_platform_id",
-    ],
->>>>>>> upstream/master
+    ] + if_rocm_is_configured([
+        "@local_xla//xla/stream_executor/rocm:miopen_plugin",
+    ]),
+
 )
 
 # Like stream_executor library, but compiles without --config=cuda

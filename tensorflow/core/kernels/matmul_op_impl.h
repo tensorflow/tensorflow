@@ -50,23 +50,17 @@ limitations under the License.
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
+#include "xla/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/core/kernels/matmul_util.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
-<<<<<<< HEAD
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
-=======
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
-#include "xla/stream_executor/host_or_device_scalar.h"
-#include "tensorflow/core/kernels/matmul_util.h"
->>>>>>> upstream/master
 #endif  // GOOGLE_CUDA
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #if TF_HIPBLASLT
-#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
+#include "xla/stream_executor/rocm/hip_blas_lt.h"
 #endif
 #endif
 

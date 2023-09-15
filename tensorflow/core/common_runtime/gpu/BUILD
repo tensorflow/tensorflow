@@ -351,12 +351,9 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
-<<<<<<< HEAD
         "//tensorflow/core/platform:test",
-=======
         "@local_tsl//tsl/framework:device_id",
         "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator_header",
->>>>>>> upstream/master
     ],
 )
 
@@ -414,11 +411,8 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
-<<<<<<< HEAD
         "//tensorflow/core/platform:test",
-=======
         "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator_header",
->>>>>>> upstream/master
     ],
 )
 

@@ -28,32 +28,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "rocm/include/miopen/miopen.h"
-<<<<<<< HEAD:tensorflow/compiler/xla/stream_executor/rocm/rocm_dnn.cc
-#include "tensorflow/compiler/xla/stream_executor/dnn.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
-#include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_diagnostics.h"
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
-#include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/hash.h"
-#include "tensorflow/tsl/util/determinism.h"
-#include "tensorflow/tsl/util/env_var.h"
-#include "rocm/rocm_config.h"
-
-#include <hip/hip_fp16.h>
-#include <hip/hip_bfloat16.h>
-=======
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
@@ -74,7 +48,10 @@ limitations under the License.
 #include "tsl/platform/hash.h"
 #include "tsl/util/determinism.h"
 #include "tsl/util/env_var.h"
->>>>>>> upstream/master:third_party/xla/xla/stream_executor/rocm/rocm_dnn.cc
+#include "rocm/rocm_config.h"
+
+#include <hip/hip_fp16.h>
+#include <hip/hip_bfloat16.h>
 
 namespace {
 

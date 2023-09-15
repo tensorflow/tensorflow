@@ -109,39 +109,6 @@ class XlaGpuApi {
   mlir::func::FuncOp getDispatchGemm(mlir::OpBuilder &b, mlir::ModuleOp module);
 
   //===--------------------------------------------------------------------===//
-<<<<<<< HEAD:tensorflow/compiler/xla/mlir/backends/gpu2/conversion/xla_gpu_api.h
-  // XLA:GPU memcpy APIs
-  //===--------------------------------------------------------------------===//
-
-  // Imports `@xla_gpu.memcpy.d2d` into the module.
-  mlir::func::FuncOp getD2DMemcpy(mlir::OpBuilder &b, mlir::ModuleOp module);
-
-  // Imports `@xla_gpu.memcpy.load.i1` into the module.
-  mlir::func::FuncOp getLoadI1Memcpy(mlir::OpBuilder &b, mlir::ModuleOp module);
-
-  //===--------------------------------------------------------------------===//
-  // XLA:GPU graph construction APIs
-  //===--------------------------------------------------------------------===//
-
-  // Imports `@xla_gpu.graph.kernel_node.create` into the module.
-  mlir::func::FuncOp getCreateKernelNode(mlir::OpBuilder &b,
-                                         mlir::ModuleOp module);
-
-  // Imports `@xla_gpu.graph.memcpy_node.d2d.create` into the module.
-#if GOOGLE_CUDA
-  mlir::func::FuncOp getCreateD2DMemcpyNode(mlir::OpBuilder &b,
-                                            mlir::ModuleOp module);
-#endif
-
-  // Imports `@xla_gpu.graph.create` into the module.
-  mlir::func::FuncOp getCreateGraph(mlir::OpBuilder &b, mlir::ModuleOp module);
-
-  // Imports `@xla_gpu.graph.execute` into the module.
-  mlir::func::FuncOp getExecuteGraph(mlir::OpBuilder &b, mlir::ModuleOp module);
-
-  //===--------------------------------------------------------------------===//
-=======
->>>>>>> upstream/master:third_party/xla/xla/mlir/backends/gpu2/conversion/xla_gpu_api.h
   // XLA:GPU tracing APIs
   //===--------------------------------------------------------------------===//
 

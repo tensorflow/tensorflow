@@ -21,7 +21,6 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #if TF_HIPBLASLT
 
-<<<<<<< HEAD:tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h
 #if TF_ROCM_VERSION < 60000
 #define hipblasltDatatype_t hipblasDatatype_t
 #define HIPBLASLT_R_16F HIPBLAS_R_16F
@@ -34,15 +33,9 @@ limitations under the License.
 #define HIPBLASLT_C_64F HIPBLAS_R_64F
 #endif
 
-#include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_utils.h"
-#include "tensorflow/compiler/xla/stream_executor/rocm/hipblaslt_wrapper.h"
-=======
-#include "rocm/rocm_config.h"
 #include "xla/status.h"
 #include "xla/stream_executor/rocm/hip_blas_utils.h"
 #include "xla/stream_executor/rocm/hipblaslt_wrapper.h"
->>>>>>> upstream/master:third_party/xla/xla/stream_executor/rocm/hip_blas_lt.h
 
 namespace stream_executor {
 

@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #if TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_dnn.h"
+#include "xla/stream_executor/rocm/rocm_dnn.h"
 #endif
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

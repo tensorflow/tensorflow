@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #if TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_dnn.h"
+#include "xla/stream_executor/rocm/rocm_dnn.h"
 #endif
 
 namespace tensorflow {

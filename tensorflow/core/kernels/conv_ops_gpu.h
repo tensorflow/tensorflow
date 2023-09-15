@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/tensor_format.h"
 #if TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_dnn.h"
+#include "xla/stream_executor/rocm/rocm_dnn.h"
 #endif
 
 namespace tensorflow {

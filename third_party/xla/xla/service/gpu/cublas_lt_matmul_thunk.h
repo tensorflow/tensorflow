@@ -20,7 +20,6 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #endif
 
-#if GOOGLE_CUDA || TF_HIPBLASLT
 #include <memory>
 #include <optional>
 #include <utility>
@@ -87,9 +86,4 @@ class CublasLtMatmulThunk : public Thunk {
 }  // namespace gpu
 }  // namespace xla
 
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/cublas_lt_matmul_thunk.h
-#endif // GOOGLE_CUDA || TF_HIPBLASLT
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUBLAS_LT_MATMUL_THUNK_H_
-=======
 #endif  // XLA_SERVICE_GPU_CUBLAS_LT_MATMUL_THUNK_H_
->>>>>>> upstream/master:third_party/xla/xla/service/gpu/cublas_lt_matmul_thunk.h

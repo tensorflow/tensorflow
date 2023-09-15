@@ -18,18 +18,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/functional/bind_front.h"
-<<<<<<< HEAD:tensorflow/compiler/xla/python/pjrt_ifrt/xla_sharding_serdes_test.cc
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
-#include "tensorflow/compiler/xla/python/ifrt/sharding_serdes.h"
-#include "tensorflow/compiler/xla/python/ifrt/sharding_test_util.h"
-#include "tensorflow/compiler/xla/python/pjrt_ifrt/xla_sharding.h"
-=======
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/sharding_serdes.h"
 #include "xla/python/ifrt/sharding_test_util.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
->>>>>>> upstream/master:third_party/xla/xla/python/pjrt_ifrt/xla_sharding_serdes_test.cc
 
 namespace xla {
 namespace ifrt {

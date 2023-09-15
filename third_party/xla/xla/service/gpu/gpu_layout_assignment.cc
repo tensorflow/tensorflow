@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
-#include "tensorflow/tsl/util/env_var.h"
+#include "tsl/util/env_var.h"
 
 namespace xla {
 namespace gpu {

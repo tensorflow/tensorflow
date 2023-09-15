@@ -13,12 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/cublas_lt_matmul_thunk.cc
-#include "tensorflow/compiler/xla/service/gpu/cublas_lt_matmul_thunk.h"
-#if GOOGLE_CUDA || TF_HIPBLASLT
-=======
 #include "xla/service/gpu/cublas_lt_matmul_thunk.h"
->>>>>>> upstream/master:third_party/xla/xla/service/gpu/cublas_lt_matmul_thunk.cc
 
 #include <memory>
 #include <utility>
@@ -127,5 +122,3 @@ StatusOr<cublas_lt::MatmulPlan*> CublasLtMatmulThunk::GetMatmulPlan(
 
 }  // namespace gpu
 }  // namespace xla
-
-#endif

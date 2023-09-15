@@ -23,22 +23,7 @@ limitations under the License.
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/ir_emitter.cc
 #include "llvm/Support/ModRef.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
-#include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/tsl/platform/errors.h"
-=======
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
 #include "xla/service/elemental_ir_emitter.h"
@@ -52,7 +37,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
->>>>>>> upstream/master:third_party/xla/xla/service/gpu/ir_emitter.cc
 
 namespace xla {
 

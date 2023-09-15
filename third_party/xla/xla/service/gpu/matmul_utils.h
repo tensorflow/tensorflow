@@ -22,20 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/matmul_utils.h
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/blas.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
-=======
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -45,8 +31,9 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-
->>>>>>> upstream/master:third_party/xla/xla/service/gpu/matmul_utils.h
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -58,13 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #endif  // TF_HIPBLASLT
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#if TENSORFLOW_USE_ROCM
-#if TF_HIPBLASLT
-#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
-#include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
-#endif  // TF_HIPBLASLT
-#endif
 
 namespace xla {
 namespace gpu {

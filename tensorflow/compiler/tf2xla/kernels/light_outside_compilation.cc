@@ -45,27 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-<<<<<<< HEAD
-#include "tensorflow/compiler/xla/service/custom_call_status.h"
-#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
-#include "tensorflow/tsl/lib/strings/proto_serialization.h"
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_device.h"
-#if GOOGLE_CUDA
-#define PLATFORM "CUDA"
-#else
-#define PLATFORM "ROCM"
-#endif
-#endif
-
-=======
 #include "xla/client/xla_builder.h"
 #include "xla/layout_util.h"
 #include "xla/service/custom_call_status.h"
@@ -78,7 +57,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
->>>>>>> upstream/master
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -105,6 +83,11 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
+#if GOOGLE_CUDA
+#define PLATFORM "CUDA"
+#else
+#define PLATFORM "ROCM"
+#endif
 #endif
 
 namespace tensorflow {
@@ -592,15 +575,11 @@ class FakeDeviceContext : public DeviceContext {
 
 Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
                     int opaque_len) {
-<<<<<<< HEAD
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      se::MultiPlatformManager::PlatformWithName(PLATFORM));
-=======
   // Look up the platform only once, for a small performance gain.
   static Status* platform_status = nullptr;
   static se::Platform* platform = [&]() -> se::Platform* {
     StatusOr<se::Platform*> p =
-        se::MultiPlatformManager::PlatformWithName("CUDA");
+        se::MultiPlatformManager::PlatformWithName(PLATFORM);
     if (!p.ok()) {
       platform_status = new Status(p.status());
       return nullptr;
@@ -609,7 +588,6 @@ Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
   }();
   if (platform_status != nullptr) return *platform_status;
 
->>>>>>> upstream/master
   se::StreamExecutorConfig config;
   config.gpu_stream = stream_handle;
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,

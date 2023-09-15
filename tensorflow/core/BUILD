@@ -103,19 +103,16 @@ load(
     "if_dynamic_kernels",
     "if_static",
 )
-<<<<<<< HEAD
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm"
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
-=======
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
->>>>>>> upstream/master
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
