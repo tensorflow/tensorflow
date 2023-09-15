@@ -318,9 +318,14 @@ int GetLogEveryN() { return VLOG_IS_ON(2) ? 100 : 1000; }
 
 StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     const AutotuneResult::TritonGemmKey& key,
-    const GpuDeviceInfo& gpu_device_info, const HloFusionInstruction* fusion) {
+    const GpuDeviceInfo& gpu_device_info, const HloFusionInstruction* fusion,
+    DebugOptions debug_opts) {
   std::unique_ptr<HloModule> new_module =
       AutotunerUtil::ExtractInstructionIntoNewModule(*fusion);
+  // Reduce memory usage during compilation by disabling GPU runtime.
+  debug_opts.set_xla_gpu_enable_xla_runtime_executable(false);
+  new_module->config().set_debug_options(debug_opts);
+
   HloComputation* entry_computation = new_module->entry_computation();
   HloInstruction* cloned_dot_fusion = entry_computation->root_instruction();
 
@@ -355,11 +360,14 @@ StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
 }
 
 StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
-    const AutotuneConfig& config, const HloFusionInstruction* fusion) {
+    const AutotuneConfig& config, const HloFusionInstruction* fusion,
+    const DebugOptions& debug_opts) {
   const HloComputation* fusion_computation =
       fusion->called_computations().at(0);
   std::unique_ptr<HloModule> new_module =
       AutotunerUtil::ExtractComputationIntoNewModule(*fusion_computation);
+  new_module->config().set_debug_options(debug_opts);
+
   GemmRewriter rewriter(config.GetCudaComputeCapability());
   GpuInstructionFusion fusion_pass(/*may_duplicate=*/false,
                                    GetGpuDeviceInfo(config.GetExecutor()));
@@ -418,12 +426,10 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
     // We can also remove the force_disable_gpu_runtime argument at that
     // point.
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                        util.Compile(
-                            [&] {
-                              return TritonGemmAutotuneExtractor(
-                                  conf, gpu_device_info, fusion);
-                            },
-                            /*force_disable_gpu_runtime=*/true));
+                        util.Compile([&](const DebugOptions& opts) {
+                          return TritonGemmAutotuneExtractor(
+                              conf, gpu_device_info, fusion, opts);
+                        }));
 
     if (executable != nullptr) {
       absl::MutexLock lock(&executable_sets_mu);
@@ -439,11 +445,11 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
   // Returns true on success.
   auto compile_reference_executable =
       [&](const HloFusionInstruction* fusion) -> StatusOr<bool> {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Executable> executable,
-        util.Compile(
-            [&] { return CublasGemmAutotuneExtractor(config, fusion); },
-            /*force_disable_gpu_runtime=*/false));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                        util.Compile([&](const DebugOptions& opts) {
+                          return CublasGemmAutotuneExtractor(config, fusion,
+                                                             opts);
+                        }));
 
     if (executable != nullptr) {
       absl::MutexLock lock(&executable_sets_mu);
@@ -668,12 +674,16 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
 }
 
 Status DumpAutotunedFusions(const AutotuneConfig& config,
+                            AutotunerCompileUtil& util,
                             const AutotuneResult result,
                             const HloFusionInstruction* fusion, int fusion_id) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> module,
-      TritonGemmAutotuneExtractor(
-          result.triton(), GetGpuDeviceInfo(config.GetExecutor()), fusion));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      util.ExtractModule([&](const DebugOptions& debug_opts) {
+                        return TritonGemmAutotuneExtractor(
+                            result.triton(),
+                            GetGpuDeviceInfo(config.GetExecutor()), fusion,
+                            debug_opts);
+                      }));
   module->set_name(std::string(fusion->name()));
   // Using the original module for its debug info and name in the first
   // parameter. It's better to include the name of both the original module
@@ -708,8 +718,8 @@ Status Autotune(const AutotuneConfig& config, AutotunerCompileUtil& util,
                                                        fusion, executable_set));
 
     if (debug_opts.xla_gpu_dump_autotuned_triton_fusions()) {
-      TF_RETURN_IF_ERROR(
-          DumpAutotunedFusions(config, result, fusion, fusion_id_for_dump));
+      TF_RETURN_IF_ERROR(DumpAutotunedFusions(config, util, result, fusion,
+                                              fusion_id_for_dump));
     }
 
     const AutotuneCacheKey key = AutotunerUtil::GetKey(fusion, config);
