@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -31,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -625,58 +627,64 @@ class ConvertUniformQuantizedConvolutionOp
   }
 };
 
-// This pattern converts uq <-> int ConvertOps to int -> int ConvertOps.
-// The former are introduced in ConvertTFQuantToMHLO pass. The resulting int ->
-// int ConvertOps are no-ops and can be removed later in a Canonicalizer pass.
-class ConvertMhloConvertOp : public OpConversionPattern<mhlo::ConvertOp> {
+// This pattern lowers a generic MHLO op for uq->int.
+// This pattern essentially just performs type change, with no algorithm change.
+class ConvertGenericOp : public ConversionPattern {
  public:
-  using OpConversionPattern::OpConversionPattern;
+  explicit ConvertGenericOp(MLIRContext *ctx)
+      : ConversionPattern(MatchAnyOpTypeTag(), 1, ctx) {}
 
   LogicalResult matchAndRewrite(
-      mhlo::ConvertOp op, mhlo::ConvertOpAdaptor adaptor,
+      Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    Value input = adaptor.getOperand();
-
-    Type output_type;
-    if (auto qtype = op.getOperand()
-                         .getType()
-                         .getElementType()
-                         .dyn_cast<quant::UniformQuantizedType>()) {
-      // This lowers uq->int mhlo.convert. Since the input type should be
-      // converted with the defining op. No explicit type conversion is done
-      // here.
-      output_type = qtype.getStorageType();
-    } else if (auto qtype = op.getResult()
-                                .getType()
-                                .getElementType()
-                                .dyn_cast<quant::UniformQuantizedType>()) {
-      output_type = qtype.getStorageType();
-    } else {
+    // This pattern only handle selected ops.
+    if (!llvm::isa<mhlo::ConstantOp, mhlo::ConvertOp, mhlo::BroadcastInDimOp,
+                   mhlo::MaxOp, mhlo::MinOp>(op)) {
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, input, output_type);
-    return success();
-  }
-};
-
-class ConvertMhloConstantOp : public OpConversionPattern<mhlo::ConstantOp> {
- public:
-  using OpConversionPattern::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      mhlo::ConstantOp op, mhlo::ConstantOpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    auto output_element_type = getElementTypeOrSelf(op.getOutput().getType());
-    // Convert mhlo.ConstantOp to int type for uq type only.
-    if (auto quant_type =
-            output_element_type.dyn_cast<quant::UniformQuantizedType>()) {
-      rewriter.replaceOpWithNewOp<mhlo::ConstantOp>(
-          op, op.getOutput().getType().clone(quant_type.getStorageType()),
-          op.getValue());
-      return success();
+    // Check that all operands and result uq types are the same.
+    llvm::SmallVector<Type> uq_types;
+    for (auto result_type : op->getResultTypes()) {
+      auto type = getElementTypeOrSelf(result_type)
+                      .dyn_cast<quant::UniformQuantizedType>();
+      if (type) {
+        uq_types.push_back(type);
+      }
     }
-    return failure();
+    for (auto operand : op->getOperands()) {
+      auto type = getElementTypeOrSelf(operand.getType())
+                      .dyn_cast<quant::UniformQuantizedType>();
+      if (type) {
+        uq_types.push_back(type);
+      }
+    }
+    for (auto type : uq_types) {
+      if (type != uq_types.front()) {
+        return failure();
+      }
+    }
+
+    // Determine new result type: use storage type for uq types; use original
+    // type otherwise.
+    llvm::SmallVector<Type, 4> new_result_types;
+    for (auto result_type : op->getResultTypes()) {
+      if (getElementTypeOrSelf(result_type)
+              .isa<quant::UniformQuantizedType>()) {
+        new_result_types.push_back(result_type.cast<TensorType>().clone(
+            getElementTypeOrSelf(result_type)
+                .cast<quant::UniformQuantizedType>()
+                .getStorageType()));
+      } else {
+        new_result_types.push_back(result_type);
+      }
+    }
+
+    OperationState state(op->getLoc(), op->getName().getStringRef(), operands,
+                         new_result_types, op->getAttrs(), op->getSuccessors());
+    Operation *new_op = rewriter.create(state);
+    rewriter.replaceOp(op, new_op);
+    return success();
   }
 };
 
@@ -690,8 +698,7 @@ void ConvertMHLOQuantToInt::runOnOperation() {
   patterns.add<ConvertUniformQuantizeOp, ConvertUniformDequantizeOp,
                ConvertUniformQuantizedAddOp, ConvertUniformQuantizedDotOp,
                ConvertUniformQuantizedDotGeneralOp,
-               ConvertUniformQuantizedConvolutionOp, ConvertMhloConvertOp,
-               ConvertMhloConstantOp>(context);
+               ConvertUniformQuantizedConvolutionOp, ConvertGenericOp>(context);
 
   ConversionTarget target(*op->getContext());
   // An addDynamicallyLegalDialect callback that declares a given operation as
