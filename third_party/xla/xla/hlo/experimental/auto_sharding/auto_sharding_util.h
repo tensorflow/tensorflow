@@ -52,6 +52,11 @@ inline constexpr absl::string_view kIdentityMarker = "identity";
 inline constexpr absl::string_view kPipelineMarkerStartType = "start";
 inline constexpr absl::string_view kPipelineMarkerEndType = "end";
 
+inline bool IsManualShardingBoundaryCustomCall(const HloInstruction* ins) {
+  return ins->IsCustomCall("SPMDFullToShardShape") ||
+         ins->IsCustomCall("SPMDShardToFullShape");
+}
+
 inline std::pair<int, int> ParseMeshDims(const std::string& strategy_name) {
   if (absl::StrContains(strategy_name, "{0,1}")) {
     return {0, 1};

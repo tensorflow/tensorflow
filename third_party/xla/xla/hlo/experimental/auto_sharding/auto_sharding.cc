@@ -4305,6 +4305,18 @@ bool IsSmallTensor(const HloInstruction* ins,
          option.small_tensor_byte_size;
 }
 
+bool IsModuleManuallySharded(const HloModule* module) {
+  for (const auto* computation : module->computations()) {
+    for (const auto* instruction : computation->instructions()) {
+      if (HloCollectiveInstruction::ClassOf(instruction) ||
+          spmd::IsManualShardingBoundaryCustomCall(instruction)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 StatusOr<bool> AutoSharding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -4312,6 +4324,13 @@ StatusOr<bool> AutoSharding::Run(
     return false;
   }
   VLOG(1) << "Start auto sharding pass";
+
+  if (IsModuleManuallySharded(module)) {
+    LOG(ERROR)
+        << "Auto-sharding on partially manually sharded modules is not yet "
+           "supported. Please fall back on the sharding propagation pass.";
+    return false;
+  }
 
   XLA_VLOG_LINES(6,
                  absl::StrCat("Before auto sharding:\n", module->ToString()));
