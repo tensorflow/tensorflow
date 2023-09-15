@@ -1,11 +1,11 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/mlir/tf2xla/api/v0:__subpackages__",
-        "//tensorflow/compiler/mlir/tf2xla/api/v1:__subpackages__",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:__subpackages__",
     ],
 )
 

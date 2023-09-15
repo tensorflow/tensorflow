@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tf2xla/api/v1/legalize_tf.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
 
 #include <memory>
 #include <string>
@@ -40,7 +40,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tf2xla {
-namespace v1 {
+namespace v2 {
 
 using metrics::IncrementTfMlirBridgeSecondPhaseCounter;
 using metrics::MlirBridgeSecondPhaseMetric;
@@ -129,7 +129,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
   VLOG(1)
       << "Failed to compile MLIR computation to XLA HLO using "
          "Combined MLIR and XlaBuilder Bridge. Falling back to Graph Bridge.";
-  tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V1_COMBINED_BRIDGE",
+  tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_COMBINED_BRIDGE",
                           combined_bridge_status.status().ToString())
       .IgnoreError();
 
@@ -152,7 +152,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
           MlirBridgeSecondPhaseMetric ::kOldBridgeWithFallbackModeFailure);
     }
     if (!old_bridge_status.ok()) {
-      tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V1_OLD_BRIDGE",
+      tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_OLD_BRIDGE",
                               mlir_bridge_status.status().ToString())
           .IgnoreError();
     }
@@ -189,6 +189,6 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
   return *compilation_result;
 }
 
-};  // namespace v1
+};  // namespace v2
 };  // namespace tf2xla
 };  // namespace tensorflow

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_LEGALIZE_TF_H_
-#define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_LEGALIZE_TF_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V2_LEGALIZE_TF_H_
+#define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V2_LEGALIZE_TF_H_
 
 #include <memory>
 #include <variant>
@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tf2xla/api/v1/device_type.pb.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/pjrt/compile_options.pb.h"
@@ -35,7 +35,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tf2xla {
-namespace v1 {
+namespace v2 {
 
 // Legalizes the given mlir::Module into XLA HLO. If successful, returns the
 // compiled XLA HLO. V1 of the tf2xla uses MLIR whereas V0 does not use MLIR.
@@ -61,8 +61,8 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     xla::CompileOnlyClient* client);
 
-};  // namespace v1
+};  // namespace v2
 };  // namespace tf2xla
 };  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_LEGALIZE_TF_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V2_LEGALIZE_TF_H_

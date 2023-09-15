@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package tensorflow.tf2xla.v1;
+package tensorflow.tf2xla.v2;
 
 // The requested device type to compile for.
 enum DeviceType {

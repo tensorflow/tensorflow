@@ -40,7 +40,7 @@ namespace tf2xla {
 namespace internal {
 auto* phase2_combined_bridge_compilation_time =
     tsl::monitoring::Sampler<1>::New(
-        {"/tensorflow/core/tf2xla/api/v1/phase2_combined_compilation_time",
+        {"/tensorflow/core/tf2xla/api/v2/phase2_combined_compilation_time",
          "The wall-clock time spent on combined graphs in milliseconds.",
          "configuration"},
         // Power of 1.5 with bucket count 45 (> 23 hours)

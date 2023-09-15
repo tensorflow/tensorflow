@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tf2xla {
-namespace v1 {
+namespace v2 {
 
 TEST(LegalizeTFQuantTest, LegalizesModuleWithTFUniformQuantization) {
   constexpr char legalization[] = R"(
@@ -106,6 +106,6 @@ TEST(LegalizeTFQuantTest, LegalizesModuleWithDequantize) {
                    .status());
 }
 
-}  // namespace v1
+}  // namespace v2
 }  // namespace tf2xla
 }  // namespace tensorflow

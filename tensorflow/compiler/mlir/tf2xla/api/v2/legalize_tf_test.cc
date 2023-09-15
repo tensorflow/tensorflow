@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tf2xla/api/v1/legalize_tf.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
 
 #include <cstdint>
 #include <memory>
@@ -22,7 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v1/device_type.pb.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/client_library.h"
@@ -35,7 +35,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tf2xla {
-namespace v1 {
+namespace v2 {
 
 using ::tensorflow::monitoring::testing::CellReader;
 using tpu::FunctionToHloArgs;
@@ -45,9 +45,9 @@ using tpu::TPUCompileMetadataProto;
 using ::tsl::monitoring::testing::Histogram;
 
 static constexpr char kCompilationTimeStreamzName[] =
-    "/tensorflow/core/tf2xla/api/v1/phase2_compilation_time";
+    "/tensorflow/core/tf2xla/api/v2/phase2_compilation_time";
 static constexpr char kCompilationStatusStreamzName[] =
-    "/tensorflow/core/tf2xla/api/v1/phase2_compilation_status";
+    "/tensorflow/core/tf2xla/api/v2/phase2_compilation_status";
 static const char kMlirWithFallbackModeSuccess[] =
     "kMlirWithFallbackModeSuccess";
 static const char kMlirWithFallbackModeFailure[] =
@@ -217,6 +217,6 @@ TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {
   EXPECT_FALSE(compile_result.ok());
 }
 
-}  // namespace v1
+}  // namespace v2
 }  // namespace tf2xla
 }  // namespace tensorflow

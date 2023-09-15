@@ -53,7 +53,7 @@ namespace tensorflow {
 namespace tf2xla {
 namespace internal {
 auto* phase2_bridge_compilation_time = tsl::monitoring::Sampler<1>::New(
-    {"/tensorflow/core/tf2xla/api/v1/phase2_compilation_time",
+    {"/tensorflow/core/tf2xla/api/v2/phase2_compilation_time",
      "The wall-clock time spent on executing graphs in milliseconds.",
      "configuration"},
     // Power of 1.5 with bucket count 45 (> 23 hours)
@@ -148,7 +148,7 @@ tsl::StatusOr<XlaCompilationResult> LegalizeWithMlirBridge(
   }
 
   tsl::error_logging::Log(kBridgeComponent,
-                          "TFXLA_API_V1_BRIDGE_WITH_FALLBACK_FAIL",
+                          "TFXLA_API_V2_BRIDGE_WITH_FALLBACK_FAIL",
                           mlir_bridge_status.status().ToString())
       .IgnoreError();
 

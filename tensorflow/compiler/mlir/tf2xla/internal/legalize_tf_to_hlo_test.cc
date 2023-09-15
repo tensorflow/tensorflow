@@ -52,7 +52,7 @@ static constexpr char kMlirLegalizeCount[] =
 static constexpr char kMlirLegalizeErrors[] =
     "/tensorflow/core/tf2xla/v0/mlir_failed_xla_legalize_tf_pass_count";
 static constexpr char kBridgeStatusCounter[] =
-    "/tensorflow/core/tf2xla/api/v1/phase2_compilation_status";
+    "/tensorflow/core/tf2xla/api/v2/phase2_compilation_status";
 constexpr char kMlirCombinedMlirSuccess[] = "kMlirCombinedMlirSuccess";
 constexpr char kMlirCombinedOldSuccess[] = "kMlirCombinedOldSuccess";
 constexpr char kMlirCombinedOldFailure[] = "kMlirCombinedOldFailure";
