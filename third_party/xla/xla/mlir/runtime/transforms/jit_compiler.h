@@ -76,8 +76,7 @@ class JitCompiler {
     std::function<void(PassManager&)> create_compilation_pipeline;
 
     // LLVM optimization level when JIT compiling a module.
-    llvm::CodeGenOpt::Level jit_code_opt_level =
-        llvm::CodeGenOpt::Level::Default;
+    llvm::CodeGenOptLevel jit_code_opt_level = llvm::CodeGenOptLevel::Default;
 
     // Runtime symbols binding allows to pass user-defined bindings for symbols
     // at JIT compilation time, e.g. to bind type ids or custom calls.

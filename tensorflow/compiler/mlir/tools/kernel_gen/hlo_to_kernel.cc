@@ -106,7 +106,8 @@ StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
       llvm::Triple(llvm_module->getTargetTriple())));
 
   if (target_machine->addPassesToEmitFile(codegen_passes, ostream, nullptr,
-                                          llvm::CGFT_ObjectFile, false)) {
+                                          llvm::CodeGenFileType::ObjectFile,
+                                          false)) {
     return absl::InternalError("Failed add passes to emit file");
   }
   codegen_passes.run(*llvm_module);

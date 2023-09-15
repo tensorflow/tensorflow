@@ -82,7 +82,7 @@ class ExecutionEngine {
 
   struct JitOptions {
     // User-provided codegen optimization level.
-    llvm::CodeGenOpt::Level opt_level = llvm::CodeGenOpt::Level::Default;
+    llvm::CodeGenOptLevel opt_level = llvm::CodeGenOptLevel::Default;
 
     // User-provided target machine specification.
     llvm::TargetMachine *target_machine = nullptr;

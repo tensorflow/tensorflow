@@ -57,7 +57,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
       std::unique_ptr<llvm::orc::ExecutorProcessControl> target_process_control,
       std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
       const llvm::TargetOptions& target_options,
-      llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
+      llvm::CodeGenOptLevel opt_level, bool optimize_for_size,
       bool disable_expensive_passes, bool disable_slp_vectorizer,
       llvm::FastMathFlags fast_math_flags,
       LLVMCompiler::ModuleHook pre_optimization_hook,
@@ -66,7 +66,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
 
   static llvm::Expected<std::unique_ptr<SimpleOrcJIT>> Create(
       const llvm::TargetOptions& target_options,
-      llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
+      llvm::CodeGenOptLevel opt_level, bool optimize_for_size,
       bool disable_expensive_passes, bool disable_slp_vectorizer,
       llvm::FastMathFlags fast_math_flags,
       LLVMCompiler::ModuleHook pre_optimization_hook,
@@ -95,7 +95,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   // the current machine.
   static std::unique_ptr<llvm::TargetMachine> InferTargetMachineForJIT(
       const llvm::TargetOptions& target_options,
-      llvm::CodeGenOpt::Level opt_level);
+      llvm::CodeGenOptLevel opt_level);
 
   int64_t SizeOfGeneratedCodeInBytes() const {
     return size_of_generated_code_in_bytes_;
