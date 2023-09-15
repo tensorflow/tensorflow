@@ -184,8 +184,10 @@ cc_library(
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status_to_from_proto",
+        "@local_tsl//tsl/platform:thread_annotations",
         "@local_tsl//tsl/protobuf:protos_all_cc",
     ],
 )

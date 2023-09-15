@@ -392,42 +392,52 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
   TF_RETURN_IF_ERROR(CheckStarted());
   VLOG(4) << "Received worker heartbeat request from worker "
           << request->worker_address();
-  mutex_lock l(mu_);
-  const std::string& worker_address = request->worker_address();
-  latest_worker_heartbeats_time_[worker_address] =
-      absl::FromUnixMicros(env_->NowMicros());
-  // Assigned tasks from the perspective of the dispatcher.
-  std::vector<std::shared_ptr<const Task>> assigned_tasks;
-  Status s = state_.TasksForWorker(worker_address, assigned_tasks);
-  if (!s.ok()) {
-    if (!errors::IsNotFound(s)) {
-      return s;
+  {
+    mutex_lock l(mu_);
+    const std::string& worker_address = request->worker_address();
+    latest_worker_heartbeats_time_[worker_address] =
+        absl::FromUnixMicros(env_->NowMicros());
+    // Assigned tasks from the perspective of the dispatcher.
+    std::vector<std::shared_ptr<const Task>> assigned_tasks;
+    Status s = state_.TasksForWorker(worker_address, assigned_tasks);
+    if (!s.ok()) {
+      if (!errors::IsNotFound(s)) {
+        return s;
+      }
+      VLOG(1) << "Registering new worker at address " << worker_address;
+      TF_RETURN_IF_ERROR(state_.ValidateWorker(worker_address));
+      Update update;
+      update.mutable_register_worker()->set_worker_address(worker_address);
+      *update.mutable_register_worker()->mutable_transfer_servers() =
+          request->transfer_servers();
+      *update.mutable_register_worker()->mutable_worker_tags() =
+          request->worker_tags();
+      update.mutable_register_worker()->set_worker_uid(request->worker_uid());
+      TF_RETURN_IF_ERROR(Apply(update));
+      TF_RETURN_IF_ERROR(CreateTasksForWorker(worker_address));
+      TF_RETURN_IF_ERROR(state_.TasksForWorker(worker_address, assigned_tasks));
     }
-    VLOG(1) << "Registering new worker at address " << worker_address;
-    TF_RETURN_IF_ERROR(state_.ValidateWorker(worker_address));
-    Update update;
-    update.mutable_register_worker()->set_worker_address(worker_address);
-    *update.mutable_register_worker()->mutable_transfer_servers() =
-        request->transfer_servers();
-    *update.mutable_register_worker()->mutable_worker_tags() =
-        request->worker_tags();
-    update.mutable_register_worker()->set_worker_uid(request->worker_uid());
-    TF_RETURN_IF_ERROR(Apply(update));
-    TF_RETURN_IF_ERROR(CreateTasksForWorker(worker_address));
-    TF_RETURN_IF_ERROR(state_.TasksForWorker(worker_address, assigned_tasks));
+    absl::flat_hash_set<int64_t> current_tasks;
+    current_tasks.insert(request->current_tasks().cbegin(),
+                         request->current_tasks().cend());
+    const std::vector<ActiveTask> active_tasks(request->active_tasks().begin(),
+                                               request->active_tasks().end());
+    ReportProcessingTimesFromActiveTasks(active_tasks,
+                                         request->worker_address());
+    TF_RETURN_IF_ERROR(
+        FindTasksToDelete(current_tasks, assigned_tasks, response));
+    TF_RETURN_IF_ERROR(
+        FindNewTasks(worker_address, current_tasks, assigned_tasks, response));
   }
-  absl::flat_hash_set<int64_t> current_tasks;
-  current_tasks.insert(request->current_tasks().cbegin(),
-                       request->current_tasks().cend());
-  const std::vector<ActiveTask> active_tasks(request->active_tasks().begin(),
-                                             request->active_tasks().end());
-  ReportProcessingTimesFromActiveTasks(active_tasks, request->worker_address());
-  TF_RETURN_IF_ERROR(
-      FindTasksToDelete(current_tasks, assigned_tasks, response));
-  TF_RETURN_IF_ERROR(
-      FindNewTasks(worker_address, current_tasks, assigned_tasks, response));
-
-  for (const auto& [path, snapshot_manager] : snapshots_) {
+  std::vector<SnapshotManager*> snapshots;
+  {
+    tf_shared_lock l(mu_);
+    snapshots.reserve(snapshots_.size());
+    for (const auto& [path, snapshot_manager] : snapshots_) {
+      snapshots.push_back(snapshot_manager.get());
+    }
+  }
+  for (SnapshotManager* snapshot_manager : snapshots) {
     TF_RETURN_IF_ERROR(snapshot_manager->WorkerHeartbeat(*request, *response));
   }
 
@@ -1143,41 +1153,43 @@ Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
   Update update;
   SnapshotUpdate* snapshot = update.mutable_snapshot();
   snapshot->set_path(request->path());
-  TF_RETURN_IF_ERROR(Apply(update));
-
-  return OkStatus();
+  return Apply(update);
 }
 
 Status DataServiceDispatcherImpl::GetSnapshotStreams(
     const GetSnapshotStreamsRequest* request,
     GetSnapshotStreamsResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  mutex_lock l(mu_);
-
-  auto it = snapshots_.find(request->path());
-  if (it == snapshots_.end()) {
-    return errors::InvalidArgument(
-        "the dispatcher does not know of a snapshot at ", request->path());
+  absl::flat_hash_map<std::string, std::unique_ptr<SnapshotManager>>::iterator
+      it;
+  {
+    tf_shared_lock l(mu_);
+    it = snapshots_.find(request->path());
+    if (it == snapshots_.end()) {
+      return errors::InvalidArgument(
+          "the dispatcher does not know of a snapshot at ", request->path());
+    }
   }
-  TF_RETURN_IF_ERROR(it->second->GetSnapshotStreams(*response));
-  return OkStatus();
+  return it->second->GetSnapshotStreams(*response);
 }
 
 Status DataServiceDispatcherImpl::GetSnapshotSplit(
     const GetSnapshotSplitRequest* request,
     GetSnapshotSplitResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  mutex_lock l(mu_);
 
-  auto it = snapshots_.find(request->base_path());
-  if (it == snapshots_.end()) {
-    return errors::InvalidArgument(
-        "the dispatcher does not know of a snapshot at ", request->base_path());
+  absl::flat_hash_map<std::string, std::unique_ptr<SnapshotManager>>::iterator
+      it;
+  {
+    tf_shared_lock l(mu_);
+    it = snapshots_.find(request->base_path());
+    if (it == snapshots_.end()) {
+      return errors::InvalidArgument(
+          "the dispatcher does not know of a snapshot at ",
+          request->base_path());
+    }
   }
-
-  TF_RETURN_IF_ERROR(it->second->GetSnapshotSplit(*request, *response));
-
-  return OkStatus();
+  return it->second->GetSnapshotSplit(*request, *response);
 }
 
 Status DataServiceDispatcherImpl::DisableCompressionAtRuntime(

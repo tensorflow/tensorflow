@@ -40,8 +40,10 @@ limitations under the License.
 #include "tsl/lib/io/compression.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/mutex.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/status_to_from_proto.h"
+#include "tsl/platform/thread_annotations.h"
 #include "tsl/protobuf/error_codes.pb.h"
 #include "tsl/protobuf/status.pb.h"
 
@@ -83,12 +85,14 @@ absl::StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
   return absl::WrapUnique(snapshot_manager);
 }
 
-absl::Status SnapshotManager::Start(const SnapshotRequest& request) {
+absl::Status SnapshotManager::Start(const SnapshotRequest& request)
+    TF_LOCKS_EXCLUDED(mu_) {
   LOG(INFO) << "Starting to write tf.data snapshot at " << request.path();
   if (env_->FileExists(request.path()).ok()) {
     return errors::AlreadyExists("tf.data snapshot at ", request.path(),
                                  " already exists.");
   }
+  tsl::mutex_lock l(mu_);
   TF_ASSIGN_OR_RETURN(sources_, CreateSources(request.dataset()));
   TF_ASSIGN_OR_RETURN(num_total_splits_, CountSplits());
   TF_RETURN_IF_ERROR(WriteOnDiskSkeleton());
@@ -99,7 +103,8 @@ absl::Status SnapshotManager::Start(const SnapshotRequest& request) {
 }
 
 absl::StatusOr<std::vector<SnapshotManager::Source>>
-SnapshotManager::CreateSources(const DatasetDef& dataset_def) const {
+SnapshotManager::CreateSources(const DatasetDef& dataset_def) const
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::unique_ptr<SplitProvider>> split_providers;
   TF_RETURN_IF_ERROR(CreateSplitProviders(dataset_def, split_providers));
   std::vector<SnapshotManager::Source> sources;
@@ -110,7 +115,8 @@ SnapshotManager::CreateSources(const DatasetDef& dataset_def) const {
   return sources;
 }
 
-absl::StatusOr<int64_t> SnapshotManager::CountSplits() {
+absl::StatusOr<int64_t> SnapshotManager::CountSplits()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   int64_t num_splits = 0;
   for (const auto& source : sources_) {
     Tensor tensor;
@@ -124,7 +130,8 @@ absl::StatusOr<int64_t> SnapshotManager::CountSplits() {
   return num_splits;
 }
 
-absl::Status SnapshotManager::WriteOnDiskSkeleton() {
+absl::Status SnapshotManager::WriteOnDiskSkeleton()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   TF_RETURN_IF_ERROR(
       env_->RecursivelyCreateDir(CommittedChunksDirectory(path_)));
   TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(StreamsDirectory(path_)));
@@ -132,7 +139,7 @@ absl::Status SnapshotManager::WriteOnDiskSkeleton() {
 }
 
 absl::Status SnapshotManager::WriteOnDiskMetadata(
-    const SnapshotRequest& request) {
+    const SnapshotRequest& request) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   TF_RETURN_IF_ERROR(WriteTextProto(env_, SnapshotMetadataFilePath(path_),
                                     request.metadata()));
   TF_RETURN_IF_ERROR(WriteStringToFile(env_, DatasetSpecFilePath(path_),
@@ -151,7 +158,8 @@ absl::StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Resume(
   return absl::WrapUnique(snapshot_manager);
 }
 
-absl::Status SnapshotManager::Resume() {
+absl::Status SnapshotManager::Resume() TF_LOCKS_EXCLUDED(mu_) {
+  tsl::mutex_lock l(mu_);
   if (!env_->FileExists(path_).ok()) {
     return absl::InvalidArgumentError(
         absl::StrCat("Failed to recover snapshot at ", path_,
@@ -177,7 +185,8 @@ absl::Status SnapshotManager::Resume() {
   return absl::OkStatus();
 }
 
-absl::Status SnapshotManager::ReadOnDiskMetadata() {
+absl::Status SnapshotManager::ReadOnDiskMetadata()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   if (!env_->FileExists(SnapshotMetadataFilePath(path_)).ok()) {
     return absl::InvalidArgumentError(
         absl::StrCat("Failed to recover snapshot at ", path_,
@@ -200,7 +209,8 @@ absl::Status SnapshotManager::ReadOnDiskMetadata() {
   return absl::OkStatus();
 }
 
-absl::Status SnapshotManager::ReadOnDiskStreams() {
+absl::Status SnapshotManager::ReadOnDiskStreams()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::string streams_path = StreamsDirectory(path_);
   TF_ASSIGN_OR_RETURN(const std::vector<std::string> stream_directories,
                       GetChildren(streams_path, env_));
@@ -254,7 +264,8 @@ absl::Status SnapshotManager::ReadOnDiskStreams() {
 }
 
 absl::StatusOr<std::string> SnapshotManager::OwnerWorkerAddress(
-    const std::string& stream_directory) const {
+    const std::string& stream_directory) const
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::string worker_address;
   TF_RETURN_IF_ERROR(env_->FileExists(StreamWorkerFilePath(stream_directory)));
   TF_RETURN_IF_ERROR(ReadFileToString(
@@ -264,7 +275,8 @@ absl::StatusOr<std::string> SnapshotManager::OwnerWorkerAddress(
 
 absl::Status SnapshotManager::ReadOnDiskStream(
     int64_t stream_index, const std::string& worker_address,
-    absl::flat_hash_set<int64_t>& global_split_indices) {
+    absl::flat_hash_set<int64_t>& global_split_indices)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   auto [it, success] = assignments_.insert({worker_address, stream_index});
   if (!success) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -317,7 +329,8 @@ absl::Status SnapshotManager::ReadOnDiskStream(
 
 absl::Status SnapshotManager::ReadOnDiskSource(
     int64_t stream_index, int64_t source_index,
-    absl::flat_hash_set<int64_t>& global_split_indices) {
+    absl::flat_hash_set<int64_t>& global_split_indices)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::string source_directory =
       SourceDirectory(path_, stream_index, source_index);
   TF_ASSIGN_OR_RETURN(std::vector<std::string> repetition_directories,
@@ -344,7 +357,8 @@ absl::Status SnapshotManager::ReadOnDiskSource(
 absl::Status SnapshotManager::ReadOnDiskSplit(
     int64_t source_index, const std::vector<std::string>& split_files,
     const std::string& split_file,
-    absl::flat_hash_set<int64_t>& global_split_indices) {
+    absl::flat_hash_set<int64_t>& global_split_indices)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   // `split_file` must have this format:
   // "split_<local_split_index>_<global_split_index>".
   TF_ASSIGN_OR_RETURN(auto split_indices, ParseSplitFilename(split_file));
@@ -360,7 +374,8 @@ absl::Status SnapshotManager::ReadOnDiskSplit(
   return SkipSplit(*sources_[source_index].split_provider);
 }
 
-absl::Status SnapshotManager::SkipSplit(SplitProvider& split_provider) {
+absl::Status SnapshotManager::SkipSplit(SplitProvider& split_provider)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   Tensor tensor;
   bool end_of_splits = false;
   TF_RETURN_IF_ERROR(split_provider.GetNext(&tensor, &end_of_splits));
@@ -372,7 +387,8 @@ absl::Status SnapshotManager::SkipSplit(SplitProvider& split_provider) {
 }
 
 absl::Status SnapshotManager::HandleStreamCompletion(
-    int64_t stream_index, absl::string_view worker_address) {
+    int64_t stream_index, absl::string_view worker_address)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   streams_[stream_index].state = Stream::State::kDone;
   assignment_manager_.RemoveAssignment(path_, worker_address, stream_index);
   ++num_completed_streams_;
@@ -388,7 +404,8 @@ absl::Status SnapshotManager::HandleStreamCompletion(
 }
 
 absl::Status SnapshotManager::HandleStreamError(
-    absl::string_view worker_address, const StatusProto& status_proto) {
+    absl::string_view worker_address, const StatusProto& status_proto)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   // This method returns an OkStatus as the RPC status if the worker reports an
   // error. The errors are communicated back to the workers with a proper RPC
   // response, instead of with a error status.
@@ -406,8 +423,8 @@ absl::Status SnapshotManager::HandleStreamError(
 }
 
 absl::StatusOr<std::optional<int64_t>>
-SnapshotManager::MaybeCreateAndAssignNewStream(
-    absl::string_view worker_address) {
+SnapshotManager::MaybeCreateAndAssignNewStream(absl::string_view worker_address)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   int64_t new_stream_index = streams_.size();
   TF_ASSIGN_OR_RETURN(bool assignment_added,
                       assignment_manager_.TryAddAssignment(
@@ -435,7 +452,8 @@ SnapshotManager::MaybeCreateAndAssignNewStream(
 absl::StatusOr<std::optional<int64_t>>
 SnapshotManager::MaybeGetOrCreateStreamAssignment(
     absl::string_view worker_address,
-    const SnapshotTaskProgress* snapshot_progress) {
+    const SnapshotTaskProgress* snapshot_progress)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::optional<int64_t> assigned_stream_index;
   if (auto it = assignments_.find(worker_address); it != assignments_.end()) {
     assigned_stream_index = it->second;
@@ -475,7 +493,9 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
 }
 
 absl::Status SnapshotManager::WorkerHeartbeat(
-    const WorkerHeartbeatRequest& request, WorkerHeartbeatResponse& response) {
+    const WorkerHeartbeatRequest& request, WorkerHeartbeatResponse& response)
+    TF_LOCKS_EXCLUDED(mu_) {
+  tsl::mutex_lock l(mu_);
   dead_workers_.erase(request.worker_address());
 
   if (mode_ == Mode::kDone || mode_ == Mode::kError) {
@@ -518,8 +538,9 @@ absl::Status SnapshotManager::WorkerHeartbeat(
 }
 
 absl::Status SnapshotManager::GetSnapshotSplit(
-    const GetSnapshotSplitRequest& request,
-    GetSnapshotSplitResponse& response) {
+    const GetSnapshotSplitRequest& request, GetSnapshotSplitResponse& response)
+    TF_LOCKS_EXCLUDED(mu_) {
+  tsl::mutex_lock l(mu_);
   if (auto it = assignments_.find(request.worker_address());
       it == assignments_.end()) {
     return absl::InternalError(
@@ -572,8 +593,8 @@ absl::Status SnapshotManager::GetSnapshotSplit(
   return absl::OkStatus();
 }
 
-absl::Status SnapshotManager::ResetSource(Source& source,
-                                          int64_t source_index) {
+absl::Status SnapshotManager::ResetSource(Source& source, int64_t source_index)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   TF_RETURN_IF_ERROR(source.split_provider->Reset());
   ++source.repetition_index;
   LOG(INFO) << "Starting the " << source.repetition_index << "th repetition "
@@ -586,7 +607,8 @@ absl::Status SnapshotManager::ResetSource(Source& source,
 }
 
 absl::Status SnapshotManager::GetSnapshotStreams(
-    GetSnapshotStreamsResponse& response) {
+    GetSnapshotStreamsResponse& response) TF_LOCKS_EXCLUDED(mu_) {
+  tsl::tf_shared_lock l(mu_);
   for (int64_t i = 0; i < streams_.size(); ++i) {
     SnapshotStreamInfo* stream = response.add_streams();
     stream->set_index(i);

@@ -33,6 +33,8 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 #include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
@@ -194,18 +196,20 @@ class SnapshotManager {
   absl::Status HandleStreamError(absl::string_view worker_address,
                                  const StatusProto& status_proto);
 
+  mutable tsl::mutex mu_;
+
   // The filepath of the on-disk state.
   const std::string path_;
   // A tensorflow environment interface used to write to and read from `path_`.
   tsl::Env* const env_;
   // Distributed snapshot metadata.
-  experimental::DistributedSnapshotMetadata metadata_;
+  experimental::DistributedSnapshotMetadata metadata_ TF_GUARDED_BY(mu_);
   // The last time progress was logged.
-  absl::Time last_progress_log_time_;
+  absl::Time last_progress_log_time_ TF_GUARDED_BY(mu_);
 
   // The addresses of all workers considered to be dead based on heartbeat
   // timeout.
-  absl::flat_hash_set<std::string> dead_workers_;
+  absl::flat_hash_set<std::string> dead_workers_ TF_GUARDED_BY(mu_);
 
   struct Stream {
     explicit Stream(int64_t num_sources)
@@ -235,7 +239,7 @@ class SnapshotManager {
     int64_t repetition_index = 0;
   };
 
-  std::vector<Source> sources_;
+  std::vector<Source> sources_ TF_GUARDED_BY(mu_);
   // Creates sources for the specified dataset.
   absl::StatusOr<std::vector<Source>> CreateSources(
       const DatasetDef& dataset_def) const;
@@ -244,22 +248,24 @@ class SnapshotManager {
   absl::StatusOr<int64_t> CountSplits();
   // Resets a source when it runs out of splits, to support repetitions.
   absl::Status ResetSource(Source& source, int64_t source_index);
-  int64_t num_sources() const { return sources_.size(); }
+  int64_t num_sources() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return sources_.size();
+  }
 
   // All streams for this snapshot.
-  std::vector<Stream> streams_;
+  std::vector<Stream> streams_ TF_GUARDED_BY(mu_);
   // A counter of completed streams for this snapshot.
-  int64_t num_completed_streams_ = 0;
+  int64_t num_completed_streams_ TF_GUARDED_BY(mu_) = 0;
 
   // A mapping of worker to assigned stream index for this snapshot.
-  absl::flat_hash_map<std::string, int64_t> assignments_;
+  absl::flat_hash_map<std::string, int64_t> assignments_ TF_GUARDED_BY(mu_);
   // A mapping of worker to assigned streams for all snapshots.
-  SnapshotAssignmentManager& assignment_manager_;
+  SnapshotAssignmentManager& assignment_manager_ TF_GUARDED_BY(mu_);
 
   // A counter of assigned splits for this snapshot.
-  int64_t num_assigned_splits_ = 0;
+  int64_t num_assigned_splits_ TF_GUARDED_BY(mu_) = 0;
   // The number of splits in a single repetition of the data in `sources_`.
-  int64_t num_total_splits_ = 0;
+  int64_t num_total_splits_ TF_GUARDED_BY(mu_) = 0;
 
   enum class Mode {
     // No streams are done.
@@ -275,10 +281,10 @@ class SnapshotManager {
 
   // If not `kActive`, at least one source has finished processing and no new
   // streams are created or assigned.
-  Mode mode_ = Mode::kActive;
+  Mode mode_ TF_GUARDED_BY(mu_) = Mode::kActive;
 
   // If `mode_` is in an error state, `status_` will contain the error status.
-  absl::Status status_;
+  absl::Status status_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace data
