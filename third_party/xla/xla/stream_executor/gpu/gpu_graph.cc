@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <sstream>
 #include <string>
 
@@ -104,6 +105,7 @@ tsl::StatusOr<OwnedGpuGraphExec::UpdateResult> OwnedGpuGraphExec::Update(
 
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
   GpuDriver::GraphExecUpdateResultInfo result;
+  memset(&result, 0, sizeof(result));
   auto st = GpuDriver::GraphExecUpdate(get(), graph.get(), &result);
   uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
