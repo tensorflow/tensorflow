@@ -59,10 +59,6 @@ logger = logging.getLogger(__name__)
 _NameValueMapping = Mapping[str, Union[str, int, List[int], float]]
 
 
-def make_interpreter_client():
-  return _xla.get_interpreter_client()
-
-
 def make_cpu_client() -> ...:
   return _xla.get_tfrt_cpu_client(asynchronous=True)
 

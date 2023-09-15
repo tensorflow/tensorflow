@@ -1079,7 +1079,6 @@ cc_library(
         "//xla:statusor",
         "//xla:types",
         "//xla:util",
-        "//xla/pjrt:interpreter_device",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_api",
         "//xla/pjrt:pjrt_c_api_client",

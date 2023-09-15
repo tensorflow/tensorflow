@@ -55,7 +55,6 @@ limitations under the License.
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
-#include "xla/pjrt/interpreter_device.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/tfrt_cpu_pjrt_client.h"
@@ -461,13 +460,6 @@ static void Init(py::module_& m) {
             ifrt::PjRtClient::Create(std::move(client)));
       },
       py::arg("asynchronous") = true);
-  m.def("get_interpreter_client", []() -> std::shared_ptr<PyClient> {
-    py::gil_scoped_release gil_release;
-    std::unique_ptr<PjRtClient> client =
-        xla::ValueOrThrow(GetInterpreterClient());
-    return std::make_shared<PyClient>(
-        ifrt::PjRtClient::Create(std::move(client)));
-  });
   m.def("pjrt_plugin_loaded", [](std::string platform_name) -> bool {
     xla::StatusOr<const PJRT_Api*> pjrt_api = pjrt::PjrtApi(platform_name);
     return pjrt_api.ok();

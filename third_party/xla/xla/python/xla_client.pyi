@@ -94,10 +94,6 @@ def make_gpu_client(
   ...
 
 
-def make_interpreter_client() -> Client:
-  ...
-
-
 def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None) -> Client:
   ...
 
