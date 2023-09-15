@@ -176,3 +176,17 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "sparse_core_preprocess_ops",
+    srcs = [
+        "sparse_core_preprocess_ops.cc",
+    ],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@local_xla//xla:util",
+    ],
+    alwayslink = 1,
+)
