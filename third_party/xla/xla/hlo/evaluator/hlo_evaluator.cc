@@ -4018,6 +4018,13 @@ Status HloEvaluator::HandleSort(const HloInstruction* sort) {
           }
           return computed_result.value().Get<bool>({});
         };
+        if (!indices_to_sort.empty()) {
+          // Smoke test of the comparator - it should not be reflexive.
+          const int64_t a = indices_to_sort[0];
+          TF_RET_CHECK(!comparator(a, a))
+              << "Invalid sort comparator - does not satisfy the strict weak "
+                 "ordering requirement";
+        }
         if (Cast<HloSortInstruction>(sort)->is_stable()) {
           std::stable_sort(indices_to_sort.begin(), indices_to_sort.end(),
                            comparator);
