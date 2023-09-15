@@ -86,3 +86,12 @@ tf_workspace1()
 load("@//tensorflow:workspace0.bzl", "tf_workspace0")
 
 tf_workspace0()
+
+# Register the platform and toolchain to support clang-cl on Windows
+register_execution_platforms(
+    ":x64_windows-clang-cl"
+)
+
+register_toolchains(
+    "@local_config_cc//:cc-toolchain-x64_windows-clang-cl",
+)
