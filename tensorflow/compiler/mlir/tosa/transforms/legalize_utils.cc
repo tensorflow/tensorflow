@@ -895,6 +895,14 @@ Value getInputSlicedToItsUsedSize(PatternRewriter& rewriter, Operation* op,
                                   DenseI64ArrayAttr dilations) {
   const int nb_spatial_dims =
       GetTensorSpatialDims(input_type.getRank(), data_format_tf);
+  // Don't slice the input if any spatial dimension is dynamic
+  for (int spatial_dim = 0; spatial_dim < nb_spatial_dims; spatial_dim++) {
+    if (input_type.isDynamicDim(GetTensorSpatialDimIndex(
+            input_type.getRank(), data_format_tf, spatial_dim))) {
+      return input_val;
+    }
+  }
+
   const llvm::SmallVector<int64_t> output_size_remainder =
       getOutputSpatialSizeRemainder(data_format_tf, input_type, kernel_size,
                                     pads, strides, dilations);
@@ -904,9 +912,9 @@ Value getInputSlicedToItsUsedSize(PatternRewriter& rewriter, Operation* op,
   const bool zero_pads =
       llvm::all_of(pads.asArrayRef(), [](int64_t v) { return v == 0; });
   if (need_slicing && zero_pads) {
-    const ArrayRef<int64_t> input_shape = input_type.getShape();
     llvm::SmallVector<int64_t> start(input_type.getRank(), 0);
-    llvm::SmallVector<int64_t> size(input_shape.begin(), input_shape.end());
+    llvm::SmallVector<int64_t> size =
+        tensorflow::ConvertMlirShapeToTF(input_type.getShape());
     for (int spatial_dim = 0; spatial_dim < nb_spatial_dims; spatial_dim++) {
       const int index = GetTensorSpatialDimIndex(input_type.getRank(),
                                                  data_format_tf, spatial_dim);

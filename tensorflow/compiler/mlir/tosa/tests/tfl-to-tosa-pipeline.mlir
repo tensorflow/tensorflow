@@ -53,6 +53,17 @@ func.func @test_conv2d_slicing(%arg0: tensor<2x32x32x8xf32>, %arg1: tensor<16x3x
 
 // -----
 
+// CHECK-LABEL: test_conv2d_slicing_dynamic_batch
+// CHECK-DAG: %[[VAR0:.*]] = tosa.slice %arg0 {size = array<i64: -1, 31, 30, 8>, start = array<i64: 0, 0, 0, 0>}
+// CHECK: %[[VAR1:.*]] = tosa.conv2d %[[VAR0]], %arg1, %arg2 {dilation = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 2, 3>}
+// CHECK-SAME: tensor<?x15x10x16xf32>
+func.func @test_conv2d_slicing_dynamic_batch(%arg0: tensor<?x32x32x8xf32>, %arg1: tensor<16x3x3x8xf32>, %arg2: tensor<16xf32>) -> tensor<?x15x10x16xf32> {
+  %0 = "tfl.conv_2d"(%arg0, %arg1, %arg2)  {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 3 : i32}  : (tensor<?x32x32x8xf32>, tensor<16x3x3x8xf32>, tensor<16xf32>) -> tensor<?x15x10x16xf32>
+  func.return %0 : tensor<?x15x10x16xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_transpose_conv2d
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<16xf32>}>
 // CHECK: %[[VAR1:.*]] = tosa.transpose_conv2d %arg0, %arg1, %[[VAR0]] {out_pad = array<i64: 0, 0, 0, 0>, out_shape = array<i64: 1, 32, 32, 16>, stride = array<i64: 1, 1>}
