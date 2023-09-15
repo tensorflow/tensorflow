@@ -719,6 +719,7 @@ tensorflow::Status SavedModelImpl::Run(
   const mlrt::LoadedExecutable* loaded_executable = nullptr;
   OpKernelRunnerTable* runner_table = nullptr;
   tfd::FallbackResourceArray* resource_array = nullptr;
+  tfrt::ResourceContext* client_graph_resource_context = nullptr;
   if (options_.enable_lazy_loading) {
     // TODO(b/216379787): Remove this lazy loading path once b/279197040 is
     // unblocked.
@@ -735,6 +736,7 @@ tensorflow::Status SavedModelImpl::Run(
     }
     runner_table = loading_result.runner_table.get();
     resource_array = loading_result.resource_array.get();
+    client_graph_resource_context = loading_result.resource_context.get();
   } else {
     symbol_uids = &symbol_uids_;
     if (loaded_executable_) {
@@ -753,9 +755,8 @@ tensorflow::Status SavedModelImpl::Run(
   return GraphExecutionRunOnFunction(
       options_.graph_execution_options, run_options, name, *symbol_uids, func,
       loaded_executable, inputs, outputs, resource_context,
-      /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
-      runtime(), *fallback_state_,
-      fallback_state_->process_function_library_runtime(),
+      client_graph_resource_context, runner_table, resource_array, runtime(),
+      *fallback_state_, fallback_state_->process_function_library_runtime(),
       &req_deadline_tracker_, /*stream_callback_id=*/std::nullopt);
 }
 
@@ -980,6 +981,7 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   loading_result->runner_table = std::make_unique<OpKernelRunnerTable>();
   loading_result->resource_array =
       std::make_unique<tfd::FallbackResourceArray>();
+  loading_result->resource_context = std::make_unique<tfrt::ResourceContext>();
 
   ModelRuntimeContext model_context(
       &options_.graph_execution_options,
