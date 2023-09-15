@@ -608,7 +608,8 @@ StatusOr<Value> EmitScope(
       TF_RET_CHECK(hlo->IsRoot()) << hlo->ToString();
     } else if (hlo->opcode() == HloOpcode::kBitcast ||
                hlo->opcode() == HloOpcode::kTranspose ||
-               hlo->opcode() == HloOpcode::kReshape) {
+               hlo->opcode() == HloOpcode::kReshape ||
+               hlo->opcode() == HloOpcode::kPad) {
       result = values[hlo->operand(0)];
     } else {
       LOG(FATAL) << hlo->ToString();
@@ -854,8 +855,18 @@ MatMulDims::MatMulDims(const AutotuneResult::TritonGemmKey& config,
           ->at(0)
           .count;
   // Contracting dimension length.
-  k = dot.operand(0)->shape().dimensions(dims.lhs_contracting_dimensions(0)) *
-      config.split_k();
+  if (config.split_k() > 1 && dot.operand(0)->opcode() == HloOpcode::kBitcast &&
+      dot.operand(0)->operand(0)->opcode() == HloOpcode::kPad) {
+    // Unpadded LHS shape:  [..., k, ...]
+    // Padded LHS shape:    [..., padded_k, ...]
+    // Bitcasted LHS shape: [..., split_k, padded_k / split_k, ...]
+    const Shape& unpadded_lhs_shape =
+        dot.operand(0)->operand(0)->operand(0)->shape();
+    k = unpadded_lhs_shape.dimensions(dims.lhs_contracting_dimensions(0) - 1);
+  } else {
+    k = dot.operand(0)->shape().dimensions(dims.lhs_contracting_dimensions(0)) *
+        config.split_k();
+  }
 
   auto* lhs_noncontracting_split_spec =
       GetLhsNoncontractingSplitSpec(analysis, lhs_noncontracting_dim_idx);

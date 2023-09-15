@@ -819,17 +819,17 @@ ENTRY e {
               "Operation non-distributive over addition after dot.")));
 }
 
-TEST_F(SplitKTest, AvoidSplitKWithNonDivisibleDimensionSize) {
-  const std::string hlo_text = R"(
+TEST_F(SplitKTest, MakeSplitKWithNonDivisibleDimensionSize) {
+  constexpr absl::string_view kHloText = R"(
 t {
   c1 = s32[] constant(1)
   bc1 = s32[31]{0} broadcast(c1), dimensions={}
   p0 = s32[31]{0} parameter(0)
   cmp = pred[31]{0} compare(bc1, p0), direction=EQ
   cvt = f32[31]{0} convert(cmp)
-  bc2 = f32[3,31]{1,0} broadcast(cvt), dimensions={1}
+  bc2 = f32[17,31]{1,0} broadcast(cvt), dimensions={1}
   c0 = f32[] constant(0)
-  bc0 = f32[3,16]{1,0} broadcast(c0), dimensions={}
+  bc0 = f32[17,16]{1,0} broadcast(c0), dimensions={}
   ROOT dot = f32[31,16]{1,0} dot(bc2, bc0),
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
 }
@@ -840,7 +840,7 @@ ENTRY e {
     kind=kCustom, calls=t, backend_config="__triton_gemm"
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+                          ParseAndReturnVerifiedModule(kHloText));
   AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
   key.set_block_n(16);
@@ -848,11 +848,8 @@ ENTRY e {
   key.set_split_k(2);
   key.set_num_stages(1);
   key.set_num_warps(2);
-  EXPECT_THAT(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
-      tsl::testing::StatusIs(
-          tsl::error::CANCELLED,
-          absl::StrFormat("Contracting dimension is too fragmented.")));
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
 }
 
 TEST_F(SplitKTest, MakeSplitKWithNonStandardOutputLayout) {
@@ -1007,8 +1004,8 @@ ENTRY e {
               GmockMatch(m::Convert(m::Reduce(m::Fusion(), m::Constant()))));
 }
 
-TEST_F(SplitKTest, SkipIndivisible) {
-  const std::string hlo_text = R"(
+TEST_F(SplitKTest, SupportsIndivisible) {
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 triton_gemm_dot {
@@ -1029,7 +1026,7 @@ ENTRY e {
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+                          ParseAndReturnVerifiedModule(kHloText));
   AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
   key.set_block_n(16);
@@ -1037,10 +1034,166 @@ ENTRY e {
   key.set_split_k(4);
   key.set_num_stages(1);
   key.set_num_warps(4);
-  EXPECT_THAT(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
-      tsl::testing::StatusIs(tsl::error::CANCELLED,
-                             "Contracting dimension is too fragmented."));
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+}
+
+TEST_F(SplitKTest, SupportsIndivisibleSimpleSplitK4) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[480,129]{1,0} parameter(0)
+  convert_0 = bf16[480,129]{1,0} convert(parameter_0)
+  parameter_1 = bf16[16,129]{1,0} parameter(1)
+  ROOT dot.0 = bf16[480,16]{1,0} dot(convert_0, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[480,129]{1,0} parameter(0)
+  p1 = bf16[16,129]{1,0} parameter(1)
+  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(4);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+}
+
+TEST_F(SplitKTest, SupportsIndivisibleSimpleSplitK16) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[480,255]{1,0} parameter(0)
+  convert_0 = bf16[480,255]{1,0} convert(parameter_0)
+  parameter_1 = bf16[16,255]{1,0} parameter(1)
+  ROOT dot.0 = bf16[480,16]{1,0} dot(convert_0, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[480,255]{1,0} parameter(0)
+  p1 = bf16[16,255]{1,0} parameter(1)
+  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(16);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+}
+
+TEST_F(SplitKTest, SupportsIndivisibleWithTranspose) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[480,255]{1,0} parameter(0)
+  convert_0 = bf16[480,255]{1,0} convert(parameter_0)
+  transpose_0 = bf16[255,480]{1,0} transpose(convert_0), dimensions={1,0}
+  parameter_1 = bf16[16,255]{1,0} parameter(1)
+  ROOT dot.0 = bf16[480,16]{1,0} dot(transpose_0, parameter_1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[480,255]{1,0} parameter(0)
+  p1 = bf16[16,255]{1,0} parameter(1)
+  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(16);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+}
+
+TEST_F(SplitKTest, SupportIndivisibleWithBroadcast) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[] parameter(0)
+  convert_0 = bf16[] convert(parameter_0)
+  broadcast_0 = bf16[480,255]{1,0} broadcast(convert_0)
+  parameter_1 = bf16[16,255]{1,0} parameter(1)
+  ROOT dot.0 = bf16[480,16]{1,0} dot(broadcast_0, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[] parameter(0)
+  p1 = bf16[16,255]{1,0} parameter(1)
+  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(16);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+}
+
+TEST_F(SplitKTest, SupportsIndivisibleWithBitcast) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[3,5,480,17]{3,0,1,2} parameter(0)
+  convert_0 = bf16[3,5,480,17]{3,0,1,2} convert(parameter_0)
+  bitcast_0 = bf16[480,255]{1,0} bitcast(convert_0)
+  parameter_1 = bf16[16,255]{1,0} parameter(1)
+  ROOT dot.0 = bf16[480,16]{1,0} dot(bitcast_0, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[3,5,480,17]{3,0,1,2} parameter(0)
+  p1 = bf16[16,255]{1,0} parameter(1)
+  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(16);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
 }
 
 TEST_F(SplitKTest, SkipSmallK) {
@@ -1166,6 +1319,7 @@ ENTRY e {
   key.set_num_stages(1);
   key.set_num_warps(4);
   key.set_split_k(4);
+  // Because HasDivisibleSuffixAllowingSplit({128, 3}, 4) == false.
   EXPECT_THAT(
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
       tsl::testing::StatusIs(tsl::error::CANCELLED,

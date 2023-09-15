@@ -765,6 +765,13 @@ DimOrderUpdatesOrError FusionContext::HandleBitcast(
 DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
     const HloInstruction* hlo, const DimOrderMap& dim_orders,
     const TransformDirection direction) const {
+  // Temporary storage for new fragments local to this function.
+  // Please keep this as the first local variable of this function, with type
+  // std::list to make sure that all pointers to elements of this remain valid
+  // throughout the entire function. std::deque would also work but it is
+  // unnecessarily big for a typical size of 1.
+  std::list<Fragment> new_fragments;
+
   const HloInstruction* src =
       (direction == TransformDirection::kOutputToInput) ? hlo : hlo->operand(0);
   const HloInstruction* dst =
@@ -772,8 +779,8 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
   const Fragments& src_fragments_order =
       dim_orders.at(src).TensorFragmentsOrder();
   DimOrderUpdates result;
-  if (hlo->opcode() == HloOpcode::kReduce) {
-    // Operand 1 (the neutral value) has to be a scalar.
+  if (hlo->opcode() == HloOpcode::kReduce || hlo->opcode() == HloOpcode::kPad) {
+    // Operand 1 (the neutral value or padding value) has to be a scalar.
     result.map.insert({hlo->operand(1), DimensionOrder()});
   }
   DimensionOrder& dst_dim_order =
@@ -809,8 +816,6 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
   }
   // Source logical -> destination logical.
   std::vector<std::vector<const Fragment*>> dst_logical;
-  // Temporary storage for fragments of new dimensions created by reductions.
-  std::list<Fragment> new_fragments;
   if (hlo->opcode() == HloOpcode::kTranspose) {
     const auto* transpose = Cast<HloTransposeInstruction>(hlo);
     std::vector<int64_t> permutation(transpose->dimensions().cbegin(),
@@ -851,6 +856,36 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
     // Copy preserves the logical shape, just permutes the layout.
     CHECK(ShapeUtil::SameDimensions(src->shape(), dst->shape()));
     dst_logical = src_logical;
+  } else if (hlo->opcode() == HloOpcode::kPad) {
+    const auto* pad = Cast<HloPadInstruction>(hlo);
+    dst_logical.resize(src_logical.size());
+    for (int i = 0; i < src_logical.size(); ++i) {
+      // This only handles the padding added by PadDotOperandsIfNeededForSplitK,
+      // which sets only edge_padding_high.
+      const int padding =
+          pad->padding_config().dimensions(i).edge_padding_high();
+      CHECK_EQ(pad->padding_config().dimensions(i).edge_padding_low(), 0);
+      CHECK_EQ(pad->padding_config().dimensions(i).interior_padding(), 0);
+      if (padding == 0) {
+        dst_logical[i] = src_logical[i];
+      } else {
+        // This case is executed for the contracting dimension when we run the
+        // TritonFusionAnalysis after the padding and the split-k transform are
+        // applied.
+        const std::vector<const Fragment*>& fragments = src_logical[i];
+        // We must have 2 fragments at this point.
+        CHECK_EQ(fragments.size(), 2);
+        // The dst_dim_numbers must be the same for the 2 fragments of the
+        // contracting dimension after applying split-k.
+        CHECK_EQ(fragments[0]->dst_dim_number(),
+                 fragments[1]->dst_dim_number());
+
+        new_fragments.emplace_back(
+            fragments[0]->dst_dim_number(),
+            fragments[0]->size() * fragments[1]->size() - padding);
+        dst_logical[i] = {&new_fragments.back()};
+      }
+    }
   } else {
     return FusionDecision("Function called on a wrong instruction.");
   }
@@ -880,7 +915,8 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
     for (const int fragment_number : dim_sequence) {
       const auto it = src_to_dst.find(&src_fragments_order[fragment_number]);
       if (it == src_to_dst.cend()) {
-        if (src_fragments_order[fragment_number].size() > 1 &&
+        if (hlo->opcode() == HloOpcode::kBroadcast &&
+            src_fragments_order[fragment_number].size() > 1 &&
             dim_numbers_present_in_dst.contains(dim_index)) {
           return FusionDecision("Unsupported broadcast");
         }
@@ -912,6 +948,11 @@ DimOrderUpdatesOrError FusionContext::HandleInstruction(
   } else if (hlo->opcode() == HloOpcode::kReduce) {
     if (direction != TransformDirection::kOutputToInput) {
       return "Unsupported direction of reduction.";
+    }
+    return HandleDimensionAlteringOp(hlo, dim_orders, direction);
+  } else if (hlo->opcode() == HloOpcode::kPad) {
+    if (direction != TransformDirection::kOutputToInput) {
+      return "Unsupported pad direction.";
     }
     return HandleDimensionAlteringOp(hlo, dim_orders, direction);
   } else if (hlo->operand_count() > 0 &&
@@ -982,6 +1023,9 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
   }
   if (hlo.opcode() == HloOpcode::kReduce) {
     return "Reductions are not fused yet.";
+  }
+  if (hlo.opcode() == HloOpcode::kPad) {
+    return "Pads are not fused yet.";
   }
   for (const HloInstruction* operand : hlo.operands()) {
     if (!IsTritonSupportedDataType(operand->shape().element_type(),
@@ -1361,17 +1405,15 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
     HloInstruction& dot, const TritonFusionAnalysis& analysis,
     const AutotuneResult::TritonGemmKey& tiling,
     const int64_t contracting_dim_idx, const int operand_number) {
-  const Shape& shape = dot.operand(operand_number)->shape();
-  Shape new_shape(shape.element_type(), {}, {}, {});
+  HloInstruction* operand = dot.mutable_operand(operand_number);
+  const int64_t k = operand->shape().dimensions(contracting_dim_idx);
+  const bool need_padding = k % tiling.split_k() != 0;
 
-  // TODO(b/274775195): implement split-K with padding.
-  if (tiling.split_k() > shape.dimensions(contracting_dim_idx)) {
-    return UncompilableMatmul("Too small total contracting dimension size.");
-  }
   TritonFusionAnalysis::Scope scope = (operand_number == 0)
                                           ? TritonFusionAnalysis::Scope::LHS
                                           : TritonFusionAnalysis::Scope::RHS;
-  auto check_divisibility = [&](const HloInstruction& hlo) {
+  auto check_if_supported = [&](const HloInstruction& hlo,
+                                bool check_divisibility) {
     const DimIterationSpec* spec =
         analysis.IterSpec(scope, &hlo, contracting_dim_idx);
     if (spec == nullptr) {
@@ -1382,8 +1424,8 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
       return UncompilableMatmul("Unsupported case.");
     }
     const TensorIterationSpec::IterationSpecFragment& fragment = spec->at(0);
-    if (!HasDivisibleSuffixAllowingSplit(fragment.subfragments,
-                                         tiling.split_k())) {
+    if (check_divisibility && !HasDivisibleSuffixAllowingSplit(
+                                  fragment.subfragments, tiling.split_k())) {
       return UncompilableMatmul("Contracting dimension is too fragmented.");
     }
     if (tiling.split_k() > ceil(1.0 * fragment.count / tiling.block_k())) {
@@ -1392,10 +1434,39 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
     }
     return OkStatus();
   };
-  TF_RETURN_IF_ERROR(check_divisibility(*dot.operand(operand_number)));
+
+  // The divisibility check is only used to ensure that the TritonFusionAnalysis
+  // in IrEmitterTriton can propagate the fragments correctly after the split-k
+  // transform. The contracting dimension is always contiguous so far.
+  //
+  // If padding is needed on the operand then the divisibility may not hold
+  // up for the scope parameters. We just check some basics here, and we check
+  // the full analysis after the split-k transform at the end of
+  // MakeDotComputationSplitKBatch.
+  TF_RETURN_IF_ERROR(
+      check_if_supported(*operand, /*check_divisibility=*/!need_padding));
   for (const HloInstruction* param : analysis.ScopeParameters(scope)) {
-    TF_RETURN_IF_ERROR(check_divisibility(*param));
+    TF_RETURN_IF_ERROR(
+        check_if_supported(*param, /*check_divisibility=*/!need_padding));
   }
+
+  // Add padding if needed.
+  if (need_padding) {
+    HloInstruction* const zero =
+        dot.parent()->AddInstruction(HloInstruction::CreateConstant(
+            LiteralUtil::Zero(operand->shape().element_type())));
+
+    PaddingConfig padding_config = MakeNoPaddingConfig(operand->shape().rank());
+    padding_config.mutable_dimensions(contracting_dim_idx)
+        ->set_edge_padding_high(tiling.split_k() - k % tiling.split_k());
+
+    TF_ASSIGN_OR_RETURN(operand, MakePadHlo(operand, zero, padding_config));
+  }
+  CHECK_GE(operand->shape().dimensions(contracting_dim_idx), tiling.split_k());
+
+  // Add bitcast.
+  const Shape& shape = operand->shape();
+  Shape new_shape(shape.element_type(), {}, {}, {});
 
   for (int i = 0; i < shape.rank(); ++i) {
     const int64_t dimension_size = shape.dimensions(i);
@@ -1421,7 +1492,7 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
       new_layout->add_minor_to_major(logical_dim_idx);
     }
   }
-  return MakeBitcastHlo(dot.mutable_operand(operand_number), new_shape);
+  return MakeBitcastHlo(operand, new_shape);
 }
 
 // Apply split K configuration from the tiling to the fused dot() computation:
@@ -1477,6 +1548,7 @@ Status MakeDotComputationSplitKBatch(
   } while (true);
 
   // Process the collected HLOs from computation root to dot.
+  bool did_pad = false;
   while (!to_process.empty()) {
     HloInstruction* current = to_process.top();
     to_process.pop();
@@ -1489,6 +1561,10 @@ Status MakeDotComputationSplitKBatch(
       TF_ASSIGN_OR_RETURN(
           HloInstruction * rhs,
           MakeSplitKOperand(*dot, analysis, tiling, rhs_contracting_idx, 1));
+      if (lhs->operand(0)->opcode() == HloOpcode::kPad) {
+        CHECK_EQ(rhs->operand(0)->opcode(), HloOpcode::kPad);
+        did_pad = true;
+      }
       expanded = MakeDotHlo(lhs, rhs, new_dim_numbers, dot->precision_config(),
                             dot->shape().element_type())
                      .value();
@@ -1536,6 +1612,16 @@ Status MakeDotComputationSplitKBatch(
     computation->root_instruction()->mutable_shape()->set_element_type(
         accumulator_type);
   }
+
+  if (did_pad) {
+    // Check if the analysis can work on the transformed HLO.
+    // We can fail gracefully here, but not in IrEmitterTriton.
+    // For the case without padding, we already checked this in
+    // MakeSplitKOperand with the divisibility check.
+    TF_RETURN_IF_ERROR(
+        TritonFusionAnalysis::Execute(*computation, tiling.split_k()).status());
+  }
+
   return OkStatus();
 }
 
