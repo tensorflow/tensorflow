@@ -4439,6 +4439,7 @@ xla_cc_test(
     name = "hlo_traversal_test",
     srcs = ["hlo_traversal_test.cc"],
     deps = [
+        ":gpu_fusible",
         ":hlo_traversal",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",

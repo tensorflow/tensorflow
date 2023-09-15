@@ -41,6 +41,11 @@ using FusionBoundaryFn = std::function<bool(const HloInstruction& producer,
 bool DefaultFusionBoundaryFn(const HloInstruction& producer,
                              const HloInstruction& consumer);
 
+// Creates a fusion boundary function for fusing the given producer and
+// consumer. `fused_consumer` must be a consumer of `fused_producer`.
+FusionBoundaryFn MakeProducerConsumerFusion(
+    const HloInstruction& fused_producer, const HloInstruction& fused_consumer);
+
 // Visit the HLO nodes starting from `roots` in BFS order (consumers before
 // producers). Each node will be visited exactly once. The graph is not
 // traversed along edges for which `boundary` returns true.
@@ -65,6 +70,7 @@ const HloInstruction* HloFindIf(
     const std::function<bool(const HloInstruction& node)>& visit);
 
 // Visit the producers of all parameters that are needed by the fusion.
+// TODO(jreiffers): Rename this to FindFusionArguments.
 void FindFusionParameters(
     absl::Span<const HloInstruction* const> roots,
     const FusionBoundaryFn& boundary,
