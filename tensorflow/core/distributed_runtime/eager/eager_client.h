@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_CLIENT_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_CLIENT_H_
 
+#include <cstdint>
+
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
@@ -42,14 +44,14 @@ class EagerClient : public core::RefCounted {
 
 #undef CLIENT_METHOD
 
-#define CLIENT_METHOD_WITH_TIMEOUT(method)                                    \
+#define CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(method)                        \
   virtual void method##Async(const method##Request* request,                  \
                              method##Response* response, StatusCallback done, \
-                             int64_t init_timeout_in_ms) = 0;
+                             int64_t init_timeout_in_ms, int retries) = 0;
 
-  CLIENT_METHOD_WITH_TIMEOUT(CreateContext);
+  CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(CreateContext);
 
-#undef CLIENT_METHOD_WITH_TIMEOUT
+#undef CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES
 
 #define CLIENT_CANCELABLE_METHOD(method)                      \
   virtual void method##Async(                                 \

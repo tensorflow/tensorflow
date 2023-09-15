@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_mlir.h"
 
-#include <chrono>  // NOLINT(build/c++11)
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -33,11 +31,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/set_tpu_infeed_layout.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/compilation_timer.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
-#include "tensorflow/compiler/xla/shape.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
@@ -45,16 +44,14 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/tpu_compile.h"
-#include "tensorflow/tsl/lib/monitoring/sampler.h"
-#include "tensorflow/tsl/platform/error_logging.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/lib/monitoring/sampler.h"
+#include "tsl/platform/error_logging.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {
 namespace internal {
-// TODO(b/294891109) Move this new internal code to a better suited directory.
-
 auto* phase2_bridge_compilation_time = tsl::monitoring::Sampler<1>::New(
     {"/tensorflow/core/tf2xla/api/v1/phase2_compilation_time",
      "The wall-clock time spent on executing graphs in milliseconds.",
@@ -68,23 +65,6 @@ constexpr char kBridgeComponent[] = "TFXLABridge";
 
 using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
-
-// Time the execution of kernels (in CPU cycles). Meant to be used as RAII.
-struct CompilationTimer {
-  uint64 start_cycles = profile_utils::CpuUtils::GetCurrentClockCycle();
-
-  uint64 ElapsedCycles() {
-    return profile_utils::CpuUtils::GetCurrentClockCycle() - start_cycles;
-  }
-
-  int64_t ElapsedCyclesInMilliseconds() {
-    std::chrono::duration<double> duration =
-        profile_utils::CpuUtils::ConvertClockCycleToTime(ElapsedCycles());
-
-    return std::chrono::duration_cast<std::chrono::milliseconds>(duration)
-        .count();
-  }
-};
 
 tsl::StatusOr<std::string> CompileFromMlirToXlaHlo(
     bool lower_to_xla_hlo, const MlirToHloArgs& computation,

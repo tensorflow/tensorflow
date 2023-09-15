@@ -13,7 +13,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/tensor_to_hash_bucket_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"

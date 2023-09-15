@@ -22,7 +22,9 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/lut.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #ifdef TFLITE_KERNEL_USE_XNNPACK
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #endif  // TFLITE_KERNEL_USE_XNNPACK
 
@@ -42,6 +45,7 @@ namespace elementwise {
 namespace {
 
 const char kAbsName[] = "Abs";
+const char kLogName[] = "Log";
 const char kRsqrtName[] = "Rsqrt";
 
 struct OpData {
@@ -50,6 +54,10 @@ struct OpData {
   int input_offset;
   int output_offset;
   bool needs_rescale;
+  union {
+    int8_t lut_int8[LUTSize<int8_t>()];
+    int16_t lut_int16[LUTSize<int16_t>()];
+  };
 };
 
 bool IsNumericSupportedType(const TfLiteType type) {
@@ -69,6 +77,10 @@ bool IsRsqrtSupportedType(const TfLiteType type) {
   return type == kTfLiteFloat32 || type == kTfLiteInt8;
 }
 
+bool IsLogSupportedType(const TfLiteType type) {
+  return type == kTfLiteFloat32 || type == kTfLiteInt8 || type == kTfLiteInt16;
+}
+
 inline void SetAbsOutputMultiplier(const float input_scale,
                                    const float output_scale,
                                    int32_t* multiplier, int32_t* shift) {
@@ -82,12 +94,33 @@ inline void SetRsqrtOutputMultiplier(const float input_scale,
   QuantizeMultiplier(scale, multiplier, shift);
 }
 
-size_t MultiplyNonChannelDims(TfLiteIntArray* shape) {
-  size_t batch_size = 1;
-  for (int i = 0; i < shape->size - 1; ++i) {
-    batch_size *= shape->data[i];
+void LogLUTPrepare(TfLiteType type, OpData* op_data, float input_scale,
+                   int32_t input_zero_point, float output_scale,
+                   int32_t output_zero_point) {
+  const float output_min =
+      (((type == kTfLiteInt8) ? std::numeric_limits<int8>::min()
+                              : std::numeric_limits<int16>::min()) -
+       output_zero_point) *
+      output_scale;
+  const void* lut_func_params = static_cast<const void*>(&output_min);
+  const auto lut_func = [](float value, const void* lut_func_params) {
+    if (value <= 0.0f) {
+      const float output_min = *static_cast<const float*>(lut_func_params);
+      return output_min;
+    }
+
+    return std::log(value);
+  };
+
+  if (type == kTfLiteInt8) {
+    LUTPopulate<int8_t>(input_scale, input_zero_point, output_scale,
+                        output_zero_point, lut_func, lut_func_params,
+                        op_data->lut_int8);
+  } else {
+    LUTPopulate<int16_t>(input_scale, input_zero_point, output_scale,
+                         output_zero_point, lut_func, lut_func_params,
+                         op_data->lut_int16);
   }
-  return batch_size;
 }
 
 typedef bool (*IsSupportedType)(TfLiteType);
@@ -142,6 +175,9 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node,
     } else if (op_name == kRsqrtName) {
       SetRsqrtOutputMultiplier(input_scale, output_scale, &op_data->multiplier,
                                &op_data->shift);
+    } else if (op_name == kLogName) {
+      LogLUTPrepare(input->type, op_data, input_scale, op_data->input_offset,
+                    output_scale, op_data->output_offset);
     }
   }
   return context->ResizeTensor(context, output,
@@ -267,7 +303,32 @@ TfLiteStatus CosEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus LogEval(TfLiteContext* context, TfLiteNode* node) {
-  return EvalNumeric(context, node, std::log);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+
+  auto op_data = reinterpret_cast<OpData*>(node->user_data);
+  switch (input->type) {
+    case kTfLiteFloat32:
+      return EvalNumeric(context, node, std::log);
+    case kTfLiteInt8:
+      reference_integer_ops::LookupTable(
+          GetTensorData<int8_t>(input),
+          MatchingFlatSize(GetTensorShape(input), GetTensorShape(output)),
+          op_data->lut_int8, GetTensorData<int8_t>(output));
+      return kTfLiteOk;
+    case kTfLiteInt16:
+      reference_integer_ops::LookupTable(
+          GetTensorData<int16_t>(input),
+          MatchingFlatSize(GetTensorShape(input), GetTensorShape(output)),
+          op_data->lut_int16, GetTensorData<int16_t>(output));
+      return kTfLiteOk;
+    default:
+      TF_LITE_KERNEL_LOG(context, "Current data type %s is not supported.",
+                         TfLiteTypeGetName(input->type));
+      return kTfLiteError;
+  }
 }
 
 TfLiteStatus SqrtEval(TfLiteContext* context, TfLiteNode* node) {
@@ -276,16 +337,13 @@ TfLiteStatus SqrtEval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
   if (input->type == kTfLiteFloat32) {
     xnn_status status;
-    const size_t num_input_dims = input->dims->size;
-    const size_t channel_dim =
-        num_input_dims == 0 ? 1 : input->dims->data[num_input_dims - 1];
-    const size_t batch_size = MultiplyNonChannelDims(input->dims);
+    const size_t channel_dim = 1;
+    const size_t batch_size = NumElements(input->dims);
     TfLiteTensor* output;
     TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
     CpuBackendContext* cpu_backend_context =
         CpuBackendContext::GetFromContext(context);
     pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
-    threadpool = nullptr;
     status = xnn_run_square_root_nc_f32(
         channel_dim, channel_dim, channel_dim, batch_size,
         GetTensorData<float>(input), GetTensorData<float>(output),
@@ -294,7 +352,7 @@ TfLiteStatus SqrtEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     TFLITE_LOG(TFLITE_LOG_INFO,
-               "Failed to run xnnpack xnn_run_sqrt_nd_x32. Error code: %d",
+               "Failed to run xnnpack xnn_run_sqrt_nc_f32. Error code: %d",
                status);
   }
 #endif  // TFLITE_KERNEL_USE_XNNPACK
@@ -351,6 +409,29 @@ TfLiteStatus RsqrtEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus SquareEval(TfLiteContext* context, TfLiteNode* node) {
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  if (input->type == kTfLiteFloat32) {
+    const size_t channel_dim = 1;
+    const size_t batch_size = NumElements(input->dims);
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+    CpuBackendContext* cpu_backend_context =
+        CpuBackendContext::GetFromContext(context);
+    pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+    xnn_status status = xnn_run_square_nc_f32(
+        channel_dim, channel_dim, channel_dim, batch_size,
+        GetTensorData<float>(input), GetTensorData<float>(output),
+        /*flags*/ XNN_FLAG_YIELD_WORKERS, threadpool);
+    if (status == xnn_status_success) {
+      return kTfLiteOk;
+    }
+    TFLITE_LOG(TFLITE_LOG_INFO,
+               "Failed to run xnnpack xnn_run_square_nc_f32. Error code: %d",
+               status);
+  }
+#endif  // TFLITE_KERNEL_USE_XNNPACK
   return EvalNumeric(context, node, [](float f) { return f * f; });
 }
 
@@ -405,11 +486,13 @@ TfLiteRegistration* Register_COS() {
   return &r;
 }
 
-GENERIC_PREPARE(PrepareLog, elementwise::IsNumericSupportedType, "Log")
+GENERIC_PREPARE(PrepareLog, elementwise::IsLogSupportedType,
+                elementwise::kLogName)
 
 TfLiteRegistration* Register_LOG() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr, PrepareLog,
-                                 elementwise::LogEval};
+  static TfLiteRegistration r = {elementwise::ElementWiseQuantizedInit,
+                                 elementwise::ElementWiseQuantizedFree,
+                                 PrepareLog, elementwise::LogEval};
   return &r;
 }
 

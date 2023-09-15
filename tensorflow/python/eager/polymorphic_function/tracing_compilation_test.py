@@ -37,13 +37,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import convolutional
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients_impl
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -396,31 +394,6 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     # This happens with a lot of option toggles, e.g. soft device placement
     context.context().function_call_options = None
     model(constant_op.constant(2.0))
-
-  # TODO(b/286583977): We add the run_v2_only here to shield from the automatic
-  # both modes since we use the other decorator already to invoke them.
-  @test_util.run_v2_only
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
-  def testLayerInCompilation(self):
-    conv = convolutional.Conv2D(
-        filters=1,
-        kernel_size=2,
-        kernel_initializer=init_ops.ones_initializer(),
-        bias_initializer=init_ops.zeros_initializer(),
-    )
-
-    def model(x):
-      return conv(x)
-
-    x = array_ops.ones([1, 2, 2, 1])
-    y = tracing_compilation.call_function(
-        (x,), tracing_options=tracing_compilation.TracingOptions(model, 'model')
-    )
-
-    if not context.executing_eagerly():
-      self.evaluate(variables.global_variables_initializer())
-
-    self.assertAllClose([[[[4.0]]]], self.evaluate(y))
 
   @test_util.run_in_graph_and_eager_modes
   def testVariablesPlacedOnOutsideDevice(self):

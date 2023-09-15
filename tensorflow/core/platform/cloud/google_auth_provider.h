@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/oauth_client.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/tsl/platform/cloud/google_auth_provider.h"
+#include "tsl/platform/cloud/google_auth_provider.h"
 
 namespace tensorflow {
 using tsl::GoogleAuthProvider;  // NOLINT(misc-unused-using-decls)

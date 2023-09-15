@@ -19,6 +19,7 @@ import os
 import pickle
 
 from absl.testing import parameterized
+
 from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -26,7 +27,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.layers import core as non_keras_core
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -63,9 +63,18 @@ class ListTests(test.TestCase):
     with context.graph_mode():
       inner = data_structures.List()
       outer = data_structures.List([inner])
-      inner.append(non_keras_core.Dense(1))
+
+      class TestDense(module.Module):
+        def __init__(self):
+          self.w = variables.Variable(1.0)
+          self.b = variables.Variable(0.0)
+
+        def __call__(self, inputs):
+          return self.w * inputs + self.b
+
+      inner.append(TestDense())
       inner[0](array_ops.ones([2, 3]))
-      self.assertEqual(2, len(outer.variables))
+      self.assertLen(outer.variables, 2)
       self.assertIsInstance(
           outer.variables[0],
           resource_variable_ops.ResourceVariable)

@@ -341,7 +341,7 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
     reshape_output_shape.assign(output_shape_vals.begin(),
                                 output_shape_vals.end());
   }
-  IntegerAttr concat_axis_attr = rewriter.getI64IntegerAttr(concat_axis);
+  IntegerAttr concat_axis_attr = rewriter.getI32IntegerAttr(concat_axis);
   DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(
       tensorflow::ConvertMlirShapeToTF(reshape_output_shape));
 
@@ -827,7 +827,7 @@ std::optional<Value> convertConcatV2Op(PatternRewriter& rewriter, Operation* op,
 
   auto concat_op = CreateOpAndInfer<tosa::ConcatOp>(
       rewriter, op->getLoc(), result_type, values_rescaled,
-      rewriter.getI64IntegerAttr(axis));
+      rewriter.getI32IntegerAttr(axis));
 
   return concat_op.getResult();
 }
@@ -1610,7 +1610,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       auto op2_reducemax_op1 = CreateOpAndInfer<tosa::ReduceMaxOp>(
           rewriter, op->getLoc(), int32_rsum_type, op1_rescale_in,
-          rewriter.getI64IntegerAttr(input_rank - 1));
+          rewriter.getI32IntegerAttr(input_rank - 1));
 
       auto op3_sub_op1_op2 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_logits_type, op1_rescale_in,
@@ -1704,7 +1704,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       auto op15_reducesum_op14 = CreateOpAndInfer<tosa::ReduceSumOp>(
           rewriter, op->getLoc(), int32_rsum_type,
           op14_rshift_op13_12.getResult(),
-          rewriter.getI64IntegerAttr(input_rank - 1));
+          rewriter.getI32IntegerAttr(input_rank - 1));
 
       // Step 4. calculate reciprocal(sum(exp()))
       // CLZ returns the number of leading zeros which equals to headroom + 1
@@ -1811,7 +1811,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       auto op2_reducemax_op1 = CreateOpAndInfer<tosa::ReduceMaxOp>(
           rewriter, op->getLoc(), int32_rsum_type, op1_rescale_in,
-          rewriter.getI64IntegerAttr(input_rank - 1));
+          rewriter.getI32IntegerAttr(input_rank - 1));
 
       // output range is [-65535, 0]
       auto op3_sub_op1_op2 = CreateOpAndInfer<tosa::SubOp>(
@@ -1855,7 +1855,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // Step 4. get sum(exp()). output 16.15
       auto op9_reducesum_op8 = CreateOpAndInfer<tosa::ReduceSumOp>(
           rewriter, op->getLoc(), int32_rsum_type, op8_rshift_op7.getResult(),
-          rewriter.getI64IntegerAttr(input_rank - 1));
+          rewriter.getI32IntegerAttr(input_rank - 1));
 
       // Step 5. calculate reciprocal(sum(exp()))
       // CLZ returns 32 - first non zero bit
@@ -1956,7 +1956,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     // Step 1. get x - max(x)
     auto max_logits = CreateOpAndInfer<tosa::ReduceMaxOp>(
         rewriter, op->getLoc(), rsum_type, logits_value,
-        rewriter.getI64IntegerAttr(input_rank - 1));
+        rewriter.getI32IntegerAttr(input_rank - 1));
     auto normalized_logits =
         CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), logits_type,
                                       logits_value, max_logits.getResult());
@@ -1969,7 +1969,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     // Keep dims so we don't need to reshape later
     auto reducesum = CreateOpAndInfer<tosa::ReduceSumOp>(
         rewriter, op->getLoc(), rsum_type, exp_norm_logits.getResult(),
-        rewriter.getI64IntegerAttr(input_rank - 1));
+        rewriter.getI32IntegerAttr(input_rank - 1));
     auto denominator = CreateOpAndInfer<tosa::ReciprocalOp>(
         rewriter, op->getLoc(), reducesum.getType(), reducesum.getResult());
 
@@ -2026,7 +2026,7 @@ std::optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
   auto op2_reducesum_op1 = CreateOpAndInfer<tosa::ReduceSumOp>(
       rewriter, op->getLoc(),
       UnrankedTensorType::get(output_type.getElementType()),
-      op1_exp_in.getResult(), rewriter.getI64IntegerAttr(input_rank - 1));
+      op1_exp_in.getResult(), rewriter.getI32IntegerAttr(input_rank - 1));
   auto op3_reciprocal_op2 = CreateOpAndInfer<tosa::ReciprocalOp>(
       rewriter, op->getLoc(), op2_reducesum_op1.getType(),
       op2_reducesum_op1.getResult());
@@ -2406,7 +2406,7 @@ static Value reverseNegativeStride(PatternRewriter& rewriter, Operation* op,
 
     input = CreateOpAndInfer<tosa::ReverseOp>(rewriter, op->getLoc(),
                                               input.getType(), input,
-                                              rewriter.getI64IntegerAttr(axis))
+                                              rewriter.getI32IntegerAttr(axis))
                 .getResult();
   }
 
@@ -2893,7 +2893,7 @@ static Value convertGenericReduceOp(PatternRewriter& rewriter, Operation* op,
 
   return CreateOpAndInfer<T>(rewriter, loc,
                              UnrankedTensorType::get(reduce_etype), reshape_op,
-                             rewriter.getI64IntegerAttr(1));
+                             rewriter.getI32IntegerAttr(1));
 }
 
 // Common function for lowering reduce operations to TOSA ops.
@@ -2954,7 +2954,7 @@ std::optional<Value> convertReduceOpCommon(
     }
 
     for (auto axis_val : axes) {
-      auto axis_attr = rewriter.getI64IntegerAttr(axis_val);
+      auto axis_attr = rewriter.getI32IntegerAttr(axis_val);
 
       shape_vec[axis_val] = 1;
       RankedTensorType reduce_type =
@@ -3744,7 +3744,7 @@ std::optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
       } else {
         auto reverse_before_op = CreateOpAndInfer<tosa::ReverseOp>(
             rewriter, op->getLoc(), slice_before_op.getType(), slice_before_op,
-            rewriter.getI64IntegerAttr(axis));
+            rewriter.getI32IntegerAttr(axis));
         slices.push_back(reverse_before_op);
       }
     }
@@ -3766,7 +3766,7 @@ std::optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
       } else {
         auto reverse_after_op = CreateOpAndInfer<tosa::ReverseOp>(
             rewriter, op->getLoc(), slice_after_op.getType(), slice_after_op,
-            rewriter.getI64IntegerAttr(axis));
+            rewriter.getI32IntegerAttr(axis));
         slices.push_back(reverse_after_op);
       }
     }
@@ -4397,7 +4397,7 @@ std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(tosa_indices_shape,
                                            indices_type.getElementType()),
-      flattened_indices_mul_op.getResult(), rewriter.getI64IntegerAttr(1));
+      flattened_indices_mul_op.getResult(), rewriter.getI32IntegerAttr(1));
 
   // And reshape to [N, W]
   auto tosa_indices_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(

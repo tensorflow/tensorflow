@@ -19,7 +19,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/gpu_prim.h"

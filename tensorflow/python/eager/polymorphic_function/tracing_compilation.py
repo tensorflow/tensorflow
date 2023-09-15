@@ -305,6 +305,9 @@ def _create_concrete_function(
         placeholder_context
     )
 
+  disable_acd = tracing_options.attributes and tracing_options.attributes.get(
+      attributes_lib.DISABLE_ACD, False
+  )
   traced_func_graph = func_graph_module.func_graph_from_py_func(
       tracing_options.name,
       tracing_options.python_function,
@@ -312,6 +315,7 @@ def _create_concrete_function(
       placeholder_bound_args.kwargs,
       None,
       func_graph=func_graph,
+      add_control_dependencies=not disable_acd,
       arg_names=function_type_utils.to_arg_names(function_type),
       create_placeholders=False,
   )

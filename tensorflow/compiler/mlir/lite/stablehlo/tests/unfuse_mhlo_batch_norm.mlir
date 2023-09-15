@@ -124,3 +124,32 @@ func.func @batchNormInference_f16_overflow(
         tensor<256xf16>) -> tensor<4x256xf16>
   func.return %0 : tensor<4x256xf16>
 }
+
+// CHECK-LABEL: @batchNormTraining_4D_middle_features
+// CHECK-SAME: %[[X:[^:[:space:]]+]]
+// CHECK-SAME: %[[SCALE:[^:[:space:]]+]]
+// CHECK-SAME: %[[OFFSET:[^:[:space:]]+]]
+func.func @batchNormTraining_4D_middle_features(
+    %x: tensor<3x4x256x6xf32>, %scale: tensor<256xf32>, %offset: tensor<256xf32>)
+    -> (tensor<3x4x256x6xf32>) {
+  // CHECK-DAG: %[[CST_AXIS:.+]] = "tf.Const"() {value = dense<[0, 1, 3]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // CHECK-DAG: %[[X_SHAPE:.+]] = shape.const_shape [3, 4, 256, 6] : tensor<4xindex>
+  // CHECK-DAG: %[[EPS:.+]] = mhlo.constant dense<1.000000e+00> : tensor<256xf32>
+  // CHECK-DAG: %[[MEAN:.+]] = "tf.Mean"(%arg0, %[[CST_AXIS]]) {keep_dims = false} : (tensor<3x4x256x6xf32>, tensor<3xi32>) -> tensor<256xf32>
+  // CHECK-DAG: %[[MEAN_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[MEAN]], %[[X_SHAPE]]) {broadcast_dimensions = dense<2> : tensor<1xi64>} : (tensor<256xf32>, tensor<4xindex>) -> tensor<3x4x256x6xf32>
+  // CHECK-DAG: %[[SQ_DIFF:.+]] = "tf.SquaredDifference"(%arg0, %[[MEAN_BCAST]]) : (tensor<3x4x256x6xf32>, tensor<3x4x256x6xf32>) -> tensor<3x4x256x6xf32>
+  // CHECK-DAG: %[[VARIANCE:.+]] = "tf.Mean"(%[[SQ_DIFF]], %[[CST_AXIS]]) {keep_dims = false} : (tensor<3x4x256x6xf32>, tensor<3xi32>) -> tensor<256xf32>
+  // CHECK-DAG: %[[VARIANCE_EPS:.+]] = mhlo.add %[[VARIANCE]], %[[EPS]] : tensor<256xf32>
+  // CHECK-DAG: %[[VARIANCE_EPS_RSQRT:.+]] = mhlo.rsqrt %[[VARIANCE_EPS]] : tensor<256xf32>
+  // CHECK-DAG: %[[MULTIPLIER:.+]] = mhlo.multiply %[[VARIANCE_EPS_RSQRT]], %[[SCALE]] : tensor<256xf32>
+  // CHECK-DAG: %[[MUL_MEAN:.+]] = mhlo.multiply %[[MULTIPLIER]], %[[MEAN]] : tensor<256xf32>
+  // CHECK-DAG: %[[RHS:.+]] = mhlo.subtract %[[OFFSET]], %[[MUL_MEAN]] : tensor<256xf32>
+  // CHECK-DAG: %[[MULTIPLIER_BCAST:.+]] = "mhlo.broadcast_in_dim"(%[[MULTIPLIER]]) {broadcast_dimensions = dense<2> : tensor<1xi64>} : (tensor<256xf32>) -> tensor<3x4x256x6xf32>
+  // CHECK-DAG: %[[RHS_BCAST:.+]] = "mhlo.broadcast_in_dim"(%[[RHS]]) {broadcast_dimensions = dense<2> : tensor<1xi64>} : (tensor<256xf32>) -> tensor<3x4x256x6xf32>
+  // CHECK-DAG: %[[X_NORMED:.+]] = mhlo.multiply %[[X]], %[[MULTIPLIER_BCAST]] : tensor<3x4x256x6xf32>
+  // CHECK-DAG: %[[RESULT:.+]] = mhlo.add %[[X_NORMED]], %[[RHS_BCAST]] : tensor<3x4x256x6xf32>
+  %0:3 = "mhlo.batch_norm_training"(%x, %scale, %offset)
+      {epsilon = 1.0 : f32, feature_index = 2 : i64} :
+      (tensor<3x4x256x6xf32>, tensor<256xf32>, tensor<256xf32>) -> (tensor<3x4x256x6xf32>, tensor<256xf32>, tensor<256xf32>)
+  func.return %0 : tensor<3x4x256x6xf32>
+}

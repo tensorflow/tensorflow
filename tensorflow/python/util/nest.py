@@ -41,10 +41,10 @@ structures:
   This includes `dict` and `collections.OrderedDict`.
 * `collections.abc.MappingView` (with sortable keys).
 * [`attr.s` classes](https://www.attrs.org/).
-* Classes (including 
+* Classes (including
   [`dataclass`](https://docs.python.org/library/dataclasses.html))
   that implement the `__tf_flatten__` and `__tf_unflatten__` methods.
-  See examples in 
+  See examples in
   [`nest_util.py`](https://github.com/tensorflow/tensorflow/blob/04869b4e63bfc03cb13627b3e1b879fdd0f69e34/tensorflow/python/util/nest_util.py#L97)
 
 Any other values are considered **atoms**.  Not all collection types are
@@ -86,6 +86,8 @@ Note: A proper structure shall form a tree. The user shall ensure there is no
 cyclic references within the items in the structure,
 i.e., no references in the structure of the input of these functions
 should be recursive. The behavior is undefined if there is a cycle.
+
+API docstring: tensorflow.nest
 """
 
 import wrapt as _wrapt

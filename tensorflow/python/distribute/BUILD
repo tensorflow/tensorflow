@@ -118,6 +118,7 @@ cuda_py_strict_test(
 
 py_strict_library(
     name = "distribute",
+    srcs = ["__init__.py"],
     srcs_version = "PY3",
     deps = [
         ":cross_device_ops",
@@ -523,7 +524,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@dill_archive//:dill",  # build_cleaner: keep
+        "@pypi_dill//:pkg",  # build_cleaner: keep
     ],
 )
 
@@ -1442,7 +1443,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/util:nest",
         "@absl_py//absl/testing:parameterized",
-        "@dill_archive//:dill",  # build_cleaner: keep
+        "@pypi_dill//:pkg",  # build_cleaner: keep
     ],
 )
 
@@ -1766,7 +1767,7 @@ distribute_py_strict_test(
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/saved_model/model_utils:mode_keys",
         "@absl_py//absl/testing:parameterized",
-        "@wrapt",
+        "@pypi_wrapt//:pkg",
     ],
 )
 
@@ -1838,7 +1839,7 @@ distribute_py_strict_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
     main = "moving_averages_test.py",
-    shard_count = 5,
+    shard_count = 12,
     tags = [
         "multi_gpu",
         "no_windows",  # TODO(b/184424727): Re-enable this.
@@ -2297,9 +2298,9 @@ py_strict_library(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
-        "@dill_archive//:dill",  # build_cleaner: keep
+        "@pypi_dill//:pkg",  # build_cleaner: keep
+        "@pypi_tblib//:pkg",  # build_cleaner: keep
         "@six_archive//:six",
-        "@tblib_archive//:tblib",  # build_cleaner: keep
     ],
 )
 

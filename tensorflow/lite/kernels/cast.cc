@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <complex>
+#include <cstdint>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -106,6 +107,63 @@ void copyCastToFloat16(const Eigen::half* in, Eigen::half* out,
   std::transform(in, in + num_elements, out, [](Eigen::half a) { return a; });
 }
 
+TfLiteStatus castInt4ToFloat(TfLiteContext* context, const TfLiteTensor* in,
+                             TfLiteTensor* out, int num_elements) {
+  const int8_t* in_data = (const int8_t*)in->data.data;
+  float* out_data = (float*)out->data.data;
+  int i = 0;
+#ifdef __ARM_NEON
+  for (; i + 16 <= num_elements / 2; i += 16) {
+    const int8x16_t v0_32 = vld1q_s8(&in_data[i]);
+    const int8x16_t v0_32_low = vshrq_n_s8(vshlq_n_s8(v0_32, 4), 4);
+    const int8x16_t v0_32_high = vshrq_n_s8(v0_32, 4);
+    const int8x16x2_t vzipped = vzipq_s8(v0_32_low, v0_32_high);
+
+    const int16x8_t v0_8 = vmovl_s8(vget_low_s8(vzipped.val[0]));
+    const int16x8_t v8_15 = vmovl_s8(vget_high_s8(vzipped.val[0]));
+    const int16x8_t v16_23 = vmovl_s8(vget_low_s8(vzipped.val[1]));
+    const int16x8_t v24_31 = vmovl_s8(vget_high_s8(vzipped.val[1]));
+
+    const int32x4_t v0_3 = vmovl_s16(vget_low_s16(v0_8));
+    const int32x4_t v4_7 = vmovl_s16(vget_high_s16(v0_8));
+    const int32x4_t v8_11 = vmovl_s16(vget_low_s16(v8_15));
+    const int32x4_t v12_15 = vmovl_s16(vget_high_s16(v8_15));
+    const int32x4_t v16_19 = vmovl_s16(vget_low_s16(v16_23));
+    const int32x4_t v20_23 = vmovl_s16(vget_high_s16(v16_23));
+    const int32x4_t v24_27 = vmovl_s16(vget_low_s16(v24_31));
+    const int32x4_t v28_31 = vmovl_s16(vget_high_s16(v24_31));
+
+    const float32x4_t v0_3_f = vcvtq_f32_s32(v0_3);
+    const float32x4_t v4_7_f = vcvtq_f32_s32(v4_7);
+    const float32x4_t v8_11_f = vcvtq_f32_s32(v8_11);
+    const float32x4_t v12_15_f = vcvtq_f32_s32(v12_15);
+    const float32x4_t v16_19_f = vcvtq_f32_s32(v16_19);
+    const float32x4_t v20_23_f = vcvtq_f32_s32(v20_23);
+    const float32x4_t v24_27_f = vcvtq_f32_s32(v24_27);
+    const float32x4_t v28_31_f = vcvtq_f32_s32(v28_31);
+
+    vst1q_f32(&out_data[i * 2], v0_3_f);
+    vst1q_f32(&out_data[i * 2 + 4], v4_7_f);
+    vst1q_f32(&out_data[i * 2 + 8], v8_11_f);
+    vst1q_f32(&out_data[i * 2 + 12], v12_15_f);
+    vst1q_f32(&out_data[i * 2 + 16], v16_19_f);
+    vst1q_f32(&out_data[i * 2 + 20], v20_23_f);
+    vst1q_f32(&out_data[i * 2 + 24], v24_27_f);
+    vst1q_f32(&out_data[i * 2 + 28], v28_31_f);
+  }
+#endif
+
+  for (; i < (num_elements + 1) / 2; ++i) {
+    int8_t byte = in_data[i];
+    // Shift left first so that sign is properly extended when shifted right
+    int32_t lower = static_cast<int8_t>(byte << 4) >> 4;
+    int32_t higher = byte >> 4;
+    out_data[2 * i] = (float)lower;
+    out_data[2 * i + 1] = (float)higher;
+  }
+  return kTfLiteOk;
+}
+
 template <typename FromT>
 TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
                           TfLiteTensor* out, int num_elements) {
@@ -193,6 +251,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return copyToTensor(
           context, reinterpret_cast<std::complex<float>*>(input->data.c64),
           output, num_elements);
+    case kTfLiteInt4:
+      if (output->type != kTfLiteFloat32) {
+        TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
+      }
+      return castInt4ToFloat(context, input, output, num_elements);
     default:
       // Unsupported type.
       TF_LITE_UNSUPPORTED_TYPE(context, input->type, "Cast");

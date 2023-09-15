@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
@@ -42,10 +43,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -212,16 +215,16 @@ Status ConvertTfMlirToRuntimeExecutable(
   } else if (options.device_target == TfrtDeviceInfraTarget::kGpu) {
     TF_RETURN_IF_ERROR(mlir::TF::RunTFXLABridge(module));
 
+    if (options.serialize_mlir_module_to_aot_packages) {
+      const std::string mlir_string = SerializeMlirModule(module);
+      TF_RETURN_IF_ERROR(WriteStringToFile(
+          tsl::Env::Default(), options.aot_mlir_module_file, mlir_string));
+    }
+
     // GPU XLA clusters are wrapped in functions, which could be transformed by
     // bridge. Hence, the MLIR functions for XLA clusters are exported and added
     // to the function library.
-    if (fallback_state != nullptr) {
-      TF_ASSIGN_OR_RETURN(const std::vector<FunctionDef> xla_func_defs,
-                          ExportXlaFunctions(module));
-      for (const auto& func_def : xla_func_defs) {
-        TF_RETURN_IF_ERROR(fallback_state->AddFunctionDef(func_def));
-      }
-    }
+    TF_RETURN_IF_ERROR(AddXlaFunctions(fallback_state, module));
   }
 
   if (VLOG_IS_ON(1)) {
@@ -304,6 +307,8 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
       (options.device_target == TfrtDeviceInfraTarget::kTpurt);
   pipeline_options->target_gpu =
       (options.device_target == TfrtDeviceInfraTarget::kGpu);
+  pipeline_options->use_gpu_compile_and_execute_op =
+      options.use_gpu_compile_and_execute_op;
   pipeline_options->tpu_fuse_ops = options.tpu_fuse_ops;
   pipeline_options->use_tpu_host_allocator_for_inputs =
       options.use_tpu_host_allocator_for_inputs;
@@ -323,26 +328,17 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   return pipeline_options;
 }
 
-tensorflow::Status RunTFXLABridgeAndAddXlaFunctions(
-    const TfrtCompileOptions& options, tfrt_stub::FallbackState* fallback_state,
-    mlir::ModuleOp mlir_module) {
-  if (options.device_target == TfrtDeviceInfraTarget::kGpu) {
-    // Update fallback_state
-
-    Status status = mlir::TF::RunTFXLABridge(mlir_module);
-
-    if (fallback_state != nullptr) {
-      TF_ASSIGN_OR_RETURN(const std::vector<FunctionDef> xla_func_defs,
-                          ExportXlaFunctions(mlir_module));
-      for (const auto& func_def : xla_func_defs) {
-        TF_RETURN_IF_ERROR(fallback_state->AddFunctionDef(func_def));
-      }
+tensorflow::Status AddXlaFunctions(tfrt_stub::FallbackState* fallback_state,
+                                   mlir::ModuleOp mlir_module) {
+  if (fallback_state != nullptr) {
+    TF_ASSIGN_OR_RETURN(const std::vector<FunctionDef> xla_func_defs,
+                        ExportXlaFunctions(mlir_module));
+    for (const auto& func_def : xla_func_defs) {
+      TF_RETURN_IF_ERROR(fallback_state->AddFunctionDef(func_def));
     }
-    return status;
-
-  } else {
-    return absl::UnimplementedError("Non-GPU device_target is not supported.");
   }
+
+  return tensorflow::OkStatus();
 }
 
 }  // namespace tensorflow

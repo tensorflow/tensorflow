@@ -14,7 +14,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -26,7 +26,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -56,7 +56,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:qual_names",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -71,7 +71,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:qual_names",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -83,7 +83,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -107,7 +107,7 @@ py_strict_test(
         "//tensorflow/python/autograph/pyct:qual_names",
         "//tensorflow/python/autograph/pyct:transformer",
         "//tensorflow/python/platform:client_testlib",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 

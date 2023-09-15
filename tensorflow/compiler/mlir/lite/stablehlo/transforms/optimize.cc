@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -452,6 +452,7 @@ LogicalResult FuseSliceConcat(mhlo::ConcatenateOp concat,
   return success();
 }
 
+// TODO(b/296267494): Move this provided constfolding runs prior to it
 // Converts:
 //  %y1 = pad(%x, pad_val, (p1_1,p1_2,p1_3, ...))
 //  %y2 = pad(%y1, pad_val, (p2_1,p2_2,p2_3, ...))

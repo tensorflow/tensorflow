@@ -619,13 +619,12 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
         (*compression == DataServiceMetadata::COMPRESSION_SNAPPY);
   }
   if (should_uncompress) {
-    StatusOr<std::optional<std::string>> trainer_compression_info =
-        TrainerCompressionInfo(data_transfer_protocol_,
-                               config->deployment_mode());
-    OP_REQUIRES_OK(ctx, trainer_compression_info.status());
+    StatusOr<bool> disable_compression_at_runtime = DisableCompressionAtRuntime(
+        data_transfer_protocol_, config->deployment_mode());
+    OP_REQUIRES_OK(ctx, disable_compression_at_runtime.status());
     StatusOr<bool> compression_disabled_at_runtime =
         CompressionDisabledAtRuntime(dataset_id, address, protocol,
-                                     *trainer_compression_info);
+                                     *disable_compression_at_runtime);
     OP_REQUIRES_OK(ctx, compression_disabled_at_runtime.status());
     metrics::RecordTFDataServiceRuntimeCompressionDecision(
         *compression_disabled_at_runtime);

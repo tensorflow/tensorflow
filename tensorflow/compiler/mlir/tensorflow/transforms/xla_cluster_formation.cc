@@ -17,6 +17,7 @@ limitations under the License.
 #include <stack>
 #include <vector>
 
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -48,14 +49,17 @@ void CopyAttribute(const llvm::StringRef attr, Operation *src,
   }
 }
 
-// Propagate compilation markers from the source to the destination.
-void CopyCompilationMarkers(Operation *src, Operation *dest) {
-  CopyAttribute(TF::kCompileDeviceTypeAttr, src, dest);
-  CopyAttribute(kAllowSoftPlacementAttr, src, dest);
-}
-
 std::string getClusterOutlinedFunctionName(func::FuncOp func) {
   return func.getSymName().str() + "_cluster_func";
+}
+
+void AddClusterAttributes(OpBuilder &builder, func::FuncOp entry_func,
+                          tf_device::ClusterOp cluster) {
+  TF::CopyDeviceAndUnderscoredAttributes(entry_func, cluster);
+  CopyAttribute(kAllowSoftPlacementAttr, entry_func, cluster);
+  cluster->setAttr(
+      TF::kClusterOutlinedFunctionNameAttr,
+      builder.getStringAttr(getClusterOutlinedFunctionName(entry_func)));
 }
 
 // Wrap the body of `func` in a device cluster. `func` must have a single
@@ -90,11 +94,7 @@ LogicalResult EncapsulateEntryFunctionBody(func::FuncOp entry_func) {
   original_return_op->erase();
   builder.setInsertionPointToEnd(&entry_func.front());
   builder.create<func::ReturnOp>(entry_func->getLoc(), cluster->getResults());
-  CopyCompilationMarkers(entry_func, cluster);
-  cluster->setAttr(kAllowSoftPlacementAttr, builder.getBoolAttr(true));
-  cluster->setAttr(
-      TF::kClusterOutlinedFunctionNameAttr,
-      builder.getStringAttr(getClusterOutlinedFunctionName(entry_func)));
+  AddClusterAttributes(builder, entry_func, cluster);
   return success();
 }
 

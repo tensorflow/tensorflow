@@ -3,27 +3,23 @@
 // CHECK-LABEL: func @uniform_quantize_and_dequantize
 func.func @uniform_quantize_and_dequantize(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK-DAG: %[[SCALES:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK-DAG: %[[ZPS:.*]] = mhlo.constant dense<3> : tensor<i32>
-  // CHECK-DAG: %[[HALF:.*]] = mhlo.constant dense<5.000000e-01> : tensor<f32>
-  // CHECK-DAG: %[[QUANT_MIN:.*]] = mhlo.constant dense<-128> : tensor<i32>
-  // CHECK-DAG: %[[QUANT_MAX:.*]] = mhlo.constant dense<127> : tensor<i32>
+  // CHECK-DAG: %[[ZPS:.*]] = mhlo.constant dense<3.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[QUANT_MIN:.*]] = mhlo.constant dense<-1.280000e+02> : tensor<f32>
+  // CHECK-DAG: %[[QUANT_MAX:.*]] = mhlo.constant dense<1.270000e+02> : tensor<f32>
   // CHECK: %[[VAL0:.*]] = chlo.broadcast_divide %arg0, %[[SCALES]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL1:.*]] = chlo.broadcast_add %[[VAL0]], %[[HALF]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL2:.*]] = mhlo.floor %[[VAL1]] : tensor<?x?xf32>
-  // CHECK: %[[VAL3:.*]] = mhlo.convert %[[VAL2]] : (tensor<?x?xf32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL4:.*]] = chlo.broadcast_add %[[VAL3]], %[[ZPS]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL5:.*]] = chlo.broadcast_maximum %[[VAL4]], %[[QUANT_MIN]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL6:.*]] = chlo.broadcast_minimum %[[VAL5]], %[[QUANT_MAX]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL7:.*]] = mhlo.convert %[[VAL6]] : (tensor<?x?xi32>) -> tensor<?x?xi8>
+  // CHECK: %[[VAL1:.*]] = chlo.broadcast_add %[[VAL0]], %[[ZPS]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL2:.*]] = mhlo.clamp %[[QUANT_MIN]], %[[VAL1]], %[[QUANT_MAX]] : (tensor<f32>, tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL3:.*]] = mhlo.round_nearest_even %[[VAL2]] : tensor<?x?xf32>
+  // CHECK: %[[VAL4:.*]] = mhlo.convert %[[VAL3]] : (tensor<?x?xf32>) -> tensor<?x?xi8>
   %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
 
   // CHECK-DAG: %[[SCALES_DQ:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK-DAG: %[[ZPS_DQ:.*]] = mhlo.constant dense<3> : tensor<i32>
-  // CHECK: %[[VAL8:.*]] = mhlo.convert %[[VAL7]] : (tensor<?x?xi8>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL9:.*]] = chlo.broadcast_subtract %[[VAL8]], %[[ZPS_DQ]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL10:.*]] = mhlo.convert %[[VAL9]] : (tensor<?x?xi32>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL11:.*]] = chlo.broadcast_multiply %[[VAL10]], %[[SCALES_DQ]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-  // CHECK: return %[[VAL11]] : tensor<?x?xf32>
+  // CHECK: %[[VAL5:.*]] = mhlo.convert %[[VAL4]] : (tensor<?x?xi8>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL6:.*]] = chlo.broadcast_subtract %[[VAL5]], %[[ZPS_DQ]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL7:.*]] = mhlo.convert %[[VAL6]] : (tensor<?x?xi32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL8:.*]] = chlo.broadcast_multiply %[[VAL7]], %[[SCALES_DQ]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: return %[[VAL8]] : tensor<?x?xf32>
   %1 = mhlo.uniform_dequantize %0 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
   return %1 : tensor<?x?xf32>
 }
@@ -33,33 +29,29 @@ func.func @uniform_quantize_and_dequantize(%arg0: tensor<?x?xf32>) -> tensor<?x?
 // CHECK-LABEL: func @uniform_quantize_convert_dequantize
 func.func @uniform_quantize_convert_dequantize(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK-DAG: %[[SCALES:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK-DAG: %[[ZPS:.*]] = mhlo.constant dense<3> : tensor<i32>
-  // CHECK-DAG: %[[HALF:.*]] = mhlo.constant dense<5.000000e-01> : tensor<f32>
-  // CHECK-DAG: %[[QUANT_MIN:.*]] = mhlo.constant dense<-128> : tensor<i32>
-  // CHECK-DAG: %[[QUANT_MAX:.*]] = mhlo.constant dense<127> : tensor<i32>
+  // CHECK-DAG: %[[ZPS:.*]] = mhlo.constant dense<3.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[QUANT_MIN:.*]] = mhlo.constant dense<-1.280000e+02> : tensor<f32>
+  // CHECK-DAG: %[[QUANT_MAX:.*]] = mhlo.constant dense<1.270000e+02> : tensor<f32>
   // CHECK: %[[VAL0:.*]] = chlo.broadcast_divide %arg0, %[[SCALES]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL1:.*]] = chlo.broadcast_add %[[VAL0]], %[[HALF]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL2:.*]] = mhlo.floor %[[VAL1]] : tensor<?x?xf32>
-  // CHECK: %[[VAL3:.*]] = mhlo.convert %[[VAL2]] : (tensor<?x?xf32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL4:.*]] = chlo.broadcast_add %[[VAL3]], %[[ZPS]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL5:.*]] = chlo.broadcast_maximum %[[VAL4]], %[[QUANT_MIN]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL6:.*]] = chlo.broadcast_minimum %[[VAL5]], %[[QUANT_MAX]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL7:.*]] = mhlo.convert %[[VAL6]] : (tensor<?x?xi32>) -> tensor<?x?xi8>
+  // CHECK: %[[VAL1:.*]] = chlo.broadcast_add %[[VAL0]], %[[ZPS]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL2:.*]] = mhlo.clamp %[[QUANT_MIN]], %[[VAL1]], %[[QUANT_MAX]] : (tensor<f32>, tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL3:.*]] = mhlo.round_nearest_even %[[VAL2]] : tensor<?x?xf32>
+  // CHECK: %[[VAL4:.*]] = mhlo.convert %[[VAL3]] : (tensor<?x?xf32>) -> tensor<?x?xi8>
   %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
 
-  // CHECK: %[[VAL8:.*]] = mhlo.convert %[[VAL7]] : tensor<?x?xi8>
+  // CHECK: %[[VAL5:.*]] = mhlo.convert %[[VAL4]] : tensor<?x?xi8>
   %1 = mhlo.convert %0 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xi8>
 
-  // CHECK: %[[VAL9:.*]] = mhlo.convert %[[VAL8]] : tensor<?x?xi8>
+  // CHECK: %[[VAL6:.*]] = mhlo.convert %[[VAL5]] : tensor<?x?xi8>
   %2 = mhlo.convert %1 : (tensor<?x?xi8>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
 
   // CHECK-DAG: %[[SCALES_DQ:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK-DAG: %[[ZPS_DQ:.*]] = mhlo.constant dense<3> : tensor<i32>
-  // CHECK: %[[VAL10:.*]] = mhlo.convert %[[VAL9]] : (tensor<?x?xi8>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL11:.*]] = chlo.broadcast_subtract %[[VAL10]], %[[ZPS_DQ]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL12:.*]] = mhlo.convert %[[VAL11]] : (tensor<?x?xi32>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL13:.*]] = chlo.broadcast_multiply %[[VAL12]], %[[SCALES_DQ]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-  // CHECK: return %[[VAL13]] : tensor<?x?xf32>
+  // CHECK: %[[VAL7:.*]] = mhlo.convert %[[VAL6]] : (tensor<?x?xi8>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL8:.*]] = chlo.broadcast_subtract %[[VAL7]], %[[ZPS_DQ]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL9:.*]] = mhlo.convert %[[VAL8]] : (tensor<?x?xi32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL10:.*]] = chlo.broadcast_multiply %[[VAL9]], %[[SCALES_DQ]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: return %[[VAL10]] : tensor<?x?xf32>
   %3 = mhlo.uniform_dequantize %2 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
   return %3 : tensor<?x?xf32>
 }
@@ -69,27 +61,23 @@ func.func @uniform_quantize_convert_dequantize(%arg0: tensor<?x?xf32>) -> tensor
 // CHECK-LABEL: func @uniform_quantize_and_dequantize_int4
 func.func @uniform_quantize_and_dequantize_int4(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK-DAG: %[[SCALES:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK-DAG: %[[ZPS:.*]] = mhlo.constant dense<3> : tensor<i32>
-  // CHECK-DAG: %[[HALF:.*]] = mhlo.constant dense<5.000000e-01> : tensor<f32>
-  // CHECK-DAG: %[[QUANT_MIN:.*]] = mhlo.constant dense<-8> : tensor<i32>
-  // CHECK-DAG: %[[QUANT_MAX:.*]] = mhlo.constant dense<7> : tensor<i32>
+  // CHECK-DAG: %[[ZPS:.*]] = mhlo.constant dense<3.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[QUANT_MIN:.*]] = mhlo.constant dense<-8.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[QUANT_MAX:.*]] = mhlo.constant dense<7.000000e+00> : tensor<f32>
   // CHECK: %[[VAL0:.*]] = chlo.broadcast_divide %arg0, %[[SCALES]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL1:.*]] = chlo.broadcast_add %[[VAL0]], %[[HALF]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL2:.*]] = mhlo.floor %[[VAL1]] : tensor<?x?xf32>
-  // CHECK: %[[VAL3:.*]] = mhlo.convert %[[VAL2]] : (tensor<?x?xf32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL4:.*]] = chlo.broadcast_add %[[VAL3]], %[[ZPS]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL5:.*]] = chlo.broadcast_maximum %[[VAL4]], %[[QUANT_MIN]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL6:.*]] = chlo.broadcast_minimum %[[VAL5]], %[[QUANT_MAX]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL7:.*]] = mhlo.convert %[[VAL6]] : (tensor<?x?xi32>) -> tensor<?x?xi4>
+  // CHECK: %[[VAL1:.*]] = chlo.broadcast_add %[[VAL0]], %[[ZPS]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL2:.*]] = mhlo.clamp %[[QUANT_MIN]], %[[VAL1]], %[[QUANT_MAX]] : (tensor<f32>, tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL3:.*]] = mhlo.round_nearest_even %[[VAL2]] : tensor<?x?xf32>
+  // CHECK: %[[VAL4:.*]] = mhlo.convert %[[VAL3]] : (tensor<?x?xf32>) -> tensor<?x?xi4>
   %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>
 
   // CHECK-DAG: %[[SCALES_DQ:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK-DAG: %[[ZPS_DQ:.*]] = mhlo.constant dense<3> : tensor<i32>
-  // CHECK: %[[VAL8:.*]] = mhlo.convert %[[VAL7]] : (tensor<?x?xi4>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL9:.*]] = chlo.broadcast_subtract %[[VAL8]], %[[ZPS_DQ]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL10:.*]] = mhlo.convert %[[VAL9]] : (tensor<?x?xi32>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL11:.*]] = chlo.broadcast_multiply %[[VAL10]], %[[SCALES_DQ]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-  // CHECK: return %[[VAL11]] : tensor<?x?xf32>
+  // CHECK: %[[VAL5:.*]] = mhlo.convert %[[VAL4]] : (tensor<?x?xi4>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL6:.*]] = chlo.broadcast_subtract %[[VAL5]], %[[ZPS_DQ]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL7:.*]] = mhlo.convert %[[VAL6]] : (tensor<?x?xi32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL8:.*]] = chlo.broadcast_multiply %[[VAL7]], %[[SCALES_DQ]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: return %[[VAL8]] : tensor<?x?xf32>
   %1 = mhlo.uniform_dequantize %0 : (tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
   return %1 : tensor<?x?xf32>
 }
@@ -98,7 +86,7 @@ func.func @uniform_quantize_and_dequantize_int4(%arg0: tensor<?x?xf32>) -> tenso
 
 // CHECK-LABEL: func @uniform_quantize_and_dequantize_type_exensions
 func.func @uniform_quantize_and_dequantize_type_exensions(%arg0: tensor<?x?xf32, #mhlo.type_extensions<bounds = [4, 4]>>) -> () {
-  // CHECK: %[[QUANTIZED:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?x?xi32, #mhlo.type_extensions<bounds = [4, 4]>>) -> tensor<?x?xi8, #mhlo.type_extensions<bounds = [4, 4]>>
+  // CHECK: %[[QUANTIZED:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [4, 4]>>) -> tensor<?x?xi8, #mhlo.type_extensions<bounds = [4, 4]>>
   %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [4, 4]>>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>, #mhlo.type_extensions<bounds = [4, 4]>>
   // CHECK: %[[DEQUANTIZED:.*]] = chlo.broadcast_multiply %[[VAL1:.*]], %[[CONST_SCALE:.*]] : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [4, 4]>>, tensor<f32>) -> tensor<?x?xf32, #mhlo.type_extensions<bounds = [4, 4]>>
   %1 = mhlo.uniform_dequantize %0 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>, #mhlo.type_extensions<bounds = [4, 4]>>) -> tensor<?x?xf32, #mhlo.type_extensions<bounds = [4, 4]>>
@@ -109,7 +97,7 @@ func.func @uniform_quantize_and_dequantize_type_exensions(%arg0: tensor<?x?xf32,
 
 // CHECK-LABEL: func @uniform_quantize_and_dequantize_sparse_tensor_encoding
 func.func @uniform_quantize_and_dequantize_sparse_tensor_encoding(%arg0: tensor<?xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> () {
-  // CHECK: %[[QUANTIZED:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?xi32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<?xi8, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>
+  // CHECK: %[[QUANTIZED:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<?xi8, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>
   %0 = mhlo.uniform_quantize %arg0 : (tensor<?xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<?x!quant.uniform<i8:f32, 1.000000e+00:3>, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>
   // CHECK: %[[DEQUANTIZED:.*]] = chlo.broadcast_multiply %[[VAL1:.*]], %[[CONST_SCALE:.*]] : (tensor<?xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>, tensor<f32>) -> tensor<?xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>
   %1 = mhlo.uniform_dequantize %0 : (tensor<?x!quant.uniform<i8:f32, 1.000000e+00:3>, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<?xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>
@@ -131,6 +119,23 @@ func.func @uniform_quantize_add(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) 
   // CHECK: %[[VAL9:.*]] = mhlo.clamp %[[VAL7:.*]], %[[VAL6]], %[[VAL8:.*]] : (tensor<i32>, tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
   // CHECK: %[[VAL10:.*]] = mhlo.convert %[[VAL9]] : (tensor<?x?xi32>) -> tensor<?x?xi8>
   %2 = mhlo.add %0, %1: (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_add_i32
+func.func @uniform_quantize_add_i32(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> () {
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i32:f32, 1.000000e+00:3>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i32:f32, 1.000000e+00:3>>
+
+  // CHECK: %[[VAL1:.*]] = mhlo.convert %[[VAL0:.*]] : tensor<?x?xi32>
+  // CHECK: %[[VAL3:.*]] = mhlo.convert %[[VAL2:.*]] : tensor<?x?xi32>
+  // CHECK-DAG: %[[VAL5:.*]] = mhlo.constant dense<3> : tensor<i32>
+  // CHECK: %[[VAL4:.*]] = chlo.broadcast_add %[[VAL1:.*]], %[[VAL3:.*]] : (tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL6:.*]] = chlo.broadcast_subtract %[[VAL4]], %[[VAL5]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK-NEXT: return
+  %2 = mhlo.add %0, %1: (tensor<?x?x!quant.uniform<i32:f32, 1.000000e+00:3>>,tensor<?x?x!quant.uniform<i32:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i32:f32, 1.000000e+00:3>>
   return
 }
 
@@ -260,23 +265,39 @@ func.func @uniform_quantize_add_different_res_type(%arg0: tensor<?x?xf32>, %arg1
 func.func @uniform_quantize_requantize_and_dequantize(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+01:3>>
 
-  // CHECK: %[[VAL1:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?x?xi8>) -> tensor<?x?xi32>
-  // CHECK-DAG: %[[INPUT_ZPS:.*]] = mhlo.constant dense<3> : tensor<i32>
-  // CHECK: %[[VAL2:.*]] = chlo.broadcast_subtract %[[VAL1]], %[[INPUT_ZPS]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK-DAG: %[[MULTIPLIER:.*]] = mhlo.constant dense<16384> : tensor<i32>
-  // CHECK-DAG: %[[TOTAL_SHIFT:.*]] = mhlo.constant dense<13> : tensor<i32>
-  // CHECK-DAG: %[[HALF:.*]] = mhlo.constant dense<4096> : tensor<i32>
-  // CHECK: %[[VAL3:.*]] = chlo.broadcast_multiply %[[VAL2]], %[[MULTIPLIER]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL4:.*]] = chlo.broadcast_add %[[VAL3]], %[[HALF]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL5:.*]] = chlo.broadcast_shift_right_arithmetic %[[VAL4]], %[[TOTAL_SHIFT]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK-DAG: %[[OUTPUT_ZPS:.*]] = mhlo.constant dense<1> : tensor<i32>
-  // CHECK: %[[VAL6:.*]] = chlo.broadcast_add %[[VAL5]], %[[OUTPUT_ZPS]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK-DAG: %[[QUANT_MIN:.*]] = mhlo.constant dense<-128> : tensor<i32>
-  // CHECK-DAG: %[[QUANT_MAX:.*]] = mhlo.constant dense<127> : tensor<i32>
-  // CHECK: %[[VAL7:.*]] = mhlo.clamp %[[QUANT_MIN]], %[[VAL6]], %[[QUANT_MAX]] : (tensor<i32>, tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL8:.*]] = mhlo.convert %[[VAL7]] : (tensor<?x?xi32>) -> tensor<?x?xi8>
+  // CHECK: %[[QUANTIZE_RESULT:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?x?xf32>) -> tensor<?x?xi8>
+  // CHECK-DAG: %[[MERGED_ZP:.*]] = mhlo.constant dense<-5.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[MERGED_SCALE:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[VAL1:.*]] = mhlo.convert %[[QUANTIZE_RESULT:.*]] : (tensor<?x?xi8>) -> tensor<?x?xf32>
+  // CHECK-DAG: %[[VAL2:.*]] = chlo.broadcast_multiply %[[VAL1]], %[[MERGED_SCALE]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL3:.*]] = chlo.broadcast_add %[[VAL2]], %[[MERGED_ZP]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK-DAG: %[[QUANT_MIN:.*]] = mhlo.constant dense<-1.280000e+02> : tensor<f32>
+  // CHECK-DAG: %[[QUANT_MAX:.*]] = mhlo.constant dense<1.270000e+02> : tensor<f32>
+  // CHECK: %[[VAL4:.*]] = mhlo.clamp %[[QUANT_MIN]], %[[VAL3]], %[[QUANT_MAX]] : (tensor<f32>, tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL5:.*]] = mhlo.round_nearest_even %[[VAL4]] : tensor<?x?xf32>
+  // CHECK: %[[VAL6:.*]] = mhlo.convert %[[VAL5]] : (tensor<?x?xf32>) -> tensor<?x?xi8>
   %1 = mhlo.uniform_quantize %0 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+01:3>>) -> tensor<?x?x!quant.uniform<i8:f32, 5.000000e+00:1>>
   %2 = mhlo.uniform_dequantize %1 : (tensor<?x?x!quant.uniform<i8:f32, 5.000000e+00:1>>) -> tensor<?x?xf32>
+  return %2 : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_requantize_merged_zp_zero_and_dequantize
+func.func @uniform_quantize_requantize_merged_zp_zero_and_dequantize(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+01>>
+
+  // CHECK: %[[QUANTIZE_RESULT:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?x?xf32>) -> tensor<?x?xi8>
+  // CHECK-DAG: %[[MERGED_SCALE:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[VAL1:.*]] = mhlo.convert %[[QUANTIZE_RESULT:.*]] : (tensor<?x?xi8>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL2:.*]] = chlo.broadcast_multiply %[[VAL1]], %[[MERGED_SCALE]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK-DAG: %[[QUANT_MIN:.*]] = mhlo.constant dense<-1.280000e+02> : tensor<f32>
+  // CHECK-DAG: %[[QUANT_MAX:.*]] = mhlo.constant dense<1.270000e+02> : tensor<f32>
+  // CHECK: %[[VAL3:.*]] = mhlo.clamp %[[QUANT_MIN]], %[[VAL2]], %[[QUANT_MAX]] : (tensor<f32>, tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL4:.*]] = mhlo.round_nearest_even %[[VAL3]] : tensor<?x?xf32>
+  // CHECK: %[[VAL5:.*]] = mhlo.convert %[[VAL4]] : (tensor<?x?xf32>) -> tensor<?x?xi8>
+  %1 = mhlo.uniform_quantize %0 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+01>>) -> tensor<?x?x!quant.uniform<i8:f32, 5.000000e+00>>
+  %2 = mhlo.uniform_dequantize %1 : (tensor<?x?x!quant.uniform<i8:f32, 5.000000e+00>>) -> tensor<?x?xf32>
   return %2 : tensor<?x?xf32>
 }
 
@@ -318,6 +339,55 @@ func.func @uniform_quantize_dot_int4(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf
   // CHECK: %[[VAL7:.*]] = mhlo.clamp %[[VAL5]], %[[VAL4]], %[[VAL6]] : (tensor<i32>, tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
   // CHECK: %[[VAL8:.*]] = mhlo.convert %[[VAL7]] : (tensor<?x?xi32>) -> tensor<?x?xi4>
   %2 = "mhlo.dot" (%0, %1): (tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>, tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_dot_general_dequantize
+func.func @uniform_quantize_dot_general_dequantize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
+
+  // CHECK: %[[VAL1:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?x?xi8>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL3:.*]] = chlo.broadcast_subtract %[[VAL1]], %[[VAL2:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL5:.*]] = mhlo.convert %[[VAL4:.*]] : (tensor<?x?xi8>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL7:.*]] = chlo.broadcast_subtract %[[VAL5]], %[[VAL6:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL8:.*]] = "mhlo.dot_general"(%[[VAL3]], %[[VAL7]]) {dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>} : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL10:.*]] = chlo.broadcast_multiply %[[VAL8]], %[[VAL9:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL12:.*]] = chlo.broadcast_add %[[VAL10]], %[[VAL11:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL13:.*]] = mhlo.floor %[[VAL12]] : tensor<?x?xf32>
+  // CHECK: %[[VAL15:.*]] = chlo.broadcast_add %[[VAL13]], %[[VAL14:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL16:.*]] = mhlo.convert %[[VAL15]] : (tensor<?x?xf32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL19:.*]] = mhlo.clamp %[[VAL17:.*]], %[[VAL16]], %[[VAL18:.*]] : (tensor<i32>, tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL20:.*]] = mhlo.convert %[[VAL19]] : (tensor<?x?xi32>) -> tensor<?x?xi8>
+  %2 = "mhlo.dot_general" (%0, %1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >} : (tensor<?x?x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  %3 = mhlo.uniform_dequantize %2 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
+  return %3 : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_dot_general_int4
+func.func @uniform_quantize_dot_general_int4(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) {
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>
+
+  // CHECK: %[[VAL2:.*]] = "mhlo.dot_general"(%[[VAL0:.*]], %[[VAL1:.*]]) {dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>} : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL4:.*]] = mhlo.convert %[[VAL3:.*]] : (tensor<?x?xf32>) -> tensor<?x?xi32>
+  // CHECK-DAG: %[[VAL5:.*]] = mhlo.constant dense<-8> : tensor<i32>
+  // CHECK-DAG: %[[VAL6:.*]] = mhlo.constant dense<7> : tensor<i32>
+  // CHECK: %[[VAL7:.*]] = mhlo.clamp %[[VAL5]], %[[VAL4]], %[[VAL6]] : (tensor<i32>, tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL8:.*]] = mhlo.convert %[[VAL7]] : (tensor<?x?xi32>) -> tensor<?x?xi4>
+  %2 = "mhlo.dot_general" (%0, %1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >} : (tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>, tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>
   return
 }
 

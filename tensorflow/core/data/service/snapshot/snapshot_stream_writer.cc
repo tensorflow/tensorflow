@@ -38,13 +38,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
@@ -282,8 +282,9 @@ void SnapshotStreamWriter::Cancel() TF_LOCKS_EXCLUDED(mu_) {
 }
 
 Status SnapshotStreamWriter::Save() {
-  LOG(INFO) << "Checkpointing distributed tf.data snapshot writer. Stream "
-            << params_.stream_index << ", chunk " << chunk_index_
+  LOG(INFO) << "Checkpointing distributed tf.data snapshot writer for snapshot "
+            << params_.DebugString() << ". Stream " << params_.stream_index
+            << ", chunk " << chunk_index_
             << ", chunk size in bytes: " << chunk_size_bytes_
             << ", number of elements in chunk: " << chunk_num_elements_ << ".";
   tsl::profiler::TraceMe activity("SnapshotCheckpoint",

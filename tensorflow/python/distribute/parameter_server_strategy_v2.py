@@ -50,7 +50,7 @@ from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.tsl.protobuf import coordination_config_pb2
+from tsl.protobuf import coordination_config_pb2
 
 
 ALLOWED_TASK_TYPES = ("chief", "worker", "ps")

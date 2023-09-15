@@ -75,14 +75,15 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/interpreter/execute.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
+#include "tensorflow/core/tfrt/runtime/step_id.h"
 #include "tensorflow/core/tfrt/runtime/stream.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/stubs/tfrt_native_lowering_stub.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/refcount.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/refcount.h"
+#include "tsl/platform/statusor.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
@@ -108,6 +109,11 @@ constexpr char kTensorNameJoiningDelimiter[] = "-";
 constexpr char kArgumentTypeJoiningDelimiter[] = "^";
 constexpr char kFallbackInitFunction[] = "_tfrt_fallback_init";
 constexpr char kResourceInitFunction[] = "_tfrt_resource_init";
+
+StepId GetNextStepId() {
+  static StepIdGenerator gen;
+  return gen.GetNextStepId();
+}
 
 }  // namespace
 
@@ -206,11 +212,11 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     // If the user provides a work_queue, we use it for inter-op tasks.
     request_id = work_queue->id();
     // If the user does not provide a valid id, we need to generate one.
-    if (request_id == 0) request_id = tfrt::GetUniqueInt();
+    if (request_id == 0) request_id = GetNextStepId().id;
     request_info->request_queue = work_queue;
   } else {
+    request_id = GetNextStepId().id;
     // Otherwise we use the global queue in `runtime`.
-    request_id = tfrt::GetUniqueInt();
     TF_ASSIGN_OR_RETURN(request_info->request_queue_owner,
                         runtime.CreateRequestQueue(request_id));
     request_info->request_queue = request_info->request_queue_owner.get();

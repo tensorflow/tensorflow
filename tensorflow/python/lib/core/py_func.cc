@@ -17,7 +17,7 @@ limitations under the License.
 // Must be included first.
 #include "tensorflow/python/lib/core/py_func.h"
 
-#include "tensorflow/tsl/python/lib/core/numpy.h"
+#include "tsl/python/lib/core/numpy.h"
 // clang-format: on
 
 #include <Python.h>

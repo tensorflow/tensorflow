@@ -115,9 +115,9 @@ limitations under the License.
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/lite/version.h"
-#include "tensorflow/tsl/platform/fingerprint.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/tstring.h"
+#include "tsl/platform/fingerprint.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/tstring.h"
 
 using llvm::dyn_cast;
 using llvm::formatv;
@@ -534,7 +534,8 @@ class Translator {
       ModuleOp module, const toco::TocoFlags& toco_flags,
       const std::unordered_set<std::string>& tags,
       OpOrArgNameMapper* op_or_arg_name_mapper,
-      const std::map<std::string, std::string>& metadata);
+      const std::map<std::string, std::string>& metadata,
+      bool serialize_stablehlo_ops);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
@@ -717,12 +718,23 @@ class Translator {
     return data_size > flatbuffer_size_max - builder_.GetSize();
   }
 
-  // helper function for build stablehlo functions
+  // helper function for build stablehlo operators
   std::optional<BufferOffset<tflite::Operator>>
   BuildStablehloOperatorwithoutOptions(Operation* inst,
                                        const std::vector<int32_t>& operands,
                                        const std::vector<int32_t>& results,
                                        tflite::BuiltinOperator op_code);
+  BufferOffset<flatbuffers::Vector<unsigned int>> BuildStablehloPrecisionConfig(
+      ::mlir::ArrayAttr precisionConfig);
+
+  std::optional<BufferOffset<tflite::Operator>> BuildStablehloScatterOp(
+      mlir::stablehlo::ScatterOp shlo_op, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
+  // create a subgraph given a unnamed mlir region, return the corresponding
+  // subgraph index
+  int32_t UnnamedRegionToSubgraph(mlir::Region* region,
+                                  tflite::BuiltinOperator op_code);
 
   ModuleOp module_;
 
@@ -791,11 +803,16 @@ class Translator {
   // A mapping table to mlir::Operation objects for TFL subgraph and operator
   // index in a flatbuffer.
   std::vector<std::vector<Operation*>> subgraph_op_inst_map_;
+  // A list of subgraphs in the model
+  std::vector<BufferOffset<tflite::SubGraph>> subgraphs_;
 
   // Will be populated by ExtractControlEdges to contain the control
   // dependencies contained in the ControlNodeOps. Will then be used to populate
   // metadata in the exported flatbuffer file.
   tflite::ModelControlDependencies model_control_dependencies_;
+
+  // Decide if we convert stablehlo ops in flatbuffer
+  bool convert_stablehlo_ = true;
 
   bool use_buffer_offset_ = false;
 
@@ -926,6 +943,21 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
         tensor_data.size());
     return tflite::CreateBuffer(builder_, buffer_data);
   }
+}
+
+int32_t Translator::UnnamedRegionToSubgraph(
+    mlir::Region* region, const tflite::BuiltinOperator op_code) {
+  int32_t subgraph_index = subgraphs_.size();
+  std::string op_name = tflite::EnumNamesBuiltinOperator()[op_code];
+  std::string graph_name = op_name + std::to_string(subgraph_index);
+  auto subgraph = BuildSubGraph(graph_name, region, subgraph_index);
+  if (!subgraph.has_value()) {
+    mlir::emitError(region->getLoc(), "failed to build subgraph");
+    return -1;
+  }
+  subgraphs_.push_back(subgraph.value());
+  subgraph_index_map_[graph_name] = subgraph_index;
+  return subgraph_index;
 }
 
 std::optional<std::vector<BufferOffset<tflite::VariantSubType>>>
@@ -1223,7 +1255,7 @@ BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
     const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
   const std::string attrs =
       op.getCustomOption().cast<mlir::TFL::ConstBytesAttr>().getValue().str();
-  std::vector<uint8_t> custom_option_vector(attrs.size());
+  std::vector<uint8_t> custom_option_vector(attrs.size(), 0);
   memcpy(custom_option_vector.data(), attrs.data(), attrs.size());
   auto opcode_index =
       GetOpcodeIndex(op.getCustomCode().str(), tflite::BuiltinOperator_CUSTOM);
@@ -1383,6 +1415,69 @@ Translator::BuildStablehloOperatorwithoutOptions(
       builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0);
 }
 
+BufferOffset<flatbuffers::Vector<unsigned int>>
+Translator::BuildStablehloPrecisionConfig(::mlir::ArrayAttr precisionConfig) {
+  std::vector<uint32_t> precision_config_vec;
+
+  for (auto it = precisionConfig.begin(); it != precisionConfig.end(); it++) {
+    precision_config_vec.push_back(static_cast<uint32_t>(
+        (it->cast<mlir::stablehlo::PrecisionAttr>()).getValue()));
+  }
+  return builder_.CreateVector(precision_config_vec);
+}
+
+std::optional<BufferOffset<tflite::Operator>>
+Translator::BuildStablehloScatterOp(mlir::stablehlo::ScatterOp scatter_op,
+                                    const std::vector<int32_t>& operands,
+                                    const std::vector<int32_t>& results) {
+  std::string op_name =
+      scatter_op.getOperation()->getName().getStringRef().str();
+  uint32_t opcode_index =
+      GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_SCATTER);
+
+  Region& body = scatter_op.getUpdateComputation();
+  int32_t subgraph_index =
+      UnnamedRegionToSubgraph(&body, tflite::BuiltinOperator_STABLEHLO_SCATTER);
+  if (subgraph_index < 0) return std::nullopt;
+
+  mlir::stablehlo::ScatterDimensionNumbersAttr scatter_dimension_numbers =
+      scatter_op.getScatterDimensionNumbers();
+  llvm::ArrayRef<int64_t> update_window_dims_mlir =
+      scatter_dimension_numbers.getUpdateWindowDims();
+  llvm::ArrayRef<int64_t> inserted_window_dims_mlir =
+      scatter_dimension_numbers.getInsertedWindowDims();
+  llvm::ArrayRef<int64_t> scatter_dims_to_operand_dims_mlir =
+      scatter_dimension_numbers.getScatterDimsToOperandDims();
+
+  std::vector<int64_t> update_window_dims_vec(update_window_dims_mlir.begin(),
+                                              update_window_dims_mlir.end());
+  std::vector<int64_t> inserted_window_dims_vec(
+      inserted_window_dims_mlir.begin(), inserted_window_dims_mlir.end());
+  std::vector<int64_t> scatter_dims_to_operand_dims_vec(
+      scatter_dims_to_operand_dims_mlir.begin(),
+      scatter_dims_to_operand_dims_mlir.end());
+
+  int64_t index_vector_dim = scatter_dimension_numbers.getIndexVectorDim();
+  bool unique_indices = scatter_op.getUniqueIndices();
+  bool indices_are_sorted = scatter_op.getIndicesAreSorted();
+
+  auto update_window_dims = builder_.CreateVector(update_window_dims_vec);
+  auto inserted_window_dims = builder_.CreateVector(inserted_window_dims_vec);
+  auto scatter_dims_to_operand_dims =
+      builder_.CreateVector(scatter_dims_to_operand_dims_vec);
+
+  auto options = tflite::CreateStablehloScatterOptions(
+      builder_, indices_are_sorted, update_window_dims, inserted_window_dims,
+      scatter_dims_to_operand_dims, index_vector_dim, unique_indices,
+      subgraph_index);
+
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+      tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+      tflite::BuiltinOptions2_StablehloScatterOptions, options.Union());
+}
+
 std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     Operation* inst, std::vector<int32_t> operands,
     const std::vector<int32_t>& results,
@@ -1452,7 +1547,7 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
 
   // EXPERIMENTAL: If the source is in stablehlo dialect, also create them as
   // builtin ops
-  if (dialect == stablehlo_dialect_) {
+  if (dialect == stablehlo_dialect_ && convert_stablehlo_) {
     if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::LogisticOp>(inst)) {
       return BuildStablehloOperatorwithoutOptions(
           inst, operands, results, tflite::BuiltinOperator_STABLEHLO_LOGISTIC);
@@ -1476,6 +1571,531 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       return BuildStablehloOperatorwithoutOptions(
           inst, operands, results, tflite::BuiltinOperator_STABLEHLO_MAXIMUM);
     }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ReshapeOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_RESHAPE);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ClampOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_CLAMP);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::AbsOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_ABS);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::AddOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_ADD);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::AndOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_AND);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::CosineOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_COSINE);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ExpOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results,
+          tflite::BuiltinOperator_STABLEHLO_EXPONENTIAL);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::FloorOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_FLOOR);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::LogOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_LOG);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::MinOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_MINIMUM);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::NegOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_NEGATE);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::OrOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_OR);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::PowOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_POWER);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::RemOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_REMAINDER);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::RsqrtOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_RSQRT);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::SelectOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_SELECT);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::SubtractOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_SUBTRACT);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::TanhOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_TANH);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ConvertOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_CONVERT);
+    }
+    if (auto shlo_op =
+            llvm::dyn_cast<mlir::stablehlo::DynamicUpdateSliceOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results,
+          tflite::BuiltinOperator_STABLEHLO_DYNAMIC_UPDATE_SLICE);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::IotaOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_IOTA);
+
+      auto iota_option = tflite::CreateStablehloIotaOptions(
+          builder_, shlo_op.getIotaDimension());
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloIotaOptions, iota_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::DynamicSliceOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index = GetOpcodeIndex(
+          op_name, tflite::BuiltinOperator_STABLEHLO_DYNAMIC_SLICE);
+
+      auto slice_sizes = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getSliceSizes()));
+
+      auto dynamic_slice_option =
+          tflite::CreateStablehloDynamicSliceOptions(builder_, slice_sizes);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloDynamicSliceOptions,
+          dynamic_slice_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::CompareOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_COMPARE);
+
+      auto compare_type_attr = shlo_op.getCompareType();
+      tflite::StablehloComparisonType compare_type =
+          tflite::StablehloComparisonType_STABLEHLO_COMPARISON_TYPE_NOTYPE;
+      if (compare_type_attr)
+        compare_type = static_cast<tflite::StablehloComparisonType>(
+            compare_type_attr.value());
+      auto compare_option = tflite::CreateStablehloCompareOptions(
+          builder_,
+          static_cast<tflite::StablehloComparisonDirection>(
+              shlo_op.getComparisonDirection()),
+          compare_type);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloCompareOptions,
+          compare_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::PadOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_PAD);
+
+      auto edge_padding_low = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getEdgePaddingLowAttr()));
+      auto edge_padding_high = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getEdgePaddingHighAttr()));
+      auto interior_padding = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getInteriorPaddingAttr()));
+
+      auto pad_option = tflite::CreateStablehloPadOptions(
+          builder_, edge_padding_low, edge_padding_high, interior_padding);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloPadOptions, pad_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ConcatenateOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index = GetOpcodeIndex(
+          op_name, tflite::BuiltinOperator_STABLEHLO_CONCATENATE);
+
+      auto concat_option = tflite::CreateStablehloConcatenateOptions(
+          builder_, shlo_op.getDimension());
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloConcatenateOptions,
+          concat_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::SliceOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_SLICE);
+
+      auto start_indices = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getStartIndicesAttr()));
+      auto limit_indices = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getLimitIndicesAttr()));
+      auto strides = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getStridesAttr()));
+
+      auto slice_option = tflite::CreateStablehloSliceOptions(
+          builder_, start_indices, limit_indices, strides);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloSliceOptions, slice_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ConvolutionOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index = GetOpcodeIndex(
+          op_name, tflite::BuiltinOperator_STABLEHLO_CONVOLUTION);
+
+      auto window_strides = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getWindowStrides()));
+      auto padding = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getPadding()));
+      auto lhs_dialation = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getLhsDilation()));
+      auto rhs_dialation = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getRhsDilation()));
+      auto window_reversal = builder_.CreateVector(
+          mlir::GetOptionalVector<bool>(shlo_op.getWindowReversal()));
+      auto input_batch_dimension =
+          shlo_op.getDimensionNumbersAttr().getInputBatchDimension();
+      auto input_feature_dimension =
+          shlo_op.getDimensionNumbersAttr().getInputFeatureDimension();
+      auto kernel_input_feature_dimension =
+          shlo_op.getDimensionNumbersAttr().getKernelInputFeatureDimension();
+      auto kernel_output_feature_dimension =
+          shlo_op.getDimensionNumbersAttr().getKernelOutputFeatureDimension();
+      auto output_batch_dimension =
+          shlo_op.getDimensionNumbersAttr().getOutputBatchDimension();
+      auto output_feature_dimension =
+          shlo_op.getDimensionNumbersAttr().getOutputFeatureDimension();
+      std::vector<int64_t> input_spatial_dimension_vec(
+          shlo_op.getDimensionNumbersAttr().getInputSpatialDimensions().begin(),
+          shlo_op.getDimensionNumbersAttr().getInputSpatialDimensions().end());
+      std::vector<int64_t> kernel_spatial_dimension_vec(
+          shlo_op.getDimensionNumbersAttr()
+              .getKernelSpatialDimensions()
+              .begin(),
+          shlo_op.getDimensionNumbersAttr().getKernelSpatialDimensions().end());
+      std::vector<int64_t> output_spatial_dimension_vec(
+          shlo_op.getDimensionNumbersAttr()
+              .getOutputSpatialDimensions()
+              .begin(),
+          shlo_op.getDimensionNumbersAttr().getOutputSpatialDimensions().end());
+      auto kernel_spatial_dimensions =
+          builder_.CreateVector(kernel_spatial_dimension_vec);
+      auto output_spatial_dimension =
+          builder_.CreateVector(output_spatial_dimension_vec);
+      auto input_spatial_dimension =
+          builder_.CreateVector(input_spatial_dimension_vec);
+      BufferOffset<flatbuffers::Vector<unsigned int>> precision_config = 0;
+      if (shlo_op.getPrecisionConfig()) {
+        precision_config =
+            BuildStablehloPrecisionConfig(shlo_op.getPrecisionConfig().value());
+      }
+
+      auto convolution_option = tflite::CreateStablehloConvolutionOptions(
+          builder_, window_strides, padding, lhs_dialation, rhs_dialation,
+          window_reversal, input_batch_dimension, input_feature_dimension,
+          input_spatial_dimension, kernel_input_feature_dimension,
+          kernel_output_feature_dimension, kernel_spatial_dimensions,
+          output_batch_dimension, output_feature_dimension,
+          output_spatial_dimension, shlo_op.getFeatureGroupCount(),
+          shlo_op.getBatchGroupCount(), precision_config);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloConvolutionOptions,
+          convolution_option.Union());
+    }
+    if (auto shlo_op =
+            llvm::dyn_cast<mlir::stablehlo::BroadcastInDimOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index = GetOpcodeIndex(
+          op_name, tflite::BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM);
+
+      auto broadcast_dimensions =
+          builder_.CreateVector(mlir::GetOptionalVector<int64_t>(
+              shlo_op.getBroadcastDimensionsAttr()));
+
+      auto broadcast_option = tflite::CreateStablehloBroadcastInDimOptions(
+          builder_, broadcast_dimensions);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloBroadcastInDimOptions,
+          broadcast_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::CustomCallOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index = GetOpcodeIndex(
+          op_name, tflite::BuiltinOperator_STABLEHLO_CUSTOM_CALL);
+      auto call_target_name =
+          builder_.CreateString(shlo_op.getCallTargetName().str());
+      auto backend_config =
+          builder_.CreateString(shlo_op.getBackendConfig().str());
+      // building the computation info
+      auto flex_builder = std::make_unique<flexbuffers::Builder>();
+      size_t map_start = flex_builder->StartMap();
+      auto attrs = shlo_op->getAttrs();
+      std::vector<mlir::NamedAttribute> extra_attributes;
+
+      for (size_t i = 0; i < attrs.size(); ++i) {
+        auto name = attrs[i].getName().str();
+        auto attr = attrs[i].getValue();
+        if (name == "call_target_name" || name == "backend_config") continue;
+        if (llvm::isa<mlir::BoolAttr>(attr))
+          flex_builder->Bool(name.c_str(),
+                             attr.cast<mlir::BoolAttr>().getValue());
+        if (llvm::isa<mlir::StringAttr>(attr))
+          flex_builder->String(name.c_str(),
+                               attr.cast<mlir::StringAttr>().getValue().str());
+      }
+      flex_builder->EndMap(map_start);
+      flex_builder->Finish();
+      auto custom_call_option = tflite::CreateStablehloCustomCallOptions(
+          builder_, call_target_name, shlo_op.getHasSideEffect(),
+          backend_config, 0, 0,
+          builder_.CreateVector(flex_builder->GetBuffer()));
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloCustomCallOptions,
+          custom_call_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ReduceOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_REDUCE);
+
+      auto dimension = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getDimensions()));
+      auto& body = shlo_op.getBody();
+      int32_t subgraph_index = UnnamedRegionToSubgraph(
+          &body, tflite::BuiltinOperator_STABLEHLO_REDUCE);
+      if (subgraph_index < 0) return std::nullopt;
+
+      auto reduce_option = tflite::CreateStablehloReduceOptions(
+          builder_, dimension, subgraph_index);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloReduceOptions,
+          reduce_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::DotGeneralOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index = GetOpcodeIndex(
+          op_name, tflite::BuiltinOperator_STABLEHLO_DOT_GENERAL);
+
+      std::vector<int64_t> lhs_batching_dimensions_vec(
+          shlo_op.getDotDimensionNumbers().getLhsBatchingDimensions().begin(),
+          shlo_op.getDotDimensionNumbers().getLhsBatchingDimensions().end());
+      std::vector<int64_t> rhs_batching_dimensions_vec(
+          shlo_op.getDotDimensionNumbers().getRhsBatchingDimensions().begin(),
+          shlo_op.getDotDimensionNumbers().getRhsBatchingDimensions().end());
+      std::vector<int64_t> lhs_contracting_dimensions_vec(
+          shlo_op.getDotDimensionNumbers()
+              .getLhsContractingDimensions()
+              .begin(),
+          shlo_op.getDotDimensionNumbers().getLhsContractingDimensions().end());
+      std::vector<int64_t> rhs_contracting_dimensions_vec(
+          shlo_op.getDotDimensionNumbers()
+              .getRhsContractingDimensions()
+              .begin(),
+          shlo_op.getDotDimensionNumbers().getRhsContractingDimensions().end());
+
+      auto lhs_batching_dimensions =
+          builder_.CreateVector(lhs_batching_dimensions_vec);
+      auto rhs_batching_dimensions =
+          builder_.CreateVector(rhs_batching_dimensions_vec);
+      auto lhs_contracting_dimensions =
+          builder_.CreateVector(lhs_contracting_dimensions_vec);
+      auto rhs_contracting_dimensions =
+          builder_.CreateVector(rhs_contracting_dimensions_vec);
+
+      BufferOffset<flatbuffers::Vector<unsigned int>> precision_config = 0;
+      if (shlo_op.getPrecisionConfig()) {
+        precision_config =
+            BuildStablehloPrecisionConfig(shlo_op.getPrecisionConfig().value());
+      }
+
+      auto dot_geneoral_option = tflite::CreateStablehloDotGeneralOptions(
+          builder_, lhs_batching_dimensions, rhs_batching_dimensions,
+          lhs_contracting_dimensions, rhs_contracting_dimensions,
+          precision_config);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloDotGeneralOptions,
+          dot_geneoral_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ReduceWindowOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index = GetOpcodeIndex(
+          op_name, tflite::BuiltinOperator_STABLEHLO_REDUCE_WINDOW);
+
+      auto window_dimensions = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getWindowDimensions()));
+      auto window_strides = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getWindowStrides()));
+      auto base_dilations = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getBaseDilations()));
+      auto window_dilations = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getWindowDilations()));
+      auto padding = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getPadding()));
+
+      auto& body = shlo_op.getBody();
+      int32_t subgraph_index = UnnamedRegionToSubgraph(
+          &body, tflite::BuiltinOperator_STABLEHLO_REDUCE_WINDOW);
+      if (subgraph_index < 0) return std::nullopt;
+
+      auto reduce_window_option = tflite::CreateStablehloReduceWindowOptions(
+          builder_, window_dimensions, window_strides, base_dilations,
+          window_dilations, padding, subgraph_index);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloReduceWindowOptions,
+          reduce_window_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::SortOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_SORT);
+      auto& comparator = shlo_op.getComparator();
+      int32_t comparator_subgraph_index = UnnamedRegionToSubgraph(
+          &comparator, tflite::BuiltinOperator_STABLEHLO_SORT);
+      if (comparator_subgraph_index < 0) return std::nullopt;
+
+      auto sort_option = tflite::CreateStablehloSortOptions(
+          builder_, shlo_op.getDimension(), shlo_op.getIsStable(),
+          comparator_subgraph_index);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloSortOptions, sort_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::WhileOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_WHILE);
+
+      auto& cond = shlo_op.getCond();
+      int32_t cond_subgraph_index = UnnamedRegionToSubgraph(
+          &cond, tflite::BuiltinOperator_STABLEHLO_WHILE);
+      if (cond_subgraph_index < 0) return std::nullopt;
+
+      auto& body = shlo_op.getBody();
+      int32_t body_subgraph_index = UnnamedRegionToSubgraph(
+          &body, tflite::BuiltinOperator_STABLEHLO_WHILE);
+      if (body_subgraph_index < 0) return std::nullopt;
+
+      auto while_option = tflite::CreateStablehloWhileOptions(
+          builder_, cond_subgraph_index, body_subgraph_index);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloWhileOptions, while_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ScatterOp>(inst)) {
+      return BuildStablehloScatterOp(shlo_op, operands, results);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::GatherOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_GATHER);
+
+      std::vector<int64_t> offset_dims_vec(
+          shlo_op.getDimensionNumbers().getOffsetDims().begin(),
+          shlo_op.getDimensionNumbers().getOffsetDims().end());
+      std::vector<int64_t> collapsed_slice_dims_vec(
+          shlo_op.getDimensionNumbers().getCollapsedSliceDims().begin(),
+          shlo_op.getDimensionNumbers().getCollapsedSliceDims().end());
+      std::vector<int64_t> start_index_map_vec(
+          shlo_op.getDimensionNumbers().getStartIndexMap().begin(),
+          shlo_op.getDimensionNumbers().getStartIndexMap().end());
+
+      auto offset_dims = builder_.CreateVector(offset_dims_vec);
+      auto collapsed_slice_dims =
+          builder_.CreateVector(collapsed_slice_dims_vec);
+      auto start_index_map = builder_.CreateVector(start_index_map_vec);
+      auto slice_sizes = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getSliceSizes()));
+
+      auto gather_option = tflite::CreateStablehloGatherOptions(
+          builder_, offset_dims, collapsed_slice_dims, start_index_map,
+          shlo_op.getDimensionNumbers().getIndexVectorDim(), slice_sizes,
+          shlo_op.getIndicesAreSorted());
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloGatherOptions,
+          gather_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::TransposeOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_TRANSPOSE);
+
+      auto transpose_option = tflite::CreateStablehloTransposeOptions(
+          builder_, builder_.CreateVector(mlir::GetOptionalVector<int64_t>(
+                        shlo_op.getPermutation())));
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloTransposeOptions,
+          transpose_option.Union());
+    }
+
+    return inst->emitOpError("is not part of the stablehlo support yet."),
+           std::nullopt;
   }
 
   if (dialect == tf_dialect_) {
@@ -1727,8 +2347,8 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     Operation& inst = item.value();
     const int operation_index = item.index();
     if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;
-    // For "quant.stats" op, it's used to store the quantization parameters info
-    // and its output should be then replaced by its input value.
+    // For "quant.stats" op, it's used to store the quantization parameters
+    // info and its output should be then replaced by its input value.
     if (auto quant_stats_op =
             llvm::dyn_cast<mlir::quantfork::StatisticsOp>(inst)) {
       continue;
@@ -1760,9 +2380,9 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 
     for (auto val : inst.getResults()) {
       std::string tensor_name = UniqueName(val);
-      // For "tfl.numeric_verify" op, the name is used to find out the original
-      // activation tensor rather than its own unique name in the visualization
-      // or debugging tools.
+      // For "tfl.numeric_verify" op, the name is used to find out the
+      // original activation tensor rather than its own unique name in the
+      // visualization or debugging tools.
       auto builtin_code = GetBuiltinOpCode(&inst);
       if (!builtin_code && dyn_cast<mlir::TFL::NumericVerifyOp>(&inst)) {
         // The first operand is the quantized activation, the target of this
@@ -1875,7 +2495,8 @@ Translator::CreateMetadataVector() {
         metadata.push_back(BuildMetadata(name, content.getValue()));
       } else {
         module_.emitError(
-            "all values in tfl.metadata's dictionary key-value pairs should be "
+            "all values in tfl.metadata's dictionary key-value pairs should "
+            "be "
             "string attributes");
         return std::nullopt;
       }
@@ -1970,7 +2591,10 @@ std::vector<SignatureDefData> BuildSignaturedef(
   // Fetch function inputs and outputs tensor names.
   auto dict_attr =
       main_op->getAttrOfType<mlir::DictionaryAttr>(kEntryFunctionAttributes);
-  if (!dict_attr) return {};
+  if (!dict_attr) {
+    main_op.emitWarning() << "failed to get entry function attr.";
+    return {};
+  }
 
   // Get Input and output tensor names from attribute.
   llvm::SmallVector<llvm::StringRef, 2> input_names =
@@ -1980,7 +2604,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
 
   // Verify input size match the number of arguments.
   if (input_names.size() != main_op.getNumArguments()) {
-    main_op.emitWarning() << "invalid entry function specification";
+    main_op.emitWarning() << "invalid entry function specification.";
     return {};
   }
   // Verify output size match the number of arguments.
@@ -2004,7 +2628,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
   auto exported_name =
       main_op->getAttrOfType<mlir::ArrayAttr>(kTfSavedModelExportedNamesAttr);
   if (exported_name.empty()) {
-    main_op.emitError("Empty exported names for main Function");
+    main_op.emitError("Empty exported names for main Function.");
     return {};
   }
   // Fill the SignatureDefData container.
@@ -2044,8 +2668,8 @@ std::optional<VectorBufferOffset<BufferOffset<tflite::SignatureDef>>>
 Translator::CreateSignatureDefs(
     const std::vector<SignatureDefData>& signature_defs) {
   std::vector<BufferOffset<tflite::SignatureDef>> signature_defs_buffer;
-  // When we export each function in the module op, intentionally, we export the
-  // entry functions at the beginning of the subgraph list and the
+  // When we export each function in the module op, intentionally, we export
+  // the entry functions at the beginning of the subgraph list and the
   // subgraph_index is the index in entry functions and at the same, is the
   // index in the subgraph list.
   int subgraph_index = 0;
@@ -2097,7 +2721,8 @@ std::optional<std::string> Translator::Translate(
     ModuleOp module, const toco::TocoFlags& toco_flags,
     const std::unordered_set<std::string>& tags,
     OpOrArgNameMapper* op_or_arg_name_mapper,
-    const std::map<std::string, std::string>& metadata) {
+    const std::map<std::string, std::string>& metadata,
+    bool serialize_stablehlo_ops) {
   OpOrArgLocNameMapper default_op_or_arg_name_mapper;
   if (!op_or_arg_name_mapper)
     op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
@@ -2105,6 +2730,7 @@ std::optional<std::string> Translator::Translate(
   if (!IsValidTFLiteMlirModule(module)) return std::nullopt;
   Translator translator(module, toco_flags, tags, op_or_arg_name_mapper,
                         metadata);
+  translator.convert_stablehlo_ = serialize_stablehlo_ops;
   auto ret = translator.TranslateInternal();
   if (translator.require_use_buffer_offset_) {
     auto new_toco_flags = toco_flags;
@@ -2143,9 +2769,9 @@ bool Translator::CheckGpuDelegateCompatibility(uint8_t* model_buffer_pointer) {
 }
 
 std::optional<std::string> Translator::TranslateInternal() {
-  // A list of named regions in the module with main function being the first in
-  // the list. The main function is required as the first subgraph in the model
-  // is entry point for the model.
+  // A list of named regions in the module with main function being the first
+  // in the list. The main function is required as the first subgraph in the
+  // model is entry point for the model.
   std::vector<std::pair<std::string, Region*>> named_regions;
   named_regions.reserve(std::distance(module_.begin(), module_.end()));
 
@@ -2191,13 +2817,12 @@ std::optional<std::string> Translator::TranslateInternal() {
   }
 
   // Build subgraph for each of the named regions.
-  std::vector<BufferOffset<tflite::SubGraph>> subgraphs;
-  subgraphs.reserve(named_regions.size());
+  subgraphs_.resize(named_regions.size());
   model_control_dependencies_.assign(named_regions.size(), {});
   int first_failed_func = -1;
 
-  // When we export each function in the module op, intentionally, we export the
-  // entry functions at the beginning of the subgraph list and the
+  // When we export each function in the module op, intentionally, we export
+  // the entry functions at the beginning of the subgraph list and the
   // subgraph_index is the index in entry functions and at the same, is the
   // index in the subgraph list.
   int subgraph_index = 0;
@@ -2212,7 +2837,7 @@ std::optional<std::string> Translator::TranslateInternal() {
         // we collect the list of missing ops from the entire module.
         first_failed_func = it.index();
     } else {
-      subgraphs.push_back(*subgraph_or);
+      subgraphs_[subgraph_index] = *subgraph_or;
       ++subgraph_index;
     }
   }
@@ -2259,7 +2884,8 @@ std::optional<std::string> Translator::TranslateInternal() {
     std::string err;
     if (!failed_flex_ops_.empty())
       err +=
-          "\nSome ops are not supported by the native TFLite runtime, you can "
+          "\nSome ops are not supported by the native TFLite runtime, you "
+          "can "
           "enable TF kernels fallback using TF Select. See instructions: "
           "https://www.tensorflow.org/lite/guide/ops_select \n" +
           failed_flex_ops_summary + "\n";
@@ -2335,7 +2961,7 @@ std::optional<std::string> Translator::TranslateInternal() {
 
   auto model = tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION,
                                    builder_.CreateVector(opcodes_),
-                                   builder_.CreateVector(subgraphs),
+                                   builder_.CreateVector(subgraphs_),
                                    description, builder_.CreateVector(buffers_),
                                    metadata_buffer, *metadata, *signature_defs);
   tflite::FinishModelBuffer(builder_, model);
@@ -2443,8 +3069,8 @@ bool Translator::UpdateBufferOffsets(tflite::Model* mutable_model) {
           std::vector<int32_t> key_outputs = custom_op.first.second;
           // TODO(b/287306548): we need more rigorous check to make sure the
           // node we're updating is the right one for now we're just ensuring
-          // they have the same number of input, output and first output is the
-          // same
+          // they have the same number of input, output and first output is
+          // the same
           if (key_inputs.size() == inputs.size() &&
               key_outputs.size() == outputs.size() &&
               key_outputs[0] == outputs[0]) {
@@ -2612,10 +3238,11 @@ namespace tflite {
 
 bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        const FlatbufferExportOptions& options,
-                                       std::string* serialized_flatbuffer) {
+                                       std::string* serialized_flatbuffer,
+                                       bool serialize_stablehlo_ops) {
   auto maybe_translated = Translator::Translate(
       module, options.toco_flags, options.saved_model_tags,
-      options.op_or_arg_name_mapper, options.metadata);
+      options.op_or_arg_name_mapper, options.metadata, serialize_stablehlo_ops);
   if (!maybe_translated) return false;
   *serialized_flatbuffer = std::move(*maybe_translated);
   return true;

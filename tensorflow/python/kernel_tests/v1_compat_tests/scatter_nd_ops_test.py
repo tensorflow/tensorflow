@@ -153,3 +153,7 @@ class StatefulScatterNdTest(test.TestCase):
         with self.assertRaisesOpError(
             r"indices\[2\] = \[6\] does not index into shape \[6\]"):
           op(ref, indices, updates).eval()
+
+
+if __name__ == "__main__":
+  test.main()

@@ -18,7 +18,7 @@ limitations under the License.
 #include <atomic>
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/framework/shared_counter.h"
+#include "tsl/framework/shared_counter.h"
 
 namespace tensorflow {
 using tsl::SharedCounter;  // NOLINT

@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/tsl/platform/blocking_counter.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/blocking_counter.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 

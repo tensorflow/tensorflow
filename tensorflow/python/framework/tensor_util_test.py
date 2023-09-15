@@ -318,6 +318,57 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(np.int32, a.dtype)
     self.assertAllClose(np.array(10, dtype=np.int32), a)
 
+  def testInt4(self):
+    test_type = dtypes.int4.as_numpy_dtype
+    t = tensor_util.make_tensor_proto(
+        np.array(
+            [-8, -1, 0, 1, 7],
+            dtype=test_type,
+        )
+    )
+    #
+    self.assertProtoEquals(
+        """
+      dtype: DT_INT4
+      tensor_shape {
+        dim {
+          size: 5
+        }
+      }
+      int_val: -8
+      int_val: -1
+      int_val: 0
+      int_val: 1
+      int_val: 7
+      """,
+        t,
+    )
+
+  def testUInt4(self):
+    test_type = dtypes.uint4.as_numpy_dtype
+    t = tensor_util.make_tensor_proto(
+        np.array(
+            [0, 1, 7, 8, 15],
+            dtype=test_type,
+        )
+    )
+    self.assertProtoEquals(
+        """
+      dtype: DT_UINT4
+      tensor_shape {
+        dim {
+          size: 5
+        }
+      }
+      int_val: 0
+      int_val: 1
+      int_val: 7
+      int_val: 8
+      int_val: 15
+      """,
+        t,
+    )
+
   def testLargeInt(self):
     value = np.iinfo(np.int64).max
     t = tensor_util.make_tensor_proto(value)

@@ -19,7 +19,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_reference.h"
@@ -40,11 +40,11 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
-using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+#include "xla/stream_executor/cuda/cuda_activation.h"
+using ::stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_activation.h"
-using ::perftools::gputools::rocm::ScopedActivateExecutorContext;
+#include "xla/stream_executor/rocm/rocm_activation.h"
+using ::stream_executor::rocm::ScopedActivateExecutorContext;
 #endif
 
 namespace tensorflow {
@@ -201,7 +201,7 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
           c, calculate_nnz_from_indices(c, indices, nnz_per_batch_device),
           done);
 
-      perftools::gputools::DeviceMemoryBase nnz_per_batch_device_ptr(
+      stream_executor::DeviceMemoryBase nnz_per_batch_device_ptr(
           static_cast<void*>(nnz_per_batch_device.data()));
 
       OP_REQUIRES_ASYNC(

@@ -48,13 +48,13 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/tf_allocator_adapter.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/kernels/matmul_op_impl.h"

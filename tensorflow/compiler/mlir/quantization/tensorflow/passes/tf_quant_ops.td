@@ -68,3 +68,17 @@ def TF_CustomAggregatorOp : TF_Op<"CustomAggregator", [Pure]> {
     TensorOf<[TF_Float32]>:$output
   );
 }
+
+def TF_DumpTensorOp : TF_Op<"DumpTensor", []> {
+  let summary = "Dump tensor proto.";
+
+  let arguments = (ins
+    Arg<TF_Tensor>:$input,
+
+    StrAttr:$log_dir_path,
+    StrAttr:$file_name,
+    BoolAttr:$enabled
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}

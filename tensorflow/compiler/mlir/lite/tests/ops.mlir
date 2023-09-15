@@ -157,6 +157,12 @@ func.func @testLogStaticShapeInputAndDynamicShapeOutput(tensor<8 x f32>) -> tens
   func.return %0 : tensor<? x f32>
 }
 
+// CHECK-LABEL: testLogQuantInt8
+func.func @testLogQuantInt8(%arg0: tensor<1x80x128x!quant.uniform<i8:f32, 0.0517647:-128>>) -> tensor<1x80x128x!quant.uniform<i8:f32, 0.0191482:-8>> {
+  %0 = "tfl.log"(%arg0): (tensor<1x80x128x!quant.uniform<i8:f32, 0.0517647:-128>>) -> tensor<1x80x128x!quant.uniform<i8:f32, 0.0191482:-8>>
+  func.return %0 : tensor<1x80x128x!quant.uniform<i8:f32, 0.0191482:-8>>
+}
+
 // CHECK-LABEL: testNeg
 func.func @testNeg(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):
@@ -386,6 +392,16 @@ func.func @testAddWithI64Broadcasting(tensor< 2x3xi64>, tensor<3xi64>) -> tensor
 
 // -----
 
+// CHECK-LABEL: add_with_i32_five_dim_broadcasting
+func.func @add_with_i32_five_dim_broadcasting(tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32> {
+^bb0(%arg0: tensor<1x1x1x1x1xi32>, %arg1: tensor<1xi32>):
+  // CHECK: tfl.add(%arg0, %arg1) {fused_activation_function = "RELU6"}
+  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32>
+  func.return %0#0 : tensor<1x1x1x1x1xi32>
+}
+
+// -----
+
 func.func @add_with_quantized_i16_broadcasting(tensor<2x2xf32>, tensor<1xf32>) -> tensor<2x2x!quant.any<i16:f32>> {
 ^bb0(%arg0: tensor<2x2xf32>, %arg1: tensor<1xf32>):
   // expected-error @+1 {{Operands do not have valid shapes}}
@@ -404,26 +420,20 @@ func.func @sub_with_quantized_i8_five_dim_broadcasting(tensor<1x1x1x1x1xf32>, te
 
 // -----
 
+// CHECK-LABEL: mul_with_i32_five_dim_broadcasting
 func.func @mul_with_i32_five_dim_broadcasting(tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32> {
 ^bb0(%arg0: tensor<1x1x1x1x1xi32>, %arg1: tensor<1xi32>):
-  // expected-error @+1 {{Operands do not have valid shapes}}
+  // CHECK: tfl.mul(%arg0, %arg1) {fused_activation_function = "RELU6"}
   %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32>
   func.return %0#0 : tensor<1x1x1x1x1xi32>
 }
 
 // -----
 
-func.func @add_with_i32_five_dim_broadcasting(tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32> {
-^bb0(%arg0: tensor<1x1x1x1x1xi32>, %arg1: tensor<1xi32>):
-  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32>
-  func.return %0#0 : tensor<1x1x1x1x1xi32>
-}
-
-// -----
-
+// CHECK-LABEL: mul_with_quantized_i16_five_dim_broadcasting
 func.func @mul_with_quantized_i16_five_dim_broadcasting(tensor<1x1x1x1x1x!quant.any<i16:f32>>, tensor<1x!quant.any<i16:f32>>) -> tensor<1x1x1x1x1x!quant.any<i16:f32>> {
 ^bb0(%arg0: tensor<1x1x1x1x1x!quant.any<i16:f32>>, %arg1: tensor<1x!quant.any<i16:f32>>):
-  // expected-error @+1 {{Operands do not have valid shapes}}
+  // CHECK: tfl.mul(%arg0, %arg1) {fused_activation_function = "RELU6"}
   %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1x!quant.any<i16:f32>>, tensor<1x!quant.any<i16:f32>>) -> tensor<1x1x1x1x1x!quant.any<i16:f32>>
   func.return %0#0 : tensor<1x1x1x1x1x!quant.any<i16:f32>>
 }
@@ -3180,4 +3190,16 @@ func.func @testRightShift(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tenso
   %0 = "tfl.right_shift"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
   func.return %0 : tensor<8xui32>
   // CHECK: return %0 : tensor<8xui32>
+}
+
+// -----
+
+// CHECK-LABEL: testDilate
+func.func @testDilate(%arg0: tensor<3x4x5xf32>) -> tensor<5x7x9xf32> {
+  // CHECK: "tfl.dilate"(%arg0, %cst, %cst_0)
+  %cst = arith.constant dense<1> : tensor<3xi32>
+  %cst_0 = arith.constant dense<-1.0> : tensor<f32>
+  %0 = "tfl.dilate"(%arg0, %cst, %cst_0) : (tensor<3x4x5xf32>, tensor<3xi32>, tensor<f32>) -> tensor<5x7x9xf32>
+  func.return %0 : tensor<5x7x9xf32>
+  // CHECK: return %0 : tensor<5x7x9xf32>
 }

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/path.h"
+#include "tsl/platform/path.h"
 
 // NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {

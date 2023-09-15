@@ -20,15 +20,15 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/service/compiler.h"
-#include "tensorflow/compiler/xla/service/platform_util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
-#include "tensorflow/compiler/xla/stream_executor/platform.h"
-#include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/local_client.h"
+#include "xla/service/compiler.h"
+#include "xla/service/platform_util.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/test.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -301,11 +301,6 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
       return nullptr;
     }
 
-    tsl::StatusOr<se::StreamExecutor*> ExecutorForDeviceWithPluginConfig(
-        int ordinal, const se::PluginConfig& config) override {
-      return nullptr;
-    }
-
     tsl::StatusOr<se::StreamExecutor*> GetExecutor(
         const se::StreamExecutorConfig& config) override {
       return nullptr;
@@ -315,11 +310,6 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
         const se::StreamExecutorConfig& config) override {
       return std::unique_ptr<se::StreamExecutor>(nullptr);
     }
-
-    void RegisterTraceListener(
-        std::unique_ptr<se::TraceListener> listener) override {}
-
-    void UnregisterTraceListener(se::TraceListener* listener) override {}
 
    private:
     string name_;

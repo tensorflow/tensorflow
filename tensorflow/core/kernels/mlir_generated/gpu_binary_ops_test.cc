@@ -648,6 +648,19 @@ T baseline_floor_mod(T lhs, T rhs) {
 
 /// Test the JIT-compiled kernels.
 #if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+TEST_F(BinaryOpsTest, FloorModFloatSpecialCase) {
+  TestEqualShapes<float, double, float, double>(
+      "FloorMod", /*shape=*/{20}, test::InputAsVector<float>({1.34e8f}),
+      test::InputAsVector<float>({0.6f}), baseline_floor_mod,
+      test::OpsTestConfig().ATol(1e-11).RTol(1e-6));
+}
+TEST_F(BinaryOpsTest, FloorModDoubleSpecialCase) {
+  TestEqualShapes<double, double, double, double>(
+      "FloorMod", /*shape=*/{20}, test::InputAsVector<double>({1.34e8}),
+      test::InputAsVector<double>({0.6}), baseline_floor_mod,
+      test::OpsTestConfig().ATol(1e-11).RTol(1e-6));
+}
+
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     FloorMod,
     /*test_name=*/Int8, int8_t, int8_t, test::DefaultInput<int8_t>(),

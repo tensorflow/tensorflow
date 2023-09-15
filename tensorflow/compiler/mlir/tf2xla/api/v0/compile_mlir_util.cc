@@ -65,16 +65,16 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/layout_util.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/xla_computation.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/shape.h"
+#include "xla/translate/mhlo_to_hlo/layout_util.h"
+#include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
+#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/errors.h"
@@ -83,7 +83,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -339,17 +339,13 @@ void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
                            llvm::StringRef device_type, bool enable_op_fallback,
                            bool lower_to_xla_hlo) {
   if (lower_to_xla_hlo) {
+    // Lower TF quant ops and types to MHLO int.
+    mlir::stablehlo::AddQuantizationLoweringPasses(pm);
+
     pm.addPass(mlir::mhlo::createLegalizeTFPass(
         legalize_chlo,
         /*tf2xla_fallback_device_type=*/device_type, enable_op_fallback));
   }
-
-  // Until the native support quantization will be delivered on XLA, uniform
-  // quantization will be unpacked with integer operators.
-  // TODO(b/288214422): Add a verification pass for converting MHLO quant to
-  // MHLO int after this one.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::stablehlo::createConvertMHLOQuantToIntPass(legalize_chlo));
 
   // This has to run after legalization.
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -396,8 +392,10 @@ void CreateConvertMlirToXlaHloPipeline(
   // identify the shapes of TensorList initialization ops.
   // This pass requires CanonicalizerPass before
   // CreateTensorListOpsDecompositionPass for clean-ups.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateReplicateTensorListInitOpsPass());
+  if (lower_to_xla_hlo) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::TF::CreateReplicateTensorListInitOpsPass());
+  }
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   // The SCCP pass performs constant propagation across the IR, which, for
   // example, propagates constant arguments into callee functions.
@@ -417,9 +415,13 @@ void CreateConvertMlirToXlaHloPipeline(
   // legalization passes.
   pm.addPass(mlir::createSCCPPass());
 
-  pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
+  if (lower_to_xla_hlo) {
+    pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
+  }
   pm.addPass(mlir::TF::CreateStackOpsDecompositionPass());
-  pm.addPass(mlir::TF::CreateTensorArrayOpsDecompositionPass());
+  if (lower_to_xla_hlo) {
+    pm.addPass(mlir::TF::CreateTensorArrayOpsDecompositionPass());
+  }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
   pm.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
@@ -567,7 +569,8 @@ Status CreateAndRunMlirBridge(mlir::ModuleOp module_op,
     module_op.getContext()->disableMultithreading();
     tf2xla.enableIRPrinting(
         std::make_unique<::tensorflow::DataDumperLoggerConfig>(
-            [module_name](const std::string& pass_tag_name) {
+            [module_name](const std::string& pass_tag_name,
+                          mlir::Operation* op) {
               return DEBUG_DATA_DUMPER()->GetDumpFilename(
                   module_name.str(), kDebugGroupBridgePhase2, pass_tag_name);
             },
@@ -787,14 +790,17 @@ StatusOr<std::string> CompileMlirToXlaHlo(
 
   auto mlir_compilation = SerializeMlirModule(module_op);
 
-  TF_RETURN_IF_ERROR(PopulateCollectiveInfo(module_op, compilation_result));
+  // Only attempt to fill in the compilation result's IO info if lowering.
+  if (lower_to_xla_hlo) {
+    TF_RETURN_IF_ERROR(PopulateCollectiveInfo(module_op, compilation_result));
 
-  auto populate_result = PopulateResultIOInfo(
-      module_op, arg_shapes, use_tuple_args, use_resource_updates_for_aliases,
-      shape_determination_fns, compilation_result);
-  if (!populate_result.ok()) {
-    llvm::errs() << "Failed to populate result io info";
-    return populate_result;
+    auto populate_result = PopulateResultIOInfo(
+        module_op, arg_shapes, use_tuple_args, use_resource_updates_for_aliases,
+        shape_determination_fns, compilation_result);
+    if (!populate_result.ok()) {
+      llvm::errs() << "Failed to populate result io info";
+      return populate_result;
+    }
   }
   return mlir_compilation;
 }

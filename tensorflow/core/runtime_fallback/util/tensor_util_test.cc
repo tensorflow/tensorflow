@@ -15,16 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"
 
+#include <cstddef>
 #include <memory>
 
+#include <gmock/gmock.h>
+#include "Eigen/Core"  // from @eigen_archive  // IWYU pragma: keep
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
 #include "tensorflow/core/platform/test.h"
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
+#include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_metadata.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_shape.h"  // from @tf_runtime
 

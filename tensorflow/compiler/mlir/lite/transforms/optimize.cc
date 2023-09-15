@@ -107,20 +107,6 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
   return true;
 }
 
-// Checks whether the producer of `value` is TFL_DequantizeOp. This function
-// iteratively finds the defining op if the direct defining op is TFL_SplitOp.
-bool NotFromDequant(Value value) {
-  auto dequant_op = value.getDefiningOp<DequantizeOp>();
-  if (dequant_op) {
-    return false;
-  }
-  auto split_op = value.getDefiningOp<SplitOp>();
-  if (!split_op) {
-    return true;
-  }
-  return !split_op.getValue().getDefiningOp<DequantizeOp>();
-}
-
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
@@ -153,38 +139,6 @@ bool BroadcastDimsProductEqual(Value input, Value output,
   }
 
   return (agg_value == output_shape[agg_start_idx]);
-}
-
-// Return true if the permutation value only swaps the last two dimensions
-bool AreLastTwoDimsTransposed(Value permutation) {
-  if (!permutation) return false;
-  DenseElementsAttr perm_values_attr;
-
-  if (!matchPattern(permutation, m_Constant(&perm_values_attr))) return false;
-  auto perm_values = perm_values_attr.getValues<APInt>();
-  size_t idx = 0;
-  for (; idx < perm_values_attr.size() - 2; ++idx) {
-    if (perm_values[idx].getSExtValue() != idx) return false;
-  }
-
-  return (perm_values[idx].getSExtValue() == perm_values_attr.size() - 1) &&
-         (perm_values[idx + 1].getSExtValue() == idx);
-}
-
-// Gets the new type after transposing the last 2 dimensions.
-Type TransposeLastTwoDims(Type type) {
-  auto shaped_type = type.dyn_cast<ShapedType>();
-  if (!shaped_type.hasStaticShape() || shaped_type.getRank() < 2) {
-    return nullptr;
-  }
-  int rank = shaped_type.getRank();
-  if (rank < 2) {
-    return nullptr;
-  }
-  SmallVector<int64_t> new_shape(shaped_type.getShape().begin(),
-                                 shaped_type.getShape().end());
-  std::swap(new_shape[rank - 1], new_shape[rank - 2]);
-  return shaped_type.clone(new_shape);
 }
 
 // Returns whether the given type `a` is broadcast-compatible with `b`.
@@ -1838,8 +1792,7 @@ struct RemoveReshapeBeforeFullyConnected
     if (!reshape_input_ty.hasStaticShape() || input_ty.getRank() == 0 ||
         reshape_input_ty.getRank() == 0 ||
         input_ty.getDimSize(input_ty.getRank() - 1) !=
-            reshape_input_ty.getDimSize(reshape_input_ty.getRank() - 1) ||
-        input_ty.getRank() < reshape_input_ty.getRank()) {
+            reshape_input_ty.getDimSize(reshape_input_ty.getRank() - 1)) {
       return failure();
     }
 

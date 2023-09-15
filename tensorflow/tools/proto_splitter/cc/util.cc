@@ -35,9 +35,9 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/protobuf.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tools::proto_splitter {

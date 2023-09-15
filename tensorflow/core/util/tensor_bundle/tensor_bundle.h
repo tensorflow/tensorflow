@@ -61,31 +61,34 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
 #define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/io/cache.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
+#include "tensorflow/core/lib/io/iterator.h"
 #include "tensorflow/core/lib/io/table.h"
-#include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/tensor_bundle.pb.h"
-#include "tensorflow/core/util/tensor_bundle/naming.h"
 #include "tensorflow/core/util/tensor_slice_set.h"
-#include "tensorflow/tsl/lib/io/buffered_file.h"
+#include "tsl/lib/io/buffered_file.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -117,12 +120,12 @@ class BundleWriter {
     // Must be >= 1. The default size of 1 densely packs tensors.
     int data_alignment{1};
   };
-  BundleWriter(Env* env, StringPiece prefix,
+  BundleWriter(Env* env, absl::string_view prefix,
                const Options& options = Options());
 
   // Adds the tensor "val" under key "key".
   // Across calls "key" must be unique but can be added in any order.
-  Status Add(StringPiece key, const Tensor& val);
+  Status Add(absl::string_view key, const Tensor& val);
 
   // Partitioned variables support.
   // A slice of a full tensor is stored in two entries in the metadata table:
@@ -140,7 +143,7 @@ class BundleWriter {
   // consistent entry for "full_tensor_key" is produced.
   //
   // Returns an error if the same slice is added the second time.
-  Status AddSlice(StringPiece full_tensor_key,
+  Status AddSlice(absl::string_view full_tensor_key,
                   const TensorShape& full_tensor_shape,
                   const TensorSlice& slice_spec, const Tensor& slice_tensor);
 
@@ -152,13 +155,13 @@ class BundleWriter {
  private:
   Env* const env_;  // Not owned.
   const Options options_;
-  const string prefix_;
-  string metadata_path_;
-  string data_path_;
+  const std::string prefix_;
+  std::string metadata_path_;
+  std::string data_path_;
   bool use_temp_file_;
   std::unique_ptr<tsl::BufferedWritableFile> out_;
   int64_t size_;  // Number of bytes written into out_.
-  std::map<string, BundleEntryProto> entries_;
+  std::map<std::string, BundleEntryProto> entries_;
   Status status_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BundleWriter);
@@ -187,7 +190,7 @@ class BundleWriter {
 // Returns a NotFoundError when "allow_missing_files" is set to false and
 // any data file named in "prefixes" does not exist.
 Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
-                    StringPiece merged_prefix,
+                    absl::string_view merged_prefix,
                     bool allow_missing_files = false);
 
 // On construction, silently attempts to read the metadata associated with
@@ -196,7 +199,7 @@ Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
 // All threads accessing the same BundleReader must synchronize.
 class BundleReader {
  public:
-  BundleReader(Env* const env, StringPiece prefix,
+  BundleReader(Env* const env, absl::string_view prefix,
                bool enable_multi_threading_for_testing = false);
   ~BundleReader();
 
@@ -207,29 +210,30 @@ class BundleReader {
   // Queries whether the bundle contains an entry keyed by "key".  Calls Seek()
   // internally, so this call invalidates the reader's current position.
   // REQUIRES: status().ok()
-  bool Contains(StringPiece key);
+  bool Contains(absl::string_view key);
 
   // Sorts a `container` of tensors to read such that when `Seek(key)` is called
   // on the elements of the sorted container, the underlying file access is
   // sequential. Sorting can greatly improve overall read speed.
   //
-  // `get_key` should be a functon that when passed an element in `container`,
+  // `get_key` should be a function that when passed an element in `container`,
   // returns the `key` of the tensor.
   //
   // REQUIRES: status().ok()
   template <class T>
-  Status SortForSequentialAccess(std::vector<T>& container,
-                                 absl::FunctionRef<string(const T&)> get_key);
+  Status SortForSequentialAccess(
+      std::vector<T>& container,
+      absl::FunctionRef<std::string(const T&)> get_key);
 
   // Looks up the dtype and the shape of the tensor keyed by "key".
   // REQUIRES: status().ok()
-  Status LookupDtypeAndShape(StringPiece key, DataType* dtype,
+  Status LookupDtypeAndShape(absl::string_view key, DataType* dtype,
                              TensorShape* shape) TF_MUST_USE_RESULT;
 
   // Looks up the shape of the tensor keyed by "key".
   // Clears "shape" if not found.
   // REQUIRES: status().ok()
-  Status LookupTensorShape(StringPiece key,
+  Status LookupTensorShape(absl::string_view key,
                            TensorShape* shape) TF_MUST_USE_RESULT;
 
   // Looks up the tensor keyed by "key".  If "key" refers to a partitioned
@@ -244,7 +248,7 @@ class BundleReader {
   //
   // Validates the stored crc32c checksum against the restored bytes.
   // REQUIRES: status().ok()
-  Status Lookup(StringPiece key, Tensor* val) TF_MUST_USE_RESULT;
+  Status Lookup(absl::string_view key, Tensor* val) TF_MUST_USE_RESULT;
 
   // Looks up the tensor pointed to by the internal iterator.
   //
@@ -261,19 +265,21 @@ class BundleReader {
   // a slice with a larger start index in some dimension could come before
   // another slice with a smaller start index in the same dimension.
   // REQUIRES: status().ok()
-  Status LookupTensorSlices(StringPiece key, std::vector<TensorSlice>* slices)
+  Status LookupTensorSlices(absl::string_view key,
+                            std::vector<TensorSlice>* slices)
       TF_MUST_USE_RESULT;
 
   // Looks up a specific slice of a partitioned tensor.
   // It is only required that the stored slices cover the requested slice,
   // namely "slice_spec" is a subset of the union of the stored slices.
   // REQUIRES: status().ok()
-  Status LookupSlice(StringPiece full_tensor_key, const TensorSlice& slice_spec,
+  Status LookupSlice(absl::string_view full_tensor_key,
+                     const TensorSlice& slice_spec,
                      Tensor* val) TF_MUST_USE_RESULT;
 
   // Seeks to the first position in the bundle whose key is no less than "key".
   // REQUIRES: status().ok()
-  void Seek(StringPiece key) { return iter_->Seek(key); }
+  void Seek(absl::string_view key) { return iter_->Seek(key); }
   // Moves to the next position in the bundle.
   // REQUIRES: status().ok()
   void Next() const { iter_->Next(); }
@@ -283,18 +289,18 @@ class BundleReader {
 
   // Returns the key at the current position.
   // REQUIRES: status().ok() && Valid()
-  StringPiece key() const { return iter_->key(); }
+  absl::string_view key() const { return iter_->key(); }
   // Returns the raw value at the current position.
   // REQUIRES: status().ok() && Valid()
-  StringPiece value() const { return iter_->value(); }
+  absl::string_view value() const { return iter_->value(); }
 
-  string DebugString();
+  std::string DebugString();
 
  private:
   // Seeks for "key" and reads the metadata proto.
   // On non-OK return, clears "entry" for the caller.
   // REQUIRES: status().ok()
-  Status GetBundleEntryProto(StringPiece key,
+  Status GetBundleEntryProto(absl::string_view key,
                              BundleEntryProto* entry) TF_MUST_USE_RESULT;
 
   // Reads the tensor value described by the metadata proto "entry".
@@ -305,13 +311,13 @@ class BundleReader {
   // Reads the slice described by "slice_spec".  The corresponding full tensor
   // has key "ful_tensor_key" and metadata proto "full_tensor_entry".
   // REQUIRES: full_tensor_entry.slices_size() > 0
-  Status GetSliceValue(StringPiece full_tensor_key,
+  Status GetSliceValue(absl::string_view full_tensor_key,
                        const BundleEntryProto& full_tensor_entry,
                        const TensorSlice& slice_spec,
                        Tensor* val) TF_MUST_USE_RESULT;
 
   Env* env_;  // Not owned.
-  const string prefix_;
+  const std::string prefix_;
 
   Status status_;
   RandomAccessFile* metadata_;  // Owned.
@@ -319,11 +325,11 @@ class BundleReader {
   table::Cache* index_cache_;
   table::Iterator* iter_;
   // Owned the InputBuffer objects and their underlying RandomAccessFile's.
-  std::unordered_map<int32, io::InputBuffer*> data_;
+  std::unordered_map<int32_t, io::InputBuffer*> data_;
 
   // Maps each partitioned tensor's key to its stored slices (represented in a
   // TensorSliceSet).  Populated on-demand.
-  std::unordered_map<string, checkpoint::TensorSliceSet*> tensor_slices_;
+  std::unordered_map<std::string, checkpoint::TensorSliceSet*> tensor_slices_;
 
   // Expected number of data file shards in the bundle.  Extracted by reading
   // the header entry in the metadata table.
@@ -342,12 +348,13 @@ class BundleReader {
 
 template <class T>
 Status BundleReader::SortForSequentialAccess(
-    std::vector<T>& container, absl::FunctionRef<string(const T&)> get_key) {
+    std::vector<T>& container,
+    absl::FunctionRef<std::string(const T&)> get_key) {
   struct FileOffset {
     int32_t shard_id;
     int64_t offset;
   };
-  absl::flat_hash_map<string, FileOffset> file_offsets;
+  absl::flat_hash_map<std::string, FileOffset> file_offsets;
   for (const T& element : container) {
     BundleEntryProto entry;
     TF_RETURN_IF_ERROR(GetBundleEntryProto(get_key(element), &entry));

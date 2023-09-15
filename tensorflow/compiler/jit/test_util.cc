@@ -16,11 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/jit/test_util.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "tensorflow/compiler/jit/shape_inference.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/public/version.h"
 
@@ -61,7 +62,8 @@ Status ShapeAnnotationsMatch(
 }
 
 void DeviceSetup::AddDevicesAndSetUp(
-    const std::vector<std::string>& device_names) {
+    const std::vector<std::string>& device_names,
+    const std::optional<FunctionDef>& fdef) {
   SessionOptions options;
   auto* device_count = options.config.mutable_device_count();
   for (const auto& device_name : device_names) {
@@ -76,6 +78,9 @@ void DeviceSetup::AddDevicesAndSetUp(
   OptimizerOptions opts;
   lib_def_ = std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
                                                          FunctionDefLibrary());
+  if (fdef.has_value()) {
+    TF_CHECK_OK(lib_def_->AddFunctionDef(*fdef));
+  }
   pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, lib_def_.get(), opts,

@@ -19,8 +19,8 @@ package(
     default_visibility = [
         "__subpackages__",
         "//tensorflow:internal",
-        "//tensorflow/cc/experimental/image_format:__subpackages__",
         "//tensorflow/cc/experimental/tf2:__subpackages__",
+        "//tensorflow/cc/saved_model/image_format:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -168,10 +168,10 @@ cc_library(
         ":chunk_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/tools/proto_splitter/cc:util",
-        "//tensorflow/tsl/platform:protobuf",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:protobuf",
         "@riegeli//riegeli/base:object",
         "@riegeli//riegeli/bytes:fd_reader",
         "@riegeli//riegeli/records:record_reader",
@@ -186,8 +186,8 @@ cc_library(
     deps = [
         ":chunk_proto_cc",
         ":merge_impl",
-        "//tensorflow/tsl/platform:protobuf",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:protobuf",
         "@riegeli//riegeli/bytes:fd_reader",
         "@riegeli//riegeli/records:record_reader",
     ] + if_oss([
@@ -230,10 +230,10 @@ tf_cc_test(
         "//tensorflow/tools/proto_splitter/cc:test_util",
         "//tensorflow/tools/proto_splitter/cc:util",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_cc",
-        "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:protobuf",
-        "//tensorflow/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:statusor",
     ] + if_oss([
         "//tensorflow/tools/proto_splitter:protos_impl",
     ]),
