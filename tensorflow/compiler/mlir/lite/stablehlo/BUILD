@@ -461,6 +461,32 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "tfl_legalize_hlo",
+    srcs = [
+        "transforms/tflite_legalize_hlo.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":passes_inc_gen",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "tf_legalize_hlo",
     srcs = [
         "transforms/generated_legalize_hlo.inc",
@@ -555,6 +581,7 @@ tf_cc_binary(
         ":stablehlo_tfl",
         ":tf_legalize_hlo",
         ":tf_stablehlo",
+        ":tfl_legalize_hlo",
         ":tfl_stablehlo",
         ":unfuse_batch_norm_pass",
         ":uniform_quantized_stablehlo_to_tfl_pass",
