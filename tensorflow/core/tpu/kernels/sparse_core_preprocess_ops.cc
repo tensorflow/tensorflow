@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -45,16 +46,26 @@ namespace tensorflow {
 
 Status ValidateInputs(const Tensor& indices_or_row_splits, const Tensor& values,
                       const Tensor& weights, int sample_count) {
-  if (values.dims() != 1 || weights.dims() != 1) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Values and weights input should have dimension as 1. But got ",
-        values.dims(), " for values and ", weights.dims(), " for weights."));
-  }
-  if (values.NumElements() != weights.NumElements()) {
+  if (values.dims() != 1) {
     return absl::InvalidArgumentError(
-        absl::StrCat("Values and weights should have same elements. But got ",
-                     values.NumElements(), " elements for values and ",
-                     weights.NumElements(), " elements for weights."));
+        absl::StrCat("Values input should have dimension 1. But got dimension ",
+                     values.dims(), "."));
+  }
+  switch (weights.dims()) {
+    case 0:
+      break;
+    case 1:
+      if (values.NumElements() != weights.NumElements()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Values and weights should have same elements. But got ",
+            values.NumElements(), " elements for values and ",
+            weights.NumElements(), " elements for weights."));
+      }
+      break;
+    default:
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Weights input should have dimension 0 or 1. But got dimension ",
+          weights.dims(), "."));
   }
   if (indices_or_row_splits.NumElements() == 0) {
     // Dense tensor.
@@ -89,16 +100,14 @@ Status ValidateInputs(const Tensor& indices_or_row_splits, const Tensor& values,
 
 Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
                                   const int32 total_id_count,
-                                  Tensor* row_ids_before_padding) {
+                                  int32* row_ids_before_padding) {
   // The only difference between dense tensor, sparse tensor and ragged tensor
   // is the row ids output.
   if (indices_or_row_splits.NumElements() == 0) {
     // Dense tensor to COO format.
     // Row ids are just the index ids.
-    int32* row_ids_before_padding_ptr =
-        row_ids_before_padding->flat<int32>().data();
     for (int32 i = 0; i < total_id_count; ++i) {
-      *(row_ids_before_padding_ptr + i) = i;
+      *(row_ids_before_padding + i) = i;
     }
   } else if (indices_or_row_splits.dims() == 2 &&
              indices_or_row_splits.NumElements() > 0) {
@@ -108,25 +117,21 @@ Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
     // For 2D sparse tensor, as we always combine on the last dimension.
     // The row ids are just the sample ids which is the first dim of the
     // indices.
-    int32* row_ids_before_padding_ptr =
-        row_ids_before_padding->flat<int32>().data();
+    auto indices_matrix = indices_or_row_splits.matrix<int32>();
     for (int32 i = 0; i < total_id_count; ++i) {
-      *(row_ids_before_padding_ptr + i) =
-          indices_or_row_splits.tensor<int32, 2>()(i, 0);
+      *(row_ids_before_padding + i) = indices_matrix(i, 0);
     }
   } else if (indices_or_row_splits.dims() == 1 &&
              indices_or_row_splits.NumElements() > 0) {
     // Ragged tensor to COO format.
     const int32* indices_or_row_splits_ptr =
         indices_or_row_splits.flat<int32>().data();
-    int32* row_ids_before_padding_ptr =
-        row_ids_before_padding->flat<int32>().data();
     int32 current_row_id = -1;
     for (int32 i = 0; i < total_id_count; ++i) {
       while (i == *(indices_or_row_splits_ptr + 1 + current_row_id)) {
         current_row_id += 1;
       }
-      *(row_ids_before_padding_ptr + i) = current_row_id;
+      *(row_ids_before_padding + i) = current_row_id;
     }
   } else {
     return absl::InvalidArgumentError(
@@ -167,26 +172,25 @@ class ConvertToCooTensorOp : public OpKernel {
 
     const int32 total_id_count = values->NumElements();
 
-    Tensor row_ids_before_dedup;
-    OP_REQUIRES_OK(ctx,
-                   ctx->allocate_temp(DT_INT32, TensorShape({total_id_count}),
-                                      &row_ids_before_dedup));
+    auto row_ids_before_dedup = std::make_unique<int32[]>(total_id_count);
 
     OP_REQUIRES_OK(
         ctx, ComputeRowIdsBeforePadding(*indices_or_row_splits, total_id_count,
-                                        &row_ids_before_dedup));
+                                        row_ids_before_dedup.get()));
 
-    std::vector<float> gains_rescale(sample_count_, 0.0f);
+    // Compute the rescaled gains for non-sum combiners.
+    std::optional<std::vector<float>> gains_rescale =
+        combiner_ != "sum"
+            ? std::make_optional<std::vector<float>>(sample_count_, 0.0f)
+            : std::nullopt;
 
-    // Compute the rescaled gains
     auto combiner_scale_contribution_fn =
         GetCombinerScaleContributionFunction(combiner_);
 
     auto combiner_scale_transform_fn =
         GetCombinerScaleTransformFunction(combiner_);
 
-    const int32* row_ids_before_dedup_ptr =
-        row_ids_before_dedup.flat<int32>().data();
+    const int32* row_ids_before_dedup_ptr = row_ids_before_dedup.get();
     const int32* values_ptr = values->flat<int32>().data();
     const float* weights_ptr = weights->flat<float>().data();
 
@@ -199,24 +203,45 @@ class ConvertToCooTensorOp : public OpKernel {
     col_ids.reserve(total_id_count);
     gains.reserve(total_id_count);
 
-    for (int token_id = 0; token_id < total_id_count; ++token_id) {
-      // Compute the gain rescale before doing the dedup.
-      const int32 row_id = *(row_ids_before_dedup_ptr + token_id);
-      const int32 col_id = *(values_ptr + token_id);
-      const float gain = *(weights_ptr + token_id);
-      gains_rescale[row_id] += combiner_scale_contribution_fn(gain);
-      if (!row_ids.empty() && row_ids.back() == row_id &&
-          col_ids.back() == col_id) {
-        gains.back() = gains.back() + gain;
-      } else {
-        row_ids.push_back(row_id);
-        col_ids.push_back(col_id);
-        gains.push_back(gain);
+    if (weights->NumElements() == 1) {
+      // Broadcast the same weight to all tokens.
+      const float gain = *weights_ptr;
+      const float rescaled_gain = combiner_scale_contribution_fn(gain);
+      for (int token_id = 0; token_id < total_id_count; ++token_id) {
+        const int32 row_id = *(row_ids_before_dedup_ptr + token_id);
+        const int32 col_id = *(values_ptr + token_id);
+        if (gains_rescale.has_value()) {
+          // Compute the gain rescale before doing the dedup.
+          (*gains_rescale)[row_id] += rescaled_gain;
+        }
+        if (!row_ids.empty() && row_ids.back() == row_id &&
+            col_ids.back() == col_id) {
+          gains.back() = gains.back() + gain;
+        } else {
+          row_ids.push_back(row_id);
+          col_ids.push_back(col_id);
+          gains.push_back(gain);
+        }
+      }
+    } else {
+      for (int token_id = 0; token_id < total_id_count; ++token_id) {
+        const int32 row_id = *(row_ids_before_dedup_ptr + token_id);
+        const int32 col_id = *(values_ptr + token_id);
+        const float gain = *(weights_ptr + token_id);
+        if (gains_rescale.has_value()) {
+          // Compute the gain rescale before doing the dedup.
+          (*gains_rescale)[row_id] += combiner_scale_contribution_fn(gain);
+        }
+        if (!row_ids.empty() && row_ids.back() == row_id &&
+            col_ids.back() == col_id) {
+          gains.back() = gains.back() + gain;
+        } else {
+          row_ids.push_back(row_id);
+          col_ids.push_back(col_id);
+          gains.push_back(gain);
+        }
       }
     }
-
-    absl::c_transform(gains_rescale, gains_rescale.begin(),
-                      combiner_scale_transform_fn);
 
     const int32 output_id_count = row_ids.size();
 
@@ -237,12 +262,20 @@ class ConvertToCooTensorOp : public OpKernel {
     int32* col_ids_tensor_ptr = col_ids_tensor->flat<int32>().data();
     float* gains_tensor_ptr = gains_tensor->flat<float>().data();
 
-    // Rescale the gain so that we can always do 'sum' combine on it later.
-    for (int token_id = 0; token_id < output_id_count; ++token_id) {
-      *(row_ids_tensor_ptr + token_id) = row_ids[token_id];
-      *(col_ids_tensor_ptr + token_id) = col_ids[token_id];
-      *(gains_tensor_ptr + token_id) =
-          gains[token_id] * gains_rescale[row_ids[token_id]];
+    if (gains_rescale.has_value()) {
+      // Rescale the gain so that we can always do 'sum' combine on it later.
+      absl::c_transform(*gains_rescale, gains_rescale->begin(),
+                        combiner_scale_transform_fn);
+      for (int token_id = 0; token_id < output_id_count; ++token_id) {
+        *(row_ids_tensor_ptr + token_id) = row_ids[token_id];
+        *(col_ids_tensor_ptr + token_id) = col_ids[token_id];
+        *(gains_tensor_ptr + token_id) =
+            gains[token_id] * (*gains_rescale)[row_ids[token_id]];
+      }
+    } else {
+      std::copy(row_ids.begin(), row_ids.end(), row_ids_tensor_ptr);
+      std::copy(col_ids.begin(), col_ids.end(), col_ids_tensor_ptr);
+      std::copy(gains.begin(), gains.end(), gains_tensor_ptr);
     }
     VLOG(1) << "Compute ConvertToCooTensorOp done";
   }

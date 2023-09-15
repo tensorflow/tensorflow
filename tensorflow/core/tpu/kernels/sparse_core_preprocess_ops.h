@@ -49,7 +49,7 @@ Status ValidateInputs(const Tensor& indices_or_row_splits, const Tensor& values,
 // Compute the row id list before padding.
 Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
                                   int32 total_id_count,
-                                  Tensor* row_ids_before_padding);
+                                  int32* row_ids_before_padding);
 
 class GetMinibatchesInCsrWithPhysicalReplicaOp : public OpKernel {
  public:
