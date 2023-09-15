@@ -308,7 +308,11 @@ build:linux --copt="-Wno-deprecated"
 build:linux --copt="-Wno-deprecated-declarations"
 build:linux --copt="-Wno-ignored-attributes"
 build:linux --copt="-Wno-array-bounds"
-build:linux --copt="-Wno-error=array-parameter"
+# TODO(rocm): Re-enable on clang switch
+#build:linux --copt="-Wno-error=array-parameter"
+# TODO(rocm): Temporary due to https://github.com/openxla/xla/blob/49ad52b580ad2b81f24cc888f5cc571eb649f373/xla/stream_executor/rocm/rocm_blas.cc#L154
+# to make it work with build_rocm_python3
+build:rocm --copt="-Wno-unused-result"
 
 # Add unused-result as an error on Linux.
 build:linux --copt="-Wunused-result"
