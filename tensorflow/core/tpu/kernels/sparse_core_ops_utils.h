@@ -19,6 +19,8 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -33,6 +35,14 @@ std::vector<int> ConvertBinarySplitsToBucketSplits(int64 split,
 
 int64 ConvertBucketSplitsToBinarySplits(std::vector<int> bucket_splits,
                                         int max_division_level);
+
+Status ValidateInputCombiner(const std::string& combiner);
+
+std::function<float(float)> GetCombinerScaleContributionFunction(
+    absl::string_view combiner);
+
+std::function<float(float)> GetCombinerScaleTransformFunction(
+    absl::string_view combiner);
 
 int GetMinibatchMaxDivisionLevel();
 

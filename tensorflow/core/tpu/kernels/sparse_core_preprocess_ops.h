@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_stats_handler.h"
@@ -41,6 +42,14 @@ struct EmbeddingLookupInput {
         sample_id(sample_id),
         gain(gain) {}
 };
+
+Status ValidateInputs(const Tensor& indices_or_row_splits, const Tensor& values,
+                      const Tensor& weights, int sample_count);
+
+// Compute the row id list before padding.
+Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
+                                  int32 total_id_count,
+                                  Tensor* row_ids_before_padding);
 
 class GetMinibatchesInCsrWithPhysicalReplicaOp : public OpKernel {
  public:

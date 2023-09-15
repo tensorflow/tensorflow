@@ -142,10 +142,11 @@ cc_library(
         ":sparse_core_ops_stats_handler",
         ":sparse_core_ops_utils",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -1349,9 +1350,13 @@ cc_library(
     hdrs = ["sparse_core_ops_utils.h"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

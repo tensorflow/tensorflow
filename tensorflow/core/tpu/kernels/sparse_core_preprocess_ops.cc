@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -32,12 +33,227 @@ limitations under the License.
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_stats_handler.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_utils.h"
 
 namespace tensorflow {
+
+Status ValidateInputs(const Tensor& indices_or_row_splits, const Tensor& values,
+                      const Tensor& weights, int sample_count) {
+  if (values.dims() != 1 || weights.dims() != 1) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Values and weights input should have dimension as 1. But got ",
+        values.dims(), " for values and ", weights.dims(), " for weights."));
+  }
+  if (values.NumElements() != weights.NumElements()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Values and weights should have same elements. But got ",
+                     values.NumElements(), " elements for values and ",
+                     weights.NumElements(), " elements for weights."));
+  }
+  if (indices_or_row_splits.NumElements() == 0) {
+    // Dense tensor.
+    if (values.NumElements() != sample_count) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Dense tensor input should have values elements number the same as "
+          "the sample count. But got ",
+          values.NumElements(), " elements for values and sample count as ",
+          sample_count, "."));
+    }
+  } else if (indices_or_row_splits.dims() == 2 &&
+             indices_or_row_splits.NumElements() > 0) {
+    // TODO(pineapplejuice233): Add checking logic for sparse tensor input.
+  } else if (indices_or_row_splits.dims() == 1 &&
+             indices_or_row_splits.NumElements() > 0) {
+    // Ragged tensor.
+    if (indices_or_row_splits.NumElements() != sample_count + 1) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Ragged tensor input should have row_splits elements number the same "
+          "as the sample count + 1. But got ",
+          indices_or_row_splits.NumElements(),
+          " elements for row_splits and sample count as ", sample_count, "."));
+    }
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid indices_or_row_splits input, Got dimension of ",
+                     indices_or_row_splits.dims(), " and size of ",
+                     indices_or_row_splits.NumElements(), "."));
+  }
+  return OkStatus();
+}
+
+Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
+                                  const int32 total_id_count,
+                                  Tensor* row_ids_before_padding) {
+  // The only difference between dense tensor, sparse tensor and ragged tensor
+  // is the row ids output.
+  if (indices_or_row_splits.NumElements() == 0) {
+    // Dense tensor to COO format.
+    // Row ids are just the index ids.
+    int32* row_ids_before_padding_ptr =
+        row_ids_before_padding->flat<int32>().data();
+    for (int32 i = 0; i < total_id_count; ++i) {
+      *(row_ids_before_padding_ptr + i) = i;
+    }
+  } else if (indices_or_row_splits.dims() == 2 &&
+             indices_or_row_splits.NumElements() > 0) {
+    // Sparse tensor to COO format.
+    // TODO(pineapplejuice233): should we support arbitrary rank of sparse tensor and
+    // convert it to 2D?
+    // For 2D sparse tensor, as we always combine on the last dimension.
+    // The row ids are just the sample ids which is the first dim of the
+    // indices.
+    int32* row_ids_before_padding_ptr =
+        row_ids_before_padding->flat<int32>().data();
+    for (int32 i = 0; i < total_id_count; ++i) {
+      *(row_ids_before_padding_ptr + i) =
+          indices_or_row_splits.tensor<int32, 2>()(i, 0);
+    }
+  } else if (indices_or_row_splits.dims() == 1 &&
+             indices_or_row_splits.NumElements() > 0) {
+    // Ragged tensor to COO format.
+    const int32* indices_or_row_splits_ptr =
+        indices_or_row_splits.flat<int32>().data();
+    int32* row_ids_before_padding_ptr =
+        row_ids_before_padding->flat<int32>().data();
+    int32 current_row_id = -1;
+    for (int32 i = 0; i < total_id_count; ++i) {
+      while (i == *(indices_or_row_splits_ptr + 1 + current_row_id)) {
+        current_row_id += 1;
+      }
+      *(row_ids_before_padding_ptr + i) = current_row_id;
+    }
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid indices_or_row_splits input, Got dimension of ",
+                     indices_or_row_splits.dims(), " and size of ",
+                     indices_or_row_splits.NumElements(), "."));
+  }
+  return OkStatus();
+}
+
+// Convert the input sparse/dense/ragged tensor into COO format and normalize
+// the combiner. Note the COO tensor it produces only contains three 1D tensors
+// and no partitioning is performed on these tensors.
+class ConvertToCooTensorOp : public OpKernel {
+ public:
+  explicit ConvertToCooTensorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("sample_count", &sample_count_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("combiner", &combiner_));
+    OP_REQUIRES_OK(ctx, ValidateInputCombiner(combiner_));
+  }
+  ~ConvertToCooTensorOp() override = default;
+  ConvertToCooTensorOp(const ConvertToCooTensorOp&) = delete;
+  ConvertToCooTensorOp& operator=(const ConvertToCooTensorOp&) = delete;
+
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "Compute ConvertToCooTensorOp";
+
+    const Tensor* indices_or_row_splits;
+    OP_REQUIRES_OK(ctx,
+                   ctx->input("indices_or_row_splits", &indices_or_row_splits));
+    const Tensor* values;
+    OP_REQUIRES_OK(ctx, ctx->input("values", &values));
+    const Tensor* weights;
+    OP_REQUIRES_OK(ctx, ctx->input("weights", &weights));
+
+    OP_REQUIRES_OK(ctx, ValidateInputs(*indices_or_row_splits, *values,
+                                       *weights, sample_count_));
+
+    const int32 total_id_count = values->NumElements();
+
+    Tensor row_ids_before_dedup;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_temp(DT_INT32, TensorShape({total_id_count}),
+                                      &row_ids_before_dedup));
+
+    OP_REQUIRES_OK(
+        ctx, ComputeRowIdsBeforePadding(*indices_or_row_splits, total_id_count,
+                                        &row_ids_before_dedup));
+
+    std::vector<float> gains_rescale(sample_count_, 0.0f);
+
+    // Compute the rescaled gains
+    auto combiner_scale_contribution_fn =
+        GetCombinerScaleContributionFunction(combiner_);
+
+    auto combiner_scale_transform_fn =
+        GetCombinerScaleTransformFunction(combiner_);
+
+    const int32* row_ids_before_dedup_ptr =
+        row_ids_before_dedup.flat<int32>().data();
+    const int32* values_ptr = values->flat<int32>().data();
+    const float* weights_ptr = weights->flat<float>().data();
+
+    // Dedup the ids within one sample by just checking the adjacent ids. This
+    // will NOT result in a full deduplication.
+    std::vector<int32> row_ids;
+    std::vector<int32> col_ids;
+    std::vector<float> gains;
+    row_ids.reserve(total_id_count);
+    col_ids.reserve(total_id_count);
+    gains.reserve(total_id_count);
+
+    for (int token_id = 0; token_id < total_id_count; ++token_id) {
+      // Compute the gain rescale before doing the dedup.
+      const int32 row_id = *(row_ids_before_dedup_ptr + token_id);
+      const int32 col_id = *(values_ptr + token_id);
+      const float gain = *(weights_ptr + token_id);
+      gains_rescale[row_id] += combiner_scale_contribution_fn(gain);
+      if (!row_ids.empty() && row_ids.back() == row_id &&
+          col_ids.back() == col_id) {
+        gains.back() = gains.back() + gain;
+      } else {
+        row_ids.push_back(row_id);
+        col_ids.push_back(col_id);
+        gains.push_back(gain);
+      }
+    }
+
+    absl::c_transform(gains_rescale, gains_rescale.begin(),
+                      combiner_scale_transform_fn);
+
+    const int32 output_id_count = row_ids.size();
+
+    Tensor* gains_tensor;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output("gains", TensorShape({output_id_count}),
+                                        &gains_tensor));
+    Tensor* row_ids_tensor;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output("row_ids", TensorShape({output_id_count}),
+                                  &row_ids_tensor));
+    Tensor* col_ids_tensor;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output("col_ids", TensorShape({output_id_count}),
+                                  &col_ids_tensor));
+
+    int32* row_ids_tensor_ptr = row_ids_tensor->flat<int32>().data();
+    int32* col_ids_tensor_ptr = col_ids_tensor->flat<int32>().data();
+    float* gains_tensor_ptr = gains_tensor->flat<float>().data();
+
+    // Rescale the gain so that we can always do 'sum' combine on it later.
+    for (int token_id = 0; token_id < output_id_count; ++token_id) {
+      *(row_ids_tensor_ptr + token_id) = row_ids[token_id];
+      *(col_ids_tensor_ptr + token_id) = col_ids[token_id];
+      *(gains_tensor_ptr + token_id) =
+          gains[token_id] * gains_rescale[row_ids[token_id]];
+    }
+    VLOG(1) << "Compute ConvertToCooTensorOp done";
+  }
+
+ private:
+  int sample_count_ = 1;
+  std::string combiner_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("ConvertToCooTensor").Device(DEVICE_CPU),
+                        ConvertToCooTensorOp)
 
 GetMinibatchesInCsrWithPhysicalReplicaOp::
     GetMinibatchesInCsrWithPhysicalReplicaOp(OpKernelConstruction* ctx)

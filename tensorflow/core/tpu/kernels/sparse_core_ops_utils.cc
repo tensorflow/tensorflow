@@ -14,11 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_utils.h"
 
+#include <cmath>
+#include <functional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/numeric/bits.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -53,6 +59,38 @@ int64 ConvertBucketSplitsToBinarySplits(std::vector<int> bucket_splits,
     binary_splits |= (1LL << ((1 << split_level) - 1 + bucket_split / 2));
   }
   return binary_splits;
+}
+
+Status ValidateInputCombiner(const std::string& combiner) {
+  if (combiner != "sum" && combiner != "mean" && combiner != "sqrtn") {
+    return absl::InvalidArgumentError(
+        "Invalid combiner: only \"sum\", \"mean\", and "
+        "\"sqrtn\" are supported.");
+  }
+  return OkStatus();
+}
+
+std::function<float(float)> GetCombinerScaleContributionFunction(
+    absl::string_view combiner) {
+  if (combiner == "sum") {
+    return [](float x) -> float { return 1.f; };
+  } else if (combiner == "mean") {
+    return [](float x) -> float { return x; };
+  } else {  // combiner == "sqrtn"
+    return [](float x) -> float { return x * x; };
+  }
+}
+
+std::function<float(float)> GetCombinerScaleTransformFunction(
+    absl::string_view combiner) {
+  if (combiner == "sum") {
+    return [](float x) -> float { return 1; };
+  } else if (combiner == "mean") {
+    return [](float x) -> float { return x == 0.0f ? 0.0f : 1.0 / x; };
+  } else {  // combiner == "sqrtn"
+    return
+        [](float x) -> float { return x == 0.0f ? 0.0f : 1.0 / std::sqrt(x); };
+  }
 }
 
 ABSL_ATTRIBUTE_WEAK int GetMinibatchMaxDivisionLevel() {
