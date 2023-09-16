@@ -525,20 +525,22 @@ class LiteralBase {
       from.rep_.emplace<Uninitialized>();
     }
 
+    using DynamicSizeType = int32_t;
+
     // Gets/sets the buffer holding dynamic sizes.
-    const int32_t* dynamic_size_buffer() const {
+    const DynamicSizeType* dynamic_size_buffer() const {
       DCHECK(LayoutUtil::IsDenseArray(*subshape_));
-      return reinterpret_cast<const int32_t*>(buffer() + size_bytes_dense());
+      return reinterpret_cast<const DynamicSizeType*>(
+          buffer() + dynamic_size_buffer_prefix_bytes());
     }
-    int32_t* dynamic_size_buffer() {
-      DCHECK(LayoutUtil::IsDenseArray(*subshape_));
+    DynamicSizeType* dynamic_size_buffer() {
       return const_cast<int32_t*>(
           const_cast<const Piece*>(this)->dynamic_size_buffer());
     }
 
     int64_t dynamic_size_buffer_bytes() const {
       DCHECK(LayoutUtil::IsDenseArray(*subshape_));
-      return subshape().dimensions_size() * sizeof(int32_t);
+      return subshape().dimensions_size() * sizeof(DynamicSizeType);
     }
 
     // Gets or sets the subshape of this piece. This reference points to a
@@ -559,13 +561,20 @@ class LiteralBase {
       return ShapeUtil::ByteSizeOf(subshape());
     }
 
+    // Bytes before the dynamic size buffer.
+    int64_t dynamic_size_buffer_prefix_bytes() const {
+      // Make sure the dynamic buffer starts on a boundary aligned to
+      // `sizeof(DynamicSizeType)`.
+      return RoundUpTo<int64_t>(size_bytes_dense(), sizeof(DynamicSizeType));
+    }
+
     // Total size in bytes, including the dynamic size addition.
     //
     // The shape can become dynamic after this literal is allocated, so we
     // over-allocate the margin for the dynamic shape description in case we
     // need it.
     int64_t total_bytes_dense() const {
-      return size_bytes_dense() + dynamic_size_buffer_bytes();
+      return dynamic_size_buffer_prefix_bytes() + dynamic_size_buffer_bytes();
     }
 
     // Returns the number of elements in this piece's array.
