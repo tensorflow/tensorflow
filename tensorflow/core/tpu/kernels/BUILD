@@ -152,6 +152,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_highway//:hwy",
+        "@com_google_highway//hwy/contrib/sort:vqsort",
         "@local_xla//xla:util",
         "@local_xla//xla/stream_executor/tpu:tpu_api",
         "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
