@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -111,6 +112,16 @@ struct CompileOptions {
 
   Status ApplyOptionFromString(const tsl::protobuf::FieldDescriptor* field,
                                const std::string& value);
+
+  static StatusOr<
+      std::vector<std::pair<std::string, CompileOptions::OptionOverride>>>
+  LoadEnvOptionOverrides(
+      const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
+          env_option_overrides);
+
+  void SerializeEnvOptionOverrides(
+      google::protobuf::Map<std::string, xla::OptionOverrideProto>*
+          output_env_option_overrides) const;
 
   // Serialize the CompileOptions into a CompileOptionsProto.
   StatusOr<CompileOptionsProto> ToProto() const;
