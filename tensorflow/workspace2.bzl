@@ -114,6 +114,10 @@ def _tf_toolchains():
     # TODO: Remove def file filter when TensorFlow can export symbols properly on Windows.
     def_file_filter_configure(name = "local_config_def_file_filter")
 
+    # Register the toolchain to support clang-cl on Windows
+    native.register_toolchains("@local_config_cc//:cc-toolchain-x64_windows-clang-cl")
+
+
     # Point //external/local_config_arm_compiler to //external/arm_compiler
     arm_compiler_configure(
         name = "local_config_arm_compiler",
