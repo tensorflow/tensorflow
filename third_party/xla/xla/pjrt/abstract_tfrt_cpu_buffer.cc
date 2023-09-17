@@ -63,6 +63,7 @@ limitations under the License.
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tfrt/concurrency/async_value.h"  // from @tf_runtime
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
@@ -838,19 +839,27 @@ Status AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToSubBuffer(
   async_work_runner_->Schedule([this, data, offset, transfer_size,
                                 is_last_transfer, on_done = std::move(on_done),
                                 buffer_index]() mutable -> void {
-    absl::MutexLock l(&mu_);
-    const auto& b = device_buffers_[buffer_index]->Buffers()[0];
-    std::memcpy(reinterpret_cast<char*>(b->data()) + offset, data,
-                transfer_size);
-    std::move(on_done)();
-    if (is_last_transfer) {
-      last_transfer_finished_[buffer_index] = true;
+    tsl::RCReference<tsl::AsyncValue> event;
+    {
+      absl::MutexLock l(&mu_);
+      const auto& b = device_buffers_[buffer_index]->Buffers()[0];
+      std::memcpy(reinterpret_cast<char*>(b->data()) + offset, data,
+                  transfer_size);
+      if (is_last_transfer) {
+        last_transfer_finished_[buffer_index] = true;
+      }
+      --buffer_transfers_in_flight_[buffer_index];
+      --transfers_in_flight_;
+      if (buffer_transfers_in_flight_[buffer_index] == 0 &&
+          last_transfer_finished_[buffer_index]) {
+        std::swap(event, avs_[buffer_index]);
+      }
     }
-    --buffer_transfers_in_flight_[buffer_index];
-    --transfers_in_flight_;
-    if (buffer_transfers_in_flight_[buffer_index] == 0 &&
-        last_transfer_finished_[buffer_index]) {
-      avs_[buffer_index]->SetStateConcrete();
+    // Call on_done outside the lock because it may call
+    // ~AbstractAsyncHostToHostMemoryTransferManager.
+    std::move(on_done)();
+    if (event) {
+      event->SetStateConcrete();
     }
   });
   return OkStatus();
