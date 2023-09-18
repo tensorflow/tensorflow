@@ -96,7 +96,6 @@ xla_cc_test(
         "noasan",
         "nomsan",
         "requires-gpu-nvidia:2",
-        "no_rocm",
     ],
     deps = [
         ":se_gpu_pjrt_client",
@@ -212,7 +211,7 @@ cc_library(
 xla_cc_test(
     name = "se_gpu_pjrt_compiler_test",
     srcs = if_gpu_is_configured(["se_gpu_pjrt_compiler_test.cc"]),
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":se_gpu_pjrt_client",
         ":se_gpu_pjrt_compiler",
