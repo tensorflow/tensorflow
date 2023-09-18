@@ -531,7 +531,7 @@ class LiteralBase {
     const DynamicSizeType* dynamic_size_buffer() const {
       DCHECK(LayoutUtil::IsDenseArray(*subshape_));
       return reinterpret_cast<const DynamicSizeType*>(
-          buffer() + dynamic_size_buffer_prefix_bytes());
+          buffer() + dynamic_size_buffer_offset());
     }
     DynamicSizeType* dynamic_size_buffer() {
       return const_cast<int32_t*>(
@@ -561,8 +561,13 @@ class LiteralBase {
       return ShapeUtil::ByteSizeOf(subshape());
     }
 
-    // Bytes before the dynamic size buffer.
-    int64_t dynamic_size_buffer_prefix_bytes() const {
+    // The dynamic metadata starts at the end of the data in the literal.
+    // The literal can have any number of bytes. For example, it could be a PRED
+    // with 7 elements. `dynamic_size_buffer_offset` returns the number of bytes
+    // before the dynamic size information including whatever padding is needed
+    // to align the start of the dynamic size information so that it is aligned
+    // to a multiple of `sizeof(DynamicSizeType)`.
+    int64_t dynamic_size_buffer_offset() const {
       // Make sure the dynamic buffer starts on a boundary aligned to
       // `sizeof(DynamicSizeType)`.
       return RoundUpTo<int64_t>(size_bytes_dense(), sizeof(DynamicSizeType));
@@ -574,7 +579,7 @@ class LiteralBase {
     // over-allocate the margin for the dynamic shape description in case we
     // need it.
     int64_t total_bytes_dense() const {
-      return dynamic_size_buffer_prefix_bytes() + dynamic_size_buffer_bytes();
+      return dynamic_size_buffer_offset() + dynamic_size_buffer_bytes();
     }
 
     // Returns the number of elements in this piece's array.
