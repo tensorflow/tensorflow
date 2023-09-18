@@ -849,6 +849,7 @@ def _fill_meta_graph_def(
     signature_functions: Dict[str, Callable[..., Any]],
     namespace_whitelist: List[str],
     save_custom_gradients: bool,
+    create_saver: bool,
     defaults=None,
 ) -> Tuple[_AssetInfo, ops.Graph]:
   """Generates a MetaGraph which calls `signature_functions`.
@@ -860,6 +861,7 @@ def _fill_meta_graph_def(
       functions containing signatures to add to the MetaGraph.
     namespace_whitelist: List of strings containing whitelisted op namespaces.
     save_custom_gradients: Whether to save custom gradients.
+    create_saver: Whether to add SavedModel's native save and restore ops.
     defaults: A dictionary mapping signature_key to dictionary of
       user_specified_name to Tensor representing default values.
 
@@ -924,12 +926,15 @@ def _fill_meta_graph_def(
           object_map=object_map,
           to_graph=exported_graph,
           call_with_mapped_captures=call_with_mapped_captures))
-  saver = functional_saver.MultiDeviceSaver.from_saveables(
-      named_saveable_objects, registered_savers, call_with_mapped_captures)
 
-  with exported_graph.as_default():
-    saver_def = saver.to_proto()
-    meta_graph_def.saver_def.CopyFrom(saver_def)
+  if create_saver:
+    saver = functional_saver.MultiDeviceSaver.from_saveables(
+        named_saveable_objects, registered_savers, call_with_mapped_captures
+    )
+
+    with exported_graph.as_default():
+      saver_def = saver.to_proto()
+      meta_graph_def.saver_def.CopyFrom(saver_def)
 
   # At this point all nodes that can be added to the SavedObjectGraph have been
   # added, so run the following to validate deserialization dependencies.
@@ -1502,12 +1507,13 @@ def _build_meta_graph_impl(
   saveable_view = _SaveableView(augmented_graph_view, options)
   object_saver = checkpoint.TrackableSaver(augmented_graph_view)
   asset_info, exported_graph = _fill_meta_graph_def(
-      meta_graph_def,
-      saveable_view,
-      signatures,
-      options.namespace_whitelist,
-      options.experimental_custom_gradients,
-      defaults,
+      meta_graph_def=meta_graph_def,
+      saveable_view=saveable_view,
+      signature_functions=signatures,
+      namespace_whitelist=options.namespace_whitelist,
+      save_custom_gradients=options.experimental_custom_gradients,
+      create_saver=not options.experimental_skip_saver,
+      defaults=defaults,
   )
   if options.function_aliases:
     function_aliases = meta_graph_def.meta_info_def.function_aliases
