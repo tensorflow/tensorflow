@@ -13,12 +13,12 @@
 # limitations under the License.
 # ============================================================================
 
-# Placeholder: load py_test
 load(
     "//xla:pytype.default.bzl",
     "pytype_strict_binary",
     "pytype_strict_library",
 )
+# Placeholder: load py_test
 
 package(
     default_visibility = ["//visibility:public"],
@@ -41,6 +41,7 @@ pytype_strict_library(
 pytype_strict_library(
     name = "diff_parser",
     srcs = ["diff_parser.py"],
+    visibility = ["//visibility:public"],
 )
 
 py_test(
