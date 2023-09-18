@@ -937,6 +937,7 @@ XLA_TEST_P(ScatterEdgeCaseTestP, DoIt) {
   using L = std::numeric_limits<float>;
   std::vector<float> edge_cases = {
       0.f,
+      -0.f,
       -1.f,
       1.f,
       L::min(),
