@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/set_tpu_infeed_layout.h"
@@ -129,6 +130,8 @@ Status PopulateInputOutputAliasing(
   return OkStatus();
 }
 
+bool failed(const tsl::Status& status) { return !status.ok(); }
+
 // Transforms the given module to be suitable for export to TensorFlow GraphDef
 // and then exports all functions to the given library.
 Status PrepareAndExportToLibrary(mlir::ModuleOp module,
@@ -147,7 +150,14 @@ Status PrepareAndExportToLibrary(mlir::ModuleOp module,
   manager.addPass(mlir::CreateBreakUpIslandsPass());
 
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
-  if (failed(manager.run(module))) return diag_handler.ConsumeStatus();
+  auto prepare_status = manager.run(module);
+  auto diag_handler_status = diag_handler.ConsumeStatus();
+  // There are cases where the scoped diagnostic handler catches a failure that
+  // the running of the passes does not. That causes the handler to throw if
+  // it is not consumed.
+  if (failed(prepare_status) || failed(diag_handler_status)) {
+    return diag_handler_status;
+  }
 
   GraphExportConfig config;
   config.export_entry_func_to_flib = true;

@@ -18,6 +18,9 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "xla/client/client_library.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
@@ -38,22 +41,31 @@ using ::tsl::monitoring::testing::Histogram;
 
 static constexpr char kCompilationTimeStreamzName[] =
     "/tensorflow/core/tf2xla/api/v0/phase2_compilation_time";
-
 static constexpr char kCompilationStatusStreamzName[] =
     "/tensorflow/core/tf2xla/api/v0/phase2_compilation_status";
 
-MlirToHloArgs CreateTestMlirToHloArgs() {
-  static constexpr char kMlirModuleStr[] = R"(
-    module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
-    func.func @main() -> () {
-      func.return
-    }
-  })";
+class DummyOp : public tensorflow::XlaOpKernel {
+ public:
+  explicit DummyOp(OpKernelConstruction* ctx) : tensorflow::XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {}
+};
 
+REGISTER_KERNEL_BUILDER(Name("NoOp").Device(DEVICE_DEFAULT), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("NoOp").Device("XLA_TPU_JIT"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("NoOp").Device("XLA_CPU_JIT"), DummyOp);
+
+static constexpr char kMlirModuleStr[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+  func.func @main() -> () {
+    func.return
+  }
+})";
+
+MlirToHloArgs CreateTestMlirToHloArgs(const char* module_str = kMlirModuleStr) {
   MlirToHloArgs mlir_to_hlo_args;
   mlir_to_hlo_args.rollout_state =
       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
-  mlir_to_hlo_args.mlir_module = kMlirModuleStr;
+  mlir_to_hlo_args.mlir_module = module_str;
 
   return mlir_to_hlo_args;
 }
@@ -122,6 +134,33 @@ TEST_F(CompileTFGraphTest, RecordsStreamzForFunctionToHlo) {
 
   EXPECT_EQ(histogram.num(), 1);
   EXPECT_EQ(compilation_status.Delta("kOldBridgeNoMlirSuccess"), 1);
+}
+
+TEST_F(CompileTFGraphTest, CatchesErrorMissedByPassManagerRun) {
+  // MLIR module from failing test.
+  constexpr char kUnsupportedManualSharding[] = R"(
+    module @module___inference_tpu_function_41 attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1617 : i32}} {
+      func.func @main(%arg0: tensor<2x2xf32>) -> (tensor<2x2xf32> {mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"}) {
+        %0 = tf_executor.graph {
+          %outputs, %control = tf_executor.island wraps "tf.XlaSharding"(%arg0) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01", sharding = "\08\03\1A\02\02\01\22\02\00\01"} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+          %outputs_0, %control_1 = tf_executor.island wraps "tf.XlaSharding"(%outputs) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01", sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+          %outputs_2, %control_3 = tf_executor.island wraps "tf.XlaSpmdFullToShardShape"(%outputs_0) {dim = -1 : i64, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xf32>) -> tensor<1x2xf32>
+          %control_4 = tf_executor.island wraps "tf._XlaHostComputeMlir"(%outputs_2) {host_mlir_module = "", manual_sharding = true, recv_key = "host_compute_channel_0_retvals", send_key = "host_compute_channel_0_args"} : (tensor<1x2xf32>) -> ()
+          %outputs_5, %control_6 = tf_executor.island(%control_4) wraps "tf._XlaHostComputeMlir"() {host_mlir_module = "", manual_sharding = true, recv_key = "host_compute_channel_1_retvals", send_key = "host_compute_channel_1_args"} : () -> tensor<1x2xf32>
+          %outputs_7, %control_8 = tf_executor.island wraps "tf.XlaSpmdShardToFullShape"(%outputs_5) {dim = -1 : i64, full_shape = #tf_type.shape<2x2>, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<1x2xf32>) -> tensor<2x2xf32>
+          %outputs_9, %control_10 = tf_executor.island wraps "tf.XlaSharding"(%outputs_7) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01", sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+          tf_executor.fetch %outputs_9 : tensor<2x2xf32>
+        }
+        return %0 : tensor<2x2xf32>
+      }
+    }
+  )";
+  auto mlir_to_hlo_args = CreateTestMlirToHloArgs(kUnsupportedManualSharding);
+
+  auto result = CompileWithComputation(mlir_to_hlo_args);
+
+  ASSERT_THAT(result.ok(), false);
+  EXPECT_THAT(result.message(), testing::ContainsRegex("op manual_sharding"));
 }
 
 }  // namespace
