@@ -548,7 +548,7 @@ xla_test(
     backends = [
         "gpu",
     ],
-    shard_count = 10,
+    shard_count = 20,
     tags = ["nomac"],
     deps = [
         ":backend_configs_cc",
