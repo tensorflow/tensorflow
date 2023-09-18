@@ -83,7 +83,7 @@ LogicalResult RequantizeWithoutClamping(
       input_quantized_type.getScale() / result_quantized_type.getScale();
   int32_t effective_quantized_fraction;
   int32_t effective_shift;
-  if (failed(stablehlo::QuantizeMultiplier(
+  if (failed(quant::stablehlo::QuantizeMultiplier(
           effective_scale, effective_quantized_fraction, effective_shift))) {
     op->emitError("Invalid effective quantization scale.");
     return failure();

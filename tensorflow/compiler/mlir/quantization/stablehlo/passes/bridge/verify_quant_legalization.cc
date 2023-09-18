@@ -40,6 +40,9 @@ namespace mlir {
 namespace stablehlo {
 namespace {
 
+using quant::tensorflow::IsTFQintType;
+using quant::tensorflow::IsTFUniformQuantizedOp;
+
 #define GEN_PASS_DEF_VERIFYQUANTLEGALIZATION
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
 
