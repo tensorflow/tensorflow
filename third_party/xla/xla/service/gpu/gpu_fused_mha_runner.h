@@ -137,21 +137,20 @@ struct GpufMHABackwardConfig {
 
 // Implementation struct exposed for debugging and log analysis.
 struct GpufMHAParams {
-  static StatusOr<GpufMHAParams> For(const GpufMHAConfig& config,
-                                     se::DeviceMemoryBase lhs_bmm1_buffer,
-                                     se::DeviceMemoryBase rhs_bmm1_buffer,
-                                     se::DeviceMemoryBase rhs_bmm2_buffer,
-                                     se::DeviceMemoryBase output_buffer,
-                                     se::DeviceMemoryBase mask_buffer,
-                                     se::DeviceMemoryBase bias_buffer,
-                                     se::DeviceMemoryBase activation_buffer);
+  static StatusOr<GpufMHAParams> For(
+      const GpufMHAConfig& config, se::DeviceMemoryBase lhs_bmm1_buffer,
+      se::DeviceMemoryBase rhs_bmm1_buffer,
+      se::DeviceMemoryBase rhs_bmm2_buffer, se::DeviceMemoryBase output_buffer,
+      std::optional<se::DeviceMemoryBase> mask_buffer,
+      std::optional<se::DeviceMemoryBase> bias_buffer,
+      std::optional<se::DeviceMemoryBase> activation_buffer);
 
   const GpufMHAConfig* config;  // Not owned
   se::DeviceMemoryBase lhs_bmm1_buffer;
   se::DeviceMemoryBase rhs_bmm1_buffer;
   se::DeviceMemoryBase rhs_bmm2_buffer;
   se::DeviceMemoryBase output_buffer;
-  se::DeviceMemoryBase activation_buffer;
+  std::optional<se::DeviceMemoryBase> activation_buffer;
   std::optional<se::DeviceMemoryBase> mask_buffer;
   std::optional<se::DeviceMemoryBase> bias_buffer;
 };
@@ -166,8 +165,9 @@ struct GpufMHABackwardParams {
       se::DeviceMemoryBase d_output_buffer,
       se::DeviceMemoryBase d_bmm1_lhs_buffer,
       se::DeviceMemoryBase d_bmm1_rhs_buffer,
-      se::DeviceMemoryBase d_bmm2_rhs_buffer, se::DeviceMemoryBase d_S_buffer,
-      se::DeviceMemoryBase mask_buffer, se::DeviceMemoryBase d_bias_buffer);
+      se::DeviceMemoryBase d_bmm2_rhs_buffer, se::DeviceMemoryBase d_s_buffer,
+      std::optional<se::DeviceMemoryBase> mask_buffer,
+      std::optional<se::DeviceMemoryBase> d_bias_buffer);
 
   const GpufMHABackwardConfig* config;  // Not owned
   se::DeviceMemoryBase bmm1_grad_gemm1_rhs_buffer;
@@ -179,44 +179,20 @@ struct GpufMHABackwardParams {
   se::DeviceMemoryBase d_bmm1_rhs_buffer;
   se::DeviceMemoryBase d_bmm2_rhs_buffer;
   se::DeviceMemoryBase d_s_buffer;
-  se::DeviceMemoryBase d_bias_buffer;
+  std::optional<se::DeviceMemoryBase> d_bias_buffer;
   std::optional<se::DeviceMemoryBase> mask_buffer;
 };
 
 class FusedMultiHeadedAttentionRunner {
  public:
-  using Repr = std::variant<
-      std::monostate,  // To allow XXX default ctor
-      std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxOp>>,
-      std::unique_ptr<
-          se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxOp>>,
-      std::unique_ptr<
-          se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasSoftmaxOp>>,
-      std::unique_ptr<
-          se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasMaskSoftmaxOp>>>;
+  using Repr =
+      std::variant<std::monostate,  // To allow XXX default ctor
+                   std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedMHAOp>>>;
 
   FusedMultiHeadedAttentionRunner() = default;
 
   explicit FusedMultiHeadedAttentionRunner(
-      std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxOp>> runner)
-      : repr_(std::move(runner)) {}
-
-  explicit FusedMultiHeadedAttentionRunner(
-      std::unique_ptr<
-          se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxOp>>
-          runner)
-      : repr_(std::move(runner)) {}
-
-  explicit FusedMultiHeadedAttentionRunner(
-      std::unique_ptr<
-          se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasMaskSoftmaxOp>>
-          runner)
-      : repr_(std::move(runner)) {}
-
-  explicit FusedMultiHeadedAttentionRunner(
-      std::unique_ptr<
-          se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasSoftmaxOp>>
-          runner)
+      std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedMHAOp>> runner)
       : repr_(std::move(runner)) {}
 
   explicit FusedMultiHeadedAttentionRunner(Repr runner)
@@ -234,43 +210,12 @@ class FusedMultiHeadedAttentionRunner {
     return std::visit(ToAlgorithmDescVisitor{}, repr_);
   }
 
-  se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxOp>* AsFusedMHASoftmaxRunner() {
+  se::dnn::LazyOpRunner<se::dnn::FusedMHAOp>* AsFusedMHARunner() {
     CHECK(std::holds_alternative<
-          std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxOp>>>(
-        repr_));
-    return std::
-        get<std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxOp>>>(
+          std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedMHAOp>>>(repr_));
+    return std::get<
+               std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedMHAOp>>>(
                repr_)
-            .get();
-  }
-
-  se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxOp>*
-  AsFusedMHAMaskRunner() {
-    CHECK(std::holds_alternative<std::unique_ptr<
-              se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxOp>>>(
-        repr_));
-    return std::get<std::unique_ptr<
-        se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxOp>>>(repr_)
-        .get();
-  }
-
-  se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasMaskSoftmaxOp>*
-  AsFusedMHABiasMaskRunner() {
-    CHECK(std::holds_alternative<std::unique_ptr<
-              se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasMaskSoftmaxOp>>>(
-        repr_));
-    return std::get<std::unique_ptr<
-        se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasMaskSoftmaxOp>>>(repr_)
-        .get();
-  }
-
-  se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasSoftmaxOp>*
-  AsFusedMHABiasRunner() {
-    CHECK(std::holds_alternative<std::unique_ptr<
-              se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasSoftmaxOp>>>(
-        repr_));
-    return std::get<std::unique_ptr<
-        se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasSoftmaxOp>>>(repr_)
         .get();
   }
 
@@ -285,23 +230,13 @@ class FusedMultiHeadedAttentionRunner {
       case CudnnfMHAKind::kBmmBmm:
       case CudnnfMHAKind::kSoftmaxDropout:
       case CudnnfMHAKind::kSoftmax:
-        return std::make_unique<
-            se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxOp>>(
-            config.algorithm);
       case CudnnfMHAKind::kScaleBiasSoftmax:
       case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
-        return std::make_unique<
-            se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasSoftmaxOp>>(
-            config.algorithm);
       case CudnnfMHAKind::kScaleMaskSoftmax:
       case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
-        return std::make_unique<
-            se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxOp>>(
-            config.algorithm);
       case CudnnfMHAKind::kScaleBiasMaskSoftmax:
       case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
-        return std::make_unique<
-            se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasMaskSoftmaxOp>>(
+        return std::make_unique<se::dnn::LazyOpRunner<se::dnn::FusedMHAOp>>(
             config.algorithm);
       default:
         LOG(FATAL) << "Internal error: unsupported CUDNN MHA kind in "
@@ -327,21 +262,12 @@ class FusedMultiHeadedAttentionBackwardRunner {
  public:
   using Repr = std::variant<
       std::monostate,  // To allow XXX default ctor
-      std::unique_ptr<
-          se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxBackwardOp>>,
-      std::unique_ptr<
-          se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxBackwardOp>>>;
+      std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedMHABackwardOp>>>;
 
   FusedMultiHeadedAttentionBackwardRunner() = default;
 
   explicit FusedMultiHeadedAttentionBackwardRunner(
-      std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxBackwardOp>>
-          runner)
-      : repr_(std::move(runner)) {}
-
-  explicit FusedMultiHeadedAttentionBackwardRunner(
-      std::unique_ptr<
-          se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxBackwardOp>>
+      std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedMHABackwardOp>>
           runner)
       : repr_(std::move(runner)) {}
 
@@ -362,23 +288,13 @@ class FusedMultiHeadedAttentionBackwardRunner {
     return std::visit(ToAlgorithmDescVisitor{}, repr_);
   }
 
-  se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxBackwardOp>*
-  AsFusedMHASoftmaxBackwardRunner() {
-    CHECK(
-        std::holds_alternative<std::unique_ptr<
-            se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxBackwardOp>>>(repr_));
+  se::dnn::LazyOpRunner<se::dnn::FusedMHABackwardOp>*
+  AsFusedMHABackwardRunner() {
+    CHECK(std::holds_alternative<
+          std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedMHABackwardOp>>>(
+        repr_));
     return std::get<std::unique_ptr<
-        se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxBackwardOp>>>(repr_)
-        .get();
-  }
-
-  se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxBackwardOp>*
-  AsFusedMHAMaskBackwardRunner() {
-    CHECK(std::holds_alternative<std::unique_ptr<se::dnn::LazyOpRunner<
-              se::dnn::FusedMHAScaleMaskSoftmaxBackwardOp>>>(repr_));
-    return std::get<std::unique_ptr<
-        se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxBackwardOp>>>(
-               repr_)
+        se::dnn::LazyOpRunner<se::dnn::FusedMHABackwardOp>>>(repr_)
         .get();
   }
 
@@ -395,15 +311,12 @@ class FusedMultiHeadedAttentionBackwardRunner {
       case CudnnfMHAKind::kBackwardSoftmax:
       case CudnnfMHAKind::kBackwardScaleBiasSoftmax:
       case CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout:
-        return std::make_unique<
-            se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxBackwardOp>>(
-            config.algorithm);
       case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax:
       case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout:
       case CudnnfMHAKind::kBackwardScaleMaskSoftmax:
       case CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
         return std::make_unique<
-            se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxBackwardOp>>(
+            se::dnn::LazyOpRunner<se::dnn::FusedMHABackwardOp>>(
             config.algorithm);
       default:
         LOG(FATAL) << "Internal error: unsupported CUDNN MHA kind in "
@@ -447,13 +360,16 @@ struct RunFusedMHABackwardOptions {
   FusedMultiHeadedAttentionBackwardRunner* runner_cache;
 };
 
-Status RunGpuFMHA(
-    const GpufMHAConfig& fmha_config, se::DeviceMemoryBase lhs_bmm1_buffer,
-    se::DeviceMemoryBase rhs_bmm1_buffer, se::DeviceMemoryBase rhs_bmm2_buffer,
-    se::DeviceMemoryBase output_buffer, se::DeviceMemoryBase scratch_buffer,
-    se::DeviceMemoryBase mask_buffer, se::DeviceMemoryBase bias_buffer,
-    se::DeviceMemoryBase activation_buffer, se::Stream* stream,
-    RunFusedMHAOptions = {});
+Status RunGpuFMHA(const GpufMHAConfig& fmha_config,
+                  se::DeviceMemoryBase lhs_bmm1_buffer,
+                  se::DeviceMemoryBase rhs_bmm1_buffer,
+                  se::DeviceMemoryBase rhs_bmm2_buffer,
+                  se::DeviceMemoryBase output_buffer,
+                  se::DeviceMemoryBase scratch_buffer,
+                  std::optional<se::DeviceMemoryBase> mask_buffer,
+                  std::optional<se::DeviceMemoryBase> bias_buffer,
+                  std::optional<se::DeviceMemoryBase> activation_buffer,
+                  se::Stream* stream, RunFusedMHAOptions = {});
 
 Status RunGpuFMHABackward(const GpufMHABackwardConfig& fmha_config,
                           se::DeviceMemoryBase bmm1_grad_gemm1_rhs_buffer,
@@ -465,9 +381,9 @@ Status RunGpuFMHABackward(const GpufMHABackwardConfig& fmha_config,
                           se::DeviceMemoryBase d_bmm1_lhs_buffer,
                           se::DeviceMemoryBase d_bmm1_rhs_buffer,
                           se::DeviceMemoryBase d_bmm2_rhs_buffer,
-                          se::DeviceMemoryBase d_S_buffer,
-                          se::DeviceMemoryBase mask_buffer,
-                          se::DeviceMemoryBase d_bias_buffer,
+                          se::DeviceMemoryBase d_s_buffer,
+                          std::optional<se::DeviceMemoryBase> mask_buffer,
+                          std::optional<se::DeviceMemoryBase> d_bias_buffer,
                           se::Stream* stream, RunFusedMHABackwardOptions = {});
 
 std::string ToString(const GpufMHAConfig& config);
