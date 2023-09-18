@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 
 #include "rocm/rocm_config.h"
-#if TF_ROCM_VERSION < 50700
+#if TF_ROCM_VERSION < 60000
 #define hipblasltDatatype_t hipblasDatatype_t
 #endif
 
