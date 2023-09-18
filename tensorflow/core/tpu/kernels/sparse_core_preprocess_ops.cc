@@ -551,12 +551,12 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
   tstring program_key = program_key_t->vec<tstring>()(0);
 
-  int64_t per_sparse_core_batch_size = sample_count_ / num_sc_per_chip_;
+  int32 per_sc_sample_count = sample_count_ / num_sc_per_chip_;
 
   int64_t max_ids_per_partition = -1;
   int64_t max_unique_ids_per_partition = -1;
 
-  GetMaxIdsAndUniques(ctx, program_key, table_name_, per_sparse_core_batch_size,
+  GetMaxIdsAndUniques(ctx, program_key, table_name_, per_sc_sample_count,
                       feature_width_, &max_ids_per_partition,
                       &max_unique_ids_per_partition);
 
@@ -580,16 +580,13 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   const int32* col_ids_ptr = col_ids->flat<int32>().data();
   const float* gains_ptr = gains->flat<float>().data();
 
-  const int num_sc_per_replica = 4;
-  const int num_physical_replica = num_replica_ * num_sc_per_replica;
+  const int num_physical_replica = num_replica_ * num_sc_per_chip_;
 
-  OP_REQUIRES(ctx, sample_count_ % num_sc_per_replica == 0,
+  OP_REQUIRES(ctx, sample_count_ % num_sc_per_chip_ == 0,
               absl::InvalidArgumentError(
                   absl::StrCat("Sample_count has to be multiply of "
-                               "num_sc_per_replica which is 4, but got ",
+                               "num_sc_per_chip which is 4, but got ",
                                sample_count_, " samples.")));
-
-  int32 per_sc_sample_count = sample_count_ / num_sc_per_replica;
 
   const int max_division_level = GetMinibatchMaxDivisionLevel();
 
@@ -604,7 +601,7 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
       ctx->allocate_output(
           "id_counts",
           TensorShape(
-              {kMaxDivisions * num_sc_per_replica * num_physical_replica + 1}),
+              {kMaxDivisions * num_sc_per_chip_ * num_physical_replica + 1}),
           &id_counts_tensor));
   int32* id_counts_tensor_ptr = id_counts_tensor->flat<int32>().data();
   *id_counts_tensor_ptr = 0;
@@ -624,7 +621,7 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   // Vector of uint64_t storing the col ids in the upper 32 bit and the index
   // to the original id array in the lower 32 bit.
   std::vector<std::vector<uint64_t>> col_ids_index_list(
-      num_sc_per_replica, std::vector<uint64_t>());
+      num_sc_per_chip_, std::vector<uint64_t>());
 
   // Vector stores the mapping between the index of the id which it can be
   // deduped.
@@ -648,10 +645,10 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
 
   // Accumulated sum of the id count for each physical replica.
   std::vector<int32> physical_replica_id_count((num_physical_replica + 1) *
-                                               num_sc_per_replica);
+                                               num_sc_per_chip_);
 
   // Id counts for each sc input.
-  std::vector<int32_t> per_sc_id_count(num_sc_per_replica, 0);
+  std::vector<int32_t> per_sc_id_count(num_sc_per_chip_, 0);
 
   // Keep track of the maximum number of (unique) ids we see fo this current
   // batch. If it gets too close to the configured max, we can increase
@@ -659,7 +656,7 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   int32 this_max_ids = 0;
   int32 this_max_uniques = 0;
   // Row ids(sample ids) are already sorted.
-  for (int sc_id = 0; sc_id < num_sc_per_replica; ++sc_id) {
+  for (int sc_id = 0; sc_id < num_sc_per_chip_; ++sc_id) {
     col_ids_index_list[sc_id].reserve(total_id_count);
     while (index < total_id_count &&
            *(row_ids_ptr + index) < (sc_id + 1) * per_sc_sample_count) {
@@ -831,7 +828,7 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
 
   int32_t previous_index = 0;
 
-  for (int sc_id = 0; sc_id < num_sc_per_replica; ++sc_id) {
+  for (int sc_id = 0; sc_id < num_sc_per_chip_; ++sc_id) {
     memset(per_physical_replica_index.data(), 0,
            num_physical_replica * sizeof(int32));
     for (uint64_t item : col_ids_index_list[sc_id]) {
