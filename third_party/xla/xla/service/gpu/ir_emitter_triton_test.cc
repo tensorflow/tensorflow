@@ -1080,6 +1080,97 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-2}));
 }
 
+TEST_F(TritonGemmTest, SliceInputIsFused) {
+  const std::string kHloText = R"(
+ENTRY e {
+  p0 = f16[97,121] parameter(0)
+  s0 = f16[7,101] slice(p0), slice={[3:10], [10:111]}
+  p1 = f32[101,16] parameter(1)
+  c = f32[7,101] convert(s0)
+  ROOT d = f32[16,7] dot(p1, c),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, SliceInputWithReshapeIsFused) {
+  const std::string kHloText = R"(
+ENTRY e {
+  p0 = f32[363,1536] parameter(0)
+  p1 = f32[4,1536,611] parameter(1)
+  s = f32[1,1536,611] slice(p1),
+    slice={[1:2], [0:1536], [0:611]}
+  r = f32[1536,611] reshape(s)
+  ROOT d = f32[363,611] dot(p0, r),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, SlicedBatchDimensionIsSupported) {
+  const std::string kHloText = R"(
+ENTRY e {
+  p0 = f16[3,3,256] parameter(0)
+  s0 = f16[3,3,128] slice(p0), slice={[0:3], [0:3], [123:251]}
+  r0 = f16[3,3,128] reshape(s0)
+  p1 = f16[3,3,256] parameter(1)
+  s1 = f16[3,3,128] slice(p1), slice={[0:3], [0:3], [30:158]}
+  r1 = f16[3,3,128] reshape(s1)
+  ROOT d = f16[128,3,3]{2,1,0} dot(r0, r1),
+    lhs_batch_dims={2}, lhs_contracting_dims={1},
+    rhs_batch_dims={2}, rhs_contracting_dims={1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, SplitKDoesNotBreakSlicedFragmentedContractingDimension) {
+  const std::string kHloText = R"(
+ENTRY e {
+  p0 = f16[16,8,128]{2,1,0} parameter(0)
+  s0 = f16[16,4,128]{2,1,0} slice(p0),
+    slice={[0:16], [0:4], [0:128]}
+  r0 = f16[16,512]{1,0} reshape(s0)
+  p1 = s8[4096,4,128]{2,1,0} parameter(1)
+  r1 = s8[512,4096]{0,1} reshape(p1)
+  c1 = f16[512,4096]{0,1} convert(r1)
+  ROOT d = f16[16,4096]{1,0} dot(r0, c1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+}
+
 TEST_F(TritonGemmLevel2Test, NarrowingConvertOutputIsFused) {
   const std::string kHloText = R"(
 HloModule m

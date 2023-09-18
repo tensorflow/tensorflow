@@ -608,8 +608,12 @@ StatusOr<Value> EmitScope(
       TF_RET_CHECK(hlo->IsRoot()) << hlo->ToString();
     } else if (hlo->opcode() == HloOpcode::kBitcast ||
                hlo->opcode() == HloOpcode::kTranspose ||
+               hlo->opcode() == HloOpcode::kSlice ||
                hlo->opcode() == HloOpcode::kReshape ||
                hlo->opcode() == HloOpcode::kPad) {
+      // All these are currently supported only as operations on indices
+      // which are pushed to loads and stores. No operations on tiles are
+      // performed here.
       result = values[hlo->operand(0)];
     } else {
       LOG(FATAL) << hlo->ToString();
@@ -855,11 +859,12 @@ MatMulDims::MatMulDims(const AutotuneResult::TritonGemmKey& config,
           ->at(0)
           .count;
   // Contracting dimension length.
-  if (config.split_k() > 1 && dot.operand(0)->opcode() == HloOpcode::kBitcast &&
+  if (config.split_k() > 1 &&
       dot.operand(0)->operand(0)->opcode() == HloOpcode::kPad) {
     // Unpadded LHS shape:  [..., k, ...]
     // Padded LHS shape:    [..., padded_k, ...]
     // Bitcasted LHS shape: [..., split_k, padded_k / split_k, ...]
+    CHECK_EQ(dot.operand(0)->opcode(), HloOpcode::kBitcast);
     const Shape& unpadded_lhs_shape =
         dot.operand(0)->operand(0)->operand(0)->shape();
     k = unpadded_lhs_shape.dimensions(dims.lhs_contracting_dimensions(0) - 1);
@@ -1048,7 +1053,10 @@ class MatMulEmitterHelper {
 
     std::vector<Value> bounds;
     std::vector<Value> strides;
-    std::vector<Value> offsets;
+    // Offsets from tensor origin, same for all thread blocks.
+    std::vector<Value> tensor_offsets;
+    // Offsets for a given thread block, typically pid * block size.
+    std::vector<Value> block_offsets;
     std::vector<int32_t> block_dims;
     std::vector<int32_t> dim_order;
 
@@ -1072,7 +1080,8 @@ class MatMulEmitterHelper {
       }
       bounds.push_back(Cst64(count));
       strides.push_back(Cst64(stride));
-      offsets.push_back(properties.offset);
+      block_offsets.push_back(properties.offset);
+      tensor_offsets.push_back(Cst32(spec->at(0).slice_start));
       block_dims.push_back(properties.block_size);
       dim_order.emplace(dim_order.begin(), dim_order.size());
     };
@@ -1081,6 +1090,7 @@ class MatMulEmitterHelper {
     }
 
     int64_t stride_batch = 0;
+    int64_t offset_batch = 0;
     if (side.scope != TritonFusionAnalysis::Scope::RHS &&
         dims_.lhs_noncontracting_split) {
       const TensorIterationSpec::DimIterationSpec* spec =
@@ -1104,13 +1114,15 @@ class MatMulEmitterHelper {
           analysis_.IterSpec(side.scope, hlo, *side.batch_dim_idx);
       if (spec != nullptr) {
         stride_batch = spec->at(0).stride;
+        offset_batch = spec->at(0).slice_start;
         CHECK_NE(stride_batch, 0);
       }
     }
     if (stride_batch != 0) {
-      Value offset_batch =
-          b_.create<ma::MulIOp>(ConvertScalar(pid_batch), Cst(stride_batch));
-      base = AddPtr(b_, base, offset_batch);
+      Value pid_offset_batch = b_.create<ma::MulIOp>(
+          b_.create<ma::AddIOp>(Cst(offset_batch), ConvertScalar(pid_batch)),
+          Cst(stride_batch));
+      base = AddPtr(b_, base, pid_offset_batch);
     }
 
     if (dims_.out_split_k_dim_idx.has_value()) {
@@ -1127,8 +1139,14 @@ class MatMulEmitterHelper {
     if (block_dims.empty()) {
       return base;
     }
-    return b_.create<mt::MakeTensorPtrOp>(base, bounds, strides, offsets,
-                                          block_dims, dim_order);
+    auto tensor_ptr =
+        b_.create<mt::MakeTensorPtrOp>(base, bounds, strides, tensor_offsets,
+                                       block_dims, dim_order)
+            .getResult()
+            .cast<Value>();
+    tensor_ptr = b_.create<mt::AdvanceOp>(tensor_ptr.getType(), tensor_ptr,
+                                          block_offsets);
+    return tensor_ptr;
   }
 
  private:
@@ -1141,7 +1159,7 @@ class MatMulEmitterHelper {
   }
 
   Value Cst(int64_t v) { return CreateConst(b_, index_ty_, v); }
-
+  Value Cst32(int64_t v) { return CreateConst(b_, i32_ty_, v); }
   Value Cst64(int64_t v) { return CreateConst(b_, i64_ty_, v); }
 
   ImplicitLocOpBuilder& b_;
@@ -1356,7 +1374,7 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
       analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).size() +
       analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).size() + 1);
 
-  for (const auto& side : {lhs, rhs}) {
+  for (const Side& side : {lhs, rhs}) {
     for (const HloInstruction* param : analysis.ScopeParameters(side.scope)) {
       CHECK(iter_args_to_parameters.insert({iter_args.size(), param}).second);
       iter_args.push_back(emitter.EmitTensorPointer(
