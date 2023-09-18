@@ -40,8 +40,9 @@ inline T Truncate(int32_t input, T range_min = std::numeric_limits<T>::min(),
 }
 
 template <typename T>
-T Rescale(T orig_value, int32_t orig_zero_point, int32_t rescale_multiplier,
-          int32_t rescale_shift, int32_t rescale_zero_point) {
+inline T Rescale(T orig_value, int32_t orig_zero_point,
+                 int32_t rescale_multiplier, int32_t rescale_shift,
+                 int32_t rescale_zero_point) {
   const int32_t rescaled_value =
       MultiplyByQuantizedMultiplier(
           ((static_cast<int32_t>(orig_value) - orig_zero_point)),
@@ -168,8 +169,8 @@ struct Candidate {
   }
 };
 
-auto GetCandidatePriorityQueue(const float* scores, const int num_boxes,
-                               const float score_threshold) {
+inline auto GetCandidatePriorityQueue(const float* scores, const int num_boxes,
+                                      const float score_threshold) {
   std::priority_queue<Candidate<float>, std::deque<Candidate<float>>>
       candidate_priority_queue;
 
@@ -184,9 +185,9 @@ auto GetCandidatePriorityQueue(const float* scores, const int num_boxes,
 }
 
 template <typename T>
-auto GetCandidatePriorityQueue(const NonMaxSuppressionParams& params,
-                               const T* scores, const int num_boxes,
-                               const T score_threshold) {
+inline auto GetCandidatePriorityQueue(const NonMaxSuppressionParams& params,
+                                      const T* scores, const int num_boxes,
+                                      const T score_threshold) {
   std::priority_queue<Candidate<T>, std::deque<Candidate<T>>>
       candidate_priority_queue;
 
