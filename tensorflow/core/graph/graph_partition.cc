@@ -329,7 +329,8 @@ NodeDef* AddDummyConst(const PartitionOptions& opts, GraphDef* gdef,
   const Node* src = edge->src();
   Tensor tensor(DT_FLOAT, TensorShape({0}));
   NodeDef* result = gdef->add_node();
-  *status = NodeDefBuilder(opts.new_name(src->name()), "Const")
+  *status = NodeDefBuilder(opts.new_name(strings::StrCat(src->name(), "/ctrl")),
+                           "Const")
                 .Device(src->assigned_device_name())
                 .Attr("dtype", DT_FLOAT)
                 .Attr("value", tensor)
