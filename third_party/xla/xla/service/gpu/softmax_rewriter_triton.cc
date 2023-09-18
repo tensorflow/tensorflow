@@ -501,6 +501,10 @@ StatusOr<bool> SoftmaxRewriterTriton::Run(
   std::vector<DiamondChainDescriptor> diamond_chains =
       FindAllFusibleDiamondChains(*module, execution_threads);
 
+  if (diamond_chains.empty()) {
+    return false;
+  }
+
   // The diamond chains must be emitted in reverse order, to make sure that
   // producer instructions are emitted correctly when the root of
   // diamond chain n is exactly the producer of diamond chain n+1.
