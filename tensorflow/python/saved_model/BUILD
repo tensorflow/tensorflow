@@ -2,8 +2,8 @@
 # TensorFlow SavedModel.
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "if_google")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -509,7 +509,7 @@ py_strict_library(
     srcs = ["load.py"],
     srcs_version = "PY3",
     tags = [
-        "ignore_for_dep=third_party.py.keras.optimizers.optimizer_v2",
+        "ignore_for_dep=third_party.py.tf_keras.optimizers.optimizer_v2",
     ],
     deps = [
         ":fingerprinting",
