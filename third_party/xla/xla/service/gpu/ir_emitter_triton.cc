@@ -1590,7 +1590,8 @@ StatusOr<TritonWrapperResult> TritonWrapper(
   mlir_context.loadDialect<mt::TritonDialect>();
   mlir::OpBuilder b(&mlir_context);
   auto loc = mlir::NameLoc::get(b.getStringAttr(hlo_computation->name()));
-  mlir::OwningOpRef<mlir::ModuleOp> triton_module = mlir::ModuleOp::create(loc);
+  mlir::OwningOpRef<mlir::ModuleOp> triton_module =
+      llvm_ir::CreateMlirModuleOp(loc);
   b.setInsertionPointToEnd(triton_module->getBody());
 
   VLOG(3) << hlo_computation->ToString(HloPrintOptions::ShortParsable());

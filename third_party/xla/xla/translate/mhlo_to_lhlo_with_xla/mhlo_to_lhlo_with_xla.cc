@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
 #include "xla/translate/hlo_to_mhlo/attribute_importer.h"
@@ -2358,7 +2359,7 @@ OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(
   TF_CHECK_OK(maybe_module.status());
 
   OwningOpRef<mlir::ModuleOp> module =
-      ModuleOp::create(UnknownLoc::get(context));
+      xla::llvm_ir::CreateMlirModuleOp(UnknownLoc::get(context));
 
   TF_CHECK_OK(
       ConvertHloToLmhlo(std::move(maybe_module).value(), module.get(), "Host"));

@@ -453,7 +453,7 @@ Status CompileModuleToLlvmIrImpl(
       registry, mlir::MLIRContext::Threading::DISABLED);
 
   mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module = mlir::ModuleOp::create(
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module = llvm_ir::CreateMlirModuleOp(
       mlir::Builder(mlir_context.get()).getUnknownLoc(), hlo_module->name());
 
   absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>

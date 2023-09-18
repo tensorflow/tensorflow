@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/python/refine_polymorphic_shapes.h"
 #include "xla/python/status_casters.h"
 #include "xla/python/types.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "tsl/platform/errors.h"
@@ -99,7 +101,7 @@ StatusOr<std::string> PyXlaComputationToMlirModule(
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
+      llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&context));
   context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
   mlir::DialectRegistry registry;

@@ -148,6 +148,7 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_proto_cc",
+        "//xla/service/llvm_ir:llvm_util",
         "//xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:protobuf",
