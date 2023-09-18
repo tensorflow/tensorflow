@@ -79,10 +79,10 @@ void SnapshotAssignmentManager::RemoveAssignment(
 absl::StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
     const SnapshotRequest& request,
     SnapshotAssignmentManager& assignment_manager, Env* env) {
-  SnapshotManager* snapshot_manager =
-      new SnapshotManager(request.path(), assignment_manager, env);
+  std::unique_ptr<SnapshotManager> snapshot_manager{
+      new SnapshotManager{request.path(), assignment_manager, env}};
   TF_RETURN_IF_ERROR(snapshot_manager->Start(request));
-  return absl::WrapUnique(snapshot_manager);
+  return snapshot_manager;
 }
 
 absl::Status SnapshotManager::Start(const SnapshotRequest& request)
