@@ -908,7 +908,6 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
           pad->padding_config().dimensions(i).edge_padding_high();
       CHECK_EQ(pad->padding_config().dimensions(i).edge_padding_low(), 0);
       CHECK_EQ(pad->padding_config().dimensions(i).interior_padding(), 0);
-      CHECK(pad->operand(1)->literal().IsEqualAt({0}, 0));
       if (padding == 0) {
         dst_logical[i] = src_logical[i];
       } else {
