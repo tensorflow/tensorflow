@@ -48,3 +48,7 @@ def LegalizeTensorListSetItem : Pat<(TF_TensorListSetItemOp $input, $index, $ite
 def LegalizeTensorListFromTensor : Pat<(TF_TensorListFromTensorOp $input, $element_shape),
     (TFL_CustomOp (Size2InputRange $input, $element_shape),
     (CreateStringAttr<"\"TensorListFromTensor\"">), (EmptyCustomOptions))>;
+
+def LegalizeTensorListGetItem : Pat<(TF_TensorListGetItemOp $input, $index, $element_shape),
+    (TFL_CustomOp (Size3InputRange $input, $index, $element_shape),
+    (CreateStringAttr<"\"TensorListGetItem\"">), (EmptyCustomOptions))>;

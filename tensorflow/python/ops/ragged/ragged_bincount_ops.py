@@ -37,7 +37,6 @@ def bincount(arr: ragged_tensor.RaggedTensor,
              name=None,
              axis=None,
              binary_output=False):
-  # TODO(b/285398376): add RaggedTensor examples to docstring.
   """Counts the number of occurrences of each value in an integer array.
 
   If `minlength` and `maxlength` are not given, returns a vector with length
@@ -46,10 +45,10 @@ def bincount(arr: ragged_tensor.RaggedTensor,
   value in `weights` at each index where the corresponding value in `arr` is
   `i`.
 
-  ```python
-  values = tf.constant([1,1,2,3,2,4,4,5])
-  tf.math.bincount(values) #[0 2 2 1 2 1]
-  ```
+  >>> data = tf.ragged.constant([[1, 1], [2, 3, 2, 4, 4, 5]])
+  >>> tf.math.bincount(data)
+  <tf.Tensor: ... numpy=array([0, 2, 2, 1, 2, 1], dtype=int32)>
+
   Vector length = Maximum element in vector `values` is 5. Adding 1, which is 6
                   will be the vector length.
 
@@ -57,43 +56,44 @@ def bincount(arr: ragged_tensor.RaggedTensor,
   index. Here, index 1 in output has a value 2. This indicates value 1 occurs
   two times in `values`.
 
-  ```python
-  values = tf.constant([1,1,2,3,2,4,4,5])
-  weights = tf.constant([1,5,0,1,0,5,4,5])
-  tf.math.bincount(values, weights=weights) #[0 6 0 1 9 5]
-  ```
+  >>> data = tf.ragged.constant([[1, 1], [2, 3, 2, 4, 4, 5]])
+  >>> weights = tf.ragged.constant([[1, 5], [0, 1, 0, 5, 4, 5]])
+  >>> tf.math.bincount(data, weights=weights)
+  <tf.Tensor: ... numpy=array([0, 6, 0, 1, 9, 5], dtype=int32)>
+
   Bin will be incremented by the corresponding weight instead of 1.
   Here, index 1 in output has a value 6. This is the summation of weights
   corresponding to the value in `values`.
 
-  **Bin-counting on a certain axis**
+  **Bin-counting matrix rows independently**
 
-  This example takes a 2 dimensional input and returns a `Tensor` with
-  bincounting on each sample.
+  This example uses `axis=-1` with a 2 dimensional input and returns a
+  `Tensor` with bincounting where axis 0 is **not** flattened, i.e. an
+  independent bincount for each matrix row.
 
-  >>> data = np.array([[1, 2, 3, 0], [0, 0, 1, 2]], dtype=np.int32)
+  >>> data = tf.ragged.constant([[1, 2], [3, 0, 0, 0, 1, 2]], dtype=np.int32)
   >>> tf.math.bincount(data, axis=-1)
   <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
-    array([[1, 1, 1, 1],
-           [2, 1, 1, 0]], dtype=int32)>
-
+    array([[0, 1, 1, 0],
+           [3, 1, 1, 1]], dtype=int32)>
 
   **Bin-counting with binary_output**
 
   This example gives binary output instead of counting the occurrence.
 
-  >>> data = np.array([[1, 2, 3, 0], [0, 0, 1, 2]], dtype=np.int32)
+  >>> data = tf.ragged.constant([[1, 2], [3, 0, 0, 0, 1, 2]], dtype=np.int32)
   >>> tf.math.bincount(data, axis=-1, binary_output=True)
   <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
-    array([[1, 1, 1, 1],
-           [1, 1, 1, 0]], dtype=int32)>
+    array([[0, 1, 1, 0],
+           [1, 1, 1, 1]], dtype=int32)>
 
   Args:
     arr: A RaggedTensor whose values should be counted.
       These tensors must have a rank of 2 if `axis=-1`.
-    weights: If non-None, must be the same shape as arr. For each value in
-      `arr`, the bin will be incremented by the corresponding weight instead of
-      1.
+    weights: If non-None, must be a RaggedTensor with the same row splits as
+      `arr`. For each value in `arr`, the bin will be incremented by the
+      corresponding weight instead of 1. If non-None, `binary_output` must be
+      False.
     minlength: If given, ensures the output has length at least `minlength`,
       padding with zeros at the end if necessary.
     maxlength: If given, skips values in `arr` that are equal or greater than
@@ -108,8 +108,8 @@ def bincount(arr: ragged_tensor.RaggedTensor,
       reduce_add). Defaults to False.
 
   Returns:
-    A vector with the same dtype as `weights` or the given `dtype`. The bin
-    values.
+    A vector with the same dtype as `weights` or the given `dtype` containing
+    the bincount values.
 
   Raises:
     `InvalidArgumentError` if negative values are provided as an input.
@@ -192,9 +192,9 @@ def sparse_bincount(values: ragged_tensor.RaggedTensor,
   Args:
     values: A RaggedTensor whose values should be
       counted. These tensors must have a rank of 2 if `axis=-1`.
-    weights: If non-None, must be the same shape as arr. For each value in
-      `value`, the bin will be incremented by the corresponding weight instead
-      of 1.
+    weights: If non-None, must be a RaggedTensor with the same row splits as
+      `values`. For each value in `value`, the bin will be incremented by the
+      corresponding weight instead of 1.
     axis: The axis to slice over. Axes at and below `axis` will be flattened
       before bin counting. Currently, only `0`, and `-1` are supported. If None,
       all axes will be flattened (identical to passing `0`).
@@ -225,18 +225,19 @@ def sparse_bincount(values: ragged_tensor.RaggedTensor,
   SparseTensor) and returns a SparseTensor where the value of (i,j) is the
   number of times value j appears in batch i.
 
-  >>> data = np.array([[10, 20, 30, 20], [11, 101, 11, 10001]], dtype=np.int64)
-  >>> output = tf.sparse.bincount(data, axis=-1)
-  >>> print(output)
+  >>> data = tf.ragged.constant(
+  ...     [[10, 20], [30, 20, 11, 101, 11, 10001]], dtype=np.int64)
+  >>> tf.sparse.bincount(data, axis=-1)
   SparseTensor(indices=tf.Tensor(
-  [[    0    10]
-   [    0    20]
-   [    0    30]
-   [    1    11]
-   [    1   101]
-   [    1 10001]], shape=(6, 2), dtype=int64),
-   values=tf.Tensor([1 2 1 2 1 1], shape=(6,), dtype=int64),
-   dense_shape=tf.Tensor([    2 10002], shape=(2,), dtype=int64))
+    [[    0    10]
+     [    0    20]
+     [    1    11]
+     [    1    20]
+     [    1    30]
+     [    1   101]
+     [    1 10001]], shape=(7, 2), dtype=int64),
+     values=tf.Tensor([1 1 2 1 1 1 1], shape=(7,), dtype=int64),
+     dense_shape=tf.Tensor([    2 10002], shape=(2,), dtype=int64))
 
   **Bin-counting with defined output shape**
 
@@ -249,17 +250,18 @@ def sparse_bincount(values: ragged_tensor.RaggedTensor,
   dense shape is [2, 500] instead of [2,10002] or [2, 102].
 
   >>> minlength = maxlength = 500
-  >>> data = np.array([[10, 20, 30, 20], [11, 101, 11, 10001]], dtype=np.int64)
-  >>> output = tf.sparse.bincount(
+  >>> data = tf.ragged.constant(
+  ...     [[10, 20], [30, 20, 11, 101, 11, 10001]], dtype=np.int64)
+  >>> tf.sparse.bincount(
   ...    data, axis=-1, minlength=minlength, maxlength=maxlength)
-  >>> print(output)
   SparseTensor(indices=tf.Tensor(
   [[  0  10]
    [  0  20]
-   [  0  30]
    [  1  11]
-   [  1 101]], shape=(5, 2), dtype=int64),
-   values=tf.Tensor([1 2 1 2 1], shape=(5,), dtype=int64),
+   [  1  20]
+   [  1  30]
+   [  1 101]], shape=(6, 2), dtype=int64),
+   values=tf.Tensor([1 1 2 1 1 1], shape=(6,), dtype=int64),
    dense_shape=tf.Tensor([  2 500], shape=(2,), dtype=int64))
 
   **Binary bin-counting**
@@ -270,18 +272,19 @@ def sparse_bincount(values: ragged_tensor.RaggedTensor,
   some values (like 20 in batch 1 and 11 in batch 2) appear more than once,
   the 'values' tensor is all 1s.
 
-  >>> data = np.array([[10, 20, 30, 20], [11, 101, 11, 10001]], dtype=np.int64)
-  >>> output = tf.sparse.bincount(data, binary_output=True, axis=-1)
-  >>> print(output)
+  >>> data = tf.ragged.constant(
+  ...     [[10, 20], [30, 20, 11, 101, 11, 10001]], dtype=np.int64)
+  >>> tf.sparse.bincount(data, binary_output=True, axis=-1)
   SparseTensor(indices=tf.Tensor(
-  [[    0    10]
-   [    0    20]
-   [    0    30]
-   [    1    11]
-   [    1   101]
-   [    1 10001]], shape=(6, 2), dtype=int64),
-   values=tf.Tensor([1 1 1 1 1 1], shape=(6,), dtype=int64),
-   dense_shape=tf.Tensor([    2 10002], shape=(2,), dtype=int64))
+  [[  0  10]
+   [  0  20]
+   [  1  11]
+   [  1  20]
+   [  1  30]
+   [  1 101]
+   [  1 10001]], shape=(7, 2), dtype=int64),
+   values=tf.Tensor([1 1 1 1 1 1 1], shape=(7,), dtype=int64),
+   dense_shape=tf.Tensor([  2 10002], shape=(2,), dtype=int64))
 
   **Weighted bin-counting**
 
@@ -293,18 +296,20 @@ def sparse_bincount(values: ragged_tensor.RaggedTensor,
   the values tensor has the value j. In this case, the output dtype is the
   same as the dtype of the weights tensor.
 
-  >>> data = np.array([[10, 20, 30, 20], [11, 101, 11, 10001]], dtype=np.int64)
-  >>> weights = [[2, 0.25, 15, 0.5], [2, 17, 3, 0.9]]
-  >>> output = tf.sparse.bincount(data, weights=weights, axis=-1)
-  >>> print(output)
+  >>> data = tf.ragged.constant(
+  ...    [[10, 20], [30, 20, 11, 101, 11, 10001]], dtype=np.int64)
+  >>> weights = tf.ragged.constant(
+  ...    [[2, 0.25], [15, 0.5, 2, 17, 3, 0.9]])
+  >>> tf.sparse.bincount(data, weights=weights, axis=-1)
   SparseTensor(indices=tf.Tensor(
   [[    0    10]
    [    0    20]
-   [    0    30]
    [    1    11]
+   [    1    20]
+   [    1    30]
    [    1   101]
-   [    1 10001]], shape=(6, 2), dtype=int64),
-   values=tf.Tensor([2. 0.75 15. 5. 17. 0.9], shape=(6,), dtype=float32),
+   [    1 10001]], shape=(7, 2), dtype=int64),
+   values=tf.Tensor([ 2. 0.25  5. 0.5 15. 17. 0.9 ], shape=(7,), dtype=float32),
    dense_shape=tf.Tensor([    2 10002], shape=(2,), dtype=int64))
 
   """

@@ -16,14 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_DEBUG_DEBUG_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_DEBUG_DEBUG_H_
 
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 
 namespace tensorflow {
 
 // Initializes the pass manager with default options that make debugging easier.
+// The `out` method parameter is exposed for testing purposes and not intended
+// to be specified by client code.
 void InitPassManager(mlir::PassManager& pm,
-                     const converter::DebugOptions& options);
+                     const converter::DebugOptions& options,
+                     llvm::raw_ostream& out = llvm::outs());
 
 }  // namespace tensorflow
 

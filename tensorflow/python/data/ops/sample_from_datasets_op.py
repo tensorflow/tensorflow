@@ -19,6 +19,7 @@ from tensorflow.python.data.ops import directed_interleave_op
 from tensorflow.python.data.ops import map_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import math_ops
@@ -48,7 +49,7 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
       logits = [[1.0] * len(datasets)]
 
     else:
-      if isinstance(weights, ops.Tensor):
+      if isinstance(weights, tensor.Tensor):
         if not weights.shape.is_compatible_with([len(datasets)]):
           raise ValueError(f"Invalid `weights`. The shape of `weights` "
                            f"should be compatible with `[len(datasets)]` "
@@ -62,7 +63,7 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
 
       # Use the given `weights` as the probability of choosing the respective
       # input.
-      if not isinstance(weights, ops.Tensor):
+      if not isinstance(weights, tensor.Tensor):
         datasets, weights = _skip_datasets_with_zero_weight(datasets, weights)
       weights = ops.convert_to_tensor(weights, name="weights")
       if weights.dtype not in (dtypes.float32, dtypes.float64):

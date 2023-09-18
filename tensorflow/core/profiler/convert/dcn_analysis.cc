@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/convert/dcn_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/tsl/profiler/utils/math_utils.h"
-#include "tensorflow/tsl/profiler/utils/tpu_xplane_utils.h"
-#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tsl/profiler/utils/math_utils.h"
+#include "tsl/profiler/utils/tpu_xplane_utils.h"
+#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -111,7 +111,15 @@ void DcnEventsProcessor::SetupMessageInfo(const XPlaneVisitor& plane) {
 // If we use megacore, collective traffic goes to even TPU tensor cores.
 // Odd ones are woken up from their even pair (e.g. 0 wakes up 1).
 uint32_t DcnEventsProcessor::FindTpuIdx(int tpu) {
-  return is_megacore_ ? (tpu >> 1) : tpu;
+  uint32_t num_tpus = num_tpu_tensor_cores_;
+  if (is_megacore_) {
+    num_tpus /= 2;
+  }
+  uint32_t tpu_idx = tpu % num_tpus;
+  if (is_megacore_) {
+    tpu_idx = tpu_idx * 2;
+  }
+  return tpu_idx;
 }
 
 void DcnEventsProcessor::GenerateTimestampEvents(

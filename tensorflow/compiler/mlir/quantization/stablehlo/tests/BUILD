@@ -41,8 +41,8 @@ tf_cc_test(
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:fill_quantization_options",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_cc",
-        "//tensorflow/tsl/platform:protobuf",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )

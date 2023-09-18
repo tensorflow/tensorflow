@@ -56,8 +56,8 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/thread_annotations.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
 // types. Use this macro to expand `m(T)` once for each primitive type
@@ -621,6 +621,9 @@ class SerializationContext {
   TF_DISALLOW_COPY_AND_ASSIGN(SerializationContext);
 };
 
+// Specifies the tf.data pipeline run mode.
+enum RunMode { DEFAULT, STANDALONE };
+
 // A cut-down version of `OpKernelContext` for running computations in
 // iterators. Note that we cannot simply use `OpKernelContext` here because we
 // might run computation in an iterator whose lifetime is not nested within the
@@ -645,6 +648,7 @@ class IteratorContext {
           interleave_depth(ctx->interleave_depth()),
           is_restoring(ctx->is_restoring()),
           model(ctx->model()),
+          ram_budget_manager(ctx->ram_budget_manager()),
           resource_mgr(ctx->resource_mgr()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
@@ -714,6 +718,9 @@ class IteratorContext {
     // If non-null, identifies the object used for performance modeling.
     std::shared_ptr<model::Model> model = nullptr;
 
+    // Manager for the ram budget when using autotune.
+    std::shared_ptr<model::RamBudgetManager> ram_budget_manager = nullptr;
+
     // The input pipeline options.
     const Options* options = nullptr;
 
@@ -753,6 +760,9 @@ class IteratorContext {
     // the iterator is created. Otherwise, they are started upon first `GetNext`
     // request. Default value is set to false to ensure backward compatibility.
     bool warm_start = false;
+
+    // Specifies the tf.data pipeline run mode.
+    RunMode run_mode = RunMode::DEFAULT;
   };
 
   explicit IteratorContext(IteratorContext* ctx)
@@ -805,7 +815,11 @@ class IteratorContext {
 
   bool is_restoring() { return params_.is_restoring; }
 
-  const std::shared_ptr<model::Model>& model() { return params_.model; }
+  const std::shared_ptr<model::Model>& model() const { return params_.model; }
+
+  const std::shared_ptr<model::RamBudgetManager>& ram_budget_manager() {
+    return params_.ram_budget_manager;
+  }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
@@ -832,6 +846,8 @@ class IteratorContext {
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
 
   bool warm_start() { return params_.warm_start; }
+
+  RunMode run_mode() { return params_.run_mode; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {

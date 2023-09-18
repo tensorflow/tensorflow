@@ -209,7 +209,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
       std::max(graph_info_->num_execution_nodes(), (size_t)1), {});
 
   // Keeps track of references to each tensor.
-  refcounts_.resize(num_tensors, 0);
+  refcounts_.assign(num_tensors, 0);
 
   auto allocate = [this](int node, int tensor) -> TfLiteStatus {
     if (alloc_node_[tensor] != kNodeNotAssigned) {
@@ -236,7 +236,9 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   // artificially adding one to their ref-counts so they are never selected
   // for deallocation.
   for (int tensor_index : graph_info_->outputs()) {
-    ++refcounts_[tensor_index];
+    if (tensor_index != kTfLiteOptionalTensor) {
+      ++refcounts_[tensor_index];
+    }
   }
 
   // Variable tensors also should be ensured to be never overwritten and need to
@@ -301,6 +303,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     TfLiteIntArray* node_outputs = node.outputs;
     for (int j = 0; j < node_outputs->size; ++j) {
       int tensor_index = node_outputs->data[j];
+      if (tensor_index == kTfLiteOptionalTensor) continue;
       //  Don't allocate output tensors here for shared memory parts.
       nodes_to_tensors_[i].insert(tensor_index);
       TF_LITE_ENSURE_STATUS(allocate(i, tensor_index));

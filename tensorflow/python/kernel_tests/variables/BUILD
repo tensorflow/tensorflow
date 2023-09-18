@@ -67,7 +67,10 @@ cuda_py_strict_test(
     # TODO(kkb): CppMemoryChecker is flaky without these two flags, investigate.
     #
     # TODO(b/128347673): Re-enable.
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "nozapfhahn",
+    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/compat",
@@ -84,6 +87,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:memory_checker",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:test_lib",
@@ -174,8 +178,11 @@ tf_py_strict_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",

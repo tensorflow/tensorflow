@@ -72,12 +72,6 @@ class FingerprintingTest(test.TestCase):
       fingerprint_def.ParseFromString(f.read())
     return fingerprint_def
 
-  def _read_saved_model(self, filename):
-    saved_model_def = saved_model_pb2.SavedModel()
-    with file_io.FileIO(filename, "rb") as f:
-      saved_model_def.ParseFromString(f.read())
-    return saved_model_def
-
   def setUp(self):
     super().setUp()
     flags.config().saved_model_fingerprinting.reset(True)
@@ -149,6 +143,21 @@ class FingerprintingTest(test.TestCase):
     with self.assertRaisesRegex(FileNotFoundError,
                                 "SavedModel Fingerprint Error"):
       fingerprinting.read_fingerprint("foo")
+
+  def test_write_fingerprint(self):
+    save_dir = os.path.join(self.get_temp_dir(), "model_and_fingerprint")
+    save.save_and_return_nodes(
+        self._create_model_with_data(), save_dir,
+        experimental_skip_checkpoint=True)  # checkpoint data won't be loaded
+
+    fingerprint_def = fingerprinting.read_fingerprint(save_dir)
+
+    # We cannot check this value due to non-determinism in serialization.
+    self.assertGreater(fingerprint_def.saved_model_checksum, 0)
+    self.assertEqual(fingerprint_def.graph_def_program_hash,
+                     8947653168630125217)
+    self.assertEqual(fingerprint_def.signature_def_hash, 15354238402988963670)
+    self.assertEqual(fingerprint_def.checkpoint_hash, 0)
 
   def test_valid_singleprint(self):
     save_dir = os.path.join(self.get_temp_dir(), "singleprint_model")

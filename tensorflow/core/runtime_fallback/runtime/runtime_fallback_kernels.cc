@@ -82,14 +82,6 @@ limitations under the License.
 #include "tfrt/tensor/scalar_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_serialize_utils.h"  // from @tf_runtime
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_device.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
-#include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_gpu_allocator.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 namespace tfd {
@@ -211,94 +203,6 @@ static void TfdPrintTFT(Argument<RuntimeFallbackTensor> tft,
   out_chain.Set(in_chain);
 }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-static tensorflow::Status InjectTfGpuResourcesHelper(
-    tensorflow::EagerContext* ctx) {
-  // Inject TF's GPU resources to TFRT GpuOpHandler.
-  // Note that this requires RuntimeFallbackOpHandler to be created and
-  // initialized before tfrt::GpuOpHandler to work.
-
-  auto tf_gpu_process_state = tensorflow::GPUProcessState::singleton();
-  if (tf_gpu_process_state && tf_gpu_process_state->HasGPUDevice()) {
-    constexpr char gpu_device_type[] = "GPU";
-    int num_gpu = ctx->local_device_mgr()->NumDeviceType(gpu_device_type);
-    for (int gpu_ordinal = 0; gpu_ordinal < num_gpu; gpu_ordinal++) {
-      auto gpu_device_name = absl::StrCat(gpu_device_type, ":", gpu_ordinal);
-      Device* device;
-      TF_RETURN_IF_ERROR(
-          ctx->local_device_mgr()->LookupDevice(gpu_device_name, &device));
-      auto gpu_device = static_cast<tensorflow::BaseGPUDevice*>(device);
-      if (!gpu_device)
-        return tensorflow::errors::NotFound("TF BaseGPUDevice not found");
-#if TENSORFLOW_USE_ROCM
-      static_assert(
-          false,
-          "static_cast to GpuContext and CUstream are invalid for ROCm.");
-#endif
-      CUcontext gpu_context =
-          static_cast<stream_executor::gpu::GpuContext*>(
-              gpu_device->executor()->implementation()->GpuContextHack())
-              ->context();
-
-      // TF GPU allocator is already created in
-      // tensorflow::DeviceFactory::AddDevices above, so this GetGPUAllocator
-      // ignores options and total_bytes passed in and retrieves allocator based
-      // on `tf_device_id`.
-      TfDeviceId tf_device_id{gpu_ordinal};
-      GPUOptions dummy_options;
-      tensorflow::Allocator* tf_allocator =
-          tf_gpu_process_state->GetGPUAllocator(dummy_options, tf_device_id,
-                                                /*total_bytes=*/0,
-                                                /*peer_gpu_ids=*/{});
-      if (!tf_allocator)
-        return tensorflow::errors::NotFound("TF allocator not found");
-      auto accelerator_device_info =
-          gpu_device->tensorflow_accelerator_device_info();
-      if (!accelerator_device_info)
-        return tensorflow::errors::NotFound(
-            "accelerator_device_info not found");
-
-      tfrt::gpu::GpuResources gpu_resources;
-      gpu_resources.gpu_context = tfrt::gpu::wrapper::Context(gpu_context);
-      gpu_resources.allocator_factory =
-          CreateRuntimeFallbackGpuAllocatorFactory(tf_allocator);
-      gpu_resources.stream = tfrt::gpu::wrapper::Stream(static_cast<CUstream>(
-          accelerator_device_info->stream->implementation()->GpuStreamHack()));
-      auto platform = tfrt::gpu::wrapper::Platform::CUDA;
-      tfrt::gpu::SetTfrtGpuResources(
-          tfrt::gpu::wrapper::Device(gpu_ordinal, platform), gpu_resources);
-    }
-  }
-  return OkStatus();
-}
-
-tensorflow::Status InjectTfGpuResources() {
-  // TODO(zhangqiaorjc) Use more direct and low-level APIs to initialize GPU
-  // resources than using EagerContext. Note that this EagerContext is strictly
-  // locally scoped and an implementation detail of injecting GPU resources, and
-  // not is the same EagerContext set in RequestContext.
-  static bool already_injected_gpu_devices = false;
-  static absl::Mutex* mutex = new absl::Mutex();
-
-  absl::MutexLock lock(mutex);
-  if (!already_injected_gpu_devices) {
-    tfrt::Expected<OwnedEagerContext> ctx = InitEagerContext();
-    if (!ctx) {
-      return tensorflow::errors::Internal(
-          tfrt::StrCat("error initializing eager context: ", ctx.takeError()));
-    }
-
-    // GPU resources should be injected once per gpu ordinal.
-    TF_RETURN_IF_ERROR(InjectTfGpuResourcesHelper(ctx->get()));
-    already_injected_gpu_devices = true;
-  }
-
-  return OkStatus();
-}
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 // Kernel for initializing TF EagerContext.
 //
 // This kernel should be invoked at least once before any TF delegation kernels
@@ -319,7 +223,6 @@ static void TfdInitEagerContext(Argument<Chain> in_chain,
               tensorflow::tfd::kEagerContextResourceName);
   (void)eager_context_resource;
 
-  // TODO(zhangqiaorjc): Inject GPU resources to GPU kernels.
   out_chain.Set(in_chain);
 }
 

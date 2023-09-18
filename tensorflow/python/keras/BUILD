@@ -1,6 +1,8 @@
 # Description:
 #   Contains the Keras API (internal TensorFlow version).
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
@@ -42,6 +44,7 @@ py_library(
         "//tensorflow/python/saved_model",
         "//tensorflow/python/training",
         "//tensorflow/python/util:nest",
+        "@pypi_h5py//:pkg",
     ],
 )
 
@@ -54,14 +57,14 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client",
         "//tensorflow/python/client:session",
-        "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:multi_worker_util",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/keras/distribute:distribute_coordinator_utils",
@@ -158,6 +161,8 @@ py_library(
     deps = [
         ":backend",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/keras/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:worker_training_state",
         "//tensorflow/python/keras/protobuf:projector_config_proto_py",

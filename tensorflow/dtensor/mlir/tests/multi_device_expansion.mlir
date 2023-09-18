@@ -162,3 +162,24 @@ module @test_tpu_with_inputs attributes {dtensor.enable_multi_device_mode = true
     return %arg0 : tensor<4xf32>
   }
 }
+
+// -----
+
+// CHECK-LABEL: module @test_inferred_resource_attributes
+// CHECK-LABEL: func.func @main
+// CHECK: "tf.StatefulPartitionedCall"
+// CHECK-SAME: _inferred_resource_indices = dense<[1, 2]>
+// CHECK-SAME: _inferred_resource_layouts = ["sharding_specs:x,unsharded
+// CHECK-SAME , "sharding_specs:unsharded,y
+
+module @test_inferred_resource_attributes attributes {dtensor.all_reduce_combiner.num_ops_in_group = 0 : i64, dtensor.all_reduce_combiner.topological_distance = 0 : i64, dtensor.eager_operation_name = "AssignVariableOp", dtensor.enable_multi_device_mode = true, tf._default_mesh = "|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1", tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:CPU:1"}, tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1555 : i32}} {
+  func.func @main(%arg0: tensor<i32> {tf._global_shape = #tf_type.shape<>}, %arg1: tensor<!tf_type.resource<tensor<i32>>> {tf._assigned_resource_local_shape = #tf_type.shape<>, tf._global_shape = #tf_type.shape<>, tf._layout = "empty_layout", tf._mesh = "empty_mesh"}, %arg2: tensor<!tf_type.resource<tensor<i32>>> {tf._assigned_resource_local_shape = #tf_type.shape<>, tf._global_shape = #tf_type.shape<>, tf._layout = "empty_layout", tf._mesh = "empty_mesh"}) attributes {allow_soft_placement = false, tf.entry_function = {control_outputs = "eager_operation", inputs = "device_id,op_input_0,op_input_1", outputs = ""}} {
+    "tf.StatefulPartitionedCall"(%arg0, %arg1) {_inferred_resource_indices = dense<1> : vector<1xi32>, _inferred_resource_layouts = ["sharding_specs:x,unsharded, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"], _layout = [], _mesh = "|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1", config = "|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1", config_proto = "", executor_type = "", f = @_func} : (tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>) -> ()
+    "tf.StatefulPartitionedCall"(%arg0, %arg2) {_inferred_resource_indices = dense<2> : vector<1xi32>, _inferred_resource_layouts = ["sharding_specs:unsharded,y, mesh:|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"], _layout = [], _mesh = "|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1", config = "|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1", config_proto = "", executor_type = "", f = @_func} : (tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>) -> ()
+    return
+  }
+  func.func private @_func(%arg0: tensor<i32>, %arg1: tensor<!tf_type.resource<tensor<i32>>>) {
+    "tf.AssignVariableOp"(%arg1, %arg0) {_global_shape = [], _layout = [], device = "", validate_shape = false} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
+    return
+  }
+}

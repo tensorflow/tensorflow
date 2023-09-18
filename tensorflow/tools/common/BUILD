@@ -9,6 +9,7 @@ package(
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//third_party/py/keras/api:__subpackages__",
+        "//third_party/py/tf_keras/api:__subpackages__",
     ],
     licenses = ["notice"],
 )

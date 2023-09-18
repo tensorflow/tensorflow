@@ -21,6 +21,7 @@ py_strict_library(
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:control_flow_v2_toggles",
         "//tensorflow/python/ops:variable_scope",

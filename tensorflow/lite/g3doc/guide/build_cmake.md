@@ -82,9 +82,11 @@ variables to point to your library installations.
 cmake ../tensorflow_src/tensorflow/lite -DTFLITE_ENABLE_INSTALL=ON \
   -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON \
   -DSYSTEM_FARMHASH=ON \
+  -DSYSTEM_PTHREADPOOL=ON \
   -Dabsl_DIR=<install path>/lib/cmake/absl \
   -DEigen3_DIR=<install path>/share/eigen3/cmake \
   -DFlatBuffers_DIR=<install path>/lib/cmake/flatbuffers \
+  -Dgemmlowp_DIR=<install path>/lib/cmake/gemmlowp \
   -DNEON_2_SSE_DIR=<install path>/lib/cmake/NEON_2_SSE \
   -Dcpuinfo_DIR=<install path>/share/cpuinfo \
   -Druy_DIR=<install path>/lib/cmake/ruy
@@ -289,6 +291,9 @@ cmake --build . -j
 ```
 
 This command generates the following shared library in the current directory.
+
+**Note:** On Windows system, you can find the `tensorflowlite_c.dll` under
+`debug` directory.
 
 Platform | Library name
 -------- | ---------------------------

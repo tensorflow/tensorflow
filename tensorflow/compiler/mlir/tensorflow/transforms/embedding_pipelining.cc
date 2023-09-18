@@ -29,7 +29,7 @@ In pseudocode, the algorithm is as follows:
 
 // Start step 0
 C_0 = cond(args_0)
-N_0 = non_tup(args_0)
+N_0 = non_tpu(args_0)
 if (C_0) {
    F_0 = forward(args_0, N_0)
    T_0 = core_tpu(args_0, N_0, F_0)
@@ -40,7 +40,7 @@ args_1 = update_args(args_0, N_0, T_0)
 
 // Start step 1
 C_1 = cond(args_1)
-N_1 = non_tup(args_1)
+N_1 = non_tpu(args_1)
 if (C_1) {
    F_1 = forward(args_1, N_1)
    // T_1 = core_tpu() is not evaluated here.
@@ -124,13 +124,11 @@ return selected_results
 // #include "smartass/brain/ops/flogs_ops.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_replace.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -152,6 +150,7 @@ return selected_results
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -191,6 +190,30 @@ struct EmbeddingPipeliningPass
 
   void runOnOperation() override;
 };
+
+bool UseEmbeddingPipelining(ModuleOp& module) {
+  // Enable automated pipelining pass unless:
+  // 1. The user disables it via flog, or
+  // 2. The graph contains TF.Summary ops. Graphs like this typically only run
+  //    for a single step which doesn't work in pipelining.
+
+  if (tensorflow::GetBuildXlaOpsPassFlags()
+          ->tf_xla_disable_full_embedding_pipelining)
+    return false;
+
+  // Detect summaries by looking for key Ops in the graph. It would be better to
+  // do this via operator attributes rather than looking for a specific op.
+  WalkResult walk_result = module.walk([&](Operation* op) -> WalkResult {
+    if (llvm::isa<TF::WriteSummaryOp>(op)) return WalkResult::interrupt();
+    return WalkResult::advance();
+  });
+  if (walk_result.wasInterrupted()) {
+    VLOG(1) << "TF summaries detected - disabling embedding pipelining.";
+    return false;
+  }
+  VLOG(1) << "Embedding pipelining rewrite enabled.";
+  return true;
+}
 
 StringAttr GetReplicationAttr(mlir::Operation* op) {
   return op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
@@ -352,16 +375,106 @@ struct Inliner : public InlinerInterface {
     return LogicalResult::success();
   }
 
-  // Find any StatefulPartitionedCalls and inline their contents in this func.
-  LogicalResult InlineCallsInFunc(func::FuncOp func,
-                                  bool inline_all_funcs = false) {
+  bool HasCollectiveGathers(func::FuncOp func) {
+    return !func.getRegion().getOps<TF::CollectiveGatherV2Op>().empty();
+  }
+
+  LogicalResult PatchCollectiveGatherInstanceKey(func::FuncOp func) {
+    // We're expecting the original model to have a single CollectiveGatherV2Op
+    // with the instance_key set to the global_iter_id (see GlobalIterIdOp).
+    // That collective gets split into 3 copies in the start_step_0,
+    // start_step_1 and new_while_body functions. At this point, however, we're
+    // expecting one gather per device and we want them all to have the same
+    // instance key. To make sure the instance keys are unique among the three
+    // functions them we replace the original instance key (global_iter_id) as:
+    //   new_instance_key = global_iter_id + c
+    // where c = 0, 1, or 2 depending on which function it's being replaced in.
+    // Note, also, that the following code assumes this inlining pass is call
+    // for start_step_0 and start_step_1 before new_while_body.
+    //
+    // Verify our assumption that we have just 3 collectives (per device).
+    const int32_t max_collectives = 3;
+    static int32_t offset_value = -2;
+    bool has_gathers = false;
+    for (auto gather_op : func.getRegion().getOps<TF::CollectiveGatherV2Op>()) {
+      if (offset_value >= max_collectives) {
+        gather_op->emitError()
+            << "Expected to find only " << max_collectives
+            << " CollectiveGatherV2 ops but found " << offset_value;
+        return LogicalResult::failure();
+      }
+      has_gathers = true;
+      Value orig_instance_key = gather_op->getOperand(3);
+      auto loc = gather_op->getLoc();
+      builder.setInsertionPoint(gather_op);
+      auto offset = builder.create<TF::ConstOp>(
+          loc, builder.getI32IntegerAttr(offset_value));
+      auto new_instance_key = builder.create<TF::AddV2Op>(
+          loc, orig_instance_key, offset->getResult(0));
+      gather_op->setOperand(3, new_instance_key->getResult(0));
+      std::vector<std::string> attr_names = {
+          TF::kReplicationInfoAttr.str(), "_xla_compile_device_type",
+          kEmbeddingPipelining, "_xla_outside_compilation", "device"};
+      for (const auto& attr_name : attr_names) {
+        if (!gather_op->hasAttr(attr_name)) continue;
+        offset->setAttr(attr_name, gather_op->getAttr(attr_name));
+        new_instance_key->setAttr(attr_name, gather_op->getAttr(attr_name));
+      }
+    }
+    // Make the next function to get inlined use a different offset.
+    if (has_gathers) ++offset_value;
+    return LogicalResult::success();
+  }
+
+  LogicalResult PatchCollectiveGatherOps(func::FuncOp func) {
+    // We currently expect the gathers to be in nested functions. Check the
+    // functions called from this function to see if they have gather ops. If
+    // so, then inline that function so we can locally modify the instance keys
+    // for the gathers.
     llvm::SetVector<Operation*> ops_to_erase;
     for (auto caller :
          func.getRegion().getOps<TF::StatefulPartitionedCallOp>()) {
-      if (!inline_all_funcs &&
-          !caller->hasAttr(kEmbeddingPipeliningInlineAttr)) {
+      auto callee_op = symbol_table.lookup(caller.getF());
+      if (callee_op == nullptr) {
+        func.emitError() << "Symbol not found in SymbolTable: "
+                         << caller.getF();
+        return LogicalResult::failure();
+      }
+      func::FuncOp callee = llvm::dyn_cast<func::FuncOp>(callee_op);
+      // If the function called here doesn't have gathers then ignore it.
+      if (!HasCollectiveGathers(callee)) continue;
+
+      // Do the inlining.
+      VLOG(1) << "Nested inlining " << caller.getF().str();
+      auto& src_region = callee.getRegion();
+      auto result = inlineCall(*this, caller, callee, &src_region, true);
+      if (failed(result)) {
+        func.emitError("CollectiveGather Inlining failed");
+        return result;
+      }
+      ops_to_erase.insert(caller);
+    }
+    // If we didn't find nested gathers, we're done.
+    if (ops_to_erase.empty()) return LogicalResult::success();
+
+    for (auto op : ops_to_erase) op->erase();
+
+    // Ok, now we need to update the instance keys. We're expecting one gather
+    // per device and we should give them all the same instance key.
+    return PatchCollectiveGatherInstanceKey(func);
+    return LogicalResult::success();
+  }
+
+  // Find any StatefulPartitionedCalls and inline their contents in this func.
+  LogicalResult InlineCallsInFunc(func::FuncOp func,
+                                  bool patch_gathers = false) {
+    llvm::SetVector<Operation*> ops_to_erase;
+    for (auto caller :
+         func.getRegion().getOps<TF::StatefulPartitionedCallOp>()) {
+      if (!caller->hasAttr(kEmbeddingPipeliningInlineAttr)) {
         continue;
       }
+      VLOG(1) << "Inlining " << caller.getF().str();
       Operation* symbol = symbol_table.lookup(caller.getF());
       if (symbol == nullptr) {
         func.emitError() << "Symbol not found in SymbolTable: "
@@ -383,6 +496,11 @@ struct Inliner : public InlinerInterface {
       ops_to_erase.insert(caller);
     }
     for (auto op : ops_to_erase) op->erase();
+
+    if (patch_gathers) {
+      auto result = PatchCollectiveGatherOps(func);
+      if (failed(result)) return result;
+    }
 
     auto result = UnifyReplicationInfo(func);
     if (failed(result)) return result;
@@ -515,7 +633,7 @@ void GatherOpsForExtraction(mlir::SetVector<Operation*>* operations,
   // Walk the input and output dependencies of the Ops in `operations` to form
   // the closer of Ops needed to evaluate 'operations'. Input dependencies are
   // walked if 'predecessors' is true and output dependencies are walked if
-  // 'successors' is true. In either case, if a discoverd Op is in the
+  // 'successors' is true. In either case, if a discovered Op is in the
   // 'ops_to_avoid' set, then the dependency walking is terminated.
   llvm::SetVector<Operation*> ops_to_process(*operations);
   llvm::SetVector<Operation*> new_ops;
@@ -1141,7 +1259,7 @@ LogicalResult ExtractOpsAsFunc(
       if (!ops.contains(defining_op)) inputs.insert(operand);
     }
   }
-  // Find the output edges to form the set of resutls of the new function call.
+  // Find the output edges to form the set of results of the new function call.
   llvm::SetVector<OpResult> results;
   for (Operation* op : ops) {
     for (auto result : op->getResults()) {
@@ -1198,8 +1316,12 @@ int FindReturnIndex(Value val) {
   return not_found;
 }
 
+// Skip the assertions because they currently create problematic dependencies.
+constexpr bool kDoAssertions = false;
+
 void AddAssertion(OpBuilder& builder, Location& loc, Value cond,
                   const std::string& message) {
+  if (!kDoAssertions) return;
   auto shape_type =
       RankedTensorType::get({1}, builder.getType<TF::StringType>());
   auto msg = builder.create<TF::ConstOp>(
@@ -1218,7 +1340,7 @@ LogicalResult StartStep0(OpBuilder& builder, Location& loc,
   const std::string name = "start_step_0";
 
   AddAssertion(builder, loc, cond_value,
-               "Auto-pipelining requires at least two steps.");
+               "[StartStep0] Auto-pipelining requires at least two steps.");
   auto insertion_point = builder.saveInsertionPoint();
 
   func::FuncOp orig_parent_func =
@@ -1283,7 +1405,8 @@ LogicalResult StartStep0(OpBuilder& builder, Location& loc,
   func_builder.create<func::ReturnOp>(loc, results);
 
   // Inline any StatefulPartitionCall Ops.
-  auto result = Inliner(builder, symbol_table).InlineCallsInFunc(then_func);
+  auto result = Inliner(builder, symbol_table)
+                    .InlineCallsInFunc(then_func, /*patch_gathers=*/true);
   if (failed(result)) return result;
 
   builder.restoreInsertionPoint(insertion_point);
@@ -1302,7 +1425,7 @@ LogicalResult StartStep1(OpBuilder& builder, Location& loc,
   const std::string name = "start_step_1";
 
   AddAssertion(builder, loc, cond_value,
-               "Auto-pipelining requires at least two steps.");
+               "[StartStep1] Auto-pipelining requires at least two steps.");
 
   auto insertion_point = builder.saveInsertionPoint();
   func::FuncOp orig_parent_func =
@@ -1341,7 +1464,8 @@ LogicalResult StartStep1(OpBuilder& builder, Location& loc,
   func_builder.create<func::ReturnOp>(loc, new_forward->getResults());
 
   // Inline any StatefulPartitionCall Ops.
-  auto result = Inliner(builder, symbol_table).InlineCallsInFunc(then_func);
+  auto result = Inliner(builder, symbol_table)
+                    .InlineCallsInFunc(then_func, /*patch_gathers=*/true);
   if (failed(result)) return result;
 
   builder.restoreInsertionPoint(insertion_point);
@@ -1362,7 +1486,7 @@ LogicalResult FinishStepNm2(OpBuilder& builder, Location& loc,
   const std::string name = "finish_step_nm2";
 
   AddAssertion(builder, loc, cond_value,
-               "Auto-pipelining requires at least two steps.");
+               "[FinishStepNm2] Auto-pipelining requires at least two steps.");
 
   auto insertion_point = builder.saveInsertionPoint();
   func::FuncOp orig_parent_func =
@@ -1622,6 +1746,11 @@ Operation* LiftNonTpuFuncCaller(mlir::OpBuilder& builder,
 void EmbeddingPipeliningPass::runOnOperation() {
   VLOG(3) << "EmbeddingPipeliningPass::runOnOperation()";
   ModuleOp module = getOperation();
+
+  // We only use one of the EmbeddingPipelining and EmbeddingSequencing passes.
+  if (!UseEmbeddingPipelining(module)) return;
+  VLOG(1) << "Embedding pipelining rewrite enabled.";
+
   SymbolTable symbol_table(module);
 
   llvm::SetVector<Operation*> forward_pass_ops;
@@ -2031,8 +2160,8 @@ void EmbeddingPipeliningPass::runOnOperation() {
   //
   // Finish step i-1
   //
-  // Second, add all the inputs to core_tpu(). Thesse all come from the while
-  // loop opernads, sc_forward() or non_tpu() and need to be pulled from the
+  // Second, add all the inputs to core_tpu(). These all come from the while
+  // loop operands, sc_forward() or non_tpu() and need to be pulled from the
   // "i-1" (or "1") version of the inputs.
   std::vector<Value> t_operands;
   result = MakeCoreTPUOperands(core_tpu_caller, non_tpu_caller, forward_caller,
@@ -2108,10 +2237,18 @@ void EmbeddingPipeliningPass::runOnOperation() {
 
   // Finally, create the new tf.WhileOp.
   builder.setInsertionPoint(orig_while_op);
+  // Use the same parallel_iterations as the original WhileOp unless there's a
+  // flag override.
+  int parallel_iterations_flag = tensorflow::GetBuildXlaOpsPassFlags()
+                                     ->tf_xla_embedding_parallel_iterations;
+  int parallel_iterations = parallel_iterations_flag > 0
+                                ? parallel_iterations_flag
+                                : orig_while_op.getParallelIterations();
+  VLOG(1) << "Setting parallel_iterations_flag to " << parallel_iterations_flag;
   auto new_while_op = builder.create<TF::WhileOp>(
       orig_while_op->getLoc(), new_body_return_types,
       new_while_operands.getArrayRef(), cond.getSymName(), body.getSymName(),
-      /*parallel_iterations=*/10,
+      /*parallel_iterations=*/parallel_iterations,
       /*is_stateless=*/false,
       /*shape_invariant=*/false);
   SetBasicBlockAttributes(builder, new_while_op);
@@ -2163,7 +2300,7 @@ void EmbeddingPipeliningPass::runOnOperation() {
                                *orig_while_op->getParentRegion());
 
   // Inline the new while body.
-  result = Inliner(builder, symbol_table).InlineCallsInFunc(body, false);
+  result = Inliner(builder, symbol_table).InlineCallsInFunc(body);
   if (failed(result)) return signalPassFailure();
 
   // Erase original while op and temporary functions. Note, we use the non_tpu

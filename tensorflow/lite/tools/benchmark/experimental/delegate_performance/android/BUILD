@@ -2,7 +2,8 @@
 #   Delegate Performance Benchmark (DPB) Android app.
 #   This provides model-level latency & accuracy testings for delegates, on Android.
 
-load("@build_bazel_rules_android//android:rules.bzl", "android_binary", "android_library")
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_binary_with_tflite", "android_library_with_tflite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -20,6 +21,7 @@ android_library(
     name = "benchmark_accuracy_impl",
     srcs = ["src/main/java/org/tensorflow/lite/benchmark/delegateperformance/BenchmarkAccuracyImpl.java"],
     deps = [
+        ":benchmark_accuracy",
         ":benchmark_report",
         ":csv_writer",
         ":delegate_performance_benchmark_utils",
@@ -30,6 +32,11 @@ android_library(
         ":tflite_settings_list_entry",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs_android",
     ],
+)
+
+android_library(
+    name = "benchmark_accuracy",
+    srcs = ["src/main/java/org/tensorflow/lite/benchmark/delegateperformance/BenchmarkAccuracy.java"],
 )
 
 android_library(
@@ -56,7 +63,7 @@ android_library(
     ],
 )
 
-android_library(
+android_library_with_tflite(
     name = "benchmark_report",
     srcs = [
         "src/main/java/org/tensorflow/lite/benchmark/delegateperformance/BenchmarkReport.java",
@@ -74,11 +81,11 @@ android_library(
     srcs = ["src/main/java/org/tensorflow/lite/benchmark/delegateperformance/BenchmarkResultType.java"],
 )
 
-android_library(
+android_library_with_tflite(
     name = "csv_writer",
     srcs = ["src/main/java/org/tensorflow/lite/benchmark/delegateperformance/CsvWriter.java"],
+    tflite_deps = [":benchmark_report"],
     deps = [
-        ":benchmark_report",
         ":delegate_metrics_entry",
         ":metrics_entry",
         ":model_benchmark_report_interface",
@@ -95,16 +102,18 @@ android_library(
     ],
 )
 
-android_library(
+android_library_with_tflite(
     name = "delegate_performance_benchmark_lib",
     srcs = [
         "src/main/java/org/tensorflow/lite/benchmark/delegateperformance/BenchmarkAccuracyActivity.java",
         "src/main/java/org/tensorflow/lite/benchmark/delegateperformance/BenchmarkLatencyActivity.java",
     ],
+    tflite_deps = [
+        "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/native:benchmark_native",
+    ],
     deps = [
         ":benchmark_accuracy_impl",
         ":benchmark_latency_impl",
-        "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/native:benchmark_native",
     ],
 )
 
@@ -123,11 +132,11 @@ android_library(
     ],
 )
 
-android_library(
+android_library_with_tflite(
     name = "html_writer",
     srcs = ["src/main/java/org/tensorflow/lite/benchmark/delegateperformance/HtmlWriter.java"],
+    tflite_deps = [":benchmark_report"],
     deps = [
-        ":benchmark_report",
         ":benchmark_result_type",
         ":delegate_metrics_entry",
         ":metrics_entry",
@@ -136,10 +145,10 @@ android_library(
     ],
 )
 
-android_library(
+android_library_with_tflite(
     name = "json_writer",
     srcs = ["src/main/java/org/tensorflow/lite/benchmark/delegateperformance/JsonWriter.java"],
-    deps = [":benchmark_report"],
+    tflite_deps = [":benchmark_report"],
 )
 
 android_library(
@@ -148,7 +157,7 @@ android_library(
     deps = [":benchmark_result_type"],
 )
 
-android_library(
+android_library_with_tflite(
     name = "model_benchmark_report",
     srcs = [
         "src/main/java/org/tensorflow/lite/benchmark/delegateperformance/AccuracyBenchmarkReport.java",
@@ -204,7 +213,7 @@ android_library(
 )
 
 # The main test app.
-android_binary(
+android_binary_with_tflite(
     name = "delegate_performance_benchmark",
     assets = [
         "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/models:accuracy_models",
@@ -221,8 +230,8 @@ android_binary(
     # can't be built. We need to prevent the build system from trying to
     # use the target in that case.
     tags = ["manual"],
-    visibility = ["//visibility:public"],
-    deps = [
+    tflite_deps = [
         ":delegate_performance_benchmark_lib",
     ],
+    visibility = ["//visibility:public"],
 )

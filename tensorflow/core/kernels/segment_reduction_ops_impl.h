@@ -28,8 +28,8 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "absl/container/flat_hash_map.h"
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -49,7 +49,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/core/util/gpu_solvers.h"
 
 using stream_executor::cuda::ScopedActivateExecutorContext;
@@ -1366,6 +1366,27 @@ class SparseSegmentGradV2OpBase<CPUDevice, T, Index, SegmentId>
     OP_REQUIRES_OK(
         context, (SparseSegmentGradV2OpCommon<CPUDevice, T, Index, SegmentId>()(
                      context, operation_)));
+  }
+
+ private:
+  const SparseSegmentReductionOperation operation_;
+};
+
+// The GPU implementation is asynchronous.
+template <class T, typename Index, typename SegmentId>
+class SparseSegmentGradV2OpBase<GPUDevice, T, Index, SegmentId>
+    : public AsyncOpKernel {
+ public:
+  explicit SparseSegmentGradV2OpBase(OpKernelConstruction* context,
+                                     SparseSegmentReductionOperation operation)
+      : AsyncOpKernel(context), operation_(operation) {}
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        (SparseSegmentGradV2OpCommon<GPUDevice, T, Index, SegmentId>()(
+            context, operation_, done)),
+        done);
   }
 
  private:

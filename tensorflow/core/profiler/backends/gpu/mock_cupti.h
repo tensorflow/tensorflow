@@ -21,7 +21,7 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tensorflow/compiler/xla/backends/profiler/gpu/mock_cupti.h"
+#include "xla/backends/profiler/gpu/mock_cupti.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/backends/gpu/cupti_interface.h"
 

@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/rpc/client/profiler_client.h"
-#include "tensorflow/tsl/profiler/rpc/client/remote_profiler_session_manager.h"
+#include "tsl/profiler/rpc/client/remote_profiler_session_manager.h"
 
 namespace tensorflow {
 namespace profiler {

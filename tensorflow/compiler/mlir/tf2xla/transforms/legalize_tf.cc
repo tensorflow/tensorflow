@@ -14,14 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 // This file implements logic for lowering TensorFlow dialect to XLA dialect.
-
+#include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <limits>
 #include <numeric>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -50,24 +54,25 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
-#include "tensorflow/compiler/xla/client/lib/conv_grad_size_util.h"
-#include "tensorflow/compiler/xla/client/padding.h"
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/utils/convert_op_folder.h"
-#include "tensorflow/compiler/xla/mlir_hlo/utils/hlo_utils.h"
-#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/lib/conv_grad_size_util.h"
+#include "xla/client/padding.h"
+#include "xla/client/sharding_builder.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/utils/convert_op_folder.h"
+#include "xla/mlir_hlo/utils/hlo_utils.h"
+#include "xla/translate/hlo_to_mhlo/attribute_importer.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/tsl/platform/bfloat16.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
+#include "tsl/platform/bfloat16.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace mlir {
 namespace mhlo {
@@ -1222,7 +1227,7 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
         int64_t pad_high_int64;
         int64_t input_size = input_ty.getDimSize(dim);
         if (input_size == ShapedType::kDynamic) return failure();
-        tsl::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+        tsl::Status status = tensorflow::GetWindowedOutputSizeVerbose(
             input_size, filter_ty.getDimSize(i), dilation, stride, padding,
             &output_size, &pad_low_int64, &pad_high_int64);
         if (!status.ok()) return failure();
@@ -4886,7 +4891,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
         padding_after = explicit_paddings[2 * spatial_dim + 1];
       }
       int64_t expected_output_size = 0;
-      auto status = GetWindowedOutputSizeVerboseV2(
+      auto status = GetWindowedOutputSizeVerbose(
           input_size, filter_size, dilation, stride, padding,
           &expected_output_size, &padding_before, &padding_after);
       if (!status.ok()) return failure();
@@ -5321,9 +5326,11 @@ class ConvertInfeedDequeueTupleOp
       // _XlaSharding attribute in TF is a serialized string of the OpSharding
       // proto, so convert to a text form here.
       ::xla::OpSharding sharding_proto;
-      if (!sharding_proto.ParseFromString(op.get_XlaSharding().value().str()))
+      if (tensorflow::DecodeShardingAttribute(
+              op.get_XlaSharding().value().str(), sharding_proto)
+              .failed()) {
         return failure();
-
+      }
       // Token is a control signal and not a real data, so arbitrarily assign
       // the token to device 0.
       if (sharding_proto.type() == ::xla::OpSharding::TUPLE) {
@@ -6920,6 +6927,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     LowerYieldOp>(context);
   // clang-format on
 }
-// LINT.ThenChange(:MlirPreferredOps)
+// LINT.ThenChange(:MlirAlwaysOps)
 }  // end namespace mhlo
 }  // end namespace mlir

@@ -17,17 +17,23 @@ limitations under the License.
 
 // See docs in ../ops/fft_ops.cc.
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/ThreadPool"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/fft_impl.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/core/util/work_sharder.h"
+#include "tsl/framework/numeric_types.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -147,6 +153,129 @@ class FFTBase : public OpKernel {
                      Tensor* out) = 0;
 };
 
+class FFTNBase : public OpKernel {
+ public:
+  explicit FFTNBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& in = ctx->input(0);
+    const TensorShape& input_shape = in.shape();
+
+    Tensor* out;
+    TensorShape output_shape = input_shape;
+
+    const Tensor& fft_length = ctx->input(1);
+    const Tensor& axes = ctx->input(2);
+    unsigned int input_rank = input_shape.dims();
+    const int fft_rank = axes.dim_size(0);
+    std::vector<uint64_t> fft_shape(fft_rank);
+    std::vector<int32_t> axes_shape(fft_rank);  // List of axes to transform.
+
+    OP_REQUIRES(ctx, input_rank >= fft_rank,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input must have rank of at least ", fft_rank,
+                                 " but got: ", input_shape.DebugString())));
+    auto axes_as_vec = axes.vec<int32>();
+    // TODO(b/295964813): fftn() ops now doesn't work for arbitrary axes.
+    for (int i = 0; i < fft_rank; ++i) {
+      axes_shape[i] = axes_as_vec(i) % input_rank;
+      if (axes_as_vec(i) < 0) {
+        axes_shape[i] = axes_as_vec(i) + input_rank;
+      } else {
+        axes_shape[i] = axes_as_vec(i);
+      }
+      if (i > 0)
+        OP_REQUIRES(ctx, (axes_shape[i - 1] + 1) == axes_shape[i],
+                    absl::InvalidArgumentError(
+                        "axes must be successive and ascending."));
+    }
+    OP_REQUIRES(ctx, (axes_shape[fft_rank - 1] == input_rank - 1),
+                absl::InvalidArgumentError(
+                    "The last axis to perform transform on must be -1."));
+
+    // In R2C or C2R mode, we use a second input to specify the FFT length
+    // instead of inferring it from the input shape.
+    OP_REQUIRES(ctx,
+                fft_length.shape().dims() == 1 &&
+                    fft_length.shape().dim_size(0) == fft_rank,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "fft_length must have shape [", fft_rank,
+                    "], but got: ", fft_length.shape().dim_size(0), ".")));
+    auto fft_length_as_vec = fft_length.vec<int32>();
+    for (int i = 0; i < fft_rank; ++i) {
+      OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "fft_length[", i,
+                      "] must >= 0, but got: ", fft_length_as_vec(i))));
+      fft_shape[i] = fft_length_as_vec(i);
+      if (IsReal()) {
+        bool inner_most = (i == fft_rank - 1);
+        uint64 min_input_dim_length =
+            !IsForward() && inner_most ? fft_shape[i] / 2 + 1 : fft_shape[i];
+        auto input_index = input_rank - fft_rank + i;
+        OP_REQUIRES(
+            ctx,
+            // We pass through empty tensors, so special case them here.
+            input_shape.dim_size(input_index) == 0 ||
+                input_shape.dim_size(input_index) >= min_input_dim_length,
+            absl::InvalidArgumentError(absl::StrCat(
+                "Input dimension ", input_index,
+                " must have length of at least ", min_input_dim_length,
+                " but got: ", input_shape.dim_size(input_index))));
+        uint64 dim = IsForward() && inner_most && fft_shape[i] != 0
+                         ? fft_shape[i] / 2 + 1
+                         : fft_shape[i];
+        output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
+      } else {
+        output_shape.set_dim(output_shape.dims() - fft_rank + i, fft_shape[i]);
+      }
+    }
+
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out));
+
+    if (IsReal()) {
+      if (IsForward()) {
+        OP_REQUIRES(
+            ctx,
+            (in.dtype() == DT_FLOAT && out->dtype() == DT_COMPLEX64) ||
+                (in.dtype() == DT_DOUBLE && out->dtype() == DT_COMPLEX128),
+            absl::InvalidArgumentError(absl::StrCat(
+                "Wrong types for forward real FFT: in=", in.dtype(),
+                " out=", out->dtype())));
+      } else {
+        OP_REQUIRES(
+            ctx,
+            (in.dtype() == DT_COMPLEX64 && out->dtype() == DT_FLOAT) ||
+                (in.dtype() == DT_COMPLEX128 && out->dtype() == DT_DOUBLE),
+            absl::InvalidArgumentError(absl::StrCat(
+                "Wrong types for backward real FFT: in=", in.dtype(),
+                " out=", out->dtype())));
+      }
+    } else {
+      OP_REQUIRES(
+          ctx,
+          (in.dtype() == DT_COMPLEX64 && out->dtype() == DT_COMPLEX64) ||
+              (in.dtype() == DT_COMPLEX128 && out->dtype() == DT_COMPLEX128),
+          absl::InvalidArgumentError(absl::StrCat(
+              "Wrong types for FFT: in=", in.dtype(), " out=", out->dtype())));
+    }
+
+    if (input_shape.num_elements() == 0) {
+      DCHECK_EQ(0, output_shape.num_elements());
+      return;
+    }
+    DoFFTN(ctx, in, fft_shape.data(), axes_shape.data(), out);
+  }
+
+ protected:
+  virtual bool IsReal() const = 0;
+  virtual bool IsForward() const = 0;
+
+  // The function that actually computes the FFT.
+  virtual void DoFFTN(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
+                      int32* axes_shape, Tensor* out) = 0;
+};
+
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 template <bool Forward, bool _Real, int FFTRank>
@@ -161,168 +290,16 @@ class FFTCPU : public FFTBase {
 
   void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
              Tensor* out) override {
-    // Create the axes (which are always trailing).
-    const auto axes = Eigen::ArrayXi::LinSpaced(FFTRank, 1, FFTRank);
-    auto device = ctx->eigen_device<CPUDevice>();
+    std::vector<size_t> axes(Rank());
+    int batch_dims = in.dims() - FFTRank;
 
-    const bool is_complex128 =
-        in.dtype() == DT_COMPLEX128 || out->dtype() == DT_COMPLEX128;
-
-    if (!IsReal()) {
-      // Compute the FFT using Eigen.
-      constexpr auto direction =
-          Forward ? Eigen::FFT_FORWARD : Eigen::FFT_REVERSE;
-      if (is_complex128) {
-        DCHECK_EQ(in.dtype(), DT_COMPLEX128);
-        DCHECK_EQ(out->dtype(), DT_COMPLEX128);
-        auto input = Tensor(in).flat_inner_dims<complex128, FFTRank + 1>();
-        auto output = out->flat_inner_dims<complex128, FFTRank + 1>();
-        output.device(device) =
-            input.template fft<Eigen::BothParts, direction>(axes);
-      } else {
-        DCHECK_EQ(in.dtype(), DT_COMPLEX64);
-        DCHECK_EQ(out->dtype(), DT_COMPLEX64);
-        auto input = Tensor(in).flat_inner_dims<complex64, FFTRank + 1>();
-        auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
-        output.device(device) =
-            input.template fft<Eigen::BothParts, direction>(axes);
-      }
-    } else {
-      if (IsForward()) {
-        if (is_complex128) {
-          DCHECK_EQ(in.dtype(), DT_DOUBLE);
-          DCHECK_EQ(out->dtype(), DT_COMPLEX128);
-          DoRealForwardFFT<double, complex128>(ctx, fft_shape, in, out);
-        } else {
-          DCHECK_EQ(in.dtype(), DT_FLOAT);
-          DCHECK_EQ(out->dtype(), DT_COMPLEX64);
-          DoRealForwardFFT<float, complex64>(ctx, fft_shape, in, out);
-        }
-      } else {
-        if (is_complex128) {
-          DCHECK_EQ(in.dtype(), DT_COMPLEX128);
-          DCHECK_EQ(out->dtype(), DT_DOUBLE);
-          DoRealBackwardFFT<complex128, double>(ctx, fft_shape, in, out);
-        } else {
-          DCHECK_EQ(in.dtype(), DT_COMPLEX64);
-          DCHECK_EQ(out->dtype(), DT_FLOAT);
-          DoRealBackwardFFT<complex64, float>(ctx, fft_shape, in, out);
-        }
-      }
-    }
-  }
-
-  template <typename RealT, typename ComplexT>
-  void DoRealForwardFFT(OpKernelContext* ctx, uint64* fft_shape,
-                        const Tensor& in, Tensor* out) {
-    // Create the axes (which are always trailing).
-    const auto axes = Eigen::ArrayXi::LinSpaced(FFTRank, 1, FFTRank);
-    auto device = ctx->eigen_device<CPUDevice>();
-    auto input = Tensor(in).flat_inner_dims<RealT, FFTRank + 1>();
-    const auto input_dims = input.dimensions();
-
-    // Slice input to fft_shape on its inner-most dimensions.
-    Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> input_slice_sizes;
-    input_slice_sizes[0] = input_dims[0];
-    TensorShape temp_shape{input_dims[0]};
-    for (int i = 1; i <= FFTRank; ++i) {
-      input_slice_sizes[i] = fft_shape[i - 1];
-      OP_REQUIRES_OK(ctx, temp_shape.AddDimWithStatus(fft_shape[i - 1]));
-    }
-    OP_REQUIRES(ctx, temp_shape.num_elements() > 0,
-                errors::InvalidArgument("Obtained a FFT shape of 0 elements: ",
-                                        temp_shape.DebugString()));
-
-    auto output = out->flat_inner_dims<ComplexT, FFTRank + 1>();
-    const Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> zero_start_indices;
-
-    // Compute the full FFT using a temporary tensor.
-    Tensor temp;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<ComplexT>::v(),
-                                           temp_shape, &temp));
-    auto full_fft = temp.flat_inner_dims<ComplexT, FFTRank + 1>();
-    full_fft.device(device) =
-        input.slice(zero_start_indices, input_slice_sizes)
-            .template fft<Eigen::BothParts, Eigen::FFT_FORWARD>(axes);
-
-    // Slice away the negative frequency components.
-    output.device(device) =
-        full_fft.slice(zero_start_indices, output.dimensions());
-  }
-
-  template <typename ComplexT, typename RealT>
-  void DoRealBackwardFFT(OpKernelContext* ctx, uint64* fft_shape,
-                         const Tensor& in, Tensor* out) {
-    auto device = ctx->eigen_device<CPUDevice>();
-    // Reconstruct the full FFT and take the inverse.
-    auto input = Tensor(in).flat_inner_dims<ComplexT, FFTRank + 1>();
-    auto output = out->flat_inner_dims<RealT, FFTRank + 1>();
-    const auto input_dims = input.dimensions();
-
-    // Calculate the shape of the temporary tensor for the full FFT and the
-    // region we will slice from input given fft_shape. We slice input to
-    // fft_shape on its inner-most dimensions, except the last (which we
-    // slice to fft_shape[-1] / 2 + 1).
-    Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> input_slice_sizes;
-    input_slice_sizes[0] = input_dims[0];
-    TensorShape full_fft_shape;
-    OP_REQUIRES_OK(ctx, full_fft_shape.AddDimWithStatus(input_dims[0]));
-    for (auto i = 1; i <= FFTRank; i++) {
-      input_slice_sizes[i] =
-          i == FFTRank ? fft_shape[i - 1] / 2 + 1 : fft_shape[i - 1];
-      OP_REQUIRES_OK(ctx, full_fft_shape.AddDimWithStatus(fft_shape[i - 1]));
-    }
-    OP_REQUIRES(ctx, full_fft_shape.num_elements() > 0,
-                errors::InvalidArgument("Obtained a FFT shape of 0 elements: ",
-                                        full_fft_shape.DebugString()));
-
-    Tensor temp;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<ComplexT>::v(),
-                                           full_fft_shape, &temp));
-    auto full_fft = temp.flat_inner_dims<ComplexT, FFTRank + 1>();
-
-    // Calculate the starting point and range of the source of
-    // negative frequency part.
-    auto neg_sizes = input_slice_sizes;
-    neg_sizes[FFTRank] = fft_shape[FFTRank - 1] - input_slice_sizes[FFTRank];
-    Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> neg_target_indices;
-    neg_target_indices[FFTRank] = input_slice_sizes[FFTRank];
-
-    const Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> start_indices;
-    Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> neg_start_indices;
-    neg_start_indices[FFTRank] = 1;
-
-    full_fft.slice(start_indices, input_slice_sizes).device(device) =
-        input.slice(start_indices, input_slice_sizes);
-
-    // First, conduct IFFTs on outer dimensions. We save computation (and
-    // avoid touching uninitialized memory) by slicing full_fft to the
-    // subregion we wrote input to.
-    if (FFTRank > 1) {
-      const auto outer_axes =
-          Eigen::ArrayXi::LinSpaced(FFTRank - 1, 1, FFTRank - 1);
-      full_fft.slice(start_indices, input_slice_sizes).device(device) =
-          full_fft.slice(start_indices, input_slice_sizes)
-              .template fft<Eigen::BothParts, Eigen::FFT_REVERSE>(outer_axes);
+    for (int i = 0; i < Rank(); ++i) {
+      axes[i] = batch_dims + i;
     }
 
-    // Reconstruct the full FFT by appending reversed and conjugated
-    // spectrum as the negative frequency part.
-    Eigen::array<bool, FFTRank + 1> reverse_last_axis;
-    for (auto i = 0; i <= FFTRank; i++) {
-      reverse_last_axis[i] = i == FFTRank;
-    }
-
-    if (neg_sizes[FFTRank] != 0) {
-      full_fft.slice(neg_target_indices, neg_sizes).device(device) =
-          full_fft.slice(neg_start_indices, neg_sizes)
-              .reverse(reverse_last_axis)
-              .conjugate();
-    }
-
-    auto inner_axis = Eigen::array<int, 1>{FFTRank};
-    output.device(device) =
-        full_fft.template fft<Eigen::RealPart, Eigen::FFT_REVERSE>(inner_axis);
+    OP_REQUIRES_OK(
+        ctx, internal::FftImpl<CPUDevice>(ctx->eigen_device<CPUDevice>(), in,
+                                          out, fft_shape, axes, Forward));
   }
 };
 
@@ -367,6 +344,7 @@ struct FftPlanInfo {
   uint64_t output_distance = 0;
   se::fft::Type type = se::fft::Type::kInvalid;
   int batch = 0;
+  int device_id = 0;
 
   FftPlanInfo() = default;
 
@@ -375,7 +353,7 @@ struct FftPlanInfo {
     return H::combine(std::move(h), key.rank, key.shape, key.input_embed,
                       key.input_stride, key.input_distance, key.output_embed,
                       key.output_stride, key.output_distance, key.type,
-                      key.batch);
+                      key.batch, key.device_id);
   }
 
   friend inline bool operator==(const FftPlanInfo& lhs,
@@ -387,7 +365,7 @@ struct FftPlanInfo {
            lhs.output_embed == rhs.output_embed &&
            lhs.output_stride == rhs.output_stride &&
            lhs.output_distance == rhs.output_distance && lhs.type == rhs.type &&
-           lhs.batch == rhs.batch;
+           lhs.batch == rhs.batch && lhs.device_id == rhs.device_id;
   }
 
   // Create a key to be used for caching plans.
@@ -396,7 +374,7 @@ struct FftPlanInfo {
                             uint64_t input_distance,
                             const uint64_t* output_embed,
                             uint64_t output_stride, uint64_t output_distance,
-                            se::fft::Type type, int batch) {
+                            se::fft::Type type, int batch, int device_id) {
     FftPlanInfo info;
     info.rank = rank;
     info.shape.reserve(rank);
@@ -421,6 +399,7 @@ struct FftPlanInfo {
     }
     info.type = type;
     info.batch = batch;
+    info.device_id = device_id;
     return info;
   }
 };
@@ -584,7 +563,7 @@ class FFTGPUBase : public FFTBase {
   void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
              Tensor* out) override {
     auto* stream = ctx->op_device_context()->stream();
-    OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
+    OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
 
     const TensorShape& input_shape = in.shape();
     const TensorShape& output_shape = out->shape();
@@ -629,10 +608,14 @@ class FFTGPUBase : public FFTBase {
     // Plan cache singleton with safe no-destructor initialization.
     static FftPlanCache* plan_cache = new FftPlanCache(kFftPlanCacheCapacity);
 
+    // CUDA cufft plans are device-specific, so grab the GPU device ID.
+    int device_id = ctx->device()->tensorflow_accelerator_device_info()->gpu_id;
+
     // Look for plan in cache.
-    FftPlanInfo plan_info = FftPlanInfo::Create(
-        fft_rank, fft_shape, input_embed, input_stride, input_distance,
-        output_embed, output_stride, output_distance, kFftType, batch_size);
+    FftPlanInfo plan_info =
+        FftPlanInfo::Create(fft_rank, fft_shape, input_embed, input_stride,
+                            input_distance, output_embed, output_stride,
+                            output_distance, kFftType, batch_size, device_id);
     std::unique_ptr<se::fft::Plan> plan = nullptr;
     {
       auto plan_or = plan_cache->Extract(plan_info);
@@ -745,6 +728,188 @@ const int64_t FFTGPUBase::kCufftScratchSize = GetCufftWorkspaceLimit(
     "TF_CUFFT_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
 );
 
+class FFTNGPUBase : public FFTNBase {
+ public:
+  using FFTNBase::FFTNBase;
+
+ protected:
+  static const int64_t kCufftScratchSize;
+  // Capacity is somewhat arbitrary.  Plans don't take up any GPU memory
+  // since the scratch space is provided externally.  We don't anticipate
+  // ever hitting this limit in practice.
+  static constexpr size_t kFftPlanCacheCapacity = 512;
+
+  void DoFFTN(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
+              int32* axes_shape, Tensor* out) override {
+    int fft_rank = ctx->input(2).dim_size(0);
+    // TODO(b/295966566): fftn() ops only support lower dimensions now (1~3).
+    OP_REQUIRES(
+        ctx, fft_rank >= 1 && fft_rank <= 3,
+        absl::InvalidArgumentError("Only 1D, 2D and 3D FFTs supported."));
+    auto* stream = ctx->op_device_context()->stream();
+    OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
+
+    Eigen::Map<Eigen::ArrayXi> axes(axes_shape, fft_rank);
+    const TensorShape& input_shape = in.shape();
+    const TensorShape& output_shape = out->shape();
+
+    int batch_size = 1;
+    uint64 input_stride = 1;
+    uint64 output_stride = 1;
+    uint64 input_embed[3];
+    uint64 output_embed[3];
+
+    uint64 input_distance = 1;
+    uint64 output_distance = 1;
+    int ax = 0;
+    for (int i = 0; i < input_shape.dims(); ++i) {
+      if (i >= axes[0]) {
+        input_embed[ax] = input_shape.dim_size(i);
+        input_distance *= input_shape.dim_size(i);
+        output_embed[ax++] = output_shape.dim_size(i);
+        output_distance *= output_shape.dim_size(i);
+      } else {
+        batch_size *= input_shape.dim_size(i);
+      }
+    }
+
+    constexpr bool kInPlaceFft = false;
+    const bool is_complex128 =
+        in.dtype() == DT_COMPLEX128 || out->dtype() == DT_COMPLEX128;
+
+    const auto kFftType =
+        IsReal()
+            ? (IsForward()
+                   ? (is_complex128 ? se::fft::Type::kD2Z : se::fft::Type::kR2C)
+                   : (is_complex128 ? se::fft::Type::kZ2D
+                                    : se::fft::Type::kC2R))
+            : (IsForward() ? (is_complex128 ? se::fft::Type::kZ2ZForward
+                                            : se::fft::Type::kC2CForward)
+                           : (is_complex128 ? se::fft::Type::kZ2ZInverse
+                                            : se::fft::Type::kC2CInverse));
+
+    CufftScratchAllocator scratch_allocator(kCufftScratchSize, ctx);
+
+    // Plan cache singleton with safe no-destructor initialization.
+    static FftPlanCache* plan_cache = new FftPlanCache(kFftPlanCacheCapacity);
+
+    // CUDA cufft plans are device-specific, so grab the GPU device ID.
+    int device_id = ctx->device()->tensorflow_accelerator_device_info()->gpu_id;
+
+    // Look for plan in cache.
+    FftPlanInfo plan_info =
+        FftPlanInfo::Create(fft_rank, fft_shape, input_embed, input_stride,
+                            input_distance, output_embed, output_stride,
+                            output_distance, kFftType, batch_size, device_id);
+    std::unique_ptr<se::fft::Plan> plan = nullptr;
+    {
+      auto plan_or = plan_cache->Extract(plan_info);
+      if (plan_or.has_value()) {
+        plan = std::move(*plan_or);
+      }
+    }
+    // Create a new plan if one doesn't exist.  Otherwise, we need only set
+    // the scratch allocator.
+    if (plan == nullptr) {
+      plan = stream->parent()->AsFft()->CreateBatchedPlanWithScratchAllocator(
+          stream, fft_rank, fft_shape, input_embed, input_stride,
+          input_distance, output_embed, output_stride, output_distance,
+          kFftType, kInPlaceFft, batch_size, &scratch_allocator);
+    } else {
+      stream->parent()->AsFft()->UpdatePlanWithScratchAllocator(
+          stream, plan.get(), &scratch_allocator);
+    }
+
+    OP_REQUIRES(
+        ctx, plan != nullptr,
+        absl::InternalError(
+            "Failed to create cuFFT batched plan with scratch allocator"));
+    if (IsReal()) {
+      if (IsForward()) {
+        if (is_complex128) {
+          DCHECK_EQ(in.dtype(), DT_DOUBLE);
+          DCHECK_EQ(out->dtype(), DT_COMPLEX128);
+          DoFFTInternal<double, complex128>(ctx, stream, plan.get(), kFftType,
+                                            output_distance, in, out);
+        } else {
+          DCHECK_EQ(in.dtype(), DT_FLOAT);
+          DCHECK_EQ(out->dtype(), DT_COMPLEX64);
+          DoFFTInternal<float, complex64>(ctx, stream, plan.get(), kFftType,
+                                          output_distance, in, out);
+        }
+      } else {
+        if (is_complex128) {
+          DCHECK_EQ(in.dtype(), DT_COMPLEX128);
+          DCHECK_EQ(out->dtype(), DT_DOUBLE);
+          DoFFTInternal<complex128, double>(ctx, stream, plan.get(), kFftType,
+                                            output_distance, in, out);
+        } else {
+          DCHECK_EQ(in.dtype(), DT_COMPLEX64);
+          DCHECK_EQ(out->dtype(), DT_FLOAT);
+          DoFFTInternal<complex64, float>(ctx, stream, plan.get(), kFftType,
+                                          output_distance, in, out);
+        }
+      }
+    } else {
+      if (is_complex128) {
+        DCHECK_EQ(in.dtype(), DT_COMPLEX128);
+        DCHECK_EQ(out->dtype(), DT_COMPLEX128);
+        DoFFTInternal<complex128, complex128>(ctx, stream, plan.get(), kFftType,
+                                              output_distance, in, out);
+      } else {
+        DCHECK_EQ(in.dtype(), DT_COMPLEX64);
+        DCHECK_EQ(out->dtype(), DT_COMPLEX64);
+        DoFFTInternal<complex64, complex64>(ctx, stream, plan.get(), kFftType,
+                                            output_distance, in, out);
+      }
+    }
+    plan_cache->Insert(std::move(plan_info), std::move(plan));
+  }
+
+ private:
+  template <typename T>
+  struct RealTypeFromComplexType {
+    typedef T RealT;
+  };
+
+  template <typename T>
+  struct RealTypeFromComplexType<std::complex<T>> {
+    typedef T RealT;
+  };
+
+  template <typename InT, typename OutT>
+  void DoFFTInternal(OpKernelContext* ctx, se::Stream* stream,
+                     se::fft::Plan* plan, const se::fft::Type fft_type,
+                     const uint64 output_distance, const Tensor& in,
+                     Tensor* out) {
+    const TensorShape& input_shape = in.shape();
+    const TensorShape& output_shape = out->shape();
+    auto src =
+        AsDeviceMemory<InT>(in.flat<InT>().data(), input_shape.num_elements());
+    auto dst = AsDeviceMemory<OutT>(out->flat<OutT>().data(),
+                                    output_shape.num_elements());
+    OP_REQUIRES(ctx, stream->ThenFft(plan, src, &dst).ok(),
+                absl::InternalError(absl::StrCat(
+                    "fft failed : type=", static_cast<int>(fft_type),
+                    " in.shape=", input_shape.DebugString())));
+    if (!IsForward()) {
+      typedef typename RealTypeFromComplexType<OutT>::RealT RealT;
+      RealT alpha = 1.0 / output_distance;
+      OP_REQUIRES(
+          ctx,
+          stream->ThenBlasScal(output_shape.num_elements(), alpha, &dst, 1)
+              .ok(),
+          absl::InternalError(absl::StrCat("BlasScal failed : in.shape=",
+                                           input_shape.DebugString())));
+    }
+  }
+};
+
+const int64_t FFTNGPUBase::kCufftScratchSize = GetCufftWorkspaceLimit(
+    // default value is in bytes despite the name of the environment variable
+    "TF_CUFFT_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
+);
+
 template <bool Forward, bool _Real, int FFTRank>
 class FFTGPU : public FFTGPUBase {
  public:
@@ -758,8 +923,18 @@ class FFTGPU : public FFTGPUBase {
   bool IsReal() const override { return _Real; }
 };
 
+template <bool Forward, bool _Real>
+class FFTNGPU : public FFTNGPUBase {
+ public:
+  explicit FFTNGPU(OpKernelConstruction* ctx) : FFTNGPUBase(ctx) {}
+
+ protected:
+  bool IsForward() const override { return Forward; }
+  bool IsReal() const override { return _Real; }
+};
+
 // Register GPU kernels with priority 1 so that if a custom FFT CPU kernel is
-// registered with priority 1 (to override the default Eigen CPU kernel), the
+// registered with priority 1 (to override the default CPU kernel), the
 // CPU kernel does not outrank the GPU kernel.
 REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<true, false, 1>);
@@ -773,6 +948,18 @@ REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<true, false, 3>);
 REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<false, false, 3>);
+REGISTER_KERNEL_BUILDER(Name("FFTND")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("fft_length")
+                            .HostMemory("axes")
+                            .Priority(1),
+                        FFTNGPU<true, false>);
+REGISTER_KERNEL_BUILDER(Name("IFFTND")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("fft_length")
+                            .HostMemory("axes")
+                            .Priority(1),
+                        FFTNGPU<false, false>);
 
 REGISTER_KERNEL_BUILDER(
     Name("RFFT").Device(DEVICE_GPU).HostMemory("fft_length").Priority(1),
@@ -792,6 +979,18 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("IRFFT3D").Device(DEVICE_GPU).HostMemory("fft_length").Priority(1),
     FFTGPU<false, true, 3>);
+REGISTER_KERNEL_BUILDER(Name("RFFTND")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("fft_length")
+                            .HostMemory("axes")
+                            .Priority(1),
+                        FFTNGPU<true, true>);
+REGISTER_KERNEL_BUILDER(Name("IRFFTND")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("fft_length")
+                            .HostMemory("axes")
+                            .Priority(1),
+                        FFTNGPU<false, true>);
 
 // Deprecated kernels.
 REGISTER_KERNEL_BUILDER(Name("BatchFFT").Device(DEVICE_GPU).Priority(1),

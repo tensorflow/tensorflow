@@ -42,7 +42,6 @@ from tensorflow.python.trackable import base_delegate
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.experimental import mixed_precision
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
 
 class _UnwrapPreventer(object):
@@ -281,7 +280,6 @@ _DEFAULT_GROWTH_STEPS = 2000
 
 
 # pylint: disable=g-classes-have-attributes
-@keras_export('keras.mixed_precision.LossScaleOptimizer')
 class LossScaleOptimizer(base_delegate.DelegatingTrackableMixin,
                          optimizer_v2.OptimizerV2):
   """An optimizer that applies loss scaling to prevent numeric underflow.
@@ -887,7 +885,6 @@ class LossScaleOptimizer(base_delegate.DelegatingTrackableMixin,
   # optimizer being used.
 
 
-@keras_export('keras.mixed_precision.experimental.LossScaleOptimizer')
 class LossScaleOptimizerV1(LossScaleOptimizer):
   """An deprecated optimizer that applies loss scaling.
 

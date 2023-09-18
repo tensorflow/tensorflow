@@ -36,7 +36,7 @@ import re
 import sys
 
 from setuptools import Command
-from setuptools import find_packages
+from setuptools import find_namespace_packages
 from setuptools import setup
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
@@ -47,7 +47,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.14.0'
+_VERSION = '2.15.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -85,47 +85,40 @@ REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
     'flatbuffers >= 23.5.26',
-    # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
-    'gast >= 0.2.1, <= 0.4.0',
+    'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
     'libclang >= 13.0.0',
     'ml_dtypes >= 0.2.0',
-    'numpy >= 1.22',
+    'numpy >= 1.23.5',
     'opt_einsum >= 2.3.2',
     'packaging',
-    'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5',
+    # pylint:disable=line-too-long
+    (
+        'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5'
+    ),
     'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
-    'wrapt >= 1.11.0',
-    # This looks worse as a wrapped line. pylint:disable=line-too-long
-    (
-        'tensorflow-io-gcs-filesystem >= 0.23.1;platform_machine!="arm64" or'
-        ' platform_system!="Darwin"'
-    ),
+    'wrapt >= 1.11.0, < 1.15',
+    'tensorflow-io-gcs-filesystem >= 0.23.1',
     # grpcio does not build correctly on big-endian machines due to lack of
     # BoringSSL support.
     # See https://github.com/tensorflow/tensorflow/issues/17882.
     'grpcio >= 1.24.3, < 2.0' if sys.byteorder == 'little' else None,
     # TensorFlow exposes the TF API for certain TF ecosystem packages like
-    # keras.  When TF depends on those packages, the package version needs to
+    # keras. When TF depends on those packages, the package version needs to
     # match the current TF version. For tf_nightly, we install the nightly
     # variant of each package instead, which must be one version ahead of the
     # current release version. These also usually have "alpha" or "dev" in their
-    # version name.
-    # These are all updated during the TF release process.
-    standard_or_nightly(
-        'tensorboard >= 2.13, < 2.14', 'tb-nightly ~= 2.14.0.a'
-    ),
-    standard_or_nightly(
-        'tensorflow_estimator >= 2.13.0rc0, < 2.14',
-        'tf-estimator-nightly ~= 2.14.0.dev',
-    ),
-    standard_or_nightly(
-        'keras >= 2.13.1rc0, < 2.14', 'keras-nightly ~= 2.14.0.dev'
-    ),
+    # version name. During the TF release process the version of these
+    # dependencies on the release branch is updated to the stable releases (RC
+    # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
+    # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
+    'tb-nightly ~= 2.15.0.a',
+    'tf-estimator-nightly ~= 2.14.0.dev',
+    'keras-nightly ~= 2.15.0.dev',
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
@@ -370,7 +363,7 @@ else:
       },
       'headers': headers,
       'include_package_data': True,
-      'packages': find_packages(),
+      'packages': find_namespace_packages(),
       'package_data': {
           'tensorflow': [EXTENSION_NAME] + matches,
       },
@@ -391,7 +384,7 @@ setup(
     # Add in any packaged data.
     zip_safe=False,
     # Supported Python versions
-    python_requires='>=3.8',
+    python_requires='>=3.9',
     # PyPI package information.
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
@@ -402,7 +395,6 @@ setup(
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',

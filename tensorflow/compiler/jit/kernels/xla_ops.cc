@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/pjrt_compile_util.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
@@ -47,11 +48,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/client/local_client.h"
+#include "xla/executable_run_options.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -66,7 +67,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 // OP_REQUIRES_OK_RETURN is the same as OP_REQUIRES_OK except that
 // in error case, it returns RET instead of void.
@@ -215,18 +216,20 @@ Status GetTaskName(const std::string_view device_name, std::string* task_name) {
 // Provide SendDeviceMemoryFunction for XLA host callbacks.  This callback
 // handles transferring from device to host.
 xla::SendDeviceMemoryFunction GetSendDeviceMemoryFunction(
-    OpKernelContext* ctx) {
+    OpKernelContext* ctx, const std::string& program_key) {
   return
-      [ctx](int64_t channel_id, se::Stream* stream, const xla::Shape& shape,
-            const se::DeviceMemoryBase& device_memory_base,
-            const absl::flat_hash_map<std::string, std::string>& frontend_attrs)
+      [ctx, program_key](
+          int64_t channel_id, se::Stream* stream, const xla::Shape& shape,
+          const se::DeviceMemoryBase& device_memory_base,
+          const absl::flat_hash_map<std::string, std::string>& frontend_attrs)
           -> StatusOr<tsl::AsyncValueRef<se::Event>> {
         auto iter = frontend_attrs.find("_xla_host_transfer_rendezvous");
 
         // Generate the Rendezvous key.
-        const std::string& rendezvous_key_base = iter->second;
-        const std::string& src_device = ctx->device()->name();
+        const std::string& rendezvous_key_base =
+            absl::StrCat(program_key, iter->second);
 
+        const std::string& src_device = ctx->device()->name();
         std::string task_prefix;
         TF_RETURN_IF_ERROR(GetTaskName(src_device, &task_prefix));
         const std::string dst_device =
@@ -262,18 +265,20 @@ xla::SendDeviceMemoryFunction GetSendDeviceMemoryFunction(
 // Provide RecvDeviceMemoryFunction for XLA host callbacks.  This callback
 // handles transferring from host to device.
 xla::RecvDeviceMemoryFunction GetRecvDeviceMemoryFunction(
-    OpKernelContext* ctx) {
+    OpKernelContext* ctx, const std::string& program_key) {
   return
-      [ctx](int64_t channel_id, se::Stream* stream, const xla::Shape& shape,
-            se::DeviceMemoryBase* device_memory_base,
-            const absl::flat_hash_map<std::string, std::string>& frontend_attrs)
+      [ctx, program_key](
+          int64_t channel_id, se::Stream* stream, const xla::Shape& shape,
+          se::DeviceMemoryBase* device_memory_base,
+          const absl::flat_hash_map<std::string, std::string>& frontend_attrs)
           -> StatusOr<tsl::AsyncValueRef<se::Event>> {
         auto iter = frontend_attrs.find("_xla_host_transfer_rendezvous");
 
         // Generate the Rendezvous key.
-        const std::string& rendezvous_key_base = iter->second;
-        const std::string& dst_device = ctx->device()->name();
+        const std::string& rendezvous_key_base =
+            absl::StrCat(program_key, iter->second);
 
+        const std::string& dst_device = ctx->device()->name();
         std::string task_prefix;
         TF_RETURN_IF_ERROR(GetTaskName(dst_device, &task_prefix));
         const std::string src_device =
@@ -323,14 +328,6 @@ StatusOr<xla::ExecutionOutput> RunExecutable(
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(GetXLARandomSeed());
 
-  // Host callbacks used for HLO send/recv.
-  xla::SendDeviceMemoryFunction send_function =
-      GetSendDeviceMemoryFunction(ctx);
-  run_options.set_send_device_memory_function(&send_function);
-  xla::RecvDeviceMemoryFunction recv_function =
-      GetRecvDeviceMemoryFunction(ctx);
-  run_options.set_recv_device_memory_function(&recv_function);
-
   StatusOr<xla::ExecutionOutput> execution_output;
   bool run_synchronous =
       !stream || platform_info.platform_id() == se::host::kHostPlatformId;
@@ -368,18 +365,6 @@ GetXlaCompilerArgsAndSnapshotVariables(
                           must_be_constant_idxs, inputs, variable_infos,
                           static_cast<Device*>(ctx->device())));
   return result;
-}
-
-XlaCompiler::CompileOptions GenerateCompileOptions(
-    bool has_ref_vars, bool may_alias_resource_update) {
-  XlaCompiler::CompileOptions compile_options;
-  compile_options.is_entry_computation = true;
-  // Optimization: where possible, have the computation return a naked array
-  // rather than a one-element tuple.
-  compile_options.always_return_tuple = false;
-  compile_options.alias_resource_update =
-      !has_ref_vars && may_alias_resource_update;
-  return compile_options;
 }
 
 Status CompileToLocalExecutable(
@@ -427,45 +412,6 @@ Status CompileToLocalExecutable(
       GenerateCompileOptions(has_ref_vars, may_alias_resource_update);
 
   return xla_device_compiler->CompileIfNeeded(
-      options, function, args, compile_options, compile_mode, profiler,
-      compilation_result, executable);
-}
-
-Status CompileToPjRtLoadedExecutable(
-    const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
-    const NameAttrList& function,
-    const std::vector<XlaCompiler::Argument>& args,
-    DeviceCompileMode compile_mode, bool has_ref_vars,
-    bool may_alias_resource_update,
-    const XlaCompiler::CompilationResult** compilation_result,
-    xla::PjRtClient** client, xla::PjRtLoadedExecutable** executable) {
-  // We store information about the JIT-compiled XLA computation
-  // in the ResourceMgr.
-  ResourceMgr* rm = ctx.resource_manager();
-  if (!rm) {
-    return absl::InternalError("No resource manager.");
-  }
-
-  PjRtDeviceCompiler* pjrt_device_compiler;
-  DeviceCompilationProfiler* profiler;
-  TF_RETURN_IF_ERROR(GetOrCreatePjRtDeviceCompilerAndProfiler(
-      platform_info, ctx.function_library(), &pjrt_device_compiler, &profiler));
-  // Hold the reference to the PJRT device compiler and profiler during
-  // evaluation. (We could probably free them sooner because the ResourceMgr
-  // will retain references, but this is more obviously correct.)
-  core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
-  core::ScopedUnref profiler_ref(profiler);
-
-  *client = pjrt_device_compiler->client();
-
-  XlaCompiler::Options options =
-      GenerateCompilerOptionsForPjRt(*ctx.function_library(), ctx.device(),
-                                     platform_info, pjrt_device_compiler);
-
-  XlaCompiler::CompileOptions compile_options =
-      GenerateCompileOptions(has_ref_vars, may_alias_resource_update);
-
-  return pjrt_device_compiler->CompileIfNeeded(
       options, function, args, compile_options, compile_mode, profiler,
       compilation_result, executable);
 }
@@ -990,6 +936,15 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   }
 
   xla::ExecutableRunOptions run_options;
+
+  // Host callbacks used for HLO send/recv.
+  xla::SendDeviceMemoryFunction send_function =
+      GetSendDeviceMemoryFunction(ctx, key);
+  run_options.set_send_device_memory_function(&send_function);
+  xla::RecvDeviceMemoryFunction recv_function =
+      GetRecvDeviceMemoryFunction(ctx, key);
+  run_options.set_recv_device_memory_function(&recv_function);
+
   StatusOr<xla::ExecutionOutput> execution_output = RunExecutable(
       platform_info_, launch_context, std::move(*execution_inputs), run_options,
       closure.executable(), ctx, allocator.get());
@@ -1042,11 +997,22 @@ REGISTER_KERNEL_BUILDER(Name("_XlaCompile")
                             .HostMemory("resources"),
                         XlaCompileOp);
 
+REGISTER_KERNEL_BUILDER(Name("_XlaCompile")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("constants")
+                            .HostMemory("key")
+                            .HostMemory("compilation_successful")
+                            .HostMemory("resources"),
+                        XlaCompileOp);
+
 REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_CPU), XlaRunOp);
 REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_GPU).HostMemory("key"),
                         XlaRunOp);
+REGISTER_KERNEL_BUILDER(
+    Name("_XlaRun").Device(DEVICE_DEFAULT).HostMemory("key"), XlaRunOp);
 
 REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_CPU), XlaMergeOp);
 REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_GPU), XlaMergeOp);
+REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_DEFAULT), XlaMergeOp);
 
 }  // namespace tensorflow

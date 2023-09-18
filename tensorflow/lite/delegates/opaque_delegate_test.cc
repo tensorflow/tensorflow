@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <fstream>
 #include <memory>
 #include <string>
 
@@ -32,6 +34,25 @@ namespace tflite {
 namespace delegates {
 
 namespace {
+
+// A dummy custom op registration. We only need to properly register the
+// "custom_name" because we don't execute the op.
+static TfLiteRegistration* RegisterDummyCustomOp(const char* custom_name) {
+  static TfLiteRegistration reg{
+      /*init =*/nullptr,
+      /*free =*/nullptr,
+      /*prepare =*/nullptr,
+      /*invoke =*/nullptr,
+      /*profiling_string*/ nullptr,
+      /*builtin_code*/ BuiltinOperator_CUSTOM,
+      /*custom_name =*/custom_name,
+  };
+  return &reg;
+}
+
+const char* model_with_custom_op_and_init_data_filename =
+    "tensorflow/lite/testdata/"
+    "test_custom_node_with_init_data.bin";
 
 TEST(TestOpaqueDelegate, AddDelegate) {
   std::unique_ptr<tflite::FlatBufferModel> model =
@@ -56,6 +77,27 @@ TEST(TestOpaqueDelegate, AddDelegate) {
     TfLiteIntArray* execution_plan;
     TF_LITE_ENSURE_STATUS(
         TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan));
+    for (int i = 0; i < execution_plan->size; ++i) {
+      TfLiteOpaqueNode* node = nullptr;
+      TfLiteRegistrationExternal* registration = nullptr;
+      TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, i, &node,
+                                                &registration);
+      int fd = -1;
+      int64_t custom_initial_data_offset_in_file = 0;
+      int64_t custom_initial_data_size = 0;
+      if (TfLiteOpaqueContextGetNodeInitDataMmapInfo(
+              opaque_context, node, &fd, &custom_initial_data_offset_in_file,
+              &custom_initial_data_size) != kTfLiteOk) {
+        return kTfLiteError;
+      }
+
+      // We expect the file descriptor to be loaded successfully.
+      EXPECT_NE(fd, -1);
+      // The 'add.bin' model does not contain nodes with custom init data,
+      // therefore no offset or size can be loaded.
+      EXPECT_EQ(custom_initial_data_offset_in_file, -1);
+      EXPECT_EQ(custom_initial_data_size, -1);
+    }
     return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
         opaque_context, registration_external, execution_plan, opaque_delegate);
   };
@@ -63,6 +105,75 @@ TEST(TestOpaqueDelegate, AddDelegate) {
       TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::InterpreterBuilder builder(*model, resolver);
+  builder.AddDelegate(opaque_delegate);
+  std::unique_ptr<tflite::Interpreter> interpreter;
+  EXPECT_EQ(kTfLiteOk, builder(&interpreter));
+  ASSERT_NE(interpreter, nullptr);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
+}
+
+TEST(TestOpaqueDelegate, ModelWithCustomOpAndInitData) {
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      tflite::FlatBufferModel::BuildFromFile(
+          model_with_custom_op_and_init_data_filename);
+  ASSERT_NE(model, nullptr);
+
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.Prepare = [](TfLiteOpaqueContext* opaque_context,
+                                       TfLiteOpaqueDelegate* opaque_delegate,
+                                       void* data) -> TfLiteStatus {
+    TfLiteRegistrationExternal* registration_external =
+        TfLiteRegistrationExternalCreate(kTfLiteBuiltinDelegate,
+                                         /*name*/ nullptr,
+                                         /*version=*/1);
+    TfLiteRegistrationExternalSetInit(
+        registration_external,
+        [](TfLiteOpaqueContext* context, const char* buffer,
+           size_t length) -> void* { return nullptr; });
+    TfLiteIntArray* execution_plan;
+    TF_LITE_ENSURE_STATUS(
+        TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan));
+    for (int i = 0; i < execution_plan->size; ++i) {
+      TfLiteOpaqueNode* node = nullptr;
+      TfLiteRegistrationExternal* registration = nullptr;
+      TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, i, &node,
+                                                &registration);
+      int fd = -1;
+      int64_t custom_initial_data_offset_in_file = 0;
+      int64_t custom_initial_data_size = 0;
+      if (TfLiteOpaqueContextGetNodeInitDataMmapInfo(
+              opaque_context, node, &fd, &custom_initial_data_offset_in_file,
+              &custom_initial_data_size) != kTfLiteOk) {
+        return kTfLiteError;
+      }
+
+      // We expect the file descriptor to be loaded successfully.
+      EXPECT_NE(fd, -1);
+      // The 'test_custom_node_with_init_data.bin' model does contains a single
+      // operation that stores the string "ABC" as its custom initial data.
+      EXPECT_NE(custom_initial_data_offset_in_file, -1);
+      EXPECT_EQ(custom_initial_data_size, 3);
+
+      std::ifstream istrm(model_with_custom_op_and_init_data_filename);
+      if (!istrm.is_open()) {
+        return kTfLiteError;
+      }
+      istrm.seekg(custom_initial_data_offset_in_file);
+      std::string custom_data;
+      custom_data.resize(custom_initial_data_size);
+      istrm.read(custom_data.data(), custom_initial_data_size);
+      EXPECT_STREQ(custom_data.c_str(), "ABC");
+    }
+    return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+        opaque_context, registration_external, execution_plan, opaque_delegate);
+  };
+  TfLiteOpaqueDelegate* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  resolver.AddCustom("the_custom_code",
+                     RegisterDummyCustomOp("the_custom_code"));
   tflite::InterpreterBuilder builder(*model, resolver);
   builder.AddDelegate(opaque_delegate);
   std::unique_ptr<tflite::Interpreter> interpreter;

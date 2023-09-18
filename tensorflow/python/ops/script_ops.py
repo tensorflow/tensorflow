@@ -611,11 +611,11 @@ def eager_py_func(func=None, inp=None, Tout=None, name=None):
       decorator.
     Tout: The type(s) of the value(s) returned by `func`.  One of the following.
       * If `func` returns a `Tensor` (or a value that can be converted to a
-      Tensor): the `tf.DType` for that value. * If `func` returns a
-      `CompositeTensor`: The `tf.TypeSpec` for that value. * If `func` returns
-      `None`: the empty list (`[]`). * If `func` returns a list of `Tensor` and
-      `CompositeTensor` values: a corresponding list of `tf.DType`s and
-      `tf.TypeSpec`s for each value.
+        Tensor): the `tf.DType` for that value. 
+      * If `func` returns a `CompositeTensor`: The `tf.TypeSpec` for that value.
+      * If `func` returns `None`: the empty list (`[]`). 
+      * If `func` returns a list of `Tensor` and `CompositeTensor` values: a
+        corresponding list of `tf.DType`s and `tf.TypeSpec`s for each value.
     name: A name for the operation (optional).
 
   Returns:

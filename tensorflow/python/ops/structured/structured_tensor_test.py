@@ -25,8 +25,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -611,7 +611,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
       for field, value in fields.items():
         self.assertIsInstance(
             struct.field_value(field),
-            (ops.Tensor, structured_tensor.StructuredTensor,
+            (tensor.Tensor, structured_tensor.StructuredTensor,
              ragged_tensor.RaggedTensor))
         self.assertAllEqual(struct.field_value(field), value)
 
@@ -791,7 +791,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
                     dtype=dtypes.int64),
                 _fields={
                     "x":
-                        tensor_spec.TensorSpec([2, 2], dtypes.int32),
+                        tensor.TensorSpec([2, 2], dtypes.int32),
                     "y":
                         ragged_tensor.RaggedTensorSpec([2, 2, None],
                                                        dtypes.int32)
@@ -855,8 +855,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
           "pyval": {"a": 12, "b": [1, 2, 3], "c": [[1, 2], [3]]},
           "type_spec": StructuredTensor.Spec._from_fields_and_rank(
               fields={
-                  "a": tensor_spec.TensorSpec([], dtypes.int32),
-                  "b": tensor_spec.TensorSpec([None], dtypes.int32),
+                  "a": tensor.TensorSpec([], dtypes.int32),
+                  "b": tensor.TensorSpec([None], dtypes.int32),
                   "c": ragged_tensor.RaggedTensorSpec([None, None],
                                                       dtypes.int32)},
               rank=0),
@@ -889,7 +889,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
           "testcase_name": "EmptyListWithTypeSpecAndFields",
           "pyval": [],
           "type_spec": structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
-              fields={"a": tensor_spec.TensorSpec([0], dtypes.int32)},
+              fields={"a": tensor.TensorSpec([0], dtypes.int32)},
               rank=1),
           "expected": lambda: StructuredTensor.from_fields(shape=[0], fields={
               "a": []})
@@ -963,7 +963,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
           "pyval": [[{"a": 1}, {"a": 2}, {"a": 3},],
                     [{"a": 4}, {"a": 5}, {"a": 6}]],
           "type_spec": structured_tensor.StructuredTensorSpec([2, 3], {
-              "a": tensor_spec.TensorSpec(None, dtypes.int32)}),
+              "a": tensor.TensorSpec(None, dtypes.int32)}),
           "expected": lambda: StructuredTensor.from_fields(
               shape=[2, 3], fields={"a": [[1, 2, 3], [4, 5, 6]]})
       },
@@ -979,8 +979,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
   def testStructuredTensorSpecFactory(self):
     spec = StructuredTensor.Spec._from_fields_and_rank(
         fields={
-            "a": tensor_spec.TensorSpec([], dtypes.int32),
-            "b": tensor_spec.TensorSpec([None], dtypes.int32),
+            "a": tensor.TensorSpec([], dtypes.int32),
+            "b": tensor.TensorSpec([None], dtypes.int32),
             "c": ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32)
         },
         rank=0)
@@ -1042,19 +1042,19 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
       dict(testcase_name="TypeSpecMismatch_DictKey",
            pyval={"a": 1},
            type_spec=StructuredTensor.Spec._from_fields_and_rank(
-               fields={"b": tensor_spec.TensorSpec([1], dtypes.int32)},
+               fields={"b": tensor.TensorSpec([1], dtypes.int32)},
                rank=1),
            msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_ListDictKey",
            pyval=[{"a": 1}],
            type_spec=StructuredTensor.Spec._from_fields_and_rank(
-               fields={"b": tensor_spec.TensorSpec([1], dtypes.int32)},
+               fields={"b": tensor.TensorSpec([1], dtypes.int32)},
                rank=1),
            msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_RankMismatch",
            pyval=[{"a": 1}],
            type_spec=StructuredTensor.Spec._from_fields_and_rank(
-               fields={"a": tensor_spec.TensorSpec([], dtypes.int32)},
+               fields={"a": tensor.TensorSpec([], dtypes.int32)},
                rank=0),
            msg=r"Value at \(\) does not match typespec \(rank mismatch\)"),
       dict(testcase_name="TypeSpecMismatch_Scalar",
@@ -1068,14 +1068,14 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
       dict(testcase_name="TypeSpecMismatch_ListTensor",
            pyval={"a": [[1]]},
            type_spec=StructuredTensor.Spec._from_fields_and_rank(
-               fields={"a": tensor_spec.TensorSpec([], dtypes.int32)},
+               fields={"a": tensor.TensorSpec([], dtypes.int32)},
                rank=0),
            msg=r"Value at \('a',\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_ListTensorDeep",
            pyval={"a": {"b": [[1]]}},
            type_spec=StructuredTensor.Spec._from_fields_and_rank(
                fields={"a": StructuredTensor.Spec._from_fields_and_rank(
-                   fields={"b": tensor_spec.TensorSpec([], dtypes.int32)},
+                   fields={"b": tensor.TensorSpec([], dtypes.int32)},
                    rank=0
                )},
                rank=0),
@@ -1095,7 +1095,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
       dict(testcase_name="TypeSpecMismatch_ListStruct",
            pyval=[[1]],
            type_spec=StructuredTensor.Spec._from_fields_and_rank(
-               fields={"a": tensor_spec.TensorSpec([1, 1], dtypes.int32)},
+               fields={"a": tensor.TensorSpec([1, 1], dtypes.int32)},
                rank=2),
            msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="InconsistentDictionaryDepth",

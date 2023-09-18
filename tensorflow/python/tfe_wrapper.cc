@@ -17,7 +17,8 @@ limitations under the License.
 
 // Must be included first
 // clang-format off
-#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+#include "pybind11/attr.h"  // from @pybind11
+#include "tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
 #include "Python.h"
@@ -164,6 +165,13 @@ TFE_InputTensorHandles InputTFE_InputTensorHandles(
                   i, " is type: ", elem->ob_type->tp_name)
                   .c_str());
         }
+      } else if (tensorflow::swig::IsTensorProtocol(elem) &&
+                 tensorflow::swig::IsCoreTypeValue(elem)) {
+        // For WeakTensors, fetch the underlying Tensors.
+        // This is placed after the branches `IsEagerTensorSlow` and
+        // `EagerTensor_CheckExact` to ensure those paths are quick.
+        elem = PyObject_CallMethod(elem, "__tf_tensor__", nullptr);
+        (input_tensor_handles)[i] = EagerTensor_Handle(elem);
       } else if (tensorflow::swig::IsTensor(elem)) {
         // If it isnt an EagerTensor, but is still a Tensor, it must be a graph
         // tensor.
@@ -683,6 +691,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
   py::class_<TF_DeviceList> TF_DeviceList_class(m, "TF_DeviceList");
   py::class_<TF_Function> TF_Function_class(m, "TF_Function");
+  py::class_<TF_Buffer> TF_Buffer_class(m, "TF_Buffer", py::module_local());
 
   m.def("TFE_Py_RegisterExceptionClass", [](const py::handle& e) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterExceptionClass(e.ptr()));

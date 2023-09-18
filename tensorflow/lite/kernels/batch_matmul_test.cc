@@ -958,9 +958,11 @@ class QuantizedBatchMatMulOpModel : public SingleOpModel {
     }
     input_size_ = total_input_size / batches_;
 
+    int rhs_batch_size = adj_y ? units_ : input_size_;
+    int rhs_channels = adj_y ? input_size_ : units_;
     lhs_id_ = AddInput(lhs);
     rhs_id_ = AddInput({lhs.type,
-                        {input_size_, units_},
+                        {rhs_batch_size, rhs_channels},
                         0,
                         0,
                         GetScale(lhs_id_),
@@ -1032,6 +1034,29 @@ TEST_P(QuantizedBatchMatMulOpTest, SimpleTestQuantizedInt8) {
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({23, 23, 23, 57, 57, 57})));
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(22, 22, 22, 56, 56, 56));
+}
+
+TEST_P(QuantizedBatchMatMulOpTest, SimpleTestQuantizedInt8AdjRHS) {
+  QuantizedBatchMatMulOpModel m(
+      /*units=*/3, /*batches*/ 2,
+      /*lhs=*/{TensorType_INT8, {2, 10}, -63.5, 64},
+      /*output=*/{TensorType_INT8, {}, -127, 128}, false, true);
+
+  m.SetWeights<int8_t>({
+      1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5,  5,  5,
+      6, 6, 6, 7, 7, 7, 8, 8, 8, 9, 9, 9, 10, 10, 10,
+  });
+
+  m.SetInput<int8_t>({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({14, 65, 128, 20, 95, 128})));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(13, 64, 127, 19, 94, 127));
 }
 
 TEST_P(QuantizedBatchMatMulOpTest, SimpleTestQuantizedInt16) {

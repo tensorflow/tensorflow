@@ -14,6 +14,7 @@ def tflite_copts():
     """Defines common compile time flags for TFLite libraries."""
     copts = [
         "-DFARMHASH_NO_CXX_STRING",
+        "-DEIGEN_ALLOW_UNALIGNED_SCALARS",  # TODO(b/296071640): Remove when underlying bugs are fixed.
     ] + select({
         clean_dep("//tensorflow:android_arm"): [
             "-mfpu=neon",
@@ -62,6 +63,9 @@ def tflite_copts():
         "//conditions:default": [],
     }) + select({
         clean_dep("//tensorflow/lite/delegates:tflite_debug_delegate"): ["-DTFLITE_DEBUG_DELEGATE"],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow/lite:tflite_mmap_disabled"): ["-DTFLITE_MMAP_DISABLED"],
         "//conditions:default": [],
     })
 
@@ -198,7 +202,8 @@ def tflite_jni_binary(
         deps = [],
         tags = [],
         srcs = [],
-        visibility = None):  # 'None' means use the default visibility.
+        visibility = None,  # 'None' means use the default visibility.
+        local_defines = []):
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + select({
         clean_dep("//tensorflow:macos"): [
@@ -225,6 +230,7 @@ def tflite_jni_binary(
         linkopts = linkopts,
         testonly = testonly,
         visibility = visibility,
+        local_defines = local_defines,
     )
 
 def tflite_cc_shared_object(

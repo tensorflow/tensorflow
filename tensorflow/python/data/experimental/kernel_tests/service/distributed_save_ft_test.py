@@ -355,8 +355,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     ds = dataset_ops.Dataset.range(100)
     ds = ds.repeat(10)
     self.evaluate(distributed_save_op.distributed_save(
-        ds, self._path, cluster.dispatcher_address()
-    ))
+        ds, self._path, cluster.dispatcher_address()))
 
     # Blocks until all workers have streams.
     get_stream_assignments(cluster, 3, [self._path])
@@ -365,7 +364,10 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     cluster.restart_worker(0)
     self._wait_for_snapshot()
     self.assertTrue(self._snapshot_is_done())
-    # TODO(b/250921378): Verify the number of elements.
+
+    dataset = dataset_ops.Dataset.load(self._path)
+    self.assertDatasetProduces(
+        dataset, list(range(100)) * 10, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testNonrepeatedDatasetDoesntProduceSecondRepetitionDir(self):

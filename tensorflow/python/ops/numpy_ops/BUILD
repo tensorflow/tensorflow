@@ -30,18 +30,23 @@ py_strict_library(
 py_strict_library(
     name = "np_utils",
     srcs = ["np_utils.py"],
+    tags = [
+        "ignore_for_dep=third_party.py.requests",
+    ],
     deps = [
         ":np_arrays",
         ":np_dtypes",
-        ":np_export",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:flexible_dtypes",
         "//tensorflow/python/framework:indexed_slices",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -52,11 +57,11 @@ py_strict_library(
     deps = [
         ":np_arrays",
         ":np_dtypes",
-        ":np_export",
         ":np_utils",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
@@ -66,8 +71,9 @@ py_strict_library(
         "//tensorflow/python/ops:manip_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:sort_ops",
-        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -77,9 +83,11 @@ py_strict_library(
     srcs = ["np_config.py"],
     deps = [
         ":np_dtypes",
-        ":np_export",
         ":np_math_ops",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:weak_tensor_ops",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -87,16 +95,10 @@ py_strict_library(
     name = "np_dtypes",
     srcs = ["np_dtypes.py"],
     deps = [
-        ":np_export",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
-)
-
-py_strict_library(
-    name = "np_export",
-    srcs = ["np_export.py"],
-    deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_strict_library(
@@ -109,6 +111,7 @@ py_strict_library(
         "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -120,12 +123,12 @@ py_strict_library(
         ":np_array_ops",
         ":np_arrays",
         ":np_dtypes",
-        ":np_export",
         ":np_utils",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/ops:bitwise_ops",
@@ -137,7 +140,7 @@ py_strict_library(
         "//tensorflow/python/ops:sort_ops",
         "//tensorflow/python/ops:special_math_ops",
         "//tensorflow/python/ops:while_loop",
-        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -148,7 +151,7 @@ py_strict_library(
     deps = [
         ":np_dtypes",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion",
     ],
 )
@@ -175,6 +178,7 @@ cuda_py_strict_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:nest",
@@ -231,6 +235,7 @@ cuda_py_strict_test(
         ":np_math_ops",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

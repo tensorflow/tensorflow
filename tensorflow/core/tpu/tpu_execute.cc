@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
+#include <functional>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -25,52 +27,51 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
-#include "absl/log/log.h"
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/service/backend.h"
-#include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
-#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
-#include "tensorflow/compiler/xla/service/transfer_manager.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/shape_layout.h"
-#include "tensorflow/compiler/xla/shape_tree.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_defn.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_op_executable.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "absl/types/span.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/backend.h"
+#include "xla/service/computation_layout.h"
+#include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/service/transfer_manager.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/status_macros.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/tpu/c_api_conversions.h"
+#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/stream_executor/tpu/c_api_defn.h"
+#include "xla/stream_executor/tpu/proto_helper.h"
+#include "xla/stream_executor/tpu/status_helper.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/stream_executor/tpu/tpu_node_context.h"
+#include "xla/stream_executor/tpu/tpu_op_executable.h"
+#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_internal.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
-#include "tensorflow/core/tpu/kernels/tpu_execute_op_options.h"
-#include "tensorflow/tsl/framework/cancellation.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -78,52 +79,8 @@ namespace {
 
 using ::tensorflow::tpu::TpuNodeContext;
 
-// These are placeholders for absl flags.
-static bool tpu_cancellation_terminates_process = false;
+// This is a placeholder for an absl::Flag.
 static bool tpu_cancellation_closes_chips = true;
-
-// Host-side runtime for transfers between TPU and host.
-// TODO(b/161940519): Implement this class.
-class HostTransferManager {
- public:
-  explicit HostTransferManager(TpuNodeContext*, xla::Backend*) {}
-
-  using HostCommandHandler = TpuOpExecutable::HostCommandHandler;
-
-  // Returns a function to be called when the TPU triggers a host command
-  // interrupt while executing the current program.
-  xla::StatusOr<HostCommandHandler> Initialize(
-      const TPUHostTransferInfoProto& program,
-      const std::string& rendezvous_key_base, OpKernelContext* ctx);
-
- private:
-  TF_DISALLOW_COPY_AND_ASSIGN(HostTransferManager);
-};
-
-xla::StatusOr<HostTransferManager::HostCommandHandler>
-HostTransferManager::Initialize(const TPUHostTransferInfoProto& program,
-                                const std::string& rendezvous_key_base,
-                                OpKernelContext* ctx) {
-  return HostCommandHandler([](uint32_t, int64_t) {
-    LOG(WARNING) << "HostTransferManager is unimplemented.";
-  });
-}
-
-// Sleep for 5 seconds, then call std::quick_exit(42) to quickly restart.
-void ExitCountdown(Env* env) {
-  const int kSleepSeconds = 5;
-  LOG(INFO) << "TpuExecute was cancelled. Sleeping for " << kSleepSeconds
-            << " seconds before terminating the process to give time "
-               "for other errors to propagate";
-  env->SleepForMicroseconds(kSleepSeconds * 1000000);
-  LOG(ERROR) << "Aborting process due to cancelled TPUExecute. Consult "
-                "the anomalies reported above (if any), run state of job "
-                "(including failed RPCs) and worker logs. This "
-                "termination is to ensure a consistent state, if your job "
-                "does not restart, modify the retries allowed. See "
-                "b/62262381 and b/65223927.";
-  std::quick_exit(42);
-}
 
 int64_t ShapeSizeCompact(const xla::Shape& shape) {
   XLA_Shape c_shape;
@@ -238,13 +195,13 @@ xla::Status UpdateDynamicInputs(
 
           xla::MaybeOwningDeviceMemory* mutable_input_mem =
               runtime_input.MutableBuffer(index);
-          auto padded_data = std::make_shared<std::vector<int8>>(
+          auto padded_data = std::make_shared<std::vector<int8_t>>(
               ShapeSizeCompact(compile_time_shape), -1);
-          auto raw_input_runtime = std::make_shared<std::vector<uint32>>(
-              ShapeSizeCompact(runtime_shape) / sizeof(uint32));
+          auto raw_input_runtime = std::make_shared<std::vector<uint32_t>>(
+              ShapeSizeCompact(runtime_shape) / sizeof(uint32_t));
           stream->ThenMemcpyD2H(
-              se::DeviceMemory<int8>(mutable_input_mem->AsDeviceMemoryBase()),
-              absl::MakeSpan(absl::bit_cast<int8*>(raw_input_runtime->data()),
+              se::DeviceMemory<int8_t>(mutable_input_mem->AsDeviceMemoryBase()),
+              absl::MakeSpan(absl::bit_cast<int8_t*>(raw_input_runtime->data()),
                              ShapeSizeCompactRaw(runtime_shape)));
           stream->ThenDoHostCallbackWithStatus([raw_input_runtime, padded_data,
                                                 runtime_shape,
@@ -281,8 +238,8 @@ xla::Status UpdateDynamicInputs(
               allocator->Allocate(stream->parent()->device_ordinal(),
                                   ShapeSizeCompact(compile_time_shape)));
           auto typed_new_input_memory =
-              se::DeviceMemory<int8>(new_input.cref());
-          stream->ThenMemcpyH2D<int8>(*padded_data, &typed_new_input_memory);
+              se::DeviceMemory<int8_t>(new_input.cref());
+          stream->ThenMemcpyH2D<int8_t>(*padded_data, &typed_new_input_memory);
 
           // Retain the memory until the end of the transfer.
           stream->ThenDoHostCallback([padded_data] {});
@@ -305,24 +262,8 @@ xla::Status UpdateDynamicInputs(
   return OkStatus();
 }
 
-void TPUCancelExecution(Env* env, int device_ordinal) {
-  if (tpu_cancellation_terminates_process) {
-    LOG(INFO) << "TPUCancelExecution StopChipHeartbeats on device "
-              << device_ordinal;
-    Status status = TpuNodeContext::StopChipHeartbeats();
-    LOG(INFO) << "TPUCancelExecution StopChipHeartbeats done: " << status
-              << " on device " << device_ordinal;
-    // Sleep and exit in another thread so the cancellation manager can
-    // continue running callbacks. The new thread will call quick_exit,
-    // so we discard the returned Thread pointer because we won't have
-    // an opportunity to delete it.
-    auto res = env->StartThread(ThreadOptions(), "tpu_execute_exit_countdown",
-                                [env]() { ExitCountdown(env); });
-    // workaround "ignoring return value of function declared with attribute
-    // warn_unused_result" since (void) no longer works on open source bazel
-    // build
-    ((void)(res));
-  } else if (tpu_cancellation_closes_chips) {
+void TPUCancelExecution(int device_ordinal) {
+  if (tpu_cancellation_closes_chips) {
     LOG(INFO) << "TPUCancelExecution CloseTPUHost on device " << device_ordinal;
     Status status = TpuNodeContext::CloseTpuHost();
     LOG(INFO) << "TPUCancelExecution CloseTPUHost done: " << status
@@ -334,8 +275,7 @@ void TPUCancelExecution(Env* env, int device_ordinal) {
 }
 
 std::pair<CancellationToken, bool> RegisterCancellation(
-    OpKernelContext* ctx, CancellationManager* cancellation_manager,
-    int device_ordinal) {
+    CancellationManager* cancellation_manager, int device_ordinal) {
   // Set up a cancellation callback, to ensure the TPU program we run will
   // halt if the RPC is cancelled. Without this the TPU program might block
   // forever. The mechanism itself is a big hammer; we close all devices
@@ -363,20 +303,37 @@ std::pair<CancellationToken, bool> RegisterCancellation(
   // cancellation callback should only execute in a narrower scope to not be
   // triggered in such cases.
   CancellationToken token = cancellation_manager->get_cancellation_token();
-  // Don't rely on OpKernelContext being available when the callback runs.
-  Env* env = ctx->env();
   bool already_cancelled =
       !cancellation_manager->RegisterCallbackWithErrorLogging(
-          token,
-          [device_ordinal, env]() { TPUCancelExecution(env, device_ordinal); },
+          token, [device_ordinal]() { TPUCancelExecution(device_ordinal); },
           absl::StrCat("TPUCancellation on device ", device_ordinal));
   return std::pair<CancellationToken, bool>(token, already_cancelled);
 }
 
-void UnregisterCancellation(
-    OpKernelContext* ctx, CancellationManager* cancellation_manager,
-    se::Stream* stream, int device_ordinal, CancellationToken token,
-    std::shared_ptr<HostTransferManager> host_transfer_manager) {
+struct DestroyOCParams {
+  void operator()(SE_OutsideCompilationParams* params) {
+    if (params == nullptr) {
+      return;
+    }
+    delete[] params->device_name;
+    delete[] params->rendezvous_key;
+    Destroy(params->rendezvous);
+    delete params->rendezvous;
+    if (params->host_transfers.size > 0) {
+      StreamExecutor_Tpu_FreeSerializedProto(&params->host_transfers);
+    }
+    delete params;
+  }
+};
+
+typedef std::unique_ptr<SE_OutsideCompilationParams, DestroyOCParams>
+    OcParamsPtr;
+
+void UnregisterCancellation(OpKernelContext* ctx,
+                            CancellationManager* cancellation_manager,
+                            se::Stream* stream, int device_ordinal,
+                            CancellationToken token,
+                            OpaqueTransferManagerImpl* transfer_manager) {
   // If execution reaches this point, the host callback enqueued below will get
   // called regardless of stream status. Call inc_num_deferred_ops_function here
   // and dec_num_deferred_ops_function in the host callback.
@@ -390,9 +347,6 @@ void UnregisterCancellation(
   se::Stream* deregister_stream = stream->GetOrCreateSubStream();
   deregister_stream->ThenWaitFor(stream);
   deregister_stream->ThenDoHostCallback([=]() {
-    // Ensure the host_transfer_manager is copied into the callback scope.
-    (void)host_transfer_manager;
-
     // We must deregister the callback in the success case, to avoid closing all
     // devices. In the failure case we must NOT call DeregisterCallback as that
     // waits for all previous cancellation callbacks to complete and any call
@@ -406,7 +360,7 @@ void UnregisterCancellation(
     //   4) StartCancel() in (1) cannot complete until (3) is done.
     //
     // Instead, call TryDeregisterCallback. The functional difference is
-    // TryDeregisterCallback will not block if cancellation is in proress
+    // TryDeregisterCallback will not block if cancellation is in progress
     // so makes no guarantees as to the state of any callbacks.
     // This is not a problem, as our cancellation handler does not rely on
     // any external state.
@@ -421,8 +375,28 @@ void UnregisterCancellation(
     // dec_num_deferred_ops_function are called, ExecutorState::Finish will be
     // allowed to proceed.
     dec_num_deferred_ops_function();
+
+    stream_executor::tpu::OpsApiFn()->TpuExecutable_FreeOpaqueTransferManagerFn(
+        transfer_manager);
   });
   stream->ReturnSubStream(deregister_stream);
+}
+
+OcParamsPtr CreateOcParams(const std::string& rendezvous_key_base,
+                           OpKernelContext* op_kernel_context,
+                           const TPUHostTransferInfoProto& host_transfers) {
+  OcParamsPtr oc_params(new SE_OutsideCompilationParams());
+  const std::string& device_name = op_kernel_context->device()->name();
+  oc_params->device_name = new char[device_name.size() + 1];
+  std::strncpy(oc_params->device_name, device_name.c_str(),
+               device_name.size() + 1);
+  oc_params->rendezvous_key = new char[rendezvous_key_base.size() + 1];
+  std::strncpy(oc_params->rendezvous_key, rendezvous_key_base.c_str(),
+               rendezvous_key_base.size() + 1);
+  oc_params->rendezvous = ToC(op_kernel_context->rendezvous());
+  oc_params->host_transfers =
+      stream_executor::tpu::SerializeProto(host_transfers);
+  return oc_params;
 }
 
 }  // namespace
@@ -441,16 +415,9 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   profiler::TraceMe traceme("TPUExecute", 2);
   TF_RET_CHECK(tpu::TpuPlatformInterface::GetRegisteredPlatform() != nullptr);
   TF_RET_CHECK(tpu_program != nullptr);
-  VLOG(1) << "TPUExecute on device " << node_context->device_ordinal();
-
+  const int device_ordinal = node_context->device_ordinal();
+  VLOG(1) << "TPUExecute on device " << device_ordinal;
   xla::Backend* backend = node_context->backend();
-
-  // Create a HostTransferManager to handle Send/Recv operations from the TPU.
-  std::shared_ptr<HostTransferManager> host_transfer_manager =
-      std::make_shared<HostTransferManager>(node_context, backend);
-  TF_ASSIGN_OR_RETURN(HostTransferManager::HostCommandHandler handler,
-                      host_transfer_manager->Initialize(
-                          host_transfers, rendezvous_key_base, ctx));
 
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
@@ -491,8 +458,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
         prefetch.offset());
   }
 
-  VLOG(1) << "TPUExecute: Updating dynamic HLO inputs on "
-          << node_context->device_ordinal();
+  VLOG(1) << "TPUExecute: Updating dynamic HLO inputs on " << device_ordinal;
 
   TF_RETURN_IF_ERROR(UpdateDynamicInputs(stream, backend->memory_allocator(),
                                          &arguments, input_shapes));
@@ -501,24 +467,24 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   // memory addresses are communicated with a dynamically allocated C array
   // (which needs to be free'd once the function terminates).
   VLOG(1) << "TPUExecute: Updating TPUEmbedding memory addresses on "
-          << node_context->device_ordinal();
+          << device_ordinal;
 
   SE_DeviceMemoryBase* device_memory_addrs = nullptr;
   size_t device_memory_addrs_count;
   auto device_memory_cleanup =
-      absl::MakeCleanup([device_memory_addrs, node_context]() {
+      absl::MakeCleanup([device_memory_addrs, device_ordinal]() {
         if (device_memory_addrs != nullptr) {
           stream_executor::tpu::OpsApiFn()
               ->TpuExecute_FreeTpuEmbeddingMemoryAllocationsFn(
-                  node_context->device_ordinal(), device_memory_addrs);
+                  device_ordinal, device_memory_addrs);
         }
       });
 
   StatusHelper status;
   stream_executor::tpu::OpsApiFn()
       ->TpuExecute_GetTpuEmbeddingMemoryAllocationsFn(
-          node_context->device_ordinal(), &device_memory_addrs,
-          &device_memory_addrs_count, status.c_status);
+          device_ordinal, &device_memory_addrs, &device_memory_addrs_count,
+          status.c_status);
   if (!status.ok()) {
     return status.status();
   }
@@ -538,21 +504,23 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     arguments.push_back(std::move(input));
   }
 
-  auto tpu_executable = std::make_unique<TpuOpExecutable>(
-      tpu_program, std::move(module), /*host_command_handler=*/handler);
+  OcParamsPtr oc_params =
+      CreateOcParams(rendezvous_key_base, ctx, host_transfers);
 
-  const int32_t device_ordinal = node_context->device_ordinal();
+  auto tpu_executable = std::make_unique<TpuOpExecutable>(
+      tpu_program, std::move(module), oc_params.get());
+
   CancellationToken token;
   bool already_cancelled;
   std::tie(token, already_cancelled) =
-      RegisterCancellation(ctx, cancellation_manager, device_ordinal);
+      RegisterCancellation(cancellation_manager, device_ordinal);
 
   // If the RPC was already cancelled before we managed to register the
   // cancellation callback, we shouldn't attempt to run the TPU program, since
   // it might block forever.
   if (already_cancelled) {
-    return errors::Cancelled(
-        "RPC cancelled, not running TPU program on device ", device_ordinal);
+    return absl::CancelledError(absl::StrCat(
+        "RPC cancelled, not running TPU program on device ", device_ordinal));
   }
 
   xla::StatusOr<xla::ExecutionOutput> output =
@@ -569,12 +537,13 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     already_cancelled = cancellation_manager->IsCancelling() ||
                         cancellation_manager->IsCancelled();
     if (already_cancelled) {
-      return errors::Cancelled(
-          "RPC cancelled, not running TPU program on device ", device_ordinal);
+      return absl::CancelledError(absl::StrCat(
+          "RPC cancelled, not running TPU program on device ", device_ordinal));
     }
   }
   UnregisterCancellation(ctx, cancellation_manager, stream, device_ordinal,
-                         token, host_transfer_manager);
+                         token, oc_params->opaque_host_device_transfer_mgr);
+
   VLOG(1) << "Cloud TPU: TPUExecute done";
   return output;
 }

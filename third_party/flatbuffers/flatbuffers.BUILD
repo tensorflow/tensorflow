@@ -68,7 +68,7 @@ filegroup(
         "include/flatbuffers/vector_downward.h",
         "include/flatbuffers/verifier.h",
     ],
-    visibility = ["//:__subpackages__"],
+    visibility = ["//visibility:public"],
 )
 
 # Public flatc compiler library.
@@ -88,6 +88,8 @@ cc_binary(
         ":platform_freebsd": [
             "-lm",
         ],
+        # If Visual Studio 2022 developers facing linking errors,
+        # change the line below as ":windows": ["/DEFAULTLIB:msvcrt.lib"],
         ":windows": [],
         "//conditions:default": [
             "-lm",
@@ -105,7 +107,7 @@ filegroup(
     srcs = [
         "include/flatbuffers/flatc.h",
     ],
-    visibility = ["//:__subpackages__"],
+    visibility = ["//visibility:public"],
 )
 
 # Library used by flatbuffer_cc_library rules.

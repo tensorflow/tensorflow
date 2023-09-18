@@ -25,12 +25,8 @@ namespace py = pybind11;
 PYBIND11_MODULE(_pywrap_saved_model_aot_compile, m) {
   py::google::ImportStatusModule();
 
-  py::class_<tensorflow::tfrt_stub::AotOptions>(m, "AotOptions",
-                                                py::dynamic_attr())
-      .def(py::init<>())
-      .def_readwrite(
-          "graph_execution_options",
-          &tensorflow::tfrt_stub::AotOptions::graph_execution_options);
+  py::class_<tensorflow::tfrt_stub::AotOptions>(m, "AotOptions")
+      .def(py::init<>());
   m.doc() = "pybind11 AotOptions Python - C++ Wrapper";
 
   m.def("AotCompileSavedModel", &tensorflow::tfrt_stub::AotCompileSavedModel,

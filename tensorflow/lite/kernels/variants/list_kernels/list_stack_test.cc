@@ -39,9 +39,19 @@ class ListStackModel : public ListOpModel {
     SetCustomOp("ListStack", {}, Register_LIST_STACK);
     BuildInterpreter({{}, {1}});
   }
+
+  ListStackModel(TensorData output_data, TensorData shape_input_data) {
+    tensor_id_ = AddOutput(output_data);
+    list_id_ = AddInput({TensorType_VARIANT, {}});
+    shape_id_ = AddInput(shape_input_data);
+    SetCustomOp("ListStack", {}, Register_LIST_STACK);
+    BuildInterpreter({{}, shape_input_data.shape});
+  }
+
   const TfLiteTensor* GetOutputTensor(int tensor_id) {
     return interpreter_->tensor(tensor_id);
   }
+
   int tensor_id_;
   int shape_id_;
   int list_id_;
@@ -248,7 +258,7 @@ TEST(ListStackTest, MismatchedOutput_ReturnsResizedOutput1D) {
 }
 
 TEST(ListStackTest, MismatchedOutput_ReturnsResizedOutput2D) {
-  ListStackModel m({TensorType_INT32, {}});
+  ListStackModel m({TensorType_INT32, std::vector<int>{}});
 
   m.PopulateListTensor(m.list_id_, {}, 2, kTfLiteInt32);
   m.PopulateTensor<int>(m.shape_id_, {2});
@@ -257,6 +267,58 @@ TEST(ListStackTest, MismatchedOutput_ReturnsResizedOutput2D) {
   const TfLiteTensor* output = m.GetOutputTensor(m.tensor_id_);
 
   EXPECT_THAT(output, DimsAre({2, 2}));
+}
+
+TEST(ListStackTest, Trailing0DimInElementShape1D_NonZeroLen_Returns2DNoData) {
+  ListStackModel m({TensorType_INT32, std::vector<int>{}});
+
+  m.PopulateListTensor(m.list_id_, {}, 2, kTfLiteInt32);
+  m.PopulateTensor<int>(m.shape_id_, {0});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  const TfLiteTensor* output = m.GetOutputTensor(m.tensor_id_);
+
+  ASSERT_THAT(output, DimsAre({2, 0}));
+  EXPECT_EQ(output->bytes, 0);
+}
+
+TEST(ListStackTest, Trailing0DimInElementShape2D_NonZeroLen_Returns3DNoData) {
+  ListStackModel m({TensorType_INT32, {}}, {TensorType_INT32, {2}});
+
+  m.PopulateListTensor(m.list_id_, {}, 2, kTfLiteInt32);
+  m.PopulateTensor<int>(m.shape_id_, {2, 0});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  const TfLiteTensor* output = m.GetOutputTensor(m.tensor_id_);
+
+  ASSERT_THAT(output, DimsAre({2, 2, 0}));
+  EXPECT_EQ(output->bytes, 0);
+}
+
+TEST(ListStackTest, Trailing0DimInElementShape1D_ZeroLen_Returns2DNoData) {
+  ListStackModel m({TensorType_INT32, {}}, {TensorType_INT32, {1}});
+
+  m.PopulateListTensor(m.list_id_, {}, 0, kTfLiteInt32);
+  m.PopulateTensor<int>(m.shape_id_, {0});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  const TfLiteTensor* output = m.GetOutputTensor(m.tensor_id_);
+
+  ASSERT_THAT(output, DimsAre({0, 0}));
+  EXPECT_EQ(output->bytes, 0);
+}
+
+TEST(ListStackTest, Trailing0DimInElementShape2D_ZeroLen_Returns3DNoData) {
+  ListStackModel m({TensorType_INT32, {}}, {TensorType_INT32, {2}});
+
+  m.PopulateListTensor(m.list_id_, {}, 0, kTfLiteInt32);
+  m.PopulateTensor<int>(m.shape_id_, {2, 0});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  const TfLiteTensor* output = m.GetOutputTensor(m.tensor_id_);
+
+  ASSERT_THAT(output, DimsAre({0, 2, 0}));
+  EXPECT_EQ(output->bytes, 0);
 }
 
 }  // namespace

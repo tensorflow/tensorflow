@@ -27,39 +27,21 @@ package(
     licenses = ["notice"],
 )
 
-# Deprecated, use //third_party/tensorflow/tsl/python/lib/core:ml_dtypes_lib
-cc_library(
-    name = "bfloat16_lib",
-    hdrs = [
-        "bfloat16.h",
-    ],
-    deprecation = "Please use //third_party/tensorflow/tsl/python/lib/core:ml_dtypes_lib",
-    visibility = visibility + [
-        "//third_party/courier:__subpackages__",
-        "//third_party/py/courier:__subpackages__",
-    ],
-    deps = [
-        "//tensorflow/tsl/python/lib/core:ml_dtypes_lib",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-    ],
-)
-
 cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["ndarray_tensor_bridge.cc"],
     hdrs = ["ndarray_tensor_bridge.h"],
-    visibility = tf_external_workspace_visible(
-        visibility + [
-            "//tensorflow:ndarray_tensor_allow_list",
-        ],
-    ),
+    visibility = tf_external_workspace_visible(visibility + [
+        "//tensorflow:ndarray_tensor_allow_list",
+    ]),
     deps = [
         ":py_util",
         "//tensorflow/c:c_api_no_xla",
+        "//tensorflow/c:tf_datatype_hdrs",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/python/lib/core:ml_dtypes_lib",
-        "//tensorflow/tsl/python/lib/core:numpy",
+        "@local_tsl//tsl/python/lib/core:ml_dtypes_lib",
+        "@local_tsl//tsl/python/lib/core:numpy",
     ],
 )
 
@@ -176,7 +158,6 @@ cc_library(
         ":ndarray_tensor",
         ":ndarray_tensor_bridge",
         ":py_util",
-        ":safe_pyobject_ptr",
         "//tensorflow/c:safe_ptr",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
@@ -189,9 +170,9 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/python/eager:pywrap_tfe_lib",
-        "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
+        "@local_tsl//tsl/python/lib/core:numpy",
     ],
     alwayslink = 1,
 )
@@ -199,6 +180,10 @@ cc_library(
 tf_python_pybind_extension(
     name = "_pywrap_py_func",
     srcs = ["py_func_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_py_func.pyi",
+    ],
     deps = [
         "//tensorflow/python:py_func_headers_lib",
         "//third_party/python_runtime:headers",
@@ -229,7 +214,7 @@ cc_library(
         "//tensorflow/c:headers",
         "//tensorflow/c:safe_ptr_hdr",
         "//tensorflow/c/eager:headers",
-        "//tensorflow/tsl/python/lib/core:numpy_hdr",
+        "@local_tsl//tsl/python/lib/core:numpy_hdr",
     ],
     features = [
         "-parse_headers",
@@ -242,9 +227,9 @@ cc_library(
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:framework_internal_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
-        "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
+        "@local_tsl//tsl/python/lib/core:numpy",
     ],
 )
 
@@ -265,8 +250,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        "//tensorflow/tsl/python/lib/core:ml_dtypes_lib",
-        "//tensorflow/tsl/python/lib/core:numpy",
+        "@local_tsl//tsl/python/lib/core:ml_dtypes_lib",
+        "@local_tsl//tsl/python/lib/core:numpy",
     ],
 )
 
@@ -288,8 +273,8 @@ cc_library(
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+        "@local_tsl//tsl/python/lib/core:numpy",
     ],
 )
 

@@ -174,6 +174,7 @@ class TestDenseBincount(test_util.TensorFlowTestCase, parameterized.TestCase):
           dict(minlength=2, maxlength=3),
           dict(minlength=3, maxlength=5),
           dict(minlength=5, maxlength=10),
+          dict(minlength=None, maxlength=0),
       ),
   )
   def test_default(self, x_factory, minlength, maxlength, expected, tid=None):
@@ -212,6 +213,7 @@ class TestDenseBincount(test_util.TensorFlowTestCase, parameterized.TestCase):
           dict(minlength=2, maxlength=3),
           dict(minlength=3, maxlength=5),
           dict(minlength=5, maxlength=10),
+          dict(minlength=None, maxlength=0),
       ),
   )
   def test_axis_neg_1(self, tid, x_factory, minlength, maxlength, expected):
@@ -265,6 +267,7 @@ class TestDenseBincount(test_util.TensorFlowTestCase, parameterized.TestCase):
           dict(minlength=2, maxlength=3),
           dict(minlength=3, maxlength=5),
           dict(minlength=5, maxlength=10),
+          dict(minlength=None, maxlength=0),
       ),
   )
   def test_weights(
@@ -332,6 +335,7 @@ class TestDenseBincount(test_util.TensorFlowTestCase, parameterized.TestCase):
           dict(minlength=2, maxlength=3),
           dict(minlength=3, maxlength=5),
           dict(minlength=5, maxlength=10),
+          dict(minlength=None, maxlength=0),
       ),
   )
   def test_binary_output(
@@ -342,7 +346,6 @@ class TestDenseBincount(test_util.TensorFlowTestCase, parameterized.TestCase):
       maxlength,
       expected,
       axis=None,
-      skip=False,
   ):
     x = x_factory()
     if axis == -1:

@@ -149,6 +149,7 @@ py_strict_library(
         ":debug_data",
         ":debug_graphs",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops_gen",
         "//tensorflow/python/ops:variables",
     ],
@@ -418,6 +419,7 @@ cuda_py_strict_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/ops:gradients_impl",
@@ -594,6 +596,7 @@ py_strict_library(
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/util:compat",
+        "@pypi_portpicker//:pkg",
     ],
 )
 

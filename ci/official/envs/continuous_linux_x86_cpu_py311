@@ -1,0 +1,4 @@
+source ci/official/envs/ci_default
+TFCI_BAZEL_BAZELRC_ARGS=(--bazelrc ./ci/official/bazelrcs/cpu.bazelrc)
+TFCI_BAZEL_COMMON_ARGS=(--config rbe --repo_env=TF_PYTHON_VERSION=3.11)
+TFCI_DOCKER_IMAGE=tensorflow/build:latest-python3.11

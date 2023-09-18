@@ -36,6 +36,7 @@ cc_library(
         ":tensor",
         ":tensor_type_util",
         "//tensorflow/lite/delegates/gpu:api",
+        "//tensorflow/lite/delegates/gpu:tflite_profile",
         "//tensorflow/lite/delegates/gpu/cl/kernels:converter",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:model",

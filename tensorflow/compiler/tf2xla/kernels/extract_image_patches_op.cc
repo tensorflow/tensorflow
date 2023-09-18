@@ -21,11 +21,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/matrix.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/matrix.h"
+#include "xla/client/xla_builder.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -149,7 +149,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
 
       int64_t unused_output_size;
       OP_REQUIRES_OK(
-          ctx, GetWindowedOutputSizeVerboseV2(
+          ctx, GetWindowedOutputSizeVerbose(
                    input_shape.dim_size(dim), ksizes_[dim], rhs_dilation[i],
                    window_strides[i], padding_, &unused_output_size,
                    &padding[i].first, &padding[i].second));

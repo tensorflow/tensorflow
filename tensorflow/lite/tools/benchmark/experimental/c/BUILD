@@ -31,6 +31,6 @@ cc_library(
     deps = [
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/tools/benchmark:benchmark_tflite_model_lib",
-        "//tensorflow/tsl/util:stats_calculator_portable",
+        "@local_tsl//tsl/util:stats_calculator_portable",
     ],
 )

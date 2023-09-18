@@ -7,7 +7,7 @@ load(
     "tflite_custom_c_library",
     "tflite_jni_binary",
 )
-load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@build_bazel_rules_android//android:rules.bzl", "android_binary", "android_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 def _concat(lists):
@@ -89,6 +89,34 @@ def android_library_with_tflite(
     android_library(
         name = name,
         exports = exports + tflite_exports,
+        deps = deps + tflite_deps,
+        **kwargs
+    )
+
+def android_binary_with_tflite(
+        name,
+        deps = [],
+        tflite_deps = [],
+        **kwargs):
+    """Defines an android_binary that uses the TFLite shims.
+
+    This is a hook to allow applying different build flags (etc.)
+    for targets that use the TFLite shims.
+
+    Note that this build rule doesn't itself add any dependencies on
+    TF Lite; this macro should normally be used in conjunction with a
+    direct or indirect 'tflite_deps' dependency on one of the "shim"
+    library targets from //tensorflow/lite/core/shims:*.
+
+    Args:
+      name: as for android_binary.
+      deps: as for android_binary.
+      tflite_deps: dependencies on rules that are themselves defined using
+        'cc_library_with_tflite' / 'android_library_with_tflite'.
+      **kwargs: Additional android_binary parameters.
+    """
+    android_binary(
+        name = name,
         deps = deps + tflite_deps,
         **kwargs
     )

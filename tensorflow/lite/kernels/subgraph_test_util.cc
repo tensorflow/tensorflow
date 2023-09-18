@@ -317,20 +317,32 @@ void SubgraphBuilder::BuildXNNPACKSubgraph(Subgraph* subgraph) {
 }
 
 void SubgraphBuilder::BuildInputIsOutputSubgraph(Subgraph* subgraph) {
-  enum { kInputCounter, kInputValue, kOutputCounter, kTensorCount };
+  enum {
+    kInputCounter,
+    kInputValue0,
+    kInputOutput,
+    kOutputCounter,
+    kOutputValue0,
+    kConstRhs,
+    kTensorCount
+  };
 
   int first_new_tensor_index;
   ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
             kTfLiteOk);
   ASSERT_EQ(first_new_tensor_index, 0);
-  ASSERT_EQ(subgraph->SetInputs({kInputCounter, kInputValue}), kTfLiteOk);
-  ASSERT_EQ(subgraph->SetOutputs({kOutputCounter, kInputValue}), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetInputs({kInputCounter, kInputValue0, kInputOutput}),
+            kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kOutputCounter, kOutputValue0, kInputOutput}),
+            kTfLiteOk);
 
   for (int i = 0; i < kTensorCount; ++i) {
     SetupTensor(subgraph, i, kTfLiteInt32);
   }
+  CreateConstantTensor(subgraph, kConstRhs, {1}, {1});
 
-  AddAddNode(subgraph, kInputCounter, kInputValue, kOutputCounter);
+  AddAddNode(subgraph, kInputCounter, kConstRhs, kOutputCounter);
+  AddAddNode(subgraph, kInputValue0, kInputOutput, kOutputValue0);
 }
 
 void SubgraphBuilder::BuildInputIsDifferentOutputSubgraph(Subgraph* subgraph) {
@@ -540,6 +552,69 @@ void SubgraphBuilder::BuildDynamicOpTriggersAllocationOfUnsedInputSubgraph(
   AddTileNode(subgraph, kInputValue1, kInputCounter, kOutputValue1);
   AddAddNode(subgraph, kInputValue0, kConstRhs, kIntermediateTensor0);
   AddAddNode(subgraph, kIntermediateTensor0, kOutputValue1, kOutputValue0);
+}
+
+enum OpType { kMax, kMin };
+
+template <OpType op_type>
+static void BuildMinMaxSubgraph(Subgraph* subgraph) {
+  const int kInput1 = 0;
+  const int kInput2 = 1;
+  const int kOutput = 2;
+  const int kTensorCount = 3;
+  // kInput1(0) --> +---+
+  //                |Op| --> kOutput(2)
+  // kInput2(1) --> +---+
+
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs({kInput1, kInput2}), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kOutput}), kTfLiteOk);
+
+  SetupTensor(subgraph, kInput1, kTfLiteInt32);
+  SetupTensor(subgraph, kInput2, kTfLiteInt32);
+  SetupTensor(subgraph, kOutput, kTfLiteInt32);
+
+  TfLiteRegistration* reg;
+  if (op_type == kMax) {
+    reg = ops::builtin::Register_MAXIMUM();
+    reg->builtin_code = kTfLiteBuiltinMaximum;
+  } else if (op_type == kMin) {
+    reg = ops::builtin::Register_MINIMUM();
+    reg->builtin_code = kTfLiteBuiltinMinimum;
+  }
+  int node_index;
+  subgraph->AddNodeWithParameters({kInput1, kInput2}, {kOutput}, {}, nullptr, 0,
+                                  nullptr, reg, &node_index);
+}
+
+void SubgraphBuilder::BuildMaximumSubgraph(Subgraph* subgraph) {
+  BuildMinMaxSubgraph<OpType::kMax>(subgraph);
+}
+
+void SubgraphBuilder::BuildMinimumSubgraph(Subgraph* subgraph) {
+  BuildMinMaxSubgraph<OpType::kMin>(subgraph);
+}
+
+void SubgraphBuilder::BuildOutputIsSecondInputSubgraph(Subgraph* subgraph) {
+  const int kInput1 = 0;
+  const int kInput2 = 1;
+  const int kTensorCount = 2;
+  // kInput1(0) --> x
+  //                    | --> kOutput(2)
+  // kInput2(1) --> ----^
+
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs({kInput1, kInput2}), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kInput2}), kTfLiteOk);
+
+  SetupTensor(subgraph, kInput1, kTfLiteInt32);
+  SetupTensor(subgraph, kInput2, kTfLiteInt32);
 }
 
 // Build a subgraph with an mul op. Helper function for testing.
@@ -1253,6 +1328,54 @@ void SubgraphBuilder::BuildPadLoopBodySubgraph(
                                   &node_index);
 }
 
+void SubgraphBuilder::BuildOutputNotConsumedIfSubgraph(Subgraph* subgraph) {
+  enum {
+    kInput0,
+    kInput1,
+    kInput2,
+    kInput3,
+    kOutput0,
+    kOutput1,
+    kOutput2,
+    kTensorCount
+  };
+
+  int num_inputs = 4;
+  int num_outputs = 3;
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  std::vector<int> input_tensors(num_inputs);
+  std::vector<int> output_tensors(num_outputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    input_tensors[i] = i;
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    output_tensors[i] = i + num_inputs;
+  }
+  ASSERT_EQ(subgraph->SetInputs(input_tensors), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs(output_tensors), kTfLiteOk);
+  SetupTensor(subgraph, input_tensors[0], kTfLiteBool);
+  for (int i = 1; i < num_inputs; ++i) {
+    SetupTensor(subgraph, input_tensors[i], kTfLiteInt32);
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    SetupTensor(subgraph, output_tensors[i], kTfLiteInt32);
+  }
+
+  TfLiteIfParams* params =
+      reinterpret_cast<TfLiteIfParams*>(malloc(sizeof(TfLiteIfParams)));
+  params->then_subgraph_index = 1;
+  params->else_subgraph_index = 2;
+  auto* if_reg = ops::builtin::Register_IF();
+  if_reg->builtin_code = kTfLiteBuiltinIf;
+
+  int node_index;
+  subgraph->AddNodeWithParameters(input_tensors, output_tensors, {}, nullptr, 0,
+                                  params, if_reg, &node_index);
+}
+
 void SubgraphBuilder::BuildOutputNotConsumedWhileSubgraph(Subgraph* subgraph) {
   enum {
     kInput0,
@@ -1291,6 +1414,44 @@ void SubgraphBuilder::BuildOutputNotConsumedWhileSubgraph(Subgraph* subgraph) {
                                   while_reg, &node_index);
 }
 
+void SubgraphBuilder::BuildFloatIfSubgraph(Subgraph* subgraph, int num_inputs) {
+  int num_outputs = num_inputs - 1;
+  int first_new_tensor_index;
+  ASSERT_EQ(
+      subgraph->AddTensors(num_inputs + num_outputs, &first_new_tensor_index),
+      kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  std::vector<int> input_tensors(num_inputs);
+  std::vector<int> output_tensors(num_outputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    input_tensors[i] = i;
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    output_tensors[i] = i + num_inputs;
+  }
+  ASSERT_EQ(subgraph->SetInputs(input_tensors), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs(output_tensors), kTfLiteOk);
+
+  SetupTensor(subgraph, input_tensors[0], kTfLiteBool);
+  for (int i = 1; i < num_inputs; ++i) {
+    SetupTensor(subgraph, input_tensors[i], kTfLiteFloat32);
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    SetupTensor(subgraph, output_tensors[i], kTfLiteFloat32);
+  }
+
+  TfLiteIfParams* params =
+      reinterpret_cast<TfLiteIfParams*>(malloc(sizeof(TfLiteWhileParams)));
+  params->then_subgraph_index = 1;
+  params->else_subgraph_index = 2;
+  auto* if_reg = ops::builtin::Register_IF();
+  if_reg->builtin_code = kTfLiteBuiltinIf;
+
+  int node_index;
+  subgraph->AddNodeWithParameters(input_tensors, output_tensors, {}, nullptr, 0,
+                                  params, if_reg, &node_index);
+}
+
 void SubgraphBuilder::BuildFloatWhileSubgraph(Subgraph* subgraph,
                                               int num_inputs) {
   // kInput1(0) --> +-------+ --> kOutput1(2)
@@ -1327,6 +1488,122 @@ void SubgraphBuilder::BuildFloatWhileSubgraph(Subgraph* subgraph,
                                   params, while_reg, &node_index);
 }
 
+void SubgraphBuilder::BuildMultiInputIfSubgraphWithUnconsumedOutput(
+    Subgraph* subgraph, int num_inputs) {
+  int num_outputs = num_inputs - 1;
+  int first_new_tensor_index;
+  ASSERT_EQ(
+      subgraph->AddTensors(num_inputs + num_outputs, &first_new_tensor_index),
+      kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  std::vector<int> input_tensors(num_inputs);
+  std::vector<int> output_tensors(num_outputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    input_tensors[i] = i;
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    output_tensors[i] = i + num_inputs;
+  }
+  SetupTensor(subgraph, input_tensors[0], kTfLiteBool);
+  for (int i = 1; i < num_inputs; ++i) {
+    SetupTensor(subgraph, input_tensors[i], kTfLiteInt32);
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    SetupTensor(subgraph, output_tensors[i], kTfLiteInt32);
+  }
+
+  TfLiteIfParams* params =
+      reinterpret_cast<TfLiteIfParams*>(malloc(sizeof(TfLiteIfParams)));
+  params->then_subgraph_index = 1;
+  params->else_subgraph_index = 2;
+  auto* if_reg = ops::builtin::Register_IF();
+  if_reg->builtin_code = kTfLiteBuiltinIf;
+
+  int node_index;
+  subgraph->AddNodeWithParameters(input_tensors, output_tensors, {}, nullptr, 0,
+                                  params, if_reg, &node_index);
+
+  output_tensors.pop_back();
+  ASSERT_EQ(subgraph->SetInputs(input_tensors), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs(output_tensors), kTfLiteOk);
+}
+
+void SubgraphBuilder::BuildMultiInputWhileSubgraphWithUnconsumedOutput(
+    Subgraph* subgraph, int num_inputs) {
+  // kInput1(0) --> +-------+ --> kOutput1(2)
+  //                | WHILE |
+  // kInput2(1) --> +-------+ --> kOutput2(3)
+
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(num_inputs * 2, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  std::vector<int> input_tensors(num_inputs);
+  std::vector<int> output_tensors(num_inputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    input_tensors[i] = i;
+    output_tensors[i] = i + num_inputs;
+  }
+  for (int i = 0; i < num_inputs; ++i) {
+    SetupTensor(subgraph, input_tensors[i], kTfLiteInt32);
+    SetupTensor(subgraph, output_tensors[i], kTfLiteInt32);
+  }
+
+  TfLiteWhileParams* params =
+      reinterpret_cast<TfLiteWhileParams*>(malloc(sizeof(TfLiteWhileParams)));
+  params->cond_subgraph_index = 1;
+  params->body_subgraph_index = 2;
+  auto* while_reg = ops::builtin::Register_WHILE();
+  while_reg->builtin_code = kTfLiteBuiltinWhile;
+
+  int node_index;
+  subgraph->AddNodeWithParameters(input_tensors, output_tensors, {}, nullptr, 0,
+                                  params, while_reg, &node_index);
+
+  output_tensors.pop_back();
+  ASSERT_EQ(subgraph->SetInputs(input_tensors), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs(output_tensors), kTfLiteOk);
+}
+
+void SubgraphBuilder::BuildMultiInputIfSubgraph(Subgraph* subgraph,
+                                                int num_inputs) {
+  int num_outputs = num_inputs - 1;
+  int first_new_tensor_index;
+  ASSERT_EQ(
+      subgraph->AddTensors(num_inputs + num_outputs, &first_new_tensor_index),
+      kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  std::vector<int> input_tensors(num_inputs);
+  std::vector<int> output_tensors(num_outputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    input_tensors[i] = i;
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    output_tensors[i] = i + num_inputs;
+  }
+  ASSERT_EQ(subgraph->SetInputs(input_tensors), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs(output_tensors), kTfLiteOk);
+
+  SetupTensor(subgraph, input_tensors[0], kTfLiteBool);
+  for (int i = 1; i < num_inputs; ++i) {
+    SetupTensor(subgraph, input_tensors[i], kTfLiteInt32);
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    SetupTensor(subgraph, output_tensors[i], kTfLiteInt32);
+  }
+
+  TfLiteIfParams* params =
+      reinterpret_cast<TfLiteIfParams*>(malloc(sizeof(TfLiteIfParams)));
+  params->then_subgraph_index = 1;
+  params->else_subgraph_index = 2;
+  auto* if_reg = ops::builtin::Register_IF();
+  if_reg->builtin_code = kTfLiteBuiltinWhile;
+
+  int node_index;
+  subgraph->AddNodeWithParameters(input_tensors, output_tensors, {}, nullptr, 0,
+                                  params, if_reg, &node_index);
+}
+
 void SubgraphBuilder::BuildMultiInputWhileSubgraph(Subgraph* subgraph,
                                                    int num_inputs) {
   // kInput1(0) --> +-------+ --> kOutput1(2)
@@ -1343,7 +1620,6 @@ void SubgraphBuilder::BuildMultiInputWhileSubgraph(Subgraph* subgraph,
     input_tensors[i] = i;
     output_tensors[i] = i + num_inputs;
   }
-  // input_tensors[4] = input_tensors[3];
   ASSERT_EQ(subgraph->SetInputs(input_tensors), kTfLiteOk);
   ASSERT_EQ(subgraph->SetOutputs(output_tensors), kTfLiteOk);
 
@@ -1582,6 +1858,56 @@ void SubgraphBuilder::BuildBodySubgraphWithDynamicTensor(Subgraph* subgraph) {
   subgraph->AddNodeWithParameters({kIntegerOutput, kStringInput1},
                                   {kStringOutput2}, {}, nullptr, 0, nullptr,
                                   fill_reg, &node_index);
+}
+
+void SubgraphBuilder::BuildIfSubgraphWithDynamicTensor(Subgraph* subgraph) {
+  enum {
+    kBoolInput0,
+    kStringInput1,
+    kStringInput2,
+    kIntegerInput,
+    kStringOutput1,
+    kStringOutput2,
+    kIntegerOutput,
+    kTensorCount
+  };
+
+  int num_inputs = 4;
+  int num_outputs = num_inputs - 1;
+  // Create a if op with 2 string tensor and 1 integer tensor.
+  int first_new_tensor_index;
+  std::vector<int> input_tensors(num_inputs);
+  std::vector<int> output_tensors(num_outputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    input_tensors[i] = i;
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    output_tensors[i] = i + num_inputs;
+  }
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs(input_tensors), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs(output_tensors), kTfLiteOk);
+
+  SetupTensor(subgraph, kBoolInput0, kTfLiteBool);
+  SetupTensor(subgraph, kStringInput1, kTfLiteString);
+  SetupTensor(subgraph, kStringInput2, kTfLiteString);
+  SetupTensor(subgraph, kIntegerInput, kTfLiteInt32);
+  SetupTensor(subgraph, kStringOutput1, kTfLiteString);
+  SetupTensor(subgraph, kStringOutput2, kTfLiteString);
+  SetupTensor(subgraph, kIntegerOutput, kTfLiteInt32);
+
+  TfLiteIfParams* params =
+      reinterpret_cast<TfLiteIfParams*>(malloc(sizeof(TfLiteWhileParams)));
+  params->then_subgraph_index = 1;
+  params->else_subgraph_index = 2;
+  auto* if_reg = ops::builtin::Register_IF();
+  if_reg->builtin_code = kTfLiteBuiltinIf;
+
+  int node_index;
+  subgraph->AddNodeWithParameters(input_tensors, output_tensors, {}, nullptr, 0,
+                                  params, if_reg, &node_index);
 }
 
 void SubgraphBuilder::BuildWhileSubgraphWithDynamicTensor(Subgraph* subgraph) {

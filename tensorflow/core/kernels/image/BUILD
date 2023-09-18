@@ -126,7 +126,7 @@ cc_library(
 )
 
 IMAGE_DEPS = [
-    "//third_party/eigen3",
+    "@eigen_archive//:eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:gif_internal",
     "//tensorflow/core:jpeg_internal",
@@ -202,7 +202,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "decode_image_op",
     prefix = "decode_image_op",
-    deps = IMAGE_DEPS + ["@com_google_absl//absl/strings"],
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/util:byte_swap_array",
+    ],
 )
 
 tf_kernel_library(
@@ -245,7 +248,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/kernels:ops_util",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -433,7 +436,15 @@ cc_library(
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
+        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/png:png_io",
+        "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/util:byte_swap_array",
     ],
     alwayslink = 1,
 )

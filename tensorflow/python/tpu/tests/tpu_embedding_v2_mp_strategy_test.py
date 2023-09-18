@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for TPU Embeddings mid level API on TPU."""
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.compat import v2_compat
@@ -54,13 +55,27 @@ class TPUEmbeddingTPUStrategyV2Test(
         num_replicas=1,
     )
 
-    return tpu_strategy.TPUStrategyV2(
+    self.strategy = tpu_strategy.TPUStrategyV2(
         self.resolver,
         experimental_device_assignment=d_assign,
         experimental_spmd_xla_partitioning=True,
     )
 
-  def test_spmd_training(self):
+    self.embedding_devices = sum(
+        (list(replica) for replica in self.strategy.extended._tpu_devices), []
+    )
+
+    return self.strategy
+
+  def enqueue(self, inp, mid_level_api, use_device, training):
+    if use_device:
+      for emb, device in zip(inp, self.embedding_devices):
+        mid_level_api.enqueue(emb, device=device, training=training)
+    else:
+      mid_level_api.enqueue(inp[0], training=training)
+
+  @parameterized.parameters(False, True)
+  def test_spmd_training(self, use_device):
     num_steps = 10
     num_steps_float = float(num_steps)
     starting_lr = 1.0
@@ -96,20 +111,47 @@ class TPUEmbeddingTPUStrategyV2Test(
           optimizer=optimizer,
       )
 
-    feature = {
-        'feature': constant_op.constant(
-            [0, 1], shape=(2, 1), dtype=dtypes.int32
-        )
-    }
-
     def input_fn(ctx):
       del ctx
+      feature = {
+          'feature': constant_op.constant(
+              [0, 1], shape=(2, 1), dtype=dtypes.int32
+          )
+      }
       return dataset_ops.DatasetV2.from_tensors(feature).repeat()
 
-    dist = strategy.distribute_datasets_from_function(
-        input_fn,
-        options=distribute_lib.InputOptions(experimental_fetch_to_device=False))
-    dist_iter = iter(dist)
+    def create_datasets():
+      """Creates either a per-replica dataset, or multiple per-devices ones.
+
+      This function explicitly creates per-device datasets because the strategy
+      does not produce a distributed dataset in the model-parallel case; there
+      is only one replica. Without this consideration, the embeddings would be
+      read as [0, 0] instead of the expected [0, 1] since all the devices would
+      receive the same value.
+
+      Returns:
+        A list of one or more dataset(s).
+      """
+      if use_device:
+        datasets = []
+        for i in range(len(self.embedding_devices)):
+          datasets.append(
+              dataset_ops.DatasetV2.from_tensor_slices(
+                  {'feature': [[[i % self._num_cores_per_replica]]]}
+              ).repeat()
+          )
+        return datasets
+      else:
+        dataset = strategy.distribute_datasets_from_function(
+            input_fn,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False
+            ),
+        )
+        return [dataset]
+
+    datasets = create_datasets()
+    iterators = [iter(ds) for ds in datasets]
 
     @def_function.function(jit_compile=True)
     def test_fn():
@@ -123,7 +165,8 @@ class TPUEmbeddingTPUStrategyV2Test(
         mid_level_api.apply_gradients(grads)
         return activations
 
-      mid_level_api.enqueue(next(dist_iter), training=True)
+      inp = [next(it) for it in iterators]
+      self.enqueue(inp, mid_level_api, use_device, training=True)
       return strategy.run(step)
 
     # Run model.

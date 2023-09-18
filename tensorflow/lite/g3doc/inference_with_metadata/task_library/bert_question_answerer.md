@@ -49,7 +49,7 @@ dependencies {
     // Other dependencies
 
     // Import the Task Text Library dependency (NNAPI is included)
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.4.4'
 }
 ```
 
@@ -86,7 +86,7 @@ Add the TensorFlowLiteTaskText pod in Podfile
 ```
 target 'MySwiftAppWithTaskAPI' do
   use_frameworks!
-  pod 'TensorFlowLiteTaskText', '~> 0.2.0'
+  pod 'TensorFlowLiteTaskText', '~> 0.4.4'
 end
 ```
 

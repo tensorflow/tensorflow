@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
@@ -37,8 +37,8 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:smart_cond",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_gen",
@@ -61,7 +61,6 @@ py_strict_library(
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/ops:optional_ops_gen",
-        "//tensorflow/python/ops:parsing_ops",
         "//tensorflow/python/ops:parsing_ops_gen",
         "//tensorflow/python/ops:random_ops_gen",
         "//tensorflow/python/ops:resource_variable_ops",
@@ -95,6 +94,7 @@ py_strict_library(
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:type_spec",
@@ -256,6 +256,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:clip_ops",
@@ -277,6 +278,7 @@ py_strict_library(
     deps = [
         ":control_flow_ops",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:check_ops",
         "//tensorflow/python/ops:gradients_impl",
@@ -312,5 +314,22 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
+    name = "pfor_test",
+    srcs = ["pfor_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":pfor_lib",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

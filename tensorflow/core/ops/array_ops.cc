@@ -2702,11 +2702,11 @@ REGISTER_OP("ExtractImagePatches")
       int64_t output_rows, output_cols;
       int64_t padding_before, padding_after;
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
-          in_rows, ksize_rows_eff, stride_rows, padding, &output_rows,
-          &padding_before, &padding_after));
+          in_rows, ksize_rows_eff, /*dilation_rate=*/1, stride_rows, padding,
+          &output_rows, &padding_before, &padding_after));
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
-          in_cols, ksize_cols_eff, stride_cols, padding, &output_cols,
-          &padding_before, &padding_after));
+          in_cols, ksize_cols_eff, /*dilation_rate=*/1, stride_cols, padding,
+          &output_cols, &padding_before, &padding_after));
       ShapeHandle output_shape = c->MakeShape(
           {batch_size_dim, output_rows, output_cols, output_depth_dim});
       c->set_output(0, output_shape);
@@ -2808,14 +2808,14 @@ REGISTER_OP("ExtractVolumePatches")
       int64_t output_planes, output_rows, output_cols;
       int64_t padding_before, padding_after;
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
-          in_planes, ksize_planes, stride_planes, padding, &output_planes,
-          &padding_before, &padding_after));
+          in_planes, ksize_planes, /*dilation_rate=*/1, stride_planes, padding,
+          &output_planes, &padding_before, &padding_after));
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
-          in_rows, ksize_rows, stride_rows, padding, &output_rows,
-          &padding_before, &padding_after));
+          in_rows, ksize_rows, /*dilation_rate=*/1, stride_rows, padding,
+          &output_rows, &padding_before, &padding_after));
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
-          in_cols, ksize_cols, stride_cols, padding, &output_cols,
-          &padding_before, &padding_after));
+          in_cols, ksize_cols, /*dilation_rate=*/1, stride_cols, padding,
+          &output_cols, &padding_before, &padding_after));
       ShapeHandle output_shape =
           c->MakeShape({batch_size_dim, output_planes, output_rows, output_cols,
                         output_depth_dim});

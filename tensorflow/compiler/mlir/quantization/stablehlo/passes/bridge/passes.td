@@ -35,3 +35,43 @@ def ConvertMHLOQuantToInt : Pass<"convert-mhlo-quant-to-int", "mlir::func::FuncO
                            "shape::ShapeDialect",
                            "func::FuncDialect"];
 }
+
+def ConvertTFQuantOpsToMHLO : Pass<"quant-convert-tf-quant-ops-to-mhlo", "mlir::func::FuncOp"> {
+  let summary = "Convert TF Quant ops to MHLO quantizated ops.";
+
+  let description = [{
+    Convert TF Quant ops to MHLO quant ops.
+  }];
+
+  let constructor = "mlir::stablehlo::CreateConvertTFQuantOpsToMHLOPass()";
+  let dependentDialects = ["TF::TensorFlowDialect", "chlo::ChloDialect",
+                           "mhlo::MhloDialect", "tf_type::TFTypeDialect",
+                           "quant::QuantizationDialect"];
+}
+
+def ConvertTFQuantTypes : Pass<"convert-tf-quant-types", "mlir::func::FuncOp"> {
+  let summary = "Replace TensorFlow qint types with int types.";
+
+  let description = [{
+    Converts TF ops with qint types to int types. Some UniformQuantized ops
+    argument/result allow qint type only. For such cases, add qint <-> int
+    tf.Cast around the ops so that they are still valid.
+  }];
+
+  let constructor = "mlir::stablehlo::CreateConvertTFQuantTypesPass()";
+  let dependentDialects = ["TF::TensorFlowDialect", "tf_type::TFTypeDialect"];
+}
+
+def VerifyQuantLegalization : Pass<"verify-quant-legalization", "mlir::func::FuncOp"> {
+  let summary = "Verifies that all TF quant ops and types have been legalized.";
+
+  let description = [{
+    Ensures that all TF quant ops and types have been legalized to HLO
+    and reports an error about which op failed to legalize. This pass
+    does not transform any ops and is checking.}];
+
+  let constructor = "mlir::stablehlo::CreateVerifyQuantLegalizationPass()";
+  let dependentDialects =  ["tf_type::TFTypeDialect",
+                            "quant::QuantizationDialect"];
+
+}

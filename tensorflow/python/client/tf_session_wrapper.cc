@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "Python.h"
 #include "absl/types/optional.h"
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/chrono.h"  // from @pybind11
@@ -48,8 +48,8 @@ limitations under the License.
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/python/lib/core/numpy.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/python/lib/core/numpy.h"
 
 namespace pybind11 {
 namespace detail {
@@ -1618,12 +1618,10 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   // Note: users should prefer using tf.cast or equivalent, and only when
   // it's infeasible to set the type via OpDef's type constructor and
   // inference function.
-  m.def("SetFullType", [](PyGraph* graph, TF_Operation* op,
-                          const std::string& serialized_full_type) {
-    tensorflow::FullTypeDef proto;
-    proto.ParseFromString(serialized_full_type);
-    tensorflow::SetFullType(graph->tf_graph(), op, proto);
-  });
+  m.def("SetFullType",
+        [](PyGraph* graph, TF_Operation* op, const TF_Buffer* full_type_proto) {
+          tensorflow::SetFullType(graph->tf_graph(), op, full_type_proto);
+        });
 
   m.def(
       "TF_LoadLibrary",

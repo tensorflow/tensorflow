@@ -18,6 +18,7 @@ import functools
 import inspect
 import re
 
+from tensorflow.python.framework import strict_mode
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import is_in_graph_mode
@@ -33,16 +34,27 @@ _PRINT_DEPRECATION_WARNINGS = True
 _PRINTED_WARNING = {}
 
 
-class DeprecatedNamesAlreadySet(Exception):
+class DeprecatedNamesAlreadySetError(Exception):
   """Raised when setting deprecated names multiple times for the same symbol."""
-  pass
+
+
+def _log_deprecation(msg, *args, **kwargs):
+  """Raises errors for deprecated methods if in strict mode, warns otherwise."""
+  if strict_mode.STRICT_MODE:
+    logging.error(msg, *args, **kwargs)
+    raise RuntimeError(
+        'This behavior has been deprecated, which raises an error in strict'
+        ' mode.'
+    )
+  else:
+    logging.warning(msg, *args, **kwargs)
 
 
 def _add_deprecated_function_notice_to_docstring(doc, date, instructions):
   """Adds a deprecation notice to a docstring for deprecated functions."""
   main_text = [
-      'THIS FUNCTION IS DEPRECATED. It will be removed %s.' %
-      ('in a future version' if date is None else ('after %s' % date))
+      'THIS FUNCTION IS DEPRECATED. It will be removed %s.'
+      % ('in a future version' if date is None else ('after %s' % date))
   ]
   if instructions:
     main_text.append('Instructions for updating:')
@@ -233,7 +245,7 @@ def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
           if _NewClass.__init__ not in _PRINTED_WARNING:
             if warn_once:
               _PRINTED_WARNING[_NewClass.__init__] = True
-            logging.warning(
+            _log_deprecation(
                 'From %s: The name %s is deprecated. Please use %s instead.\n',
                 _call_location(), deprecated_name, name)
         super(_NewClass, self).__init__(*args, **kwargs)
@@ -252,7 +264,7 @@ def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
         if new_func not in _PRINTED_WARNING:
           if warn_once:
             _PRINTED_WARNING[new_func] = True
-          logging.warning(
+          _log_deprecation(
               'From %s: The name %s is deprecated. Please use %s instead.\n',
               _call_location(), deprecated_name, name)
       return func_or_class(*args, **kwargs)
@@ -283,7 +295,7 @@ def deprecated_endpoints(*args):
   def deprecated_wrapper(func):
     # pylint: disable=protected-access
     if '_tf_deprecated_api_names' in func.__dict__:
-      raise DeprecatedNamesAlreadySet(
+      raise DeprecatedNamesAlreadySetError(
           f'Cannot set deprecated names for {func.__name__} to {args}. '
           'Deprecated names are already set to '
           f'{func._tf_deprecated_api_names}.')
@@ -361,7 +373,7 @@ def deprecated(date, instructions, warn_once=True):
             _PRINTED_WARNING[func] = True
             if cls:
               _PRINTED_WARNING[cls] = True
-          logging.warning(
+          _log_deprecation(
               'From %s: %s (from %s) is deprecated and will be removed %s.\n'
               'Instructions for updating:\n%s', _call_location(),
               decorator_utils.get_qualified_name(func),
@@ -566,7 +578,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
           if (func, arg_name) not in _PRINTED_WARNING:
             if warn_once:
               _PRINTED_WARNING[(func, arg_name)] = True
-            logging.warning(
+            _log_deprecation(
                 'From %s: calling %s (from %s) with %s is deprecated and will '
                 'be removed %s.\nInstructions for updating:\n%s',
                 _call_location(), decorator_utils.get_qualified_name(func),
@@ -638,7 +650,7 @@ def deprecated_arg_values(date,
             if (func, arg_name) not in _PRINTED_WARNING:
               if warn_once:
                 _PRINTED_WARNING[(func, arg_name)] = True
-              logging.warning(
+              _log_deprecation(
                   'From %s: calling %s (from %s) with %s=%s is deprecated and '
                   'will be removed %s.\nInstructions for updating:\n%s',
                   _call_location(), decorator_utils.get_qualified_name(func),
@@ -719,7 +731,7 @@ def deprecate_moved_module(deprecated_name, new_module, deletion_version):
   def getter(name):
     if getter not in _PRINTED_WARNING and _PRINT_DEPRECATION_WARNINGS:
       _PRINTED_WARNING[getter] = True
-      logging.warning(
+      _log_deprecation(
           'Please fix your imports. Module %s has been moved to %s. The old '
           'module will be deleted in version %s.', deprecated_name,
           new_module.__name__, deletion_version)

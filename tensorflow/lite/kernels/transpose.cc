@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #endif  // TFLITE_KERNEL_USE_XNNPACK
 
@@ -116,8 +117,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   CpuBackendContext* cpu_backend_context =
       CpuBackendContext::GetFromContext(context);
   pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
-  // TODO (grantjensen): Add threading.
-  threadpool = nullptr;
   std::array<size_t, kTransposeMaxDimensions> xnn_input_shape;
   std::array<size_t, kTransposeMaxDimensions> xnn_perm;
   TfLiteIntArray* input_shape = op_context.input->dims;

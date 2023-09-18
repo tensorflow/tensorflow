@@ -67,6 +67,10 @@ Status ConvertTfMlirToRuntimeExecutable(
 std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
     const TfrtCompileOptions& options);
 
+// Adds MLIR functions for XLA clusters to the function library.
+tensorflow::Status AddXlaFunctions(tfrt_stub::FallbackState* fallback_state,
+                                   mlir::ModuleOp mlir_module);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_IMPORT_MODEL_H_

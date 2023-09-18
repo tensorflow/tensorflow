@@ -21,13 +21,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/tsl/framework/allocator.h"
-#include "tensorflow/tsl/framework/device_id.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "tsl/framework/allocator.h"
+#include "tsl/framework/device_id.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
 #endif
 
 #if CUDA_VERSION >= 10020

@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_TPU_EMBEDDING_SPMD_SHARDING_UTILS_H_
 #define TENSORFLOW_CORE_TPU_TPU_EMBEDDING_SPMD_SHARDING_UTILS_H_
 
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/xla_builder.h"
+#include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {

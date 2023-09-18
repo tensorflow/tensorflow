@@ -17,22 +17,24 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/cc/framework/scope.h"
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow::saved_model::fingerprinting {
 
 namespace {
 
-StatusOr<SavedModel> ReadSavedModel(absl::string_view file_dir) {
+absl::StatusOr<SavedModel> ReadSavedModel(absl::string_view file_dir) {
   std::string file_path = io::JoinPath(file_dir, "saved_model.pb");
   std::string serialized_saved_model;
   auto status =
@@ -45,7 +47,6 @@ StatusOr<SavedModel> ReadSavedModel(absl::string_view file_dir) {
   return saved_model_pb;
 }
 
-
 TEST(FingerprintingTest, TestCreateFingerprint) {
   const std::string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
@@ -53,7 +54,7 @@ TEST(FingerprintingTest, TestCreateFingerprint) {
   TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb,
                           ReadSavedModel(export_dir));
   TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def,
-                          CreateFingerprintDef(saved_model_pb, export_dir));
+                          CreateFingerprintDef(export_dir));
 
   EXPECT_GT(fingerprint_def.saved_model_checksum(), 0);
   EXPECT_EQ(fingerprint_def.graph_def_program_hash(), 10127142238652115842U);
@@ -73,14 +74,14 @@ TEST(FingerprintingTest, TestCompareFingerprintForTwoModelSavedTwice) {
   TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb,
                           ReadSavedModel(export_dir));
   TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def,
-                          CreateFingerprintDef(saved_model_pb, export_dir));
+                          CreateFingerprintDef(export_dir));
 
   const std::string export_dir2 = io::JoinPath(
       testing::TensorFlowSrcRoot(), "cc/saved_model/testdata", "bert2");
   TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb2,
                           ReadSavedModel(export_dir2));
   TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def2,
-                          CreateFingerprintDef(saved_model_pb2, export_dir2));
+                          CreateFingerprintDef(export_dir2));
 
   // While the saved_model serialization is deterministic, the model saving and
   // proto construction is not. Therefore, we can't compare the two
@@ -101,9 +102,9 @@ TEST(FingerprintingTest, TestFingerprintComputationDoesNotMutateModel) {
   TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb,
                           ReadSavedModel(export_dir));
   TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def,
-                          CreateFingerprintDef(saved_model_pb, export_dir));
+                          CreateFingerprintDef(export_dir));
   TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def2,
-                          CreateFingerprintDef(saved_model_pb, export_dir));
+                          CreateFingerprintDef(export_dir));
 
   EXPECT_EQ(fingerprint_def.saved_model_checksum(),
             fingerprint_def2.saved_model_checksum());
@@ -115,7 +116,7 @@ TEST(FingerprintingTest, TestFingerprintHasVersion) {
   TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb,
                           ReadSavedModel(export_dir));
   TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def,
-                          CreateFingerprintDef(saved_model_pb, export_dir));
+                          CreateFingerprintDef(export_dir));
   EXPECT_EQ(fingerprint_def.version().producer(), 1);
 }
 
@@ -125,7 +126,7 @@ TEST(FingerprintingTest, TestHashCheckpointForModelWithNoVariables) {
   TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb,
                           ReadSavedModel(export_dir));
   TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def,
-                          CreateFingerprintDef(saved_model_pb, export_dir));
+                          CreateFingerprintDef(export_dir));
   EXPECT_EQ(fingerprint_def.checkpoint_hash(), 0);
 }
 
@@ -152,7 +153,8 @@ TEST(FingerprintingTest, TestSingleprint) {
   const std::string const_singleprint =
       "706963557435316516/5693392539583495303/12074714563970609759/"
       "10788359570789890102";
-  EXPECT_EQ(Singleprint(export_dir), const_singleprint);
+  TF_ASSERT_OK_AND_ASSIGN(std::string singleprint, Singleprint(export_dir));
+  EXPECT_EQ(singleprint, const_singleprint);
   TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_pb,
                           ReadSavedModelFingerprint(export_dir));
   EXPECT_EQ(Singleprint(fingerprint_pb), const_singleprint);

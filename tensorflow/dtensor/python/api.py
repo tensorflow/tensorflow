@@ -23,6 +23,7 @@ from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -167,7 +168,7 @@ def is_dtensor(tensor) -> bool:
 def copy_to_mesh(
     tensor: Any,
     layout: layout_lib.Layout,
-    source_layout: Optional[layout_lib.Layout] = None) -> ops.Tensor:
+    source_layout: Optional[layout_lib.Layout] = None) -> tensor_lib.Tensor:
   """Copies a tf.Tensor onto the DTensor device with the given layout.
 
   Copies a regular tf.Tensor onto the DTensor device. Use the mesh attached to
@@ -184,8 +185,7 @@ def copy_to_mesh(
     A DTensor on the DTensor device with the given layout.
   """
   del source_layout
-  with default_mesh(layout.mesh):
-    return gen_dtensor_ops.copy_to_mesh(tensor, layout.to_string())
+  return relayout(tensor, layout)
 
 
 @tf_export("experimental.dtensor.pack", v1=[])
@@ -377,7 +377,7 @@ def unpack(tensor: Any) -> Sequence[Any]:
 
 
 @tf_export("experimental.dtensor.fetch_layout", v1=[])
-def fetch_layout(tensor: ops.Tensor) -> layout_lib.Layout:
+def fetch_layout(tensor: tensor_lib.Tensor) -> layout_lib.Layout:
   """Fetches the layout of a DTensor.
 
   Args:
@@ -393,7 +393,7 @@ def fetch_layout(tensor: ops.Tensor) -> layout_lib.Layout:
 
 
 @tf_export("experimental.dtensor.check_layout", v1=[])
-def check_layout(tensor: ops.Tensor, layout: layout_lib.Layout) -> None:
+def check_layout(tensor: tensor_lib.Tensor, layout: layout_lib.Layout) -> None:
   """Asserts that the layout of the DTensor is `layout`.
 
   Args:
@@ -410,8 +410,10 @@ def check_layout(tensor: ops.Tensor, layout: layout_lib.Layout) -> None:
 
 @tf_export("experimental.dtensor.relayout", v1=[])
 def relayout(
-    tensor: ops.Tensor, layout: layout_lib.Layout, name: Optional[str] = None
-) -> ops.Tensor:
+    tensor: tensor_lib.Tensor,
+    layout: layout_lib.Layout,
+    name: Optional[str] = None,
+) -> tensor_lib.Tensor:
   """Changes the layout of `tensor`.
 
   Changes the layout of `tensor` to `layout`. This is used to fine-tune the
@@ -449,8 +451,10 @@ def relayout(
 
 @tf_export("experimental.dtensor.relayout_like", v1=[])
 def relayout_like(
-    tensor: ops.Tensor, layout_tensor: ops.Tensor, name: Optional[str] = None
-) -> ops.Tensor:
+    tensor: tensor_lib.Tensor,
+    layout_tensor: tensor_lib.Tensor,
+    name: Optional[str] = None,
+) -> tensor_lib.Tensor:
   """Changes the layout of `tensor` to the same as `layout_tensor`.
 
   `relayout_like` is often used inside a `tf.function`, to ensure a tensor is
@@ -498,24 +502,32 @@ def relayout_like(
   )
 
 
-def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
+@tf_export("experimental.dtensor._reset_dtensor_device", v1=[])
+def reset_dtensor_device(is_async: bool) -> None:
+  """Resets the Eager execution device for DTensor.
+
+  This function is only intended for testing and diagnostics.
+
+  Args:
+    is_async: If True, the device uses async execution.
+  """
   global _dtensor_singleton
+  device = dtensor_device.DTensorDevice(meshes=[], is_async=is_async)
   _dtensor_singleton = device
 
 
 def _dtensor_device() -> dtensor_device.DTensorDevice:
   with _dtensor_singleton_lock:
     if _dtensor_singleton is None:
-      _set_dtensor_device(
-          dtensor_device.DTensorDevice(meshes=[], is_async=True))
-  return _dtensor_singleton
+      reset_dtensor_device(is_async=True)
+    return _dtensor_singleton
 
 
 def _reset() -> None:
   global _dtensor_singleton
-  if _dtensor_singleton is not None:
-    _dtensor_singleton.clear_tpu_core_ids()
   with _dtensor_singleton_lock:
+    if _dtensor_singleton is not None:
+      _dtensor_singleton.clear_tpu_core_ids()
     _dtensor_singleton = None
 
 
@@ -543,7 +555,6 @@ def _copy_to_mesh_gradient(op, grad):
   grad = gen_dtensor_ops.copy_to_mesh_grad(
       grad,
       forward_input=op.inputs[0],
-      reference_layout=op.get_attr("layout"),
   )
   return grad
 
@@ -553,6 +564,5 @@ def _copy_to_mesh_grad_gradient(op, grad):
   grad = gen_dtensor_ops.copy_to_mesh_grad(
       grad,
       forward_input=op.inputs[0],
-      reference_layout=op.get_attr("reference_layout"),
   )
   return grad, None

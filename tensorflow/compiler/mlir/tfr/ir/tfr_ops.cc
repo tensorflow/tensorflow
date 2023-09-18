@@ -39,13 +39,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Interfaces/FunctionImplementation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
@@ -928,21 +928,6 @@ OpFoldResult ConstOp::fold(FoldAdaptor adaptor) {
 // CallableOpInterface
 Region *TFRFuncOp::getCallableRegion() {
   return isExternal() ? nullptr : &getBody().front();
-}
-
-// CallableOpInterface
-ArrayRef<Type> TFRFuncOp::getCallableResults() {
-  return getFunctionType().getResults();
-}
-
-// CallableOpInterface
-::mlir::ArrayAttr TFRFuncOp::getCallableArgAttrs() {
-  return getArgAttrs().value_or(nullptr);
-}
-
-// CallableOpInterface
-::mlir::ArrayAttr TFRFuncOp::getCallableResAttrs() {
-  return getResAttrs().value_or(nullptr);
 }
 
 //===----------------------------------------------------------------------===//

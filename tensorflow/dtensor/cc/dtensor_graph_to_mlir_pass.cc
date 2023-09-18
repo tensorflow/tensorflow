@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -49,8 +49,8 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -127,6 +127,12 @@ DTensorMlirPassRunner::ImportGraphToMlir(
       dtensor::kAllReduceNumOpsInGroup,
       mlir::IntegerAttr::get(mlir::IntegerType::get(&context_, /*width=*/64),
                              group_size));
+
+  int topo_dist = dtensor::AllReduceCombineOptimizationTopologicalDistance();
+  module->setAttr(
+      dtensor::kAllReduceTopologicalDistance,
+      mlir::IntegerAttr::get(mlir::IntegerType::get(&context_, /*width=*/64),
+                             topo_dist));
 
   if (dtensor::EnableMultiDeviceMode()) {
     module->setAttr(dtensor::kEnableMultiDeviceMode,

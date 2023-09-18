@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/tools/benchmark/register_custom_op.h"
 #include "tensorflow/lite/tools/model_loader.h"
 
 #ifndef TEMP_FAILURE_RETRY
@@ -330,6 +331,8 @@ MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
   resolver_->AddCustom(
       "validation/decode_jpeg",
       ::tflite::acceleration::decode_jpeg_kernel::Register_DECODE_JPEG(), 1);
+
+  RegisterSelectedOps(resolver_.get());
 
   tflite::InterpreterBuilder builder(*model_loader_->GetModel(), *resolver_);
   // Add delegate if not running on CPU.

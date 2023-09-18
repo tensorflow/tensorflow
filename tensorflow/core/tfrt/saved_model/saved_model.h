@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -36,6 +37,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
+#include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
+#include "tsl/platform/protobuf.h"
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
@@ -47,36 +50,6 @@ class HostContext;
 
 namespace tensorflow {
 namespace tfrt_stub {
-
-// TODO(tfrt-dev): Replace tfrt::TensorSpec with tensorflow::TensorSpec once the
-// latter is checked in.
-struct TensorSpec {
-  tensorflow::DataType dtype;
-  tensorflow::PartialTensorShape shape;
-
-  explicit TensorSpec(tensorflow::DataType dtype) : dtype(dtype) {}
-  TensorSpec(tensorflow::DataType dtype, tensorflow::PartialTensorShape shape)
-      : dtype(dtype), shape(std::move(shape)) {}
-};
-
-inline bool operator==(const TensorSpec& a, const TensorSpec& b) {
-  return a.dtype == b.dtype && a.shape.IsIdenticalTo(b.shape);
-}
-
-namespace internal {
-
-struct Signature {
-  // The following three fields should have the same size.
-  std::vector<std::string> input_names;
-  std::vector<TensorSpec> input_specs;
-  std::vector<std::string> input_devices;
-
-  // The following two fields should have the same size.
-  std::vector<std::string> output_names;
-  std::vector<TensorSpec> output_specs;
-};
-
-}  // namespace internal
 
 class FunctionMetadata {
  public:
@@ -99,6 +72,10 @@ class FunctionMetadata {
 
   const std::vector<TensorSpec>& GetOutputSpecs() const {
     return signature_->output_specs;
+  }
+
+  const protobuf::Map<std::string, TensorProto>& GetDefaultInputs() const {
+    return signature_->default_inputs;
   }
 
  private:
@@ -202,6 +179,9 @@ class SavedModel {
   const Options options_;
 };
 
+using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
+using ::tensorflow::StatusOr;
+
 class SavedModelImpl final : public SavedModel {
  public:
   struct JoinedSignature;
@@ -268,16 +248,30 @@ class SavedModelImpl final : public SavedModel {
   struct LoadingResult {
     std::string name;
     SymbolUids symbol_uids;
+
+    // For the MLRT path.
+    mlrt::bc::Buffer bytecode_buffer;
+    std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable;
+
+    // For the TFRT path.
     tfrt::BefBuffer bef;
     tfrt::RCReference<tfrt::BEFFile> bef_file;
+
     std::unique_ptr<OpKernelRunnerTable> runner_table;
     std::unique_ptr<tfd::FallbackResourceArray> resource_array;
+
+    // There are some resources that need re-creating when the executable is
+    // re-created, so a resource context is stored along with the executable.
+    // This resource context is meant to be passed to the op kernels for their
+    // references. See the comment above `GraphExecutor::resource_context_`
+    // about the todo to merge that resource context with this one.
+    std::unique_ptr<tfrt::ResourceContext> resource_context;
   };
 
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
   // `output_nodes`.
   tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSubgraph(
-      mlir::MLIRContext* context,
+      mlir::MLIRContext* context, absl::string_view name,
       const tensorflow::GraphImportConfig::InputArrays& input_nodes,
       const std::vector<std::string>& output_nodes,
       const std::vector<std::string>& target_nodes);

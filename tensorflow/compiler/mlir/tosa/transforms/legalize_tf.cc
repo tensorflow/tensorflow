@@ -151,6 +151,7 @@ DECL_CONVERT_OP(LeftShift);
 DECL_CONVERT_OP(RightShift);
 DECL_CONVERT_OP(OneHot);
 DECL_CONVERT_OP(BatchMatMulV2);
+DECL_CONVERT_OP(BroadcastTo);
 #undef DECL_CONVERT_OP
 
 LogicalResult ConvertTFReluOp::matchAndRewrite(
@@ -559,7 +560,7 @@ LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
     return rewriter.notifyMatchFailure(op, "invalid axis value");
   }
 
-  IntegerAttr axis_attr = rewriter.getI64IntegerAttr(axis);
+  IntegerAttr axis_attr = rewriter.getI32IntegerAttr(axis);
 
   CreateReplaceOpAndInfer<tosa::ArgMaxOp>(rewriter, op, output_type,
                                           tf_argmax_op.getInput(), axis_attr);
@@ -1618,7 +1619,7 @@ LogicalResult ConvertTFPackOp::matchAndRewrite(
   assert(inputs.size() >= 2);
 
   IntegerAttr axis_attr = tf_pack_op.getAxisAttr();
-  if (!axis_attr) axis_attr = rewriter.getI64IntegerAttr(0);
+  if (!axis_attr) axis_attr = rewriter.getI32IntegerAttr(0);
 
   int32_t axis_i32 = axis_attr.getInt();
 
@@ -1639,7 +1640,7 @@ LogicalResult ConvertTFUnpackOp::matchAndRewrite(
   IntegerAttr axis_attr;
   {
     auto tmpAttr = tf_unpack_op.getAxisAttr();
-    if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
+    if (!tmpAttr) tmpAttr = rewriter.getI32IntegerAttr(0);
     axis_attr = tmpAttr;
   }
   int32_t axis_i32 = axis_attr.getInt();
@@ -1920,9 +1921,9 @@ LogicalResult ConvertTFGatherOp::matchAndRewrite(
   int32_t batch_dims = 0;
   int32_t axis = 0;
 
-  std::optional<Value> result = convertGatherOp(
-      rewriter, op, tf_gather_op.getResult(), tf_gather_op.getParams(),
-      tf_gather_op.getIndices(), batch_dims, axis);
+  std::optional<Value> result =
+      convertGatherOp(rewriter, op, tf_gather_op.getParams(),
+                      tf_gather_op.getIndices(), batch_dims, axis);
 
   if (!result) return failure();
 
@@ -1944,9 +1945,9 @@ LogicalResult ConvertTFGatherV2Op::matchAndRewrite(
   int32_t axis = axis_elem.getValues<IntegerAttr>()[0].getInt();
   int32_t batch_dims = tf_gather_op.getBatchDimsAttr().getInt();
 
-  std::optional<Value> result = convertGatherOp(
-      rewriter, op, tf_gather_op.getResult(), tf_gather_op.getParams(),
-      tf_gather_op.getIndices(), batch_dims, axis);
+  std::optional<Value> result =
+      convertGatherOp(rewriter, op, tf_gather_op.getParams(),
+                      tf_gather_op.getIndices(), batch_dims, axis);
 
   if (!result) return failure();
 
@@ -2208,7 +2209,7 @@ LogicalResult ConvertTFReverseV2Op::matchAndRewrite(
     for (int i = 0; i < axis_elems.getNumElements(); i++) {
       int64_t axis_val = axis_elems.getValues<IntegerAttr>()[i].getInt();
       if (axis_val < 0) axis_val += input_rank;
-      auto axis_attr = rewriter.getI64IntegerAttr(axis_val);
+      auto axis_attr = rewriter.getI32IntegerAttr(axis_val);
       auto reverse_op = CreateOpAndInfer<tosa::ReverseOp>(
           rewriter, op->getLoc(), output_type, val, axis_attr);
 
@@ -2421,6 +2422,21 @@ LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFBroadcastToOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_broadcast_to_op = cast<TF::BroadcastToOp>(op);
+
+  std::optional<Value> result =
+      convertBroadcastToOp(rewriter, op, tf_broadcast_to_op.getInput(),
+                           tf_broadcast_to_op.getShape());
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.value()});
+
+  return success();
+}
+
 void LegalizeTF::runOnOperation() {
   auto* ctx = &getContext();
   RewritePatternSet patterns(ctx);
@@ -2523,6 +2539,7 @@ void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {
   patterns.add<ConvertTFRightShiftOp>(ctx);
   patterns.add<ConvertTFOneHotOp>(ctx);
   patterns.add<ConvertTFBatchMatMulV2Op>(ctx);
+  patterns.add<ConvertTFBroadcastToOp>(ctx);
 }
 
 // Creates an instance of the TensorFlow dialect LegalizeTF pass.

@@ -35,12 +35,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #ifdef TF_GPU_USE_PJRT
 #include "tensorflow/compiler/jit/pjrt_device_context.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
-#include "tensorflow/compiler/xla/pjrt/local_device_state.h"
-#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/pjrt/local_device_state.h"
+#include "xla/stream_executor/tf_allocator_adapter.h"
 #endif  // TF_GPU_USE_PJRT
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -60,10 +60,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
-#ifdef TF_GPU_USE_PJRT
-#include "tensorflow/core/tfrt/common/async_value_tensor.h"
-#endif  // TF_GPU_USE_PJRT
-#include "tensorflow/tsl/framework/device_id.h"
+#include "tsl/framework/device_id.h"
 
 namespace Eigen {
 class StreamInterface;
@@ -203,9 +200,6 @@ class BaseGPUDevice : public LocalDevice {
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
-
-  // PJRT AsyncValueTensor allocator.
-  std::unique_ptr<Allocator> pjrt_allocator_ = nullptr;
 
   se::StreamExecutor* executor_;  // not owned
   std::unique_ptr<ScopedAllocatorMgr> scoped_allocator_mgr_;

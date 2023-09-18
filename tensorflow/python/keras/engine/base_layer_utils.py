@@ -36,7 +36,6 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.trackable import base as tracking
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
 _call_context = threading.local()
 
@@ -723,7 +722,6 @@ def mark_as_return(outputs, acd):
 V2_DTYPE_BEHAVIOR = None
 
 
-@keras_export(v1=['keras.layers.enable_v2_dtype_behavior'])
 def enable_v2_dtype_behavior():
   """Enable the V2 dtype behavior for Keras layers.
 
@@ -758,7 +756,6 @@ def enable_v2_dtype_behavior():
   V2_DTYPE_BEHAVIOR = True
 
 
-@keras_export(v1=['keras.layers.disable_v2_dtype_behavior'])
 def disable_v2_dtype_behavior():
   """Disables the V2 dtype behavior for Keras layers.
 

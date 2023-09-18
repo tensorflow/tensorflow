@@ -1,4 +1,7 @@
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts")
+
+common_copts = tflite_copts() + tflite_copts_warnings()
 
 # Library of list ops.
 cc_library(
@@ -6,13 +9,17 @@ cc_library(
     srcs = glob(
         ["list_kernels/*.cc"],
         exclude = ["list_kernels/*test*"],
-    ),
-    hdrs = ["list_ops_lib.h"],
+    ) + ["register_list_ops.cc"],
+    hdrs = [
+        "list_ops_lib.h",
+        "register_list_ops.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":list_ops_util",
         ":tensor_array",
         "//tensorflow/lite:array",
+        "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -85,7 +92,6 @@ cc_test(
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
-        "//third_party/tflite_micro/tensorflow/lite/micro:memory_helpers",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -106,12 +112,31 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "list_get_item_test",
+    srcs = ["list_kernels/list_get_item_test.cc"],
+    deps = [
+        ":list_ops_lib",
+        ":test_util",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "list_ops_util",
     srcs = ["list_ops_util.cc"],
     hdrs = ["list_ops_util.h"],
+    visibility = ["//tensorflow/lite/kernels/variants:__subpackages__"],
     deps = [
+        ":tensor_array",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -121,8 +146,11 @@ cc_test(
     srcs = ["list_ops_util_test.cc"],
     deps = [
         ":list_ops_util",
+        ":tensor_array",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -174,7 +202,7 @@ cc_library(
     srcs = ["tensor_array.cc"],
     hdrs = ["tensor_array.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow/lite/kernels/variants:__subpackages__"],
     deps = [
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:common",
@@ -194,5 +222,37 @@ cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Benchmark tool override with registered custom tensorlist ops.
+cc_library(
+    name = "register_list_ops_for_benchmark",
+    srcs = ["register_list_ops.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":list_ops_lib",
+        "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite:op_resolver",
+        "//tensorflow/lite/tools/benchmark:register_custom_op",
+    ],
+    alwayslink = 1,
+)
+
+cc_binary(
+    name = "benchmark_model_with_list_ops",
+    copts = common_copts,
+    linkopts = tflite_linkopts() + select({
+        "//tensorflow:android": [
+            "-pie",  # Android 5.0 and later supports only PIE
+            "-lm",  # some builtin ops, e.g., tanh, need -lm
+            "-Wl,--rpath=/data/local/tmp/",  # Hexagon delegate libraries should be in /data/local/tmp
+        ],
+        "//conditions:default": [],
+    }),
+    tags = ["builder_default_android_arm64"],
+    deps = [
+        ":register_list_ops_for_benchmark",
+        "//tensorflow/lite/tools/benchmark:benchmark_model_main",
     ],
 )

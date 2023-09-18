@@ -30,7 +30,7 @@ from tensorflow.python.framework import func_graph as func_graph_lib
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
@@ -44,7 +44,8 @@ from tensorflow.python.util import tf_inspect
 
 
 def _is_tensor(t):
-  return isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
+  return isinstance(
+      t, (tensor.Tensor, resource_variable_ops.BaseResourceVariable))
 
 
 # TODO(b/205016027): Update this to just use ConcreteFunction.__call__ with the
@@ -72,7 +73,7 @@ def _call_concrete_function(function, inputs):
   flatten_expected = nest.flatten(expected_structure, expand_composites=True)
   tensor_inputs = []
   for arg, expected in zip(flatten_inputs, flatten_expected):
-    if isinstance(expected, tensor_spec.TensorSpec):
+    if isinstance(expected, tensor.TensorSpec):
       tensor_inputs.append(
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
     elif isinstance(expected, resource_variable_ops.VariableSpec):
@@ -89,7 +90,7 @@ def _try_convert_to_tensor_spec(arg, dtype_hint):
     # Note: try conversion in a FuncGraph to avoid polluting current context.
     with func_graph_lib.FuncGraph(name="guess_conversion").as_default():
       result = ops.convert_to_tensor(arg, dtype_hint=dtype_hint)
-      return tensor_spec.TensorSpec(shape=result.shape, dtype=result.dtype)
+      return tensor.TensorSpec(shape=result.shape, dtype=result.dtype)
   except (TypeError, ValueError):
     return None
 
@@ -103,10 +104,10 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
     return False
 
   for arg, expected in zip(flatten_inputs, nest.flatten(expected_structure)):
-    if isinstance(expected, tensor_spec.TensorSpec):
+    if isinstance(expected, tensor.TensorSpec):
       if allow_conversion:
         arg = _try_convert_to_tensor_spec(arg, dtype_hint=expected.dtype)
-      if not _is_tensor(arg) and not isinstance(arg, tensor_spec.TensorSpec):
+      if not _is_tensor(arg) and not isinstance(arg, tensor.TensorSpec):
         return False
       if arg.dtype != expected.dtype:
         return False

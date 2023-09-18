@@ -14,7 +14,6 @@
 # =============================================================================
 """An extension type that represents WeakTensor."""
 
-
 from typing import Optional
 
 import numpy as np
@@ -25,6 +24,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
+from tensorflow.python.framework import tensor_conversion_registry
+from tensorflow.python.types import core
+
 
 _ALLOWED_WEAK_DTYPES = (
     dtypes.int32,
@@ -45,9 +48,7 @@ class WeakTensorGradient(composite_tensor_gradient.CompositeTensorGradient):
     return weak_tensor._type_spec._from_components([component_grads])  # pylint: disable=protected-access
 
 
-# TODO(b/285024542): Modify the isinstance() checks to include WeakTensor.
-# instance.
-class WeakTensor(extension_type.ExtensionType):
+class WeakTensor(extension_type.BatchableExtensionType, core.Tensor):
   """A weakly typed Tensor.
 
   A simple wrapper class that contains a normal Tensor.
@@ -62,7 +63,7 @@ class WeakTensor(extension_type.ExtensionType):
 
   # __name__ is required for serialization in SavedModel.
   __name__ = "tf.WeakTensor"
-  tensor: ops.Tensor
+  tensor: tensor_lib.Tensor
 
   def __validate__(self):
     if self.tensor.dtype not in _ALLOWED_WEAK_DTYPES:
@@ -87,13 +88,6 @@ class WeakTensor(extension_type.ExtensionType):
     # Fallback to `__getattr__` if `__getattribute__` fails, so that we can
     # directly expose Tensor's methods.
     return getattr(self.tensor, *args, **kwargs)
-
-  def __array__(self, dtype=None):
-    # We need to explicitly call np.array() because
-    # self_tensor.__array__() for scalars raise:
-    #     ValueError: object __array__ method not producing an array
-    # resource_variable_ops also follows the same pattern.
-    return np.array(self.tensor.__array__(dtype))
 
   def _disallow(self, task):
     raise errors.OperatorNotAllowedInGraphError(
@@ -140,8 +134,74 @@ class WeakTensor(extension_type.ExtensionType):
   ):
     return self.tensor.__tf_tensor__(dtype=dtype, name=name)
 
-  def __format__(self, format_spec):
-    return f"{self.tensor.__format__(format_spec)} weakly typed"
+  def __deepcopy__(self, memo):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    del memo
+    return self
+
+  def to_tensor(self):
+    """Converts this 'WeakTensor' into a 'tf.Tensor'."""
+    return self.tensor
+
+  def _as_graph_element(self):
+    """Convert `self` to a graph element."""
+    return self.tensor
+
+  @classmethod
+  def from_tensor(cls, tensor):
+    """Converts a 'tf.Tensor' into a 'WeakTensor'.
+
+    This should be the standard way of creating a WeakTensor instead
+    of directly calling the WeakTensor constructor.
+
+    Args:
+      tensor: The `tf.Tensor` that should be converted into a 'WeakTensor'.
+
+    Returns:
+      A `EagerWeakTensor` or 'GraphWeakTensor' that holds the `tensor`.
+    """
+    if isinstance(tensor, core.Value):
+      return EagerWeakTensor(tensor)
+    if isinstance(tensor, core.Symbol):
+      return GraphWeakTensor(tensor)
+    raise errors.InvalidArgumentError(
+        None,
+        None,
+        "WeakTensor can only be constructed from tf.Tensor or tf.WeakTensor,"
+        f" but {type(tensor)} was given.",
+    )
+
+  # Redefine `shape` and `dtype` rather than relying on `getattr` because the
+  # class derives from core.Tensor which returns None in the two methods.
+  @property
+  def dtype(self):
+    return self.tensor.dtype
+
+  @property
+  def shape(self):
+    return self.tensor.shape
+
+  @property
+  def is_tensor_like(self):
+    return True
+
+  __composite_gradient__ = WeakTensorGradient()
+
+
+# EagerWeakTensor and GraphWeakTensor are wrapper classes that are
+# introduced for WeakTensor to pass instance checks for core.Value or
+# core.Symbol.
+class EagerWeakTensor(core.Value, WeakTensor):
+  """A weakly typed Eager Tensor."""
+
+  __name__ = "tf.EagerWeakTensor"
+
+  # Methods that are only avilable for EagerTensor.
+  def numpy(self):
+    """Copy of the contents of this EagerWeakTensor into a NumPy array or scalar."""
+    if not isinstance(self.tensor, ops.EagerTensor):
+      raise ValueError("WeakTensor.numpy() is only supported in eager mode.")
+    return self.tensor.numpy()
 
   def __complex__(self):
     return self.tensor.__complex__()
@@ -155,31 +215,21 @@ class WeakTensor(extension_type.ExtensionType):
   def __index__(self):
     return self.tensor.__index__()
 
-  def __deepcopy__(self, memo):
-    # Eager Tensors are immutable so it's safe to return themselves as a copy.
-    del memo
-    return self
+  def __format__(self, format_spec):
+    return f"{self.tensor.__format__(format_spec)} weakly typed"
 
-  def to_tensor(self):
-    """Converts this 'WeakTensor' into a 'tf.Tensor'."""
-    return self.tensor
+  def __array__(self, dtype=None):
+    # We need to explicitly call np.array() because
+    # self_tensor.__array__() for scalars raise:
+    #     ValueError: object __array__ method not producing an array
+    # resource_variable_ops also follows the same pattern.
+    return np.array(self.tensor.__array__(dtype))
 
-  @classmethod
-  def from_tensor(cls, tensor):
-    """Converts a 'tf.Tensor' into a 'WeakTensor'."""
-    return WeakTensor(tensor)
 
-  # Redefine `shape` and `dtype` rather than relying on `getattr` because the
-  # class derives from core.Tensor which returns None in the two methods.
-  @property
-  def dtype(self):
-    return self.tensor.dtype
+class GraphWeakTensor(core.Symbol, WeakTensor):
+  """A weakly typed Graph Tensor."""
 
-  @property
-  def shape(self):
-    return self.tensor.shape
-
-  __composite_gradient__ = WeakTensorGradient()
+  __name__ = "tf.GraphWeakTensor"
 
 
 class _WeakTensorIterator(object):
@@ -198,6 +248,28 @@ class _WeakTensorIterator(object):
   def __next__(self):
     if self._index == self._limit:
       raise StopIteration
-    result = WeakTensor(self._weak_tensor.tensor[self._index])
+    result = WeakTensor.from_tensor((self._weak_tensor.tensor[self._index]))
     self._index += 1
     return result
+
+
+def convert_to_weak_tensor_or_tensor(t, to_weak):
+  if to_weak:
+    return WeakTensor.from_tensor(t)
+  # We should return a normal Tensor because is_weak = False.
+  if isinstance(t, WeakTensor):
+    return t.tensor
+  return t
+
+
+# convert_to_tensor(WeakTensor) should return a Tensor because convert_to_tensor
+# is mostly used internally and we want to limit the scope of WeakTensor
+# creation to tf.constant and WeakTensor patched ops.
+def weak_tensor_conversion_function(t):
+  if isinstance(t, WeakTensor):
+    return t.tensor
+
+
+tensor_conversion_registry.register_tensor_conversion_function(
+    WeakTensor, weak_tensor_conversion_function
+)

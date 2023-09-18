@@ -44,10 +44,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/union_find.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/service/graphcycles/graphcycles.h"
+#include "xla/statusor.h"
+#include "xla/union_find.h"
+#include "xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/bounds_check.h"
@@ -334,6 +334,19 @@ class MarkForCompilationPassImpl {
 
   StatusOr<bool> ClusteringWillIntroduceInterDeviceDependency(
       const Cluster& from, const Cluster& to);
+
+  bool ShouldCompile(bool is_xla_compile_attr_true,
+                     const DeviceType& device_type,
+                     XlaOpRegistry::AutoclusteringPolicy policy) {
+    return is_xla_compile_attr_true ||
+           policy == XlaOpRegistry::AutoclusteringPolicy::kAlways ||
+           (policy == XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
+            global_jit_level_ != OptimizerOptions::OFF) ||
+           (device_type.type_string() == DEVICE_CPU &&
+            policy ==
+                XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested &&
+            cpu_global_jit_);
+  }
 
   // Returns true if the devices in `cluster_a` and `cluster_b` are compatible
   // and therefore not a hindrance for combining the two clusters into a larger
@@ -1334,6 +1347,16 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
+    // Skip nodes early that won't be compilable for efficiency.
+    bool is_xla_compile_attr_true =
+        GetNodeOrFuncAttr(node, flib_def_, kXlaCompileAttr) ||
+        (global_jit_level_ != OptimizerOptions::OFF &&
+         GetNodeOrFuncAttr(node, flib_def_, kXlaMustCompileAttr));
+    auto policy = registration->autoclustering_policy;
+    if (!ShouldCompile(is_xla_compile_attr_true, device_type, policy)) {
+      continue;
+    }
+
     RecursiveCompilabilityChecker::OperationFilter filter =
         CreateOperationFilter(*registration);
     filter.require_always_compilable = true;
@@ -1780,13 +1803,7 @@ StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
 
   auto policy = registration->autoclustering_policy;
   bool should_compile =
-      cluster.is_xla_compile_attr_true() ||
-      policy == XlaOpRegistry::AutoclusteringPolicy::kAlways ||
-      (policy == XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
-       global_jit_level_ != OptimizerOptions::OFF) ||
-      (device_type.type_string() == DEVICE_CPU &&
-       policy == XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested &&
-       cpu_global_jit_);
+      ShouldCompile(cluster.is_xla_compile_attr_true(), device_type, policy);
 
   if (!should_compile && device_type.type_string() == DEVICE_CPU &&
       global_jit_level_ > OptimizerOptions::OFF) {
@@ -1884,6 +1901,7 @@ std::atomic<int64_t>* GetPointerToFuel(int64_t initial_value) {
 
   return fuel;
 }
+
 }  // anonymous namespace
 
 Status MarkForCompilationPass::Run(
@@ -2026,6 +2044,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "CheckNumerics",
       "Cholesky",
       "ControlTrigger",
+      "Conv",
       "Conv2D",
       "Conv2DBackpropFilter",
       "Conv2DBackpropInput",
@@ -2045,6 +2064,8 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "DepthwiseConv2dNativeBackpropInput",
       "Dequantize",
       "Diag",
+      "DynamicInfeedEnqueueTupleOp",
+      "DynamicInfeedDequeueTupleOp",
       "DynamicStitch",
       "DynamicPartition",
       "Einsum",
@@ -2237,6 +2258,13 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "TridiagonalSolve",
       "TridiagonalMatMul",
       "TruncatedNormal",
+      "UniformDequantize",
+      "UniformQuantize",
+      "UniformQuantizedAdd",
+      "UniformQuantizedClipByValue",
+      "UniformQuantizedConvolution",
+      "UniformQuantizedDot",
+      "UniformRequantize",
       "Unique",
       "UniqueV2",
       "UpperBound",

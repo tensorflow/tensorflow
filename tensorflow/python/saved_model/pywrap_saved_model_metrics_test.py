@@ -166,10 +166,34 @@ class MetricsTest(test.TestCase):
     metrics.SetReadPathAndSingleprint(path="foo", singleprint="bar")
     self.assertEqual(metrics.GetReadPathAndSingleprint(), ("foo", "bar"))
 
+  def test_SM_read_invalid_path_and_singleprint(self):
+    with self.assertRaises(metrics.MetricException) as excinfo:
+      metrics.SetReadPathAndSingleprint(path="", singleprint="bar")
+    self.assertRegex(str(excinfo.exception),
+                     "Invalid path_and_singleprint argument. Empty path.")
+
+    with self.assertRaises(metrics.MetricException) as excinfo:
+      metrics.SetReadPathAndSingleprint(path="foo", singleprint="")
+    self.assertRegex(
+        str(excinfo.exception),
+        "Invalid path_and_singleprint argument. Empty singleprint.")
+
   def test_SM_write_path_and_singleprint(self):
     self.assertEqual(metrics.GetWritePathAndSingleprint(), ("", ""))
     metrics.SetWritePathAndSingleprint(path="foo", singleprint="bar")
     self.assertEqual(metrics.GetWritePathAndSingleprint(), ("foo", "bar"))
+
+  def test_SM_write_invalid_path_and_singleprint(self):
+    with self.assertRaises(metrics.MetricException) as excinfo:
+      metrics.SetWritePathAndSingleprint(path="", singleprint="bar")
+    self.assertRegex(str(excinfo.exception),
+                     "Invalid path_and_singleprint argument. Empty path.")
+
+    with self.assertRaises(metrics.MetricException) as excinfo:
+      metrics.SetWritePathAndSingleprint(path="foo", singleprint="")
+    self.assertRegex(
+        str(excinfo.exception),
+        "Invalid path_and_singleprint argument. Empty singleprint.")
 
 
 if __name__ == "__main__":

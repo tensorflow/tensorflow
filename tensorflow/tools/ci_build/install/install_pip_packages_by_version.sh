@@ -42,7 +42,7 @@ JAX_PACKAGES=(
   "auditwheel"
   "msgpack"
   "typing_extensions"
-  "ml_dtypes>=0.1.0"
+  "ml_dtypes>=0.2.0"
   "importlib_metadata>=4.6"
 )
 

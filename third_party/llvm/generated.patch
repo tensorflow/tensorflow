@@ -1,1 +1,1124 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/test/Driver/omit-rtti-component-without-no-rtti.cpp b/clang/test/Driver/omit-rtti-component-without-no-rtti.cpp
+--- a/clang/test/Driver/omit-rtti-component-without-no-rtti.cpp
++++ b/clang/test/Driver/omit-rtti-component-without-no-rtti.cpp
+@@ -1,12 +1,12 @@
+ /// Ensure that -fexperimental-omit-vtable-rtti is only allowed if rtti is
+ /// disabled.
+ 
+-// RUN: not %clang -c -Xclang -fexperimental-omit-vtable-rtti -frtti %s 2>&1 | FileCheck -check-prefix=ERROR %s
+-// RUN: not %clang -c -Xclang -fexperimental-omit-vtable-rtti -fno-rtti -frtti %s 2>&1 | FileCheck -check-prefix=ERROR %s
++// RUN: not %clang -fsyntax-only -Xclang -fexperimental-omit-vtable-rtti -frtti %s 2>&1 | FileCheck -check-prefix=ERROR %s
++// RUN: not %clang -fsyntax-only -Xclang -fexperimental-omit-vtable-rtti -fno-rtti -frtti %s 2>&1 | FileCheck -check-prefix=ERROR %s
+ 
+-// RUN: %clang -c -Xclang -fexperimental-omit-vtable-rtti -fno-rtti %s 2>&1 | FileCheck -check-prefix=NO-ERROR %s --allow-empty
+-// RUN: %clang -c -Xclang -fno-experimental-omit-vtable-rtti -frtti %s 2>&1 | FileCheck -check-prefix=NO-ERROR %s --allow-empty
+-// RUN: %clang -c -Xclang -fexperimental-omit-vtable-rtti -Xclang -fno-experimental-omit-vtable-rtti -frtti %s 2>&1 | FileCheck -check-prefix=NO-ERROR %s --allow-empty
++// RUN: %clang -fsyntax-only -Xclang -fexperimental-omit-vtable-rtti -fno-rtti %s 2>&1 | FileCheck -check-prefix=NO-ERROR %s --allow-empty
++// RUN: %clang -fsyntax-only -Xclang -fno-experimental-omit-vtable-rtti -frtti %s 2>&1 | FileCheck -check-prefix=NO-ERROR %s --allow-empty
++// RUN: %clang -fsyntax-only -Xclang -fexperimental-omit-vtable-rtti -Xclang -fno-experimental-omit-vtable-rtti -frtti %s 2>&1 | FileCheck -check-prefix=NO-ERROR %s --allow-empty
+ 
+ // ERROR: -fexperimental-omit-vtable-rtti call only be used with -fno-rtti
+ // NO-ERROR-NOT: -fexperimental-omit-vtable-rtti call only be used with -fno-rtti
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/MachineLICM.cpp b/llvm/lib/CodeGen/MachineLICM.cpp
+--- a/llvm/lib/CodeGen/MachineLICM.cpp
++++ b/llvm/lib/CodeGen/MachineLICM.cpp
+@@ -130,17 +130,13 @@
+     // State that is updated as we process loops
+     bool Changed = false;           // True if a loop is changed.
+     bool FirstInLoop = false;       // True if it's the first LICM in the loop.
++    MachineLoop *CurLoop = nullptr; // The current loop we are working on.
++    MachineBasicBlock *CurPreheader = nullptr; // The preheader for CurLoop.
+ 
+-    // Exit blocks of each Loop.
+-    DenseMap<MachineLoop *, SmallVector<MachineBasicBlock *, 8>> ExitBlockMap;
++    // Exit blocks for CurLoop.
++    SmallVector<MachineBasicBlock *, 8> ExitBlocks;
+ 
+-    bool isExitBlock(MachineLoop *CurLoop, const MachineBasicBlock *MBB) {
+-      if (ExitBlockMap.contains(CurLoop))
+-        return is_contained(ExitBlockMap[CurLoop], MBB);
+-
+-      SmallVector<MachineBasicBlock *, 8> ExitBlocks;
+-      CurLoop->getExitBlocks(ExitBlocks);
+-      ExitBlockMap[CurLoop] = ExitBlocks;
++    bool isExitBlock(const MachineBasicBlock *MBB) const {
+       return is_contained(ExitBlocks, MBB);
+     }
+ 
+@@ -155,10 +151,8 @@
+     // Register pressure on path leading from loop preheader to current BB.
+     SmallVector<SmallVector<unsigned, 8>, 16> BackTrace;
+ 
+-    // For each opcode per preheader, keep a list of potential CSE instructions.
+-    DenseMap<MachineBasicBlock *,
+-             DenseMap<unsigned, std::vector<MachineInstr *>>>
+-        CSEMap;
++    // For each opcode, keep a list of potential CSE instructions.
++    DenseMap<unsigned, std::vector<MachineInstr *>> CSEMap;
+ 
+     enum {
+       SpeculateFalse   = 0,
+@@ -193,7 +187,6 @@
+       RegLimit.clear();
+       BackTrace.clear();
+       CSEMap.clear();
+-      ExitBlockMap.clear();
+     }
+ 
+   private:
+@@ -207,27 +200,24 @@
+         : MI(mi), Def(def), FI(fi) {}
+     };
+ 
+-    void HoistRegionPostRA(MachineLoop *CurLoop,
+-                           MachineBasicBlock *CurPreheader);
++    void HoistRegionPostRA();
+ 
+-    void HoistPostRA(MachineInstr *MI, unsigned Def, MachineLoop *CurLoop,
+-                     MachineBasicBlock *CurPreheader);
++    void HoistPostRA(MachineInstr *MI, unsigned Def);
+ 
+     void ProcessMI(MachineInstr *MI, BitVector &PhysRegDefs,
+                    BitVector &PhysRegClobbers, SmallSet<int, 32> &StoredFIs,
+-                   SmallVectorImpl<CandidateInfo> &Candidates,
+-                   MachineLoop *CurLoop);
++                   SmallVectorImpl<CandidateInfo> &Candidates);
+ 
+-    void AddToLiveIns(MCRegister Reg, MachineLoop *CurLoop);
++    void AddToLiveIns(MCRegister Reg);
+ 
+-    bool IsLICMCandidate(MachineInstr &I, MachineLoop *CurLoop);
++    bool IsLICMCandidate(MachineInstr &I);
+ 
+-    bool IsLoopInvariantInst(MachineInstr &I, MachineLoop *CurLoop);
++    bool IsLoopInvariantInst(MachineInstr &I);
+ 
+-    bool HasLoopPHIUse(const MachineInstr *MI, MachineLoop *CurLoop);
++    bool HasLoopPHIUse(const MachineInstr *MI) const;
+ 
+-    bool HasHighOperandLatency(MachineInstr &MI, unsigned DefIdx, Register Reg,
+-                               MachineLoop *CurLoop) const;
++    bool HasHighOperandLatency(MachineInstr &MI, unsigned DefIdx,
++                               Register Reg) const;
+ 
+     bool IsCheapInstruction(MachineInstr &MI) const;
+ 
+@@ -236,9 +226,9 @@
+ 
+     void UpdateBackTraceRegPressure(const MachineInstr *MI);
+ 
+-    bool IsProfitableToHoist(MachineInstr &MI, MachineLoop *CurLoop);
++    bool IsProfitableToHoist(MachineInstr &MI);
+ 
+-    bool IsGuaranteedToExecute(MachineBasicBlock *BB, MachineLoop *CurLoop);
++    bool IsGuaranteedToExecute(MachineBasicBlock *BB);
+ 
+     bool isTriviallyReMaterializable(const MachineInstr &MI) const;
+ 
+@@ -251,8 +241,7 @@
+         DenseMap<MachineDomTreeNode *, unsigned> &OpenChildren,
+         const DenseMap<MachineDomTreeNode *, MachineDomTreeNode *> &ParentMap);
+ 
+-    void HoistOutOfLoop(MachineDomTreeNode *HeaderN, MachineLoop *CurLoop,
+-                        MachineBasicBlock *CurPreheader);
++    void HoistOutOfLoop(MachineDomTreeNode *HeaderN);
+ 
+     void InitRegPressure(MachineBasicBlock *BB);
+ 
+@@ -263,7 +252,7 @@
+     void UpdateRegPressure(const MachineInstr *MI,
+                            bool ConsiderUnseenAsDef = false);
+ 
+-    MachineInstr *ExtractHoistableLoad(MachineInstr *MI, MachineLoop *CurLoop);
++    MachineInstr *ExtractHoistableLoad(MachineInstr *MI);
+ 
+     MachineInstr *LookForDuplicate(const MachineInstr *MI,
+                                    std::vector<MachineInstr *> &PrevMIs);
+@@ -274,15 +263,13 @@
+ 
+     bool MayCSE(MachineInstr *MI);
+ 
+-    bool Hoist(MachineInstr *MI, MachineBasicBlock *Preheader,
+-               MachineLoop *CurLoop);
++    bool Hoist(MachineInstr *MI, MachineBasicBlock *Preheader);
+ 
+     void InitCSEMap(MachineBasicBlock *BB);
+ 
+     bool isTgtHotterThanSrc(MachineBasicBlock *SrcBlock,
+                             MachineBasicBlock *TgtBlock);
+-    MachineBasicBlock *getCurPreheader(MachineLoop *CurLoop,
+-                                       MachineBasicBlock *CurPreheader);
++    MachineBasicBlock *getCurPreheader();
+   };
+ 
+   class MachineLICM : public MachineLICMBase {
+@@ -327,6 +314,19 @@
+ INITIALIZE_PASS_END(EarlyMachineLICM, "early-machinelicm",
+                     "Early Machine Loop Invariant Code Motion", false, false)
+ 
++/// Test if the given loop is the outer-most loop that has a unique predecessor.
++static bool LoopIsOuterMostWithPredecessor(MachineLoop *CurLoop) {
++  // Check whether this loop even has a unique predecessor.
++  if (!CurLoop->getLoopPredecessor())
++    return false;
++  // Ok, now check to see if any of its outer loops do.
++  for (MachineLoop *L = CurLoop->getParentLoop(); L; L = L->getParentLoop())
++    if (L->getLoopPredecessor())
++      return false;
++  // None of them did, so this is the outermost with a unique predecessor.
++  return true;
++}
++
+ bool MachineLICMBase::runOnMachineFunction(MachineFunction &MF) {
+   if (skipFunction(MF.getFunction()))
+     return false;
+@@ -368,17 +368,27 @@
+ 
+   SmallVector<MachineLoop *, 8> Worklist(MLI->begin(), MLI->end());
+   while (!Worklist.empty()) {
+-    MachineLoop *CurLoop = Worklist.pop_back_val();
+-    MachineBasicBlock *CurPreheader = nullptr;
++    CurLoop = Worklist.pop_back_val();
++    CurPreheader = nullptr;
++    ExitBlocks.clear();
++
++    // If this is done before regalloc, only visit outer-most preheader-sporting
++    // loops.
++    if (PreRegAlloc && !LoopIsOuterMostWithPredecessor(CurLoop)) {
++      Worklist.append(CurLoop->begin(), CurLoop->end());
++      continue;
++    }
++
++    CurLoop->getExitBlocks(ExitBlocks);
+ 
+     if (!PreRegAlloc)
+-      HoistRegionPostRA(CurLoop, CurPreheader);
++      HoistRegionPostRA();
+     else {
+       // CSEMap is initialized for loop header when the first instruction is
+       // being hoisted.
+       MachineDomTreeNode *N = DT->getNode(CurLoop->getHeader());
+       FirstInLoop = true;
+-      HoistOutOfLoop(N, CurLoop, CurPreheader);
++      HoistOutOfLoop(N);
+       CSEMap.clear();
+     }
+   }
+@@ -410,11 +420,11 @@
+ 
+ /// Examine the instruction for potentai LICM candidate. Also
+ /// gather register def and frame object update information.
+-void MachineLICMBase::ProcessMI(MachineInstr *MI, BitVector &PhysRegDefs,
++void MachineLICMBase::ProcessMI(MachineInstr *MI,
++                                BitVector &PhysRegDefs,
+                                 BitVector &PhysRegClobbers,
+                                 SmallSet<int, 32> &StoredFIs,
+-                                SmallVectorImpl<CandidateInfo> &Candidates,
+-                                MachineLoop *CurLoop) {
++                                SmallVectorImpl<CandidateInfo> &Candidates) {
+   bool RuledOut = false;
+   bool HasNonInvariantUse = false;
+   unsigned Def = 0;
+@@ -492,7 +502,7 @@
+   // operands. FIXME: Consider unfold load folding instructions.
+   if (Def && !RuledOut) {
+     int FI = std::numeric_limits<int>::min();
+-    if ((!HasNonInvariantUse && IsLICMCandidate(*MI, CurLoop)) ||
++    if ((!HasNonInvariantUse && IsLICMCandidate(*MI)) ||
+         (TII->isLoadFromStackSlot(*MI, FI) && MFI->isSpillSlotObjectIndex(FI)))
+       Candidates.push_back(CandidateInfo(MI, Def, FI));
+   }
+@@ -500,9 +510,8 @@
+ 
+ /// Walk the specified region of the CFG and hoist loop invariants out to the
+ /// preheader.
+-void MachineLICMBase::HoistRegionPostRA(MachineLoop *CurLoop,
+-                                        MachineBasicBlock *CurPreheader) {
+-  MachineBasicBlock *Preheader = getCurPreheader(CurLoop, CurPreheader);
++void MachineLICMBase::HoistRegionPostRA() {
++  MachineBasicBlock *Preheader = getCurPreheader();
+   if (!Preheader)
+     return;
+ 
+@@ -535,8 +544,7 @@
+ 
+     SpeculationState = SpeculateUnknown;
+     for (MachineInstr &MI : *BB)
+-      ProcessMI(&MI, PhysRegDefs, PhysRegClobbers, StoredFIs, Candidates,
+-                CurLoop);
++      ProcessMI(&MI, PhysRegDefs, PhysRegClobbers, StoredFIs, Candidates);
+   }
+ 
+   // Gather the registers read / clobbered by the terminator.
+@@ -584,14 +592,14 @@
+         }
+       }
+       if (Safe)
+-        HoistPostRA(MI, Candidate.Def, CurLoop, CurPreheader);
++        HoistPostRA(MI, Candidate.Def);
+     }
+   }
+ }
+ 
+ /// Add register 'Reg' to the livein sets of BBs in the current loop, and make
+ /// sure it is not killed by any instructions in the loop.
+-void MachineLICMBase::AddToLiveIns(MCRegister Reg, MachineLoop *CurLoop) {
++void MachineLICMBase::AddToLiveIns(MCRegister Reg) {
+   for (MachineBasicBlock *BB : CurLoop->getBlocks()) {
+     if (!BB->isLiveIn(Reg))
+       BB->addLiveIn(Reg);
+@@ -608,10 +616,8 @@
+ 
+ /// When an instruction is found to only use loop invariant operands that is
+ /// safe to hoist, this instruction is called to do the dirty work.
+-void MachineLICMBase::HoistPostRA(MachineInstr *MI, unsigned Def,
+-                                  MachineLoop *CurLoop,
+-                                  MachineBasicBlock *CurPreheader) {
+-  MachineBasicBlock *Preheader = getCurPreheader(CurLoop, CurPreheader);
++void MachineLICMBase::HoistPostRA(MachineInstr *MI, unsigned Def) {
++  MachineBasicBlock *Preheader = getCurPreheader();
+ 
+   // Now move the instructions to the predecessor, inserting it before any
+   // terminator instructions.
+@@ -632,7 +638,7 @@
+   // Add register to livein list to all the BBs in the current loop since a
+   // loop invariant must be kept live throughout the whole loop. This is
+   // important to ensure later passes do not scavenge the def register.
+-  AddToLiveIns(Def, CurLoop);
++  AddToLiveIns(Def);
+ 
+   ++NumPostRAHoisted;
+   Changed = true;
+@@ -640,8 +646,7 @@
+ 
+ /// Check if this mbb is guaranteed to execute. If not then a load from this mbb
+ /// may not be safe to hoist.
+-bool MachineLICMBase::IsGuaranteedToExecute(MachineBasicBlock *BB,
+-                                            MachineLoop *CurLoop) {
++bool MachineLICMBase::IsGuaranteedToExecute(MachineBasicBlock *BB) {
+   if (SpeculationState != SpeculateUnknown)
+     return SpeculationState == SpeculateFalse;
+ 
+@@ -712,10 +717,8 @@
+ /// specified header block, and that are in the current loop) in depth first
+ /// order w.r.t the DominatorTree. This allows us to visit definitions before
+ /// uses, allowing us to hoist a loop body in one pass without iteration.
+-void MachineLICMBase::HoistOutOfLoop(MachineDomTreeNode *HeaderN,
+-                                     MachineLoop *CurLoop,
+-                                     MachineBasicBlock *CurPreheader) {
+-  MachineBasicBlock *Preheader = getCurPreheader(CurLoop, CurPreheader);
++void MachineLICMBase::HoistOutOfLoop(MachineDomTreeNode *HeaderN) {
++  MachineBasicBlock *Preheader = getCurPreheader();
+   if (!Preheader)
+     return;
+ 
+@@ -779,27 +782,10 @@
+     // Process the block
+     SpeculationState = SpeculateUnknown;
+     for (MachineInstr &MI : llvm::make_early_inc_range(*MBB)) {
+-      if (!Hoist(&MI, Preheader, CurLoop)) {
+-        // We have failed to hoist MI to outermost loop's preheader. If MI is in
+-        // a subloop, try to hoist it to subloop's preheader.
+-        SmallVector<MachineLoop *> InnerLoopWorkList;
+-        for (MachineLoop *L = MLI->getLoopFor(MI.getParent()); L != CurLoop;
+-             L = L->getParentLoop())
+-          InnerLoopWorkList.push_back(L);
+-
+-        while (!InnerLoopWorkList.empty()) {
+-          MachineLoop *InnerLoop = InnerLoopWorkList.pop_back_val();
+-          MachineBasicBlock *InnerLoopPreheader = InnerLoop->getLoopPreheader();
+-          if (InnerLoopPreheader) {
+-            if (Hoist(&MI, InnerLoopPreheader, InnerLoop))
+-              break;
+-          }
+-        }
+-
+-        // When MI is hoisted to inner loop's preheader, we need to update reg
+-        // pressure because we have already visited inner loop's preheader.
++      if (!Hoist(&MI, Preheader))
+         UpdateRegPressure(&MI);
+-      }
++      // If we have hoisted an instruction that may store, it can only be a
++      // constant store.
+     }
+ 
+     // If it's a leaf node, it's done. Traverse upwards to pop ancestors.
+@@ -984,7 +970,7 @@
+ 
+ /// Returns true if the instruction may be a suitable candidate for LICM.
+ /// e.g. If the instruction is a call, then it's obviously not safe to hoist it.
+-bool MachineLICMBase::IsLICMCandidate(MachineInstr &I, MachineLoop *CurLoop) {
++bool MachineLICMBase::IsLICMCandidate(MachineInstr &I) {
+   // Check if it's safe to move the instruction.
+   bool DontMoveAcrossStore = true;
+   if ((!I.isSafeToMove(AA, DontMoveAcrossStore)) &&
+@@ -1000,7 +986,7 @@
+   // from a jump table.
+   // Stores and side effects are already checked by isSafeToMove.
+   if (I.mayLoad() && !mayLoadFromGOTOrConstantPool(I) &&
+-      !IsGuaranteedToExecute(I.getParent(), CurLoop)) {
++      !IsGuaranteedToExecute(I.getParent())) {
+     LLVM_DEBUG(dbgs() << "LICM: Load not guaranteed to execute.\n");
+     return false;
+   }
+@@ -1019,9 +1005,8 @@
+ }
+ 
+ /// Returns true if the instruction is loop invariant.
+-bool MachineLICMBase::IsLoopInvariantInst(MachineInstr &I,
+-                                          MachineLoop *CurLoop) {
+-  if (!IsLICMCandidate(I, CurLoop)) {
++bool MachineLICMBase::IsLoopInvariantInst(MachineInstr &I) {
++  if (!IsLICMCandidate(I)) {
+     LLVM_DEBUG(dbgs() << "LICM: Instruction not a LICM candidate\n");
+     return false;
+   }
+@@ -1030,9 +1015,8 @@
+ 
+ /// Return true if the specified instruction is used by a phi node and hoisting
+ /// it could cause a copy to be inserted.
+-bool MachineLICMBase::HasLoopPHIUse(const MachineInstr *MI,
+-                                    MachineLoop *CurLoop) {
+-  SmallVector<const MachineInstr *, 8> Work(1, MI);
++bool MachineLICMBase::HasLoopPHIUse(const MachineInstr *MI) const {
++  SmallVector<const MachineInstr*, 8> Work(1, MI);
+   do {
+     MI = Work.pop_back_val();
+     for (const MachineOperand &MO : MI->all_defs()) {
+@@ -1049,7 +1033,7 @@
+           // A PHI in an exit block can cause a copy to be inserted if the PHI
+           // has multiple predecessors in the loop with different values.
+           // For now, approximate by rejecting all exit blocks.
+-          if (isExitBlock(CurLoop, UseMI.getParent()))
++          if (isExitBlock(UseMI.getParent()))
+             return true;
+           continue;
+         }
+@@ -1065,8 +1049,7 @@
+ /// Compute operand latency between a def of 'Reg' and an use in the current
+ /// loop, return true if the target considered it high.
+ bool MachineLICMBase::HasHighOperandLatency(MachineInstr &MI, unsigned DefIdx,
+-                                            Register Reg,
+-                                            MachineLoop *CurLoop) const {
++                                            Register Reg) const {
+   if (MRI->use_nodbg_empty(Reg))
+     return false;
+ 
+@@ -1161,8 +1144,7 @@
+ 
+ /// Return true if it is potentially profitable to hoist the given loop
+ /// invariant.
+-bool MachineLICMBase::IsProfitableToHoist(MachineInstr &MI,
+-                                          MachineLoop *CurLoop) {
++bool MachineLICMBase::IsProfitableToHoist(MachineInstr &MI) {
+   if (MI.isImplicitDef())
+     return true;
+ 
+@@ -1182,7 +1164,7 @@
+     return true;
+ 
+   bool CheapInstr = IsCheapInstruction(MI);
+-  bool CreatesCopy = HasLoopPHIUse(&MI, CurLoop);
++  bool CreatesCopy = HasLoopPHIUse(&MI);
+ 
+   // Don't hoist a cheap instruction if it would create a copy in the loop.
+   if (CheapInstr && CreatesCopy) {
+@@ -1204,7 +1186,7 @@
+     Register Reg = MO.getReg();
+     if (!Reg.isVirtual())
+       continue;
+-    if (MO.isDef() && HasHighOperandLatency(MI, i, Reg, CurLoop)) {
++    if (MO.isDef() && HasHighOperandLatency(MI, i, Reg)) {
+       LLVM_DEBUG(dbgs() << "Hoist High Latency: " << MI);
+       ++NumHighLatency;
+       return true;
+@@ -1238,7 +1220,7 @@
+   // instruction is not guaranteed to be executed in the loop, it's best to be
+   // conservative.
+   if (AvoidSpeculation &&
+-      (!IsGuaranteedToExecute(MI.getParent(), CurLoop) && !MayCSE(&MI))) {
++      (!IsGuaranteedToExecute(MI.getParent()) && !MayCSE(&MI))) {
+     LLVM_DEBUG(dbgs() << "Won't speculate: " << MI);
+     return false;
+   }
+@@ -1257,8 +1239,7 @@
+ /// Unfold a load from the given machineinstr if the load itself could be
+ /// hoisted. Return the unfolded and hoistable load, or null if the load
+ /// couldn't be unfolded or if it wouldn't be hoistable.
+-MachineInstr *MachineLICMBase::ExtractHoistableLoad(MachineInstr *MI,
+-                                                    MachineLoop *CurLoop) {
++MachineInstr *MachineLICMBase::ExtractHoistableLoad(MachineInstr *MI) {
+   // Don't unfold simple loads.
+   if (MI->canFoldAsLoad())
+     return nullptr;
+@@ -1299,8 +1280,7 @@
+   MBB->insert(Pos, NewMIs[1]);
+   // If unfolding produced a load that wasn't loop-invariant or profitable to
+   // hoist, discard the new instructions and bail.
+-  if (!IsLoopInvariantInst(*NewMIs[0], CurLoop) ||
+-      !IsProfitableToHoist(*NewMIs[0], CurLoop)) {
++  if (!IsLoopInvariantInst(*NewMIs[0]) || !IsProfitableToHoist(*NewMIs[0])) {
+     NewMIs[0]->eraseFromParent();
+     NewMIs[1]->eraseFromParent();
+     return nullptr;
+@@ -1324,7 +1304,7 @@
+ /// out of the loop.
+ void MachineLICMBase::InitCSEMap(MachineBasicBlock *BB) {
+   for (MachineInstr &MI : *BB)
+-    CSEMap[BB][MI.getOpcode()].push_back(&MI);
++    CSEMap[MI.getOpcode()].push_back(&MI);
+ }
+ 
+ /// Find an instruction amount PrevMIs that is a duplicate of MI.
+@@ -1348,7 +1328,7 @@
+     DenseMap<unsigned, std::vector<MachineInstr *>>::iterator &CI) {
+   // Do not CSE implicit_def so ProcessImplicitDefs can properly propagate
+   // the undef property onto uses.
+-  if (MI->isImplicitDef())
++  if (CI == CSEMap.end() || MI->isImplicitDef())
+     return false;
+ 
+   if (MachineInstr *Dup = LookForDuplicate(MI, CI->second)) {
+@@ -1405,28 +1385,20 @@
+ /// the loop.
+ bool MachineLICMBase::MayCSE(MachineInstr *MI) {
+   unsigned Opcode = MI->getOpcode();
+-  for (auto &Map : CSEMap) {
+-    // Check this CSEMap's preheader dominates MI's basic block.
+-    if (DT->dominates(Map.first, MI->getParent())) {
+-      DenseMap<unsigned, std::vector<MachineInstr *>>::iterator CI =
+-          Map.second.find(Opcode);
+-      // Do not CSE implicit_def so ProcessImplicitDefs can properly propagate
+-      // the undef property onto uses.
+-      if (CI == Map.second.end() || MI->isImplicitDef())
+-        continue;
+-      if (LookForDuplicate(MI, CI->second) != nullptr)
+-        return true;
+-    }
+-  }
++  DenseMap<unsigned, std::vector<MachineInstr *>>::iterator CI =
++      CSEMap.find(Opcode);
++  // Do not CSE implicit_def so ProcessImplicitDefs can properly propagate
++  // the undef property onto uses.
++  if (CI == CSEMap.end() || MI->isImplicitDef())
++    return false;
+ 
+-  return false;
++  return LookForDuplicate(MI, CI->second) != nullptr;
+ }
+ 
+ /// When an instruction is found to use only loop invariant operands
+ /// that are safe to hoist, this instruction is called to do the dirty work.
+ /// It returns true if the instruction is hoisted.
+-bool MachineLICMBase::Hoist(MachineInstr *MI, MachineBasicBlock *Preheader,
+-                            MachineLoop *CurLoop) {
++bool MachineLICMBase::Hoist(MachineInstr *MI, MachineBasicBlock *Preheader) {
+   MachineBasicBlock *SrcBlock = MI->getParent();
+ 
+   // Disable the instruction hoisting due to block hotness
+@@ -1437,12 +1409,10 @@
+     return false;
+   }
+   // First check whether we should hoist this instruction.
+-  if (!IsLoopInvariantInst(*MI, CurLoop) ||
+-      !IsProfitableToHoist(*MI, CurLoop)) {
++  if (!IsLoopInvariantInst(*MI) || !IsProfitableToHoist(*MI)) {
+     // If not, try unfolding a hoistable load.
+-    MI = ExtractHoistableLoad(MI, CurLoop);
+-    if (!MI)
+-      return false;
++    MI = ExtractHoistableLoad(MI);
++    if (!MI) return false;
+   }
+ 
+   // If we have hoisted an instruction that may store, it can only be a constant
+@@ -1470,22 +1440,9 @@
+ 
+   // Look for opportunity to CSE the hoisted instruction.
+   unsigned Opcode = MI->getOpcode();
+-  bool HasCSEDone = false;
+-  for (auto &Map : CSEMap) {
+-    // Check this CSEMap's preheader dominates MI's basic block.
+-    if (DT->dominates(Map.first, MI->getParent())) {
+-      DenseMap<unsigned, std::vector<MachineInstr *>>::iterator CI =
+-          Map.second.find(Opcode);
+-      if (CI != Map.second.end()) {
+-        if (EliminateCSE(MI, CI)) {
+-          HasCSEDone = true;
+-          break;
+-        }
+-      }
+-    }
+-  }
+-
+-  if (!HasCSEDone) {
++  DenseMap<unsigned, std::vector<MachineInstr *>>::iterator CI =
++      CSEMap.find(Opcode);
++  if (!EliminateCSE(MI, CI)) {
+     // Otherwise, splice the instruction to the preheader.
+     Preheader->splice(Preheader->getFirstTerminator(),MI->getParent(),MI);
+ 
+@@ -1505,7 +1462,11 @@
+       if (!MO.isDead())
+         MRI->clearKillFlags(MO.getReg());
+ 
+-    CSEMap[Preheader][Opcode].push_back(MI);
++    // Add to the CSE map.
++    if (CI != CSEMap.end())
++      CI->second.push_back(MI);
++    else
++      CSEMap[Opcode].push_back(MI);
+   }
+ 
+   ++NumHoisted;
+@@ -1515,9 +1476,7 @@
+ }
+ 
+ /// Get the preheader for the current loop, splitting a critical edge if needed.
+-MachineBasicBlock *
+-MachineLICMBase::getCurPreheader(MachineLoop *CurLoop,
+-                                 MachineBasicBlock *CurPreheader) {
++MachineBasicBlock *MachineLICMBase::getCurPreheader() {
+   // Determine the block to which to hoist instructions. If we can't find a
+   // suitable loop predecessor, we can't do any hoisting.
+ 
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/machine-licm-sub-loop.ll b/llvm/test/CodeGen/AArch64/machine-licm-sub-loop.ll
+--- a/llvm/test/CodeGen/AArch64/machine-licm-sub-loop.ll
++++ b/llvm/test/CodeGen/AArch64/machine-licm-sub-loop.ll
+@@ -35,18 +35,18 @@
+ ; CHECK-NEXT:    b .LBB0_8
+ ; CHECK-NEXT:  .LBB0_5: // %vector.ph
+ ; CHECK-NEXT:    // in Loop: Header=BB0_3 Depth=1
+-; CHECK-NEXT:    dup v0.8h, w15
+ ; CHECK-NEXT:    mov x16, x14
+ ; CHECK-NEXT:    mov x17, x13
+ ; CHECK-NEXT:    mov x18, x12
+ ; CHECK-NEXT:  .LBB0_6: // %vector.body
+ ; CHECK-NEXT:    // Parent Loop BB0_3 Depth=1
+ ; CHECK-NEXT:    // => This Inner Loop Header: Depth=2
++; CHECK-NEXT:    dup v0.8h, w15
+ ; CHECK-NEXT:    ldp q1, q4, [x16, #-16]
+-; CHECK-NEXT:    subs x18, x18, #16
+ ; CHECK-NEXT:    ldp q3, q2, [x17, #-32]
+-; CHECK-NEXT:    add x16, x16, #32
++; CHECK-NEXT:    subs x18, x18, #16
+ ; CHECK-NEXT:    ldp q6, q5, [x17]
++; CHECK-NEXT:    add x16, x16, #32
+ ; CHECK-NEXT:    smlal2 v2.4s, v0.8h, v1.8h
+ ; CHECK-NEXT:    smlal v3.4s, v0.4h, v1.4h
+ ; CHECK-NEXT:    smlal2 v5.4s, v0.8h, v4.8h
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/agpr-copy-no-free-registers.ll b/llvm/test/CodeGen/AMDGPU/agpr-copy-no-free-registers.ll
+--- a/llvm/test/CodeGen/AMDGPU/agpr-copy-no-free-registers.ll
++++ b/llvm/test/CodeGen/AMDGPU/agpr-copy-no-free-registers.ll
+@@ -557,11 +557,11 @@
+ ; GFX908-NEXT:    s_mul_hi_u32 s9, s0, s5
+ ; GFX908-NEXT:    s_mul_i32 s0, s0, s5
+ ; GFX908-NEXT:    s_add_i32 s1, s9, s1
+-; GFX908-NEXT:    s_lshl_b64 s[14:15], s[0:1], 5
++; GFX908-NEXT:    s_lshl_b64 s[0:1], s[0:1], 5
+ ; GFX908-NEXT:    s_branch .LBB3_2
+ ; GFX908-NEXT:  .LBB3_1: ; %Flow20
+ ; GFX908-NEXT:    ; in Loop: Header=BB3_2 Depth=1
+-; GFX908-NEXT:    s_andn2_b64 vcc, exec, s[0:1]
++; GFX908-NEXT:    s_andn2_b64 vcc, exec, s[14:15]
+ ; GFX908-NEXT:    s_cbranch_vccz .LBB3_12
+ ; GFX908-NEXT:  .LBB3_2: ; %bb9
+ ; GFX908-NEXT:    ; =>This Loop Header: Depth=1
+@@ -571,17 +571,15 @@
+ ; GFX908-NEXT:  ; %bb.3: ; %bb14
+ ; GFX908-NEXT:    ; in Loop: Header=BB3_2 Depth=1
+ ; GFX908-NEXT:    global_load_dwordx2 v[2:3], v[0:1], off
+-; GFX908-NEXT:    v_cmp_gt_i64_e64 s[0:1], s[6:7], -1
+ ; GFX908-NEXT:    s_mov_b32 s9, s8
+-; GFX908-NEXT:    v_cndmask_b32_e64 v6, 0, 1, s[0:1]
+ ; GFX908-NEXT:    v_mov_b32_e32 v4, s8
+-; GFX908-NEXT:    v_cmp_ne_u32_e64 s[0:1], 1, v6
+ ; GFX908-NEXT:    v_mov_b32_e32 v8, s8
+ ; GFX908-NEXT:    v_mov_b32_e32 v6, s8
+ ; GFX908-NEXT:    v_mov_b32_e32 v5, s9
+ ; GFX908-NEXT:    v_mov_b32_e32 v9, s9
+ ; GFX908-NEXT:    v_mov_b32_e32 v7, s9
+-; GFX908-NEXT:    v_cmp_lt_i64_e64 s[16:17], s[6:7], 0
++; GFX908-NEXT:    v_cmp_lt_i64_e64 s[14:15], s[6:7], 0
++; GFX908-NEXT:    v_cmp_gt_i64_e64 s[16:17], s[6:7], -1
+ ; GFX908-NEXT:    v_mov_b32_e32 v11, v5
+ ; GFX908-NEXT:    s_mov_b64 s[20:21], s[10:11]
+ ; GFX908-NEXT:    v_mov_b32_e32 v10, v4
+@@ -601,9 +599,9 @@
+ ; GFX908-NEXT:    ; in Loop: Header=BB3_5 Depth=2
+ ; GFX908-NEXT:    v_add_co_u32_sdwa v2, vcc, v2, v16 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:WORD_0
+ ; GFX908-NEXT:    v_addc_co_u32_e32 v3, vcc, 0, v3, vcc
+-; GFX908-NEXT:    s_add_u32 s20, s20, s14
++; GFX908-NEXT:    s_add_u32 s20, s20, s0
+ ; GFX908-NEXT:    v_cmp_lt_i64_e64 s[24:25], -1, v[2:3]
+-; GFX908-NEXT:    s_addc_u32 s21, s21, s15
++; GFX908-NEXT:    s_addc_u32 s21, s21, s1
+ ; GFX908-NEXT:    s_mov_b64 s[22:23], 0
+ ; GFX908-NEXT:    s_andn2_b64 vcc, exec, s[24:25]
+ ; GFX908-NEXT:    s_cbranch_vccz .LBB3_9
+@@ -622,7 +620,7 @@
+ ; GFX908-NEXT:    s_waitcnt vmcnt(0)
+ ; GFX908-NEXT:    ds_read_b64 v[12:13], v19
+ ; GFX908-NEXT:    ds_read_b64 v[14:15], v0
+-; GFX908-NEXT:    s_and_b64 vcc, exec, s[0:1]
++; GFX908-NEXT:    s_andn2_b64 vcc, exec, s[16:17]
+ ; GFX908-NEXT:    s_waitcnt lgkmcnt(0)
+ ; GFX908-NEXT:    s_cbranch_vccnz .LBB3_7
+ ; GFX908-NEXT:  ; %bb.6: ; %bb51
+@@ -650,7 +648,7 @@
+ ; GFX908-NEXT:    s_mov_b64 s[22:23], -1
+ ; GFX908-NEXT:    s_branch .LBB3_4
+ ; GFX908-NEXT:  .LBB3_7: ; in Loop: Header=BB3_5 Depth=2
+-; GFX908-NEXT:    s_mov_b64 s[22:23], s[16:17]
++; GFX908-NEXT:    s_mov_b64 s[22:23], s[14:15]
+ ; GFX908-NEXT:    s_andn2_b64 vcc, exec, s[22:23]
+ ; GFX908-NEXT:    s_cbranch_vccz .LBB3_4
+ ; GFX908-NEXT:  ; %bb.8: ; in Loop: Header=BB3_2 Depth=1
+@@ -665,7 +663,7 @@
+ ; GFX908-NEXT:    s_xor_b64 s[16:17], s[22:23], -1
+ ; GFX908-NEXT:  .LBB3_10: ; %Flow19
+ ; GFX908-NEXT:    ; in Loop: Header=BB3_2 Depth=1
+-; GFX908-NEXT:    s_mov_b64 s[0:1], -1
++; GFX908-NEXT:    s_mov_b64 s[14:15], -1
+ ; GFX908-NEXT:    s_and_b64 vcc, exec, s[16:17]
+ ; GFX908-NEXT:    s_cbranch_vccz .LBB3_1
+ ; GFX908-NEXT:  ; %bb.11: ; %bb12
+@@ -674,7 +672,7 @@
+ ; GFX908-NEXT:    s_addc_u32 s7, s7, 0
+ ; GFX908-NEXT:    s_add_u32 s10, s10, s12
+ ; GFX908-NEXT:    s_addc_u32 s11, s11, s13
+-; GFX908-NEXT:    s_mov_b64 s[0:1], 0
++; GFX908-NEXT:    s_mov_b64 s[14:15], 0
+ ; GFX908-NEXT:    s_branch .LBB3_1
+ ; GFX908-NEXT:  .LBB3_12: ; %DummyReturnBlock
+ ; GFX908-NEXT:    s_endpgm
+@@ -724,11 +722,11 @@
+ ; GFX90A-NEXT:    s_mul_hi_u32 s9, s0, s5
+ ; GFX90A-NEXT:    s_mul_i32 s0, s0, s5
+ ; GFX90A-NEXT:    s_add_i32 s1, s9, s1
+-; GFX90A-NEXT:    s_lshl_b64 s[14:15], s[0:1], 5
++; GFX90A-NEXT:    s_lshl_b64 s[0:1], s[0:1], 5
+ ; GFX90A-NEXT:    s_branch .LBB3_2
+ ; GFX90A-NEXT:  .LBB3_1: ; %Flow20
+ ; GFX90A-NEXT:    ; in Loop: Header=BB3_2 Depth=1
+-; GFX90A-NEXT:    s_andn2_b64 vcc, exec, s[0:1]
++; GFX90A-NEXT:    s_andn2_b64 vcc, exec, s[14:15]
+ ; GFX90A-NEXT:    s_cbranch_vccz .LBB3_12
+ ; GFX90A-NEXT:  .LBB3_2: ; %bb9
+ ; GFX90A-NEXT:    ; =>This Loop Header: Depth=1
+@@ -738,14 +736,12 @@
+ ; GFX90A-NEXT:  ; %bb.3: ; %bb14
+ ; GFX90A-NEXT:    ; in Loop: Header=BB3_2 Depth=1
+ ; GFX90A-NEXT:    global_load_dwordx2 v[4:5], v[2:3], off
+-; GFX90A-NEXT:    v_cmp_gt_i64_e64 s[0:1], s[6:7], -1
+ ; GFX90A-NEXT:    s_mov_b32 s9, s8
+-; GFX90A-NEXT:    v_cndmask_b32_e64 v8, 0, 1, s[0:1]
+ ; GFX90A-NEXT:    v_pk_mov_b32 v[6:7], s[8:9], s[8:9] op_sel:[0,1]
+-; GFX90A-NEXT:    v_cmp_ne_u32_e64 s[0:1], 1, v8
+ ; GFX90A-NEXT:    v_pk_mov_b32 v[10:11], s[8:9], s[8:9] op_sel:[0,1]
+ ; GFX90A-NEXT:    v_pk_mov_b32 v[8:9], s[8:9], s[8:9] op_sel:[0,1]
+-; GFX90A-NEXT:    v_cmp_lt_i64_e64 s[16:17], s[6:7], 0
++; GFX90A-NEXT:    v_cmp_lt_i64_e64 s[14:15], s[6:7], 0
++; GFX90A-NEXT:    v_cmp_gt_i64_e64 s[16:17], s[6:7], -1
+ ; GFX90A-NEXT:    s_mov_b64 s[20:21], s[10:11]
+ ; GFX90A-NEXT:    v_pk_mov_b32 v[12:13], v[6:7], v[6:7] op_sel:[0,1]
+ ; GFX90A-NEXT:    s_waitcnt vmcnt(0)
+@@ -764,8 +760,8 @@
+ ; GFX90A-NEXT:    ; in Loop: Header=BB3_5 Depth=2
+ ; GFX90A-NEXT:    v_add_co_u32_sdwa v4, vcc, v4, v18 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:WORD_0
+ ; GFX90A-NEXT:    v_addc_co_u32_e32 v5, vcc, 0, v5, vcc
+-; GFX90A-NEXT:    s_add_u32 s20, s20, s14
+-; GFX90A-NEXT:    s_addc_u32 s21, s21, s15
++; GFX90A-NEXT:    s_add_u32 s20, s20, s0
++; GFX90A-NEXT:    s_addc_u32 s21, s21, s1
+ ; GFX90A-NEXT:    v_cmp_lt_i64_e64 s[24:25], -1, v[4:5]
+ ; GFX90A-NEXT:    s_mov_b64 s[22:23], 0
+ ; GFX90A-NEXT:    s_andn2_b64 vcc, exec, s[24:25]
+@@ -785,7 +781,7 @@
+ ; GFX90A-NEXT:    s_waitcnt vmcnt(0)
+ ; GFX90A-NEXT:    ds_read_b64 v[14:15], v19
+ ; GFX90A-NEXT:    ds_read_b64 v[16:17], v0
+-; GFX90A-NEXT:    s_and_b64 vcc, exec, s[0:1]
++; GFX90A-NEXT:    s_andn2_b64 vcc, exec, s[16:17]
+ ; GFX90A-NEXT:    ; kill: killed $sgpr22 killed $sgpr23
+ ; GFX90A-NEXT:    s_waitcnt lgkmcnt(0)
+ ; GFX90A-NEXT:    s_cbranch_vccnz .LBB3_7
+@@ -806,7 +802,7 @@
+ ; GFX90A-NEXT:    s_mov_b64 s[22:23], -1
+ ; GFX90A-NEXT:    s_branch .LBB3_4
+ ; GFX90A-NEXT:  .LBB3_7: ; in Loop: Header=BB3_5 Depth=2
+-; GFX90A-NEXT:    s_mov_b64 s[22:23], s[16:17]
++; GFX90A-NEXT:    s_mov_b64 s[22:23], s[14:15]
+ ; GFX90A-NEXT:    s_andn2_b64 vcc, exec, s[22:23]
+ ; GFX90A-NEXT:    s_cbranch_vccz .LBB3_4
+ ; GFX90A-NEXT:  ; %bb.8: ; in Loop: Header=BB3_2 Depth=1
+@@ -821,7 +817,7 @@
+ ; GFX90A-NEXT:    s_xor_b64 s[16:17], s[22:23], -1
+ ; GFX90A-NEXT:  .LBB3_10: ; %Flow19
+ ; GFX90A-NEXT:    ; in Loop: Header=BB3_2 Depth=1
+-; GFX90A-NEXT:    s_mov_b64 s[0:1], -1
++; GFX90A-NEXT:    s_mov_b64 s[14:15], -1
+ ; GFX90A-NEXT:    s_and_b64 vcc, exec, s[16:17]
+ ; GFX90A-NEXT:    s_cbranch_vccz .LBB3_1
+ ; GFX90A-NEXT:  ; %bb.11: ; %bb12
+@@ -830,7 +826,7 @@
+ ; GFX90A-NEXT:    s_addc_u32 s7, s7, 0
+ ; GFX90A-NEXT:    s_add_u32 s10, s10, s12
+ ; GFX90A-NEXT:    s_addc_u32 s11, s11, s13
+-; GFX90A-NEXT:    s_mov_b64 s[0:1], 0
++; GFX90A-NEXT:    s_mov_b64 s[14:15], 0
+ ; GFX90A-NEXT:    s_branch .LBB3_1
+ ; GFX90A-NEXT:  .LBB3_12: ; %DummyReturnBlock
+ ; GFX90A-NEXT:    s_endpgm
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/optimize-negated-cond.ll b/llvm/test/CodeGen/AMDGPU/optimize-negated-cond.ll
+--- a/llvm/test/CodeGen/AMDGPU/optimize-negated-cond.ll
++++ b/llvm/test/CodeGen/AMDGPU/optimize-negated-cond.ll
+@@ -1,9 +1,15 @@
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py
+ ; RUN: llc -march=amdgcn -verify-machineinstrs < %s | FileCheck -check-prefix=GCN %s
+ 
+ ; GCN-LABEL: {{^}}negated_cond:
+-; GCN: .LBB0_2:
+-; GCN:   v_cndmask_b32_e64
+-; GCN:   v_cmp_ne_u32_e64
++; GCN: .LBB0_1:
++; GCN:   v_cmp_eq_u32_e64 [[CC:[^,]+]],
++; GCN: .LBB0_3:
++; GCN-NOT: v_cndmask_b32
++; GCN-NOT: v_cmp
++; GCN:   s_andn2_b64 vcc, exec, [[CC]]
++; GCN:   s_lshl_b32 s12, s12, 5
++; GCN:   s_cbranch_vccz .LBB0_6
+ define amdgpu_kernel void @negated_cond(ptr addrspace(1) %arg1) {
+ bb:
+   br label %bb1
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/tuple-allocation-failure.ll b/llvm/test/CodeGen/AMDGPU/tuple-allocation-failure.ll
+--- a/llvm/test/CodeGen/AMDGPU/tuple-allocation-failure.ll
++++ b/llvm/test/CodeGen/AMDGPU/tuple-allocation-failure.ll
+@@ -178,10 +178,8 @@
+ ; GLOBALNESS1-NEXT:    v_cmp_ne_u32_e32 vcc, 0, v46
+ ; GLOBALNESS1-NEXT:    v_cndmask_b32_e32 v2, 0, v40, vcc
+ ; GLOBALNESS1-NEXT:    s_waitcnt vmcnt(0)
+-; GLOBALNESS1-NEXT:    v_cmp_nlt_f64_e32 vcc, 0, v[0:1]
+-; GLOBALNESS1-NEXT:    v_cndmask_b32_e64 v0, 0, 1, vcc
+-; GLOBALNESS1-NEXT:    v_cmp_eq_u32_e64 s[64:65], 0, v2
+-; GLOBALNESS1-NEXT:    v_cmp_ne_u32_e64 s[66:67], 1, v0
++; GLOBALNESS1-NEXT:    v_cmp_nlt_f64_e64 s[64:65], 0, v[0:1]
++; GLOBALNESS1-NEXT:    v_cmp_eq_u32_e64 s[66:67], 0, v2
+ ; GLOBALNESS1-NEXT:    s_branch .LBB1_15
+ ; GLOBALNESS1-NEXT:  .LBB1_13: ; %Flow16
+ ; GLOBALNESS1-NEXT:    ; in Loop: Header=BB1_15 Depth=2
+@@ -209,7 +207,7 @@
+ ; GLOBALNESS1-NEXT:    s_cbranch_vccnz .LBB1_20
+ ; GLOBALNESS1-NEXT:  ; %bb.19: ; %bb6.i.i
+ ; GLOBALNESS1-NEXT:    ; in Loop: Header=BB1_15 Depth=2
+-; GLOBALNESS1-NEXT:    s_and_b64 vcc, exec, s[66:67]
++; GLOBALNESS1-NEXT:    s_andn2_b64 vcc, exec, s[64:65]
+ ; GLOBALNESS1-NEXT:  .LBB1_20: ; %spam.exit.i
+ ; GLOBALNESS1-NEXT:    ; in Loop: Header=BB1_15 Depth=2
+ ; GLOBALNESS1-NEXT:    s_and_b64 vcc, exec, s[56:57]
+@@ -238,7 +236,7 @@
+ ; GLOBALNESS1-NEXT:    v_mov_b32_e32 v31, v41
+ ; GLOBALNESS1-NEXT:    global_store_dwordx2 v[46:47], v[44:45], off
+ ; GLOBALNESS1-NEXT:    s_swappc_b64 s[30:31], s[76:77]
+-; GLOBALNESS1-NEXT:    s_and_saveexec_b64 s[4:5], s[64:65]
++; GLOBALNESS1-NEXT:    s_and_saveexec_b64 s[4:5], s[66:67]
+ ; GLOBALNESS1-NEXT:    s_cbranch_execz .LBB1_13
+ ; GLOBALNESS1-NEXT:  ; %bb.22: ; %bb62.i
+ ; GLOBALNESS1-NEXT:    ; in Loop: Header=BB1_15 Depth=2
+@@ -467,10 +465,8 @@
+ ; GLOBALNESS0-NEXT:    v_cmp_ne_u32_e32 vcc, 0, v46
+ ; GLOBALNESS0-NEXT:    v_cndmask_b32_e32 v2, 0, v40, vcc
+ ; GLOBALNESS0-NEXT:    s_waitcnt vmcnt(0)
+-; GLOBALNESS0-NEXT:    v_cmp_nlt_f64_e32 vcc, 0, v[0:1]
+-; GLOBALNESS0-NEXT:    v_cndmask_b32_e64 v0, 0, 1, vcc
+-; GLOBALNESS0-NEXT:    v_cmp_eq_u32_e64 s[64:65], 0, v2
+-; GLOBALNESS0-NEXT:    v_cmp_ne_u32_e64 s[66:67], 1, v0
++; GLOBALNESS0-NEXT:    v_cmp_nlt_f64_e64 s[64:65], 0, v[0:1]
++; GLOBALNESS0-NEXT:    v_cmp_eq_u32_e64 s[66:67], 0, v2
+ ; GLOBALNESS0-NEXT:    s_branch .LBB1_15
+ ; GLOBALNESS0-NEXT:  .LBB1_13: ; %Flow16
+ ; GLOBALNESS0-NEXT:    ; in Loop: Header=BB1_15 Depth=2
+@@ -498,7 +494,7 @@
+ ; GLOBALNESS0-NEXT:    s_cbranch_vccnz .LBB1_20
+ ; GLOBALNESS0-NEXT:  ; %bb.19: ; %bb6.i.i
+ ; GLOBALNESS0-NEXT:    ; in Loop: Header=BB1_15 Depth=2
+-; GLOBALNESS0-NEXT:    s_and_b64 vcc, exec, s[66:67]
++; GLOBALNESS0-NEXT:    s_andn2_b64 vcc, exec, s[64:65]
+ ; GLOBALNESS0-NEXT:  .LBB1_20: ; %spam.exit.i
+ ; GLOBALNESS0-NEXT:    ; in Loop: Header=BB1_15 Depth=2
+ ; GLOBALNESS0-NEXT:    s_and_b64 vcc, exec, s[56:57]
+@@ -527,7 +523,7 @@
+ ; GLOBALNESS0-NEXT:    v_mov_b32_e32 v31, v41
+ ; GLOBALNESS0-NEXT:    global_store_dwordx2 v[46:47], v[44:45], off
+ ; GLOBALNESS0-NEXT:    s_swappc_b64 s[30:31], s[78:79]
+-; GLOBALNESS0-NEXT:    s_and_saveexec_b64 s[4:5], s[64:65]
++; GLOBALNESS0-NEXT:    s_and_saveexec_b64 s[4:5], s[66:67]
+ ; GLOBALNESS0-NEXT:    s_cbranch_execz .LBB1_13
+ ; GLOBALNESS0-NEXT:  ; %bb.22: ; %bb62.i
+ ; GLOBALNESS0-NEXT:    ; in Loop: Header=BB1_15 Depth=2
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/Thumb2/mve-gather-scatter-optimisation.ll b/llvm/test/CodeGen/Thumb2/mve-gather-scatter-optimisation.ll
+--- a/llvm/test/CodeGen/Thumb2/mve-gather-scatter-optimisation.ll
++++ b/llvm/test/CodeGen/Thumb2/mve-gather-scatter-optimisation.ll
+@@ -447,69 +447,67 @@
+ define dso_local void @arm_mat_mult_q31(i32* noalias nocapture readonly %A, i32* noalias nocapture readonly %B, i32* noalias nocapture %C, i32 %n, i32 %m, i32 %l) local_unnamed_addr #0 {
+ ; CHECK-LABEL: arm_mat_mult_q31:
+ ; CHECK:       @ %bb.0: @ %for.cond8.preheader.us.us.preheader.preheader
+-; CHECK-NEXT:    .save {r4, r5, r6, r7, r8, r9, r10, lr}
+-; CHECK-NEXT:    push.w {r4, r5, r6, r7, r8, r9, r10, lr}
++; CHECK-NEXT:    .save {r4, r5, r6, r7, r8, r9, r10, r11, lr}
++; CHECK-NEXT:    push.w {r4, r5, r6, r7, r8, r9, r10, r11, lr}
++; CHECK-NEXT:    .pad #4
++; CHECK-NEXT:    sub sp, #4
+ ; CHECK-NEXT:    .vsave {d8, d9, d10, d11, d12, d13, d14, d15}
+ ; CHECK-NEXT:    vpush {d8, d9, d10, d11, d12, d13, d14, d15}
+-; CHECK-NEXT:    .pad #32
+-; CHECK-NEXT:    sub sp, #32
+-; CHECK-NEXT:    ldrd r9, r12, [sp, #128]
++; CHECK-NEXT:    .pad #16
++; CHECK-NEXT:    sub sp, #16
++; CHECK-NEXT:    ldrd r9, r12, [sp, #120]
+ ; CHECK-NEXT:    sub.w r7, r12, #1
+ ; CHECK-NEXT:    movs r6, #1
+ ; CHECK-NEXT:    mov.w r8, #0
+ ; CHECK-NEXT:    add.w r7, r6, r7, lsr #1
++; CHECK-NEXT:    vdup.32 q1, r9
+ ; CHECK-NEXT:    bic r7, r7, #3
++; CHECK-NEXT:    vshl.i32 q3, q1, #3
+ ; CHECK-NEXT:    subs r7, #4
+ ; CHECK-NEXT:    add.w r10, r6, r7, lsr #2
++; CHECK-NEXT:    adr r7, .LCPI9_0
+ ; CHECK-NEXT:    adr r6, .LCPI9_1
++; CHECK-NEXT:    vldrw.u32 q2, [r7]
+ ; CHECK-NEXT:    vldrw.u32 q0, [r6]
+-; CHECK-NEXT:    adr r7, .LCPI9_0
+-; CHECK-NEXT:    vldrw.u32 q1, [r7]
+ ; CHECK-NEXT:    vstrw.32 q0, [sp] @ 16-byte Spill
+-; CHECK-NEXT:    vdup.32 q0, r9
+-; CHECK-NEXT:    vmov q2, q0
+-; CHECK-NEXT:    vshl.i32 q3, q0, #3
+-; CHECK-NEXT:    vstrw.32 q1, [sp, #16] @ 16-byte Spill
+ ; CHECK-NEXT:  .LBB9_1: @ %for.cond8.preheader.us.us.preheader
+ ; CHECK-NEXT:    @ =>This Loop Header: Depth=1
+ ; CHECK-NEXT:    @ Child Loop BB9_2 Depth 2
+ ; CHECK-NEXT:    @ Child Loop BB9_3 Depth 3
+-; CHECK-NEXT:    mul lr, r8, r12
+-; CHECK-NEXT:    vldrw.u32 q0, [sp] @ 16-byte Reload
+-; CHECK-NEXT:    movs r7, #0
+-; CHECK-NEXT:    mul r6, r8, r9
+-; CHECK-NEXT:    vdup.32 q4, lr
+-; CHECK-NEXT:    vshl.i32 q4, q4, #2
+-; CHECK-NEXT:    vadd.i32 q4, q4, r0
+-; CHECK-NEXT:    vadd.i32 q4, q4, q0
++; CHECK-NEXT:    mul r11, r8, r9
++; CHECK-NEXT:    movs r5, #0
++; CHECK-NEXT:    mul r7, r8, r12
+ ; CHECK-NEXT:  .LBB9_2: @ %vector.ph
+ ; CHECK-NEXT:    @ Parent Loop BB9_1 Depth=1
+ ; CHECK-NEXT:    @ => This Loop Header: Depth=2
+ ; CHECK-NEXT:    @ Child Loop BB9_3 Depth 3
+-; CHECK-NEXT:    vldrw.u32 q0, [sp, #16] @ 16-byte Reload
+-; CHECK-NEXT:    vmov q7, q2
++; CHECK-NEXT:    vdup.32 q5, r7
++; CHECK-NEXT:    vldrw.u32 q0, [sp] @ 16-byte Reload
++; CHECK-NEXT:    vshl.i32 q5, q5, #2
++; CHECK-NEXT:    vmov q6, q1
++; CHECK-NEXT:    vadd.i32 q5, q5, r0
+ ; CHECK-NEXT:    dls lr, r10
+-; CHECK-NEXT:    vmov.i32 q5, #0x0
+-; CHECK-NEXT:    vmlas.i32 q7, q0, r7
+-; CHECK-NEXT:    vmov q6, q4
++; CHECK-NEXT:    vmov.i32 q4, #0x0
++; CHECK-NEXT:    vadd.i32 q5, q5, q0
++; CHECK-NEXT:    vmlas.i32 q6, q2, r5
+ ; CHECK-NEXT:  .LBB9_3: @ %vector.body
+ ; CHECK-NEXT:    @ Parent Loop BB9_1 Depth=1
+ ; CHECK-NEXT:    @ Parent Loop BB9_2 Depth=2
+ ; CHECK-NEXT:    @ => This Inner Loop Header: Depth=3
+-; CHECK-NEXT:    vadd.i32 q0, q7, q3
+-; CHECK-NEXT:    vldrw.u32 q1, [r1, q7, uxtw #2]
+-; CHECK-NEXT:    vldrw.u32 q7, [q6, #32]!
+-; CHECK-NEXT:    vmul.i32 q1, q1, q7
+-; CHECK-NEXT:    vmov q7, q0
+-; CHECK-NEXT:    vadd.i32 q5, q1, q5
++; CHECK-NEXT:    vadd.i32 q7, q6, q3
++; CHECK-NEXT:    vldrw.u32 q0, [r1, q6, uxtw #2]
++; CHECK-NEXT:    vldrw.u32 q6, [q5, #32]!
++; CHECK-NEXT:    vmul.i32 q0, q0, q6
++; CHECK-NEXT:    vmov q6, q7
++; CHECK-NEXT:    vadd.i32 q4, q0, q4
+ ; CHECK-NEXT:    le lr, .LBB9_3
+ ; CHECK-NEXT:  @ %bb.4: @ %middle.block
+ ; CHECK-NEXT:    @ in Loop: Header=BB9_2 Depth=2
+-; CHECK-NEXT:    adds r5, r7, r6
+-; CHECK-NEXT:    adds r7, #1
+-; CHECK-NEXT:    vaddv.u32 r4, q5
+-; CHECK-NEXT:    cmp r7, r9
+-; CHECK-NEXT:    str.w r4, [r2, r5, lsl #2]
++; CHECK-NEXT:    add.w r4, r5, r11
++; CHECK-NEXT:    adds r5, #1
++; CHECK-NEXT:    vaddv.u32 r6, q4
++; CHECK-NEXT:    cmp r5, r9
++; CHECK-NEXT:    str.w r6, [r2, r4, lsl #2]
+ ; CHECK-NEXT:    bne .LBB9_2
+ ; CHECK-NEXT:  @ %bb.5: @ %for.cond4.for.cond.cleanup6_crit_edge.us
+ ; CHECK-NEXT:    @ in Loop: Header=BB9_1 Depth=1
+@@ -517,9 +515,10 @@
+ ; CHECK-NEXT:    cmp r8, r3
+ ; CHECK-NEXT:    bne .LBB9_1
+ ; CHECK-NEXT:  @ %bb.6: @ %for.end25
+-; CHECK-NEXT:    add sp, #32
++; CHECK-NEXT:    add sp, #16
+ ; CHECK-NEXT:    vpop {d8, d9, d10, d11, d12, d13, d14, d15}
+-; CHECK-NEXT:    pop.w {r4, r5, r6, r7, r8, r9, r10, pc}
++; CHECK-NEXT:    add sp, #4
++; CHECK-NEXT:    pop.w {r4, r5, r6, r7, r8, r9, r10, r11, pc}
+ ; CHECK-NEXT:    .p2align 4
+ ; CHECK-NEXT:  @ %bb.7:
+ ; CHECK-NEXT:  .LCPI9_0:
+@@ -860,18 +859,18 @@
+ ; CHECK-NEXT:    push.w {r4, r5, r6, r7, r8, r9, r10, r11, lr}
+ ; CHECK-NEXT:    .pad #4
+ ; CHECK-NEXT:    sub sp, #4
+-; CHECK-NEXT:    .vsave {d8, d9, d10, d11, d12, d13, d14, d15}
+-; CHECK-NEXT:    vpush {d8, d9, d10, d11, d12, d13, d14, d15}
+-; CHECK-NEXT:    .pad #24
+-; CHECK-NEXT:    sub sp, #24
+-; CHECK-NEXT:    ldrd r2, r7, [sp, #136]
++; CHECK-NEXT:    .vsave {d8, d9, d10, d11, d12, d13}
++; CHECK-NEXT:    vpush {d8, d9, d10, d11, d12, d13}
++; CHECK-NEXT:    .pad #8
++; CHECK-NEXT:    sub sp, #8
++; CHECK-NEXT:    ldrd r2, r7, [sp, #104]
+ ; CHECK-NEXT:    add.w r8, r7, #10
+ ; CHECK-NEXT:    adr r7, .LCPI11_0
+-; CHECK-NEXT:    ldr r1, [sp, #128]
++; CHECK-NEXT:    ldr r1, [sp, #96]
+ ; CHECK-NEXT:    vdup.32 q0, r2
+ ; CHECK-NEXT:    vldrw.u32 q1, [r7]
+-; CHECK-NEXT:    movs r4, #0
+-; CHECK-NEXT:    mov.w r10, #6
++; CHECK-NEXT:    mov.w r10, #0
++; CHECK-NEXT:    mov.w r9, #6
+ ; CHECK-NEXT:    movs r6, #11
+ ; CHECK-NEXT:    vshl.i32 q0, q0, #2
+ ; CHECK-NEXT:    movs r5, #0
+@@ -881,7 +880,7 @@
+ ; CHECK-NEXT:    @ Child Loop BB11_3 Depth 3
+ ; CHECK-NEXT:    @ Child Loop BB11_4 Depth 4
+ ; CHECK-NEXT:    @ Child Loop BB11_5 Depth 5
+-; CHECK-NEXT:    mov.w r9, #0
++; CHECK-NEXT:    movs r7, #0
+ ; CHECK-NEXT:    str r5, [sp, #4] @ 4-byte Spill
+ ; CHECK-NEXT:  .LBB11_2: @ %for.cond22.preheader.i
+ ; CHECK-NEXT:    @ Parent Loop BB11_1 Depth=1
+@@ -889,49 +888,46 @@
+ ; CHECK-NEXT:    @ Child Loop BB11_3 Depth 3
+ ; CHECK-NEXT:    @ Child Loop BB11_4 Depth 4
+ ; CHECK-NEXT:    @ Child Loop BB11_5 Depth 5
+-; CHECK-NEXT:    movs r7, #0
+-; CHECK-NEXT:    vdup.32 q2, r9
+-; CHECK-NEXT:    vstrw.32 q2, [sp, #8] @ 16-byte Spill
++; CHECK-NEXT:    movs r5, #0
+ ; CHECK-NEXT:  .LBB11_3: @ %for.body27.i
+ ; CHECK-NEXT:    @ Parent Loop BB11_1 Depth=1
+ ; CHECK-NEXT:    @ Parent Loop BB11_2 Depth=2
+ ; CHECK-NEXT:    @ => This Loop Header: Depth=3
+ ; CHECK-NEXT:    @ Child Loop BB11_4 Depth 4
+ ; CHECK-NEXT:    @ Child Loop BB11_5 Depth 5
+-; CHECK-NEXT:    dls lr, r10
++; CHECK-NEXT:    dls lr, r9
+ ; CHECK-NEXT:    mov.w r12, #0
+ ; CHECK-NEXT:    mov.w r11, #4
+-; CHECK-NEXT:    vdup.32 q3, r7
+ ; CHECK-NEXT:  .LBB11_4: @ %for.body78.us.i
+ ; CHECK-NEXT:    @ Parent Loop BB11_1 Depth=1
+ ; CHECK-NEXT:    @ Parent Loop BB11_2 Depth=2
+ ; CHECK-NEXT:    @ Parent Loop BB11_3 Depth=3
+ ; CHECK-NEXT:    @ => This Loop Header: Depth=4
+ ; CHECK-NEXT:    @ Child Loop BB11_5 Depth 5
+-; CHECK-NEXT:    mul r5, r11, r6
+-; CHECK-NEXT:    vmov q4, q3
+-; CHECK-NEXT:    vadd.i32 q5, q1, r5
+-; CHECK-NEXT:    vmla.i32 q4, q5, r2
+-; CHECK-NEXT:    vldrw.u32 q5, [sp, #8] @ 16-byte Reload
+-; CHECK-NEXT:    adds r5, #113
+-; CHECK-NEXT:    vadd.i32 q6, q1, r5
+-; CHECK-NEXT:    mov r5, r8
+-; CHECK-NEXT:    vmla.i32 q5, q6, r2
++; CHECK-NEXT:    mul r4, r11, r6
++; CHECK-NEXT:    vdup.32 q3, r5
++; CHECK-NEXT:    vdup.32 q2, r7
++; CHECK-NEXT:    vadd.i32 q4, q1, r4
++; CHECK-NEXT:    vmla.i32 q3, q4, r2
++; CHECK-NEXT:    adds r4, #113
++; CHECK-NEXT:    vadd.i32 q4, q1, r4
++; CHECK-NEXT:    mov r4, r8
++; CHECK-NEXT:    vmla.i32 q2, q4, r2
+ ; CHECK-NEXT:  .LBB11_5: @ %vector.body
+ ; CHECK-NEXT:    @ Parent Loop BB11_1 Depth=1
+ ; CHECK-NEXT:    @ Parent Loop BB11_2 Depth=2
+ ; CHECK-NEXT:    @ Parent Loop BB11_3 Depth=3
+ ; CHECK-NEXT:    @ Parent Loop BB11_4 Depth=4
+ ; CHECK-NEXT:    @ => This Inner Loop Header: Depth=5
+-; CHECK-NEXT:    vldrb.s32 q2, [r0, q5]
+-; CHECK-NEXT:    vadd.i32 q7, q5, q0
+-; CHECK-NEXT:    vldrb.s32 q5, [r1, q4]
+-; CHECK-NEXT:    vadd.i32 q6, q4, q0
+-; CHECK-NEXT:    vadd.i32 q2, q2, r2
+-; CHECK-NEXT:    subs r5, #4
+-; CHECK-NEXT:    vmlava.u32 r12, q2, q5
+-; CHECK-NEXT:    vmov q5, q7
+-; CHECK-NEXT:    vmov q4, q6
++; CHECK-NEXT:    vldrb.s32 q6, [r0, q2]
++; CHECK-NEXT:    vadd.i32 q5, q2, q0
++; CHECK-NEXT:    vadd.i32 q4, q3, q0
++; CHECK-NEXT:    subs r4, #4
++; CHECK-NEXT:    vadd.i32 q2, q6, r2
++; CHECK-NEXT:    vldrb.s32 q6, [r1, q3]
++; CHECK-NEXT:    vmov q3, q4
++; CHECK-NEXT:    vmlava.u32 r12, q2, q6
++; CHECK-NEXT:    vmov q2, q5
+ ; CHECK-NEXT:    bne .LBB11_5
+ ; CHECK-NEXT:  @ %bb.6: @ %middle.block
+ ; CHECK-NEXT:    @ in Loop: Header=BB11_4 Depth=4
+@@ -939,19 +935,19 @@
+ ; CHECK-NEXT:    le lr, .LBB11_4
+ ; CHECK-NEXT:  @ %bb.7: @ %for.cond.cleanup77.i
+ ; CHECK-NEXT:    @ in Loop: Header=BB11_3 Depth=3
+-; CHECK-NEXT:    adds r7, #1
+-; CHECK-NEXT:    adds r4, #1
+-; CHECK-NEXT:    cmp r7, r2
++; CHECK-NEXT:    adds r5, #1
++; CHECK-NEXT:    add.w r10, r10, #1
++; CHECK-NEXT:    cmp r5, r2
+ ; CHECK-NEXT:    bne .LBB11_3
+ ; CHECK-NEXT:  @ %bb.8: @ %for.cond.cleanup26.i
+ ; CHECK-NEXT:    @ in Loop: Header=BB11_2 Depth=2
+-; CHECK-NEXT:    add.w r9, r9, #1
+-; CHECK-NEXT:    cmp r9, r3
++; CHECK-NEXT:    adds r7, #1
++; CHECK-NEXT:    cmp r7, r3
+ ; CHECK-NEXT:    bne .LBB11_2
+ ; CHECK-NEXT:  @ %bb.9: @ %for.cond.cleanup20.i
+ ; CHECK-NEXT:    @ in Loop: Header=BB11_1 Depth=1
+ ; CHECK-NEXT:    ldr r5, [sp, #4] @ 4-byte Reload
+-; CHECK-NEXT:    ldr r7, [sp, #180]
++; CHECK-NEXT:    ldr r7, [sp, #148]
+ ; CHECK-NEXT:    adds r5, #1
+ ; CHECK-NEXT:    cmp r5, r7
+ ; CHECK-NEXT:    it eq
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/WebAssembly/reg-stackify.ll b/llvm/test/CodeGen/WebAssembly/reg-stackify.ll
+--- a/llvm/test/CodeGen/WebAssembly/reg-stackify.ll
++++ b/llvm/test/CodeGen/WebAssembly/reg-stackify.ll
+@@ -471,7 +471,8 @@
+ ; CHECK-LABEL: multiple_defs:
+ ; CHECK:        f64.add         $push[[NUM0:[0-9]+]]=, ${{[0-9]+}}, $pop{{[0-9]+}}{{$}}
+ ; CHECK-NEXT:   local.tee       $push[[NUM1:[0-9]+]]=, $[[NUM2:[0-9]+]]=, $pop[[NUM0]]{{$}}
+-; CHECK-NEXT:   f64.select      ${{[0-9]+}}=, $pop{{[0-9]+}}, $pop[[NUM1]], ${{[0-9]+}}{{$}}
++; CHECK-NEXT:   f64.select      $push{{[0-9]+}}=, $pop{{[0-9]+}}, $pop[[NUM1]], ${{[0-9]+}}{{$}}
++; CHECK:        $[[NUM2]]=,
+ ; NOREGS-LABEL: multiple_defs:
+ ; NOREGS:        f64.add
+ ; NOREGS:        local.tee

@@ -16,7 +16,7 @@
 
 
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 
 
@@ -39,6 +39,6 @@ def skip_summary():
   # TODO(b/118385803): when replica_id of _TPUReplicaContext is properly
   # initialized, remember to change here as well.
   replica_id = replica_context.replica_id_in_sync_group
-  if isinstance(replica_id, ops.Tensor):
+  if isinstance(replica_id, tensor.Tensor):
     replica_id = tensor_util.constant_value(replica_id)
   return replica_id and replica_id > 0
