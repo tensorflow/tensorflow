@@ -659,10 +659,10 @@ def initialize_rbe_configs():
 
     sigbuild_tf_configs(
         name_container_map = {
-            "sigbuild-r2.14-clang17": "docker://gcr.io/tensorflow-sigs/build@sha256:814b2d6727d89792ab29f8a6486ae533427f5548f63c012e03108a8485e5a5a7",
-            "sigbuild-r2.14-clang17-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:814b2d6727d89792ab29f8a6486ae533427f5548f63c012e03108a8485e5a5a7",
-            "sigbuild-r2.14-clang17-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:d671adfcd7ad17c37ee0889f4277187b66b381e5921963d6b76ea830a102db4d",
-            "sigbuild-r2.14-clang17-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:08ff1d229f5bab5fb2c037eb9c7bf34646960882157239b90ec20794b105c1f5",
+            "sigbuild-r2.14-clang17": "docker://gcr.io/tensorflow-sigs/build@sha256:77b26125af4e2c6d7955a94d8d75f6dbb1e35a33db5bdaa915806110527ab927",
+            "sigbuild-r2.14-clang17-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:77b26125af4e2c6d7955a94d8d75f6dbb1e35a33db5bdaa915806110527ab927",
+            "sigbuild-r2.14-clang17-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:fa47f1bc501983fb57e7af0e04f3c45051e42129640ef4d4a10e829d255f11ac",
+            "sigbuild-r2.14-clang17-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:6935af1dd34f2f1d663ce1a6c63b3e96595ac9fefdf1e587a9bc53f2bfbf0c47",
         },
         # Unclear why LIBC is set to 2.19 here, and yet manylinux2010 is 2.12
         # and manylinux2014 is 2.17.
@@ -685,12 +685,12 @@ def initialize_rbe_configs():
             "TENSORRT_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
             "TF_CUDA_CLANG": "1",
             "TF_CUDA_COMPUTE_CAPABILITIES": "3.5,6.0",
-            "TF_CUDA_VERSION": "11.8",
-            "TF_CUDNN_VERSION": "8.1",
+            "TF_CUDA_VERSION": "12.2",
+            "TF_CUDNN_VERSION": "8.9",
             "TF_ENABLE_XLA": "1",
             "TF_NEED_CUDA": "1",
             "TF_NEED_TENSORRT": "1",
             "TF_SYSROOT": "/dt9",
-            "TF_TENSORRT_VERSION": "7.2",
+            "TF_TENSORRT_VERSION": "8.6",
         },
     )

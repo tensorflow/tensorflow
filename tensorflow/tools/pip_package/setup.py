@@ -163,17 +163,21 @@ if collaborator_build:
 EXTRA_PACKAGES = {}
 EXTRA_PACKAGES['and-cuda'] = [
     # TODO(nluehr): set nvidia-* versions based on build components.
-    'nvidia-cuda-runtime-cu11 == 11.8.89',
-    'nvidia-cublas-cu11 == 11.11.3.6',
-    'nvidia-cufft-cu11 == 10.9.0.58',
-    'nvidia-cudnn-cu11 == 8.7.0.84',
-    'nvidia-curand-cu11 == 10.3.0.86',
-    'nvidia-cusolver-cu11 == 11.4.1.48',
-    'nvidia-cusparse-cu11 == 11.7.5.86',
-    'nvidia-nccl-cu11 == 2.16.5',
-    'nvidia-cuda-cupti-cu11 == 11.8.87',
-    'nvidia-cuda-nvcc-cu11 == 11.8.89',
-    'tensorrt == 8.5.3.1',
+    'nvidia-cublas-cu12 == 12.2.5.6',
+    'nvidia-cuda-cupti-cu12 == 12.2.142',
+    'nvidia-cuda-nvcc-cu12 == 12.2.140',
+    'nvidia-cuda-nvrtc-cu12 == 12.2.140',
+    'nvidia-cuda-runtime-cu12 == 12.2.140',
+    'nvidia-cudnn-cu12 == 8.9.4.25',
+    'nvidia-cufft-cu12 == 11.0.8.103',
+    'nvidia-curand-cu12 == 10.3.3.141',
+    'nvidia-cusolver-cu12 == 11.5.2.141',
+    'nvidia-cusparse-cu12 == 12.1.2.141',
+    'nvidia-nccl-cu12 == 2.16.5',
+    'nvidia-nvjitlink-cu12 == 12.2.140',
+    'tensorrt == 8.6.1.post1',
+    'tensorrt-bindings == 8.6.1',
+    'tensorrt-libs == 8.6.1',
 ]
 
 DOCLINES = __doc__.split('\n')
