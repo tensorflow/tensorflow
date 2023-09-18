@@ -16,8 +16,7 @@ limitations under the License.
 #include <hip/hip_bfloat16.h>
 #include <hip/hip_fp16.h>
 #include <hip/hip_runtime.h>
-#include <hip/hip_fp16.h>
-#include <hip/hip_bfloat16.h>
+
 #include <limits>
 namespace stream_executor {
 namespace gpu {

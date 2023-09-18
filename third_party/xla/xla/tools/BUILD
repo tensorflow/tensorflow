@@ -8,11 +8,6 @@ load(
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
-    "if_cuda_is_configured",
-)
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load(
     "//xla:xla.bzl",
     "xla_cc_binary",
     "xla_cc_test",

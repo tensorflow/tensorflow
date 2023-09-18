@@ -262,12 +262,6 @@ cc_library(
     ]) + ["@local_tsl//tsl/platform:errors"],
 )
 
-cc_library(
-    name = "cublas_lt_header_for_rocm",
-    hdrs = ["cuda_blas_lt.cc", "cuda_blas_lt.h"],
-    visibility = ["//visibility:public"],
-)
-
 alias(
     name = "cublas_lt_stub",
     actual = "@local_tsl//tsl/cuda:cublas_lt_stub",

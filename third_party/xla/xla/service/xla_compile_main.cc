@@ -100,7 +100,6 @@ StatusOr<std::string> AotCompileGpuExecutable(
 }
 #endif
 
-
 xla::Status XlaCompileMain(const std::string& module_path,
                            const std::string& output_path,
                            const std::string& platform,

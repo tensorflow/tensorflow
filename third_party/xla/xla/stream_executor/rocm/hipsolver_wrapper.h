@@ -26,6 +26,7 @@ limitations under the License.
 #if TF_ROCM_VERSION >= 50600
 #include "rocm/include/hipsolver/hipsolver.h"
 #else
+
 #include "rocm/include/hipsolver.h"
 #endif
 #include "xla/stream_executor/platform/dso_loader.h"
@@ -66,7 +67,7 @@ namespace wrap {
     return loaded(args...);                                                   \
   }
 
-#endif  // PLATFORM_GOOGLE
+#endif
 
 // clang-format off
 #define FOREACH_HIPSOLVER_API(__macro)       \
@@ -144,5 +145,6 @@ FOREACH_HIPSOLVER_API(HIPSOLVER_API_WRAPPER)
 
 }  // namespace wrap
 }  // namespace stream_executor
+
 #endif  // TF_ROCM_VERSION
 #endif  // XLA_STREAM_EXECUTOR_ROCM_HIPSOLVER_WRAPPER_H_

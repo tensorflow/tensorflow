@@ -195,21 +195,12 @@ limitations under the License.
 #include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
 
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
-
 #ifdef PLATFORM_GOOGLE
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
 #endif  // PLATFORM_GOOGLE
 
 namespace xla {
 namespace gpu {
-#if GOOGLE_CUDA
-using ComputeCap = se::CudaComputeCapability;
-#else
-using ComputeCap = se::RocmComputeCapability;
-#endif
 namespace {
 bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
@@ -474,7 +465,6 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       }
       return !gpu::IsMatrixMultiplication(*instr);
     };
-
 
     pipeline.AddPass<OperandUpcaster>(upcaster_filter);
     pipeline.AddPass<ResultCaster>(upcaster_filter);
@@ -916,6 +906,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
+
     if (debug_options.xla_gpu_normalize_layouts()) {
       pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
       pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
@@ -1403,6 +1394,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                << maybe_backend_result.status();
     return maybe_backend_result.status();
   }
+
   return std::make_pair(ptx_snippets, std::move(*maybe_backend_result));
 }
 

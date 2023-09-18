@@ -211,7 +211,6 @@ StatusOr<std::vector<int64_t>> StridesToLayout(
 }
 
 StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
-
   if (device.client()->platform_id() == CpuId()) {
     return kDLCPU;
   } else if (device.client()->platform_id() == GpuId()) {

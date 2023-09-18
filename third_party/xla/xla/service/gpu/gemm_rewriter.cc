@@ -1750,8 +1750,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             {ComputationType::kF32, DataType::kComplexFloat, PrimitiveType::C64,
              PrimitiveType::C64, DataType::kComplexFloat},
 
-            // The next 4 may be supported by hipblaslt, but they are not
-            // covered by any unit tests
             {ComputationType::kF16AsF32, DataType::kFloat, PrimitiveType::F32,
              PrimitiveType::F32, DataType::kFloat},
             {ComputationType::kF16AsF32, DataType::kComplexFloat,
