@@ -735,6 +735,9 @@ class HloComputation {
   // Returns true if a given instruction is marked dead in this computation.
   bool IsMarkedAsDead(const HloInstruction* inst);
 
+  // Returns true iff this computation can be inlined as a single instruction.
+  bool CanExpandIntoSingleInstruction() const;
+
  private:
   explicit HloComputation(
       const std::string& name, int parameter_count,

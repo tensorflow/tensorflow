@@ -269,7 +269,9 @@ class HloPrintOptions {
   }
 
   // If true, uses the async operation syntax sugar to print async-start,
-  // async-update, and async-done HLOs. If the syntax sugar is enabled, the
+  // async-update, and async-done HLOs. If the syntax sugar is enabled and the
+  // async computation is trivial (i.e. only a single instruction taking
+  // computation parameters as operands, and otherwise is illegal), the
   // computations called by these instructions will not be printed and instead
   // the root of the called computation will be printed instead of these
   // instructions and -start, -update, and -done suffixes will be appended to

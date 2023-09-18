@@ -343,7 +343,8 @@ void HloAsyncInstruction::PrintExtraAttributesImpl(
                 "\"");
     });
   }
-  if (options.syntax_sugar_async_ops()) {
+  if (options.syntax_sugar_async_ops() &&
+      async_wrapped_computation()->CanExpandIntoSingleInstruction()) {
     async_wrapped_instruction()->PrintExtraAttributes(printer, options);
   }
 }
