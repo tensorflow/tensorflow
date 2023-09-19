@@ -2,17 +2,17 @@
 #   Stubs for dynamically loading CUDA.
 
 load(
-    "//tsl/platform/default:cuda_build_defs.bzl",
-    "cuda_rpath_flags",
-    "if_cuda_is_configured",
-)
-load(
     "//tsl/platform:build_config.bzl",
     "tsl_cc_test",
 )
 load(
     "//tsl/platform:rules_cc.bzl",
     "cc_library",
+)
+load(
+    "//tsl/platform/default:cuda_build_defs.bzl",
+    "cuda_rpath_flags",
+    "if_cuda_is_configured",
 )
 
 package(
@@ -100,12 +100,6 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
-)
-
-filegroup(
-    name = "cudnn_wrappers",
-    srcs = glob(["cudnn_*.inc"]),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
