@@ -18,6 +18,26 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 
+// Small constants are replicated to the hosts of their successors. This pass
+// only applies when there are multiple successors.
+//
+// For example, the graph:
+//   C -> {Op0, Op1, Op2, Op3}
+//   C's assigned_device is /job:tpu_host_worker/replica:0/task:0/device:CPU:0
+//   Op0's assigned_device is /job:tpu_host_worker/replica:0/task:0/device:TPU:0
+//   Op1's assigned_device is /job:tpu_host_worker/replica:0/task:0/device:TPU:1
+//   Op2's assigned_device is /job:tpu_host_worker/replica:0/task:1/device:TPU:0
+//   Op3's assigned_device is /job:tpu_host_worker/replica:0/task:1/device:TPU:1
+// is rewritten to:
+//   C0 -> {Op0, Op1}
+//   C1 -> {Op2, Op3}
+//   C0's assigned_device is /job:tpu_host_worker/replica:0/task:0/device:CPU:0
+//   C1's assigned_device is /job:tpu_host_worker/replica:0/task:1/device:CPU:0
+//   Op0's assigned_device is /job:tpu_host_worker/replica:0/task:0/device:TPU:0
+//   Op1's assigned_device is /job:tpu_host_worker/replica:0/task:0/device:TPU:1
+//   Op2's assigned_device is /job:tpu_host_worker/replica:0/task:1/device:TPU:0
+//   Op3's assigned_device is /job:tpu_host_worker/replica:0/task:1/device:TPU:1
+
 namespace tensorflow {
 
 class ReplicateConstantsPass : public GraphOptimizationPass {
