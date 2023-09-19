@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/heap_simulator.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/memory_space_assignment_repacking.h"
 #include "xla/service/memory_space_assignment_tuning_utils.h"
 #include "xla/service/memory_space_assignment_utils.h"
 #include "xla/service/tuple_util.h"
@@ -5417,10 +5418,51 @@ void AlternateMemoryBestFitHeap::UpdateReservedScopedAllocationSize() {
 
 void AlternateMemoryBestFitHeap::ExportAllocationsForRepacking(
     std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*>& allocations) {
+  using SlicedCopyAllocation = MemorySpaceAssignment::SlicedCopyAllocation;
+  using SliceDetail = SlicedCopyAllocation::SliceDetail;
+
   if (options_.reduce_scoped_memory_limit) {
     UpdateReservedScopedAllocationSize();
   }
+
   for (RepackAllocationBlock& allocation_block : repack_allocation_blocks_) {
+    allocation_block.original_slice_data = std::nullopt;
+    allocation_block.repacked_slice_data = std::nullopt;
+
+    if (!allocation_block.allocation->is_sliced_copy_allocation()) {
+      allocations.push_back(&allocation_block);
+      continue;
+    }
+
+    SlicedCopyAllocation* allocation =
+        dynamic_cast<SlicedCopyAllocation*>(allocation_block.allocation);
+    std::vector<const SliceDetail*> slice_details_sorted_by_offset;
+    slice_details_sorted_by_offset.reserve(
+        allocation->slice_details_sorted_by_start_time().size());
+    for (const SliceDetail& slice_detail :
+         allocation->slice_details_sorted_by_start_time()) {
+      slice_details_sorted_by_offset.push_back(&slice_detail);
+    }
+    absl::c_stable_sort(slice_details_sorted_by_offset,
+                        [](const SliceDetail* lhs, const SliceDetail* rhs) {
+                          return lhs->slice_decision.chunk.offset <
+                                 rhs->slice_decision.chunk.offset;
+                        });
+
+    // Since this is a sliced allocation, construct SlicedAllocationData to
+    // attach to the AllocationBlock.
+    MemorySpaceAssignmentRepacker::SlicedAllocationData original_slice_data;
+    for (const SliceDetail* slice_detail : slice_details_sorted_by_offset) {
+      CHECK_EQ(slice_detail->copy_start_after_time,
+               slice_detail->slice_decision.start_time);
+      original_slice_data.slices_sorted_by_offset.push_back(
+          MemorySpaceAssignmentRepacker::Slice{
+              slice_detail->slice_decision.chunk.size,
+              slice_detail->slice_decision.chunk.offset,
+              slice_detail->slice_decision.start_time});
+    }
+
+    allocation_block.original_slice_data = std::move(original_slice_data);
     allocations.push_back(&allocation_block);
   }
 }
@@ -5428,19 +5470,86 @@ void AlternateMemoryBestFitHeap::ExportAllocationsForRepacking(
 void AlternateMemoryBestFitHeap::ImportRepackedAllocations() {
   interval_tree_ = {};
   for (RepackAllocationBlock& allocation_block : repack_allocation_blocks_) {
-    MemorySpaceAssignment::Allocation* allocation = allocation_block.allocation;
-    VLOG(3) << "Moved " << allocation->ToString() << ", size "
-            << allocation->chunk().size << ", (" << allocation_block.start_time
-            << ", " << allocation_block.end_time << ") from "
-            << allocation_block.initial_offset << " to "
-            << allocation_block.offset;
-    allocation_block.allocation->ReplaceOffset(allocation_block.offset);
-    interval_tree_.Add(allocation_block.start_time, allocation_block.end_time,
-                       HeapSimulator::Chunk::FromOffsetSize(
-                           allocation_block.offset, allocation_block.size));
-    allocation_block.initial_offset = allocation_block.offset;
-    allocation_block.offset = -1;
+    if (allocation_block.allocation->is_sliced_copy_allocation()) {
+      ImportRepackedSlicedAllocation(allocation_block);
+      continue;
+    }
+    ImportRepackedNonSlicedAllocation(allocation_block);
   }
+}
+
+void AlternateMemoryBestFitHeap::ImportRepackedNonSlicedAllocation(
+    RepackAllocationBlock& block) {
+  MemorySpaceAssignment::Allocation* allocation = block.allocation;
+  int64_t original_offset = block.initial_offset;
+  int64_t repacked_offset = block.offset;
+
+  // Update the Allocation, AllocationBlock, and interval_tree_.
+  allocation->set_offset(repacked_offset);
+  block.initial_offset = repacked_offset;
+  block.offset = -1;
+  interval_tree_.Add(
+      block.start_time, block.end_time,
+      HeapSimulator::Chunk::FromOffsetSize(repacked_offset, block.size));
+
+  VLOG(3) << "Repacking move. offset: " << original_offset << " -> "
+          << repacked_offset << "; size: " << block.size
+          << "; Allocation: " << allocation->ToString();
+}
+
+void AlternateMemoryBestFitHeap::ImportRepackedSlicedAllocation(
+    RepackAllocationBlock& block) {
+  using SlicedCopyAllocation = MemorySpaceAssignment::SlicedCopyAllocation;
+  using SliceDetail = SlicedCopyAllocation::SliceDetail;
+
+  SlicedCopyAllocation* allocation =
+      dynamic_cast<SlicedCopyAllocation*>(block.allocation);
+  CHECK(block.allocation->is_sliced_copy_allocation());
+  int64_t original_offset = block.initial_offset;
+  int64_t repacked_offset = block.offset;
+  std::vector<int64_t> original_slice_offsets =
+      allocation->SliceOffsetsSortedByStartTime();
+
+  // Update the Allocation, AllocationBlock, and interval_tree_.
+  allocation->set_offset(repacked_offset);
+  if (block.repacked_slice_data.has_value()) {
+    CHECK(block.original_slice_data.has_value());
+    CHECK_EQ(allocation->slice_details_sorted_by_start_time().size(),
+             block.repacked_slice_data->slices_sorted_by_offset.size());
+    allocation->ImportRepackedSliceData(*block.repacked_slice_data);
+  } else {
+    allocation->AddDiffToAllSliceOffsets(repacked_offset - original_offset);
+  }
+  block.initial_offset = repacked_offset;
+  block.offset = -1;
+  // Note, in a non-repacking setting, we would have reworked the chunks as
+  // described in AlternateMemoryBestFitHeap::PrefetchContext::SlicedSolution::
+  // slices_for_pending_chunks. Doing so was for the benefit of
+  // AlternateMemoryBestFitHeap::pending_chunks_. However, pending_chunks_
+  // are cleared before repacking, when UncommitPendingChunks() is called. Thus,
+  // we don't need to worry about modifying the chunks here.
+  for (const SliceDetail& slice_detail :
+       allocation->slice_details_sorted_by_start_time()) {
+    interval_tree_.Add(slice_detail.copy_start_after_time, block.end_time,
+                       slice_detail.slice_decision.chunk);
+  }
+
+  VLOG(3) << "Repacking move. offset: " << original_offset << " -> "
+          << repacked_offset << "; size: " << block.size << "; " <<
+      [&]() {
+        std::vector<int64_t> new_slice_offsets =
+            allocation->SliceOffsetsSortedByStartTime();
+        CHECK_EQ(original_slice_offsets.size(), new_slice_offsets.size());
+        std::vector<std::string> offset_moves;
+        offset_moves.reserve(original_slice_offsets.size());
+        for (int i = 0; i < original_slice_offsets.size(); ++i) {
+          offset_moves.push_back(absl::StrCat(original_slice_offsets[i], " -> ",
+                                              new_slice_offsets[i]));
+        }
+        return absl::StrCat("slice_offsets: [",
+                            absl::StrJoin(offset_moves, ", "), "]");
+      }()
+          << "; Allocation: " << allocation->ToString();
 }
 
 void AlternateMemoryBestFitHeap::UncommitPendingChunks(
@@ -7241,9 +7350,9 @@ void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
   uses_.push_back(use);
 }
 
-void MemorySpaceAssignment::Allocation::ReplaceOffset(int64_t offset) {
+void MemorySpaceAssignment::Allocation::set_offset(int64_t offset) {
   CHECK(chunk_.has_value());
-  chunk_->offset = offset;
+  *chunk_ = Chunk::FromOffsetSize(offset, chunk_->size);
 }
 
 float MemorySpaceAssignment::ComputeEstimatedElapsedTime(
@@ -7694,13 +7803,59 @@ int64_t MemorySpaceAssignment::SlicedCopyAllocation::earliest_available_time()
   return slice_details_sorted_by_start_time().back().copy_done_before_time;
 }
 
-void MemorySpaceAssignment::SlicedCopyAllocation::ReplaceOffset(
-    int64_t offset) {
-  int64_t diff = chunk().offset - offset;
-  Allocation::ReplaceOffset(offset);
-  for (SliceDetail& slice_detail : slice_details_sorted_by_start_time_) {
-    slice_detail.slice_decision.chunk.offset -= diff;
+std::vector<int64_t>
+MemorySpaceAssignment::SlicedCopyAllocation::SliceOffsetsSortedByStartTime()
+    const {
+  std::vector<int64_t> offsets;
+  offsets.reserve(slice_details_sorted_by_start_time_.size());
+
+  for (const SliceDetail& slice_detail : slice_details_sorted_by_start_time_) {
+    offsets.push_back(slice_detail.slice_decision.chunk.offset);
   }
+
+  return offsets;
+}
+
+void MemorySpaceAssignment::SlicedCopyAllocation::AddDiffToAllSliceOffsets(
+    int64_t diff) {
+  for (SliceDetail& slice_detail : slice_details_sorted_by_start_time_) {
+    Chunk& chunk = slice_detail.slice_decision.chunk;
+    chunk = Chunk::FromOffsetSize(chunk.offset + diff, chunk.size);
+  }
+}
+
+void MemorySpaceAssignment::SlicedCopyAllocation::ImportRepackedSliceData(
+    const MemorySpaceAssignmentRepacker::SlicedAllocationData& data) {
+  int num_slices = slice_details_sorted_by_start_time_.size();
+  CHECK_EQ(data.slices_sorted_by_offset.size(), num_slices);
+
+  std::vector<SliceDetail*> slice_details_sorted_by_offset;
+  slice_details_sorted_by_offset.reserve(num_slices);
+  for (SliceDetail& slice_detail : slice_details_sorted_by_start_time_) {
+    slice_details_sorted_by_offset.push_back(&slice_detail);
+  }
+  absl::c_sort(slice_details_sorted_by_offset, [](const SliceDetail* lhs,
+                                                  const SliceDetail* rhs) {
+    return lhs->slice_decision.chunk.offset < rhs->slice_decision.chunk.offset;
+  });
+
+  for (int i = 0; i < num_slices; ++i) {
+    SliceDetail* slice_detail = slice_details_sorted_by_offset[i];
+    Chunk& chunk = slice_detail->slice_decision.chunk;
+    const MemorySpaceAssignmentRepacker::Slice& repacked_slice_data =
+        data.slices_sorted_by_offset[i];
+    chunk = Chunk::FromOffsetSize(repacked_slice_data.offset, chunk.size);
+    slice_detail->copy_start_after_time = repacked_slice_data.start_time;
+    slice_detail->slice_decision.start_time = repacked_slice_data.start_time;
+  }
+
+  absl::c_sort(slice_details_sorted_by_start_time_,
+               [](const SliceDetail& lhs, const SliceDetail& rhs) {
+                 return std::make_tuple(lhs.copy_start_after_time,
+                                        lhs.slice_decision.chunk.offset) <
+                        std::make_tuple(rhs.copy_start_after_time,
+                                        rhs.slice_decision.chunk.offset);
+               });
 }
 
 const std::vector<MemorySpaceAssignment::SlicedCopyAllocation::SliceDetail>&

@@ -30,6 +30,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/heap_simulator.h"
@@ -52,6 +54,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/instruction_hoister.h"
 #include "xla/service/memory_space_assignment.pb.h"
+#include "xla/service/memory_space_assignment_repacking.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -10816,6 +10819,17 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
                      " instruction ", name, " in the instruction schedule."));
   }
 
+  // Returns a scheduled instruction with the specified name or null.
+  static const HloInstruction* FindNamedScheduledInstruction(
+      const HloModule& module, std::string_view name) {
+    for (const HloInstruction* i : module.entry_computation()->instructions()) {
+      if (i->name() == name) {
+        return i;
+      }
+    }
+    return nullptr;
+  }
+
   // REQUIRES:
   // - Concat-bitcast and all slices were found in the schedule used to
   //   construct schedule_to_class.
@@ -11650,6 +11664,25 @@ ENTRY main {
   EXPECT_EQ(num_chunks_for_expected_aliases, 1);
 }
 
+class MockRepacker : public MemorySpaceAssignmentRepacker {
+ public:
+  MockRepacker()
+      : MemorySpaceAssignmentRepacker(std::numeric_limits<int64_t>::max(), 1) {}
+
+  MOCK_METHOD(StatusOr<bool>, Repack, (absl::Span<AllocationBlock*>),
+              (override));
+};
+
+// Here, we test the following things:
+// - Without repacking, we are unable to prefetch p4.
+// - With repacking, we are able to prefetch p4.
+// - When repacking occurs, we expect p2 and p3 to have been allocated chunks.
+//   We are only proposing slices for f32[32, 16] and not f32[16,16]; thus, we
+//   expect slicing metdata to be attached to the repacking block for p2 but not
+//   p3.
+// - We make the repacker assign the first slice (in time) of p2 the larger
+//   offset. After MSA, we check to make sure the fist slice is using the
+//   larger slicing parameters
 TEST_F(SlicedPrefetchTest, Repack) {
   absl::string_view hlo_string = R"(
 HloModule Slice, is_scheduled=true
@@ -11686,6 +11719,10 @@ ENTRY main {
   ROOT z5 = f32[32,16] add(z4, d)
 })";
 
+  using Slice = MemorySpaceAssignmentRepacker::Slice;
+  using SlicedAllocationData =
+      MemorySpaceAssignmentRepacker::SlicedAllocationData;
+
   // Create 2 copies of the module, one to run without repacking and one to run
   // with repacking.
   TF_ASSERT_OK_AND_ASSIGN(auto module_no_repacking,
@@ -11695,19 +11732,14 @@ ENTRY main {
   VLOG(1) << "Original module:\n"
           << module_no_repacking->ToString(HloPrintOptions::ShortParsable());
 
-  // Setup slicing expectations
-  Shape f32_8_16 = ShapeUtil::MakeShape(F32, {8, 16});
+  // Setup slicing expectations so that we slice f32[32, 16], but not
+  // f32[16,16].
   Shape f32_16_16 = ShapeUtil::MakeShape(F32, {16, 16});
   Shape f32_32_16 = ShapeUtil::MakeShape(F32, {32, 16});
   EXPECT_CALL(slice_proposer_,
               ProposeSlices(f32_16_16, EqualsSlicedPrefetchOptions(
                                            options_.sliced_prefetch_options)))
-      .WillRepeatedly(Return(SliceProposalCollection({
-          SliceProposal({f32_8_16, std::vector<SliceParam>({{0, 8}, {0, 16}}),
-                         ShapeSize(f32_8_16)}),
-          SliceProposal({f32_8_16, std::vector<SliceParam>({{8, 16}, {0, 16}}),
-                         ShapeSize(f32_8_16)}),
-      })));
+      .WillRepeatedly(Return(SliceProposalCollection({})));
   EXPECT_CALL(slice_proposer_,
               ProposeSlices(f32_32_16, EqualsSlicedPrefetchOptions(
                                            options_.sliced_prefetch_options)))
@@ -11757,25 +11789,57 @@ ENTRY main {
           << module_no_repacking->ToString(HloPrintOptions::ShortParsable());
 
   // If repacking is disabled, p4 (the source of d) should not be prefetched.
-  const HloInstruction* d = nullptr;
-  for (const HloInstruction* i :
-       module_no_repacking->entry_computation()->instructions()) {
-    if (i->name() == "d") {
-      d = i;
-      break;
-    }
-  }
+  const HloInstruction* d =
+      FindNamedScheduledInstruction(*module_no_repacking, "d");
   ASSERT_NE(d, nullptr);
   EXPECT_FALSE(IsConcatBitcast(d->operand(0)));
 
   // Configure MSA to repack.
+  MockRepacker repacker;
   absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
-  // Move "p2" from offset 1024 to 2048.
-  repack_map[{2, 1024}] = 2048;
-  // Move "p3" from offset 3072 to 1024.
-  repack_map[{3, 3072}] = 1024;
-  FakeMemorySpaceAssignmentRepacker repacker =
-      FakeMemorySpaceAssignmentRepacker(repack_map);
+  EXPECT_CALL(repacker, Repack(_))
+      .WillRepeatedly([](absl::Span<MockRepacker::AllocationBlock*> allocations)
+                          -> StatusOr<bool> {
+        bool found_p2 = false;
+        bool found_p3 = false;
+        for (MockRepacker::AllocationBlock* block : allocations) {
+          VLOG(1) << "Allocation block: " << block->ToString();
+
+          // Move "p2" from offset 1024 -> 2048.
+          if (block->start_time == 2 && block->initial_offset == 1024 &&
+              block->size == 2048) {
+            found_p2 = true;
+            block->offset = 2048;
+            // We expect p2 to be sliced. Check that it has slicing information
+            // in its AllocationBlock.
+            EXPECT_TRUE(block->original_slice_data.has_value());
+            if (block->original_slice_data.has_value()) {
+              SlicedAllocationData expected(
+                  {{Slice{1024, 1024, 2}, Slice{1024, 2048, 6}}});
+              EXPECT_EQ(*block->original_slice_data, expected)
+                  << "\nExpected: " << expected.ToString()
+                  << "\nGot: " << block->original_slice_data->ToString();
+              // Set the first slice for p2 to be place at the larger offset.
+              block->repacked_slice_data = SlicedAllocationData(
+                  {{Slice{1024, 2048, 6}, Slice{1024, 3072, 2}}});
+            }
+          }
+          // Move "p3" from offset 3072 -> 1024.
+          if (block->start_time == 3 && block->initial_offset == 3072 &&
+              block->size == 1024) {
+            found_p3 = true;
+            block->offset = 1024;
+            // We do not expect p3 to be sliced. Thus, it should not have
+            // slicing information in its AllocationBlock.
+            EXPECT_FALSE(block->original_slice_data.has_value());
+          }
+        }
+
+        EXPECT_TRUE(found_p2);
+        EXPECT_TRUE(found_p3);
+
+        return true;
+      });
   options_.max_repacks = 1;
   options_.repacker = &repacker;
   assignments =
@@ -11785,20 +11849,48 @@ ENTRY main {
           << module_with_repacking->ToString(HloPrintOptions::ShortParsable());
 
   // If repacking is enabled, p4 (the source of d) should be prefetched.
-  d = nullptr;
-  for (const HloInstruction* i :
-       module_with_repacking->entry_computation()->instructions()) {
-    if (i->name() == "d") {
-      d = i;
-      break;
-    }
-  }
+  d = FindNamedScheduledInstruction(*module_with_repacking, "d");
   ASSERT_NE(d, nullptr);
   EXPECT_TRUE(IsConcatBitcast(d->operand(0)));
 
   // Check expectations on the chunks assigned to the asynchronous sliced copy.
   // In particular, we want to make sure the slices are still contiguous.
   TF_EXPECT_OK(CheckSliceChunks(*assignments, d->operand(0)));
+
+  // Find the slices and offsets for p2, in the order they start in the
+  // schedule.
+  std::vector<const HloInstruction*> p2_slice_dones;
+  for (const HloInstruction* i :
+       module_with_repacking->entry_computation()->instructions()) {
+    if (IsAsyncSliceStart(i) && i->operand_count() == 1 &&
+        i->operand(0)->name() == "p2") {
+      ASSERT_EQ(i->user_count(), 1);
+      p2_slice_dones.push_back(i->users()[0]);
+    }
+  }
+  ASSERT_EQ(p2_slice_dones.size(), 2);
+  std::vector<int64_t> p2_slice_offsets;
+  for (const HloInstruction* i : p2_slice_dones) {
+    for (const std::pair<HloPosition, Chunk>& position_chunk_pair :
+         assignments->chunks()) {
+      if (position_chunk_pair.first.instruction == i) {
+        p2_slice_offsets.push_back(position_chunk_pair.second.offset);
+      }
+    }
+  }
+  ASSERT_EQ(p2_slice_offsets.size(), 2);
+
+  // We expect the first slice of p2 to have the larger offsets.
+  EXPECT_THAT(p2_slice_dones[0]->async_wrapped_instruction()->slice_starts(),
+              ::testing::ElementsAreArray({16, 0}));
+  EXPECT_THAT(p2_slice_dones[0]->async_wrapped_instruction()->slice_limits(),
+              ::testing::ElementsAreArray({32, 16}));
+  EXPECT_EQ(p2_slice_offsets[0], 3072);
+  EXPECT_THAT(p2_slice_dones[1]->async_wrapped_instruction()->slice_starts(),
+              ::testing::ElementsAreArray({0, 0}));
+  EXPECT_THAT(p2_slice_dones[1]->async_wrapped_instruction()->slice_limits(),
+              ::testing::ElementsAreArray({16, 16}));
+  EXPECT_EQ(p2_slice_offsets[1], 2048);
 }
 
 }  // namespace
