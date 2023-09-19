@@ -578,6 +578,22 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "op_stats_combiner_test",
+    srcs = ["op_stats_combiner_test.cc"],
+    deps = [
+        ":op_stats_combiner",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "//tensorflow/core/profiler/utils:step_intersection",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
 cc_library(
     name = "preprocess_single_host_xplane",
     srcs = ["preprocess_single_host_xplane.cc"],
