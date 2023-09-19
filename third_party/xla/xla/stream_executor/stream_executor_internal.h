@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/device_description.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/trace_listener.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -105,6 +107,16 @@ class KernelInterface {
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(KernelInterface);
+};
+
+// Platform-dependent interface class implementing generic CommandBuffer.
+class CommandBufferInterface {
+ public:
+  CommandBufferInterface() = default;
+  virtual ~CommandBufferInterface() = default;
+
+ private:
+  SE_DISALLOW_COPY_AND_ASSIGN(CommandBufferInterface);
 };
 
 // Pointer-to-implementation object type (i.e. the Stream class delegates to
@@ -330,6 +342,11 @@ class StreamExecutorInterface {
   virtual std::unique_ptr<EventInterface> CreateEventImplementation() = 0;
   virtual std::unique_ptr<KernelInterface> CreateKernelImplementation() = 0;
   virtual std::unique_ptr<StreamInterface> GetStreamImplementation() = 0;
+
+  virtual tsl::StatusOr<std::unique_ptr<CommandBufferInterface>>
+  GetCommandBufferImplementation() {
+    return absl::UnimplementedError("Command buffers are not implemented");
+  }
 
   // Returns the CUDA or ROCm context associated with this StreamExecutor
   // platform implementation.

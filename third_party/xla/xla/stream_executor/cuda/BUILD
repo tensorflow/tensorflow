@@ -1,7 +1,10 @@
 # Description:
 #   CUDA-platform specific StreamExecutor support code.
 
-load("@local_tsl//tsl:tsl.bzl", "if_google", "set_external_visibility", "tsl_copts")
+load(
+    "//xla:xla.bzl",
+    "xla_cc_test",
+)
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
@@ -11,10 +14,7 @@ load(
     "tf_additional_cudnn_plugin_deps",
     "tf_additional_gpu_compilation_copts",
 )
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
+load("@local_tsl//tsl:tsl.bzl", "if_google", "set_external_visibility", "tsl_copts")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
@@ -25,8 +25,8 @@ load(
     "cc_library",
 )
 load(
-    "//xla:xla.bzl",
-    "xla_cc_test",
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
 )
 
 package(
@@ -543,21 +543,22 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cuda_activation",
+        ":cuda_asm_compiler",
         ":cuda_diagnostics",
         ":cuda_driver",
         ":cuda_event",
         ":cuda_kernel",
         ":cuda_platform_id",
         ":cuda_stream",
-        ":cuda_asm_compiler",
-        "//xla/stream_executor/gpu:gpu_timer",
         "@com_google_absl//absl/strings",
         "//xla/stream_executor:event",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:stream_executor_internal",
         "//xla/stream_executor:stream_executor_pimpl_header",
         "//xla/stream_executor/gpu:asm_compiler",
+        "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_executor_header",
+        "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
     ]) + [

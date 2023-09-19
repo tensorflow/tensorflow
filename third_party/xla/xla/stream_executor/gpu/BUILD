@@ -83,6 +83,21 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_command_buffer",
+    srcs = if_gpu_is_configured(["gpu_command_buffer.cc"]),
+    hdrs = if_gpu_is_configured(["gpu_command_buffer.h"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gpu_driver_header",
+        ":gpu_executor_header",
+        ":gpu_stream",
+        "//xla/stream_executor:stream_executor_headers",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "gpu_event_header",
     hdrs = if_gpu_is_configured(["gpu_event.h"]),
     visibility = ["//visibility:public"],

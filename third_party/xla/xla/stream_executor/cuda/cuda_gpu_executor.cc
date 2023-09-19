@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_gpu_executor.h"
 
 #include <cstdint>
-#include <optional>
+#include <memory>
 #include <utility>
 
 #if defined(__APPLE__)
@@ -38,22 +38,20 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_driver.h"
-#include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/cuda/cuda_stream.h"
+#include "xla/stream_executor/gpu/gpu_command_buffer.h"
+#include "xla/stream_executor/gpu/gpu_event.h"
+#include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/kernel_cache_config.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/platform/logging.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/numbers.h"
 #include "tsl/platform/statusor.h"
 
 // LOG(ERROR) uses a const named ERROR, so a macro with the same name is
@@ -80,7 +78,6 @@ static GpuEvent* AsGpuEvent(Event* event) {
   DCHECK(event != nullptr);
   return static_cast<GpuEvent*>(event->implementation());
 }
-
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
 // for passing directly to libcuda APIs.
@@ -843,6 +840,12 @@ GpuExecutor::CreateKernelImplementation() {
 std::unique_ptr<internal::StreamInterface>
 GpuExecutor::GetStreamImplementation() {
   return std::unique_ptr<internal::StreamInterface>(new GpuStream(this));
+}
+
+tsl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
+GpuExecutor::GetCommandBufferImplementation() {
+  return std::unique_ptr<internal::CommandBufferInterface>(
+      new GpuCommandBuffer());
 }
 
 void* GpuExecutor::GpuContextHack() { return context_; }
