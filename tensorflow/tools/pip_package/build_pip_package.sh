@@ -37,7 +37,7 @@ function cp_external() {
 
   pushd .
   cd "$src_dir"
-  for f in `find . ! -type d ! -name '*.py' ! -path '*local_config_cuda*' ! -path '*local_config_tensorrt*' ! -path '*pypi*' ! -path '*python_x86_64*' ! -path '*python_aarch64*' ! -path '*local_config_syslibs*' ! -path '*org_tensorflow*' ! -path '*llvm-project/llvm/*'`; do
+  for f in `find . ! -type d ! -name '*.py' ! -path '*local_config_cuda*' ! -path '*local_config_tensorrt*' ! -path '*pypi*' ! -path '*python_x86_64*' ! -path '*python_aarch64*' ! -path '*local_config_syslibs*' ! -path '*org_tensorflow*' ! -path '*llvm-project/llvm/*' ! -path '*local_tsl*' ! -path '*local_xla*'`; do
     mkdir -p "${dest_dir}/$(dirname ${f})"
     cp "${f}" "${dest_dir}/$(dirname ${f})/"
   done
@@ -118,11 +118,6 @@ function reorganize_includes() {
   rm -rf external/com_google_protobuf/python
 
   cp -R external/ml_dtypes ./
-
-  # TSL/XLA need to be merged into their old locations for legacy support
-  rsync -a external/local_tsl/tsl ./tensorflow/
-  rsync -a external/local_xla/xla ./tensorflow/compiler/
-  rm -r external/local_tsl external/local_xla
 
   popd
 }
