@@ -2230,10 +2230,7 @@ cc_library(
         "gpu_device_context.h",
         "mkl_cpu_allocator.h",
     ],
-    visibility = [
-        ":__pkg__",
-        "//tensorflow/core/nccl:__pkg__",
-    ],
+    visibility = [":__pkg__"],
 )
 
 # -----------------------------------------------------------------------------
