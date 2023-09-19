@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/IR/TensorInferTypeOpInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/TensorTilingInterfaceImpl.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -65,8 +66,8 @@ LogicalResult tilePackOp(tensor::PackOp packOp, PatternRewriter &rewriter) {
           [&](OpBuilder b, Operation *op) {
             auto numLoops =
                 cast<mlir::TilingInterface>(op).getLoopIteratorTypes().size();
-            SmallVector<Value> tiles(
-                numLoops, b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
+            SmallVector<OpFoldResult> tiles(
+                numLoops, getAsIndexOpFoldResult(b.getContext(), 1));
             return tiles;
           });
 
@@ -83,14 +84,14 @@ LogicalResult tileUnpackOp(tensor::UnPackOp unpackOp,
             auto unpackOp = cast<tensor::UnPackOp>(op);
             auto numLoops = unpackOp.getDestRank();
             auto dimAndTileMapping = unpackOp.getDimAndTileMapping();
-            SmallVector<Value> tileSizes;
+            SmallVector<OpFoldResult> tileSizes;
             for (size_t i = 0; i < numLoops; ++i) {
               if (dimAndTileMapping.count(i)) {
-                tileSizes.push_back(getValueOrCreateConstantIndexOp(
-                    builder, loc, dimAndTileMapping[i]));
+                tileSizes.push_back(dimAndTileMapping[i]);
               } else {
                 tileSizes.push_back(
-                    builder.create<memref::DimOp>(loc, unpackOp.getDest(), i));
+                    builder.create<memref::DimOp>(loc, unpackOp.getDest(), i)
+                        .getResult());
               }
             }
             return tileSizes;

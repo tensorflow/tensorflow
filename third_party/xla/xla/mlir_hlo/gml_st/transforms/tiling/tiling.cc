@@ -19,13 +19,18 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <variant>
 
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
+#include "mlir/IR/OpDefinition.h"
 
 namespace mlir::gml_st {
 namespace {
@@ -134,9 +139,12 @@ void updateOutputs(const GMLSTTilingResult &tilingResult,
 
 }  // namespace
 
-scf::SCFTilingOptions getSCFTilingOptions(ArrayRef<int64_t> tileSizes) {
+scf::SCFTilingOptions getSCFTilingOptions(MLIRContext *context,
+                                          ArrayRef<int64_t> tileSizes) {
   scf::SCFTilingOptions opts;
-  opts.setTileSizes(tileSizes);
+  SmallVector<OpFoldResult> tileSizesOfr =
+      getAsIndexOpFoldResult(context, tileSizes);
+  opts.setTileSizes(tileSizesOfr);
   return opts;
 }
 
@@ -162,7 +170,16 @@ FailureOr<GMLSTTilingResult> tileUsingSCFForallOp(
   SmallVector<Value> tileSizeVector;
   {
     OpBuilder::InsertionGuard guard(rewriter);
-    tileSizeVector = options.tileSizeComputationFunction(rewriter, op);
+    tileSizeVector = llvm::to_vector(
+        llvm::map_range(options.tileSizeComputationFunction(rewriter, op),
+                        [&](const OpFoldResult &ofr) -> Value {
+                          if (Value value = mlir::dyn_cast<Value>(ofr))
+                            return value;
+                          if (Attribute attr = mlir::dyn_cast<Attribute>(ofr))
+                            return rewriter.create<arith::ConstantOp>(
+                                loc, attr.cast<TypedAttr>());
+                          return Value();
+                        }));
   }
 
   if (tileSizeVector.size() < iterationDomain.size()) {

@@ -27,10 +27,8 @@ transform.sequence failures(propagate) {
 // CHECK-DAG:  %[[INIT_DIM_0:.*]] = tensor.dim %[[INIT]], %[[C0]]
 // CHECK-DAG:  %[[INIT_DIM_1:.*]] = tensor.dim %[[INIT]], %[[C1]]
 // CHECK-DAG:  %[[INIT_DIM_2:.*]] = tensor.dim %[[INIT]], %[[C2]]
-// CHECK:      %[[FOR:.*]] = scf.for %[[I:.*]] = %[[C0]] to %[[INIT_DIM_0]]
-// CHECK-SAME:      step %[[C256]]
-// CHECK-SAME:      iter_args(%[[INIT_ARG0:.*]] = %[[INIT]])
-// CHECK:         %[[MIN:.*]] = affine.min #map{{[0-9]*}}(%[[I]])[%[[INIT_DIM_0]]]
+// CHECK-DAG:  %[[FOR:.*]] = scf.for %[[I:.*]] = %[[C0]] to %[[INIT_DIM_0]] step %[[C256]] iter_args(%[[INIT_ARG0:.*]] = %[[INIT]])
+// CHECK-DAG:     %[[MIN:.*]] = affine.min #map{{[0-9]*}}(%[[I]])[%[[INIT_DIM_0]]]
 // CHECK:         %[[INNER_FOR:.*]] = scf.for %[[J:.*]] = %[[C0]] to %[[INIT_DIM_1]]
 // CHECK-SAME:       step %[[C512]]
 // CHECK-SAME:       iter_args(%[[OUT:.*]] = %[[INIT_ARG0]])
@@ -182,9 +180,8 @@ transform.sequence failures(propagate) {
 // CHECK-DAG:   %[[C512:.*]] = arith.constant 512
 // CHECK-DAG:   %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C0]]
 // CHECK-DAG:   %[[DIM_0:.*]] = tensor.dim %[[ARG0]], %[[C1]]
-// CHECK:       %[[FOR:.*]] = scf.for %[[ARG4:.*]] = %[[C0]] to %[[DIM]] step %[[C256]]
-// CHECK-SAME:      iter_args(%[[INIT_:.*]] = %[[ARG0]])
-// CHECK:         %[[MIN:.*]] = affine.min #map{{[0-9]*}}(%[[ARG4]])[%[[DIM]]]
+// CHECK-DAG:   %[[FOR:.*]] = scf.for %[[ARG4:.*]] = %[[C0]] to %[[DIM]] step %[[C256]] iter_args(%[[INIT_:.*]] = %[[ARG0]])
+// CHECK-DAG:     %[[MIN:.*]] = affine.min #map{{[0-9]*}}(%[[ARG4]])[%[[DIM]]]
 // CHECK:         %[[INNER_FOR:.*]] = scf.for %[[ARG5:.*]] = %[[C0]] to %[[DIM_0]] step %[[C512]]
 // CHECK-SAME:      iter_args(%[[ARG6:.*]] = %[[INIT_]])
 // CHECK:         %[[MIN_0:.*]] = affine.min #map{{[0-9]*}}(%[[ARG5]])[%[[DIM_0]]]
@@ -354,8 +351,8 @@ transform.sequence failures(propagate) {
 // CHECK-LABEL: func @reverse_static
 //  CHECK-SAME: %[[ARG0:.*]]: tensor<100xf32>, %[[ARG1:.*]]: tensor<100xf32>
 //   CHECK-DAG:   %[[C0:.*]] = arith.constant 0
-//   CHECK-DAG:   %[[C10:.*]] = arith.constant 10
-//   CHECK-DAG:   %[[C100:.*]] = arith.constant 100
+//   CHECK-DAG:   %[[C10:.*]] = arith.constant 10 : index
+//   CHECK-DAG:   %[[C100:.*]] = arith.constant 100 : index
 //       CHECK:   %[[FOR:.*]] = scf.for %[[I:.*]] = %[[C0]]
 //  CHECK-SAME:   iter_args(%[[ARG3:.*]] = %[[ARG1]])
 //       CHECK:     %[[TEMP_SUB_RES:.*]] = arith.subi %[[C100]], %[[I]]

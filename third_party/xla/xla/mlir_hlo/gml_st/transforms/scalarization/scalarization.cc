@@ -238,7 +238,7 @@ LogicalResult scalarizeOp(Operation *op, PatternRewriter &rewriter,
 LogicalResult hoistTensorExtractFromForOp(scf::ForOp forOp,
                                           PatternRewriter &rewriter) {
   if (forOp.getInitArgs().size() != 1) return failure();
-  OpOperand &iterOperand = forOp.getIterOpOperands().front();
+  OpOperand &iterOperand = forOp.getInitArgsMutable()[0];
   auto iterArgTensorTy =
       dyn_cast<RankedTensorType>(iterOperand.get().getType());
   if (!iterArgTensorTy || !hasSingleElement(iterArgTensorTy)) return failure();

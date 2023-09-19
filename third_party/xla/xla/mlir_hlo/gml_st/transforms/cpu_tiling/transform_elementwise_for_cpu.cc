@@ -318,7 +318,8 @@ LogicalResult tileAndFuse(FusionOp fusionOp, PatternRewriter &rewriter) {
 
   // Tile and fuse.
   auto tiledLoop = tileUsingSCFForallOpAndFuseGreedily(
-      rewriter, tilingRootOp, getSCFTilingOptions(tileSizes));
+      rewriter, tilingRootOp,
+      getSCFTilingOptions(rewriter.getContext(), tileSizes));
   if (failed(tiledLoop)) return failure();
 
   // Peel.
