@@ -194,26 +194,6 @@ int ComputeMaxUnrollFactor(int64_t num_elements) {
   return 1;
 }
 
-// Projected shmem usage of reduction fusion.
-int64_t ProjectedShmemUsageBytes(
-    const ReductionDimensions& reduction_dimensions,
-    const std::vector<std::vector<const HloInstruction*>>& instr_index_groups) {
-  int64_t out = 0;
-  // Different groups are computed in parallel on different blocks, so they are
-  // not sharing the shmem budget. The overall usage is given by the largest
-  // one.
-  for (const auto& group : instr_index_groups) {
-    int64_t sum = 0;
-    for (const HloInstruction* root : group) {
-      if (IsReductionFromOrToContiguousDimensions(*root)) {
-        sum += SharedMemoryUsage(*root);
-      }
-    }
-    out = std::max(out, sum);
-  }
-  return out;
-}
-
 // For a row reduction, returns the number of rows we can process in parallel
 // per warp.
 int RowReductionGetRowsPerWarp(int reduced_dimension_size) {
@@ -829,8 +809,8 @@ ReductionCodegenInfo HloFusionAnalysis::ComputeReductionCodegenInfo(
       reduction_dimensions.is_row_reduction ? kStridedIndexingX
                                             : kLinearIndexingX;
   auto instr_index_groups = GroupDisjointReductions();
-  int64_t shmem_usage =
-      ProjectedShmemUsageBytes(reduction_dimensions, instr_index_groups);
+  int64_t shmem_usage = ReductionProjectedShmemUsageBytes(reduction_dimensions,
+                                                          instr_index_groups);
   const int64_t shmem_budget = device_info_->shared_memory_per_block;
   bool reduction_is_race_free = ReductionIsRaceFree(
       hero_reduction->GetModule()->config(), reduction_dimensions);
