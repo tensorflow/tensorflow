@@ -1487,7 +1487,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
   for (size_t instruction_id = 0; instruction_id < instructions.size();
        ++instruction_id) {
     const HloInstruction* ins = instructions[instruction_id];
-    VLOG(2) << "instruction_id = " << instruction_id << ": " << ins->ToString();
+    VLOG(2) << "instruction_id = " << instruction_id << ": "
+            << ToAdaptiveString(ins);
     std::unique_ptr<StrategyVector> strategies;
 
     HloOpcode opcode = ins->opcode();
@@ -2912,8 +2913,8 @@ std::string PrintAutoShardingSolution(const HloInstructionSequence& sequence,
   for (NodeIdx node_idx = 0; node_idx < N; ++node_idx) {
     absl::StrAppend(
         &str, node_idx, " ",
-        instructions[leaf_strategies[node_idx]->instruction_id]->ToString(
-            HloPrintOptions::ShortParsable()),
+        ToAdaptiveString(
+            instructions[leaf_strategies[node_idx]->instruction_id]),
         " ");
     NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
     if (cost_graph.follow_idx_[node_idx] < 0) {

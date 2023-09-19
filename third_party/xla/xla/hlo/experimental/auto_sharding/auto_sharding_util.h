@@ -64,6 +64,19 @@ inline std::pair<int, int> ParseMeshDims(const std::string& strategy_name) {
   return {1, 0};
 }
 
+inline std::string ToAdaptiveString(const HloInstruction* ins) {
+  bool is_large_instruction =
+      ins->shape().IsTuple() && ins->shape().tuple_shapes_size() > 500;
+  if (!is_large_instruction) {
+    for (const auto& operand : ins->operands()) {
+      is_large_instruction =
+          is_large_instruction || (operand->shape().IsTuple() &&
+                                   operand->shape().tuple_shapes_size() > 500);
+    }
+  }
+  return is_large_instruction ? ins->ToShortString() : ins->ToString();
+}
+
 // Return whether the tensor shape is divisible by
 // the number of devices along multiple dimensions.
 bool IsDivisible(const HloInstruction* ins, const Array<int64_t>& device_mesh,
