@@ -55,18 +55,19 @@ limitations under the License.
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
+#include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/tfrt_cpu_pjrt_client.h"
-#include "xla/python/pjrt_ifrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_api.h"
 #include "xla/python/custom_call_sharding.h"
 #include "xla/python/dlpack.h"
 #include "xla/python/jax_jit.h"
+#include "xla/python/logging.h"
 #include "xla/python/mlir.h"
 #include "xla/python/ops.h"
 #include "xla/python/outfeed_receiver_py.h"
 #include "xla/python/pjit.h"
+#include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pmap_lib.h"
 #include "xla/python/pprof_profile_builder.h"
 #include "xla/python/profiler.h"
@@ -90,6 +91,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/distributed_runtime/preemption/preemption_sync_manager.h"
+#include "tsl/platform/platform.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
 
@@ -137,6 +139,11 @@ bool IsSanitized() { return IsAsan() || IsMsan() || IsTsan(); }
 }  // namespace
 
 static void Init(py::module_& m) {
+  // Initialize ABSL logging because code within XLA uses it.
+#ifndef PLATFORM_GOOGLE
+  InitializeAbslLogging();
+#endif  // PLATFORM_GOOGLE
+
   tsl::ImportNumpy();
 
   // Exceptions
