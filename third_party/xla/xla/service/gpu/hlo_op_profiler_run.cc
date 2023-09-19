@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_op_profiler.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
@@ -78,11 +78,15 @@ int RunProfiler(int argc, char** argv) {
 
   HloRunner runner(PlatformUtil::GetPlatform("cuda").value());
   HloOpProfiler profiler(runner);
-  const stream_executor::StreamExecutor* executor =
-      runner.backend().stream_executors()[0];
-  const std::string& device_name = executor->GetDeviceDescription().name();
-  VLOG(0) << device_name << " @ "
-          << gpu::GetGpuDeviceInfo(executor).clock_rate_ghz << " GHz";
+  const auto device_info =
+      gpu::GetGpuDeviceInfo(runner.backend().stream_executors()[0]);
+  const auto compute_capability =
+      std::get<stream_executor::CudaComputeCapability>(
+          device_info.compute_capability);
+  std::string compute_capability_str =
+      absl::StrCat("sm_", compute_capability.major, compute_capability.minor);
+  VLOG(0) << compute_capability_str << " @ " << device_info.clock_rate_ghz
+          << " GHz";
 
   const std::vector<PrimitiveType> dtypes = {
       S8, S16, S32, S64, U8, U16, U32, U64, F16, F32, F64, C64, C128,
@@ -125,7 +129,8 @@ int RunProfiler(int argc, char** argv) {
   VLOG(1) << "\n" << instr_profiles.DebugString();
 
   DeviceHloInstructionProfiles device_profiles;
-  device_profiles.mutable_entries()->insert({device_name, instr_profiles});
+  device_profiles.mutable_entries()->insert(
+      {compute_capability_str, instr_profiles});
   if (!output_file.empty()) {
     WriteOutput(device_profiles, output_file);
   }
