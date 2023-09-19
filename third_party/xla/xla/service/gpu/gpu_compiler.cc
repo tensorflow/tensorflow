@@ -81,6 +81,7 @@ limitations under the License.
 #include "xla/service/broadcast_canonicalizer.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/collective_into_scan_loop_code_motion.h"
 #include "xla/service/collective_permute_decomposer.h"
 #include "xla/service/collective_pipeliner.h"
 #include "xla/service/collective_quantizer.h"
@@ -801,6 +802,11 @@ absl::Status RunOptimizationPasses(
 
 absl::Status AddCollectivePipelinerPasses(
     const DebugOptions& debug_options, HloPassPipeline& collectives_pipeline) {
+  if (debug_options.xla_gpu_enable_all_reduce_into_scan_loop_code_motion()) {
+    collectives_pipeline.AddPass<CollectiveIntoScanLoopCodeMotion>(
+        HloOpcode::kAllReduce);
+  }
+
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
       debug_options.xla_gpu_enable_pipelined_all_reduce()) {
     CollectivePipeliner::Config config{

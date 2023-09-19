@@ -587,6 +587,8 @@ message DebugOptions {
   // transformation.
   int64 xla_gpu_collective_permute_decomposer_threshold = 237;
 
+  bool xla_gpu_enable_all_reduce_into_scan_loop_code_motion = 317;
+
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
     PARTITIONING_ALGORITHM_EXP0 = 1;
@@ -873,7 +875,7 @@ message DebugOptions {
   // Relative precision for comparing different GEMM solutions
   float xla_gpu_autotune_gemm_rtol = 316;
 
-  // Next id: 317
+  // Next id: 318
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

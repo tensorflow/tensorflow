@@ -3184,6 +3184,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service:buffer_value",
         "//xla/service:call_inliner",
+        "//xla/service:collective_into_scan_loop_code_motion",
         "//xla/service:collective_permute_decomposer",
         "//xla/service:collective_pipeliner",
         "//xla/service:collective_quantizer",

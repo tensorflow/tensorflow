@@ -1481,6 +1481,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_collective_permute_decomposer_threshold(),
       "Collective permute decomposer threshold."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_all_reduce_into_scan_loop_code_motion",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_enable_all_reduce_into_scan_loop_code_motion),
+      debug_options->xla_gpu_enable_all_reduce_into_scan_loop_code_motion(),
+      "Enable code motion of all-reduce into scan loops."));
+  flag_list->push_back(tsl::Flag(
       "xla_partitioning_algorithm", setter_for_xla_partitioning_algorithm,
       DebugOptions::PartitioningAlgorithm_Name(
           debug_options->xla_partitioning_algorithm()),

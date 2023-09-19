@@ -2946,6 +2946,42 @@ cc_library(
 )
 
 cc_library(
+    name = "collective_into_scan_loop_code_motion",
+    srcs = ["collective_into_scan_loop_code_motion.cc"],
+    hdrs = ["collective_into_scan_loop_code_motion.h"],
+    deps = [
+        ":hlo_pass",
+        ":pattern_matcher",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_into_scan_loop_code_motion_test",
+    srcs = ["collective_into_scan_loop_code_motion_test.cc"],
+    deps = [
+        ":collective_into_scan_loop_code_motion",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:filecheck",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "bitcast_dtypes_expander",
     srcs = ["bitcast_dtypes_expander.cc"],
     hdrs = ["bitcast_dtypes_expander.h"],
