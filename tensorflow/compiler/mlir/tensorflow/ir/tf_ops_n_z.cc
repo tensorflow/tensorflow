@@ -3474,7 +3474,7 @@ LogicalResult WhileRegionOp::verify() {
 // WhileRegionOp LoopLikeOpInterface
 //===----------------------------------------------------------------------===//
 
-Region &WhileRegionOp::getLoopBody() { return getBody(); }
+SmallVector<Region *> WhileRegionOp::getLoopRegions() { return {&getBody()}; }
 
 //===----------------------------------------------------------------------===//
 // WhileRegionOp RegionBranchOpInterface

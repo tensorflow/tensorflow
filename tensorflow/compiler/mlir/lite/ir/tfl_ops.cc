@@ -3859,7 +3859,7 @@ void WhileOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add<WhileResultOperandsMatchAndImplicitCapture>(context);
 }
 
-Region& WhileOp::getLoopBody() { return getBody(); }
+SmallVector<Region*> WhileOp::getLoopRegions() { return {&getBody()}; }
 
 bool WhileOp::isDefinedOutsideOfLoop(Value value) {
   // TODO(jpienaar): This is to overly conservative and disables anything other
