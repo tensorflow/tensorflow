@@ -386,6 +386,7 @@ build:windows --linkopt=/OPT:REF
 build:windows --host_linkopt=/OPT:REF
 build:windows --linkopt=/OPT:ICF
 build:windows --host_linkopt=/OPT:ICF
+build:windows --linkopt=/FORCE:MULTIPLE
 
 # Verbose failure logs when something goes wrong
 build:windows --verbose_failures
