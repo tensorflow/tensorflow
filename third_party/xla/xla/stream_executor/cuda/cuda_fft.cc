@@ -38,8 +38,6 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuFftPlugin);
-
 namespace {
 
 // A helper function transforming gpu_fft arguments into cuFFT arguments.
@@ -593,7 +591,7 @@ STREAM_EXECUTOR_CUDA_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 void initialize_cufft() {
   tsl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
-          cuda::kCudaPlatformId, gpu::kCuFftPlugin, "cuFFT",
+          cuda::kCudaPlatformId, "cuFFT",
           [](internal::StreamExecutorInterface *parent) -> fft::FftSupport * {
             gpu::GpuExecutor *cuda_executor =
                 dynamic_cast<gpu::GpuExecutor *>(parent);
@@ -608,9 +606,6 @@ void initialize_cufft() {
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuFFT factory: " << status.message();
   }
-
-  PluginRegistry::Instance()->SetDefaultFactory(
-      cuda::kCudaPlatformId, PluginKind::kFft, gpu::kCuFftPlugin);
 }
 
 }  // namespace stream_executor

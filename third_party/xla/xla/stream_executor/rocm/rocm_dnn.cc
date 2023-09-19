@@ -76,8 +76,6 @@ using dnn::PoolingDescriptor;
 
 namespace gpu {
 
-PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kMIOpenPlugin);
-
 string ToString(miopenStatus_t status) {
   switch (status) {
     case miopenStatusSuccess:
@@ -5284,12 +5282,12 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackward(
 
 void initialize_miopen() {
   auto miopenAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
-      rocm::kROCmPlatformId, PluginKind::kDnn, gpu::kMIOpenPlugin);
+      rocm::kROCmPlatformId, PluginKind::kDnn);
 
   if (!miopenAlreadyRegistered) {
     tsl::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
-            rocm::kROCmPlatformId, gpu::kMIOpenPlugin, "MIOpen",
+            rocm::kROCmPlatformId, "MIOpen",
             [](internal::StreamExecutorInterface* parent) -> dnn::DnnSupport* {
               gpu::GpuExecutor* rocm_executor =
                   dynamic_cast<gpu::GpuExecutor*>(parent);
@@ -5312,9 +5310,6 @@ void initialize_miopen() {
     if (!status.ok()) {
       LOG(ERROR) << "Unable to register MIOpen factory: " << status.message();
     }
-
-    PluginRegistry::Instance()->SetDefaultFactory(
-        rocm::kROCmPlatformId, PluginKind::kDnn, gpu::kMIOpenPlugin);
   }
 }
 

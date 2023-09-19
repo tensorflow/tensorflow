@@ -46,8 +46,6 @@ using tsl::OpDeterminismRequired;
 namespace stream_executor {
 namespace gpu {
 
-PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocBlasPlugin);
-
 extern void rocm_Broadcast_fp32(void *stream, float *dst, int dst_stride,
                                 int batches, int src_batches, float *src,
                                 int size);
@@ -1194,13 +1192,13 @@ tsl::Status ROCMBlas::GetVersion(string *version) {
 
 void initialize_rocblas() {
   auto rocBlasAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
-      rocm::kROCmPlatformId, PluginKind::kBlas, gpu::kRocBlasPlugin);
+      rocm::kROCmPlatformId, PluginKind::kBlas);
 
   if (!rocBlasAlreadyRegistered) {
     tsl::Status status =
         PluginRegistry::Instance()
             ->RegisterFactory<PluginRegistry::BlasFactory>(
-                rocm::kROCmPlatformId, gpu::kRocBlasPlugin, "rocBLAS",
+                rocm::kROCmPlatformId, "rocBLAS",
                 [](internal::StreamExecutorInterface *parent)
                     -> blas::BlasSupport * {
                   gpu::GpuExecutor *rocm_executor =
@@ -1225,9 +1223,6 @@ void initialize_rocblas() {
     if (!status.ok()) {
       LOG(ERROR) << "Unable to register rocBLAS factory: " << status.message();
     }
-
-    PluginRegistry::Instance()->SetDefaultFactory(
-        rocm::kROCmPlatformId, PluginKind::kBlas, gpu::kRocBlasPlugin);
   }
 }
 

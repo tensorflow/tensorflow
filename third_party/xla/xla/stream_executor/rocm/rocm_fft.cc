@@ -34,8 +34,6 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocFftPlugin);
-
 namespace wrap {
 
 #ifdef PLATFORM_GOOGLE
@@ -615,12 +613,12 @@ STREAM_EXECUTOR_ROCM_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 
 void initialize_rocfft() {
   auto rocFftAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
-      rocm::kROCmPlatformId, PluginKind::kFft, gpu::kRocFftPlugin);
+      rocm::kROCmPlatformId, PluginKind::kFft);
 
   if (!rocFftAlreadyRegistered) {
     tsl::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
-            rocm::kROCmPlatformId, gpu::kRocFftPlugin, "rocFFT",
+            rocm::kROCmPlatformId, "rocFFT",
             [](internal::StreamExecutorInterface *parent) -> fft::FftSupport * {
               gpu::GpuExecutor *rocm_executor =
                   dynamic_cast<gpu::GpuExecutor *>(parent);
@@ -636,9 +634,6 @@ void initialize_rocfft() {
     if (!status.ok()) {
       LOG(ERROR) << "Unable to register rocFFT factory: " << status.message();
     }
-
-    PluginRegistry::Instance()->SetDefaultFactory(
-        rocm::kROCmPlatformId, PluginKind::kFft, gpu::kRocFftPlugin);
   }
 }
 

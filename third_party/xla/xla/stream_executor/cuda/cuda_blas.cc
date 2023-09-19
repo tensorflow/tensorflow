@@ -59,8 +59,6 @@ using gpu::GpuMemory;
 using gpu::GpuMemoryMutable;
 using gpu::GpuTimer;
 
-PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuBlasPlugin);
-
 // cuBLAS has interfaces that permit pointers to be passed from either the host
 // memory space or the device memory space; however, you must instruct it as to
 // which address space those pointers are in with cublasSetPointerMode.
@@ -1493,7 +1491,7 @@ tsl::Status CUDABlas::GetVersion(std::string *version) {
 void initialize_cublas() {
   tsl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::BlasFactory>(
-          kCudaPlatformId, kCuBlasPlugin, "cuBLAS",
+          kCudaPlatformId, "cuBLAS",
           [](::stream_executor::internal::StreamExecutorInterface *parent)
               -> blas::BlasSupport * {
             gpu::GpuExecutor *cuda_executor =
@@ -1517,9 +1515,6 @@ void initialize_cublas() {
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuBLAS factory: " << status.message();
   }
-
-  PluginRegistry::Instance()->SetDefaultFactory(
-      cuda::kCudaPlatformId, PluginKind::kBlas, kCuBlasPlugin);
 }
 
 }  // namespace cuda

@@ -77,8 +77,6 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuDnnPlugin);
-
 namespace {
 
 static_assert(CUDNN_VERSION >= 7300, "cuDNN needs to be version 7.3 or higher");
@@ -9210,7 +9208,7 @@ bool CudnnSupport::DeriveOutputBatchDescriptor(
 void initialize_cudnn() {
   tsl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
-          cuda::kCudaPlatformId, gpu::kCuDnnPlugin, "cuDNN",
+          cuda::kCudaPlatformId, "cuDNN",
           [](internal::StreamExecutorInterface* parent) -> dnn::DnnSupport* {
             gpu::GpuExecutor* cuda_executor =
                 dynamic_cast<gpu::GpuExecutor*>(parent);
@@ -9232,9 +9230,6 @@ void initialize_cudnn() {
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuDNN factory: " << status.message();
   }
-
-  PluginRegistry::Instance()->SetDefaultFactory(
-      cuda::kCudaPlatformId, PluginKind::kDnn, gpu::kCuDnnPlugin);
 }
 
 }  // namespace stream_executor

@@ -41,9 +41,6 @@ class CudnnRnnSequenceTensorDescriptor;
 class CudnnRnnStateTensorDescriptor;
 class CudnnCtcLossDescriptor;
 
-// Opaque and unique identifier for the cuDNN plugin.
-extern const PluginId kCuDnnPlugin;
-
 using BatchDescriptorSlice = absl::Span<const dnn::BatchDescriptor>;
 
 template <typename T>
