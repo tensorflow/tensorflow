@@ -29,7 +29,7 @@ func TestSavedModelHalfPlusTwo(t *testing.T) {
 	)
 
 	// Load saved model half_plus_two.
-	m, err := LoadSavedModel(exportDir, tags, options)
+	m, err := LoadSavedModel(exportDir, tags, options, nil)
 	if err != nil {
 		t.Fatalf("LoadSavedModel(): %v", err)
 	}
@@ -95,7 +95,7 @@ func TestSavedModelWithEmptyTags(t *testing.T) {
 		options   = new(SessionOptions)
 	)
 
-	_, err := LoadSavedModel(exportDir, tags, options)
+	_, err := LoadSavedModel(exportDir, tags, options, nil)
 	if err == nil {
 		t.Fatalf("LoadSavedModel() should return an error if tags are empty")
 	}
