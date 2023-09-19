@@ -369,25 +369,22 @@ TEST_F(TritonGemmTest, NondefaultOperandLayoutIsSupported) {
   GTEST_SKIP() << "This test times out when -UNDEBUG is set.";
 #endif
   const std::string kHloText = R"(
-HloModule m
-
 ENTRY r {
-  p1 = f16[9,1440,128]{2,1,0} parameter(1)
-  cp6 = f16[9,1440,128]{2,0,1} copy(p1)
-  cv4 = f32[9,1440,128]{2,0,1} convert(cp6)
-  p0 = f32[9,1440,1234]{2,1,0} parameter(0)
-  ROOT dot.10 = f32[9,128,1234]{2,1,0} dot(cv4, p0),
+  p1 = f16[9,140,128]{2,1,0} parameter(1)
+  cp = f16[9,140,128]{2,0,1} copy(p1)
+  cv = f32[9,140,128]{2,0,1} convert(cp)
+  p0 = f32[9,140,123]{2,1,0} parameter(0)
+  ROOT d = f32[9,128,123]{2,1,0} dot(cv, p0),
     lhs_batch_dims={0}, lhs_contracting_dims={1},
     rhs_batch_dims={0}, rhs_contracting_dims={1}
 })";
 
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: fusion
-; CHECK-SAME: kind=kCustom
-)");
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
