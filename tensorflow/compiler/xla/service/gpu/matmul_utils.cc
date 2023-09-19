@@ -788,7 +788,7 @@ StatusOr<se::gpu::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
 }
 
 #if TF_HIPBLASLT
-#if TF_ROCM_VERSION < 50700
+#if TF_ROCM_VERSION < 60000
 using cudaDataType_t = hipblasDatatype_t;
 #define CUDA_R_16BF HIPBLAS_R_16B
 #define CUDA_R_16F HIPBLAS_R_16F
