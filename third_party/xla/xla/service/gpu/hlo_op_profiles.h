@@ -24,7 +24,7 @@ namespace gpu {
 
 constexpr char kDeviceHloOpProfiles[] = R"pb(
   entries {
-    key: "sm_89"
+    key: "sm_86"
     value {
       entries {
         instruction {
