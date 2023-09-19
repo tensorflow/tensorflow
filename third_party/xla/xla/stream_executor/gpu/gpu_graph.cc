@@ -116,7 +116,9 @@ tsl::StatusOr<OwnedGpuGraphExec::UpdateResult> OwnedGpuGraphExec::Update(
   // generate a memset node which causes graph update to fail. We should remove
   // the fallback mechanism once cuBLAS completely works in gpu graphs.
   auto compute_should_fallback = [&]() -> tsl::StatusOr<bool> {
-    if (result.result != GpuDriver::GraphExecUpdateResult::kError) return false;
+    if (result.result != GpuDriver::GraphExecUpdateResult::kError &&
+        result.result != GpuDriver::GraphExecUpdateResult::kParametersChanged)
+      return false;
 
     if (result.error_node == nullptr) return false;
     TF_ASSIGN_OR_RETURN(GpuDriver::GraphNodeType node_type,
