@@ -62,10 +62,6 @@ inline constexpr llvm::StringRef kSkipIslandOutlining =
 // dimension.
 inline constexpr llvm::StringRef kDynamicArgIndexAttr = "_dynamic_arg_index";
 
-inline constexpr llvm::StringRef kXlaShardingAttrName = "_XlaSharding";
-inline constexpr llvm::StringRef kShardingAttrName = "sharding";
-inline constexpr llvm::StringRef kManualShardingAttrName = "manual_sharding";
-
 // This string attribute encodes parallel execution groups and their associated
 // branches. It has the following format:
 // `_parallel_execution_ids= group1:branch1,group2:branch2,...`

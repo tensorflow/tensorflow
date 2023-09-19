@@ -16,8 +16,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/slicing.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/slicing.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {

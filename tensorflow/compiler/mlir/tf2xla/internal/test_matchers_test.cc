@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "xla/client/xla_computation.h"
+#include "xla/service/hlo.pb.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace {
 using ::tensorflow::monitoring::testing::CellReader;

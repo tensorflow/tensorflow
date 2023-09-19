@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/tsl/platform/file_system_helper.h"
+#include "tsl/platform/file_system_helper.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

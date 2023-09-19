@@ -740,19 +740,6 @@ class Subgraph {
       return nullptr;
     }
 
-    xnn_subgraph_t subgraph_ptr = nullptr;
-    xnn_status status = xnn_create_subgraph(
-        /*external_value_ids=*/context->tensors_size, /*flags=*/0,
-        &subgraph_ptr);
-    if (status != xnn_status_success) {
-      TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK subgraph");
-      return nullptr;
-    }
-
-    // Smart pointer to automatically release subgraph on exit.
-    std::unique_ptr<xnn_subgraph, decltype(&xnn_delete_subgraph)> subgraph(
-        subgraph_ptr, &xnn_delete_subgraph);
-
     bool has_sparse_weights = false;
     // Detect which tensors are used as inputs or outputs of any subgraph nodes.
     // -1 denotes tensor not used in the subgraph. These indexes will be
@@ -843,6 +830,18 @@ class Subgraph {
                   tensors.end());
     std::sort(tensors.begin(), tensors.end());
 
+    xnn_subgraph_t subgraph_ptr = nullptr;
+    xnn_status status = xnn_create_subgraph(
+        /*external_value_ids=*/tensors.size(), /*flags=*/0, &subgraph_ptr);
+    if (status != xnn_status_success) {
+      TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK subgraph");
+      return nullptr;
+    }
+
+    // Smart pointer to automatically release subgraph on exit.
+    std::unique_ptr<xnn_subgraph, decltype(&xnn_delete_subgraph)> subgraph(
+        subgraph_ptr, &xnn_delete_subgraph);
+
     // Persistent tensors need to be defined in same order in all XNNPACK
     // runtimes. This is because they are allocated in order of their XNNPACK
     // value id. We cannot do this inside the subsequent for-loop that walks
@@ -870,6 +869,8 @@ class Subgraph {
     // XNNPACK Value IDs for TFLite tensors
     std::vector<uint32_t> xnnpack_tensors(tensors.empty() ? 0
                                                           : tensors.back() + 1);
+
+    std::unordered_map<int, uint32_t> tflite_tensor_to_xnnpack;
     for (int t : tensors) {
       if (context->tensors[t].type == kTfLiteResource) {
         // We should never see a resource tensor if we are not handling variable
@@ -894,6 +895,7 @@ class Subgraph {
                              global_id, context, t);
           return nullptr;
         }
+        tflite_tensor_to_xnnpack[t] = it->second;
         xnnpack_tensors[t] = it->second;
         // Proceed with processing the next tensor.
         continue;
@@ -934,6 +936,7 @@ class Subgraph {
           &context->tensors[t].dims->data[NumDimensions(&context->tensors[t])]);
 
       xnn_status status = xnn_status_success;
+      uint32_t xnnpack_id = XNN_INVALID_VALUE_ID;
       switch (datatype) {
         case xnn_datatype_qint8:
         case xnn_datatype_quint8:
@@ -946,8 +949,8 @@ class Subgraph {
               static_cast<const TfLiteAffineQuantization*>(
                   context->tensors[t].quantization.params)
                   ->scale->data[0],
-              dims.size(), dims.data(), data, static_cast<uint32_t>(t), flags,
-              &xnnpack_tensors[t]);
+              dims.size(), dims.data(), data, XNN_INVALID_VALUE_ID, flags,
+              &xnnpack_id);
           break;
         case xnn_datatype_qcint8:
         case xnn_datatype_qcint32:
@@ -960,13 +963,12 @@ class Subgraph {
               static_cast<const TfLiteAffineQuantization*>(
                   context->tensors[t].quantization.params)
                   ->quantized_dimension,
-              dims.data(), data, static_cast<uint32_t>(t), flags,
-              &xnnpack_tensors[t]);
+              dims.data(), data, XNN_INVALID_VALUE_ID, flags, &xnnpack_id);
           break;
         default:
           status = xnn_define_tensor_value(
               subgraph.get(), datatype, dims.size(), dims.data(), data,
-              static_cast<uint32_t>(t), flags, &xnnpack_tensors[t]);
+              XNN_INVALID_VALUE_ID, flags, &xnnpack_id);
           break;
       }
       if (status != xnn_status_success) {
@@ -974,6 +976,8 @@ class Subgraph {
                            "failed to create XNNPACK Value for tensor %d", t);
         return nullptr;
       }
+      tflite_tensor_to_xnnpack[t] = xnnpack_id;
+      xnnpack_tensors[t] = xnnpack_id;
     }
 
     // Create a set of quasi-static tensors for VisitNode function
@@ -1046,7 +1050,8 @@ class Subgraph {
       return nullptr;
     }
 
-    return new Subgraph(delegate, runtime_ptr, externals);
+    return new Subgraph(delegate, runtime_ptr, externals,
+                        tflite_tensor_to_xnnpack);
   }
 
   TfLiteStatus Prepare(TfLiteContext* context) { return kTfLiteOk; }
@@ -1078,7 +1083,8 @@ class Subgraph {
       std::vector<xnn_external_value> external_values;
       for (std::pair<int, void*> io_info : externals_) {
         xnn_external_value value = {0};
-        value.id = static_cast<uint32_t>(io_info.first);
+        value.id =
+            static_cast<uint32_t>(tflite_tensor_to_xnnpack_[io_info.first]);
         value.data = io_info.second;
         external_values.push_back(value);
       }
@@ -5965,11 +5971,13 @@ class Subgraph {
 
  private:
   Subgraph(const Delegate& delegate, xnn_runtime_t runtime,
-           const std::unordered_set<int>& externals)
+           const std::unordered_set<int>& externals,
+           std::unordered_map<int, uint32_t>& tflite_tensor_to_xnnpack)
       : runtime_(runtime, &xnn_delete_runtime) {
     for (int t : externals) {
       externals_[t] = nullptr;
     }
+    tflite_tensor_to_xnnpack_ = tflite_tensor_to_xnnpack;
     has_variables_ = !delegate.GetAllVariableTensors().empty();
   }
 
@@ -5977,9 +5985,12 @@ class Subgraph {
   // management.
   std::unique_ptr<xnn_runtime, decltype(&xnn_delete_runtime)> runtime_{
       nullptr, &xnn_delete_runtime};
-  // Mapping from TFLite Tensor IDs (same as XNNPACK Value IDs) for
-  // input/output tensors in the delegated subgraph to their data locations.
+  // Mapping from TFLite Tensor IDs for input/output tensors in the delegated
+  // subgraph to their data locations.
   std::unordered_map<int, void*> externals_;
+  // Mapping from TFLite Tensor IDs for tensors in the delegated subgraph to the
+  // XNNPACK ID.
+  std::unordered_map<int, uint32_t> tflite_tensor_to_xnnpack_;
   // Memory location to use for 0-size external tensors, as TFLite init their
   // data pointer to nullptr, and XNNPACK requires valid data pointers.
   char dummy_data_{0};

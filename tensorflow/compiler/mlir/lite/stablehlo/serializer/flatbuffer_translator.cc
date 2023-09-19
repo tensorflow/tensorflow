@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/serializer/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/lite/stablehlo/schema/schema_generated.h"
 
 #define kStablehloOptionalTensor (-1)

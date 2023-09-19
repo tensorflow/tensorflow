@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/lib/core/status.h"
 
 // TODO(b/253052995): Move the logics to XlaCompileOnDemandOp and delete

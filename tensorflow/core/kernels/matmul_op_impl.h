@@ -26,7 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -55,7 +55,13 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+<<<<<<< HEAD
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+=======
+#include "xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "xla/stream_executor/host_or_device_scalar.h"
+#include "tensorflow/core/kernels/matmul_util.h"
+>>>>>>> upstream/master
 #endif  // GOOGLE_CUDA
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"

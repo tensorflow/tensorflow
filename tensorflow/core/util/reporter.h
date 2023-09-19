@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/util/reporter.h"
+#include "tsl/util/reporter.h"
 
 namespace tensorflow {
 

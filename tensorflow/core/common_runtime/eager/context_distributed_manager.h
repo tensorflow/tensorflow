@@ -26,8 +26,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
+#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tsl/distributed_runtime/preemption/preemption_notifier.h"
 #endif  // !IS_MOBILE_PLATFORM
 
 namespace tensorflow {

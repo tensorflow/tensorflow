@@ -226,7 +226,7 @@ def canonicalize_signatures(signatures):
     # pylint: enable=protected-access
     concrete_signatures[signature_key] = final_concrete
     # pylint: enable=cell-var-from-loop
-    if isinstance(function, core.GenericFunction):
+    if isinstance(function, core.PolymorphicFunction):
       flattened_defaults = nest.flatten(
           function.function_spec.fullargspec.defaults  # pylint: disable=protected-access
       )

@@ -35,8 +35,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/tsl/platform/random.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tsl/platform/random.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace tfrt_stub {

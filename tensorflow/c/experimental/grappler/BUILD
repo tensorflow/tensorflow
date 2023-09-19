@@ -47,9 +47,9 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 

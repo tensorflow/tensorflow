@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
-    "//tensorflow/tsl/platform:build_config_root.bzl",
+    "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -43,10 +43,10 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/compiler/xla/pjrt:utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
+        "@local_xla//xla/pjrt:utils",
         "@tf_runtime//:hostcontext",
     ],
 )
@@ -61,8 +61,8 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework",
+        "@local_xla//xla/pjrt:pjrt_client",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ],
@@ -80,11 +80,11 @@ cc_library(
     deps = [
         ":pjrt_client_factory_options",
         ":pjrt_client_factory_registry",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/pjrt:tf_pjrt_client",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/pjrt:tf_pjrt_client",
     ],
 )
 
@@ -102,10 +102,10 @@ cc_library(
     deps = [
         ":global_state",
         ":pjrt_state",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "@local_xla//xla/pjrt:pjrt_client",
     ],
 )
 
@@ -123,8 +123,8 @@ cc_library(
     deps = [
         ":global_state",
         ":pjrt_state",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework_types_hdr",
+        "@local_xla//xla/pjrt:pjrt_client",
     ],
 )
 
@@ -134,14 +134,14 @@ tf_cc_test(
     deps = [
         ":global_state",
         ":pjrt_state",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/core/tfrt/common:pjrt_cpu_client_registration",
         "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
     ],
 )
 
@@ -152,12 +152,12 @@ tf_cc_test(
         ":global_state",
         ":pjrt_state",
         ":pjrt_util",
-        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:status_matchers",
-        "//tensorflow/tsl/platform:test_main",
-        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test_main",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
     ],
 )
 
@@ -175,14 +175,14 @@ tf_cuda_cc_test(
         ":pjrt_gpu_client_registration",
         ":pjrt_state",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:status_matchers",
-        "//tensorflow/tsl/platform:test_main",
-        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test_main",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
+        "@local_xla//xla/service:gpu_plugin",
     ],
 )
 
@@ -198,12 +198,12 @@ cc_library(
     hdrs = ["pjrt_client_factory_registry.h"],
     deps = [
         ":pjrt_client_factory_options",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
-        "//tensorflow/tsl/framework:device_type",
-        "//tensorflow/tsl/platform:statusor",
+        "@local_tsl//tsl/framework:device_type",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla:statusor",
+        "@local_xla//xla/pjrt:pjrt_client",
     ],
 )
 
@@ -213,10 +213,10 @@ cc_library(
     deps = [
         ":pjrt_client_factory_options",
         ":pjrt_client_factory_registry",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
         "//tensorflow/core:framework_types_hdr",
+        "@local_xla//xla:statusor",
+        "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
     ],
     alwayslink = True,
 )
@@ -240,10 +240,10 @@ cc_library(
         ":pjrt_client_factory_options",
         ":pjrt_client_factory_registry",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
         "//tensorflow/core:framework_types_hdr",
+        "@local_xla//xla:statusor",
+        "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
     ],
     alwayslink = True,
 )
@@ -261,8 +261,8 @@ tf_cuda_cc_test(
         ":pjrt_client_factory_options",
         ":pjrt_client_factory_registry",
         ":pjrt_gpu_client_registration",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/core:framework_types_hdr",
         "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/service:gpu_plugin",
     ],
 )

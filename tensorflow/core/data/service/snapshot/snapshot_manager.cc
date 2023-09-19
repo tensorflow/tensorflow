@@ -35,15 +35,15 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/lib/io/compression.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/status_to_from_proto.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
-#include "tensorflow/tsl/protobuf/status.pb.h"
+#include "tsl/lib/io/compression.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/status_to_from_proto.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/protobuf/error_codes.pb.h"
+#include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -573,7 +573,7 @@ Status SnapshotManager::ResetSource(Source& source, int64_t source_index) {
   TF_RETURN_IF_ERROR(source.split_provider->Reset());
   ++source.repetition_index;
   LOG(INFO) << "Starting the " << source.repetition_index << "th repetition "
-            << " for snapshot " << path_ << ", source " << source_index;
+            << "for snapshot " << path_ << ", source " << source_index;
   for (int64_t i = 0; i < streams_.size(); ++i) {
     TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(RepetitionDirectory(
         path_, /*stream_index=*/i, source_index, source.repetition_index)));

@@ -22,7 +22,7 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.compiler.tf2xla.python import xla
-from tensorflow.compiler.xla import xla_data_pb2
+from local_xla.xla import xla_data_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors

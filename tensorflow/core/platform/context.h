@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_CONTEXT_H_
 
 #include "tensorflow/core/platform/platform.h"
-#include "tensorflow/tsl/platform/context.h"
+#include "tsl/platform/context.h"
 
 namespace tensorflow {
 

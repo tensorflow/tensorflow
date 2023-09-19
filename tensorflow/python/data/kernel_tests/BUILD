@@ -1381,6 +1381,7 @@ py_strict_test(
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )

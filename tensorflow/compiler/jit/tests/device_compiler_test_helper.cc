@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.pb.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/public/session.h"
 

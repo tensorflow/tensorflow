@@ -70,7 +70,7 @@ func.func @uniform_quantized_convolution_hybrid_same(%input: tensor<1x2x2x3xf32>
   // CHECK-SAME: tensor<2x3x3x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
   // CHECK: mhlo.convolution(%arg0, %[[CONST]])
   // CHECK-SAME{LITERAL}: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
-  // CHECK-SAME{LITERAL}: window = {stride = [1, 2], pad = [[1, 1], [2, 1]], lhs_dilate = [1, 1], rhs_dilate = [2, 2]}
+  // CHECK-SAME{LITERAL}: window = {stride = [1, 2], pad = [[1, 1], [1, 2]], lhs_dilate = [1, 1], rhs_dilate = [2, 2]}
   // CHECK-SAME{LITERAL}: batch_group_count = 1 : i64, feature_group_count = 1 : i64
   // CHECK-SAME: (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<1x2x1x2xf32>
 

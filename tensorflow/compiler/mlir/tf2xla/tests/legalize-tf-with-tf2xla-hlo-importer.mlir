@@ -51,17 +51,6 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<2xf32>
   }
 
-  // CHECK-LABEL: strided_slice_uses_mlir
-  func.func @strided_slice_uses_mlir(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
-    %begin = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> (tensor<2xi32>)
-    %end = "tf.Const"() {value = dense<[3, 7]> : tensor<2xi32>} : () -> (tensor<2xi32>)
-    %strides = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
-
-    // CHECK-NOT: tf.StridedSlice
-    %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
-        : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x2xf32>
-    func.return %output : tensor<3x2xf32>
-  }
 
   // CHECK-LABEL: unknown_op
   func.func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {

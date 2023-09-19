@@ -1792,8 +1792,7 @@ struct RemoveReshapeBeforeFullyConnected
     if (!reshape_input_ty.hasStaticShape() || input_ty.getRank() == 0 ||
         reshape_input_ty.getRank() == 0 ||
         input_ty.getDimSize(input_ty.getRank() - 1) !=
-            reshape_input_ty.getDimSize(reshape_input_ty.getRank() - 1) ||
-        input_ty.getRank() < reshape_input_ty.getRank()) {
+            reshape_input_ty.getDimSize(reshape_input_ty.getRank() - 1)) {
       return failure();
     }
 

@@ -42,7 +42,7 @@ limitations under the License.
 #if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
-#include "tensorflow/tsl/util/onednn_threadpool.h"
+#include "tsl/util/onednn_threadpool.h"
 
 using dnnl::engine;
 using dnnl::memory;

@@ -22,24 +22,24 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/device_id_utils.h"
+#include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/tsl/framework/device_id.h"
-#include "tensorflow/tsl/lib/gtl/inlined_vector.h"
-#include "tensorflow/tsl/lib/random/simple_philox.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/strcat.h"
-#include "tensorflow/tsl/platform/test.h"
-#include "tensorflow/tsl/platform/test_benchmark.h"
-#include "tensorflow/tsl/platform/threadpool.h"
-#include "tensorflow/tsl/platform/types.h"
+#include "tsl/framework/device_id.h"
+#include "tsl/lib/gtl/inlined_vector.h"
+#include "tsl/lib/random/simple_philox.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/strcat.h"
+#include "tsl/platform/test.h"
+#include "tsl/platform/test_benchmark.h"
+#include "tsl/platform/threadpool.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace {

@@ -1060,7 +1060,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 

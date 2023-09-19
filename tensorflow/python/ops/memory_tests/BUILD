@@ -15,7 +15,6 @@ cuda_py_strict_test(
     srcs = ["custom_gradient_memory_test.py"],
     xla_enable_strict_auto_jit = False,  # XLA are enabled explicitly in XLA memory tests.
     deps = [
-        "//tensorflow/compiler/xla/service:hlo_proto_py",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
@@ -29,6 +28,7 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
+        "@local_xla//xla/service:hlo_proto_py",
     ] + tf_additional_xla_deps_py(),
 )
 
@@ -42,7 +42,6 @@ tpu_py_strict_test(
     disable_tfrt = True,
     main = "custom_gradient_memory_test.py",
     deps = [
-        "//tensorflow/compiler/xla/service:hlo_proto_py",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
@@ -56,5 +55,6 @@ tpu_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
+        "@local_xla//xla/service:hlo_proto_py",
     ] + tf_additional_xla_deps_py(),
 )

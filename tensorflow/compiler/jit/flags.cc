@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_graph.h"
-#include "tensorflow/compiler/xla/parse_flags_from_env.h"
+#include "xla/parse_flags_from_env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
@@ -237,9 +237,9 @@ void AllocateAndParseFlags() {
   ops_flags->tf_xla_async_compilation = false;
   ops_flags->tf_xla_use_device_api.enabled_for_xla_launch_ = true;
   ops_flags->tf_xla_use_device_api.enabled_for_compile_on_demand_ = true;
-  ops_flags->tf_xla_use_device_api.enabled_for_compile_and_run_ = false;
+  ops_flags->tf_xla_use_device_api.enabled_for_compile_and_run_ = true;
   ops_flags->tf_xla_use_device_api.enabled_for_all_ = false;
-  ops_flags->tf_xla_use_device_api.enabled_for_gpu_ = false;
+  ops_flags->tf_xla_use_device_api.enabled_for_gpu_ = true;
 
   call_module_flags = new XlaCallModuleFlags;
   // The `enable_mlir_bridge` flag allows the user to explicitly request that

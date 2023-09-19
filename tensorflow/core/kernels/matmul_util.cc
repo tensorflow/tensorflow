@@ -18,12 +18,17 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+<<<<<<< HEAD
 #include "tensorflow/compiler/xla/status_macros.h"
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #else
 #include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
 #endif
+=======
+#include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_blas_lt.h"
+>>>>>>> upstream/master
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/env_var.h"

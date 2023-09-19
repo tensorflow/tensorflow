@@ -54762,6 +54762,13 @@ op {
       }
     }
   }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseSegmentMeanGrad"
@@ -54962,6 +54969,13 @@ op {
       }
     }
   }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseSegmentSqrtN"
@@ -55017,6 +55031,13 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
+    }
+  }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -55219,6 +55240,13 @@ op {
       }
     }
   }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseSegmentSum"
@@ -55282,6 +55310,13 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
+    }
+  }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -55490,6 +55525,13 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
+    }
+  }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }

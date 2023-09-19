@@ -12,6 +12,7 @@ build:sigbuild_remote_cache_push --remote_cache="https://storage.googleapis.com/
 # the CACHEBUSTER to the PR number.
 build --action_env=CACHEBUSTER=501872366
 
+<<<<<<< HEAD
 # Use Python 3.X as installed in container image
 build --action_env PYTHON_BIN_PATH="/usr/bin/python3"
 build --action_env PYTHON_LIB_PATH="/usr/lib/tf_python"
@@ -52,6 +53,10 @@ test --test_env=ROCM_PATH=
 test --test_env=ROCM_TOOLKIT_PATH=
 # Give only the list of failed tests at the end of the log
 test --test_summary=short
+=======
+# Build options for CPU Linux
+build --config=release_cpu_linux
+>>>>>>> upstream/master
 
 # "nonpip" tests are regular py_test tests.
 # Pass --config=nonpip to run the same suite of tests. If you want to run just

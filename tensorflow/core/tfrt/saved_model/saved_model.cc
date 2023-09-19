@@ -47,7 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -77,12 +77,13 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
 #include "tensorflow/core/tfrt/saved_model/utils/serialize_bef_utils.h"
+#include "tensorflow/core/tfrt/stubs/model_config_stub.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
@@ -391,16 +392,24 @@ void GetSignaturesFromSignatureDef(
   }
 }
 
-void GetDefaultInputValueFromSignatureDef(
-    SignatureMap& signatures,
-    const google::protobuf::Map<std::string, tensorflow::SignatureDef>& signature_defs) {
-  for (const auto& [function_name, signature_def] : signature_defs) {
-    auto itr = signatures.find(function_name);
+void GetDefaultInputValue(
+    const google::protobuf::Map<std::string, tensorflow::SignatureDef>& signature_defs,
+    ModelRuntimeContext& context, SignatureMap& signatures) {
+  bool load_from_signature_def = false;
+  for (const auto& [name, signature_def] : signature_defs) {
+    auto itr = signatures.find(name);
     if (itr == signatures.end()) {
       continue;
     }
-    signatures[function_name].default_inputs = signature_def.defaults();
+    LOG(INFO) << "Model signature identified for default inputs";
+    if (signature_def.defaults().empty()) continue;
+    LOG(INFO) << "Loading default inputs for signature: " << name
+              << " from Signature def";
+    load_from_signature_def = true;
+    signatures[name].default_inputs = signature_def.defaults();
   }
+  if (load_from_signature_def) return;
+  GetDefaultInputsFromModelConfig(context, signatures);
 }
 
 void UpdateCompileOptions(SavedModel::Options& options) {
@@ -520,10 +529,6 @@ SavedModelImpl::LoadSavedModel(Options options,
                                   meta_graph_def.signature_def(), options);
   }
 
-  GetDefaultInputValueFromSignatureDef(
-      initializers_and_signatures.signature_map,
-      meta_graph_def.signature_def());
-
   auto runner_table = std::make_unique<OpKernelRunnerTable>();
   auto resource_array = std::make_unique<tfd::FallbackResourceArray>();
 
@@ -544,6 +549,9 @@ SavedModelImpl::LoadSavedModel(Options options,
 
     model_context.set_meta_graph_def(nullptr);
   }
+
+  GetDefaultInputValue(meta_graph_def.signature_def(), model_context,
+                       initializers_and_signatures.signature_map);
 
   mlrt::bc::Buffer bytecode;
   tfrt::BefBuffer bef;

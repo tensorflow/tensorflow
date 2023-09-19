@@ -37,34 +37,11 @@ under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/tfrt/runtime/channel.h"
-#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/core/tfrt/runtime/step_id.h"
+#include "tsl/platform/env.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
-
-template <typename Derived>
-struct SafeId {
-  SafeId() : id(0) {}
-  explicit constexpr SafeId(int64_t id) : id(id) {}
-
-  using Base = SafeId;
-
-  int64_t id;
-
-  friend bool operator==(const Derived& x, const Derived& y) {
-    return x.id == y.id;
-  }
-
-  template <typename Sink>
-  friend void AbslStringify(Sink& sink, const Derived& x) {
-    absl::Format(&sink, "%d", x.id);
-  }
-
-  template <typename H>
-  friend H AbslHashValue(H h, const Derived& x) {
-    return H::combine(std::move(h), x.id);
-  }
-};
 
 struct StreamedResult {
   absl::flat_hash_map<std::string, tensorflow::Tensor> tensors;
@@ -73,13 +50,6 @@ struct StreamedResult {
 
 struct StreamCallbackId : SafeId<StreamCallbackId> {
   using Base::Base;
-};
-
-struct StepId : SafeId<StepId> {
-  using Base::Base;
-
-  bool valid() const { return id != 0; }
-  static constexpr StepId GetInvalidStepId() { return StepId(0); }
 };
 
 // An interface that abstracts communication between the

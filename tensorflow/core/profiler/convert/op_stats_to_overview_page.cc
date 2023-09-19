@@ -42,9 +42,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/tsl/profiler/utils/format_utils.h"
-#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
-#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tsl/profiler/utils/format_utils.h"
+#include "tsl/profiler/utils/tf_op_utils.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -306,7 +306,9 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
   re.set_replica_count(run_environment.replica_count());
   re.set_num_cores_per_replica(run_environment.num_cores_per_replica());
   re.set_is_training(run_environment.is_training());
-  *re.mutable_power_metrics() = run_environment.power_metrics();
+  if (run_environment.has_power_metrics()) {
+    *re.mutable_power_metrics() = run_environment.power_metrics();
+  }
   *re.mutable_host_independent_job_info() =
       ToOverviewPageHostIndependentJobInfo(
           run_environment.host_independent_job_info());

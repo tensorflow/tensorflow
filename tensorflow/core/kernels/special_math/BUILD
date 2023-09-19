@@ -24,6 +24,6 @@ tf_kernel_library(
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:fill_functor",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )

@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 
 namespace tensorflow {

@@ -33,16 +33,16 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_c_api_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 TF_Device* TF_GetDevice(TF_OpKernelContext* ctx) {
   auto* cc_ctx = reinterpret_cast<tensorflow::OpKernelContext*>(ctx);

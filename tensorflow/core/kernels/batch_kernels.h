@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/types.h"
+#include "tsl/platform/types.h"
 
 namespace tensorflow {
 

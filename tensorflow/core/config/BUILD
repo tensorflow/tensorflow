@@ -1,5 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 
@@ -26,6 +27,17 @@ filegroup(
     name = "flags_headers_filegroup",
     srcs = [
         "flag_defs.h",
+        "flags.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "flag_defs.cc",
+        "flag_defs.h",
+        "flags.cc",
         "flags.h",
     ],
     visibility = ["//tensorflow:internal"],

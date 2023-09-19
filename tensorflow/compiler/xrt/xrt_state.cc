@@ -25,8 +25,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/xla/service/backend.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/service/backend.h"
+#include "xla/status_macros.h"
 #include "tensorflow/compiler/xrt/xrt_memory_manager.h"
 
 namespace tensorflow {

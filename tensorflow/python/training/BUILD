@@ -1426,12 +1426,12 @@ cuda_py_strict_test(
     python_version = "PY3",
     deps = [
         ":slot_creator",
-        "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/python/compiler/xla/experimental:xla_sharding",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:variable_v1",
+        "@local_xla//xla:xla_data_proto_py",
     ] + TRAINING_TEST_DEPS,
 )
 

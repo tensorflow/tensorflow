@@ -27,14 +27,14 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/util/tensor_bundle",
-        "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -51,8 +51,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/util/tensor_bundle",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:status_matchers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -61,6 +59,8 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:status_matchers",
     ],
 )
 
@@ -130,8 +130,8 @@ cc_library(
     hdrs = ["status_macro.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/tsl/platform:macros",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:macros",
     ],
 )
 
@@ -154,11 +154,11 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:mlir_dump",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

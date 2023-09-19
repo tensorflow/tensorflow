@@ -51,14 +51,18 @@ class InsertCustomAggregationOpsPass
     : public PassWrapper<InsertCustomAggregationOpsPass,
                          OperationPass<func::FuncOp>> {
  public:
-  explicit InsertCustomAggregationOpsPass() : test_mode_(true) {}
+  explicit InsertCustomAggregationOpsPass() : test_mode_(true) {
+    initializeForTest();
+  }
 
   explicit InsertCustomAggregationOpsPass(const CalibrationOptions &calib_opts)
       : test_mode_(false), calib_opts_(calib_opts) {}
 
   InsertCustomAggregationOpsPass(const InsertCustomAggregationOpsPass &other) {
     test_mode_ = other.test_mode_;
+    test_case_ = other.test_case_;
     calib_opts_ = other.calib_opts_;
+    initializeForTest();
   }
 
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertCustomAggregationOpsPass)
@@ -85,6 +89,9 @@ class InsertCustomAggregationOpsPass
     TEST_CASE_MIN_MAX,
     TEST_CASE_AVERAGE_MIN_MAX,
     TEST_CASE_HISTOGRAM_PERCENTILE,
+    TEST_CASE_HISTOGRAM_MSE_BRUTEFORCE,
+    TEST_CASE_HISTOGRAM_MSE_MAX_FREQUENCY,
+    TEST_CASE_HISTOGRAM_MSE_SYMMETRIC,
   };
 
   bool test_mode_;
@@ -101,7 +108,76 @@ class InsertCustomAggregationOpsPass
           clEnumValN(TEST_CASE_AVERAGE_MIN_MAX, "AVERAGE_MIN_MAX",
                      "Uses AVERAGE_MIN_MAX calibration method"),
           clEnumValN(TEST_CASE_HISTOGRAM_PERCENTILE, "HISTOGRAM_PERCENTILE",
-                     "Uses HISTOGRAM_PERCENTILE calibration method"))};
+                     "Uses HISTOGRAM_PERCENTILE calibration method"),
+          clEnumValN(TEST_CASE_HISTOGRAM_MSE_BRUTEFORCE,
+                     "HISTOGRAM_MSE_BRUTEFORCE",
+                     "Uses HISTOGRAM_MSE_BRUTEFORCE calibration method"),
+          clEnumValN(TEST_CASE_HISTOGRAM_MSE_MAX_FREQUENCY,
+                     "HISTOGRAM_MSE_MAX_FREQUENCY",
+                     "Uses HISTOGRAM_MSE_MAX_FREQUENCY calibration "
+                     "method"),
+          clEnumValN(TEST_CASE_HISTOGRAM_MSE_SYMMETRIC,
+                     "HISTOGRAM_MSE_SYMMETRIC",
+                     "Uses HISTOGRAM_MSE_SYMMETRIC calibration "
+                     "method"))};
+
+  // Initialize for tests.
+  void initializeForTest() {
+    if (!test_mode_) return;
+
+    switch (test_case_.getValue()) {
+      case TEST_CASE_MIN_MAX:
+        calib_opts_.set_calibration_method(
+            CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
+        break;
+      case TEST_CASE_AVERAGE_MIN_MAX:
+        calib_opts_.set_calibration_method(
+            CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX);
+        break;
+      case TEST_CASE_HISTOGRAM_PERCENTILE: {
+        calib_opts_.set_calibration_method(
+            CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE);
+        auto calibration_parameters =
+            CalibrationOptions::CalibrationParameters();
+        calibration_parameters.set_initial_num_bins(256);
+        calibration_parameters.set_min_percentile(0.001);
+        calibration_parameters.set_max_percentile(99.999);
+        calib_opts_.mutable_calibration_parameters()->CopyFrom(
+            calibration_parameters);
+        break;
+      }
+      case TEST_CASE_HISTOGRAM_MSE_BRUTEFORCE: {
+        calib_opts_.set_calibration_method(
+            CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE);
+        auto calibration_parameters =
+            CalibrationOptions::CalibrationParameters();
+        calibration_parameters.set_initial_num_bins(256);
+        calib_opts_.mutable_calibration_parameters()->CopyFrom(
+            calibration_parameters);
+        break;
+      }
+      case TEST_CASE_HISTOGRAM_MSE_MAX_FREQUENCY: {
+        calib_opts_.set_calibration_method(
+            CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY);
+        auto calibration_parameters =
+            CalibrationOptions::CalibrationParameters();
+        calibration_parameters.set_initial_num_bins(256);
+        calib_opts_.mutable_calibration_parameters()->CopyFrom(
+            calibration_parameters);
+        break;
+      }
+      case TEST_CASE_HISTOGRAM_MSE_SYMMETRIC: {
+        calib_opts_.set_calibration_method(
+            CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC);
+        auto calibration_parameters =
+            CalibrationOptions::CalibrationParameters();
+        calibration_parameters.set_initial_num_bins(256);
+        calib_opts_.mutable_calibration_parameters()->CopyFrom(
+            calibration_parameters);
+        break;
+      }
+    }
+  }
 };
 
 static PassRegistration<InsertCustomAggregationOpsPass> pass;
@@ -196,30 +272,6 @@ void InsertCustomAggregationOpsPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
   func::FuncOp func = getOperation();
-
-  if (test_mode_) {
-    switch (test_case_.getValue()) {
-      case TEST_CASE_MIN_MAX:
-        calib_opts_.set_calibration_method(
-            CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
-        break;
-      case TEST_CASE_AVERAGE_MIN_MAX:
-        calib_opts_.set_calibration_method(
-            CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX);
-        break;
-      case TEST_CASE_HISTOGRAM_PERCENTILE:
-        calib_opts_.set_calibration_method(
-            CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE);
-        auto calibration_parameters =
-            CalibrationOptions::CalibrationParameters();
-        calibration_parameters.set_initial_num_bins(256);
-        calibration_parameters.set_min_percentile(0.001);
-        calibration_parameters.set_max_percentile(99.999);
-        calib_opts_.mutable_calibration_parameters()->CopyFrom(
-            calibration_parameters);
-        break;
-    }
-  }
 
   patterns.add<AddCustomAggregationOp>(ctx, calib_opts_);
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {

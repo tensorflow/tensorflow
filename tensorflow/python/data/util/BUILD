@@ -94,7 +94,7 @@ py_strict_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:nest_util",
         "//tensorflow/python/util:tf_export",
-        "@wrapt",
+        "@pypi_wrapt//:pkg",
     ],
 )
 
@@ -125,7 +125,7 @@ py_strict_test(
         "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@wrapt",
+        "@pypi_wrapt//:pkg",
     ],
 )
 

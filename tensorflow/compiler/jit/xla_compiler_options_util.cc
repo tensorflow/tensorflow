@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/tsl/framework/device_id_utils.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "tsl/framework/device_id_utils.h"
 
 namespace tensorflow {
 namespace {

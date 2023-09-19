@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/tensor_to_hash_bucket_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {

@@ -36,6 +36,11 @@ void AddQuantizePtqDynamicRangePasses(
     std::optional<const absl::string_view> mlir_dump_file_prefix =
         std::nullopt);
 
+void AddQuantizeWeightOnlyPasses(
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    std::optional<const absl::string_view> mlir_dump_file_prefix =
+        std::nullopt);
+
 void AddQuantizePtqPreCalibrationPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options);
 

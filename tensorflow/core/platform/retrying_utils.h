@@ -19,7 +19,7 @@ limitations under the License.
 #include <functional>
 
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/retrying_utils.h"
+#include "tsl/platform/retrying_utils.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

@@ -59,15 +59,16 @@ class QuantizeWeightsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizeWeightsPass)
 
-  explicit QuantizeWeightsPass() : test_mode_(true) {}
+  explicit QuantizeWeightsPass() : test_mode_(true) { initializeForTest(); }
 
   explicit QuantizeWeightsPass(
       const tensorflow::quantization::QuantizationOptions& quant_options)
       : test_mode_(false), quant_options_(quant_options) {}
 
   QuantizeWeightsPass(const QuantizeWeightsPass& other) {
-    test_mode_ = true;
+    test_mode_ = other.test_mode_;
     quant_options_ = other.quant_options_;
+    initializeForTest();
   }
 
   StringRef getArgument() const final {
@@ -90,6 +91,19 @@ class QuantizeWeightsPass
 
   bool test_mode_;
   tensorflow::quantization::QuantizationOptions quant_options_;
+
+  // Initialize for tests.
+  void initializeForTest() {
+    if (!test_mode_) return;
+
+    tensorflow::quantization::QuantizationComponentSpec quant_spec;
+    quant_spec.set_quantization_component(
+        tensorflow::quantization::QuantizationComponentSpec::COMPONENT_WEIGHT);
+    quant_spec.set_tensor_type(
+        tensorflow::quantization::QuantizationComponentSpec::TENSORTYPE_INT_8);
+    auto mutable_quant_method = quant_options_.mutable_quantization_method();
+    *mutable_quant_method->add_quantization_component_specs() = quant_spec;
+  }
 };
 
 // If a constant is connected to a quantizable op, quantize the constant to have
@@ -232,92 +246,6 @@ class QuantizeConstWeights : public OpRewritePattern<TF::ConstOp> {
     return failure();
   }
 
-  QuantizedType calculateUniformQuantParams(
-      PatternRewriter& rewriter, TF::ConstOp op,
-      tensorflow::quantization::QuantizationComponentSpec& weight_spec) const {
-    // TODO - b/278949920: Enable Per-Channel Quantization for XLA Opset
-    // Currently, support symmetric, per-tensor, signed int8
-    const bool is_narrow_range = true;
-    const bool is_signed = true;
-    const int bit_width = 8;
-
-    DenseFPElementsAttr attr;
-    if (!matchPattern(op->getResult(0), m_Constant(&attr))) return nullptr;
-
-    QuantizedType quant_type =
-        quant::GetUniformQuantizedTypeForWeight(
-            attr, /*symmetric=*/is_narrow_range && is_signed, bit_width,
-            is_signed, is_narrow_range, /*is_legacy_float*/ false)
-            .template dyn_cast<quant::QuantizedType>();
-
-    return quant_type;
-  }
-
-  // Transform const into quantized const.
-  std::optional<Value> addUniformQuantizeOps(PatternRewriter& rewriter,
-                                             TF::ConstOp op,
-                                             QuantizedType quant_type) const {
-    if (!quant_type) return nullptr;
-    DenseFPElementsAttr attr;
-    if (!matchPattern(op->getResult(0), m_Constant(&attr))) {
-      return nullptr;
-    }
-    Type expressed_type = op.getResult().getType();
-    Type cast_type = quant_type.castFromExpressedType(expressed_type);
-    ShapedType tensor_qtype = cast_type.cast<ShapedType>();
-    DenseElementsAttr tensor_proto_attr =
-        Quantize(attr, tensor_qtype).dyn_cast<DenseElementsAttr>();
-    if (!tensor_proto_attr) {
-      return nullptr;
-    }
-
-    Type storage_type =
-        tensor_qtype.getElementType().cast<QuantizedType>().getStorageType();
-    ShapedType new_type = tensor_qtype.clone(storage_type);
-
-    rewriter.setInsertionPointAfter(op);
-    auto const_op =
-        rewriter.create<TF::ConstOp>(op.getLoc(), new_type, tensor_proto_attr);
-    auto new_identity_op = rewriter.create<TF::IdentityOp>(
-        op->getLoc(), const_op.getType(), const_op);
-    return new_identity_op.getResult();
-  }
-
-  // Addd dequantize op.
-  std::optional<Value> addUniformDequantizeOps(PatternRewriter& rewriter,
-                                               QuantizedType quant_type,
-                                               Value val_to_dequantize,
-                                               ShapedType result_type) const {
-    Value scale_op;
-    Operation* quantized_op = val_to_dequantize.getDefiningOp();
-    rewriter.setInsertionPointAfter(quantized_op);
-
-    auto new_cast_op = rewriter.create<TF::CastOp>(
-        quantized_op->getLoc(), result_type, val_to_dequantize);
-
-    // TODO - b/278949920: Enable Per-Channel Quantization for XLA Opset
-    auto qtype = quant_type.dyn_cast<UniformQuantizedType>();
-    TensorType scale_type = RankedTensorType::get({}, rewriter.getF32Type());
-    scale_op = rewriter.create<TF::ConstOp>(
-        quantized_op->getLoc(), scale_type,
-        DenseFPElementsAttr::get(scale_type,
-                                 {static_cast<float>(qtype.getScale())}));
-
-    if (result_type.getElementType().isBF16()) {
-      // Add bf16 cast op after scale to match with the next op's data type.
-      scale_op = rewriter.create<TF::CastOp>(
-          quantized_op->getLoc(),
-          CloneTypeWithNewElementType(scale_op.getType(),
-                                      rewriter.getBF16Type()),
-          scale_op);
-    }
-
-    auto mul_op = rewriter.create<TF::MulOp>(
-        quantized_op->getLoc(), new_cast_op.getType(), scale_op, new_cast_op);
-
-    return mul_op.getResult();
-  }
-
  protected:
   tensorflow::quantization::QuantizationOptions quant_options_;
 };
@@ -328,17 +256,6 @@ void QuantizeWeightsPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   auto module_op = getOperation();
   RewritePatternSet patterns(ctx);
-
-  // Initialize for tests.
-  if (test_mode_) {
-    tensorflow::quantization::QuantizationComponentSpec quant_spec;
-    quant_spec.set_quantization_component(
-        tensorflow::quantization::QuantizationComponentSpec::COMPONENT_WEIGHT);
-    quant_spec.set_tensor_type(
-        tensorflow::quantization::QuantizationComponentSpec::TENSORTYPE_INT_8);
-    auto mutable_quant_method = quant_options_.mutable_quantization_method();
-    *mutable_quant_method->add_quantization_component_specs() = quant_spec;
-  }
 
   patterns.add<QuantizeConstWeights>(ctx, quant_options_);
 

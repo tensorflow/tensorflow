@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "Python.h"
 #include "absl/types/optional.h"
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/chrono.h"  // from @pybind11
@@ -48,8 +48,8 @@ limitations under the License.
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/python/lib/core/numpy.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/python/lib/core/numpy.h"
 
 namespace pybind11 {
 namespace detail {

@@ -865,16 +865,19 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
     self.assertEqual(
         imported.f.pretty_printed_signature(),
-        """func(input1, input2)
-  Args:
-    input1: int32 Tensor, shape=()
-    input2: int32 Tensor, shape=()
-  Returns:
-    [NamedTupleHello(b=<1>, a=<2>), <3>, {'x': <4>}]
-      <1>: int32 Tensor, shape=()
-      <2>: int32 Tensor, shape=()
-      <3>: int32 Tensor, shape=()
-      <4>: float32 Tensor, shape=()""",
+        "Input Parameters:\n"
+        + "  input1 (POSITIONAL_OR_KEYWORD): TensorSpec(shape=(),"
+        " dtype=tf.int32, name='input1')\n"
+        + "  input2 (POSITIONAL_OR_KEYWORD): TensorSpec(shape=(),"
+        " dtype=tf.int32, name='input2')\n"
+        + "Output Type:\n"
+        + "  List[NamedTupleHello[['b', TensorSpec(shape=(), dtype=tf.int32,"
+        " name='tensor_0_b')], ['a', TensorSpec(shape=(), dtype=tf.int32,"
+        " name='tensor_0_a')]], TensorSpec(shape=(), dtype=tf.int32,"
+        " name='tensor_1'), Dict[['x', TensorSpec(shape=(), dtype=tf.float32,"
+        " name='tensor_2_x')]]]\n"
+        + "Captures:\n"
+        + "  None",
     )
 
   def test_positional_arguments(self, cycles, use_cpp_bindings):

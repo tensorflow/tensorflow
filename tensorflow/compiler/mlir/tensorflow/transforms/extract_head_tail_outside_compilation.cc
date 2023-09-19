@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
-#include "tensorflow/tsl/util/device_name_utils.h"
+#include "tsl/util/device_name_utils.h"
 
 namespace mlir {
 namespace TFDevice {

@@ -21,10 +21,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#ifdef TFLITE_HAVE_CPUINFO
-#include "include/cpuinfo.h"
-#endif
-
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -41,6 +37,15 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
+
+#ifdef TFLITE_HAVE_CPUINFO
+#include "include/cpuinfo.h"
+#endif
+
+#if defined(__APPLE__) || defined(__linux__) || defined(__Fuchsia__)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
 
 namespace tflite {
 namespace ops {
@@ -893,13 +898,38 @@ TfLiteStatus EvalHybridDense4Bit(
   const int dst_layout_rows = rhs_layout_rows;
   const int dst_layout_cols = lhs_layout_rows;
   if (data->op_data_4bit->needs_prepack) {
-    const int required_size = optimized_4bit::kDefaultAlignmentPadding +
-                              (lhs_layout_rows * lhs_layout_cols / 2);
+    const int weight_size = lhs_layout_rows * lhs_layout_cols / 2;
+    const int required_size =
+        optimized_4bit::kDefaultAlignmentPadding + weight_size;
     data->op_data_4bit->AllocatePackedRegion(required_size);
-    optimized_4bit::api::Prepack(
-        data->op_data_4bit->prepacked_cache, GetTensorData<int8_t>(filter),
-        lhs_layout_rows, lhs_layout_cols, output_depth, cols, lhs_width, depth);
+    const int8_t* weight_ptr = GetTensorData<int8_t>(filter);
+    optimized_4bit::api::Prepack(data->op_data_4bit->prepacked_cache,
+                                 weight_ptr, lhs_layout_rows, lhs_layout_cols,
+                                 output_depth, cols, lhs_width, depth);
     data->op_data_4bit->needs_prepack = false;
+#ifdef MADV_PAGEOUT
+    // After prepacking, we will never use the weights from the model file. Mark
+    // them with MADV_PAGEOUT so the kernel can reclaim the pages, decreasing
+    // the resident memory size.
+    //
+    // This is Linux specific. There is no effect on other platforms (e.g. on
+    // Windows, but possibly other POSIX platforms!). It requires a minimum
+    // Kernel version of 5.4 - on older kernels the call will return with an
+    // error, but we ignore it. The kernel might also ignore this hint.
+    //
+    // Note, due to rounding the pointer up (which is necessary due to madvise
+    // requiring an address that aligns with the page size), the first partial
+    // page will not be reclaimed. Madvise also rounds the end of the hinted
+    // range down, so the last partial page is also unaffected. Because of this
+    // behavior, on average one memory page (usually 4 kiB) per buffer holding 4
+    // bit data will not be paged out.
+    static const uintptr_t pagesize = sysconf(_SC_PAGESIZE);
+    int8_t* up_aligned_ptr = reinterpret_cast<int8_t*>(
+        ((reinterpret_cast<uintptr_t>(weight_ptr) + pagesize - 1) / pagesize) *
+        pagesize);
+    const auto rounding_size = up_aligned_ptr - weight_ptr;
+    madvise(up_aligned_ptr, weight_size - rounding_size, MADV_PAGEOUT);
+#endif
   }
 
   std::vector<float> filter_scales(lhs_layout_rows, filter->params.scale);

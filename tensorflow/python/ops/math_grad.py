@@ -19,6 +19,7 @@ from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
@@ -332,9 +333,45 @@ def _SegmentMeanGrad(op: ops.Operation, grad):
   return array_ops.gather(scaled_grad, op.inputs[1]), None
 
 
+def _SparseSegmentReduceGradV2(op, grad, norm=None):
+  """Sparse gradient for SparseSegment(Sum|Mean|SqrtN)[WithNumSegments]."""
+  assert norm is None or norm == "mean" or norm == "sqrtn"
+  data = op.inputs[0]
+  indices = op.inputs[1]
+  segment_ids = op.inputs[2]
+  data_shape = array_ops.shape(op.inputs[0])
+  dense_output_dim0 = data_shape[0]
+  grad_fn = (
+      math_ops.sparse_segment_mean_grad_v2
+      if norm == "mean"
+      else math_ops.sparse_segment_sqrt_n_grad_v2
+      if norm == "sqrtn"
+      else math_ops.sparse_segment_sum_grad_v2
+  )
+  grad_values, sorted_unique_indices = grad_fn(
+      grad, indices, segment_ids, dense_output_dim0
+  )
+  return indexed_slices_lib.IndexedSlices(
+      grad_values, sorted_unique_indices, data_shape
+  )
+
+
+def _GetOpAttrOrNone(op, name):
+  """Returns the value of the attr of `op` with the given `name`, or None if no
+
+  such attr exists.
+  """
+  try:
+    return op.get_attr(name)
+  except ValueError:
+    return None
+
+
 @ops.RegisterGradient("SparseSegmentSum")
 def _SparseSegmentSumGrad(op: ops.Operation, grad):
   """Gradient for SparseSegmentSum."""
+  if _GetOpAttrOrNone(op, "sparse_gradient"):
+    return _SparseSegmentReduceGradV2(op, grad), None, None
   dim0 = array_ops.shape(op.inputs[0])[0]
   if compat.forward_compatible(2021, 6, 10):
     return (math_ops.sparse_segment_sum_grad(grad, op.inputs[1], op.inputs[2],
@@ -347,6 +384,8 @@ def _SparseSegmentSumGrad(op: ops.Operation, grad):
 @ops.RegisterGradient("SparseSegmentSumWithNumSegments")
 def _SparseSegmentSumWithNumSegmentsGrad(op: ops.Operation, grad):
   """Gradient for SparseSegmentSumWithNumSegments."""
+  if _GetOpAttrOrNone(op, "sparse_gradient"):
+    return _SparseSegmentReduceGradV2(op, grad), None, None, None
   dim0 = array_ops.shape(op.inputs[0])[0]
   if compat.forward_compatible(2021, 6, 10):
     return (math_ops.sparse_segment_sum_grad(grad, op.inputs[1], op.inputs[2],
@@ -360,6 +399,8 @@ def _SparseSegmentSumWithNumSegmentsGrad(op: ops.Operation, grad):
 @ops.RegisterGradient("SparseSegmentMean")
 def _SparseSegmentMeanGrad(op: ops.Operation, grad):
   """Gradient for SparseSegmentMean."""
+  if _GetOpAttrOrNone(op, "sparse_gradient"):
+    return _SparseSegmentReduceGradV2(op, grad, "mean"), None, None
   dim0 = array_ops.shape(op.inputs[0])[0]
   return (math_ops.sparse_segment_mean_grad(grad, op.inputs[1], op.inputs[2],
                                             dim0), None, None)
@@ -368,6 +409,8 @@ def _SparseSegmentMeanGrad(op: ops.Operation, grad):
 @ops.RegisterGradient("SparseSegmentMeanWithNumSegments")
 def _SparseSegmentMeanWithNumSegmentsGrad(op: ops.Operation, grad):
   """Gradient for SparseSegmentMeanWithNumSegments."""
+  if _GetOpAttrOrNone(op, "sparse_gradient"):
+    return _SparseSegmentReduceGradV2(op, grad, "mean"), None, None, None
   dim0 = array_ops.shape(op.inputs[0])[0]
   return (math_ops.sparse_segment_mean_grad(grad, op.inputs[1], op.inputs[2],
                                             dim0), None, None, None)
@@ -376,6 +419,8 @@ def _SparseSegmentMeanWithNumSegmentsGrad(op: ops.Operation, grad):
 @ops.RegisterGradient("SparseSegmentSqrtN")
 def _SparseSegmentSqrtNGrad(op: ops.Operation, grad):
   """Gradient for SparseSegmentSqrtN."""
+  if _GetOpAttrOrNone(op, "sparse_gradient"):
+    return _SparseSegmentReduceGradV2(op, grad, "sqrtn"), None, None
   dim0 = array_ops.shape(op.inputs[0])[0]
   return (math_ops.sparse_segment_sqrt_n_grad(grad, op.inputs[1], op.inputs[2],
                                               dim0), None, None)
@@ -384,6 +429,8 @@ def _SparseSegmentSqrtNGrad(op: ops.Operation, grad):
 @ops.RegisterGradient("SparseSegmentSqrtNWithNumSegments")
 def _SparseSegmentSqrtNWithNumSegmentsGrad(op: ops.Operation, grad):
   """Gradient for SparseSegmentSqrtNWithNumSegments."""
+  if _GetOpAttrOrNone(op, "sparse_gradient"):
+    return _SparseSegmentReduceGradV2(op, grad, "sqrtn"), None, None, None
   dim0 = array_ops.shape(op.inputs[0])[0]
   return (math_ops.sparse_segment_sqrt_n_grad(grad, op.inputs[1], op.inputs[2],
                                               dim0), None, None, None)
