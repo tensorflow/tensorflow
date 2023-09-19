@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/service/bitcast_dtypes_expander.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/conditional_thunk.h"
 #include "xla/service/gpu/for_thunk.h"
 #include "xla/service/gpu/fusion_wrapper.h"
@@ -186,12 +187,6 @@ void ForAllThunks(const std::function<void(Thunk*)>& fn,
 
 }  // namespace
 
-std::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
-                                                const HloInstruction*,
-                                                const ShapeIndex&) {
-  return std::nullopt;
-}
-
 static void ForwardCollectiveAttrs(mlir::ModuleOp module,
                                    llvm::StringRef entry_function_name,
                                    const HloModuleConfig& config) {
@@ -262,7 +257,7 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
-      platform_id, gpu_device_info, DummyCanShareBufferFunction, pointer_size,
+      platform_id, gpu_device_info, &CanShareBufferHint, pointer_size,
       &results));
   return std::move(results.llvm_module);
 }

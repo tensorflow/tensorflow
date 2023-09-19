@@ -2441,6 +2441,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":buffer_sharing",
         ":executable_proto_cc",
         ":fusion_wrapper",
         ":gpu_constants",
