@@ -61,6 +61,7 @@ constexpr double kBufferDownsizeMultipliter = 0.9;
 // upsizing.
 constexpr int64_t kBufferLowWatermarkThreshold = 2;
 
+constexpr char kDataService[] = "DataService";
 constexpr char kFlatMap[] = "FlatMap";
 constexpr char kInterleave[] = "Interleave";
 constexpr char kParallelInterleave[] = "ParallelInterleave";
@@ -767,7 +768,7 @@ class AsyncInterleaveMany : public Node {
         return 0.0;
       }
     }
-    return (*parameter)->value * AverageBufferedElementSize();
+    return (*parameter)->value * AverageBufferedElementSizeLocked();
   }
 
   Status ToProto(ModelProto::Node* node_proto) const {
@@ -1098,13 +1099,13 @@ class AsyncRatio : public Node {
 
     if (parameter) {
       if (memory_ratio_ == 0) {
-        result += (*parameter)->value * AverageBufferedElementSize();
+        result += (*parameter)->value * AverageBufferedElementSizeLocked();
       } else {
         // The estimation is currently not accurate for MapAndBatchDataset for
         // the maximum buffer size does not match `num_parallel_calls`
         // parameter.
-        result +=
-            (*parameter)->value * AverageBufferedElementSize() / memory_ratio_;
+        result += (*parameter)->value * AverageBufferedElementSizeLocked() /
+                  memory_ratio_;
       }
     }
     return result;
@@ -1745,7 +1746,7 @@ double Node::TotalProcessingTime(Node::NodeValues* processing_times) {
   return total_processing_times[long_name()];
 }
 
-double Node::AverageBufferedElementSize() const {
+double Node::AverageBufferedElementSizeLocked() const {
   DCHECK_GE(num_elements_, 0);
   DCHECK_GE(buffered_elements_, 0);
   if (num_elements_ <= 0) {
@@ -2354,6 +2355,21 @@ Model::ModelParameters Model::CollectTunableParameters(
   return node->CollectTunableParameters();
 }
 
+void Model::MaybeSyncStateValuesToValues(Model::ModelParameters* parameters) {
+  for (auto& [node_name, parameter] : *parameters) {
+    // We only sync state values to values for `DataService` nodes because the
+    // `buffer_size` parameter is set by the `DataServiceClient` directly.
+    if (!absl::StartsWith(node_name, kDataService)) {
+      continue;
+    }
+    if (parameter->name != kBufferSize) {
+      continue;
+    }
+    mutex_lock l(*parameter->state->mu);
+    parameter->value = parameter->state->value;
+  }
+}
+
 bool Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
   Node::NodeVector nodes =
       snapshot->CollectNodes(TraversalOrder::BFS, IsAnyNode);
@@ -2546,6 +2562,7 @@ void Model::OptimizeHillClimbHelper(
   VLOG(2) << "Starting optimization of tunable parameters with Hill Climb.";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
+  MaybeSyncStateValuesToValues(&parameters);
   if (parameters.empty()) {
     VLOG(2) << "There are no tunable parameters.";
     return;
