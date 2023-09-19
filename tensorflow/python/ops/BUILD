@@ -3180,6 +3180,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":gradients_impl",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:dtypes",
