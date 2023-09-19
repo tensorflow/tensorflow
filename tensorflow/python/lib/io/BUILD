@@ -67,8 +67,11 @@ tf_python_pybind_extension(
         "_pywrap_record_io.pyi",
     ],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:core_stringpiece",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:types",
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_status",
