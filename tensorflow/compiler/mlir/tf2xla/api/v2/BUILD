@@ -31,7 +31,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:set_tpu_infeed_layout",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
-        "//tensorflow/compiler/mlir/tf2xla/api/v0:compile_tf_graph",
+        "//tensorflow/compiler/mlir/tf2xla/api/v1:compile_tf_graph",
         "//tensorflow/compiler/mlir/tf2xla/internal:legalize_tf_mlir",
         "//tensorflow/compiler/mlir/tf2xla/internal:legalize_tf_to_hlo",
         "//tensorflow/compiler/tf2xla:layout_util",

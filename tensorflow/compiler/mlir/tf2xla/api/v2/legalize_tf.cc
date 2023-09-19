@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_tf_graph.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_tf_graph.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_mlir.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_to_hlo.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tsl/platform/error_logging.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -78,7 +79,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
 
   // If there are no MLIR args, compile the given function in the library.
   if (ShouldFallbackToGraphCompiler(computation)) {
-    TF_RETURN_IF_ERROR(tf2xla::v0::CompileTensorflowGraphToHlo(
+    TF_RETURN_IF_ERROR(tf2xla::v1::CompileTensorflowGraphToHlo(
         computation, metadata, use_tuple_args, shape_determination_fns,
         arg_shapes, arg_core_mapping, per_core_arg_shapes, client,
         compilation_result.get()));
@@ -133,7 +134,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
                           combined_bridge_status.status().ToString())
       .IgnoreError();
 
-  Status old_bridge_status = tf2xla::v0::CompileTensorflowGraphToHlo(
+  Status old_bridge_status = tf2xla::v1::CompileTensorflowGraphToHlo(
       computation, metadata, use_tuple_args, shape_determination_fns,
       arg_shapes, arg_core_mapping, per_core_arg_shapes, client,
       compilation_result.get());

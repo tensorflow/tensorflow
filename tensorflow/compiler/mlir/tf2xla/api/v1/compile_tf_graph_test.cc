@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_tf_graph.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_tf_graph.h"
 
 #include <variant>
 #include <vector>
@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tf2xla {
-namespace v0 {
+namespace v1 {
 namespace {
 
 using ::tensorflow::monitoring::testing::CellReader;
@@ -40,9 +40,10 @@ using ::tensorflow::tpu::ShardingAndIndex;
 using ::tsl::monitoring::testing::Histogram;
 
 static constexpr char kCompilationTimeStreamzName[] =
-    "/tensorflow/core/tf2xla/api/v0/phase2_compilation_time";
+    "/tensorflow/core/tf2xla/api/v1/phase2_compilation_time";
+
 static constexpr char kCompilationStatusStreamzName[] =
-    "/tensorflow/core/tf2xla/api/v0/phase2_compilation_status";
+    "/tensorflow/core/tf2xla/api/v1/phase2_compilation_status";
 
 class DummyOp : public tensorflow::XlaOpKernel {
  public:
@@ -164,6 +165,6 @@ TEST_F(CompileTFGraphTest, CatchesErrorMissedByPassManagerRun) {
 }
 
 }  // namespace
-}  // namespace v0
+}  // namespace v1
 }  // namespace tf2xla
 }  // namespace tensorflow

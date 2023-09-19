@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V0_COMPILE_TF_GRAPH_H_
-#define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V0_COMPILE_TF_GRAPH_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_COMPILE_TF_GRAPH_H_
+#define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_COMPILE_TF_GRAPH_H_
 
 #include <variant>
 #include <vector>
@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tf2xla {
-namespace v0 {
+namespace v1 {
 
 // Compiles the given Tensorflow graph into xla::HLO. The result is in
 // compilation_result. If the input computation is in MLIR, it will be
@@ -44,8 +44,8 @@ tsl::Status CompileTensorflowGraphToHlo(
     xla::CompileOnlyClient* client,
     XlaCompiler::CompilationResult* compilation_result);
 
-}  // namespace v0
+}  // namespace v1
 }  // namespace tf2xla
 };  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V0_COMPILE_TF_GRAPH_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_COMPILE_TF_GRAPH_H_

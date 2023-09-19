@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_tf_graph.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_tf_graph.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/compilation_timer.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_mlir.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
@@ -78,7 +78,7 @@ tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
   IncrementTfMlirBridgeSecondPhaseCounter(
       MlirBridgeSecondPhaseMetric::kMlirCombinedMlirSuccess);
 
-  Status old_bridge_status = v0::CompileTensorflowGraphToHlo(
+  Status old_bridge_status = v1::CompileTensorflowGraphToHlo(
       MlirToHloArgs{mlir_compilation.value()}, metadata, use_tuple_args,
       shape_determination_fns, arg_shapes, arg_core_mapping,
       per_core_arg_shapes, client, compilation_result);

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V0_COMPILE_MLIR_UTIL_H_
-#define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V0_COMPILE_MLIR_UTIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_COMPILE_MLIR_UTIL_H_
+#define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_COMPILE_MLIR_UTIL_H_
 
 #include <memory>
 
@@ -216,4 +216,4 @@ void RegisterConvertMlirToXlaHloPipelineWithDefaults();
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V0_COMPILE_MLIR_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_COMPILE_MLIR_UTIL_H_

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_tf_graph.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_tf_graph.h"
 
 #include <memory>
 #include <string>
@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/compile_only_client.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -44,7 +43,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tf2xla {
-namespace v0 {
+namespace v1 {
 
 using ::tensorflow::tpu::FunctionToHloArgs;
 using ::tensorflow::tpu::GuaranteedConsts;
@@ -53,13 +52,13 @@ using ::tensorflow::tpu::ShardingAndIndex;
 
 auto* phase2_bridge_compilation_status =
     tensorflow::monitoring::Counter<1>::New(
-        "/tensorflow/core/tf2xla/api/v0/"
+        "/tensorflow/core/tf2xla/api/v1/"
         "phase2_compilation_status", /*metric_name*/
         "Tracks the compilation status of the non-mlir bridge",
         /* metric description */ "status" /* metric label */);
 
 auto* phase2_bridge_compilation_time = tsl::monitoring::Sampler<1>::New(
-    {"/tensorflow/core/tf2xla/api/v0/phase2_compilation_time",
+    {"/tensorflow/core/tf2xla/api/v1/phase2_compilation_time",
      "The wall-clock time spent on executing graphs in milliseconds.",
      "configuration"},
     // Power of 1.5 with bucket count 45 (> 23 hours)
@@ -262,6 +261,6 @@ tsl::Status CompileTensorflowGraphToHlo(
                                      use_tuple_args);
 }
 
-};  // namespace v0
+};  // namespace v1
 };  // namespace tf2xla
 };  // namespace tensorflow
