@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -51,11 +52,13 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   MLIRContext& context = getContext();
   RewritePatternSet patterns(&getContext());
   // Add new conversion patterns here.
-  // patterns.add<>(context);
+  // patterns.add<>(&context);
 
   ConversionTarget target(context);
-  target.addLegalDialect<TFL::TensorFlowLiteDialect>();
+  target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
+  // Converted MHLO ops should be marked illegal here.
+  // target.addIllegalOp<>();
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {
     getOperation().emitError("mhlo to TFLite legalization failed.");
