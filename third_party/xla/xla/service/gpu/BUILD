@@ -1,7 +1,21 @@
 # Description:
 #   GPU-specific components in XLA service implementation.
 
+load("//xla/tests:build_defs.bzl", "xla_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//xla:xla.bzl", "xla_cc_test")
+load(
+    "//xla/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_hipblaslt",
+    "if_rocm_is_configured",
+)
+load("@local_tsl//tsl:tsl.bzl", "if_google", "if_nccl", "tsl_copts", "tsl_gpu_library")
+load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -11,24 +25,10 @@ load(
     "if_static",
     "tf_cuda_tests_tags",
 )
-load("@local_tsl//tsl:tsl.bzl", "if_google", "if_nccl", "tsl_copts", "tsl_gpu_library")
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_hipblaslt",
-    "if_rocm_is_configured",
-)
-load("//xla:xla.bzl", "xla_cc_test")
-load("//xla/tests:build_defs.bzl", "xla_test")
-load(
-    "//xla/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
-)
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -183,7 +183,7 @@ xla_cc_test(
     srcs = if_gpu_is_configured(["gpu_copy_insertion_test.cc"]),
     tags = tf_cuda_tests_tags(),
     deps = if_gpu_is_configured([
-        ":gpu_compiler",
+        ":buffer_sharing",
         "//xla:test",
         "//xla/hlo/ir:hlo",
         "//xla/service:copy_insertion",
@@ -2562,6 +2562,7 @@ cc_library(
         ":alias_passthrough_params",
         ":all_reduce_blueconnect",
         ":autotuner_util",
+        ":buffer_sharing",
         ":compile_module_to_llvm_ir",
         ":conv_layout_normalization",
         ":copy_fusion",
@@ -2801,6 +2802,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":autotuner_util",
+        ":buffer_sharing",
         ":cublas_cudnn",
         ":cublas_pad_for_gemms",
         ":cublas_padding_requirements",
@@ -3440,6 +3442,21 @@ xla_cc_test(
         ":buffer_comparator",
         "//xla/stream_executor:device_memory",
     ]),
+)
+
+cc_library(
+    name = "buffer_sharing",
+    srcs = ["buffer_sharing.cc"],
+    hdrs = ["buffer_sharing.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":backend_configs_cc",
+        ":cublas_cudnn",
+        ":ir_emission_utils",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
 )
 
 cc_library(

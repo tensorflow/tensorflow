@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -169,10 +170,6 @@ class GpuCompiler : public LLVMCompiler {
 
   StatusOr<std::unique_ptr<AotCompilationResult>> Export(
       Executable* executable) const override;
-
-  static std::optional<bool> FusionCanShareBufferHint(
-      const HloInstruction* user, const HloInstruction* operand,
-      const ShapeIndex& user_index);
 
  protected:
   // During compilation with device, stream_exec != null and autotune_results
