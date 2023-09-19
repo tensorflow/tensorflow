@@ -2240,6 +2240,18 @@ Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
   return OkStatus();
 }
 
+// Checks that the asynchronous computation only has a root and parameter
+// instructions.
+Status VerifyAsyncComputation(const HloComputation* async_computation) {
+  if (!async_computation->CanExpandIntoSingleInstruction()) {
+    return FailedPrecondition(
+        "Asynchronous computation %s expected to contain only the root and "
+        "parameter instructions.",
+        async_computation->name());
+  }
+  return OkStatus();
+}
+
 // Checks that AllReduce instructions in the module are either all layout
 // constrained or all unconstrained.
 Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
@@ -2849,6 +2861,9 @@ StatusOr<bool> HloVerifier::Run(
     for (auto* computation : module->computations(execution_threads)) {
       TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
       TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
+      if (computation->IsAsyncComputation()) {
+        TF_RETURN_IF_ERROR(VerifyAsyncComputation(computation));
+      }
     }
 
     TF_RETURN_IF_ERROR(shape_verifier->VerifyEntryComputationLayout(*module));
