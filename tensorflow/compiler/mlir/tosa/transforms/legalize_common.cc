@@ -3367,6 +3367,13 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       offset -= n / 2;
     }
 
+    // Reduce the scaling ratio if possible, we know n and d are even
+    if ((offset & 1) == 0) {
+      n /= 2;
+      d /= 2;
+      offset /= 2;
+    }
+
     // We can compute this directly based on previous values.
     border = d * (output - 1) - n * (input - 1) + offset;
   };
