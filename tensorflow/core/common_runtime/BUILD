@@ -1,4 +1,3 @@
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
@@ -23,22 +22,23 @@ load(
     "tf_protos_grappler",
 )
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "if_static",
-    "tf_cuda_tests_tags",
-)
-load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
 load(
-    "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
-    "tf_cc_fuzz_test",
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+    "tf_cuda_tests_tags",
 )
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
     "if_mkl_ml",
+)
+load(
+    "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
+    "tf_cc_fuzz_test",
 )
 
 default_package_visibility = [
@@ -299,7 +299,6 @@ filegroup(
         "renamed_device.h",
         "rendezvous_mgr.h",
         "rendezvous_util.h",
-        "replicate_constants_pass.h",
         "replicate_per_replica_nodes.h",
         "ring_alg.h",
         "ring_gatherer.h",
@@ -1134,23 +1133,6 @@ cc_library(
 )
 
 cc_library(
-    name = "replicate_constants_pass",
-    srcs = ["replicate_constants_pass.cc"],
-    hdrs = ["replicate_constants_pass.h"],
-    copts = tf_copts(),
-    deps = [
-        ":optimization_registry",
-        "//tensorflow/core/config:flag_defs",
-        "//tensorflow/core/platform:statusor",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:btree",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "local_device",
     srcs = ["local_device.cc"],
     hdrs = ["local_device.h"],
@@ -1953,7 +1935,6 @@ tf_cuda_library(
         ":renamed_device",
         ":rendezvous_mgr",
         ":rendezvous_util",
-        ":replicate_constants_pass",
         ":replicate_per_replica_nodes",
         ":ring_alg",
         ":ring_gatherer",
@@ -2331,7 +2312,6 @@ tf_cc_tests(
         "optimization_registry_test.cc",
         "pending_counts_test.cc",
         "placer_inspection_required_ops_utils_test.cc",
-        "replicate_constants_pass_test.cc",
         "session_test.cc",
         "threadpool_device_test.cc",
     ],
@@ -2362,7 +2342,6 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/config:flag_defs",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/platform:regexp",
