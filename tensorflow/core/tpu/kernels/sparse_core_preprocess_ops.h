@@ -112,11 +112,17 @@ class GetMinibatchSplitsWithPhysicalReplicaOp : public OpKernel {
                                  tstring program_key,
                                  int64_t max_ids_per_partition,
                                  int64_t max_unique_ids_per_partition) {}
+  virtual inline int32_t CalculateBucketIdWithHashing(int32_t col_id,
+                                                      int32_t num_buckets) {
+    // TODO(pineapplejuice233): Add a proper hashing function here.
+    return col_id % num_buckets;
+  }
 
   std::string device_name_;
   std::string table_name_;
   std::unique_ptr<SparseCoreOpsStatsHandler> sprase_core_ops_stats_handler_;
   bool allow_id_dropping_for_minibatching_ = false;
+  bool allow_id_shuffling_for_minibatching_ = false;
 
  private:
   int num_replica_ = 1;

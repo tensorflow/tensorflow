@@ -356,8 +356,7 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
 
   const int num_physical_replica = num_replica_ * num_sc_per_chip_;
 
-  size_t xla_pad_size = stream_executor::tpu::OpsApiFn()
-                            ->TpuUtil_GetXlaPadSizeFromTpuTopologyFn();
+  size_t xla_pad_size = 8;
 
   OP_REQUIRES(ctx, sample_count_ % num_sc_per_chip_ == 0,
               absl::InvalidArgumentError(
@@ -646,12 +645,11 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
                                                (kMaxDivisions + 1));
   std::vector<int32_t> record_total_unique_id_counter(num_physical_replica *
                                                       (kMaxDivisions + 1));
-  // Array which keeps track of the index of each physical replica.
-  std::vector<int32> per_physical_replica_index(num_physical_replica);
 
-  // Accumulated sum of the id count for each physical replica.
-  std::vector<int32> physical_replica_id_count((num_physical_replica + 1) *
-                                               num_sc_per_chip_);
+  // Array which keeps track of the index of each physical replica and each
+  // bucket.
+  std::vector<int32_t> per_physical_replica_bucket_index(num_physical_replica *
+                                                         kMaxDivisions);
 
   // Id counts for each sc input.
   std::vector<int32_t> per_sc_id_count(num_sc_per_chip_, 0);
@@ -696,10 +694,15 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
       if (row_id != previous_row_id || col_id != previous_col_id) {
         dedup_ids_index_mapping[id_array_index] = id_array_index;
         gains_after_dedup[id_array_index] = *(gains_ptr + id_array_index);
-        int32 replica_id = col_id % num_physical_replica;
-        int32 bucket_id = col_id / division_size + 1;
+        int32_t replica_id = col_id % num_physical_replica;
+        int32_t bucket_id;
+        if (allow_id_shuffling_for_minibatching_) {
+          bucket_id = CalculateBucketIdWithHashing(col_id, kMaxDivisions);
+        } else {
+          bucket_id = std::min(col_id / division_size, kMaxDivisions - 1);
+        }
         uint32_t id_counter_index =
-            replica_id * (kMaxDivisions + 1) + bucket_id;
+            replica_id * (kMaxDivisions + 1) + bucket_id + 1;
         record_total_id_counter[id_counter_index]++;
         if (col_id != previous_col_id)
           record_total_unique_id_counter[id_counter_index]++;
@@ -770,11 +773,6 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
       this_max_ids = std::max(this_max_ids, record_id_counter[kMaxDivisions]);
       this_max_uniques =
           std::max(this_max_uniques, record_unique_id_counter[kMaxDivisions]);
-      physical_replica_id_count[sc_id * (num_physical_replica + 1) +
-                                replica_id + 1] =
-          physical_replica_id_count[sc_id * (num_physical_replica + 1) +
-                                    replica_id] +
-          id_counter[kMaxDivisions];
       per_sc_id_count[sc_id] += id_counter[kMaxDivisions];
 
       for (int level = 0; level < max_division_level; ++level) {
@@ -868,11 +866,9 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
       sorted_col_ids_tensor->flat<int32_t>().data();
   float* sorted_gains_tensor_ptr = sorted_gains_tensor->flat<float>().data();
 
-  int32_t previous_index = 0;
-
   for (int sc_id = 0; sc_id < num_sc_per_chip_; ++sc_id) {
-    memset(per_physical_replica_index.data(), 0,
-           num_physical_replica * sizeof(int32));
+    memset(per_physical_replica_bucket_index.data(), 0,
+           num_physical_replica * kMaxDivisions * sizeof(int32_t));
     for (uint64_t item : col_ids_index_list[sc_id]) {
       uint32_t id_array_index = item & 0xffffffff;
       // Skip deduped ids.
@@ -881,20 +877,30 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
         continue;
       }
       int32_t col_id = item >> 32;
+      std::string col_id_str = std::to_string(col_id);
       int32_t replica_id = col_id % num_physical_replica;
-      int32_t main_index =
-          per_physical_replica_index[replica_id] + previous_index +
-          physical_replica_id_count[sc_id * (num_physical_replica + 1) +
-                                    replica_id];
+      int32_t bucket_id;
+      int32_t main_index;
+      if (allow_id_shuffling_for_minibatching_) {
+        bucket_id = CalculateBucketIdWithHashing(col_id, kMaxDivisions);
+      } else {
+        bucket_id = std::min(col_id / division_size, kMaxDivisions - 1);
+      }
+      main_index =
+          per_physical_replica_bucket_index[replica_id * kMaxDivisions +
+                                            bucket_id] +
+          *(id_counts_tensor_ptr +
+            (sc_id * num_physical_replica + replica_id) * kMaxDivisions +
+            bucket_id);
+      ++per_physical_replica_bucket_index[replica_id * kMaxDivisions +
+                                          bucket_id];
       *(sorted_row_ids_tensor_ptr + main_index) =
           *(row_ids_ptr + id_array_index) % per_sc_sample_count;
       *(sorted_col_ids_tensor_ptr + main_index) = col_id / num_physical_replica;
       // Use the updated gains instead.
       *(sorted_gains_tensor_ptr + main_index) =
           gains_after_dedup[id_array_index];
-      per_physical_replica_index[replica_id]++;
     }
-    previous_index += per_sc_id_count[sc_id];
   }
 
   sprase_core_ops_stats_handler_->Record(
