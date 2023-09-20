@@ -132,6 +132,7 @@ cc_library(
         ":gpu_kernel_header",
         "//xla/stream_executor:event",
         "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream_executor_internal",
         "//xla/stream_executor:stream_executor_pimpl_header",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
@@ -195,6 +196,7 @@ cc_library(
     deps = [
         ":gpu_driver_header",
         "//xla/stream_executor:event",
+        "//xla/stream_executor:stream_executor_internal",
         "//xla/stream_executor:stream_executor_pimpl_header",
         "//xla/stream_executor/platform",
     ],
