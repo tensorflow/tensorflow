@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <unistd.h>
 
+#include <memory>
+
 #include "absl/base/casts.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/strings/ascii.h"
@@ -22,9 +24,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/kernel_cache_config.h"
@@ -713,6 +717,12 @@ GpuExecutor::CreateKernelImplementation() {
 std::unique_ptr<internal::StreamInterface>
 GpuExecutor::GetStreamImplementation() {
   return std::unique_ptr<internal::StreamInterface>(new GpuStream(this));
+}
+
+tsl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
+GpuExecutor::GetCommandBufferImplementation() {
+  return std::unique_ptr<internal::CommandBufferInterface>(
+      new GpuCommandBuffer());
 }
 
 void* GpuExecutor::GpuContextHack() { return context_; }
