@@ -95,9 +95,9 @@ DWORD WINAPI OutputThreadFunction(LPVOID param) {
 
 SubProcess::SubProcess(int nfds)
     : running_(false),
+      win_pi_(nullptr),
       exec_path_(nullptr),
-      exec_argv_(nullptr),
-      win_pi_(nullptr) {
+      exec_argv_(nullptr) {
   // The input 'nfds' parameter is currently ignored and the internal constant
   // 'kNFds' is used to support the 3 channels (stdin, stdout, stderr).
   for (int i = 0; i < kNFds; i++) {
