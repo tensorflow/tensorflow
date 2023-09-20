@@ -69,6 +69,9 @@ pytype_strict_library(
     ],
 )
 
+# TODO(b/301286466): Investigate why python annotation type mismatch is not catptured by the type
+# strict BUILD rules.
+
 dtensor_test(
     name = "array_ops_test",
     srcs = ["array_ops_test.py"],
@@ -301,6 +304,7 @@ dtensor_test(
         "//tensorflow/dtensor/python:tpu_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
