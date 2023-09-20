@@ -630,16 +630,22 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   //   second id.
   std::vector<uint32_t> dedup_ids_index_mapping(total_id_count);
 
+  std::vector<bool> is_id_dropped(total_id_count, false);
+
   // The gains after the deduplication. If the same ids are in the same
   // sample, we will remove that id and add the gains.
   std::vector<float> gains_after_dedup(total_id_count);
 
   // Array which stores the id counts and unique id counts for each minibatch
   // bucket on all physical replicas.
-  std::vector<int32> total_id_counter(num_physical_replica *
-                                      (kMaxDivisions + 1));
-  std::vector<int32> total_unique_id_counter(num_physical_replica *
-                                             (kMaxDivisions + 1));
+  std::vector<int32_t> total_id_counter(num_physical_replica *
+                                        (kMaxDivisions + 1));
+  std::vector<int32_t> total_unique_id_counter(num_physical_replica *
+                                               (kMaxDivisions + 1));
+  std::vector<int32_t> record_total_id_counter(num_physical_replica *
+                                               (kMaxDivisions + 1));
+  std::vector<int32_t> record_total_unique_id_counter(num_physical_replica *
+                                                      (kMaxDivisions + 1));
   // Array which keeps track of the index of each physical replica.
   std::vector<int32> per_physical_replica_index(num_physical_replica);
 
@@ -653,8 +659,8 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   // Keep track of the maximum number of (unique) ids we see fo this current
   // batch. If it gets too close to the configured max, we can increase
   // the value in the FDO configs.
-  int32 this_max_ids = 0;
-  int32 this_max_uniques = 0;
+  int32_t this_max_ids = 0;
+  int32_t this_max_uniques = 0;
   // Row ids(sample ids) are already sorted.
   for (int sc_id = 0; sc_id < num_sc_per_chip_; ++sc_id) {
     col_ids_index_list[sc_id].reserve(total_id_count);
@@ -669,9 +675,13 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
                 col_ids_index_list[sc_id].size(), hwy::SortAscending());
 
     memset(total_id_counter.data(), 0,
-           num_physical_replica * (kMaxDivisions + 1) * sizeof(int32));
+           num_physical_replica * (kMaxDivisions + 1) * sizeof(int32_t));
     memset(total_unique_id_counter.data(), 0,
-           num_physical_replica * (kMaxDivisions + 1) * sizeof(int32));
+           num_physical_replica * (kMaxDivisions + 1) * sizeof(int32_t));
+    memset(record_total_id_counter.data(), 0,
+           num_physical_replica * (kMaxDivisions + 1) * sizeof(int32_t));
+    memset(record_total_unique_id_counter.data(), 0,
+           num_physical_replica * (kMaxDivisions + 1) * sizeof(int32_t));
 
     // Loop through the col ids to count the ids and unique ids.
     int32_t previous_col_id = -1;
@@ -690,9 +700,21 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
         int32 bucket_id = col_id / division_size + 1;
         uint32_t id_counter_index =
             replica_id * (kMaxDivisions + 1) + bucket_id;
-        total_id_counter[id_counter_index]++;
+        record_total_id_counter[id_counter_index]++;
         if (col_id != previous_col_id)
-          total_unique_id_counter[id_counter_index]++;
+          record_total_unique_id_counter[id_counter_index]++;
+
+        if (allow_id_dropping_for_minibatching_ &&
+            (total_id_counter[id_counter_index] == max_ids_per_partition ||
+             total_unique_id_counter[id_counter_index] ==
+                 max_unique_ids_per_partition)) {
+          // Marking this id as not used.
+          is_id_dropped[id_array_index] = true;
+        } else {
+          total_id_counter[id_counter_index]++;
+          if (col_id != previous_col_id)
+            total_unique_id_counter[id_counter_index]++;
+        }
       } else {
         // Dedup the id if both row id and col id is the same.
         uint32_t parent_idx = dedup_ids_index_mapping[previous_id_array_index];
@@ -705,12 +727,19 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
     }
 
     for (int replica_id = 0; replica_id < num_physical_replica; ++replica_id) {
-      absl::Span<int32> id_counter = absl::MakeSpan(
+      absl::Span<int32_t> id_counter = absl::MakeSpan(
           total_id_counter.data() + replica_id * (kMaxDivisions + 1),
           kMaxDivisions + 1);
-      absl::Span<int32> unique_id_counter = absl::MakeSpan(
+      absl::Span<int32_t> unique_id_counter = absl::MakeSpan(
           total_unique_id_counter.data() + replica_id * (kMaxDivisions + 1),
           kMaxDivisions + 1);
+      absl::Span<int32_t> record_id_counter = absl::MakeSpan(
+          record_total_id_counter.data() + replica_id * (kMaxDivisions + 1),
+          kMaxDivisions + 1);
+      absl::Span<int32_t> record_unique_id_counter =
+          absl::MakeSpan(record_total_unique_id_counter.data() +
+                             replica_id * (kMaxDivisions + 1),
+                         kMaxDivisions + 1);
       for (int i = 1; i < kMaxDivisions + 1; ++i) {
         // Check if the smallest division is larger than the max_ids and
         // max_unique_ids.
@@ -735,10 +764,12 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
             id_counter[i];
         id_counter[i] += id_counter[i - 1];
         unique_id_counter[i] += unique_id_counter[i - 1];
+        record_id_counter[i] += record_id_counter[i - 1];
+        record_unique_id_counter[i] += record_unique_id_counter[i - 1];
       }
-      this_max_ids = std::max(this_max_ids, id_counter[kMaxDivisions]);
+      this_max_ids = std::max(this_max_ids, record_id_counter[kMaxDivisions]);
       this_max_uniques =
-          std::max(this_max_uniques, unique_id_counter[kMaxDivisions]);
+          std::max(this_max_uniques, record_unique_id_counter[kMaxDivisions]);
       physical_replica_id_count[sc_id * (num_physical_replica + 1) +
                                 replica_id + 1] =
           physical_replica_id_count[sc_id * (num_physical_replica + 1) +
@@ -805,6 +836,17 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
 
   int64_t updated_total_id_count = absl::c_accumulate(per_sc_id_count, 0);
 
+  int64_t dropped_id_count = absl::c_accumulate(is_id_dropped, 0);
+  sprase_core_ops_stats_handler_->Record(
+      StatsType::DROPPED_ID_COUNT, dropped_id_count, device_name_, table_name_);
+
+  if (dropped_id_count > 0) {
+    LOG(WARNING)
+        << "Table " << table_name_ << " is dropping "
+        << total_id_count - updated_total_id_count
+        << " ids from the input batch so that the minibatching can happen.";
+  }
+
   Tensor* sorted_row_ids_tensor;
   OP_REQUIRES_OK(ctx,
                  ctx->allocate_output("sorted_row_ids",
@@ -834,7 +876,8 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
     for (uint64_t item : col_ids_index_list[sc_id]) {
       uint32_t id_array_index = item & 0xffffffff;
       // Skip deduped ids.
-      if (id_array_index != dedup_ids_index_mapping[id_array_index]) {
+      if (is_id_dropped[id_array_index] ||
+          id_array_index != dedup_ids_index_mapping[id_array_index]) {
         continue;
       }
       int32_t col_id = item >> 32;
