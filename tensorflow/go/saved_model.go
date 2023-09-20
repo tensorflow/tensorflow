@@ -50,9 +50,9 @@ type SavedModel struct {
 // exported in other languages, such as using tf.saved_model.builder in Python.
 // See:
 // https://www.tensorflow.org/code/tensorflow/python/saved_model/
-func LoadSavedModel(exportDir string, tags []string, sessionOptions *SessionOptions, runOptions *RunOptions) (*SavedModel, error) {
+func LoadSavedModel(exportDir string, tags []string, options *SessionOptions, runOptions *RunOptions) (*SavedModel, error) {
 	status := newStatus()
-	cOpt, doneOpt, err := sessionOptions.c()
+	cOpt, doneOpt, err := options.c()
 	defer doneOpt()
 	if err != nil {
 		return nil, err

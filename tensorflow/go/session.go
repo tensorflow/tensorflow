@@ -63,16 +63,16 @@ func NewSession(graph *Graph, options *SessionOptions, runOptions *RunOptions) (
 		return nil, err
 	}
 
-	var tfRunOptions *C.TF_Buffer
+	var cRunOptions *C.TF_Buffer
 	if runOptions != nil {
 		// TF_NewBufferFromString makes a copy of the input and sets an appropriate deallocator.
 		// Useful for passing in read-only, input protobufs.
 		//
-		// This particular tfRunOptions structure with data inside would be deallocated with C.TF_DeleteBuffer during Session.Close().
-		tfRunOptions = C.TF_NewBufferFromString(C.CBytes(runOptions.Config), C.size_t(len(runOptions.Config)))
+		// This particular cRunOptions structure with data inside would be deallocated with C.TF_DeleteBuffer during Session.Close().
+		cRunOptions = C.TF_NewBufferFromString(C.CBytes(runOptions.Config), C.size_t(len(runOptions.Config)))
 	}
 
-	s := &Session{c: cSess, runOptions: tfRunOptions}
+	s := &Session{c: cSess, runOptions: cRunOptions}
 	runtime.SetFinalizer(s, func(s *Session) { s.Close() })
 	return s, nil
 }
