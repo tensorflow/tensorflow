@@ -432,9 +432,16 @@ Value EmitConstant(ImplicitLocOpBuilder& b, const HloInstruction& constant) {
 }
 
 struct DimProperties {
+  DimProperties(int64_t index, Value offset, int block_size, int split_value)
+      : index(index),
+        offset(offset),
+        block_size(block_size),
+        split_value(split_value) {}
+
   int64_t index;
   Value offset;
   int block_size;
+  int split_value;
 };
 
 Value EmitBroadcast(ImplicitLocOpBuilder& b,
@@ -1075,7 +1082,7 @@ class MatMulEmitterHelper {
         // is logically split, major part is addressed using pid_batch.
         count /= *dims_.lhs_noncontracting_split;
       }
-      if (count % properties.block_size != 0) {
+      if (count % (properties.block_size * properties.split_value) != 0) {
         boundary_checks.push_back(bounds.size());
       }
       bounds.push_back(Cst64(count));
@@ -1269,18 +1276,24 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
 
   Side lhs{TritonFusionAnalysis::Scope::LHS,
            /*tiled_dims=*/
-           {{dims.lhs_noncontracting_dim_idx, pid_m_offset, block_m},
-            {dims.lhs_contracting_dim_idx, pid_k_offset, block_k}},
+           {DimProperties(dims.lhs_noncontracting_dim_idx, pid_m_offset,
+                          block_m, /*split_value=*/1),
+            DimProperties(dims.lhs_contracting_dim_idx, pid_k_offset, block_k,
+                          split_k)},
            dims.lhs_batch_dim_idx};
   Side rhs{TritonFusionAnalysis::Scope::RHS,
            /*tiled_dims=*/
-           {{dims.rhs_contracting_dim_idx, pid_k_offset, block_k},
-            {dims.rhs_noncontracting_dim_idx, pid_n_offset, block_n}},
+           {DimProperties(dims.rhs_contracting_dim_idx, pid_k_offset, block_k,
+                          split_k),
+            DimProperties(dims.rhs_noncontracting_dim_idx, pid_n_offset,
+                          block_n, /*split_value=*/1)},
            dims.rhs_batch_dim_idx};
   Side out{TritonFusionAnalysis::Scope::OUTPUT,
            /*tiled_dims=*/
-           {{dims.out_lhs_noncontracting_dim_idx, pid_m_offset, block_m},
-            {dims.out_rhs_noncontracting_dim_idx, pid_n_offset, block_n}},
+           {DimProperties(dims.out_lhs_noncontracting_dim_idx, pid_m_offset,
+                          block_m, /*split_value=*/1),
+            DimProperties(dims.out_rhs_noncontracting_dim_idx, pid_n_offset,
+                          block_n, /*split_value=*/1)},
            dims.out_batch_dim_idx};
 
   auto body_builder = [&](mlir::OpBuilder&, mlir::Location, Value ki,
@@ -1516,7 +1529,8 @@ Status EmitSoftMax(mlir::OpBuilder builder, absl::string_view libdevice_path,
       b, make_tensor_pointer(fn.getArgument(0)), boundary_checks);
   // Dimension 0 is the reduced one by construction and it's the only one
   // present in the tile shapes.
-  std::vector<DimProperties> tiled_dims = {{0, row_index, block_row}};
+  std::vector<DimProperties> tiled_dims = {
+      DimProperties(0, row_index, block_row, /*split_value=*/1)};
   TF_ASSIGN_OR_RETURN(
       Value result,
       EmitScope(b, libdevice_path, &analysis,

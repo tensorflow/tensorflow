@@ -235,6 +235,38 @@ ENTRY entry {
   EXPECT_GT(result.shmem_bytes, dev_info.shared_memory_per_block);
 }
 
+TEST_F(TritonGemmTest, WorksWhenKIsDivisibleByBlockKButNotByBlockKTimesSplitK) {
+  // The condition mentioned in the test name is fulfilled by
+  // GemmKey(16, 64, 256, 8, 1, 4), which was part of the default configs for
+  // Ampere at the time of the addition of this test case.
+  constexpr absl::string_view kHloText = R"(
+HloModule extracted
+
+ENTRY e {
+  a = f16[16,5120]{1,0} parameter(0)
+  b = s8[5120,10240]{1,0} parameter(1)
+  converted_b = f16[5120,10240]{1,0} convert(b)
+  ROOT r = f16[16,10240]{1,0} dot(a, converted_b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  // This check tests if Triton is used at all plus it runs TritonAutotuner,
+  // which verifies if the generated kernels can run without errors such as
+  // CUDA_ERROR_ILLEGAL_ADDRESS.
+  MatchOptimizedHlo(kHloText, R"(
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: fusion(
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: "block_m":
+  )");
+
+  // Not doing a comparison here, because the input matrices are quite big.
+  // If I reduce their size then they can no longer trigger the error, that I
+  // want to avoid with this test case.
+}
+
 TEST_F(TritonGemmTest, MultipleDims) {
   const std::string hlo_text = R"(
 HloModule t
