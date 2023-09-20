@@ -392,7 +392,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(jakeharmon): Remove in favor of TSL version
+# TODO(jakeharmon8): Remove in favor of TSL version
 config_setting(
     name = "windows",
     # Internal builds query the target OS.
@@ -464,7 +464,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(jakeharmon): Remove in favor of TSL version
+# TODO(jakeharmon8): Remove in favor of TSL version
 selects.config_setting_group(
     name = "macos",
     match_any = [
@@ -487,7 +487,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(jakeharmon): Remove in favor of TSL version
+# TODO(jakeharmon8): Remove in favor of TSL version
 config_setting(
     name = "fuchsia",
     constraint_values = if_google(
@@ -896,7 +896,7 @@ selects.config_setting_group(
     match_any = [
         ":android",
         ":chromiumos",
-        # TODO(jakeharmon): Move all platform configs to TSL with fuchsia (non-blocking)
+        # TODO(jakeharmon8): Move all platform configs to TSL with fuchsia (non-blocking)
         ":fuchsia",
         ":emscripten",
         ":ios",
@@ -1117,7 +1117,7 @@ bzl_library(
     deps = [":tensorflow_bzl"],
 )
 
-# TODO(jakeharmon): Remove these in favor of tsl:grpc
+# TODO(jakeharmon8): Remove these in favor of tsl:grpc
 # copybara:comment_begin(oss-only)
 cc_library(
     name = "grpc",
