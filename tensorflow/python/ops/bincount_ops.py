@@ -14,8 +14,6 @@
 # ==============================================================================
 """bincount ops."""
 
-from tensorflow.python.compat import compat
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
@@ -132,34 +130,6 @@ def bincount(arr,
   """
   name = "bincount" if name is None else name
   with ops.name_scope(name):
-    # TODO(b/255381064) Remove the following block which uses older kernels for
-    # certain cases once the forward compatibility window expries (and remove
-    # the imports in this file and dependencies in the BUILD file for compat
-    # and constant_op which are only required for this block.)
-    if (
-        not compat.forward_compatible(2023, 9, 10)
-        and not binary_output
-        and axis is None
-    ):
-      arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
-      array_is_nonempty = math_ops.reduce_prod(array_ops.shape(arr)) > 0
-      output_size = math_ops.cast(array_is_nonempty, dtypes.int32) * (
-          math_ops.reduce_max(arr) + 1)
-      if minlength is not None:
-        minlength = ops.convert_to_tensor(
-            minlength, name="minlength", dtype=dtypes.int32)
-        output_size = gen_math_ops.maximum(minlength, output_size)
-      if maxlength is not None:
-        maxlength = ops.convert_to_tensor(
-            maxlength, name="maxlength", dtype=dtypes.int32)
-        output_size = gen_math_ops.minimum(maxlength, output_size)
-      if weights is not None:
-        weights = ops.convert_to_tensor(weights, name="weights")
-        return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
-      weights = constant_op.constant([], dtype)
-      arr = array_ops.reshape(arr, [-1])
-      return gen_math_ops.bincount(arr, output_size, weights)
-
     arr = tensor_conversion.convert_to_tensor_v2_with_dispatch(arr, name="arr")
     if weights is not None:
       weights = tensor_conversion.convert_to_tensor_v2_with_dispatch(
