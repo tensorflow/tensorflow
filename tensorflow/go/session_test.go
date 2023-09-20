@@ -431,3 +431,11 @@ func TestDeviceStringNoMemoryLimit(t *testing.T) {
 		t.Errorf("Got \"%s\", want \"%s\"", got, want)
 	}
 }
+
+func TestRunOptions(t *testing.T) {
+	runOpts := &RunOptions{Config: []byte{16, 1}} // timeout_in_ms:1
+	_, err := NewSession(NewGraph(), &SessionOptions{}, runOpts)
+	if err != nil {
+		t.Fatalf("NewSession(): %v", err)
+	}
+}
