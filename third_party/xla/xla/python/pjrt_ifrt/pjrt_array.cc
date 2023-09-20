@@ -126,6 +126,9 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
                            sharding->devices().size(), pjrt_buffers.size());
   }
 
+  // Canonicalize memory kind in case it hasn't been done before.
+  MemoryKind canonicalized_sharding_memory_kind = CanonicalizeMemoryKind(
+      sharding->memory_kind(), sharding->devices().front());
   for (int i = 0; i < sharding->devices().size(); ++i) {
     if (pjrt_buffers[i]->device() != sharding->devices()[i]) {
       return InvalidArgument(
@@ -134,8 +137,15 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
           pjrt_buffers[i]->device()->DebugString(),
           sharding->devices()[i]->DebugString());
     }
-    // TODO(yashkatariya): Check for memory kind after PJRT C API supports
-    // memories on PJRT_Buffer.
+    MemoryKind buffer_memory_kind =
+        MakeMemoryKindFromPjRtBuffer(pjrt_buffers[i].get());
+    if (canonicalized_sharding_memory_kind != buffer_memory_kind) {
+      return InvalidArgument(
+          "PjRtBuffer's memory kind does not match sharding's memory kind. Got "
+          "PjRtBuffer's memory kind: %s vs shardings's memory kind: %s",
+          buffer_memory_kind.DebugString(),
+          canonicalized_sharding_memory_kind.DebugString());
+    }
   }
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
                                  std::move(sharding), std::move(pjrt_buffers));
