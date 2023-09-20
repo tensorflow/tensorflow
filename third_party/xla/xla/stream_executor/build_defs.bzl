@@ -7,12 +7,6 @@ def stream_executor_friends():
 def tf_additional_cuda_platform_deps():
     return []
 
-def tf_additional_cuda_driver_deps():
-    return ["@local_tsl//tsl/cuda:cuda_stub"]
-
-def tf_additional_cupti_deps():
-    return ["@local_xla//xla/stream_executor/cuda:cupti_stub"]
-
 def tf_additional_cudnn_plugin_deps():
     return []
 

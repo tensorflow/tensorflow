@@ -8,7 +8,6 @@ load(
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
-    "tf_additional_cuda_driver_deps",
     "tf_additional_cuda_platform_deps",
     "tf_additional_cudnn_plugin_copts",
     "tf_additional_cudnn_plugin_deps",
@@ -127,18 +126,15 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
+        "@local_tsl//tsl/cuda",
+        "@local_tsl//tsl/cuda:cudart",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:static_threadlocal",
-    ] + tf_additional_cuda_driver_deps()) + select({
-        # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
-        "@local_tsl//tsl:is_cuda_enabled_and_oss": ["cudart_stub"],
-        "//conditions:default": ["@local_tsl//tsl/platform:cuda"],
-    }) + [
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-    ],
+    ]),
 )
 
 xla_cc_test(
@@ -191,7 +187,7 @@ xla_cc_test(
 
 alias(
     name = "cudart_stub",
-    actual = "@local_tsl//tsl/cuda:cudart_stub",
+    actual = "@local_tsl//tsl/cuda:cudart",
     visibility = ["//visibility:public"],
 )
 
@@ -236,13 +232,13 @@ cc_library(
 
 alias(
     name = "cublas_stub",
-    actual = "@local_tsl//tsl/cuda:cublas_stub",
+    actual = "@local_tsl//tsl/cuda:cublas",
     visibility = ["//visibility:public"],
 )
 
 alias(
     name = "cublas_lib",
-    actual = "@local_tsl//tsl/cuda:cublas_lib",
+    actual = "@local_tsl//tsl/cuda:cublas",
     visibility = ["//visibility:public"],
 )
 
@@ -264,13 +260,13 @@ cc_library(
 
 alias(
     name = "cublas_lt_stub",
-    actual = "@local_tsl//tsl/cuda:cublas_lt_stub",
+    actual = "@local_tsl//tsl/cuda:cublas_lt",
     visibility = ["//visibility:public"],
 )
 
 alias(
     name = "cublas_lt_lib",
-    actual = "@local_tsl//tsl/cuda:cublas_lt_lib",
+    actual = "@local_tsl//tsl/cuda:cublas_lt",
     visibility = ["//visibility:public"],
 )
 
@@ -334,13 +330,13 @@ cc_library(
 
 alias(
     name = "cufft_stub",
-    actual = "@local_tsl//tsl/cuda:cufft_stub",
+    actual = "@local_tsl//tsl/cuda:cufft",
     visibility = ["//visibility:public"],
 )
 
 alias(
     name = "cufft_lib",
-    actual = "@local_tsl//tsl/cuda:cufft_lib",
+    actual = "@local_tsl//tsl/cuda:cufft",
     visibility = ["//visibility:public"],
 )
 
@@ -370,13 +366,13 @@ cc_library(
 
 alias(
     name = "cudnn_stub",
-    actual = "@local_tsl//tsl/cuda:cudnn_stub",
+    actual = "@local_tsl//tsl/cuda:cudnn",
     visibility = ["//visibility:public"],
 )
 
 alias(
     name = "cudnn_lib",
-    actual = "@local_tsl//tsl/cuda:cudnn_lib",
+    actual = "@local_tsl//tsl/cuda:cudnn",
     visibility = ["//visibility:public"],
 )
 
@@ -432,37 +428,37 @@ cc_library(
 
 alias(
     name = "cupti_stub",
-    actual = "@local_tsl//tsl/cuda:cupti_stub",
+    actual = "@local_tsl//tsl/cuda:cupti",
     visibility = ["//visibility:public"],
 )
 
 alias(
     name = "cusolver_stub",
-    actual = "@local_tsl//tsl/cuda:cusolver_stub",
+    actual = "@local_tsl//tsl/cuda:cusolver",
     visibility = ["//visibility:public"],
 )
 
 alias(
     name = "cusolver_lib",
-    actual = "@local_tsl//tsl/cuda:cusolver_lib",
+    actual = "@local_tsl//tsl/cuda:cusolver",
     visibility = ["//visibility:public"],
 )
 
 alias(
     name = "cusparse_stub",
-    actual = "@local_tsl//tsl/cuda:cusparse_stub",
+    actual = "@local_tsl//tsl/cuda:cusparse",
     visibility = ["//visibility:public"],
 )
 
 alias(
     name = "cusparse_lib",
-    actual = "@local_tsl//tsl/cuda:cusparse_lib",
+    actual = "@local_tsl//tsl/cuda:cusparse",
     visibility = ["//visibility:public"],
 )
 
 alias(
     name = "tensorrt_rpath_stub",
-    actual = "@local_tsl//tsl/cuda:tensorrt_rpath_stub",
+    actual = "@local_tsl//tsl/cuda:tensorrt_rpath",
     visibility = ["//visibility:public"],
 )
 

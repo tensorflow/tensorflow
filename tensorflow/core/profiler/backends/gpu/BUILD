@@ -1,5 +1,4 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
@@ -10,11 +9,8 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load(
-    "@local_xla//xla/stream_executor:build_defs.bzl",
-    "tf_additional_cupti_deps",
-)
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -77,7 +73,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:platform_base",
         "@local_xla//xla/backends/profiler/gpu:cupti_interface",
-    ] + tf_additional_cupti_deps(),
+    ] + if_cuda(["@local_tsl//tsl/cuda:cupti"]),
 )
 
 tf_cuda_library(
@@ -146,7 +142,7 @@ tf_cuda_library(
     deps = [
         ":cupti_interface",
         "@local_xla//xla/backends/profiler/gpu:cupti_wrapper",
-    ] + tf_additional_cupti_deps(),
+    ] + if_cuda(["@local_tsl//tsl/cuda:cupti"]),
 )
 
 tf_cuda_library(
@@ -219,7 +215,7 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/utils:parse_annotation",
         "@local_xla//xla/backends/profiler/gpu:cupti_collector",
-    ] + tf_additional_cupti_deps(),
+    ] + if_cuda(["@local_tsl//tsl/cuda:cupti"]),
 )
 
 cc_library(

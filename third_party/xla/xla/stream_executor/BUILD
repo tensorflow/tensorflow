@@ -6,7 +6,7 @@
 
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
-load("@local_tsl//tsl:tsl.bzl", "set_external_visibility", "transitive_hdrs", "tsl_gpu_library")
+load("@local_tsl//tsl:tsl.bzl", "set_external_visibility", "transitive_hdrs")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
@@ -433,7 +433,7 @@ cc_library(
 )
 
 # It implements :stream_executor_pimpl_header
-tsl_gpu_library(
+cc_library(
     name = "stream_executor_pimpl",
     srcs = [
         "stream.cc",

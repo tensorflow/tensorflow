@@ -1164,7 +1164,7 @@ alias(
 
 alias(
     name = "cuda",
-    actual = "@local_tsl//tsl/platform:cuda",
+    actual = "@local_tsl//tsl/cuda:cudart",
     visibility = ["//visibility:public"],
 )
 
