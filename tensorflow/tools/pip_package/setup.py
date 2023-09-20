@@ -261,13 +261,19 @@ class InstallHeaders(Command):
     # symlink within the directory hierarchy.
     # NOTE(keveman): Figure out how to customize bdist_wheel package so
     # we can do the symlink.
-    external_header_locations = [
-        'tensorflow/include/external/eigen_archive/',
-        'tensorflow/include/external/com_google_absl/',
-    ]
+    # pylint: disable=line-too-long
+    external_header_locations = {
+        '/tensorflow/include/external/eigen_archive': '',
+        '/tensorflow/include/external/com_google_absl': '',
+        '/tensorflow/include/tensorflow/compiler/xla': '/tensorflow/include/xla',
+        '/tensorflow/include/tensorflow/tsl': '/tensorflow/include/tsl',
+    }
+    # pylint: enable=line-too-long
+
     for location in external_header_locations:
       if location in install_dir:
-        extra_dir = install_dir.replace(location, '')
+        extra_dir = install_dir.replace(location,
+                                        external_header_locations[location])
         if not os.path.exists(extra_dir):
           self.mkpath(extra_dir)
         self.copy_file(header, extra_dir)
