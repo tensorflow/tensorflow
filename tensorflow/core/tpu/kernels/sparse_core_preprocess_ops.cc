@@ -356,7 +356,8 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
 
   const int num_physical_replica = num_replica_ * num_sc_per_chip_;
 
-  size_t xla_pad_size = 8;
+  size_t xla_pad_size = stream_executor::tpu::OpsApiFn()
+                            ->TpuUtil_GetXlaPadSizeFromTpuTopologyFn();
 
   OP_REQUIRES(ctx, sample_count_ % num_sc_per_chip_ == 0,
               absl::InvalidArgumentError(
