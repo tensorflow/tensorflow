@@ -856,42 +856,37 @@ def tf_google_mobile_srcs_only_runtime():
 
 def if_llvm_aarch32_available(then, otherwise = []):
     return select({
-        clean_dep("//tsl:linux_armhf"): then,
+        clean_dep("//tsl:aarch32_or_cross"): then,
         "//conditions:default": otherwise,
     })
 
 def if_llvm_aarch64_available(then, otherwise = []):
     return select({
-        clean_dep("//tsl:linux_aarch64"): then,
-        clean_dep("//tsl:macos_arm64"): then,
-        clean_dep("//tsl:windows_aarch64"): then,
+        clean_dep("//tsl:aarch64_or_cross"): then,
         "//conditions:default": otherwise,
     })
 
 def if_llvm_arm_available(then, otherwise = []):
     return select({
-        clean_dep("//tsl:linux_aarch64"): then,
-        clean_dep("//tsl:linux_armhf"): then,
+        clean_dep("//tsl:arm_or_cross"): then,
         "//conditions:default": otherwise,
     })
 
 def if_llvm_powerpc_available(then, otherwise = []):
     return select({
-        clean_dep("//tsl:linux_ppc64le"): then,
+        clean_dep("//tsl:ppc64le_or_cross"): then,
         "//conditions:default": otherwise,
     })
 
 def if_llvm_system_z_available(then, otherwise = []):
     return select({
-        clean_dep("//tsl:linux_s390x"): then,
+        clean_dep("//tsl:s390x_or_cross"): then,
         "//conditions:default": otherwise,
     })
 
 def if_llvm_x86_available(then, otherwise = []):
     return select({
-        clean_dep("//tsl:linux_x86_64"): then,
-        clean_dep("//tsl:macos_x86_64"): then,
-        clean_dep("//tsl:windows_x86_64"): then,
+        clean_dep("//tsl:x86_or_cross"): then,
         "//conditions:default": otherwise,
     })
 

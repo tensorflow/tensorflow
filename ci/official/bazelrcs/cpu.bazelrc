@@ -34,6 +34,9 @@ build --python_path="/usr/bin/python3"
 # Build TensorFlow v2
 build --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
 
+# Enable all targets in XLA
+build --define=with_cross_compiler_support=true
+
 # Target the AVX instruction set
 build --copt=-mavx --host_copt=-mavx
 
