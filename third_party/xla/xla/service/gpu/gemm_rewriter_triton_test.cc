@@ -1505,6 +1505,22 @@ ENTRY e {
   EXPECT_FALSE(GemmRewriterTriton(cc).Run(module.get()).value());
 }
 
+TEST_F(GemmRewriterTritonTest, SliceToDegenerateIsSkipped) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p = f32[3] parameter(0)
+  s = f32[1] slice(p), slice={[2:3]}
+  r = f32[] reshape(s)
+  b = f32[3,3] broadcast(r), dimensions={}
+  ROOT d = f32[3,3] dot(b, b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)"));
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  EXPECT_FALSE(GemmRewriterTriton(cc).Run(module.get()).value());
+}
+
 class GemmRewriterTritonLevel2Test : public GemmRewriterTritonTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {

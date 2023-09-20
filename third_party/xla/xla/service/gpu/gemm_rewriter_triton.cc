@@ -820,6 +820,10 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
   // Note: copying instead of using a const reference because
   // some operations (slice) will modify fragment properties in-place.
   Fragments src_fragments_order = dim_orders.at(src).TensorFragmentsOrder();
+  if (hlo->opcode() == HloOpcode::kSlice &&
+      ShapeUtil::IsEffectiveScalar(hlo->shape())) {
+    return FusionDecision("Slice to scalar is not implemented yet.");
+  }
   DimOrderUpdates result;
   if (hlo->opcode() == HloOpcode::kReduce || hlo->opcode() == HloOpcode::kPad) {
     // Operand 1 (the neutral value or padding value) has to be a scalar.
@@ -836,13 +840,12 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
   std::vector<std::vector<Fragment*>> src_physical;
   src_physical.reserve(src->shape().rank());
   auto src_fragment_it = src_fragments_order.begin();
-  const auto src_fragment_end = src_fragments_order.end();
   for (int64_t dim_index : src->shape().layout().minor_to_major()) {
     const int64_t dim_size = src->shape().dimensions(dim_index);
     int64_t subdim_size_accumulator = 1;
     std::vector<Fragment*> subdim_group;
     do {
-      CHECK(src_fragment_it != src_fragment_end);
+      CHECK(src_fragment_it != src_fragments_order.end());
       subdim_size_accumulator *= src_fragment_it->full_size();
       subdim_group.push_back(&*src_fragment_it);
       ++src_fragment_it;
