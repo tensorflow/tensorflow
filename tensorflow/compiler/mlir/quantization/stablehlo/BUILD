@@ -157,6 +157,7 @@ cc_library(
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/mlir_hlo:chlo_legalize_to_hlo",
+        "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@local_xla//xla/translate/hlo_to_mhlo:attribute_importer",
         "@stablehlo//:chlo_ops",
     ],
@@ -198,10 +199,14 @@ tf_cc_test(
     deps = [
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/service:hlo_proto_cc",
     ],
 )
 
