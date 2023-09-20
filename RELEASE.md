@@ -21,10 +21,6 @@
       `tf.compat.v1.Session.partial_run_setup` will be deprecated in the
       next release.
 
-*   `tf.estimator`
-    * `tf.estimator` API will be removed in the next release. TF Estimator
-       Python package will no longer be released.
-
 ### Known Caveats
 
 * `tf.lite`
