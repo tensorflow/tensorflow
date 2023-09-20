@@ -1521,6 +1521,28 @@ ENTRY e {
   EXPECT_FALSE(GemmRewriterTriton(cc).Run(module.get()).value());
 }
 
+TEST_F(GemmRewriterTritonTest, MultipleUsesAreHandled) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  c = f32[] constant(1)
+  b = f32[6,8] broadcast(c), dimensions={}
+  p0 = f32[6,8] parameter(0)
+  a1 = f32[6,8] add(p0, b)
+  e = f32[6,8] exponential(a1)
+  a2 = f32[6,8] add(e, b)
+  d = f32[6,8] divide(b, a2)
+  p2 = f16[8,6] parameter(1)
+  cv = f32[8,6] convert(p2)
+  ROOT r = f32[6,6] dot(d, cv),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  EXPECT_TRUE(GemmRewriterTriton(cc).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+}
+
 class GemmRewriterTritonLevel2Test : public GemmRewriterTritonTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
@@ -1568,7 +1590,7 @@ ENTRY e {
   EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Transpose(), m::Parameter())));
+      GmockMatch(m::Fusion(m::Transpose(), m::Parameter(), m::Parameter())));
 }
 
 TEST_F(GemmRewriterTritonLevel2Test, DoNotFuseTooManyParameters) {
