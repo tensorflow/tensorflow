@@ -293,6 +293,15 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
                                                "hlo verifier");
   }
 }
+
+void SetInstructionMetadata(HloModule* module) {
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      instruction->set_creation_pass_id(-1);
+      instruction->set_logical_creation_pass_id(-1);
+    }
+  }
+}
 }  // namespace
 
 // Runs optimization passes on the given HLO module.
@@ -343,6 +352,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
   }
   layout_insensitive_algsimp_opts
       .set_enable_unconditional_reduce_of_concat_replacement(false);
+
+  SetInstructionMetadata(hlo_module);
 
   HloPassPipeline pre_spmd_pipeline("pre-spmd-partitioner");
   // Run some IR cleanup passes before running the SPMD partitioning
