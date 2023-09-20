@@ -68,7 +68,7 @@ func LoadSavedModel(exportDir string, tags []string, options *SessionOptions, ru
 	graph := NewGraph()
 	metaGraphDefBuf := C.TF_NewBuffer()
 	defer C.TF_DeleteBuffer(metaGraphDefBuf)
-	// TODO(jhseu): Add support for meta_graph_def.
+	// TODO(jhseu): Add support for run_options and meta_graph_def.
 	cSess := C.TF_LoadSessionFromSavedModel(cOpt, nil, cExportDir, (**C.char)(unsafe.Pointer(&cTags[0])), C.int(len(cTags)), graph.c, metaGraphDefBuf, status.c)
 	for i := range cTags {
 		C.free(unsafe.Pointer(cTags[i]))
