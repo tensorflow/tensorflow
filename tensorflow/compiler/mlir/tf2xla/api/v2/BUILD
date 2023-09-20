@@ -11,7 +11,10 @@ package(
 )
 
 # Please reach out to tf-bridge-team@ before using the TF2XLA bridge.
-package_group(name = "tf2xla_users")
+package_group(
+    name = "tf2xla_users",
+    packages = ["//tensorflow/compiler/mlir/quantization/stablehlo/..."],
+)
 
 cc_library(
     name = "legalize_tf",
