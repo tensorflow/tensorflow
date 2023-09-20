@@ -267,8 +267,11 @@ build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
 build:dbg --copt -DDEBUG_BUILD
 
-# Config to build TPU backend
+# Config to build TF TPU
 build:tpu --define=with_tpu_support=true
+build:tpu --define=framework_shared_object=true
+build:tpu --copt=-DLIBTPU_ON_GCE
+build:tpu --define=enable_mlir_bridge=true
 
 build:tensorrt --repo_env TF_NEED_TENSORRT=1
 
