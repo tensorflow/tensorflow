@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_H_
-#define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_H_
+#ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_H_
+#define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_H_
 
 #include <cstdint>
 #include <functional>
@@ -42,8 +42,8 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/memory_space_assignment.pb.h"
-#include "xla/service/memory_space_assignment_repacking.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment_repacking.h"
 #include "xla/shape.h"
 #include "xla/statusor.h"
 
@@ -2667,4 +2667,4 @@ class AlternateMemoryBestFitHeap
 }  // namespace memory_space_assignment
 }  // namespace xla
 
-#endif  // XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_H_
+#endif  // XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_H_

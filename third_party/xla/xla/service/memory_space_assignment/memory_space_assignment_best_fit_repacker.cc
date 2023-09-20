@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/memory_space_assignment_best_fit_repacker.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment_best_fit_repacker.h"
 
 #include <algorithm>
 #include <functional>

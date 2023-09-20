@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/memory_space_assignment.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment.h"
 
 #include <algorithm>
 #include <cmath>
@@ -46,9 +46,9 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/heap_simulator.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/memory_space_assignment_repacking.h"
-#include "xla/service/memory_space_assignment_tuning_utils.h"
-#include "xla/service/memory_space_assignment_utils.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment_repacking.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment_tuning_utils.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment_utils.h"
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"

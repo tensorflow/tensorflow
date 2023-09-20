@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_UTILS_H_
-#define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_UTILS_H_
+#ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_UTILS_H_
+#define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_UTILS_H_
 
 #include "xla/service/heap_simulator.h"
 
@@ -35,4 +35,4 @@ class MemorySpaceAssignmentUtils {
 
 }  // namespace xla
 
-#endif  // XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_UTILS_H_
+#endif  // XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_UTILS_H_

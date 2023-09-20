@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/memory_space_assignment.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -53,8 +53,8 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/instruction_hoister.h"
-#include "xla/service/memory_space_assignment.pb.h"
-#include "xla/service/memory_space_assignment_repacking.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment_repacking.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -11678,8 +11678,8 @@ class MockRepacker : public MemorySpaceAssignmentRepacker {
 // - With repacking, we are able to prefetch p4.
 // - When repacking occurs, we expect p2 and p3 to have been allocated chunks.
 //   We are only proposing slices for f32[32, 16] and not f32[16,16]; thus, we
-//   expect slicing metdata to be attached to the repacking block for p2 but not
-//   p3.
+//   expect slicing metadata to be attached to the repacking block for p2 but
+//   not p3.
 // - We make the repacker assign the first slice (in time) of p2 the larger
 //   offset. After MSA, we check to make sure the fist slice is using the
 //   larger slicing parameters

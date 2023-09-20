@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
-#include "xla/service/memory_space_assignment_repacking.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment_repacking.h"
 #include "xla/status.h"
 #include "xla/util.h"
 

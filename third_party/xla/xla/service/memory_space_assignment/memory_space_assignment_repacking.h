@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_REPACKING_H_
-#define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_REPACKING_H_
+#ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_REPACKING_H_
+#define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_REPACKING_H_
 
 #include <cstdint>
 #include <optional>
@@ -138,4 +138,4 @@ class MemorySpaceAssignmentRepacker {
 
 }  // namespace xla
 
-#endif  // XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_REPACKING_H_
+#endif  // XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_REPACKING_H_
