@@ -36,7 +36,6 @@ cc_library(
         "event.h",
         "executor_cache.h",
         "fft.h",
-        "gpu_launch_dim.h",
         "kernel.h",
         "kernel_cache_config.h",
         "kernel_spec.h",
@@ -86,10 +85,7 @@ transitive_hdrs(
 
 cc_library(
     name = "launch_dim",
-    hdrs = [
-        "gpu_launch_dim.h",
-        "launch_dim.h",
-    ],
+    hdrs = ["launch_dim.h"],
     visibility = ["//visibility:public"],
     deps = ["@com_google_absl//absl/strings"],
 )
@@ -731,7 +727,6 @@ cc_library(
         "event.h",
         "executor_cache.h",
         "fft.h",
-        "gpu_launch_dim.h",
         "kernel.h",
         "kernel_cache_config.h",
         "kernel_spec.h",
