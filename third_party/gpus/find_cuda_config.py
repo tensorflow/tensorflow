@@ -52,6 +52,7 @@ tf_<library>_version: x.y.z
 tf_<library>_header_dir: ...
 tf_<library>_library_dir: ...
 """
+# DO_NOT_SUBMIT - mod a non oss only file
 
 # You can use the following command to regenerate the base64 version of this
 # script:
