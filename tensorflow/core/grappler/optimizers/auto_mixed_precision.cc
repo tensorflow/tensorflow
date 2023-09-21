@@ -30,6 +30,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#ifdef INTEL_MKL
+#include "tensorflow/core/graph/mkl_graph_util.h"
+#endif
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/grappler/devices.h"
@@ -47,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -2293,6 +2297,15 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
         "tensorflow-installation-guide");
   }
 #endif  // INTEL_MKL
+
+#ifdef INTEL_MKL
+  if (mode_ == AutoMixedPrecisionMode::BF16 &&
+      !IsMKLEnabled() &&
+      !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()) {
+    LOG(WARNING) << "BFloat16 is not supported on this CPU";
+    return OkStatus();
+  }
+#endif
 
   // Start by copying input graph to output.
   *output = item.graph;

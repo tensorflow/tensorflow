@@ -595,7 +595,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-    ],
+    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util"]),
 )
 
 tf_cuda_cc_test(
@@ -615,7 +615,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/utils:grappler_test",
         "//tensorflow/core/lib/random",
-    ],
+    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util"]),
 )
 
 cc_library(
