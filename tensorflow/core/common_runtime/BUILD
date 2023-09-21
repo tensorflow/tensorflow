@@ -1,7 +1,9 @@
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
     "if_libtpu",
+    "if_macos",
     "if_oss",
     "if_zendnn",
     "tf_cc_test",
@@ -22,23 +24,22 @@ load(
     "tf_protos_grappler",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
-load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
     "tf_cuda_tests_tags",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
-    "if_mkl_ml",
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
 )
 load(
     "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
     "tf_cc_fuzz_test",
+)
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+    "if_mkl_ml",
 )
 
 default_package_visibility = [
@@ -299,6 +300,7 @@ filegroup(
         "renamed_device.h",
         "rendezvous_mgr.h",
         "rendezvous_util.h",
+        "replicate_constants_pass.h",
         "replicate_per_replica_nodes.h",
         "ring_alg.h",
         "ring_gatherer.h",
@@ -1133,6 +1135,31 @@ cc_library(
 )
 
 cc_library(
+    name = "replicate_constants_pass",
+    srcs = ["replicate_constants_pass.cc"],
+    hdrs = ["replicate_constants_pass.h"],
+    copts = tf_copts(),
+    deps = [
+        ":optimization_registry",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
+        "//tensorflow/core/framework:node_def_util",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "local_device",
     srcs = ["local_device.cc"],
     hdrs = ["local_device.h"],
@@ -1948,7 +1975,10 @@ tf_cuda_library(
         ":step_stats_collector",
         ":threadpool_device",
         ":threadpool_device_factory",
-    ] + if_zendnn([":zen_layout_pass"]),
+    ] + if_zendnn([":zen_layout_pass"]) + if_macos(
+        [],
+        [":replicate_constants_pass"],
+    ),
 )
 
 tf_cuda_library(
@@ -2312,6 +2342,7 @@ tf_cc_tests(
         "optimization_registry_test.cc",
         "pending_counts_test.cc",
         "placer_inspection_required_ops_utils_test.cc",
+        "replicate_constants_pass_test.cc",
         "session_test.cc",
         "threadpool_device_test.cc",
     ],
@@ -2342,6 +2373,7 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/config:flag_defs",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/platform:regexp",
