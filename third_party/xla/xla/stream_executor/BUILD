@@ -5,7 +5,7 @@
 # do not link against restricted binary blobs.
 
 load("//xla:xla.bzl", "xla_cc_test")
-load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
+load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends", "stream_executor_internal")
 load("@local_tsl//tsl:tsl.bzl", "set_external_visibility", "transitive_hdrs")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
@@ -17,15 +17,51 @@ package(
     licenses = ["notice"],
 )
 
+# StreamExecutor clients that can depend on targets defined in stream_executor package.
 package_group(
     name = "friends",
     packages = stream_executor_friends(),
 )
 
+# StreamExecutor platform-dependent implementations. We restrict visibility of all internal
+# implementation interfaces to internal users (everything in `stream_executor::internal` namespace).
+package_group(
+    name = "internal",
+    packages = stream_executor_internal(),
+)
+
+#===--------------------------------------------------------------------------------------------===#
+# StreamExecutor platform-dependent implementation details
+#===--------------------------------------------------------------------------------------------===#
+
+# Only platform-dependent StreamExecutor implementations (e.g. StreamExecutor for GPUs) and targets
+# defined by StreamExecutor itself (e.g. `event`, `kernel`, etc.) can depend on internal
+# implementation details (interfaces that define platform-specific API).
+#
+# External clients of StreamExecutor should depend on `stream_executor` target (links StreamExecutor
+# implementation in static build configuration), or a header only `stream_executor_headers`.
+
+cc_library(
+    name = "stream_executor_internal",
+    hdrs = ["stream_executor_internal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":stream_executor_headers",
+        "//xla/stream_executor/platform",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+#===--------------------------------------------------------------------------------------------===#
+
 # The stream_executor_headers target does not prescribe an implementation.
 cc_library(
     name = "stream_executor_headers",
     textual_hdrs = [
+        "allocator_stats.h",
         "blas.h",
         "command_buffer.h",
         "device_description.h",
@@ -362,33 +398,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
-    name = "stream_executor_internal",
-    hdrs = [
-        "stream_executor_internal.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":allocator_stats",
-        ":device_description",
-        ":device_memory",
-        ":device_options",
-        ":kernel",
-        ":kernel_cache_config",
-        ":kernel_spec",
-        ":launch_dim",
-        ":module_spec",
-        ":plugin_registry",
-        "//xla/stream_executor/platform",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",

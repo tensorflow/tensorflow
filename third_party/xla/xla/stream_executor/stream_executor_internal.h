@@ -31,7 +31,6 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
-#include "absl/types/optional.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -46,7 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/trace_listener.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -186,21 +184,21 @@ class StreamExecutorInterface {
 
   virtual tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                                 KernelBase* kernel) {
-    return tsl::errors::Unimplemented("Not Implemented");
+    return absl::UnimplementedError("Not Implemented");
   }
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
   virtual tsl::Status LoadModule(const MultiModuleLoaderSpec& spec,
                                  ModuleHandle* module_handle) {
-    return tsl::errors::Unimplemented("Not Implemented");
+    return absl::UnimplementedError("Not Implemented");
   }
   virtual tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
   CreateOrShareConstant(Stream* stream, const std::vector<uint8_t>& content) {
-    return tsl::errors::Unimplemented("Not Implemented");
+    return absl::UnimplementedError("Not Implemented");
   }
   virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                              const BlockDim& block_dims, const KernelBase& k,
                              const KernelArgsArrayBase& args) {
-    return tsl::errors::Unimplemented("Not Implemented");
+    return absl::UnimplementedError("Not Implemented");
   }
 
   // Releases any state associated with the kernel.
@@ -262,8 +260,7 @@ class StreamExecutorInterface {
   virtual tsl::Status WaitForEvent(Stream* stream, Event* event) = 0;
   virtual tsl::Status WaitForEventOnExternalStream(std::intptr_t stream,
                                                    Event* event) {
-    return tsl::Status(
-        absl::StatusCode::kUnimplemented,
+    return absl::UnimplementedError(
         "WaitForEventOnExternalStream not supported on this executor.");
   }
   virtual Event::Status PollForEventStatus(Event* event) = 0;
@@ -272,8 +269,8 @@ class StreamExecutorInterface {
   virtual bool CreateStreamDependency(Stream* dependent, Stream* other) = 0;
   virtual tsl::Status BlockHostUntilDone(Stream* stream) = 0;
   virtual tsl::Status GetStatus(Stream* stream) {
-    return tsl::Status(absl::StatusCode::kUnimplemented,
-                       "GetStatus is not supported on this executor.");
+    return absl::UnimplementedError(
+        "GetStatus is not supported on this executor.");
   }
   virtual tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface* other) = 0;

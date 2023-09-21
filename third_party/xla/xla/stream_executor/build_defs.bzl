@@ -4,6 +4,9 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 def stream_executor_friends():
     return ["//..."]
 
+def stream_executor_internal():
+    return ["//..."]
+
 def tf_additional_cuda_platform_deps():
     return []
 
