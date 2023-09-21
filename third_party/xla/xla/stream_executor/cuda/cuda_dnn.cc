@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -54,6 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/cuda/cudnn_version.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 #include "tsl/util/env_var.h"
 

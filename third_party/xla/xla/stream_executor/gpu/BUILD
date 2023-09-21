@@ -199,6 +199,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_internal",
         "//xla/stream_executor:stream_executor_pimpl_header",
         "//xla/stream_executor/platform",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 

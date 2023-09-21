@@ -19,8 +19,8 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/types/span.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 

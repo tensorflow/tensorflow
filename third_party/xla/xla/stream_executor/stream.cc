@@ -28,10 +28,10 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/stacktrace.h"
 
 namespace stream_executor {
@@ -238,10 +238,8 @@ std::string CallStr(const char *function_name, Stream *stream,
 
 // Use this macro to avoid having to type every parameter twice to log
 // it with VLOG and CallStr.
-#define PARAM(parameter)                \
-  {                                     \
-#parameter, ToVlogString(parameter) \
-  }
+#define PARAM(parameter) \
+  { #parameter, ToVlogString(parameter) }
 
 // Use this macro to avoid having to type out the name of each
 // function and to save some boilerplate. Intended to be used like this:
