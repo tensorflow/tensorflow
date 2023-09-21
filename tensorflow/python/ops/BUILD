@@ -2601,6 +2601,7 @@ py_strict_library(
         ":math_ops_gen",
         ":sparse_ops_gen",
         ":special_math_ops",
+        "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
