@@ -15,13 +15,13 @@ load(
     "tf_cuda_cc_test",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
-load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
     "tf_cuda_tests_tags",
+)
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
 )
 
 package(
@@ -282,8 +282,8 @@ tf_cuda_library(
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/strings:str_format",
+        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:platform",
-        "@local_xla//xla/stream_executor:stream_executor_headers",
     ],
 )
 

@@ -169,7 +169,7 @@ cc_library(
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:mlir_runner_utils",
-        "@local_xla//xla/stream_executor:stream_executor_headers",
+        "@local_xla//xla/stream_executor",
     ],
 )
 
@@ -204,7 +204,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:mlir_runner_utils",
         "@local_tsl//tsl/platform:hash",
-        "@local_xla//xla/stream_executor:stream_executor_headers",
+        "@local_xla//xla/stream_executor",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "@local_xla//xla/stream_executor/cuda:stream_executor_cuda",

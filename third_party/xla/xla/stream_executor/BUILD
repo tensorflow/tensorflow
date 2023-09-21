@@ -781,6 +781,7 @@ cc_library(
         "plugin.h",
         "plugin_registry.h",
         "stream.h",
+        "numeric_options.h",
         "stream_executor.h",
         "stream_executor_internal.h",
         "stream_executor_pimpl.h",

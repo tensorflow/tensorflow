@@ -216,7 +216,7 @@ tf_cuda_library(
         "@local_xla//xla/service:custom_call_status",
         "@local_xla//xla/service:custom_call_target_registry",
         "@local_xla//xla/service:hlo_proto_cc",
-        "@local_xla//xla/stream_executor:stream_executor_headers",
+        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor/gpu:gpu_executor_header",
         "@local_xla//xla/stream_executor/gpu:gpu_stream_header",
         "@local_xla//xla/stream_executor/gpu:gpu_types_header",
