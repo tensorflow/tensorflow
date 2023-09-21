@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/tsl/protobuf/rpc_options.pb.h"
+#include "tsl/protobuf/rpc_options.pb.h"
 
 namespace tsl {
 class Env;

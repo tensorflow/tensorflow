@@ -45,12 +45,12 @@ cc_library(
         "//tensorflow/core/tfrt/runtime:tf_threadpool_concurrent_work_queue",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/utils",
-        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:errors",
         "@tf_runtime//:core_runtime",
     ] + if_google([
         "//learning/brain/tfrt/tpu:tfrttpu_alwayslink",

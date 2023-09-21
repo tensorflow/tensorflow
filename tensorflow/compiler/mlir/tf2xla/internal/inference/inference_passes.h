@@ -19,13 +19,14 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
 namespace tf2xla {
 namespace internal {
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateInferenceMetricsPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateInferenceMetricsPass();
 
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_INFERENCEMETRICSPASS

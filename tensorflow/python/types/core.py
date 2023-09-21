@@ -110,7 +110,7 @@ class FunctionType(inspect.Signature, metaclass=abc.ABCMeta):
 
 
 @tf_export("types.experimental.Callable", v1=[])
-class Callable:
+class Callable(metaclass=abc.ABCMeta):
   """Base class for TF callables like those created by tf.function.
 
   Note: Callables are conceptually very similar to `tf.Operation`: a
@@ -118,6 +118,7 @@ class Callable:
   """
 
   @property
+  @abc.abstractmethod
   def function_type(self) -> FunctionType:
     """Returns a FunctionType describing this callable."""
 
@@ -167,7 +168,7 @@ class AtomicFunction(Callable):
 
 
 @tf_export("types.experimental.ConcreteFunction", v1=[])
-class ConcreteFunction(Callable):
+class ConcreteFunction(Callable, metaclass=abc.ABCMeta):
   """Base class for differentiable graph functions.
 
   A `ConcreteFunction` encapsulates the original graph function definition with
@@ -177,13 +178,13 @@ class ConcreteFunction(Callable):
   """
 
   @property
+  @abc.abstractmethod
   def inference_fn(self) -> AtomicFunction:
     """Returns the original `AtomicFunction` owned by this ConcreteFunction."""
 
 
-# TODO(mdan): Name just `types.Function`, for historic continuity?
-@tf_export("types.experimental.GenericFunction", v1=[])
-class GenericFunction(Callable):
+@tf_export("types.experimental.PolymorphicFunction", v1=[])
+class PolymorphicFunction(Callable, metaclass=abc.ABCMeta):
   """Base class for polymorphic graph functions.
 
   Graph functions are Python callable objects that dispatch calls to a
@@ -195,6 +196,7 @@ class GenericFunction(Callable):
   Also see `tf.function`.
   """
 
+  @abc.abstractmethod
   def get_concrete_function(self, *args, **kwargs) -> ConcreteFunction:
     """Returns a `ConcreteFunction` specialized to input types.
 
@@ -360,6 +362,13 @@ class GenericFunction(Callable):
       TypeError: When called with input in graph mode.
     """
     pass
+
+
+# TODO(b/297237997): Delete this once all usages are removed.
+@tf_export("types.experimental.GenericFunction", v1=[])
+class GenericFunction(PolymorphicFunction):
+  """Please use tf.types.experimental.PolymorphicFunction instead."""
+  pass
 
 
 @runtime_checkable

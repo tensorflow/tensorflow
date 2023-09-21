@@ -49,6 +49,7 @@ if(NOT TENSORFLOW_SOURCE_DIR)
   )
 endif()
 set(TF_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow")
+set(TSL_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/third_party/tsl")
 set(TFLITE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(CMAKE_MODULE_PATH
   "${TFLITE_SOURCE_DIR}/tools/cmake/modules"
@@ -156,6 +157,10 @@ endif()
 find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
 find_package(ml_dtypes REQUIRED)
 find_package(ruy REQUIRED)
+# Include TSL, which is in tensorflow/third_party
+include_directories(
+  ${TSL_SOURCE_DIR}
+)
 # Download necessary dependencies.
 # Download pthreadpool source package if it doesn't exist.
 if(SYSTEM_PTHREADPOOL)
@@ -267,6 +272,8 @@ populate_tflite_source_vars("core/acceleration/configuration" TFLITE_CORE_ACCELE
 populate_tflite_source_vars("core/api" TFLITE_CORE_API_SRCS)
 populate_tflite_source_vars("core/async" TFLITE_CORE_ASYNC_SRCS)
 populate_tflite_source_vars("core/async/c" TFLITE_CORE_ASYNC_C_SRCS)
+populate_tflite_source_vars("core/async/interop" TFLITE_CORE_ASYNC_INTEROP_SRCS)
+populate_tflite_source_vars("core/async/interop/c" TFLITE_CORE_ASYNC_INTEROP_C_SRCS)
 populate_tflite_source_vars("core/c" TFLITE_CORE_C_SRCS)
 populate_tflite_source_vars("core/experimental/acceleration/configuration" TFLITE_CORE_EXPERIMENTAL_SRCS)
 populate_tflite_source_vars("core/kernels" TFLITE_CORE_KERNELS_SRCS)
@@ -546,7 +553,13 @@ set(TFLITE_PROFILER_SRCS
   ${TFLITE_SOURCE_DIR}/profiling/root_profiler.h
   ${TFLITE_SOURCE_DIR}/profiling/root_profiler.cc
   ${TFLITE_SOURCE_DIR}/profiling/telemetry/profiler.cc
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/profiler.h
   ${TFLITE_SOURCE_DIR}/profiling/telemetry/telemetry.cc
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/c/telemetry_setting_internal.cc
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/c/telemetry_setting_internal.h
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/c/profiler.h
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/c/telemetry_setting.h
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/telemetry_status.h
 )
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
   list(APPEND TFLITE_PROFILER_SRCS
@@ -570,6 +583,8 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_CORE_SRCS}
   ${TFLITE_CORE_ASYNC_SRCS}
   ${TFLITE_CORE_ASYNC_C_SRCS}
+  ${TFLITE_CORE_ASYNC_INTEROP_SRCS}
+  ${TFLITE_CORE_ASYNC_INTEROP_C_SRCS}
   ${TFLITE_CORE_TOOLS_SRCS}
   ${TFLITE_C_SRCS}
   ${TFLITE_DELEGATES_FLEX_SRCS}

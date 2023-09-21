@@ -230,6 +230,7 @@ typedef enum {
   kTfLiteBuiltinStablehloWhile = 200,
   kTfLiteBuiltinStablehloGather = 201,
   kTfLiteBuiltinStablehloTranspose = 202,
+  kTfLiteBuiltinDilate = 203,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

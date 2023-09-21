@@ -18,7 +18,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/env_time.h"
+#include "tsl/platform/env_time.h"
 
 namespace tensorflow {
 using tsl::EnvTime;  // NOLINT

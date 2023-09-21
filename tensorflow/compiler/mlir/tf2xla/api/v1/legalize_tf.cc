@@ -30,13 +30,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_to_hlo.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/xla.pb.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/xla.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tensorflow/tsl/platform/error_logging.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/error_logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {

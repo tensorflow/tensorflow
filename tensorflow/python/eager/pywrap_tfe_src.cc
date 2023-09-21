@@ -71,10 +71,10 @@ limitations under the License.
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/stack_trace.h"
 #include "tensorflow/python/util/util.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/stringprintf.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/stringprintf.h"
+#include "tsl/platform/thread_annotations.h"
+#include "tsl/profiler/lib/traceme.h"
 
 using tensorflow::Status;
 using tensorflow::string;

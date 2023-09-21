@@ -63,8 +63,7 @@ _UnitWiseQuantizationSpec = tf_export.tf_export(
     'quantization.experimental.UnitWiseQuantizationSpec'
 )(quant_opts_pb2.UnitWiseQuantizationSpec)
 
-_Method = _QuantizationMethod.Method
-_ExperimentalMethod = _QuantizationMethod.ExperimentalMethod
+_PresetMethod = _QuantizationMethod.PresetMethod
 _CalibrationMethod = quant_opts_pb2.CalibrationOptions.CalibrationMethod
 
 _QuantizationComponent = _QuantizationComponentSpec.QuantizationComponent
@@ -679,7 +678,7 @@ def _add_calibration_statistics(
         node_def.attr['min'].f = min_value
         node_def.attr['max'].f = max_value
       except ValueError:
-        logging.warn(
+        logging.warning(
             (
                 'CustomAggregator id "%s" from FunctionDef "%s" does not have '
                 'min or max values. Parts of this function are not quantized.'
@@ -983,8 +982,6 @@ def _dynamic_range_quantize(
 ) -> autotrackable.AutoTrackable:
   """Quantizes the given SavedModel via post-training dynamic range quantization.
 
-  Weight-only quantization also uses this path.
-
   Args:
     saved_model_path: Path to the saved model.
     output_directory: The path to save the output SavedModel. The directory will
@@ -998,13 +995,7 @@ def _dynamic_range_quantize(
   Raises:
     ValueError: when the model is QAT model.
   """
-  if (
-      quantization_options.quantization_method.experimental_method
-      == _ExperimentalMethod.WEIGHT_ONLY
-  ):
-    mode_str = 'weight-only quantization'
-  else:
-    mode_str = 'dynamic-range quantization'
+  mode_str = 'dynamic-range quantization'
   if _is_qat_saved_model(saved_model_path):
     raise ValueError(
         'The models trained with quantization-aware training (QAT) is not '
@@ -1015,23 +1006,6 @@ def _dynamic_range_quantize(
       'Running post-training %s on model: %s', mode_str, saved_model_path
   )
   logging.info('QuantizationOptions: \n%s', quantization_options)
-
-  # Check default quantization option values for post-training dynamic range
-  # quantization case.
-  # TODO(b/242805842): Find good minimum_elements_for_weights number for server.
-  # please also update default value in tflite converter:
-  # tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.cc;l=201
-  if quantization_options.min_num_elements_for_weights == 0:
-    quantization_options.min_num_elements_for_weights = (
-        _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
-    )
-    logging.warn(
-        (
-            'QuantizationOptions.min_num_elements_for_weights is not set (0). '
-            'Setting to the default value: %s.'
-        ),
-        _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
-    )
 
   loader = saved_model_loader.SavedModelLoader(saved_model_path)
 
@@ -1055,6 +1029,77 @@ def _dynamic_range_quantize(
       saved_model_path,
       quantization_options.signature_keys,
       quantization_options.tags,
+  )
+
+  save_model.save_model_v1(
+      exported_model.graph_def,
+      output_directory,
+      signature_def_map,
+      quantization_options.tags,
+      init_op_name=exported_model.init_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
+      checkpoint_dir=exported_model.checkpoint_dir,
+      function_aliases=exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
+  )
+  _copy_assets(saved_model_path, output_directory)
+
+  return saved_model_load.load(output_directory)
+
+
+def _weight_only_quantize(
+    saved_model_path: str,
+    output_directory: str,
+    quantization_options: quant_opts_pb2.QuantizationOptions,
+) -> autotrackable.AutoTrackable:
+  """Quantizes the given SavedModel via weight-only quantization.
+
+  Args:
+    saved_model_path: Path to the saved model.
+    output_directory: The path to save the output SavedModel. The directory will
+      be overwritten if not empty.
+    quantization_options: QuantizationOptions proto describing quantization
+      related config.
+
+  Returns:
+    A SavedModel object with TF quantization applied.
+
+  Raises:
+    ValueError: when the model is QAT model.
+  """
+  mode_str = 'weight-only quantization'
+
+  # QAT weight-only is not supported yet.
+  if _is_qat_saved_model(saved_model_path):
+    raise ValueError(
+        'The models trained with quantization-aware training (QAT) is not '
+        'supported for %s.' % mode_str
+    )
+
+  logging.info(
+      'Running post-training %s on model: %s', mode_str, saved_model_path
+  )
+  logging.info('QuantizationOptions: \n%s', quantization_options)
+
+  loader = saved_model_loader.SavedModelLoader(saved_model_path)
+
+  function_aliases = loader.get_meta_graph_def_from_tags(
+      quantization_options.tags
+  ).meta_info_def.function_aliases
+
+  exported_model_serialized = pywrap_quantize_model.quantize_weight_only(
+      saved_model_path,
+      quantization_options.SerializeToString(),
+      dict(function_aliases),
+  )
+
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized
+  )
+  signature_def_map = save_model.get_signatures_from_saved_model(
+      saved_model_path,
+      list(quantization_options.signature_keys),
+      set(quantization_options.tags),
   )
 
   save_model.save_model_v1(
@@ -1113,7 +1158,7 @@ def _populate_quantization_component_spec(
   """
   quant_method: _QuantizationMethod = quantization_options.quantization_method
 
-  if quantization_options.unit_wise_quantization_spec:
+  if quantization_options.unit_wise_quantization_specs:
     raise ValueError('Selective quantization is not supported yet.')
 
   # Make sure creating one spec per component.
@@ -1121,8 +1166,8 @@ def _populate_quantization_component_spec(
 
   # Populate default configuration.
   if (
-      quant_method.experimental_method == _ExperimentalMethod.STATIC_RANGE
-      or quant_method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE
+      quant_method.preset_method == _PresetMethod.METHOD_STATIC_RANGE_INT8
+      or quant_method.preset_method == _PresetMethod.METHOD_DYNAMIC_RANGE_INT8
   ):
     updated_component_spec[_QuantizationComponent.COMPONENT_ACTIVATION] = (
         _QuantizationComponentSpec(
@@ -1180,12 +1225,13 @@ def _populate_quantization_component_spec(
   )
 
   if (
-      quant_method.experimental_method == _ExperimentalMethod.STATIC_RANGE
-      or quant_method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE
+      quant_method.preset_method == _PresetMethod.METHOD_STATIC_RANGE_INT8
+      or quant_method.preset_method == _PresetMethod.METHOD_DYNAMIC_RANGE_INT8
   ) and (len(quant_method.quantization_component_specs) != 3):
     raise ValueError('Only 3 components are needed for', quant_method)
   elif (
-      quant_method.experimental_method == _ExperimentalMethod.WEIGHT_ONLY
+      quant_method.preset_method
+      == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
   ) and len(quant_method.quantization_component_specs) != 1:
     raise ValueError('At least one component spec needs to be specified.')
 
@@ -1208,8 +1254,7 @@ def _populate_calibration_options(
     calib_opts.calibration_method = (
         _CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
     )
-
-  if (
+  elif (
       calib_opts.calibration_method
       == _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE
   ):
@@ -1219,6 +1264,27 @@ def _populate_calibration_options(
       calib_opts.calibration_parameters.min_percentile = 0.001
     if not calib_opts.calibration_parameters.max_percentile:
       calib_opts.calibration_parameters.max_percentile = 99.999
+  # Check the activation_tensor_type of HISTOGRAM_MSE methods.
+  elif calib_opts.calibration_method in [
+      _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
+      _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
+      _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
+  ]:
+    activation_tensor_type = (
+        quantization_options.quantization_method.quantization_component_specs[
+            _QuantizationComponent.COMPONENT_ACTIVATION
+        ].tensor_type
+    )
+    # Unlike the HISTOGRAM_PERCENTILE method, the HISTOGRAM_MSE method uses
+    # num_bits because it actually quantizes and dequantizes values.
+    if activation_tensor_type != _TensorType.TENSORTYPE_INT_8:
+      raise ValueError(
+          'Only TENSORTYPE_INT_8 is supported for HISTOGRAM_MSE calibration'
+          f' methods. calibration_method={calib_opts.calibration_method}'
+      )
+
+    if not calib_opts.calibration_parameters.initial_num_bins:
+      calib_opts.calibration_parameters.initial_num_bins = 256
 
 
 def _populate_quantization_options_default_values(
@@ -1249,13 +1315,36 @@ def _populate_quantization_options_default_values(
     )
 
   if not quantization_options.HasField('freeze_all_variables'):
-    quantization_options.freeze_all_variables.enabled = True
+    quantization_options.freeze_all_variables = True
+
+  # Check default quantization option values for weight-only quantization.
+  # TODO(b/242805842): Find good minimum_elements_for_weights number for server.
+  # please also update default value in tflite converter:
+  # tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.cc;l=201
+  if (
+      quantization_options.quantization_method.preset_method
+      == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
+  ) or (
+      quantization_options.quantization_method.preset_method
+      == _PresetMethod.METHOD_DYNAMIC_RANGE_INT8
+  ):
+    if quantization_options.min_num_elements_for_weights == 0:
+      quantization_options.min_num_elements_for_weights = (
+          _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
+      )
+      logging.warn(
+          (
+              'QuantizationOptions.min_num_elements_for_weights is not set (0).'
+              ' Setting to the default value: %d.'
+          ),
+          _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
+      )
 
   # TODO(b/281595329): Implement static range quantization per-channel support
   if quantization_options.enable_per_channel_quantization and not (
       quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
-      or quantization_options.quantization_method.experimental_method
-      == _ExperimentalMethod.WEIGHT_ONLY
+      or quantization_options.quantization_method.preset_method
+      == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
   ):
     raise ValueError(
         'Currently, per-channel quantization is supported for Uniform '
@@ -1263,8 +1352,8 @@ def _populate_quantization_options_default_values(
     )
 
   if (
-      quantization_options.quantization_method.experimental_method
-      == _ExperimentalMethod.WEIGHT_ONLY
+      quantization_options.quantization_method.preset_method
+      == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
       and (
           quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
           or quantization_options.op_set == quant_opts_pb2.OpSet.TF
@@ -1272,21 +1361,27 @@ def _populate_quantization_options_default_values(
   ):
     raise ValueError('TF/Uniform quantized opset does not support weight-only.')
 
-  # Converter assumes options are specified. So set SRQ explicitly.
-  if (
-      quantization_options.quantization_method.experimental_method
-      == _ExperimentalMethod.EXPERIMENTAL_METHOD_UNSPECIFIED
+  if (quantization_options.op_set == quant_opts_pb2.OpSet.STABLEHLO) and (
+      quantization_options.quantization_method.preset_method
+      != _PresetMethod.METHOD_STATIC_RANGE_INT8
   ):
-    logging.debug(
-        '"experimental_method" for QuantizationMethod is not specified.'
-        'Static range quantization is used by default.'
-    )
-    quantization_options.quantization_method.experimental_method = (
-        _ExperimentalMethod.STATIC_RANGE
+    raise ValueError(
+        'StableHLO quantized opset currently only supports static range'
+        ' quantization via TF Quantizer.'
     )
 
-  # Check and populate calibration options.
-  _populate_calibration_options(quantization_options)
+  # Converter assumes options are specified. So set SRQ explicitly.
+  if (
+      quantization_options.quantization_method.preset_method
+      == _PresetMethod.METHOD_UNSPECIFIED
+  ):
+    logging.debug(
+        '"preset_method" for QuantizationMethod is not specified.'
+        'Static range quantization is used by default.'
+    )
+    quantization_options.quantization_method.preset_method = (
+        _PresetMethod.METHOD_STATIC_RANGE_INT8
+    )
 
   if quantization_options.HasField('debugger_options'):
     if not quantization_options.debugger_options.log_dir_path:
@@ -1312,6 +1407,13 @@ def _populate_quantization_options_default_values(
 
   # Check and populate quantization component spec
   _populate_quantization_component_spec(quantization_options)
+
+  if (
+      quantization_options.quantization_method.preset_method
+      == _PresetMethod.METHOD_STATIC_RANGE_INT8
+  ):
+    # Check and populate calibration options.
+    _populate_calibration_options(quantization_options)
 
 
 @tf_export.tf_export('quantization.experimental.quantize_saved_model')
@@ -1401,8 +1503,7 @@ def quantize(
       for enabling static range quantization, 2) invalid value is provided as
       a quantization method, or 3) provide representative dataset via both
       argument and QuantizationOptions.
-    NotImplementedError: When the specified quantization method is not yet
-      implemented.
+    ValueError: When the specified quantization method is not yet supported.
   """
   _verify_output_dir(output_directory, overwrite_output_directory)
 
@@ -1430,29 +1531,32 @@ def quantize(
     ).load()
 
   method: _QuantizationMethod = quantization_options.quantization_method
-  if method.HasField('method'):
-    raise ValueError(f'Invalid value for QuantizationMethod: {method.method}.')
-  elif method.HasField('experimental_method'):
-    if method.experimental_method == _ExperimentalMethod.STATIC_RANGE:
-      return _static_range_quantize(
-          saved_model_path,
-          output_directory,
-          quantization_options,
-          representative_dataset,
-      )
-    elif (
-        method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE
-        or method.experimental_method == _ExperimentalMethod.WEIGHT_ONLY
-    ):
-      return _dynamic_range_quantize(
-          saved_model_path,
-          output_directory,
-          quantization_options,
-      )
-    else:
-      raise NotImplementedError(
-          'Experimental quantization method {method.experimental_method}'
-          ' is not implemented.'
-      )
+  if method.preset_method == _PresetMethod.METHOD_STATIC_RANGE_INT8:
+    return _static_range_quantize(
+        saved_model_path,
+        output_directory,
+        quantization_options,
+        representative_dataset,
+    )
+  elif (method.preset_method == _PresetMethod.METHOD_DYNAMIC_RANGE_INT8) or (
+      method.preset_method == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
+      and quantization_options.enable_legacy_weight_only
+  ):
+    return _dynamic_range_quantize(
+        saved_model_path,
+        output_directory,
+        quantization_options,
+    )
+  elif (
+      method.preset_method == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
+      and not quantization_options.enable_legacy_weight_only
+  ):
+    return _weight_only_quantize(
+        saved_model_path,
+        output_directory,
+        quantization_options,
+    )
   else:
-    raise ValueError(f'Invalid value for QuantizationMethod: {method.method}.')
+    raise ValueError(
+        'Quantization method {method.preset_method} is not supported.'
+    )

@@ -49,8 +49,8 @@ cc_library(
     hdrs = ["execute.h"],
     deps = [
         ":context",
-        "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/log",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -125,8 +125,8 @@ cc_library(
         ":execute",
         ":future",
         ":value",
-        "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -155,11 +155,11 @@ tf_cc_test(
         ":interpreter_testutil",
         "//tensorflow/core/platform:test_benchmark",
         "//tensorflow/core/tfrt/mlrt/bytecode:executable",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:status_matchers",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status_matchers",
         "@tf_runtime//:hostcontext",
     ],
 )
@@ -188,7 +188,7 @@ tf_cc_test(
     srcs = ["future_test.cc"],
     deps = [
         ":future",
-        "//tensorflow/tsl/platform:status_matchers",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
     ],
 )

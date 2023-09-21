@@ -16,10 +16,10 @@ limitations under the License.
 include "mlir/Pass/PassBase.td"
 
 // Internal TF2XLA Bridge Passes used during interence only.
-def InferenceMetricsPass : Pass<"tf2xla-inference-metrics-pass", "mlir::func::FuncOp"> {
-  let summary = "A pass to go over a function and collection various metrics";
+def InferenceMetricsPass : Pass<"tf2xla-inference-metrics-pass", "ModuleOp"> {
+  let summary = "A pass to go over a Module and collect various metrics";
   let description = [{
-    Collects metrics about compiled functions during inference such as which ops are used.
+    Collects metrics about a Module during inference, such as which ops are used.
   }];
   let constructor = "internal::CreateInferenceMetricsPass()";
 }

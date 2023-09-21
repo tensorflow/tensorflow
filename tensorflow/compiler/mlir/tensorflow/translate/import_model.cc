@@ -86,7 +86,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -95,8 +94,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -137,7 +135,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
@@ -1972,11 +1970,7 @@ mlir::Operation* ImporterBase::CreateOperation(
                                  void>::getResultSegmentSizeAttr());
     }
   }
-  inner_op->walk([&](mlir::Operation* op) {
-    EncodeSharding(op, mlir::TF::kXlaShardingAttrName);
-    EncodeSharding(op, mlir::TF::kShardingAttrName);
-    EncodeSharding(op, mlir::TF::kManualShardingAttrName);
-  });
+
   if (VLOG_IS_ON(1)) {
     mlir::OperationName name = inner_op->getName();
     if (!name.isRegistered() &&

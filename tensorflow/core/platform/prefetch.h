@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_PREFETCH_H_
 #define TENSORFLOW_CORE_PLATFORM_PREFETCH_H_
 
-#include "tensorflow/tsl/platform/prefetch.h"
+#include "tsl/platform/prefetch.h"
 
 namespace tensorflow {
 namespace port {

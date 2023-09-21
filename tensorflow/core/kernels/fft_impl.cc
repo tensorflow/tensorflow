@@ -30,10 +30,10 @@ limitations under the License.
 #include "ducc/src/ducc0/fft/fftnd_impl.h"  // from @ducc  // NOLINT: DUCC definitions.
 #include "ducc/src/ducc0/infra/mav.h"  // from @ducc
 #include "ducc/src/ducc0/infra/threading.h"  // from @ducc
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/tsl/framework/numeric_types.h"
+#include "tsl/framework/numeric_types.h"
 
 namespace tensorflow {
 namespace internal {

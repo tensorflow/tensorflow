@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/status.h"
 
 #include "tensorflow/core/common_runtime/gpu_fusion_pass.h"
 

@@ -26,18 +26,20 @@ load(
     "tf_cc_fuzz_test",
 )
 
+default_visibility = [
+    "//tensorflow/core:__subpackages__",
+    "//tensorflow/security/fuzzing:__subpackages__",
+    # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
+    "@local_tsl//tsl/lib:__subpackages__",
+    # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
+    # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
+    # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",
+    "//tensorflow/cc/saved_model:__subpackages__",
+]
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow/core:__subpackages__",
-        "//tensorflow/security/fuzzing:__subpackages__",
-        # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
-        "//tensorflow/tsl/lib:__subpackages__",
-        # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
-        # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
-        # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",
-        "//tensorflow/cc/saved_model:__subpackages__",
-    ],
+    default_visibility = default_visibility,
     licenses = ["notice"],
 )
 
@@ -257,7 +259,7 @@ filegroup(
         "versions.h",
         "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework/registration:registration.h",
-        "//tensorflow/tsl/framework:device_type.h",
+        "@local_tsl//tsl/framework:device_type.h",
     ],
 )
 
@@ -340,7 +342,7 @@ filegroup(
         "variant_op_registry.h",
         "variant_tensor_data.cc",
         "variant_tensor_data.h",
-        "//tensorflow/tsl/framework:device_type.h",
+        "@local_tsl//tsl/framework:device_type.h",
     ],
 )
 
@@ -488,9 +490,9 @@ cc_library(
     deps = [
         ":numeric_types",
         ":type_traits",
-        "//tensorflow/tsl/framework:allocator",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@local_tsl//tsl/framework:allocator",
     ] + if_static(
         extra_deps = [
             ":allocator_registry_impl",
@@ -521,7 +523,7 @@ cc_library(
     name = "allocator_registry_impl",
     visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
-        "//tensorflow/tsl/framework:allocator_registry_impl",
+        "@local_tsl//tsl/framework:allocator_registry_impl",
     ],
     alwayslink = 1,
 )
@@ -549,10 +551,10 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
-        "//third_party/eigen3",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -643,7 +645,7 @@ cc_library(
         ":numeric_types",
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:types",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
 )
@@ -657,7 +659,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/framework:numeric_types",
+        "@local_tsl//tsl/framework:numeric_types",
     ],
 )
 
@@ -667,7 +669,7 @@ cc_library(
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
         "//tensorflow/core/platform:macros",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -700,7 +702,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/util:overflow",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
 )
@@ -708,6 +710,9 @@ cc_library(
 cc_library(
     name = "resource_base",
     hdrs = ["resource_base.h"],
+    visibility = default_visibility + [
+        "//learning/brain/google/data/core/kernels:__pkg__",
+    ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/lib/core:status",
@@ -776,7 +781,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/platform:logging",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -787,7 +792,7 @@ cc_library(
     deps = [
         ":numeric_types",
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/framework:type_traits",
+        "@local_tsl//tsl/framework:type_traits",
     ],
 )
 
@@ -862,11 +867,11 @@ tf_cuda_library(
         "//tensorflow/core/platform:types",
         "//tensorflow/core/public:version",
         "//tensorflow/core/util:managed_stack_trace",
-        "//tensorflow/tsl/framework:device_type",
-        "//tensorflow/tsl/util:byte_swap_array",
-        "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/framework:device_type",
+        "@local_tsl//tsl/util:byte_swap_array",
     ],
     alwayslink = 1,
 )
@@ -918,11 +923,11 @@ cc_library(
         "//tensorflow/core/util:einsum_op_util",
         "//tensorflow/core/util:padding",
         "//tensorflow/core/util:tensor_format",
-        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -1177,7 +1182,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:array",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -1210,9 +1215,9 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:matmul_op",
-        "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -1237,7 +1242,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:ops_util",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -1369,13 +1374,13 @@ tf_cc_tests(
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "//tensorflow/core/util:protos_test_cc",
-        "//third_party/eigen3",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -1806,9 +1811,9 @@ tf_proto_library(
         ":tensor_proto",
         ":tensor_shape_proto",
         ":types_proto",
-        "//tensorflow/tsl/protobuf:histogram_proto",
+        "@local_tsl//tsl/protobuf:histogram_proto",
     ],
-    exports = ["//tensorflow/tsl/protobuf:histogram_proto"],
+    exports = ["@local_tsl//tsl/protobuf:histogram_proto"],
 )
 
 tf_proto_library(
@@ -1907,7 +1912,7 @@ tf_cc_fuzz_test(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
-        "//tensorflow/tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )
 
@@ -1921,7 +1926,7 @@ tf_cc_fuzz_test(
         "//tensorflow/security/fuzzing/cc/core/framework:datatype_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
-        "//tensorflow/tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )
 

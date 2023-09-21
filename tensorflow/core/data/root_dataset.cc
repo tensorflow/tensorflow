@@ -59,7 +59,6 @@ inline int64_t value_or_default(int64_t x, int64_t y, int64_t z) {
 }
 
 void SetRootDatasetParams(const Options& options, RootDataset::Params* params) {
-  LOG(INFO) << "`tf.data.Options` values set are " << options.DebugString();
   if (ShouldConfigureMaxIntraOpParallelism(options)) {
     params->max_intra_op_parallelism =
         options.threading_options().max_intra_op_parallelism();

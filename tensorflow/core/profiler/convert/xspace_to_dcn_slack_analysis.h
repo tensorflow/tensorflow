@@ -23,12 +23,12 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {

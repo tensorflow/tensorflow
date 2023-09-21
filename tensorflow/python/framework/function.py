@@ -1379,5 +1379,7 @@ _DTYPE_TO_STR = {
     dtypes.qint32: "qi32",
     dtypes.bfloat16: "b16",
     dtypes.float8_e5m2: "f8e5m2",
-    dtypes.float8_e4m3fn: "f8e4m3fn"
+    dtypes.float8_e4m3fn: "f8e4m3fn",
+    dtypes.int4: "i4",
+    dtypes.uint4: "u4",
 }

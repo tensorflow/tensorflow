@@ -20,8 +20,6 @@ cc_library(
         "//tensorflow/compiler/jit:xla_cluster_util",
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/jit:xla_gpu_jit",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -31,6 +29,8 @@ cc_library(
         "//tensorflow/core:test_main",
         "//tensorflow/tools/optimization:optimization_pass_runner_lib",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla:statusor",
     ],
 )
 
@@ -67,7 +67,6 @@ cc_library(
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/jit:xla_gpu_device",
         "//tensorflow/compiler/jit:xla_gpu_jit",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -80,6 +79,7 @@ cc_library(
         "//tensorflow/core/platform:path",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/service:hlo_proto_cc",
     ],
 )
 

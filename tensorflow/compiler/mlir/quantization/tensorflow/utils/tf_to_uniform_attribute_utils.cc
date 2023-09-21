@@ -42,8 +42,7 @@ limitations under the License.
 
 namespace mlir::quant {
 
-using QuantMethod =
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 
 enum class OpType {
   kDynamicRangeOp,  // Dynamic Range kernels only have rhs attr.
@@ -232,7 +231,7 @@ LogicalResult FillAttributesForUniformQuantizedDotOp(
   NamedAttrList attrs;
 
   if (quantization_method ==
-      tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {
+      tensorflow::quantization::QuantizationMethod::METHOD_DYNAMIC_RANGE_INT8) {
     // Fill quantization related attributes for Hybrid op.
     if (failed(FillQuantizationAttributes(rewriter, op, attrs,
                                           identifier_to_attr,
@@ -311,7 +310,7 @@ LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
       feature_group_cnt_attr, rewriter.getI64IntegerAttr(feature_group_cnt)));
 
   if (quantization_method ==
-      tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {
+      tensorflow::quantization::QuantizationMethod::METHOD_DYNAMIC_RANGE_INT8) {
     // Fill quantization related attributes for Hybrid op.
     if (failed(FillQuantizationAttributes(rewriter, op, attrs,
                                           identifier_to_attr,
@@ -327,7 +326,7 @@ LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
   }
 
   if (quantization_method !=
-      tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {
+      tensorflow::quantization::QuantizationMethod::METHOD_DYNAMIC_RANGE_INT8) {
     // Per-channel activation is not supported
     attrs.push_back(rewriter.getNamedAttr("lhs_quantization_axis",
                                           rewriter.getI64IntegerAttr(-1)));

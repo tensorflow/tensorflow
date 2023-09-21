@@ -20,8 +20,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/synchronization/blocking_counter.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace tfrt_stub {

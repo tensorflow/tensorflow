@@ -19,8 +19,7 @@ cc_library(
     hdrs = ["dtensor_mlir_passes_internal.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:str_util",
@@ -43,7 +42,6 @@ cc_library(
         "//tensorflow/dtensor/mlir:tf_dtensor_dialect",
         "//tensorflow/dtensor/mlir:value_utils",
         "//tensorflow/dtensor/mlir/dtensor_dialect:ir/dtensor_attributes",
-        "//tensorflow/tsl/util:env_var",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
@@ -53,5 +51,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/util:env_var",
+        "@local_xla//xla:xla_data_proto_cc",
     ],
 )

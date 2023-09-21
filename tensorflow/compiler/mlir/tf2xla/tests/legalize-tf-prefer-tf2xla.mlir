@@ -99,19 +99,19 @@ func.func @random_uniform_with_seeds(%arg0: tensor<4xi32>) -> tensor<32x12x12x64
 
 // CHECK-LABEL: simple_strided_slice
 func.func @simple_strided_slice(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
+  // CHECK: %0 = mhlo.constant dense<[0, 1]> : tensor<2xi32>
+  // CHECK-NEXT: %1 = mhlo.constant dense<[3, 7]> : tensor<2xi32>
+  // CHECK-NEXT: %2 = mhlo.constant dense<[1, 3]> : tensor<2xi32>
+  // CHECK-NEXT: %3 = "tf.StridedSlice"(%arg0, %0, %1, %2) : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x2xf32>
   %begin = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> (tensor<2xi32>)
   %end = "tf.Const"() {value = dense<[3, 7]> : tensor<2xi32>} : () -> (tensor<2xi32>)
   %strides = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
 
-  // CHECK: mhlo.slice
-  // CHECK-DAG-SAME: start_indices = dense<[0, 1]>
-  // CHECK-DAG-SAME: limit_indices = dense<[3, 7]>
-  // CHECK-DAG-SAME: strides = dense<[1, 3]>
-  // CHECK-SAME: -> tensor<3x2xf32>
-
+  // expected-remark@+1 {{failed to create tf2xla kernel: INVALID_ARGUMENT: NodeDef missing attrs 'shrink_axis_mask', 'new_axis_mask', 'begin_mask', 'ellipsis_mask', 'end_mask' from Op<name=StridedSlice; signature=input:T, begin:Index, end:Index, strides:Index -> output:T; attr=T:type; attr=Index:type,allowed=[DT_INT16, DT_INT32, DT_INT64]; attr=begin_mask:int,default=0; attr=end_mask:int,default=0; attr=ellipsis_mask:int,default=0; attr=new_axis_mask:int,default=0; attr=shrink_axis_mask:int,default=0>; NodeDef: {{node tf.StridedSlice}}}}
   %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
       : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x2xf32>
   func.return %output : tensor<3x2xf32>
+  // CHECK: return %3 : tensor<3x2xf32>
 }
 
 //===----------------------------------------------------------------------===//

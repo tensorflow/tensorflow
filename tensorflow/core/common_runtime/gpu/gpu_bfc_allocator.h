@@ -20,9 +20,9 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "tensorflow/tsl/framework/allocator.h"
-#include "tensorflow/tsl/framework/bfc_allocator.h"
-#include "tensorflow/tsl/platform/macros.h"
+#include "tsl/framework/allocator.h"
+#include "tsl/framework/bfc_allocator.h"
+#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 

@@ -467,6 +467,7 @@ enum BuiltinOperator : int32 {
   STABLEHLO_WHILE = 200, // WARNING: No runtime support
   STABLEHLO_GATHER = 201, // WARNING: No runtime support
   STABLEHLO_TRANSPOSE = 202, // WARNING: No runtime support
+  DILATE = 203,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -621,6 +622,7 @@ union BuiltinOptions2{
   StablehloWhileOptions,
   StablehloGatherOptions,
   StablehloTransposeOptions,
+  DilateOptions,
 }
 
 table StablehloGatherOptions{
@@ -1408,6 +1410,9 @@ table BitwiseXorOptions {
 }
 
 table RightShiftOptions {
+}
+
+table DilateOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

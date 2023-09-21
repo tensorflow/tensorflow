@@ -128,6 +128,7 @@ STABLE_FRAMEWORK_LIB_HDRS = [
     "model.h",
     "model_builder.h",
     "interpreter_builder.h",
+    "signature_runner.h",
     "mutable_op_resolver.h",
     "op_resolver.h",
     "stderr_reporter.h",
@@ -140,7 +141,6 @@ FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
     "interpreter_options.h",
     "logger.h",
     "optional_debug_tools.h",
-    "signature_runner.h",
 ]
 
 # Private header files that are included from the public API header files.
@@ -449,7 +449,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":string",
-        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -511,6 +511,7 @@ cc_library_with_tflite(
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core:signature_runner",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
@@ -588,6 +589,7 @@ cc_library(
 #
 # This target has restricted visibility; for a public target that exposes
 # these APIs, see 'framework_stable' above.
+#
 cc_library_with_tflite(
     name = "cc_api_stable",
     srcs = STABLE_FRAMEWORK_LIB_IMPL_HDRS,
@@ -597,6 +599,7 @@ cc_library_with_tflite(
         "interpreter_options.h",
         "model.h",
         "model_builder.h",
+        "signature_runner.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
@@ -950,8 +953,8 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -981,8 +984,8 @@ cc_test(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/testing:util",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -1311,7 +1314,7 @@ cc_library(
     name = "stateful_error_reporter",
     hdrs = ["stateful_error_reporter.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["//tensorflow/lite/core/api"],
+    deps = ["//tensorflow/lite/core/api:error_reporter"],
 )
 
 # Shared lib target for convenience, pulls in the core runtime and builtin ops.

@@ -15,9 +15,9 @@ cc_library(
         "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_tensor_hdrs",
-        "//tensorflow/compiler/xla/c:c_api_decl",
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
+        "@local_xla//xla/c:c_api_decl",
+        "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
+        "@local_xla//xla/stream_executor/tpu:c_api_decl",
     ],
 )
 
@@ -29,7 +29,7 @@ cc_library(
     deps = [
         ":plugin_c_api_hdrs",
         "//tensorflow/core/platform:logging",
-        "//tensorflow/tsl/platform:env",
+        "@local_tsl//tsl/platform:env",
         "@tf_runtime//:hostcontext_alwayslink",
     ],
 )
@@ -54,7 +54,7 @@ tf_cc_shared_object(
     visibility = ["//tensorflow/c:__subpackages__"],
     deps = [
         ":plugin_c_api_hdrs",
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+        "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
     ],
 )
 
@@ -64,7 +64,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf_rendezvous_c_api",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
+        "@local_xla//xla/stream_executor/tpu:c_api_decl",
     ],
 )
 
@@ -103,18 +103,18 @@ cc_library(
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_tensor_hdrs",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/tsl/framework:allocator",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/framework:allocator",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/stream_executor/tpu:c_api_decl",
     ],
 )
 
@@ -134,12 +134,12 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/tsl/framework:allocator",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/framework:allocator",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -168,13 +168,13 @@ tf_cc_test(
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/tsl/framework:allocator",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/framework:allocator",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -194,10 +194,10 @@ cc_library(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -212,9 +212,9 @@ cc_library(
         "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -229,6 +229,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/framework:types_proto_cc",
-        "//tensorflow/tsl/framework:allocator",
+        "@local_tsl//tsl/framework:allocator",
     ],
 )

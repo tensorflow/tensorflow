@@ -42,12 +42,12 @@ limitations under the License.
 #include "re2/re2.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/tsl/lib/io/buffered_file.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/file_system.h"
-#include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/stringpiece.h"
+#include "tsl/lib/io/buffered_file.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/file_system.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/stringpiece.h"
 // IWYU pragma: no_include "util/regexp/re2/re2.h"
 
 namespace tensorflow {

@@ -115,9 +115,9 @@ limitations under the License.
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/lite/version.h"
-#include "tensorflow/tsl/platform/fingerprint.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/tstring.h"
+#include "tsl/platform/fingerprint.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/tstring.h"
 
 using llvm::dyn_cast;
 using llvm::formatv;
@@ -1255,7 +1255,7 @@ BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
     const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
   const std::string attrs =
       op.getCustomOption().cast<mlir::TFL::ConstBytesAttr>().getValue().str();
-  std::vector<uint8_t> custom_option_vector(attrs.size());
+  std::vector<uint8_t> custom_option_vector(attrs.size(), 0);
   memcpy(custom_option_vector.data(), attrs.data(), attrs.size());
   auto opcode_index =
       GetOpcodeIndex(op.getCustomCode().str(), tflite::BuiltinOperator_CUSTOM);

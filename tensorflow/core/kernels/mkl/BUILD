@@ -29,14 +29,14 @@ MKL_SHORT_DEPS = [
 ] + mkl_deps()
 
 MKL_DEPS = MKL_SHORT_DEPS + [
-    "//third_party/eigen3",
+    "@eigen_archive//:eigen3",
     "//tensorflow/core:array_grad",
     "//tensorflow/core:math_grad",
     "//tensorflow/core:nn_grad",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/kernels:concat_lib",
     "//tensorflow/core/kernels:conv_2d",
-    "//tensorflow/tsl/framework/contraction:eigen_contraction_kernel",
+    "@local_tsl//tsl/framework/contraction:eigen_contraction_kernel",
     "//tensorflow/core/kernels:fill_functor",
     "//tensorflow/core/kernels:gather_functor",
     "//tensorflow/core/kernels:transpose_functor",
@@ -362,7 +362,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_softmax",
     deps = [
         "//tensorflow/core/graph:mkl_graph_util",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ] + MKL_SHORT_DEPS,
 )
 

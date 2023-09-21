@@ -137,7 +137,7 @@ py_strict_library(
     srcs = ["fenced_doctest_lib.py"],
     deps = [
         ":tf_doctest_lib",
-        "@astor_archive//:astor",
+        "@pypi_astor//:pkg",
     ],
 )
 

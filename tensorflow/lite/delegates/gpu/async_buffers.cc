@@ -75,7 +75,9 @@ absl::Status AsyncBuffer::AllocateOpenGlBuffer() {
       // If we can't map to SSBO, clear AHWB & SSBO
       if (ahwb_ != nullptr) {
 #if (__ANDROID__)
-        AHardwareBuffer_release(ahwb_);
+        if (__builtin_available(android 26, *)) {
+          AHardwareBuffer_release(ahwb_);
+        }
 #endif
         ahwb_ = nullptr;
       }
@@ -88,7 +90,7 @@ absl::Status AsyncBuffer::AllocateOpenGlBuffer() {
 
 // Public function which will map the AHWB (from class constructor) to a SSBO
 // and return the associated the id by reference
-absl::Status AsyncBuffer::GetOpenGlBufferReadView(GLuint& buffer_ref) {
+absl::Status AsyncBuffer::GetOpenGlBuffer(GLuint& buffer_ref) {
   if (!valid_) {
     absl::Status status = AllocateOpenGlBuffer();
     if (!status.ok()) {

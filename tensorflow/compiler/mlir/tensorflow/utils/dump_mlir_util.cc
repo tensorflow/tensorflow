@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/tsl/lib/io/buffered_file.h"
+#include "tsl/lib/io/buffered_file.h"
 
 using llvm::raw_ostream;
 

@@ -187,6 +187,8 @@ void TF_TensorBitcastFrom(const TF_Tensor* from, TF_DataType type,
   tsl::Set_TF_Status_from_Status(status, cc_status);
 }
 
+#endif  // LIBTPU_EXCLUDE_C_API_IMPL
+
 namespace tensorflow {
 
 void TensorInterface::Release() {
@@ -268,8 +270,6 @@ static void DeleteArray(void* data, size_t size, void* arg) {
   DCHECK_EQ(data, arg);
   delete[] reinterpret_cast<char*>(arg);
 }
-
-#endif  // LIBTPU_EXCLUDE_C_API_IMPL
 
 // Create an empty tensor of type 'dtype'. 'shape' can be arbitrary, but has to
 // result in a zero-sized tensor.

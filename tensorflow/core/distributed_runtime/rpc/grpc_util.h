@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/tsl/distributed_runtime/rpc/grpc_util.h"
+#include "tsl/distributed_runtime/rpc/grpc_util.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

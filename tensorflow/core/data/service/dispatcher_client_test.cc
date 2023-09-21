@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {

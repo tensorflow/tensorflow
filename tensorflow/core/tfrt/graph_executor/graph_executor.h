@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/stream.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/thread_annotations.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime

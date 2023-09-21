@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_tensor_utils.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 

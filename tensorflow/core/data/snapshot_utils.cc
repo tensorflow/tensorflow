@@ -47,11 +47,11 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tensorflow/tsl/lib/io/snappy/snappy_inputbuffer.h"
-#include "tensorflow/tsl/lib/io/snappy/snappy_outputbuffer.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/lib/io/snappy/snappy_inputbuffer.h"
+#include "tsl/lib/io/snappy/snappy_outputbuffer.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {

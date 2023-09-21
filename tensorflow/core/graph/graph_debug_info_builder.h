@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/platform/stack_frame.h"
-#include "tensorflow/tsl/platform/macros.h"
+#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 

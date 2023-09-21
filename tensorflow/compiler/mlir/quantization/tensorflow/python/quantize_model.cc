@@ -21,11 +21,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -61,9 +63,9 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace quantization {
@@ -474,8 +476,7 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
       },
       context, *module_ref));
 
-  const bool unfreeze_constants =
-      !quantization_options.freeze_all_variables().enabled();
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
 
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
 
@@ -544,8 +545,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
       },
       context, *module_ref));
 
-  const bool unfreeze_constants =
-      !quantization_options.freeze_all_variables().enabled();
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
 
   // `duplicate_shape_determining_constants = false` because the
@@ -621,8 +621,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
       },
       context, *module_ref));
 
-  const bool unfreeze_constants =
-      !quantization_options.freeze_all_variables().enabled();
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
 
   const auto export_opts = ExportOptions{
@@ -694,8 +693,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
       },
       context, *module_ref));
 
-  const bool unfreeze_constants =
-      !quantization_options.freeze_all_variables().enabled();
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
 
   const auto export_opts = ExportOptions{
@@ -703,6 +701,81 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
       checkpoint_dir,
       /*debug_name=*/
       absl::StrCat(kTfQuantPtqDynamicRangeStepName, kExportStepSuffix)};
+  TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
+                      RunExportPasses(export_opts, context, *module_ref));
+
+  return ConvertMlirModuleToExportedModel(
+      *module_ref, checkpoint_dir, updated_function_aliases,
+      {asset_file_defs.begin(), asset_file_defs.end()});
+}
+
+// TODO: b/297626257 - [Converter Component][TF-Quantizer] Clean up
+// quantize_model.cc by factoring out repeated codes
+absl::StatusOr<ExportedModel> QuantizeWeightOnly(
+    const absl::string_view saved_model_path,
+    const QuantizationOptions &quantization_options,
+    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
+  // Convert the SavedModelBundle to an MLIR module.
+  mlir::MLIRContext context = CreateMlirContextForTfQuantization();
+
+  MLIRImportOptions import_options;
+  import_options.upgrade_legacy = true;
+  import_options.lift_variables = false;
+  import_options.include_variables_in_initializers = true;
+  auto bundle = std::make_unique<SavedModelBundle>();
+
+  // TODO(b/213406917): Add support for the object graph based saved model input
+  std::vector<std::string> exported_names{
+      quantization_options.signature_keys().begin(),
+      quantization_options.signature_keys().end()};
+  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
+      SavedModelSignatureDefsToMlirImport(saved_model_path,
+                                          {quantization_options.tags().begin(),
+                                           quantization_options.tags().end()},
+                                          absl::MakeSpan(exported_names),
+                                          &context, import_options, &bundle);
+
+  if (!module.status().ok()) {
+    return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
+                                            module.status().message()));
+  }
+
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
+
+  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
+      UpdateFunctionAliases(function_aliases, *module_ref);
+
+  // Collect the names of the functions that have aliases so that they may not
+  // be inlined. The mapping is mlir function name - user defined function
+  // alias for each value in the set.
+  absl::flat_hash_set<std::string> aliased_function_names;
+  absl::c_for_each(updated_function_aliases, [&](const auto &aliases) {
+    return aliased_function_names.insert(aliases.first);
+  });
+
+  TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+      /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
+      /*is_inliner_run=*/true,
+      /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
+      bundle ? bundle->GetSession() : nullptr));
+
+  TF_QUANT_RETURN_IF_ERROR(RunPasses(
+      /*name=*/kTfQuantWeightOnlyStepName,
+      /*add_passes_func=*/
+      [&quantization_options](mlir::PassManager &pm) {
+        AddQuantizeWeightOnlyPasses(pm, quantization_options,
+                                    kTfQuantWeightOnlyStepName);
+      },
+      context, *module_ref));
+
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
+
+  const auto export_opts = ExportOptions{
+      /*duplicate_shape_determining_constants=*/true, unfreeze_constants,
+      checkpoint_dir,
+      /*debug_name=*/
+      absl::StrCat(kTfQuantWeightOnlyStepName, kExportStepSuffix)};
   TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
                       RunExportPasses(export_opts, context, *module_ref));
 

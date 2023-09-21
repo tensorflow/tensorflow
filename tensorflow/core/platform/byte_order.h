@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_BYTE_ORDER_H_
 #define TENSORFLOW_CORE_PLATFORM_BYTE_ORDER_H_
 
-#include "tensorflow/tsl/platform/byte_order.h"
+#include "tsl/platform/byte_order.h"
 
 namespace tensorflow {
 namespace port {

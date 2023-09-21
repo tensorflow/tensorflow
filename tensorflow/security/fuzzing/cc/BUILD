@@ -232,8 +232,8 @@ tf_cc_fuzz_test(
     name = "text_literal_reader_fuzz",
     srcs = ["text_literal_reader_fuzz.cc"],
     deps = [
-        "//tensorflow/compiler/xla:text_literal_reader",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/tsl/platform:env",
+        "@local_tsl//tsl/platform:env",
+        "@local_xla//xla:text_literal_reader",
+        "@local_xla//xla/service:hlo_parser",
     ],
 )

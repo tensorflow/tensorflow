@@ -47144,6 +47144,17 @@ func SparseReshape(scope *Scope, input_indices tf.Output, input_shape tf.Output,
 	return op.Output(0), op.Output(1)
 }
 
+// SparseSegmentMeanAttr is an optional argument to SparseSegmentMean.
+type SparseSegmentMeanAttr func(optionalAttr)
+
+// SparseSegmentMeanSparseGradient sets the optional sparse_gradient attribute to value.
+// If not specified, defaults to false
+func SparseSegmentMeanSparseGradient(value bool) SparseSegmentMeanAttr {
+	return func(m optionalAttr) {
+		m["sparse_gradient"] = value
+	}
+}
+
 // Computes the mean along sparse segments of a tensor.
 //
 // See `tf.sparse.segment_sum` for usage examples.
@@ -47158,15 +47169,20 @@ func SparseReshape(scope *Scope, input_indices tf.Output, input_shape tf.Output,
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `k`, the number of segments.
-func SparseSegmentMean(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output) (output tf.Output) {
+func SparseSegmentMean(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, optional ...SparseSegmentMeanAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SparseSegmentMean",
 		Input: []tf.Input{
 			data, indices, segment_ids,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -47223,6 +47239,17 @@ func SparseSegmentMeanGradV2(scope *Scope, grad tf.Output, indices tf.Output, se
 	return op.Output(0), op.Output(1)
 }
 
+// SparseSegmentMeanWithNumSegmentsAttr is an optional argument to SparseSegmentMeanWithNumSegments.
+type SparseSegmentMeanWithNumSegmentsAttr func(optionalAttr)
+
+// SparseSegmentMeanWithNumSegmentsSparseGradient sets the optional sparse_gradient attribute to value.
+// If not specified, defaults to false
+func SparseSegmentMeanWithNumSegmentsSparseGradient(value bool) SparseSegmentMeanWithNumSegmentsAttr {
+	return func(m optionalAttr) {
+		m["sparse_gradient"] = value
+	}
+}
+
 // Computes the mean along sparse segments of a tensor.
 //
 // Like `SparseSegmentMean`, but allows missing ids in `segment_ids`. If an id is
@@ -47240,18 +47267,34 @@ func SparseSegmentMeanGradV2(scope *Scope, grad tf.Output, indices tf.Output, se
 //
 // Returns Has same shape as data, except for dimension 0 which has size
 // `num_segments`.
-func SparseSegmentMeanWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
+func SparseSegmentMeanWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output, optional ...SparseSegmentMeanWithNumSegmentsAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SparseSegmentMeanWithNumSegments",
 		Input: []tf.Input{
 			data, indices, segment_ids, num_segments,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// SparseSegmentSqrtNAttr is an optional argument to SparseSegmentSqrtN.
+type SparseSegmentSqrtNAttr func(optionalAttr)
+
+// SparseSegmentSqrtNSparseGradient sets the optional sparse_gradient attribute to value.
+// If not specified, defaults to false
+func SparseSegmentSqrtNSparseGradient(value bool) SparseSegmentSqrtNAttr {
+	return func(m optionalAttr) {
+		m["sparse_gradient"] = value
+	}
 }
 
 // Computes the sum along sparse segments of a tensor divided by the sqrt of N.
@@ -47267,15 +47310,20 @@ func SparseSegmentMeanWithNumSegments(scope *Scope, data tf.Output, indices tf.O
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `k`, the number of segments.
-func SparseSegmentSqrtN(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output) (output tf.Output) {
+func SparseSegmentSqrtN(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, optional ...SparseSegmentSqrtNAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SparseSegmentSqrtN",
 		Input: []tf.Input{
 			data, indices, segment_ids,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -47332,6 +47380,17 @@ func SparseSegmentSqrtNGradV2(scope *Scope, grad tf.Output, indices tf.Output, s
 	return op.Output(0), op.Output(1)
 }
 
+// SparseSegmentSqrtNWithNumSegmentsAttr is an optional argument to SparseSegmentSqrtNWithNumSegments.
+type SparseSegmentSqrtNWithNumSegmentsAttr func(optionalAttr)
+
+// SparseSegmentSqrtNWithNumSegmentsSparseGradient sets the optional sparse_gradient attribute to value.
+// If not specified, defaults to false
+func SparseSegmentSqrtNWithNumSegmentsSparseGradient(value bool) SparseSegmentSqrtNWithNumSegmentsAttr {
+	return func(m optionalAttr) {
+		m["sparse_gradient"] = value
+	}
+}
+
 // Computes the sum along sparse segments of a tensor divided by the sqrt of N.
 //
 // N is the size of the segment being reduced.
@@ -47351,18 +47410,34 @@ func SparseSegmentSqrtNGradV2(scope *Scope, grad tf.Output, indices tf.Output, s
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `k`, the number of segments.
-func SparseSegmentSqrtNWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
+func SparseSegmentSqrtNWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output, optional ...SparseSegmentSqrtNWithNumSegmentsAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SparseSegmentSqrtNWithNumSegments",
 		Input: []tf.Input{
 			data, indices, segment_ids, num_segments,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// SparseSegmentSumAttr is an optional argument to SparseSegmentSum.
+type SparseSegmentSumAttr func(optionalAttr)
+
+// SparseSegmentSumSparseGradient sets the optional sparse_gradient attribute to value.
+// If not specified, defaults to false
+func SparseSegmentSumSparseGradient(value bool) SparseSegmentSumAttr {
+	return func(m optionalAttr) {
+		m["sparse_gradient"] = value
+	}
 }
 
 // Computes the sum along sparse segments of a tensor.
@@ -47404,15 +47479,20 @@ func SparseSegmentSqrtNWithNumSegments(scope *Scope, data tf.Output, indices tf.
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `k`, the number of segments.
-func SparseSegmentSum(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output) (output tf.Output) {
+func SparseSegmentSum(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, optional ...SparseSegmentSumAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SparseSegmentSum",
 		Input: []tf.Input{
 			data, indices, segment_ids,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -47469,6 +47549,17 @@ func SparseSegmentSumGradV2(scope *Scope, grad tf.Output, indices tf.Output, seg
 	return op.Output(0), op.Output(1)
 }
 
+// SparseSegmentSumWithNumSegmentsAttr is an optional argument to SparseSegmentSumWithNumSegments.
+type SparseSegmentSumWithNumSegmentsAttr func(optionalAttr)
+
+// SparseSegmentSumWithNumSegmentsSparseGradient sets the optional sparse_gradient attribute to value.
+// If not specified, defaults to false
+func SparseSegmentSumWithNumSegmentsSparseGradient(value bool) SparseSegmentSumWithNumSegmentsAttr {
+	return func(m optionalAttr) {
+		m["sparse_gradient"] = value
+	}
+}
+
 // Computes the sum along sparse segments of a tensor.
 //
 // Like `SparseSegmentSum`, but allows missing ids in `segment_ids`. If an id is
@@ -47511,15 +47602,20 @@ func SparseSegmentSumGradV2(scope *Scope, grad tf.Output, indices tf.Output, seg
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `num_segments`.
-func SparseSegmentSumWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
+func SparseSegmentSumWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output, optional ...SparseSegmentSumWithNumSegmentsAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SparseSegmentSumWithNumSegments",
 		Input: []tf.Input{
 			data, indices, segment_ids, num_segments,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

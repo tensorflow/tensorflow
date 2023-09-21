@@ -49,9 +49,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/translate/hlo_to_mhlo/attribute_importer.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -215,8 +215,8 @@ FailureOr<ElementsAttr> ConvertPaddingAttr(
       const int64_t total_padding = std::max(
           (output_size - 1) * stride + rhs_size_dilated - lhs_size_dilated,
           static_cast<int64_t>(0));
-      const int64_t padding_end = total_padding / 2;
-      const int64_t padding_begin = total_padding - padding_end;
+      const int64_t padding_begin = total_padding / 2;
+      const int64_t padding_end = total_padding - padding_begin;
       padding_nums[2 * i] = padding_begin;
       padding_nums[2 * i + 1] = padding_end;
     }

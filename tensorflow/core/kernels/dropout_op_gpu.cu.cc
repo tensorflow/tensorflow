@@ -12,7 +12,7 @@
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/compiler/xla/stream_executor/temporary_device_memory.h"
+#include "xla/stream_executor/temporary_device_memory.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 

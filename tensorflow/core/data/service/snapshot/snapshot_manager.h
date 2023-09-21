@@ -29,10 +29,10 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/protobuf/status.pb.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {

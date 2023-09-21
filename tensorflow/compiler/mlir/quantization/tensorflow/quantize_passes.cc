@@ -55,12 +55,12 @@ void AddQuantizeQatPasses(
       quantization_options.op_set(),
       quantization_options.enable_two_input_tensors()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      quantization_options.quantization_method().experimental_method(),
+      quantization_options.quantization_method().preset_method(),
       quantization_options.op_set()));
   // TODO(b/260677670): Pass quantization options as pass's inputs where
   // applicable
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      quantization_options.quantization_method().experimental_method(),
+      quantization_options.quantization_method().preset_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization(),
       quantization_options.min_num_elements_for_weights(),
@@ -96,14 +96,14 @@ void AddQuantizePtqDynamicRangePasses(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass(
-      quantization_options.quantization_method().experimental_method(),
+      quantization_options.quantization_method().preset_method(),
       quantization_options.op_set(),
       quantization_options.min_num_elements_for_weights()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      quantization_options.quantization_method().experimental_method(),
+      quantization_options.quantization_method().preset_method(),
       quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      quantization_options.quantization_method().experimental_method(),
+      quantization_options.quantization_method().preset_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization(),
       quantization_options.min_num_elements_for_weights(),
@@ -163,10 +163,10 @@ void AddQuantizePtqPostCalibrationPasses(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      quantization_options.quantization_method().experimental_method(),
+      quantization_options.quantization_method().preset_method(),
       quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      quantization_options.quantization_method().experimental_method(),
+      quantization_options.quantization_method().preset_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization(),
       quantization_options.min_num_elements_for_weights(),
@@ -185,6 +185,28 @@ void AddQuantizePtqPostCalibrationPasses(
     }
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   }
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
+}
+
+void AddQuantizeWeightOnlyPasses(
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    std::optional<const absl::string_view> mlir_dump_file_prefix) {
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  // Add PrepareLiftingPass to utilize its functionalities like folding batch
+  // normalization ops and removing training related ops.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
+  pm.addPass(mlir::quant::CreateQuantizeWeightsPass(quantization_options));
+  pm.addPass(mlir::quant::CreatePropagateQuantizeTypePass());
+  pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
+  // Use optimize pass to remove double casts that are inserted when inlining
+  // functions.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
 }
 

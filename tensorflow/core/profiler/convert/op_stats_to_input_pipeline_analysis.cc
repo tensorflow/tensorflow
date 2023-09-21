@@ -44,9 +44,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/tsl/profiler/utils/format_utils.h"
-#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
-#include "tensorflow/tsl/util/stats_calculator.h"
+#include "tsl/profiler/utils/format_utils.h"
+#include "tsl/profiler/utils/tf_op_utils.h"
+#include "tsl/util/stats_calculator.h"
 
 namespace tensorflow {
 namespace profiler {

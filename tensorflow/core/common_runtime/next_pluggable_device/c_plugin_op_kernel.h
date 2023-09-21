@@ -23,12 +23,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/kernels.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_op_kernel.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 

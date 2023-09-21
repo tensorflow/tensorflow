@@ -37,6 +37,8 @@ inline constexpr absl::string_view kTfQuantPtqPostCalibrationStepName =
 inline constexpr absl::string_view kTfQuantQatStepName = "tf_quant_qat";
 inline constexpr absl::string_view kTfQuantPtqDynamicRangeStepName =
     "tf_quant_ptq_dynamic_range";
+inline constexpr absl::string_view kTfQuantWeightOnlyStepName =
+    "tf_quant_weight_only";
 inline constexpr absl::string_view kTfQuantConstantUnfreezingStepName =
     "tf_quant_constant_unfreezing";
 inline constexpr absl::string_view kTfQuantInsertRestoreOpStepName =
@@ -54,6 +56,11 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
+    const QuantizationOptions& quantization_options,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
+
+absl::StatusOr<ExportedModel> QuantizeWeightOnly(
+    absl::string_view saved_model_path,
     const QuantizationOptions& quantization_options,
     const absl::flat_hash_map<std::string, std::string>& function_aliases);
 

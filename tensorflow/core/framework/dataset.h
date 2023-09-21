@@ -56,8 +56,8 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/thread_annotations.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
 // types. Use this macro to expand `m(T)` once for each primitive type

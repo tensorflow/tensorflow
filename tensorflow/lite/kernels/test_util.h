@@ -55,7 +55,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 #include "tensorflow/lite/util.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tsl/platform/logging.h"
 
 namespace tflite {
 
@@ -644,6 +644,12 @@ class SingleOpModel {
   // Populates the tensor given its index.
   template <typename T>
   void PopulateTensor(int index, const std::vector<T>& data) {
+    PopulateTensorImpl<T>(index, /*offset=*/0, data);
+  }
+
+  // Populates the tensor given its index.
+  template <typename T>
+  void PopulateTensor(int index, absl::Span<const T> data) {
     PopulateTensorImpl<T>(index, /*offset=*/0, data);
   }
 

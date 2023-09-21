@@ -637,6 +637,10 @@ struct RightShiftOptions;
 struct RightShiftOptionsBuilder;
 struct RightShiftOptionsT;
 
+struct DilateOptions;
+struct DilateOptionsBuilder;
+struct DilateOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeBuilder;
 struct OperatorCodeT;
@@ -1197,11 +1201,12 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_STABLEHLO_WHILE = 200,
   BuiltinOperator_STABLEHLO_GATHER = 201,
   BuiltinOperator_STABLEHLO_TRANSPOSE = 202,
+  BuiltinOperator_DILATE = 203,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_TRANSPOSE
+  BuiltinOperator_MAX = BuiltinOperator_DILATE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[203] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[204] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1405,13 +1410,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[203] {
     BuiltinOperator_STABLEHLO_SORT,
     BuiltinOperator_STABLEHLO_WHILE,
     BuiltinOperator_STABLEHLO_GATHER,
-    BuiltinOperator_STABLEHLO_TRANSPOSE
+    BuiltinOperator_STABLEHLO_TRANSPOSE,
+    BuiltinOperator_DILATE
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[204] = {
+  static const char * const names[205] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1615,13 +1621,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "STABLEHLO_WHILE",
     "STABLEHLO_GATHER",
     "STABLEHLO_TRANSPOSE",
+    "DILATE",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_TRANSPOSE)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_DILATE)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -4109,11 +4116,12 @@ enum BuiltinOptions2 : uint8_t {
   BuiltinOptions2_StablehloWhileOptions = 15,
   BuiltinOptions2_StablehloGatherOptions = 16,
   BuiltinOptions2_StablehloTransposeOptions = 17,
+  BuiltinOptions2_DilateOptions = 18,
   BuiltinOptions2_MIN = BuiltinOptions2_NONE,
-  BuiltinOptions2_MAX = BuiltinOptions2_StablehloTransposeOptions
+  BuiltinOptions2_MAX = BuiltinOptions2_DilateOptions
 };
 
-inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[18] {
+inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[19] {
   static const BuiltinOptions2 values[] = {
     BuiltinOptions2_NONE,
     BuiltinOptions2_StablehloConcatenateOptions,
@@ -4132,13 +4140,14 @@ inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[18] {
     BuiltinOptions2_StablehloSortOptions,
     BuiltinOptions2_StablehloWhileOptions,
     BuiltinOptions2_StablehloGatherOptions,
-    BuiltinOptions2_StablehloTransposeOptions
+    BuiltinOptions2_StablehloTransposeOptions,
+    BuiltinOptions2_DilateOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions2() {
-  static const char * const names[19] = {
+  static const char * const names[20] = {
     "NONE",
     "StablehloConcatenateOptions",
     "StablehloBroadcastInDimOptions",
@@ -4157,13 +4166,14 @@ inline const char * const *EnumNamesBuiltinOptions2() {
     "StablehloWhileOptions",
     "StablehloGatherOptions",
     "StablehloTransposeOptions",
+    "DilateOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions2(BuiltinOptions2 e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOptions2_NONE, BuiltinOptions2_StablehloTransposeOptions)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOptions2_NONE, BuiltinOptions2_DilateOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions2()[index];
 }
@@ -4240,6 +4250,10 @@ template<> struct BuiltinOptions2Traits<tflite::StablehloTransposeOptions> {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloTransposeOptions;
 };
 
+template<> struct BuiltinOptions2Traits<tflite::DilateOptions> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_DilateOptions;
+};
+
 template<typename T> struct BuiltinOptions2UnionTraits {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_NONE;
 };
@@ -4310,6 +4324,10 @@ template<> struct BuiltinOptions2UnionTraits<tflite::StablehloGatherOptionsT> {
 
 template<> struct BuiltinOptions2UnionTraits<tflite::StablehloTransposeOptionsT> {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloTransposeOptions;
+};
+
+template<> struct BuiltinOptions2UnionTraits<tflite::DilateOptionsT> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_DilateOptions;
 };
 
 struct BuiltinOptions2Union {
@@ -4477,6 +4495,14 @@ struct BuiltinOptions2Union {
   const tflite::StablehloTransposeOptionsT *AsStablehloTransposeOptions() const {
     return type == BuiltinOptions2_StablehloTransposeOptions ?
       reinterpret_cast<const tflite::StablehloTransposeOptionsT *>(value) : nullptr;
+  }
+  tflite::DilateOptionsT *AsDilateOptions() {
+    return type == BuiltinOptions2_DilateOptions ?
+      reinterpret_cast<tflite::DilateOptionsT *>(value) : nullptr;
+  }
+  const tflite::DilateOptionsT *AsDilateOptions() const {
+    return type == BuiltinOptions2_DilateOptions ?
+      reinterpret_cast<const tflite::DilateOptionsT *>(value) : nullptr;
   }
 };
 
@@ -14176,6 +14202,45 @@ inline ::flatbuffers::Offset<RightShiftOptions> CreateRightShiftOptions(
 
 ::flatbuffers::Offset<RightShiftOptions> CreateRightShiftOptions(::flatbuffers::FlatBufferBuilder &_fbb, const RightShiftOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct DilateOptionsT : public ::flatbuffers::NativeTable {
+  typedef DilateOptions TableType;
+};
+
+struct DilateOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef DilateOptionsT NativeTableType;
+  typedef DilateOptionsBuilder Builder;
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  DilateOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(DilateOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<DilateOptions> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const DilateOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct DilateOptionsBuilder {
+  typedef DilateOptions Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  explicit DilateOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<DilateOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<DilateOptions>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<DilateOptions> CreateDilateOptions(
+    ::flatbuffers::FlatBufferBuilder &_fbb) {
+  DilateOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+::flatbuffers::Offset<DilateOptions> CreateDilateOptions(::flatbuffers::FlatBufferBuilder &_fbb, const DilateOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public ::flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   int8_t deprecated_builtin_code = 0;
@@ -14780,6 +14845,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const tflite::StablehloTransposeOptions *builtin_options_2_as_StablehloTransposeOptions() const {
     return builtin_options_2_type() == tflite::BuiltinOptions2_StablehloTransposeOptions ? static_cast<const tflite::StablehloTransposeOptions *>(builtin_options_2()) : nullptr;
   }
+  const tflite::DilateOptions *builtin_options_2_as_DilateOptions() const {
+    return builtin_options_2_type() == tflite::BuiltinOptions2_DilateOptions ? static_cast<const tflite::DilateOptions *>(builtin_options_2()) : nullptr;
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint32_t>(verifier, VT_OPCODE_INDEX, 4) &&
@@ -15379,6 +15447,10 @@ template<> inline const tflite::StablehloGatherOptions *Operator::builtin_option
 
 template<> inline const tflite::StablehloTransposeOptions *Operator::builtin_options_2_as<tflite::StablehloTransposeOptions>() const {
   return builtin_options_2_as_StablehloTransposeOptions();
+}
+
+template<> inline const tflite::DilateOptions *Operator::builtin_options_2_as<tflite::DilateOptions>() const {
+  return builtin_options_2_as_DilateOptions();
 }
 
 struct OperatorBuilder {
@@ -20434,6 +20506,29 @@ inline ::flatbuffers::Offset<RightShiftOptions> CreateRightShiftOptions(::flatbu
       _fbb);
 }
 
+inline DilateOptionsT *DilateOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<DilateOptionsT>(new DilateOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void DilateOptions::UnPackTo(DilateOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline ::flatbuffers::Offset<DilateOptions> DilateOptions::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const DilateOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateDilateOptions(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<DilateOptions> CreateDilateOptions(::flatbuffers::FlatBufferBuilder &_fbb, const DilateOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const DilateOptionsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateDilateOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<OperatorCodeT>(new OperatorCodeT());
   UnPackTo(_o.get(), _resolver);
@@ -23759,6 +23854,10 @@ inline bool VerifyBuiltinOptions2(::flatbuffers::Verifier &verifier, const void 
       auto ptr = reinterpret_cast<const tflite::StablehloTransposeOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions2_DilateOptions: {
+      auto ptr = reinterpret_cast<const tflite::DilateOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -23846,6 +23945,10 @@ inline void *BuiltinOptions2Union::UnPack(const void *obj, BuiltinOptions2 type,
       auto ptr = reinterpret_cast<const tflite::StablehloTransposeOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions2_DilateOptions: {
+      auto ptr = reinterpret_cast<const tflite::DilateOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -23921,6 +24024,10 @@ inline ::flatbuffers::Offset<void> BuiltinOptions2Union::Pack(::flatbuffers::Fla
       auto ptr = reinterpret_cast<const tflite::StablehloTransposeOptionsT *>(value);
       return CreateStablehloTransposeOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions2_DilateOptions: {
+      auto ptr = reinterpret_cast<const tflite::DilateOptionsT *>(value);
+      return CreateDilateOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -23993,6 +24100,10 @@ inline BuiltinOptions2Union::BuiltinOptions2Union(const BuiltinOptions2Union &u)
     }
     case BuiltinOptions2_StablehloTransposeOptions: {
       value = new tflite::StablehloTransposeOptionsT(*reinterpret_cast<tflite::StablehloTransposeOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions2_DilateOptions: {
+      value = new tflite::DilateOptionsT(*reinterpret_cast<tflite::DilateOptionsT *>(u.value));
       break;
     }
     default:
@@ -24084,6 +24195,11 @@ inline void BuiltinOptions2Union::Reset() {
     }
     case BuiltinOptions2_StablehloTransposeOptions: {
       auto ptr = reinterpret_cast<tflite::StablehloTransposeOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions2_DilateOptions: {
+      auto ptr = reinterpret_cast<tflite::DilateOptionsT *>(value);
       delete ptr;
       break;
     }

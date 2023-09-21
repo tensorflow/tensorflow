@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/tsl/distributed_runtime/call_options.h"
+#include "tsl/distributed_runtime/call_options.h"
 
 namespace tensorflow {
 namespace eager {

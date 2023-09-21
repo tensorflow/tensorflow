@@ -13,16 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/types.h"
 
 using Eigen::half;
 
@@ -82,22 +87,23 @@ class CastOpTest : public OpsTestBase {
   }
 
 #define TEST_ALL_CASTS_FROM(in) \
-  TEST_CAST(in, uint8);         \
-  TEST_CAST(in, uint16);        \
-  TEST_CAST(in, uint32);        \
-  TEST_CAST(in, uint64);        \
-  TEST_CAST(in, int16);         \
-  TEST_CAST(in, int32);         \
-  TEST_CAST(in, int64_t);       \
-  TEST_CAST(in, half);          \
-  TEST_CAST(in, float);         \
-  TEST_CAST(in, double);        \
-  TEST_CAST(in, bfloat16);      \
-  TEST_CAST(in, quint8);        \
-  TEST_CAST(in, qint8);         \
-  TEST_CAST(in, qint32);        \
-  TEST_CAST(in, qint16);        \
-  TEST_CAST(in, quint16);
+  TEST_CAST(in, uint8)          \
+  TEST_CAST(in, uint16)         \
+  TEST_CAST(in, uint32)         \
+  TEST_CAST(in, uint64)         \
+  TEST_CAST(in, int8)           \
+  TEST_CAST(in, int16)          \
+  TEST_CAST(in, int32)          \
+  TEST_CAST(in, int64_t)        \
+  TEST_CAST(in, half)           \
+  TEST_CAST(in, float)          \
+  TEST_CAST(in, double)         \
+  TEST_CAST(in, bfloat16)       \
+  TEST_CAST(in, quint8)         \
+  TEST_CAST(in, qint8)          \
+  TEST_CAST(in, qint32)         \
+  TEST_CAST(in, qint16)         \
+  TEST_CAST(in, quint16)
 
 TEST_ALL_CASTS_FROM(uint8)
 TEST_ALL_CASTS_FROM(uint16)
@@ -115,8 +121,39 @@ TEST_ALL_CASTS_FROM(qint8)
 TEST_ALL_CASTS_FROM(qint32)
 TEST_ALL_CASTS_FROM(qint16)
 TEST_ALL_CASTS_FROM(quint16)
-
 #undef TEST_ALL_CASTS_FROM
+
+#define TEST_INT_CASTS_FROM(in) \
+  TEST_CAST(in, uint8)          \
+  TEST_CAST(in, uint16)         \
+  TEST_CAST(in, uint32)         \
+  TEST_CAST(in, uint64)         \
+  TEST_CAST(in, int8)           \
+  TEST_CAST(in, int16)          \
+  TEST_CAST(in, int32)          \
+  TEST_CAST(in, int64_t)
+
+#define TEST_INT_CASTS_TO(out) \
+  TEST_CAST(uint8, out)        \
+  TEST_CAST(uint16, out)       \
+  TEST_CAST(uint32, out)       \
+  TEST_CAST(uint64, out)       \
+  TEST_CAST(int8, out)         \
+  TEST_CAST(int16, out)        \
+  TEST_CAST(int32, out)        \
+  TEST_CAST(int64_t, out)
+
+TEST_INT_CASTS_FROM(int4)
+TEST_INT_CASTS_FROM(uint4)
+TEST_INT_CASTS_TO(int4)
+TEST_INT_CASTS_TO(uint4)
+TEST_CAST(int4, int4)
+TEST_CAST(int4, uint4)
+TEST_CAST(uint4, int4)
+TEST_CAST(uint4, uint4)
+
+#undef TEST_INT_CASTS_FROM
+#undef TEST_INT_CASTS_TO
 #undef TEST_CAST
 
 // TODO(wicke): check conversions from/to bool, and bfloat16

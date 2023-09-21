@@ -59,10 +59,10 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status_to_from_proto.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/protobuf/status.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status_to_from_proto.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {

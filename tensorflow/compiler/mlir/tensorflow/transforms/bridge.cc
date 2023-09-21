@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/inference/inference_passes.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/stacktrace.h"
@@ -233,6 +234,8 @@ void CreateTPUBridgePipelineImpl(
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(TFDevice::CreateExtractHeadTailOutsideCompilationPass());
   pm.addPass(TFDevice::CreateExtractOutsideCompilationPass());
+  pm.addNestedPass<func::FuncOp>(
+      TFDevice::CreateVerifyNoOutsideCompilationMarkersPass());
 
   pm.addNestedPass<func::FuncOp>(TFDevice::CreateClusterConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
@@ -272,6 +275,8 @@ void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
+  pm.addPass(tf2xla::internal::CreateInferenceMetricsPass());
+
   // Convert to unified compilation and replication attributes.
   pm.addNestedPass<func::FuncOp>(
       TF::CreateCanonicalizeCompileAndReplicateAttributesPass());

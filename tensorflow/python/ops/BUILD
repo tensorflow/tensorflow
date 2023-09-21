@@ -1566,12 +1566,15 @@ py_strict_library(
         ":resource_variable_ops",
         ":sparse_ops",
         ":variables",
+        "//tensorflow/python/compat",
+        "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
     ],
@@ -2010,6 +2013,7 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
@@ -2760,7 +2764,7 @@ py_strict_library(
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@opt_einsum_archive//:opt_einsum",
+        "@pypi_opt_einsum//:pkg",
     ],
 )
 
@@ -3848,7 +3852,7 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@opt_einsum_archive//:opt_einsum",
+        "@pypi_opt_einsum//:pkg",
     ],
 )
 

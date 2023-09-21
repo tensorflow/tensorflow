@@ -28,22 +28,22 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/side_effect_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
 #include "tensorflow/core/profiler/utils/hlo_module_utils.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/tsl/profiler/utils/math_utils.h"
-#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
-#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
-#include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/utils/math_utils.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tsl/profiler/utils/xplane_schema.h"
+#include "tsl/profiler/utils/xplane_utils.h"
+#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -208,7 +208,8 @@ void DcnTracker::VisitOp(const InstrMetadata& instr,
         // has to be sent back to the replicas, the total bytes transmitted over
         // the network is 2x the shape of the op.
         analysis->set_bytes_transmitted_over_network(
-            instr.transfer_type == "ALL_REDUCE" ? 2 * instr.size : instr.size);
+            analysis->transfer_type() == "ALL_REDUCE" ? 2 * instr.size
+                                                      : instr.size);
         analysis->set_stall_duration_us(NanoToMicro(opState.stall_duration_ns));
         analysis->set_recv_op_name(std::string(visitor.DisplayName()));
         analysis->set_send_op_name(opState.send_op_name);

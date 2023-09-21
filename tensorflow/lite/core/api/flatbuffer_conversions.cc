@@ -983,6 +983,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SIGN:
     case BuiltinOperator_BITCAST:
     case BuiltinOperator_WHERE:
+    case BuiltinOperator_DILATE:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
       return kTfLiteError;

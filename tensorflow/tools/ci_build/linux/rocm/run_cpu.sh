@@ -55,6 +55,6 @@ bazel test \
       -//tensorflow/core/tpu/... \
       -//tensorflow/lite/... \
       -//tensorflow/tools/toolchains/... \
-      -//tensorflow/compiler/xla/service/gpu/...
+      # -//tensorflow/compiler/xla/service/gpu/...
       
       

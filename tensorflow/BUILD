@@ -125,6 +125,8 @@ PACKAGE_STATIC_DEPS = [
     "@flatbuffers//:__subpackages__",
     "@nccl_archive//:__subpackages__",
     "@triton//:__subpackages__",
+    "@local_tsl//:__subpackages__",
+    "@local_xla//:__subpackages__",
 ] + tsl_async_value_deps()
 
 package(
@@ -1093,8 +1095,6 @@ bzl_library(
     deps = [
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
-        "//tensorflow/tsl:tsl_bzl",
-        "//tensorflow/tsl/platform/default:cuda_build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/llvm_openmp:openmp_bzl",
         "//third_party/mkl:build_defs_bzl",
@@ -1104,6 +1104,8 @@ bzl_library(
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
+        "@local_tsl//tsl:tsl_bzl",
+        "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
     ],
 )
 
@@ -1205,9 +1207,9 @@ tf_cc_shared_library(
                 "//tensorflow/core/profiler:profiler_impl",
                 "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
                 "//tensorflow/lite/kernels/shim:tf_kernel_shim",
-                "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
-                "//tensorflow/tsl/framework:bfc_allocator",
-                "//tensorflow/tsl/framework:metrics",
+                "@local_xla//xla/stream_executor:stream_executor_impl",
+                "@local_tsl//tsl/framework:bfc_allocator",
+                "@local_tsl//tsl/framework:metrics",
             ] + tf_additional_binary_deps() +
             # TODO(b/259305727): Remove this select and include captured_function in macos builds.
             select({
@@ -1308,6 +1310,8 @@ tf_cc_shared_library(
     }),
     exports_filter = [
         "//:__subpackages__",
+        "@local_tsl//tsl:__subpackages__",
+        "@local_xla//xla:__subpackages__",
     ],
     framework_so = [],
     linkopts = select({
@@ -1369,11 +1373,8 @@ tf_cc_shared_library(
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
-        "//tensorflow/compiler/xla/service:computation_placer",
+        "@local_xla//xla/service:computation_placer",
         "//tensorflow/core",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
@@ -1464,7 +1465,7 @@ tf_cc_shared_library(
 
 # To avoid duplication, check that the C++ or python library does not depend on
 # the stream executor cuda plugins. Targets that want to use cuda APIs should
-# instead depend on the dummy plugins in //tensorflow/tsl/platform/default/build_config
+# instead depend on the dummy plugins in @local_tsl//tsl/platform/default/build_config
 # and use header only targets.
 # TODO(ddunleavy): This seems completely broken. :tensorflow_cc depends on
 # cuda_platform from tf_additional_binary_deps and this doesn't break.
@@ -1473,12 +1474,12 @@ check_deps(
     disallowed_deps = if_static(
         [],
         otherwise = [
-            "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
-            "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
-            "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
-            "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
-            "//tensorflow/compiler/xla/stream_executor/cuda:cufft_plugin",
-            "//tensorflow/compiler/xla/stream_executor:cuda_platform",
+            "@local_xla//xla/stream_executor/cuda:all_runtime",
+            "@local_xla//xla/stream_executor/cuda:cuda_driver",
+            "@local_xla//xla/stream_executor/cuda:cuda_platform",
+            "@local_xla//xla/stream_executor/cuda:cudnn_plugin",
+            "@local_xla//xla/stream_executor/cuda:cufft_plugin",
+            "@local_xla//xla/stream_executor:cuda_platform",
         ],
     ),
     deps = if_cuda([
@@ -1588,7 +1589,7 @@ genrule(
         "//tensorflow/c/eager:headers",
         "//tensorflow/cc:headers",
         "//tensorflow/core:headers",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_install_hdrs",
+        "@local_xla//xla/stream_executor:stream_executor_install_hdrs",
     ],
     outs = ["include"],
     cmd = """
