@@ -31,6 +31,63 @@ package_group(
 )
 
 #===--------------------------------------------------------------------------------------------===#
+# StreamExecutor public API
+#===--------------------------------------------------------------------------------------------===#
+
+# We bundle headers into filegroups for internal use only (we re-export the same set of headers
+# from multiple targets), and all external clients should depend on one of the public `cc_library`
+# targets that have dependencies required for compiling headers (e.g. absl dependencies). These
+# filegroup roughly correspond to "StreamExecutor components" that are available to the clients.
+
+# These are the headers that constitute StreamExecutor public API. Clients should not depend on
+# this filegroup directly, but instead depend on a `stream_executor_headers` target if they need
+# a header-only dependency (this is a very rare exception when we are building dynamic librarires
+# for open source projects, e.g. Tensorflow, internally at Google we almost always link statically),
+# or usually on a `sream_executor` target that will also link implementation.
+
+filegroup(
+    name = "stream_executor_public_headers",
+    srcs = [
+        "allocator_stats.h",
+        "command_buffer.h",
+        "device_description.h",
+        "device_memory.h",
+        "device_memory_allocator.h",
+        "device_options.h",
+        "event.h",
+        "executor_cache.h",
+        "kernel.h",
+        "kernel_cache_config.h",
+        "kernel_spec.h",
+        "launch_dim.h",
+        "module_spec.h",
+        "numeric_options.h",
+        "platform.h",
+        "plugin.h",
+        "plugin_registry.h",
+        "stream.h",
+        "stream_executor.h",
+        "stream_executor_internal.h",
+        "stream_executor_pimpl.h",
+        "temporary_device_memory.h",
+        "temporary_memory_manager.h",
+        "trace_listener.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# These are the headers for default StreamExecutor plugins.
+filegroup(
+    name = "stream_executor_plugin_headers",
+    srcs = [
+        "blas.h",
+        "dnn.h",
+        "fft.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+#===--------------------------------------------------------------------------------------------===#
 # StreamExecutor platform-dependent implementation details
 #===--------------------------------------------------------------------------------------------===#
 
