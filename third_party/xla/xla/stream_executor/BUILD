@@ -781,6 +781,7 @@ cc_library(
     deps = [
         ":device_description",
         ":device_memory",
+        ":dnn",
         ":dnn_proto_cc",
         ":event",
         ":kernel",
