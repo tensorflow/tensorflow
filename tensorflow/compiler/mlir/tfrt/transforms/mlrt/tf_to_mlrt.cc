@@ -1015,6 +1015,40 @@ class TfToMlrtConversionPass
       op->replaceAllUsesWith(op->getOperands());
       op->erase();
     });
+
+    AddAwaitOpToUnusedFutures(module);
+  }
+
+  void AddAwaitOpToUnusedFutures(mlir::ModuleOp module) {
+    for (auto func : module.getOps<mlir::func::FuncOp>()) {
+      llvm::SmallVector<mlir::Value> unused_futures;
+
+      auto is_unused_future = [](mlir::Value result) {
+        return llvm::isa<::mlrt::compiler::FutureType>(result.getType()) &&
+               result.use_empty();
+      };
+
+      for (auto arg : func.getArguments()) {
+        if (is_unused_future(arg)) {
+          unused_futures.push_back(arg);
+        }
+      }
+
+      for (auto &op : func.getBody().front()) {
+        for (mlir::Value result : op.getResults()) {
+          if (is_unused_future(result)) {
+            unused_futures.push_back(result);
+          }
+        }
+      }
+
+      if (!unused_futures.empty()) {
+        auto builder =
+            mlir::OpBuilder::atBlockTerminator(&func.getBody().front());
+        builder.create<::mlrt::compiler::AwaitAllControlOp>(func.getLoc(),
+                                                            unused_futures);
+      }
+    }
   }
 
   mlir::LogicalResult PostProcessFunctionSignature(

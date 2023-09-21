@@ -159,6 +159,7 @@ xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
                                      size_t expected_size, size_t actual_size);
 
 absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api);
+absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api);
 
 // Releases `chunk`.
 PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk);

@@ -26,6 +26,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <string>
+#include <thread>  // NOLINT(build/c++11)
 
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/stacktrace.h"

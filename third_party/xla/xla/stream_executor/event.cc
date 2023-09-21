@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/event.h"
 
-#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 

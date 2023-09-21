@@ -10,8 +10,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef LIBTPU_EXCLUDE_C_API_IMPL
-
 #include "tensorflow/c/ops.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/registration/registration.h"
@@ -45,10 +43,8 @@ void Register_HistogramSummaryOp() {
 }
 
 TF_ATTRIBUTE_UNUSED static bool HistogramSummaryOpRegistered = []() {
-  if (SHOULD_REGISTER_OP("HistogramSummary")) {
+  if (&TF_NewStatus != nullptr && SHOULD_REGISTER_OP("HistogramSummary")) {
     Register_HistogramSummaryOp();
   }
   return true;
 }();
-
-#endif  // LIBTPU_EXCLUDE_C_API_IMPL

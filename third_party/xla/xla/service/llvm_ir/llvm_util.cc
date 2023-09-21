@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -49,7 +50,10 @@ limitations under the License.
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/layout_util.h"
@@ -487,6 +491,13 @@ std::string IrName(absl::string_view a, absl::string_view b) {
 
 std::string IrName(const HloInstruction* a, absl::string_view b) {
   return IrName(a->name(), b);
+}
+
+mlir::OwningOpRef<mlir::ModuleOp> CreateMlirModuleOp(
+    mlir::Location loc, std::optional<llvm::StringRef> name) {
+  return mlir::OwningOpRef<mlir::ModuleOp>(
+      /*ALLOW_MLIR_MODULE_OP_CREATE*/ mlir::ModuleOp::create(std::move(loc),
+                                                             std::move(name)));
 }
 
 std::string SanitizeFunctionName(std::string function_name) {

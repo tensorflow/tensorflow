@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
+#include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
@@ -39,6 +41,8 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "xla/runtime/errors.h"
 
@@ -63,9 +67,62 @@ using llvm::orc::IRCompileLayer;
 using llvm::orc::JITTargetMachineBuilder;
 using llvm::orc::RTDyldObjectLinkingLayer;
 using llvm::orc::SelfExecutorProcessControl;
+using llvm::orc::SimpleCompiler;
 using llvm::orc::SymbolMap;
 using llvm::orc::ThreadSafeModule;
-using llvm::orc::TMOwningSimpleCompiler;
+
+namespace {
+
+// This compiler keeps weak pointers to the TargetMachine and the ObjectCache.
+//
+// This allows releasing the memory of those objects, even though the LLJIT
+// keeps the compiler alive.
+//
+// We wrote this class based on the code of llvm::orc::ConcurrentIRCompiler.
+class WeakCompiler : public IRCompileLayer::IRCompiler {
+ public:
+  static llvm::orc::IRSymbolMapper::ManglingOptions
+  IrManglingOptionsForWeakTargetMachine(
+      std::weak_ptr<llvm::TargetMachine> weak_target_machine) {
+    std::shared_ptr<llvm::TargetMachine> target_machine =
+        weak_target_machine.lock();
+    CHECK(target_machine != nullptr)
+        << "Compiler should not be used after the TargetMachine is destroyed.";
+
+    return llvm::orc::irManglingOptionsFromTargetOptions(
+        target_machine->Options);
+  }
+
+  // It's not recommended to allocate the parameters with std::make_shared,
+  // because that would allocate the object and the control block in one
+  // allocation, so the weak_ptr would keep alive the memory of the object as
+  // well.
+  explicit WeakCompiler(std::weak_ptr<llvm::TargetMachine> weak_target_machine,
+                        std::weak_ptr<llvm::ObjectCache> weak_object_cache = {})
+      : IRCompiler(IrManglingOptionsForWeakTargetMachine(weak_target_machine)),
+        weak_target_machine_(weak_target_machine),
+        weak_object_cache_(weak_object_cache) {}
+
+  Expected<std::unique_ptr<MemoryBuffer>> operator()(
+      llvm::Module &module) override {
+    std::shared_ptr<llvm::TargetMachine> target_machine =
+        weak_target_machine_.lock();
+    CHECK(target_machine != nullptr)
+        << "Compiler should not be used after the TargetMachine is destroyed.";
+
+    // This may be nullptr, and that's fine.
+    std::shared_ptr<llvm::ObjectCache> object_cache = weak_object_cache_.lock();
+
+    SimpleCompiler compiler(*target_machine, object_cache.get());
+    return compiler(module);
+  }
+
+ private:
+  std::weak_ptr<llvm::TargetMachine> weak_target_machine_;
+  std::weak_ptr<llvm::ObjectCache> weak_object_cache_;
+};
+
+}  // namespace
 
 ExecutionEngine::ExecutionEngine(bool enable_gdb_listener,
                                  bool enable_perf_listener) {
@@ -261,7 +318,7 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   // for different Xla backends, e.g. there is absolutely no need to run
   // SLV vectorizer for Xla Gpi host side executable.
   auto transformer =
-      options.make_optimizing_transformer(options.target_machine);
+      options.make_optimizing_transformer(options.target_machine.get());
   if (auto err = transformer(module_ptr))
     return InternalError("failed to run optimization pipeline: %s",
                          ToString(err));
@@ -284,19 +341,22 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   };
 
   // Optionally enable cache for compiled object files.
-  std::unique_ptr<ExecutionEngineObjectCache> obj_cache =
+  // Not using std::make_shared to allocate the control block and the object in
+  // separate allocations.
+  std::shared_ptr<ExecutionEngineObjectCache> obj_cache =
       options.save_compiled_obj_file
-          ? std::make_unique<ExecutionEngineObjectCache>()
+          ? std::shared_ptr<ExecutionEngineObjectCache>(
+                std::make_unique<ExecutionEngineObjectCache>())
           : nullptr;
 
   // Callback to compile IR module on demand.
-  auto compile_function_creator = [&](JITTargetMachineBuilder jtmb)
+  auto compile_function_creator =
+      [weak_target_machine =
+           std::weak_ptr<llvm::TargetMachine>(options.target_machine),
+       weak_obj_cache =
+           std::weak_ptr<llvm::ObjectCache>(obj_cache)](JITTargetMachineBuilder)
       -> Expected<std::unique_ptr<IRCompileLayer::IRCompiler>> {
-    jtmb.setCodeGenOptLevel(options.opt_level);
-    auto tm = jtmb.createTargetMachine();
-    if (!tm) return tm.takeError();
-    return std::make_unique<TMOwningSimpleCompiler>(std::move(*tm),
-                                                    obj_cache.get());
+    return std::make_unique<WeakCompiler>(weak_target_machine, weak_obj_cache);
   };
 
   // Use in-process executor process control with in-place task dispatcher.

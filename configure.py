@@ -608,7 +608,7 @@ def prompt_loop_or_load_from_env(environ_cp,
 
 def set_clang_cuda_compiler_path(environ_cp):
   """Set CLANG_CUDA_COMPILER_PATH."""
-  default_clang_path = '/usr/lib/llvm-16/bin/clang'
+  default_clang_path = '/usr/lib/llvm-17/bin/clang'
   if not os.path.exists(default_clang_path):
     default_clang_path = which('clang') or ''
 

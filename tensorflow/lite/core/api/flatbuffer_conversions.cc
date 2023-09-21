@@ -872,44 +872,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return kTfLiteOk;
     }
     case BuiltinOperator_STABLEHLO_SCATTER: {
-      auto params = safe_allocator.Allocate<TfLiteStablehloScatterParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* shlo_scatter_params =
-              op->builtin_options_2_as_StablehloScatterOptions()) {
-        params->indices_are_sorted = shlo_scatter_params->indices_are_sorted();
-
-        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-            shlo_scatter_params->update_window_dims()->size() * sizeof(int64_t),
-            shlo_scatter_params->update_window_dims(),
-            params->update_window_dims, error_reporter, "stablehlo_scatter"));
-        params->num_update_window_dims =
-            shlo_scatter_params->update_window_dims()->size();
-
-        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-            shlo_scatter_params->inserted_window_dims()->size() *
-                sizeof(int64_t),
-            shlo_scatter_params->inserted_window_dims(),
-            params->inserted_window_dims, error_reporter, "stablehlo_scatter"));
-        params->num_inserted_window_dims =
-            shlo_scatter_params->inserted_window_dims()->size();
-
-        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-            shlo_scatter_params->scatter_dims_to_operand_dims()->size() *
-                sizeof(int64_t),
-            shlo_scatter_params->scatter_dims_to_operand_dims(),
-            params->scatter_dims_to_operand_dims, error_reporter,
-            "stablehlo_scatter"));
-        params->num_scatter_dims_to_operand_dims =
-            shlo_scatter_params->scatter_dims_to_operand_dims()->size();
-
-        params->index_vector_dim = shlo_scatter_params->index_vector_dim();
-        params->unique_indices = shlo_scatter_params->unique_indices();
-        params->update_computation_subgraph_index =
-            shlo_scatter_params->update_computation_subgraph_index();
-      }
-
-      *builtin_data = params.release();
-      return kTfLiteOk;
+      return ParseStablehloScatter(op, error_reporter, allocator, builtin_data);
     }
     case BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR: {
       return ParseStablehloRngBitGenerator(op, error_reporter, allocator,
@@ -2096,6 +2059,58 @@ TfLiteStatus ParseResizeNearestNeighbor(const Operator* op,
     params->half_pixel_centers = false;
   }
 
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseStablehloScatter(const Operator* op,
+                                   ErrorReporter* error_reporter,
+                                   BuiltinDataAllocator* allocator,
+                                   void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteStablehloScatterParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteStablehloScatterParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const StablehloScatterOptions* schema_params =
+      op->builtin_options_2_as_StablehloScatterOptions();
+  if (schema_params) {
+    params->indices_are_sorted = schema_params->indices_are_sorted();
+
+    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+        schema_params->update_window_dims()->size() * sizeof(int64_t),
+        schema_params->update_window_dims(), params->update_window_dims,
+        error_reporter, "stablehlo_scatter"));
+    params->num_update_window_dims =
+        schema_params->update_window_dims()->size();
+
+    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+        schema_params->inserted_window_dims()->size() * sizeof(int64_t),
+        schema_params->inserted_window_dims(), params->inserted_window_dims,
+        error_reporter, "stablehlo_scatter"));
+    params->num_inserted_window_dims =
+        schema_params->inserted_window_dims()->size();
+
+    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+        schema_params->scatter_dims_to_operand_dims()->size() * sizeof(int64_t),
+        schema_params->scatter_dims_to_operand_dims(),
+        params->scatter_dims_to_operand_dims, error_reporter,
+        "stablehlo_scatter"));
+    params->num_scatter_dims_to_operand_dims =
+        schema_params->scatter_dims_to_operand_dims()->size();
+
+    params->index_vector_dim = schema_params->index_vector_dim();
+    params->unique_indices = schema_params->unique_indices();
+    params->update_computation_subgraph_index =
+        schema_params->update_computation_subgraph_index();
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
   *builtin_data = params.release();
   return kTfLiteOk;
 }

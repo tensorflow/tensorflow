@@ -71,7 +71,8 @@ enum class ResourceUsageType {
 
 enum class ResourceHazardType {
   kShareable = 0,
-  kUnshareable = 1,
+  kSerial = 1,
+  kUnshareable = 2,
 };
 
 constexpr int64_t ResourceTypeToIndex(ResourceType resource_type) {

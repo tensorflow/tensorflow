@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/shape_util.h"
@@ -138,9 +139,21 @@ Status RunAllToAll(bool has_split_dimension,
                                                 buffer.element_type);
 
       for (int rank = 0; rank < num_participants; ++rank) {
+        VLOG(3) << absl::StreamFormat(
+            "Calling ncclSend(sendbuff=%p, count=%d, peer=%d "
+            "comm=%p, stream=%p)",
+            send_buffer + rank * chunk_bytes, chunk_elements, rank,
+            static_cast<const void*>(comm), gpu_stream);
         XLA_CUDA_RETURN_IF_ERROR(ncclSend(send_buffer + rank * chunk_bytes,
                                           chunk_elements, dtype, rank, comm,
                                           gpu_stream));
+
+        VLOG(3) << absl::StreamFormat(
+            "Calling ncclRecv(recvbuff=%p, count=%d, peer=%d "
+            "comm=%p, stream=%p)",
+            recv_buffer + rank * chunk_bytes, chunk_elements, rank,
+            static_cast<const void*>(comm), gpu_stream);
+
         XLA_CUDA_RETURN_IF_ERROR(ncclRecv(recv_buffer + rank * chunk_bytes,
                                           chunk_elements, dtype, rank, comm,
                                           gpu_stream));
@@ -164,8 +177,21 @@ Status RunAllToAll(bool has_split_dimension,
       int64_t element_count =
           buffer.element_count * dtype_and_multiplier.second;
 
+      VLOG(3) << absl::StreamFormat(
+          "Calling ncclSend(sendbuff=%p, count=%d, peer=%d "
+          "comm=%p, stream=%p)",
+          send_buffer, element_count, i, static_cast<const void*>(comm),
+          gpu_stream);
+
       XLA_CUDA_RETURN_IF_ERROR(ncclSend(send_buffer, element_count, dtype,
                                         /*rank=*/i, comm, gpu_stream));
+
+      VLOG(3) << absl::StreamFormat(
+          "Calling ncclRecv(recvbuff=%p, count=%d, peer=%d "
+          "comm=%p, stream=%p)",
+          recv_buffer, element_count, i, static_cast<const void*>(comm),
+          gpu_stream);
+
       XLA_CUDA_RETURN_IF_ERROR(ncclRecv(recv_buffer, element_count, dtype,
                                         /*rank=*/i, comm, gpu_stream));
     }

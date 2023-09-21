@@ -1615,6 +1615,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:status",
+        "//xla/service/llvm_ir:llvm_util",
         "//xla/translate/hlo_to_mhlo:hlo_utils",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IPO",

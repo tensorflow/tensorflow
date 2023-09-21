@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/demangle.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 

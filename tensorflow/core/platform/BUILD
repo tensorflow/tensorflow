@@ -1109,7 +1109,9 @@ tf_cuda_library(
         "@local_xla//xla/stream_executor/host:host_platform_id",
         "@local_xla//xla/stream_executor/platform:dso_loader",
         "@local_xla//xla/stream_executor/rocm:rocm_platform_id",
-    ],
+    ] + if_rocm_is_configured([
+        "@local_xla//xla/stream_executor/rocm:miopen_plugin",
+    ]),
 )
 
 # Like stream_executor library, but compiles without --config=cuda

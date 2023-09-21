@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_cpu_internal.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -36,16 +37,19 @@ limitations under the License.
 namespace xla {
 namespace {
 
-TEST(PjRtCApiClientTest, IsDynamicDimension) {
-  // Set up PjRtCApiClient
+static void SetUpCpuPjRtApi() {
   std::string device_type = "cpu";
   auto status = ::pjrt::PjrtApi(device_type);
   if (!status.ok()) {
     TF_ASSERT_OK(
         pjrt::SetPjrtApi(device_type, ::pjrt::cpu_plugin::GetCpuPjrtApi()));
   }
+}
+
+TEST(PjRtCApiClientTest, IsDynamicDimension) {
+  SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient(device_type));
+                          GetCApiClient("cpu"));
   // Prepare input buffer and executable.
   std::vector<int32_t> data0{1, 2, 3, 4, 5, 6};
   Shape shape0 = ShapeUtil::MakeShape(S32, {2, 3});
@@ -84,6 +88,35 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
 
   EXPECT_THAT(is_dynamic_dimension,
               ::testing::ElementsAreArray(dims_are_dynamic));
+}
+
+TEST(PjRtCApiClientTest, PlatformId) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  EXPECT_EQ(client->platform_name(), xla::CpuName());
+  EXPECT_EQ(client->platform_id(), xla::CpuId());
+}
+
+TEST(PjRtCApiClientTest, EmptyExecutableFingerprint) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  XlaBuilder builder("sum");
+  auto inp_0 = Parameter(&builder, 0, shape, "input0");
+  auto inp_1 = Parameter(&builder, 1, shape, "input1");
+  auto sum = Add(inp_0, inp_1);
+  builder.SetUpAlias({}, 0, {});
+  auto computation = builder.Build(sum).value();
+  std::unique_ptr<PjRtLoadedExecutable> executable =
+      client->Compile(computation, CompileOptions()).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::optional<std::string> fingerprint,
+                          client->ExecutableFingerprint(*executable));
+
+  EXPECT_FALSE(fingerprint.has_value());
 }
 
 }  // namespace

@@ -89,6 +89,16 @@ StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
   return output;
 }
 
+void CompileOptions::SerializeEnvOptionOverrides(
+    google::protobuf::Map<std::string, xla::OptionOverrideProto>*
+        output_env_option_overrides) const {
+  for (auto& env_option_override : env_option_overrides) {
+    auto& tmp = (*output_env_option_overrides)[env_option_override.first];
+    std::visit([&](const auto& arg) { SetOptionOverride(tmp, arg); },
+               env_option_override.second);
+  }
+}
+
 StatusOr<CompileOptions> CompileOptions::FromProto(
     const CompileOptionsProto& proto) {
   if (!proto.serialized_multi_slice_config().empty()) {
@@ -112,36 +122,8 @@ StatusOr<CompileOptions> CompileOptions::FromProto(
   output.executable_build_options = executable_build_options;
   output.compile_portable_executable = proto.compile_portable_executable();
   output.profile_version = proto.profile_version();
-  for (auto& env_option_override : proto.env_option_overrides()) {
-    switch (env_option_override.second.value_case()) {
-      case OptionOverrideProto::kStringField:
-        output.env_option_overrides.push_back(
-            {env_option_override.first,
-             CompileOptions::OptionOverride(
-                 env_option_override.second.string_field())});
-        break;
-      case OptionOverrideProto::kBoolField:
-        output.env_option_overrides.push_back(
-            {env_option_override.first,
-             CompileOptions::OptionOverride(
-                 env_option_override.second.bool_field())});
-        break;
-      case OptionOverrideProto::kIntField:
-        output.env_option_overrides.push_back(
-            {env_option_override.first,
-             CompileOptions::OptionOverride(
-                 env_option_override.second.int_field())});
-        break;
-      case OptionOverrideProto::kDoubleField:
-        output.env_option_overrides.push_back(
-            {env_option_override.first,
-             CompileOptions::OptionOverride(
-                 env_option_override.second.double_field())});
-        break;
-      case OptionOverrideProto::VALUE_NOT_SET:
-        return InternalError("OptionOverrideProto value not set.");
-    }
-  }
+  TF_ASSIGN_OR_RETURN(output.env_option_overrides,
+                      LoadEnvOptionOverrides(proto.env_option_overrides()));
   return output;
 }
 
@@ -367,6 +349,40 @@ PjRtExecutableUtil::RunHloCostAnalysis(
   hlo_cost_analysis->properties().ForEach(
       [&](absl::string_view key, float val) { ret[key] = val; });
   return ret;
+}
+
+StatusOr<std::vector<std::pair<std::string, CompileOptions::OptionOverride>>>
+CompileOptions::LoadEnvOptionOverrides(
+    const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
+        env_option_overrides) {
+  std::vector<std::pair<std::string, CompileOptions::OptionOverride>> result;
+  for (auto& env_option_override : env_option_overrides) {
+    switch (env_option_override.second.value_case()) {
+      case OptionOverrideProto::kStringField:
+        result.push_back({env_option_override.first,
+                          CompileOptions::OptionOverride(
+                              env_option_override.second.string_field())});
+        break;
+      case OptionOverrideProto::kBoolField:
+        result.push_back({env_option_override.first,
+                          CompileOptions::OptionOverride(
+                              env_option_override.second.bool_field())});
+        break;
+      case OptionOverrideProto::kIntField:
+        result.push_back({env_option_override.first,
+                          CompileOptions::OptionOverride(
+                              env_option_override.second.int_field())});
+        break;
+      case OptionOverrideProto::kDoubleField:
+        result.push_back({env_option_override.first,
+                          CompileOptions::OptionOverride(
+                              env_option_override.second.double_field())});
+        break;
+      case OptionOverrideProto::VALUE_NOT_SET:
+        return InternalError("OptionOverrideProto value not set.");
+    }
+  }
+  return result;
 }
 
 Status CompileOptions::ApplyOption(const std::string& key,

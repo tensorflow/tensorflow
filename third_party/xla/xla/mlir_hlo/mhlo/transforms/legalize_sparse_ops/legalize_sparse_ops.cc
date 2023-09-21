@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
+#include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/passes.h"
 #include "mhlo/transforms/rewriters.h"
 #include "mhlo/utils/legalize_to_linalg_utils.h"
@@ -68,32 +69,44 @@ struct LegalizeSparseOpsPass
     ConversionTarget target(*ctx);
     mhlo::RemoveSignTypeConverter typeConverter;
     if (legalize_to_custom_calls_) {
-      mhlo::populateLegalizeSparseOpsToCustomCallPatterns(ctx, typeConverter,
-                                                          &patterns);
+      setupLegalizeToCustomCallPatterns(ctx, &patterns, typeConverter, target);
     } else {
-      mhlo::populateLegalizeSparseCHLOPatterns(ctx, typeConverter, &patterns);
+      setupLegalizeSparseCHLOPatterns(ctx, &patterns, typeConverter, target);
     }
-    target.addLegalDialect<bufferization::BufferizationDialect,
-                           linalg::LinalgDialect, tensor::TensorDialect,
-                           sparse_tensor::SparseTensorDialect>();
-    /// The unary operation is sparse computation if either the input or the
-    /// result is a sparse tensor.
-    /// TODO(bixia): Remove the convert of such sparse CHLO ops from
-    /// chlo_legalize_to_hlo.
-    auto isNotSparseOp = [](Operation* op) {
-      auto encDst =
-          sparse_tensor::getSparseTensorEncoding(op->getResult(0).getType());
-      auto encSrc =
-          sparse_tensor::getSparseTensorEncoding(op->getOperand(0).getType());
-      return !encDst && !encSrc;
-    };
-    target.addDynamicallyLegalOp<chlo::AsinOp, chlo::AsinhOp, chlo::AtanOp,
-                                 chlo::AtanhOp, chlo::BesselI1eOp, chlo::SinhOp,
-                                 chlo::TanOp>(isNotSparseOp);
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {
       return signalPassFailure();
     }
+  }
+
+ private:
+  static bool isNotSparseOp(Operation* op) {
+    return !sparse_tensor::hasAnySparseOperandOrResult(op);
+  }
+
+  static void setupLegalizeToCustomCallPatterns(MLIRContext* ctx,
+                                                RewritePatternSet* patterns,
+                                                TypeConverter& typeConverter,
+                                                ConversionTarget& target) {
+    mhlo::populateLegalizeSparseOpsToCustomCallPatterns(ctx, typeConverter,
+                                                        patterns);
+    target.addIllegalDialect<sparse_tensor::SparseTensorDialect>();
+    target.addLegalOp<mhlo::CustomCallOp>();
+  }
+
+  static void setupLegalizeSparseCHLOPatterns(MLIRContext* ctx,
+                                              RewritePatternSet* patterns,
+                                              TypeConverter& typeConverter,
+                                              ConversionTarget& target) {
+    mhlo::populateLegalizeSparseCHLOPatterns(ctx, typeConverter, patterns);
+    target.addLegalDialect<bufferization::BufferizationDialect,
+                           linalg::LinalgDialect, tensor::TensorDialect,
+                           sparse_tensor::SparseTensorDialect>();
+    /// TODO(bixia): Remove the convert of such sparse CHLO ops from
+    /// chlo_legalize_to_hlo.
+    target.addDynamicallyLegalOp<chlo::AsinOp, chlo::AsinhOp, chlo::AtanOp,
+                                 chlo::AtanhOp, chlo::BesselI1eOp, chlo::SinhOp,
+                                 chlo::TanOp>(isNotSparseOp);
   }
 };
 

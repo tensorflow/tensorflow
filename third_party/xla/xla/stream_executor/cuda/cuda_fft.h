@@ -36,9 +36,6 @@ namespace gpu {
 
 class GpuExecutor;
 
-// Opaque and unique indentifier for the cuFFT plugin.
-extern const PluginId kCuFftPlugin;
-
 // CUDAFftPlan uses deferred initialization. Only a single call of
 // Initialize() is allowed to properly create cufft plan and set member
 // variable is_initialized_ to true. Newly added interface that uses member

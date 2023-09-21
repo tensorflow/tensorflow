@@ -74,8 +74,7 @@ class PjRtMemorySpace {
   // The devices that this memory space is attached to.
   virtual absl::Span<PjRtDevice* const> devices() const = 0;
 
-  // The ID of this memory space. IDs are unique among memory spaces of this
-  // type.
+  // The ID of this memory space. IDs are globally unique across all hosts.
   virtual int id() const = 0;
 
   // A platform-dependent string that uniquely identifies the kind of the

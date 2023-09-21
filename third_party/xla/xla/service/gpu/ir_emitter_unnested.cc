@@ -1017,11 +1017,9 @@ Status IrEmitterUnnested::EmitConvolutionReorderThunk(mlir::Operation* op) {
 Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
   using mlir::dyn_cast;
   using mlir::lmhlo_gpu::fusedMHAOp;
-  using mlir::lmhlo_gpu::fusedMHAWithScaledBiasOp;
-  using mlir::lmhlo_gpu::fusedMHAWithScaledMaskOp;
   GpufMHADescriptor descriptor;
   BufferAllocation::Slice lhs_bmm1_slice, rhs_bmm1_slice, rhs_bmm2_slice,
-      output_slice, scratch_slice, activation_slice;
+      output_slice, scratch_slice, activation_slice, mask_slice, bias_slice;
 
   auto populate_common = [&](auto fmha) -> Status {
     descriptor.backend_config.set_fmha_scale(
@@ -1094,6 +1092,23 @@ Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
                           GetAllocationSlice(fmha.getActivation()));
     }
 
+    if (fmha.getBias() != nullptr) {
+      descriptor.bias_shape = ShapeUtil::MakeShapeWithDenseLayout(
+          GetShape(fmha.getBias()).element_type(),
+          GetShape(fmha.getBias()).dimensions(),
+          GetShape(fmha.getBias()).layout().minor_to_major());
+
+      TF_ASSIGN_OR_RETURN(bias_slice, GetAllocationSlice(fmha.getBias()));
+    }
+
+    if (fmha.getMask() != nullptr) {
+      descriptor.mask_shape = ShapeUtil::MakeShapeWithDenseLayout(
+          GetShape(fmha.getMask()).element_type(),
+          GetShape(fmha.getMask()).dimensions(),
+          GetShape(fmha.getMask()).layout().minor_to_major());
+
+      TF_ASSIGN_OR_RETURN(mask_slice, GetAllocationSlice(fmha.getMask()));
+    }
     TF_ASSIGN_OR_RETURN(
         auto intermediate_tensor_layout_array,
         ConvertMlirArrayAttrToInt64Array(fmha.getIntermediateTensorLayout()));
@@ -1105,84 +1120,26 @@ Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
     return OkStatus();
   };
 
-  BufferAllocation::Slice mask_slice;
-  BufferAllocation::Slice bias_slice;
   if (auto fmha_op = dyn_cast<fusedMHAOp>(op)) {
     TF_RET_CHECK(fmha_op != nullptr);
     TF_ASSIGN_OR_RETURN(CudnnfMHAKind kind,
                         AsCudnnfMHAKind(fmha_op.getFusedMhaDag()));
     descriptor.kind = kind;
     TF_RETURN_IF_ERROR(populate_common(fmha_op));
-  } else if (auto fmha_with_scaled_mask_op =
-                 dyn_cast<fusedMHAWithScaledMaskOp>(op)) {
-    TF_RET_CHECK(fmha_with_scaled_mask_op != nullptr);
-    TF_ASSIGN_OR_RETURN(
-        CudnnfMHAKind kind,
-        AsCudnnfMHAKind(fmha_with_scaled_mask_op.getFusedMhaDag()));
-    descriptor.kind = kind;
-
-    TF_RET_CHECK(kind != xla::gpu::CudnnfMHAKind::kBmmBmm &&
-                 kind != xla::gpu::CudnnfMHAKind::kSoftmaxDropout &&
-                 kind != xla::gpu::CudnnfMHAKind::kSoftmax);
-
-    descriptor.mask_shape = ShapeUtil::MakeShapeWithDenseLayout(
-        GetShape(fmha_with_scaled_mask_op.getMask()).element_type(),
-        GetShape(fmha_with_scaled_mask_op.getMask()).dimensions(),
-        GetShape(fmha_with_scaled_mask_op.getMask()).layout().minor_to_major());
-
-    TF_ASSIGN_OR_RETURN(mask_slice,
-                        GetAllocationSlice(fmha_with_scaled_mask_op.getMask()));
-
-    if (fmha_with_scaled_mask_op.getBias() != nullptr) {
-      TF_RET_CHECK(kind == xla::gpu::CudnnfMHAKind::kScaleBiasMaskSoftmax ||
-                   kind ==
-                       xla::gpu::CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout);
-
-      descriptor.bias_shape = ShapeUtil::MakeShapeWithDenseLayout(
-          GetShape(fmha_with_scaled_mask_op.getBias()).element_type(),
-          GetShape(fmha_with_scaled_mask_op.getBias()).dimensions(),
-          GetShape(fmha_with_scaled_mask_op.getBias())
-              .layout()
-              .minor_to_major());
-
-      TF_ASSIGN_OR_RETURN(
-          bias_slice, GetAllocationSlice(fmha_with_scaled_mask_op.getBias()));
-    }
-    TF_RETURN_IF_ERROR(populate_common(fmha_with_scaled_mask_op));
-  } else if (auto fmha_with_bias_op = dyn_cast<fusedMHAWithScaledBiasOp>(op)) {
-    TF_RET_CHECK(fmha_with_bias_op != nullptr);
-    TF_ASSIGN_OR_RETURN(CudnnfMHAKind kind,
-                        AsCudnnfMHAKind(fmha_with_bias_op.getFusedMhaDag()));
-    descriptor.kind = kind;
-    TF_RET_CHECK(kind == xla::gpu::CudnnfMHAKind::kScaleBiasSoftmax ||
-                 kind == xla::gpu::CudnnfMHAKind::kScaleBiasSoftmaxDropout);
-
-    descriptor.bias_shape = ShapeUtil::MakeShapeWithDenseLayout(
-        GetShape(fmha_with_bias_op.getBias()).element_type(),
-        GetShape(fmha_with_bias_op.getBias()).dimensions(),
-        GetShape(fmha_with_bias_op.getBias()).layout().minor_to_major());
-
-    TF_ASSIGN_OR_RETURN(bias_slice,
-                        GetAllocationSlice(fmha_with_bias_op.getBias()));
-
-    TF_RETURN_IF_ERROR(populate_common(fmha_with_bias_op));
   } else {
     return InternalError("Unexpected operation");
   }
   TF_ASSIGN_OR_RETURN(GpufMHAConfig config, GpufMHAConfig::For(descriptor));
-
   AddThunkToThunkSequence(std::make_unique<FusedMHAThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(op), std::move(config),
       lhs_bmm1_slice, rhs_bmm1_slice, rhs_bmm2_slice, output_slice,
       scratch_slice, mask_slice, bias_slice, activation_slice));
-
   return OkStatus();
 }
 
 Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
   using mlir::dyn_cast;
   using mlir::lmhlo_gpu::fusedMHABackwardOp;
-  using mlir::lmhlo_gpu::fusedMHAWithMaskBackwardOp;
 
   GpufMHABackwardDescriptor descriptor;
   BufferAllocation::Slice bmm1_grad_gemm1_rhs_slice, bmm1_grad_gemm2_rhs_slice,
@@ -1294,6 +1251,20 @@ Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
       TF_ASSIGN_OR_RETURN(d_bias_slice, GetAllocationSlice(fmha.getDBias()));
     }
 
+    if (fmha.getMask() != nullptr) {
+      // has mask input
+      TF_RET_CHECK(
+          descriptor.kind != xla::gpu::CudnnfMHAKind::kBackwardBmmBmm &&
+          descriptor.kind != xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout &&
+          descriptor.kind != xla::gpu::CudnnfMHAKind::kBackwardSoftmax);
+
+      descriptor.mask_shape = ShapeUtil::MakeShapeWithDenseLayout(
+          GetShape(fmha.getMask()).element_type(),
+          GetShape(fmha.getMask()).dimensions(),
+          GetShape(fmha.getMask()).layout().minor_to_major());
+
+      TF_ASSIGN_OR_RETURN(mask_slice, GetAllocationSlice(fmha.getMask()));
+    }
     return OkStatus();
   };
 
@@ -1304,29 +1275,6 @@ Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
         AsCudnnBackwardfMHAKind(fmha_backward_op.getFusedMhaDag()));
     descriptor.kind = kind;
     TF_RETURN_IF_ERROR(populate_common(fmha_backward_op));
-  } else if (auto fmha_with_mask_backward_op =
-                 dyn_cast<fusedMHAWithMaskBackwardOp>(op)) {
-    TF_RET_CHECK(fmha_with_mask_backward_op != nullptr);
-    TF_ASSIGN_OR_RETURN(
-        CudnnfMHAKind kind,
-        AsCudnnBackwardfMHAKind(fmha_with_mask_backward_op.getFusedMhaDag()));
-    descriptor.kind = kind;
-
-    TF_RET_CHECK(kind != xla::gpu::CudnnfMHAKind::kBackwardBmmBmm &&
-                 kind != xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout &&
-                 kind != xla::gpu::CudnnfMHAKind::kBackwardSoftmax);
-
-    descriptor.mask_shape = ShapeUtil::MakeShapeWithDenseLayout(
-        GetShape(fmha_with_mask_backward_op.getMask()).element_type(),
-        GetShape(fmha_with_mask_backward_op.getMask()).dimensions(),
-        GetShape(fmha_with_mask_backward_op.getMask())
-            .layout()
-            .minor_to_major());
-
-    TF_ASSIGN_OR_RETURN(
-        mask_slice, GetAllocationSlice(fmha_with_mask_backward_op.getMask()));
-
-    TF_RETURN_IF_ERROR(populate_common(fmha_with_mask_backward_op));
   } else {
     return InternalError("Unexpected operation");
   }
@@ -3078,13 +3026,10 @@ Status IrEmitterUnnested::EmitOp(
                 mlir::lmhlo_gpu::CudnnConvReorderFilterAndBiasOp>(op)) {
     return EmitConvolutionReorderThunk(op);
   }
-  if (mlir::isa<mlir::lmhlo_gpu::fusedMHAOp,
-                mlir::lmhlo_gpu::fusedMHAWithScaledMaskOp,
-                mlir::lmhlo_gpu::fusedMHAWithScaledBiasOp>(op)) {
+  if (mlir::isa<mlir::lmhlo_gpu::fusedMHAOp>(op)) {
     return EmitFusedMHAThunk(op);
   }
-  if (mlir::isa<mlir::lmhlo_gpu::fusedMHABackwardOp,
-                mlir::lmhlo_gpu::fusedMHAWithMaskBackwardOp>(op)) {
+  if (mlir::isa<mlir::lmhlo_gpu::fusedMHABackwardOp>(op)) {
     return EmitFusedMHABackwardThunk(op);
   }
 #endif  // GOOGLE_CUDA

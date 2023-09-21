@@ -788,7 +788,7 @@ BUILTIN_KERNEL_DEPS = [
 }) + select({
     "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
     "//conditions:default": [
-        "@XNNPACK//:xnnpack_for_tflite",
+        "@XNNPACK",
     ],
 }) + select({
     # This select must match the similar select in `copts`

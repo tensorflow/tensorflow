@@ -2397,6 +2397,8 @@ tf_kernel_library(
         ":conv_ops_gpu_hdrs",
     ]) + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
+    ]) + if_rocm([
+        "//tensorflow/core/platform:stream_executor",
     ]),
 )
 

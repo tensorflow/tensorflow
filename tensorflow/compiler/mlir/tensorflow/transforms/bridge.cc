@@ -268,7 +268,6 @@ void CreateTPUBridgePipelineImpl(
           ->tf_mlir_enable_tpu_variable_runtime_reformatting_pass) {
     pm.addPass(CreateTPUVariableRuntimeReformattingPass());
   }
-  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 }  // namespace
 
@@ -298,6 +297,7 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandOutliningPass());
   OpPassManager &nested_module = pm.nest<ModuleOp>();
   CreateTPUBridgePipelineImpl(nested_module);
+
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
   // There are cases where we don't consume all compilation and replication
   // attributes like we do for the V2 pipeline, so we need to convert them from
@@ -373,6 +373,7 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
     pm.addPass(CreateBreakUpIslandsPass());
   };
 
+  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
   add_pass(CreateFunctionalToExecutorDialectConversionPass());
   add_pass(TFDevice::CreateReplicateToIslandPass(/*legacy_graph_export=*/true));
   add_pass(TFDevice::CreateReplicaIDToDeviceOrdinalPass());
@@ -391,6 +392,8 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
 }
 
 void AddGraphExportLoweringPassesV2(OpPassManager &pm) {
+  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
+
   // First, we need to convert from functional, to executor dialect.
   pm.addNestedPass<func::FuncOp>(
       CreateFunctionalToExecutorDialectConversionPass());
@@ -520,7 +523,6 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
 
   pm.addNestedPass<func::FuncOp>(createCSEPass());
   pm.addPass(createSymbolDCEPass());
-  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 
 tensorflow::Status RunTFXLABridge(ModuleOp module,

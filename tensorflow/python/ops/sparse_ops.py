@@ -25,6 +25,7 @@ import numbers
 
 import numpy as np
 
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -3351,7 +3352,11 @@ def sparse_bincount(values,
       values = tensor_conversion.convert_to_tensor_v2_with_dispatch(
           values, name="values")
     if weights is not None:
-      if not isinstance(weights, sparse_tensor.SparseTensor):
+      # Note that `weights` is not used for dispatch and if there is a type
+      # mismatch between `values` and `weights`, `weights` can be a RaggedTensor
+      # (or potentially some other kind of CompositeTensor) where conversion
+      # to a dense tensor fails.
+      if not isinstance(weights, composite_tensor.CompositeTensor):
         weights = tensor_conversion.convert_to_tensor_v2_with_dispatch(
             weights, name="weights")
 

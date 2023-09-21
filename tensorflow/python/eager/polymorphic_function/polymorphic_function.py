@@ -1706,7 +1706,8 @@ def class_method_to_instance_method(original_function, instance):
       autograph=original_function._autograph,
       input_signature=original_function.input_signature,
       reduce_retracing=original_function._reduce_retracing,
-      jit_compile=original_function._jit_compile)
+      jit_compile=original_function._jit_compile,
+      experimental_attributes=original_function._attributes)
   # pylint: enable=protected-access
 
   # We wrap the bound method with tf_decorator so inspection works correctly

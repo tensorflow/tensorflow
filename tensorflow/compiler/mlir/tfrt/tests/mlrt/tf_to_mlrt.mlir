@@ -417,3 +417,22 @@ func.func @case_test(%arg0: tensor<i32>, %arg1: tensor<f32>,  %arg2: tensor<f32>
   %0 = "tf.Case"(%arg0, %arg1, %arg2) {_lower_using_switch_merge = true, branches = [@branch0, @branch1], is_stateless = true} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
+
+// -----
+
+// Test await is added for unused futures
+
+// CHECK-LABEL: func @unused_future_arg
+// CHECK-SAME: ({{%.*}}: !tf_mlrt.tensor, [[unused:%.*]]: !mlrt.future)
+func.func @unused_future_arg(%x: tensor<i32>, %unused: !mlrt.future) -> tensor<i32> {
+  // CHECK: mlrt.await_all_control [[unused]]
+  return %x : tensor<i32>
+}
+
+// CHECK-LABEL: func @unused_future
+func.func @unused_future(%x: tensor<i32>) -> tensor<i32> {
+  // CHECK: [[unused:%.*]] = tf_mlrt.async_executeop
+  %unused = "tf.TestAsyncIdentity"(%x) {__op_key = 0: i32, T = i32} : (tensor<i32>) -> tensor<i32>
+  // CHECK: mlrt.await_all_control [[unused]]
+  return %x : tensor<i32>
+}

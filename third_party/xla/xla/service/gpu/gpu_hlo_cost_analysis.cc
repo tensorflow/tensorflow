@@ -313,7 +313,7 @@ int64_t FlopsPerElement(const GpuDeviceInfo* device_info,
   }
 
   static const auto* all_profiles = LoadOpProfiles();
-  static const auto& default_profile = all_profiles->at("sm_89");
+  static const auto& default_profile = all_profiles->at("sm_86");
   auto device_profiles =
       FindOrDefault(*all_profiles, compute_capability, default_profile);
   auto dtype_profiles = MaybeFind(device_profiles, type);

@@ -508,6 +508,11 @@ class Context:
 
     self._is_global_context = False
 
+    # Number of retries to give the SetServerDef step. This is useful for fault
+    # tolerant initial connection in high-preemption settings like
+    # ParameterServerStrategy training.
+    self._set_server_def_retries = 0
+
   # pylint: enable=redefined-outer-name
 
   def _set_global_seed(self, seed):
@@ -603,8 +608,10 @@ class Context:
           "moment. If this is important to you, please file an issue.")
       if self._server_def is not None:
         server_def_str = self._server_def.SerializeToString()
-        pywrap_tfe.TFE_ContextSetServerDef(context_handle, _KEEP_ALIVE_SECS,
-                                           server_def_str)
+        timeout = 0  # Indicates no timeout.
+        pywrap_tfe.TFE_ContextSetServerDefWithTimeoutAndRetries(
+            context_handle, _KEEP_ALIVE_SECS, server_def_str, timeout,
+            self._set_server_def_retries)
       elif self._collective_ops_server_def is not None:
         server_def_str = self._collective_ops_server_def.SerializeToString()
         pywrap_tfe.TFE_EnableCollectiveOps(context_handle, server_def_str)
@@ -2119,6 +2126,20 @@ class Context:
     run_metadata.ParseFromString(compat.as_bytes(proto_data))
     return run_metadata
 
+  def set_server_def_retries(self, retries):
+    """Set the number of retries to use when calling SetServerDef.
+
+    In cases where many servers run in high-preemption environments, jobs could
+    be preempted during startup and initial connection via SetServerDef. Retries
+    allow for more robust connection in these environments.
+
+    Args:
+      retries: int specifying the number of connection retries before failing.
+        Retries follow an exponential backoff waiting period with min value 1ms,
+        max value 10s, and exponent 1.3.
+    """
+    self._set_server_def_retries = retries
+
   @property
   def context_switches(self):
     """Returns a stack of context switches."""
@@ -2722,6 +2743,22 @@ def get_server_def():
 
 def set_server_def(server_def):
   context().set_server_def(server_def)
+
+
+def set_server_def_retries(retries):
+  """Set the number of retries to use when calling SetServerDef.
+
+  In cases where many servers run in high-preemption environments, jobs could
+  be preempted during startup and initial connection via SetServerDef. Retries
+  allow for more robust connection in these environments.
+
+
+  Args:
+    retries: int specifying the number of connection retries before failing.
+      Retries follow an exponential backoff waiting period with min value 1ms,
+      max value 10s, and exponent 1.3.
+  """
+  context().set_server_def_retries(retries)
 
 
 def update_server_def(server_def):

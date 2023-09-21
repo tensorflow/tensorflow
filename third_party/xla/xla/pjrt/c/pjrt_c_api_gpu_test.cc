@@ -166,13 +166,14 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
   }
 }
 
-TEST(PjrtCApiGpuAllocatorTest, ValidAllocatorOptionsParsing) {
+TEST(PjrtCApiGpuAllocatorTest, ValidOptionsParsing) {
   auto api = GetPjrtApi();
   std::vector<std::string> allocator_options = {"default", "platform", "bfc",
                                                 "cuda_async"};
   for (const std::string& allocator_option : allocator_options) {
     absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
         {"allocator", allocator_option},
+        {"visible_devices", xla::PjRtValueType(std::vector<int64_t>{0, 1})},
     };
     if (allocator_option == "bfc" || allocator_option == "cuda_async") {
       options["memory_fraction"] = 0.5f;

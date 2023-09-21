@@ -254,10 +254,15 @@ function prepare_src() {
     fi
   fi
 
+  # Move headers from TSL/XLA into tensorflow so that InstallHeaders can move
+  # them back into tensorflow/include
+  cp -rL bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_tsl/tsl/ ${TMPDIR}/tensorflow
+  cp -rL bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_xla/xla/ ${TMPDIR}/tensorflow/compiler
   # Move vendored files into proper locations
   # This is required because TSL/XLA don't publish their own wheels
-  cp -r bazel-bin/external/local_tsl/tsl/ ${TMPDIR}/tensorflow/tsl
-  cp -r bazel-bin/external/local_xla/xla/ ${TMPDIR}/tensorflow/compiler/xla
+  # TODO(jakeharmon): These two copy statements may no longer be necessary
+  cp -rL bazel-bin/external/local_tsl/tsl/ ${TMPDIR}/tensorflow
+  cp -rL bazel-bin/external/local_xla/xla/ ${TMPDIR}/tensorflow/compiler
   # Fix the proto stubs
   if is_macos; then
     find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from tsl\./from tensorflow.tsl./' {} \;
@@ -272,6 +277,7 @@ function prepare_src() {
   mkdir -p ${TMPDIR}/third_party
   cp -R $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
   cp -LR $RUNFILES/../local_config_cuda/cuda/_virtual_includes/cuda_headers_virtual/third_party/gpus ${TMPDIR}/third_party
+  cp $RUNFILES/tensorflow/tools/pip_package/THIRD_PARTY_NOTICES.txt "${TMPDIR}/tensorflow"
 
   reorganize_includes "${TMPDIR}"
 

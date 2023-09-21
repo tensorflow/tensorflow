@@ -86,14 +86,16 @@ class SnapshotAssignmentManager {
   };
 
   // A mapping of worker address to ongoing assignments.
-  absl::flat_hash_map<std::string, absl::flat_hash_set<Assignment>>
-      assignments_;
+  absl::flat_hash_map<std::string, absl::flat_hash_set<Assignment>> assignments_
+      TF_GUARDED_BY(mu_);
 
   // The maximum number of snapshots that a worker can concurrently process at a
   // given point in time. This is a tradeoff between worker resource usage and
   // snapshot wall time. A value of 0 indicates that the decision should be left
   // up to the runtime.
   const int64_t worker_max_concurrent_snapshots_;
+
+  mutable tsl::mutex mu_;
 };
 
 // A helper used by `DataServiceDispatcherImpl` to manage a call to `Snapshot`.

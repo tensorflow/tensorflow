@@ -908,6 +908,21 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
                             buf.get()->data, buf.get()->length, status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
+  m.def("TFE_ContextSetServerDefWithTimeoutAndRetries",
+        [](py::handle& ctx, int keep_alive_secs, py::bytes proto, int timeout,
+           int retries) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          tensorflow::Safe_TF_BufferPtr buf = tensorflow::make_safe(
+              tensorflow::ProtoStringToTFBuffer(proto.ptr()));
+          Py_BEGIN_ALLOW_THREADS;
+          TFE_ContextSetServerDefWithTimeoutAndRetries(
+              tensorflow::InputTFE_Context(ctx), keep_alive_secs,
+              buf.get()->data, buf.get()->length, timeout, retries,
+              status.get());
+          Py_END_ALLOW_THREADS;
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        });
   m.def("TFE_ContextUpdateServerDef", [](py::handle& ctx, int keep_alive_secs,
                                          py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =

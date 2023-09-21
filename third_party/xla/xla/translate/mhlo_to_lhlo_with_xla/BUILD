@@ -33,6 +33,7 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/llvm_ir:buffer_assignment_util",
+        "//xla/service/llvm_ir:llvm_util",
         "//xla/translate/hlo_to_mhlo:attribute_importer",
         "//xla/translate/hlo_to_mhlo:hlo_module_importer",
         "//xla/translate/hlo_to_mhlo:hlo_utils",

@@ -389,8 +389,9 @@ void DataServiceDispatcherImpl::ReportProcessingTimesFromActiveTasks(
 
 Status DataServiceDispatcherImpl::WorkerHeartbeat(
     const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
+  absl::Time start_time = absl::FromUnixMicros(env_->NowMicros());
   TF_RETURN_IF_ERROR(CheckStarted());
-  VLOG(4) << "Received worker heartbeat request from worker "
+  VLOG(3) << "Received worker heartbeat request from worker "
           << request->worker_address();
   {
     mutex_lock l(mu_);
@@ -441,8 +442,10 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     TF_RETURN_IF_ERROR(snapshot_manager->WorkerHeartbeat(*request, *response));
   }
 
-  VLOG(4) << "Finished worker heartbeat for worker at address "
-          << request->worker_address();
+  VLOG(3) << "Finished worker heartbeat for worker at address "
+          << request->worker_address() << " in "
+          << (absl::ToDoubleSeconds(absl::FromUnixMicros(env_->NowMicros()) -
+                                    start_time));
   return OkStatus();
 }
 
@@ -1176,6 +1179,7 @@ Status DataServiceDispatcherImpl::GetSnapshotStreams(
 Status DataServiceDispatcherImpl::GetSnapshotSplit(
     const GetSnapshotSplitRequest* request,
     GetSnapshotSplitResponse* response) {
+  absl::Time start_time = absl::FromUnixMicros(env_->NowMicros());
   TF_RETURN_IF_ERROR(CheckStarted());
 
   absl::flat_hash_map<std::string, std::unique_ptr<SnapshotManager>>::iterator
@@ -1189,7 +1193,10 @@ Status DataServiceDispatcherImpl::GetSnapshotSplit(
           request->base_path());
     }
   }
-  return it->second->GetSnapshotSplit(*request, *response);
+  auto status = it->second->GetSnapshotSplit(*request, *response);
+  LOG(INFO) << "[tf.data snapshot] GetSnapshotSplit took "
+            << absl::FromUnixMicros(env_->NowMicros()) - start_time;
+  return status;
 }
 
 Status DataServiceDispatcherImpl::DisableCompressionAtRuntime(

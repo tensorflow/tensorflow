@@ -2211,10 +2211,7 @@ cc_library(
         "gpu_device_context.h",
         "mkl_cpu_allocator.h",
     ],
-    visibility = [
-        ":__pkg__",
-        "//tensorflow/core/nccl:__pkg__",
-    ],
+    visibility = [":__pkg__"],
 )
 
 # -----------------------------------------------------------------------------
@@ -2743,7 +2740,7 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
-    ] + if_cuda(["@local_tsl//tsl/platform:cuda"]),
+    ] + if_cuda(["@local_tsl//tsl/cuda:cudart"]),
 )
 
 # This is identical to :common_runtime_direct_session_test with the addition of

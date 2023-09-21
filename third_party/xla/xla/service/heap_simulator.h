@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_ordering.h"
-#include "xla/service/memory_space_assignment_repacking.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment_repacking.h"
 #include "xla/service/tuple_points_to_analysis.h"
 #include "xla/statusor.h"
 

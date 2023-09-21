@@ -21,6 +21,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
 #define XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -29,12 +30,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
-#include "absl/types/optional.h"
+#include "absl/status/status.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_options.h"
-#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_cache_config.h"
@@ -107,6 +107,16 @@ class KernelInterface {
   SE_DISALLOW_COPY_AND_ASSIGN(KernelInterface);
 };
 
+// Platform-dependent interface class implementing generic CommandBuffer.
+class CommandBufferInterface {
+ public:
+  CommandBufferInterface() = default;
+  virtual ~CommandBufferInterface() = default;
+
+ private:
+  SE_DISALLOW_COPY_AND_ASSIGN(CommandBufferInterface);
+};
+
 // Pointer-to-implementation object type (i.e. the Stream class delegates to
 // this interface) with virtual destruction. This class exists for the
 // platform-dependent code to hang any kernel data/resource info/functionality
@@ -174,21 +184,21 @@ class StreamExecutorInterface {
 
   virtual tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                                 KernelBase* kernel) {
-    return tsl::errors::Unimplemented("Not Implemented");
+    return absl::UnimplementedError("Not Implemented");
   }
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
   virtual tsl::Status LoadModule(const MultiModuleLoaderSpec& spec,
                                  ModuleHandle* module_handle) {
-    return tsl::errors::Unimplemented("Not Implemented");
+    return absl::UnimplementedError("Not Implemented");
   }
   virtual tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
   CreateOrShareConstant(Stream* stream, const std::vector<uint8_t>& content) {
-    return tsl::errors::Unimplemented("Not Implemented");
+    return absl::UnimplementedError("Not Implemented");
   }
   virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                              const BlockDim& block_dims, const KernelBase& k,
                              const KernelArgsArrayBase& args) {
-    return tsl::errors::Unimplemented("Not Implemented");
+    return absl::UnimplementedError("Not Implemented");
   }
 
   // Releases any state associated with the kernel.
@@ -250,8 +260,7 @@ class StreamExecutorInterface {
   virtual tsl::Status WaitForEvent(Stream* stream, Event* event) = 0;
   virtual tsl::Status WaitForEventOnExternalStream(std::intptr_t stream,
                                                    Event* event) {
-    return tsl::Status(
-        absl::StatusCode::kUnimplemented,
+    return absl::UnimplementedError(
         "WaitForEventOnExternalStream not supported on this executor.");
   }
   virtual Event::Status PollForEventStatus(Event* event) = 0;
@@ -260,8 +269,8 @@ class StreamExecutorInterface {
   virtual bool CreateStreamDependency(Stream* dependent, Stream* other) = 0;
   virtual tsl::Status BlockHostUntilDone(Stream* stream) = 0;
   virtual tsl::Status GetStatus(Stream* stream) {
-    return tsl::Status(absl::StatusCode::kUnimplemented,
-                       "GetStatus is not supported on this executor.");
+    return absl::UnimplementedError(
+        "GetStatus is not supported on this executor.");
   }
   virtual tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface* other) = 0;
@@ -330,6 +339,11 @@ class StreamExecutorInterface {
   virtual std::unique_ptr<EventInterface> CreateEventImplementation() = 0;
   virtual std::unique_ptr<KernelInterface> CreateKernelImplementation() = 0;
   virtual std::unique_ptr<StreamInterface> GetStreamImplementation() = 0;
+
+  virtual tsl::StatusOr<std::unique_ptr<CommandBufferInterface>>
+  GetCommandBufferImplementation() {
+    return absl::UnimplementedError("Command buffers are not implemented");
+  }
 
   // Returns the CUDA or ROCm context associated with this StreamExecutor
   // platform implementation.

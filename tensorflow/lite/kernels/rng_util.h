@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_RNG_UTIL_H_
 
 #include <array>
+#include <cstdint>
 
 namespace tflite {
 namespace rng {

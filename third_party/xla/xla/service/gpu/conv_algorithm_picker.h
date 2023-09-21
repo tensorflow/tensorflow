@@ -138,8 +138,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   };
 
   StatusOr<AutotuneResult> AutotuneOneConvRunner(
-      se::DeviceMemoryAllocator* allocator, se::Stream* stream,
-      GenericConvRunner* runner,
+      se::Stream* stream, GenericConvRunner* runner,
       std::optional<ReferenceResult>* reference_result,
       absl::Span<const stream_executor::dnn::AlgorithmDesc> disabled_algos,
       std::optional<AutotuneCacheKey> instruction_info,
@@ -147,8 +146,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
 
   // Pick the best algorithm for CUDA platform.
   StatusOr<AutotuneResult> PickBestAlgorithmNoCacheCuda(
-      const HloCustomCallInstruction* instr,
-      se::DeviceMemoryAllocator* allocator, se::Stream* stream,
+      const HloCustomCallInstruction* instr, se::Stream* stream,
       std::optional<AutotuneCacheKey> instruction_info,
       const AutotuneRuntimeArguments& runtime_arguments);
 #endif

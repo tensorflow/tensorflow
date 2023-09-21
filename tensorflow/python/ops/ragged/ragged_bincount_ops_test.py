@@ -24,6 +24,7 @@ from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import test
 
 
 def _ragged_factory(x):
@@ -551,3 +552,6 @@ class TestSparseCountFailureModes(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "must have the same row splits"):
       self.evaluate(sparse_ops.sparse_bincount(x, weights=weights, axis=-1))
+
+if __name__ == "__main__":
+  test.main()

@@ -594,6 +594,17 @@ absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api) {
   return platform_version;
 }
 
+absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api) {
+  PJRT_Client_PlatformName_Args args;
+  args.client = client;
+  args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  pjrt::LogFatalIfPjrtError(api->PJRT_Client_PlatformName(&args), api);
+
+  absl::string_view platform_name(args.platform_name, args.platform_name_size);
+  return platform_name;
+}
+
 PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk) {
   // `deleter_arg` holds a copy of the original xla::PjRtChunk
   // deleter. The original xla::PjRtChunk `input` releases its ownership

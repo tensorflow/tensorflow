@@ -86,7 +86,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   if (auto it = create_options.find("visible_devices");
       it != create_options.end()) {
     const auto& vec = std::get<std::vector<int64_t>>(it->second);
-    visible_devices->insert(vec.begin(), vec.end());
+    visible_devices.emplace(vec.begin(), vec.end());
   }
   int node_id = 0;
   if (auto it = create_options.find("node_id"); it != create_options.end()) {

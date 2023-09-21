@@ -13,17 +13,53 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
+namespace {
+
+StringAttr getOperationTargetName(Operation* op) {
+  // Strips off `dialect` from `dialect.opName`.
+  StringRef opName = op->getName().getIdentifier().strref().split(".").second;
+  return StringAttr::get(op->getContext(), "sparse_tensor_" + opName);
+}
+
+}  // namespace
 namespace mhlo {
 
+template <typename OpTy>
+class SparseOpToCustomCallConverter : public OpConversionPattern<OpTy> {
+ public:
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      OpTy op, typename OpTy::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    NamedAttribute callTargetName =
+        rewriter.getNamedAttr("call_target_name", getOperationTargetName(op));
+    rewriter.replaceOpWithNewOp<mhlo::CustomCallOp>(op, op->getResultTypes(),
+                                                    adaptor.getOperands(),
+                                                    ArrayRef{callTargetName});
+    return success();
+  }
+};
+
 void populateLegalizeSparseOpsToCustomCallPatterns(
-    MLIRContext* /*context*/, TypeConverter& /*typeConverter*/,
-    RewritePatternSet* /*patterns*/) {}
+    MLIRContext* context, TypeConverter& typeConverter,
+    RewritePatternSet* patterns) {
+  patterns->add<SparseOpToCustomCallConverter<sparse_tensor::PackOp>,
+                SparseOpToCustomCallConverter<sparse_tensor::UnpackOp>>(
+      typeConverter, context);
+}
 
 }  // namespace mhlo
 }  // namespace mlir

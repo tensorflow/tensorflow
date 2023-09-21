@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/float_normalization.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/conv_algorithm_picker.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cublas_pad_for_gemms.h"
@@ -332,34 +333,6 @@ Status NVPTXCompiler::SerializeAutotuneResultsToFile(
 }
 
 namespace {
-std::optional<bool> CanShareBufferHint(const HloInstruction* user,
-                                       const HloInstruction* operand,
-                                       const ShapeIndex& user_index) {
-  switch (user->opcode()) {
-    case HloOpcode::kAllReduce:
-      // NCCL all-reduce can be performed in-place.
-      return user->operand_count() == 1 ||
-             (user_index.size() == 1 &&
-              user->operand(user_index[0]) == operand);
-    case HloOpcode::kCustomCall:
-      // The matrix bias operand can be overwritten in-place.
-      if (user->custom_call_target() == kCublasLtMatmulCallTarget) {
-        GemmBackendConfig config =
-            std::move(user->backend_config<GemmBackendConfig>()).value();
-        return (config.beta() != 0.) && user->operand(2) == operand;
-      }
-      // The operand of cholesky can be shared with the first output.
-      if (user->custom_call_target() == kCusolverCholeskyCallTarget) {
-        return user_index.size() == 1 && user_index[0] == 0;
-      }
-      return false;
-    case HloOpcode::kFusion:
-      return GpuCompiler::FusionCanShareBufferHint(user, operand, user_index);
-    default:
-      return std::nullopt;
-  }
-}
-
 // Try to load ptx from files defined in the FLAGS. If successful, return true.
 bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
                           const HloModule* module, std::string* ptx) {

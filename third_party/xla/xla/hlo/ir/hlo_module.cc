@@ -375,7 +375,8 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
   for (const HloComputation* computation : computations) {
     // Don't print async computations when the sytax sugar is enabled since that
     // is redundant information.
-    if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation()) {
+    if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation() &&
+        computation->CanExpandIntoSingleInstruction()) {
       continue;
     }
     if (computation == entry_computation()) {

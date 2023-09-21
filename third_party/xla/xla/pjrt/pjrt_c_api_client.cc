@@ -77,6 +77,7 @@ limitations under the License.
 #include "tsl/framework/allocator.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/fingerprint.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -111,7 +112,9 @@ PjRtCApiClient::PjRtCApiClient(
       //   TFRT TPU v2
       //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
       platform_version_(absl::StrCat(
-          "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))) {
+          "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))),
+      platform_name_(::pjrt::GetPlatformName(c_client, c_api)),
+      platform_id_(tsl::Fingerprint64(platform_name_)) {
   InitDevicesAndMemorySpaces();
   LOG(INFO) << "PjRtCApiClient created.";
 }
@@ -248,17 +251,6 @@ absl::Span<PjRtDevice* const> PjRtCApiClient::addressable_devices() const {
   return addressable_devices_;
 }
 
-absl::string_view PjRtCApiClient::platform_name() const {
-  PJRT_Client_PlatformName_Args args;
-  args.client = c_client_.get();
-  args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  pjrt::LogFatalIfPjrtError(c_api_->PJRT_Client_PlatformName(&args), c_api_);
-
-  absl::string_view platform_name(args.platform_name, args.platform_name_size);
-  return platform_name;
-}
-
 int PjRtCApiClient::process_index() const {
   PJRT_Client_ProcessIndex_Args process_index_args;
   process_index_args.struct_size = PJRT_Client_ProcessIndex_Args_STRUCT_SIZE;
@@ -325,6 +317,10 @@ StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
   if (error) {
     xla::Status s = ::pjrt::PjrtErrorToStatus(error.get(), c_api_);
     return s;
+  }
+  if (args.executable_fingerprint == nullptr ||
+      args.executable_fingerprint_size == 0) {
+    return {std::nullopt};
   }
   std::string fingerprint = std::string(args.executable_fingerprint,
                                         args.executable_fingerprint_size);

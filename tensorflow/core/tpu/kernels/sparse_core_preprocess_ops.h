@@ -15,11 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_SPARSE_CORE_PREPROCESS_OPS_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_SPARSE_CORE_PREPROCESS_OPS_H_
 
+#include <cstdint>
+#include <memory>
 #include <string>
 
 #include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_stats_handler.h"
 
 namespace tensorflow {
@@ -49,7 +53,7 @@ Status ValidateInputs(const Tensor& indices_or_row_splits, const Tensor& values,
 // Compute the row id list before padding.
 Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
                                   int32 total_id_count,
-                                  Tensor* row_ids_before_padding);
+                                  int32* row_ids_before_padding);
 
 class GetMinibatchesInCsrWithPhysicalReplicaOp : public OpKernel {
  public:
@@ -83,6 +87,49 @@ class GetMinibatchesInCsrWithPhysicalReplicaOp : public OpKernel {
   int max_ids_per_chip_per_sample_ = 1;
   int table_vocab_size_ = 1;
   std::string device_name_;
+};
+
+class GetMinibatchSplitsWithPhysicalReplicaOp : public OpKernel {
+ public:
+  explicit GetMinibatchSplitsWithPhysicalReplicaOp(OpKernelConstruction* ctx);
+  ~GetMinibatchSplitsWithPhysicalReplicaOp() override = default;
+  GetMinibatchSplitsWithPhysicalReplicaOp(
+      const GetMinibatchSplitsWithPhysicalReplicaOp&) = delete;
+  GetMinibatchSplitsWithPhysicalReplicaOp& operator=(
+      const GetMinibatchSplitsWithPhysicalReplicaOp&) = delete;
+
+  void Compute(OpKernelContext* ctx) override;
+
+ protected:
+  virtual void GetMaxIdsAndUniques(OpKernelContext* ctx,
+                                   const std::string& program_key,
+                                   const std::string& table_name,
+                                   int64_t num_samples_per_sparse_core,
+                                   int64_t feature_width,
+                                   int64_t* max_ids_per_partition,
+                                   int64_t* max_unique_ids_per_partition) {}
+  virtual void CalculateHeadroom(int32 this_max_ids, int32 this_max_uniques,
+                                 tstring program_key,
+                                 int64_t max_ids_per_partition,
+                                 int64_t max_unique_ids_per_partition) {}
+  virtual inline int32_t CalculateBucketIdWithHashing(int32_t col_id,
+                                                      int32_t num_buckets) {
+    // TODO(pineapplejuice233): Add a proper hashing function here.
+    return col_id % num_buckets;
+  }
+
+  std::string device_name_;
+  std::string table_name_;
+  std::unique_ptr<SparseCoreOpsStatsHandler> sprase_core_ops_stats_handler_;
+  bool allow_id_dropping_for_minibatching_ = false;
+  bool allow_id_shuffling_for_minibatching_ = false;
+
+ private:
+  int num_replica_ = 1;
+  int sample_count_ = 1;
+  int table_vocab_size_ = 1;
+  int feature_width_ = 1;
+  int64_t num_sc_per_chip_;
 };
 
 }  // namespace tensorflow

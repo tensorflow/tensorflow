@@ -17,7 +17,6 @@
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -324,15 +323,6 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
       self.skipTest(
           "b/263004039 The DenseBincount GPU kernel does not support weights."
           " unsorted_segment_sum should be used instead on GPU."
-      )
-    # TODO(b/255381064) Remove the following block which uses older kernels for
-    # certain cases once the forward compatibility window expries (and remove
-    # the imports in this file and dependencies in the BUILD file for compat
-    # which is only required for this block.)
-    if not compat.forward_compatible(2023, 9, 10):
-      self.skipTest(
-          "b/255381064 tests with weights will pass once forward comptibiliy"
-          " window expires"
       )
     if axis == -1:
       expected = _adjust_expected_rank2(expected, minlength, maxlength)

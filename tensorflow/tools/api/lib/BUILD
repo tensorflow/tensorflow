@@ -1,7 +1,8 @@
 # Helper libraries for TensorFlow API compatibility test.
 
-# Placeholder: load py_proto_library
 load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+# Placeholder: load py_proto_library
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -11,7 +12,6 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/tools/api:__subpackages__",
-        "//third_party/py/keras/api:__subpackages__",
         "//third_party/py/tf_keras/api:__subpackages__",
     ],
     licenses = ["notice"],

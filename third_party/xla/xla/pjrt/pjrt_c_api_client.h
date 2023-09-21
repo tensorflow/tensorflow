@@ -186,11 +186,9 @@ class PjRtCApiClient : public PjRtClient {
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
-  PjRtPlatformId platform_id() const override {
-    CHECK(false) << "PJRT C API does not support platform_id.";
-  }
+  PjRtPlatformId platform_id() const override { return platform_id_; }
 
-  absl::string_view platform_name() const override;
+  absl::string_view platform_name() const override { return platform_name_; };
 
   absl::string_view platform_version() const override;
 
@@ -359,6 +357,8 @@ class PjRtCApiClient : public PjRtClient {
   absl::flat_hash_map<PJRT_Memory*, PjRtCApiMemorySpace*> c_to_cpp_memory_map_;
 
   const std::string platform_version_;
+  const std::string platform_name_;
+  const PjRtPlatformId platform_id_;
 };
 
 class PjRtCApiBuffer : public PjRtBuffer {

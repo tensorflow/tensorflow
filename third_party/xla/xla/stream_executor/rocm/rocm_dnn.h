@@ -35,9 +35,6 @@ class MIOpenRnnSequenceTensorDescriptor;
 class MIOpenRnnStateTensorDescriptor;
 class MIOpenCTCLossDescriptor;
 
-// Opaque and unique identifier for the MIOpen plugin.
-extern const PluginId kMIOpenPlugin;
-
 struct PoolingWorkspaceDescriptor {
   std::vector<int64_t> input_dims;
   std::vector<int64_t> output_dims;

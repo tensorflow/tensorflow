@@ -335,15 +335,6 @@ class DeviceDescription {
     return shared_memory_per_block_optin_;
   }
 
-  // TODO(leary): resident blocks per core will be useful.
-
-  // Convenience typedef for the string-based DeviceDescription mapping.
-  typedef std::map<std::string, std::string> Map;
-
-  // Returns a mapping from readable names to readable values that describe the
-  // device. This is useful for things like printing.
-  std::unique_ptr<Map> ToMap() const;
-
   // For string values that are not available via the underlying platform, this
   // value will be provided.
   static const char *kUndefinedString;

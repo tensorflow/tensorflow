@@ -235,7 +235,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
-        "@XNNPACK//:xnnpack_for_tflite",
+        "@XNNPACK",
     ],
 )
 

@@ -1,0 +1,17 @@
+# Disabled until newest scripts are ready
+TFCI_UPLOAD_LIB_ENABLE=0
+TFCI_UPLOAD_LIB_LATEST_ENABLE=0
+TFCI_UPLOAD_LIB_LATEST_URI="gs://libtensorflow-nightly/latest"
+TFCI_UPLOAD_LIB_URI="gs://libtensorflow-nightly/$(date -I)"
+
+# Disabled until newest scripts are ready
+TFCI_UPLOAD_WHL_GCS_ENABLE=
+TFCI_UPLOAD_WHL_GCS_URI=
+
+# Disabled until newest scripts are ready
+TFCI_UPLOAD_WHL_PYPI_ENABLE=0
+TFCI_UPLOAD_WHL_PYPI_ARGS=( --config-file "$KOKORO_KEYSTORE_DIR/73361_tensorflow_pypirc_using_global_api_token" --repository testpypi )
+
+# For standard releases, later:
+# TFCI_UPLOAD_LIB_URI="gs://tensorflow-release-packages/$RELEASE_VERSION/$KOKORO_GIT_COMMIT_tensorflow"
+# TFCI_UPLOAD_WHL_GCS_URI="gs://tensorflow-release-packages/$RELEASE_VERSION/$KOKORO_GIT_COMMIT_tensorflow"

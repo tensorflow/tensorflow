@@ -640,6 +640,7 @@ LogicalResult tilePeeledOpsToScalars(
     if (!definingOp) return failure();
 
     auto opts = getSCFTilingOptions(
+        rewriter.getContext(),
         SmallVector<int64_t>(definingOp.getLoopIteratorTypes().size(), 1));
     if (failed(tileUsingSCFForallOpAndFuseGreedily(rewriter, definingOp, opts,
                                                    fuseFilterFn))) {

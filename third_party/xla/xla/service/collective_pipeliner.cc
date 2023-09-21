@@ -764,6 +764,8 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
     ++parameter_gtes_count[user->tuple_index()];
   }
   absl::flat_hash_map<const HloInstruction*, Range> index_ranges;
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      index_per_dyn_update_slice;
   if (loop_bound_) {
     // Compute the range of the index as "start + iteration_count * increment"
     Range index_range =
@@ -798,7 +800,7 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
           instr, while_body, level_to_operate_on, pipeline_use_tree_);
       if (dyn_update == nullptr) {
         VLOG(5)
-            << "Skipping " << instr->name()
+            << "Skipping " << instr->ToString()
             << " because update users > 1 or single user is not the root of "
                "computation";
         continue;
@@ -897,6 +899,42 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
                 << " because couldn't find unique output index for insertion";
         continue;
       }
+      //
+      auto merge_as_formatting =
+          [this](
+              absl::flat_hash_map<const HloInstruction*, int64_t>::iterator it,
+              HloInstruction* instr, HloInstruction* dyn_upd,
+              absl::Span<HloInstruction* const> formatting_ops) {
+            CHECK_EQ(move_infos_[it->second].dynamic_update_slice, dyn_upd)
+                << "Not the same dynamic-update-slice for converging entry";
+            absl::flat_hash_set<const HloInstruction*> existing_entry_instrs(
+                move_infos_[it->second].formatting_ops.begin(),
+                move_infos_[it->second].formatting_ops.end());
+            existing_entry_instrs.insert(
+                move_infos_[it->second].collective_to_move);
+            std::vector<HloInstruction*> to_merge;
+            // If instr is already in the set then this instruction is already
+            // in formatting-ops of the other one, so its already pipelined.
+            if (existing_entry_instrs.count(instr)) {
+              return;
+            }
+            to_merge.push_back(instr);
+            for (auto* op : formatting_ops) {
+              if (!existing_entry_instrs.count(op)) {
+                to_merge.push_back(op);
+              }
+            }
+            move_infos_[it->second].formatting_ops.insert(
+                move_infos_[it->second].formatting_ops.begin(),
+                to_merge.begin(), to_merge.end());
+          };
+      auto it = index_per_dyn_update_slice.find(dyn_update);
+      if (it != index_per_dyn_update_slice.end()) {
+        // Merge stuff with existing entry.
+        merge_as_formatting(it, instr, dyn_update, formatting_ops);
+        continue;
+      }
+      index_per_dyn_update_slice[dyn_update] = move_infos_.size();
       move_infos_.push_back({instr, dyn_update, std::move(formatting_ops),
                              *sliced_dim, *output_idx});
     } else {
