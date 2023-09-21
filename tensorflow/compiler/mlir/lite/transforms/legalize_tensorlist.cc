@@ -18,14 +18,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -35,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace {
@@ -52,6 +56,19 @@ mlir::TFL::ConstBytesAttr CreateListReserveOptions(
   options.push_back(element_type);
   return SerializeOptionsToBytes(context, options);
 }
+
+std::optional<mlir::Type> GetSingularVariantBaseType(mlir::Value val) {
+  auto val_t =
+      mlir::getElementTypeOrSelf(val).dyn_cast_or_null<mlir::TF::VariantType>();
+  if (!val_t) {
+    return std::nullopt;
+  }
+  llvm::ArrayRef<mlir::TensorType> subtypes = val_t.getSubtypes();
+  if (subtypes.size() != 1) {
+    return std::nullopt;
+  }
+  return subtypes[0].getElementType();
+}  // NOLINT: TODO(b/257472333) This function will be used in child changes.
 
 }  // namespace
 
