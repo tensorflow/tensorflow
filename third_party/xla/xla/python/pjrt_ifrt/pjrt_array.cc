@@ -22,6 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -340,16 +342,29 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
   // permits device changes and nothing else.
   PjRtBuffers buffers;
   buffers.reserve(pjrt_buffers_.size());
+  // TODO(yueshengys): Add a on-demand canonicalization when all users
+  // (e.g., ifrt proxy) support memories.
+  bool new_sharding_has_memory_kind =
+      new_sharding->memory_kind().memory_kind().has_value();
+  // TODO(yueshengys): Remove the check on PjRt C API after `CopyToMemorySpace`
+  // is supported.
+  CHECK_GT(new_sharding->devices().size(), 0);
+  bool using_c_api = absl::StrContains(
+      new_sharding->devices().front()->client()->platform_version(),
+      "PJRT C API");
   for (int i = 0; i < pjrt_buffers_.size(); ++i) {
-    bool memory_kind_equal =
-        !new_sharding->memory_kind().memory_kind().has_value() ||
-        pjrt_buffers_[i]->memory_space() == nullptr ||
-        pjrt_buffers_[i]->memory_space()->memory_space_kind() ==
-            new_sharding->memory_kind().memory_kind();
     bool devices_equal =
         pjrt_buffers_[i]->device() == new_sharding->devices()[i];
+    bool memories_supported =
+        !using_c_api && pjrt_buffers_[i]->memory_space() != nullptr;
+    bool memory_kind_equal =
+        new_sharding_has_memory_kind && memories_supported &&
+        pjrt_buffers_[i]->memory_space()->memory_space_kind() ==
+            new_sharding->memory_kind().memory_kind();
 
-    if (devices_equal && memory_kind_equal) {
+    // No need for data transfer.
+    if (devices_equal && (!new_sharding_has_memory_kind ||
+                          !memories_supported || memory_kind_equal)) {
       switch (semantics) {
         case ArrayCopySemantics::kAlwaysCopy:
           // TODO(hyeontaek): kAlwaysCopy should clone the buffer, but the PjRt
@@ -373,16 +388,11 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
             "first fetched to the host and then sent to the destination "
             "device.");
       }
-      if (!devices_equal && memory_kind_equal) {
-        TF_ASSIGN_OR_RETURN(
-            std::unique_ptr<xla::PjRtBuffer> copied_buffer,
-            pjrt_buffers_[i]->CopyToDevice(new_sharding->devices()[i]));
-        if (semantics == ArrayCopySemantics::kDonateInput) {
-          pjrt_buffers_[i] = nullptr;
-        }
-        buffers.push_back(std::shared_ptr<PjRtBuffer>(copied_buffer.release()));
-      } else {
-        // memory_kind is not equal and devices can be equal or not equal.
+      // Use `PjRtBuffer::CopyToMemorySpace` instead of
+      // `PjRtBuffer::CopyToDevice` when memories are supported. Because the
+      // semantics of the latter one is to copy to the default memory space of
+      // the device.
+      if (new_sharding_has_memory_kind && memories_supported) {
         TF_ASSIGN_OR_RETURN(
             auto memory_space,
             GetMemorySpaceFromMemoryKind(new_sharding->devices()[i],
@@ -390,8 +400,20 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> copied_buffer,
                             pjrt_buffers_[i]->CopyToMemorySpace(memory_space));
         if (semantics == ArrayCopySemantics::kDonateInput) {
-          return Unimplemented(
-              "Donation across different memory kinds is not implemented.");
+          if (!memory_kind_equal) {
+            return Unimplemented(
+                "Donation across different memory kinds is not implemented.");
+          }
+          pjrt_buffers_[i] = nullptr;
+        }
+        buffers.push_back(std::shared_ptr<PjRtBuffer>(copied_buffer.release()));
+      } else {
+        // Use `PjRtBuffer::CopyToDevice` when memories are not supported.
+        TF_ASSIGN_OR_RETURN(
+            std::unique_ptr<xla::PjRtBuffer> copied_buffer,
+            pjrt_buffers_[i]->CopyToDevice(new_sharding->devices()[i]));
+        if (semantics == ArrayCopySemantics::kDonateInput) {
+          pjrt_buffers_[i] = nullptr;
         }
         buffers.push_back(std::shared_ptr<PjRtBuffer>(copied_buffer.release()));
       }
