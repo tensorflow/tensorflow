@@ -27,8 +27,7 @@ rm "get-pip.py"
 PYTHON_VERSION=$(echo ${PIP##*.})  # only the last number, eg. 10
 
 JAX_PACKAGES=(
-  # https://github.com/numpy/numpy/issues/22623
-  "setuptools<=65.5.1"
+  "setuptools"
   "wheel"
   "cloudpickle"
   "colorama>=0.4.4"
@@ -40,9 +39,8 @@ JAX_PACKAGES=(
   "six"
   "opt-einsum"
   "auditwheel"
-  "msgpack"
   "typing_extensions"
-  "ml_dtypes>=0.2.0"
+  "ml_dtypes>=0.3.0"
   "importlib_metadata>=4.6"
 )
 
@@ -94,7 +92,9 @@ fi
 if [[ "$2" == "jax" ]]; then
   # Special casing by version of Python
   # E.g., numpy supports py3.11 only from 1.23.4
-  if [[ ${PYTHON_VERSION} -eq 11 ]]; then
+  if [[ ${PYTHON_VERSION} -eq 12 ]]; then
+    "${PIP_INSTALL[@]}" "numpy==1.26.0" "scipy==1.11.2"
+  elif [[ ${PYTHON_VERSION} -eq 11 ]]; then
     "${PIP_INSTALL[@]}" "numpy==1.23.4" "scipy==1.9.2"
   else
     "${PIP_INSTALL[@]}" "numpy==1.22.4" "scipy==1.7.3"
