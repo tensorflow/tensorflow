@@ -75,7 +75,6 @@ limitations under the License.
 #include "xla/service/convolution_pred_expander.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/dot_decomposer.h"
-#include "xla/service/dot_dimension_merger.h"
 #include "xla/service/dot_merger.h"
 #include "xla/service/dump.h"
 #include "xla/service/dynamic_dimension_simplifier.h"
@@ -902,8 +901,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   {
     HloPassPipeline pipeline("hlo normalization");
-
-    pipeline.AddPass<DotDimensionMerger>();
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.

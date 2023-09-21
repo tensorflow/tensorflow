@@ -2669,7 +2669,6 @@ cc_library(
         "//xla/service:convolution_pred_expander",
         "//xla/service:copy_insertion",
         "//xla/service:dot_decomposer",
-        "//xla/service:dot_dimension_merger",
         "//xla/service:dot_merger",
         "//xla/service:dump",
         "//xla/service:dynamic_dimension_simplifier",
@@ -2853,6 +2852,7 @@ cc_library(
         "//xla/service:convert_mover",
         "//xla/service:dump",
         "//xla/hlo/ir:hlo",
+        "//xla/service:dot_dimension_merger",
         "//xla/service:float_normalization",
         "//xla/service:float_support",
         "//xla/service:hlo_constant_folding",
@@ -2890,21 +2890,23 @@ xla_cc_test(
     srcs = if_gpu_is_configured([
         "nvptx_compiler_test.cc",
     ]),
-    tags = tf_cuda_tests_tags() + [
-        "no_rocm",
-        "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false
-        # positives in msan.
+    tags = [
+        "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
+        "requires-gpu-sm70",
     ],
     deps = [
         ":nvptx_compiler_impl",
-        "//xla:status_macros",
+        "//xla:statusor",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/service:backend",
         "//xla/service:buffer_assignment",
         "//xla/service:gpu_plugin",
-        "//xla/service:hlo_parser",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
