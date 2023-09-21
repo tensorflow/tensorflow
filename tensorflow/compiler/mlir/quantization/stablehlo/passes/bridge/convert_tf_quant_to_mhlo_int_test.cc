@@ -35,8 +35,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/tests/literal_test_util.h"
 
-namespace mlir {
-namespace stablehlo {
+namespace mlir::quant::stablehlo {
 namespace {
 
 class ConvertTfQuantToMhloIntTest : public ::testing::Test {
@@ -194,5 +193,4 @@ func.func @main(%input: tensor<1x2xf32>, %filter: tensor<2x3xf32>) -> tensor<1x3
 }
 
 }  // namespace
-}  // namespace stablehlo
-}  // end namespace mlir
+}  // namespace mlir::quant::stablehlo

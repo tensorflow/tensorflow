@@ -340,7 +340,7 @@ void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
                            bool lower_to_xla_hlo) {
   if (lower_to_xla_hlo) {
     // Lower TF quant ops and types to MHLO int.
-    mlir::stablehlo::AddQuantizationLoweringPasses(pm);
+    mlir::quant::stablehlo::AddQuantizationLoweringPasses(pm);
 
     pm.addPass(mlir::mhlo::createLegalizeTFPass(
         legalize_chlo,
@@ -449,7 +449,7 @@ void CreateConvertMlirToXlaHloPipeline(
 
   pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::stablehlo::CreateConvertTFQuantTypesPass());
+      mlir::quant::stablehlo::CreateConvertTFQuantTypesPass());
 
   if (lower_to_xla_hlo) {
     for (auto& target_pass : custom_legalization_passes) {

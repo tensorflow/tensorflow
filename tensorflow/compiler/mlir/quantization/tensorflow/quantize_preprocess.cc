@@ -92,7 +92,7 @@ void AddTFToStablehloPasses(mlir::PassManager& pm) {
   // Legalizes TF UniformQuantized types into MHLO. Part of the official
   // TF/XLA bridge component.
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::stablehlo::CreateConvertTFQuantOpsToMHLOPass());
+      mlir::quant::stablehlo::CreateConvertTFQuantOpsToMHLOPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // TF -> StableHLO legalization.

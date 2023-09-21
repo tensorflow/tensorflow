@@ -46,8 +46,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/rewriters.h"
 
-namespace mlir {
-namespace stablehlo {
+namespace mlir::quant::stablehlo {
 namespace {
 
 #define GEN_PASS_DEF_CONVERTMHLOQUANTTOINT
@@ -735,12 +734,11 @@ void ConvertMHLOQuantToInt::runOnOperation() {
   }
 }
 
-}  // end namespace
+}  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>> createConvertMHLOQuantToIntPass(
     bool legalize_chlo) {
   return std::make_unique<ConvertMHLOQuantToInt>(legalize_chlo);
 }
 
-}  // end namespace stablehlo
-}  // end namespace mlir
+}  // namespace mlir::quant::stablehlo
