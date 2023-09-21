@@ -304,6 +304,7 @@ def : Pat<(MHLO_DotGeneralOp:$old_value
                $dot_dimension_numbers, $precision_config),
           (ConvertDotGeneralOp $old_value)>;
 
+
 def IsZero : Constraint<CPred<
   "$0.isSplat() && $0.getSplatValue<APInt>() == 0">>;
 def ConvertPadOp : NativeCodeCall<
