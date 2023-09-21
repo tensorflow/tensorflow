@@ -698,7 +698,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   // AOT compiled code runs in single thread.
   if (!is_aot_compile) {
-    pipeline.AddPass<OneDnnRewriter>();
+    // Temporarily disabling oneDNN rewriter because it causes JAX regression.
+    // pipeline.AddPass<OneDnnRewriter>();
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
