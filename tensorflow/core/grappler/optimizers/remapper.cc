@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tsl/platform/errors.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #ifdef INTEL_MKL
 #include "tensorflow/core/util/mkl_heuristics.h"
 #endif  // INTEL_MKL
@@ -332,7 +333,8 @@ bool IsCpuCompatibleDataType(const NodeDef* contraction,
     // precision, the fusion is enabled for transpose_a.
     bool is_supported_matmul = false;
     if (IsMatMul(*contraction)) {
-      is_supported_matmul = (dtype == DT_BFLOAT16)
+      is_supported_matmul = (dtype == DT_BFLOAT16 
+                      && mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
                                 ? contraction->attr().contains("transpose_a") &&
                                       !contraction->attr().at("transpose_a").b()
                                 : true;
@@ -340,7 +342,8 @@ bool IsCpuCompatibleDataType(const NodeDef* contraction,
     return (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
             IsConv3D(*contraction) || IsAnyBatchMatMul(*contraction) ||
             is_supported_matmul) &&
-           (dtype == DT_FLOAT || dtype == DT_BFLOAT16);
+                      (dtype == DT_FLOAT || (dtype == DT_BFLOAT16 && 
+                    mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()));
   }
   if (IsConv2D(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_DOUBLE;
