@@ -259,6 +259,88 @@ module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x),))
 
+  def test_poly_with_inner_token(self):
+    # The inner functions pass tokens through
+    x = np.arange(12, dtype=np.float32).reshape((3, 4))
+
+    def f(x):  # x : f32[b0, b1]
+      # 1 + sin(x)
+      module, version = serialize("""
+module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
+  func.func public @main(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+    %0 = stablehlo.get_dimension_size %arg0, dim = 0 : (tensor<?x?xf32>) -> tensor<i32>
+    %1 = stablehlo.get_dimension_size %arg0, dim = 1 : (tensor<?x?xf32>) -> tensor<i32>
+    %2 = stablehlo.constant dense<> : tensor<0xi1>
+    %3:2 = call @_wrapped_main(%0, %1, %2, %arg0) : (tensor<i32>, tensor<i32>, tensor<0xi1>, tensor<?x?xf32>) -> (tensor<0xi1>, tensor<?x?xf32>)
+    return %3#1 : tensor<?x?xf32>
+  }
+
+  func.func private @_wrapped_main(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<0xi1> {jax.token = true}, %arg3: tensor<?x?xf32>) -> (tensor<0xi1> {jax.token = true}, tensor<?x?xf32>) {
+    %0 = stablehlo.create_token : !stablehlo.token
+    %1 = stablehlo.sine %arg3 : tensor<?x?xf32>
+    %2 = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+    %3 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
+    %4 = stablehlo.reshape %arg1 : (tensor<i32>) -> tensor<1xi32>
+    %5 = stablehlo.concatenate %3, %4, dim = 0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+    %6 = stablehlo.dynamic_broadcast_in_dim %2, %5, dims = [] : (tensor<f32>, tensor<2xi32>) -> tensor<?x?xf32>
+    %7 = stablehlo.add %1, %6 : tensor<?x?xf32>
+    %8 = stablehlo.constant dense<> : tensor<0xi1>
+    return %8, %7 : tensor<0xi1>, tensor<?x?xf32>
+  }
+}
+""")
+      return xla.call_module(
+          [x],
+          version=version,
+          module=module,
+          Tout=[x.dtype],
+          Sout=[x.shape],
+          has_token_input_output=False,
+          platforms=[self.testing_platform()],
+      )
+
+    self._assertOpOutputMatchesExpected(f, (x,), (1. + np.sin(x),))
+
+  def test_poly_with_inner_prefix_token(self):
+    # Sometimes inner functions take a token as first argument
+    x = np.arange(12, dtype=np.float32).reshape((3, 4))
+
+    def f(x):  # x : f32[b0, b1]
+      # 1 + sin(x)
+      module, version = serialize("""
+module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
+  func.func public @main(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+    %0 = stablehlo.get_dimension_size %arg0, dim = 0 : (tensor<?x?xf32>) -> tensor<i32>
+    %1 = stablehlo.get_dimension_size %arg0, dim = 1 : (tensor<?x?xf32>) -> tensor<i32>
+    %2 = stablehlo.create_token : !stablehlo.token
+    %3:2 = call @_wrapped_main(%2, %0, %1, %arg0) : (!stablehlo.token, tensor<i32>, tensor<i32>, tensor<?x?xf32>) -> (!stablehlo.token, tensor<?x?xf32>)
+    return %3#1 : tensor<?x?xf32>
+  }
+
+  func.func private @_wrapped_main(%arg_token: !stablehlo.token, %arg0: tensor<i32>, %arg1: tensor<i32>, %arg3: tensor<?x?xf32>) -> (!stablehlo.token, tensor<?x?xf32>) {
+    %1 = stablehlo.sine %arg3 : tensor<?x?xf32>
+    %2 = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+    %3 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
+    %4 = stablehlo.reshape %arg1 : (tensor<i32>) -> tensor<1xi32>
+    %5 = stablehlo.concatenate %3, %4, dim = 0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+    %6 = stablehlo.dynamic_broadcast_in_dim %2, %5, dims = [] : (tensor<f32>, tensor<2xi32>) -> tensor<?x?xf32>
+    %7 = stablehlo.add %1, %6 : tensor<?x?xf32>
+    return %arg_token, %7 : !stablehlo.token, tensor<?x?xf32>
+  }
+}
+""")
+      return xla.call_module(
+          [x],
+          version=version,
+          module=module,
+          Tout=[x.dtype],
+          Sout=[x.shape],
+          has_token_input_output=False,
+          platforms=[self.testing_platform()],
+      )
+
+    self._assertOpOutputMatchesExpected(f, (x,), (1. + np.sin(x),))
+
   def test_wrong_actual_args_errors(self):
     x = np.arange(6, dtype=np.float32).reshape((3, 2))
     y = np.arange(6, dtype=np.int32).reshape((2, 3))
