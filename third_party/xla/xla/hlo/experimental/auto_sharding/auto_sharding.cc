@@ -1893,6 +1893,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kCbrt:
       case HloOpcode::kTan:
       case HloOpcode::kTanh:
+      case HloOpcode::kOptimizationBarrier:
       // Binary elementwise operations
       case HloOpcode::kAdd:
       case HloOpcode::kAtan2:
