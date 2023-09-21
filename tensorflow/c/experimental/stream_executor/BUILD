@@ -49,7 +49,6 @@ cc_library(
         "@local_xla//xla/stream_executor:multi_platform_manager",
         "@local_xla//xla/stream_executor:platform",
         "@local_xla//xla/stream_executor:stream_executor_pimpl",
-        "@local_xla//xla/stream_executor:timer",
     ],
 )
 

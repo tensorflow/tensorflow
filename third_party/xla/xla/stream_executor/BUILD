@@ -558,40 +558,6 @@ cc_library(
 )
 
 cc_library(
-    name = "timer",
-    srcs = [
-        "device_description.h",
-        "kernel_cache_config.h",
-    ],
-    hdrs = [
-        "blas.h",
-        "kernel.h",
-        "stream.h",
-        "stream_executor.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":data_type",
-        ":device_description",
-        ":device_description_proto_cc",
-        ":kernel_cache_config",
-        ":platform",
-        ":stream_executor_headers",
-        ":stream_executor_pimpl_header",
-        "//xla/stream_executor/platform",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
-    ],
-)
-
-cc_library(
     name = "blas",
     srcs = ["blas.cc"],
     hdrs = ["blas.h"],
