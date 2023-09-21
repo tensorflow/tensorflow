@@ -99,5 +99,25 @@ TEST(PjRtCApiClientTest, PlatformId) {
   EXPECT_EQ(client->platform_id(), xla::CpuId());
 }
 
+TEST(PjRtCApiClientTest, EmptyExecutableFingerprint) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  XlaBuilder builder("sum");
+  auto inp_0 = Parameter(&builder, 0, shape, "input0");
+  auto inp_1 = Parameter(&builder, 1, shape, "input1");
+  auto sum = Add(inp_0, inp_1);
+  builder.SetUpAlias({}, 0, {});
+  auto computation = builder.Build(sum).value();
+  std::unique_ptr<PjRtLoadedExecutable> executable =
+      client->Compile(computation, CompileOptions()).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::optional<std::string> fingerprint,
+                          client->ExecutableFingerprint(*executable));
+
+  EXPECT_FALSE(fingerprint.has_value());
+}
+
 }  // namespace
 }  // namespace xla

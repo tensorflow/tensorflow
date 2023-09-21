@@ -318,6 +318,10 @@ StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
     xla::Status s = ::pjrt::PjrtErrorToStatus(error.get(), c_api_);
     return s;
   }
+  if (args.executable_fingerprint == nullptr ||
+      args.executable_fingerprint_size == 0) {
+    return {std::nullopt};
+  }
   std::string fingerprint = std::string(args.executable_fingerprint,
                                         args.executable_fingerprint_size);
   return {fingerprint};
