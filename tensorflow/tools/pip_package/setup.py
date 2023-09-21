@@ -102,32 +102,23 @@ REQUIRED_PACKAGES = [
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
     'wrapt >= 1.11.0, < 1.15',
-    # This looks worse as a wrapped line. pylint:disable=line-too-long
-    (
-        'tensorflow-io-gcs-filesystem >= 0.23.1;platform_machine!="arm64" or'
-        ' platform_system!="Darwin"'
-    ),
+    'tensorflow-io-gcs-filesystem >= 0.23.1',
     # grpcio does not build correctly on big-endian machines due to lack of
     # BoringSSL support.
     # See https://github.com/tensorflow/tensorflow/issues/17882.
     'grpcio >= 1.24.3, < 2.0' if sys.byteorder == 'little' else None,
     # TensorFlow exposes the TF API for certain TF ecosystem packages like
-    # keras.  When TF depends on those packages, the package version needs to
+    # keras. When TF depends on those packages, the package version needs to
     # match the current TF version. For tf_nightly, we install the nightly
     # variant of each package instead, which must be one version ahead of the
     # current release version. These also usually have "alpha" or "dev" in their
-    # version name.
-    # These are all updated during the TF release process.
-    standard_or_nightly(
-        'tensorboard >= 2.14, < 2.15', 'tb-nightly ~= 2.15.0.a'
-    ),
-    standard_or_nightly(
-        'tensorflow_estimator >= 2.13.0rc0, < 2.14',
-        'tf-estimator-nightly ~= 2.14.0.dev',
-    ),
-    standard_or_nightly(
-        'keras >= 2.14.0rc0, < 2.15', 'keras-nightly ~= 2.15.0.dev'
-    ),
+    # version name. During the TF release process the version of these
+    # dependencies on the release branch is updated to the stable releases (RC
+    # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
+    # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
+    'tb-nightly ~= 2.15.0.a',
+    'tf-estimator-nightly ~= 2.14.0.dev',
+    'keras-nightly ~= 2.15.0.dev',
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
@@ -172,17 +163,21 @@ if collaborator_build:
 EXTRA_PACKAGES = {}
 EXTRA_PACKAGES['and-cuda'] = [
     # TODO(nluehr): set nvidia-* versions based on build components.
-    'nvidia-cuda-runtime-cu11 == 11.8.89',
-    'nvidia-cublas-cu11 == 11.11.3.6',
-    'nvidia-cufft-cu11 == 10.9.0.58',
-    'nvidia-cudnn-cu11 == 8.7.0.84',
-    'nvidia-curand-cu11 == 10.3.0.86',
-    'nvidia-cusolver-cu11 == 11.4.1.48',
-    'nvidia-cusparse-cu11 == 11.7.5.86',
-    'nvidia-nccl-cu11 == 2.16.5',
-    'nvidia-cuda-cupti-cu11 == 11.8.87',
-    'nvidia-cuda-nvcc-cu11 == 11.8.89',
-    'tensorrt == 8.5.3.1',
+    'nvidia-cublas-cu12 == 12.2.5.6',
+    'nvidia-cuda-cupti-cu12 == 12.2.142',
+    'nvidia-cuda-nvcc-cu12 == 12.2.140',
+    'nvidia-cuda-nvrtc-cu12 == 12.2.140',
+    'nvidia-cuda-runtime-cu12 == 12.2.140',
+    'nvidia-cudnn-cu12 == 8.9.4.25',
+    'nvidia-cufft-cu12 == 11.0.8.103',
+    'nvidia-curand-cu12 == 10.3.3.141',
+    'nvidia-cusolver-cu12 == 11.5.2.141',
+    'nvidia-cusparse-cu12 == 12.1.2.141',
+    'nvidia-nccl-cu12 == 2.16.5',
+    'nvidia-nvjitlink-cu12 == 12.2.140',
+    'tensorrt == 8.6.1.post1',
+    'tensorrt-bindings == 8.6.1',
+    'tensorrt-libs == 8.6.1',
 ]
 
 DOCLINES = __doc__.split('\n')

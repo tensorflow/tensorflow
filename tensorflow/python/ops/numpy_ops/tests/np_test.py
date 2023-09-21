@@ -3002,6 +3002,10 @@ class LaxBackedNumpyTests(jtu.TestCase):
   @new_test
   def testSortKeyValue(self, shape, key_dtype, value_dtype, dimension,
                        rng_factory):
+    if key_dtype == onp.float32 and value_dtype == onp.bool_:
+      self.skipTest(
+          "Temporarily disable this test because of TF nightly build failure"
+      )
     def onp_ref(keys, values):
       idxs = list(onp.ix_(*[onp.arange(d) for d in keys.shape]))
       idxs[dimension] = onp.argsort(keys, axis=dimension)

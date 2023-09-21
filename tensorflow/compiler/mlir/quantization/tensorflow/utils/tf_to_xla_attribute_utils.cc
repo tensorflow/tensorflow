@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/lite/kernels/padding.h"
 
 namespace mlir::quant {

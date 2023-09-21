@@ -278,7 +278,7 @@ def initialize_tpu_system():
 
   except errors.InternalError as e:
     logging.error("Hit internal error during TPU system initialization. "
-                  + "It is likely hareware failure. \nPlease check the error "
+                  + "It is likely hardware failure. \nPlease check the error "
                   + "messages above to see whether that's the case. \nIf so, "
                   + "consider to restart the job or try another machine.")
     raise e

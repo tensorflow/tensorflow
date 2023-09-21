@@ -45,7 +45,8 @@ def ExtractBitsFromFloat16(x):
 
 def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
   tensor_proto.half_val.extend(
-      [ExtractBitsFromFloat16(x) for x in proto_values])
+      [ExtractBitsFromFloat16(x) for x in proto_values]
+  )
 
 
 def _MediumAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
@@ -62,7 +63,8 @@ def ExtractBitsFromBFloat16(x):
 
 def SlowAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
   tensor_proto.half_val.extend(
-      [ExtractBitsFromBFloat16(x) for x in proto_values])
+      [ExtractBitsFromBFloat16(x) for x in proto_values]
+  )
 
 
 def FastAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
@@ -71,14 +73,12 @@ def FastAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
           proto_values, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
 
 
-def ExtractBitsFromFloat8e5m2(x):
-  return np.asarray(
-      x, dtype=dtypes.float8_e5m2.as_numpy_dtype).view(np.uint8).item()
-
-
 def SlowAppendFloat8e5m2ArrayToTensorProto(tensor_proto, proto_values):
-  tensor_proto.half_val.extend(
-      [ExtractBitsFromFloat8e5m2(x) for x in proto_values])
+  tensor_proto.float8_val += (
+      np.asarray(proto_values, dtype=dtypes.float8_e5m2.as_numpy_dtype)
+      .view(np.uint8)
+      .tobytes()
+  )
 
 
 def FastAppendFloat8e5m2ArrayToTensorProto(tensor_proto, proto_values):
@@ -88,14 +88,12 @@ def FastAppendFloat8e5m2ArrayToTensorProto(tensor_proto, proto_values):
                  dtype=dtypes.float8_e5m2.as_numpy_dtype).view(np.uint8))
 
 
-def ExtractBitsFromFloat8e4m3fn(x):
-  return np.asarray(
-      x, dtype=dtypes.float8_e4m3fn.as_numpy_dtype).view(np.uint8).item()
-
-
 def SlowAppendFloat8e4m3fnArrayToTensorProto(tensor_proto, proto_values):
-  tensor_proto.half_val.extend(
-      [ExtractBitsFromFloat8e4m3fn(x) for x in proto_values])
+  tensor_proto.float8_val += (
+      np.asarray(proto_values, dtype=dtypes.float8_e4m3fn.as_numpy_dtype)
+      .view(np.uint8)
+      .tobytes()
+  )
 
 
 def FastAppendFloat8e4m3fnArrayToTensorProto(tensor_proto, proto_values):
@@ -105,55 +103,63 @@ def FastAppendFloat8e4m3fnArrayToTensorProto(tensor_proto, proto_values):
                  dtype=dtypes.float8_e4m3fn.as_numpy_dtype).view(np.uint8))
 
 
+def SlowAppendInt4ArrayToTensorProto(tensor_proto, proto_values):
+  # The actual bit representation of int4 as a bit-field is
+  # implementation-defined, so we need to explicitly cast each
+  # value to an int for packing.
+  x = np.asarray(proto_values, dtype=dtypes.int4.as_numpy_dtype).astype(np.int8)
+  tensor_proto.int_val.extend(x.tolist())
+
+
+def SlowAppendUInt4ArrayToTensorProto(tensor_proto, proto_values):
+  # The actual bit representation of int4 as a bit-field is
+  # implementation-defined, so we need to explicitly cast each
+  # value to an int for packing.
+  x = np.asarray(proto_values, dtype=dtypes.uint4.as_numpy_dtype).astype(
+      np.int8
+  )
+  tensor_proto.int_val.extend(x.tolist())
+
+
 if _FAST_TENSOR_UTIL_AVAILABLE:
   _NP_TO_APPEND_FN = {
-      dtypes.bfloat16.as_numpy_dtype:
-          FastAppendBFloat16ArrayToTensorProto,
-      dtypes.float8_e5m2.as_numpy_dtype:
-          FastAppendFloat8e5m2ArrayToTensorProto,
-      dtypes.float8_e4m3fn.as_numpy_dtype:
-          FastAppendFloat8e4m3fnArrayToTensorProto,
-      np.float16:
-          _MediumAppendFloat16ArrayToTensorProto,
-      np.float32:
-          fast_tensor_util.AppendFloat32ArrayToTensorProto,
-      np.float64:
-          fast_tensor_util.AppendFloat64ArrayToTensorProto,
-      np.int32:
-          fast_tensor_util.AppendInt32ArrayToTensorProto,
-      np.int64:
-          fast_tensor_util.AppendInt64ArrayToTensorProto,
-      np.uint8:
-          fast_tensor_util.AppendUInt8ArrayToTensorProto,
-      np.uint16:
-          fast_tensor_util.AppendUInt16ArrayToTensorProto,
-      np.uint32:
-          fast_tensor_util.AppendUInt32ArrayToTensorProto,
-      np.uint64:
-          fast_tensor_util.AppendUInt64ArrayToTensorProto,
-      np.int8:
-          fast_tensor_util.AppendInt8ArrayToTensorProto,
-      np.int16:
-          fast_tensor_util.AppendInt16ArrayToTensorProto,
-      np.complex64:
-          fast_tensor_util.AppendComplex64ArrayToTensorProto,
-      np.complex128:
-          fast_tensor_util.AppendComplex128ArrayToTensorProto,
-      np.object_:
-          fast_tensor_util.AppendObjectArrayToTensorProto,
-      np.bool_:
-          fast_tensor_util.AppendBoolArrayToTensorProto,
-      dtypes.qint8.as_numpy_dtype:
-          fast_tensor_util.AppendInt8ArrayToTensorProto,
-      dtypes.quint8.as_numpy_dtype:
-          fast_tensor_util.AppendUInt8ArrayToTensorProto,
-      dtypes.qint16.as_numpy_dtype:
-          fast_tensor_util.AppendInt16ArrayToTensorProto,
-      dtypes.quint16.as_numpy_dtype:
-          fast_tensor_util.AppendUInt16ArrayToTensorProto,
-      dtypes.qint32.as_numpy_dtype:
-          fast_tensor_util.AppendInt32ArrayToTensorProto,
-      # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
+      np.float16: _MediumAppendFloat16ArrayToTensorProto,
+      np.float32: fast_tensor_util.AppendFloat32ArrayToTensorProto,
+      np.float64: fast_tensor_util.AppendFloat64ArrayToTensorProto,
+      np.int32: fast_tensor_util.AppendInt32ArrayToTensorProto,
+      np.int64: fast_tensor_util.AppendInt64ArrayToTensorProto,
+      np.uint8: fast_tensor_util.AppendUInt8ArrayToTensorProto,
+      np.uint16: fast_tensor_util.AppendUInt16ArrayToTensorProto,
+      np.uint32: fast_tensor_util.AppendUInt32ArrayToTensorProto,
+      np.uint64: fast_tensor_util.AppendUInt64ArrayToTensorProto,
+      np.int8: fast_tensor_util.AppendInt8ArrayToTensorProto,
+      np.int16: fast_tensor_util.AppendInt16ArrayToTensorProto,
+      np.complex64: fast_tensor_util.AppendComplex64ArrayToTensorProto,
+      np.complex128: fast_tensor_util.AppendComplex128ArrayToTensorProto,
+      np.object_: fast_tensor_util.AppendObjectArrayToTensorProto,
+      np.bool_: fast_tensor_util.AppendBoolArrayToTensorProto,
+      dtypes.qint8.as_numpy_dtype: (
+          fast_tensor_util.AppendInt8ArrayToTensorProto
+      ),
+      dtypes.quint8.as_numpy_dtype: (
+          fast_tensor_util.AppendUInt8ArrayToTensorProto
+      ),
+      dtypes.qint16.as_numpy_dtype: (
+          fast_tensor_util.AppendInt16ArrayToTensorProto
+      ),
+      dtypes.quint16.as_numpy_dtype: (
+          fast_tensor_util.AppendUInt16ArrayToTensorProto
+      ),
+      dtypes.qint32.as_numpy_dtype: (
+          fast_tensor_util.AppendInt32ArrayToTensorProto
+      ),
+      dtypes.bfloat16.as_numpy_dtype: FastAppendBFloat16ArrayToTensorProto,
+      dtypes.float8_e5m2.as_numpy_dtype: FastAppendFloat8e5m2ArrayToTensorProto,
+      dtypes.float8_e4m3fn.as_numpy_dtype: (
+          FastAppendFloat8e4m3fnArrayToTensorProto
+      ),
+      dtypes.int4.as_numpy_dtype: SlowAppendInt4ArrayToTensorProto,
+      dtypes.uint4.as_numpy_dtype: SlowAppendUInt4ArrayToTensorProto,
   }
 else:
 
@@ -193,53 +199,33 @@ else:
     tensor_proto.bool_val.extend([x.item() for x in proto_values])
 
   _NP_TO_APPEND_FN = {
-      dtypes.bfloat16.as_numpy_dtype:
-          SlowAppendBFloat16ArrayToTensorProto,
-      dtypes.float8_e5m2.as_numpy_dtype:
-          SlowAppendFloat8e5m2ArrayToTensorProto,
-      dtypes.float8_e4m3fn.as_numpy_dtype:
-          SlowAppendFloat8e4m3fnArrayToTensorProto,
-      np.float16:
-          SlowAppendFloat16ArrayToTensorProto,
-      np.float32:
-          SlowAppendFloat32ArrayToTensorProto,
-      np.float64:
-          SlowAppendFloat64ArrayToTensorProto,
-      np.int32:
-          SlowAppendIntArrayToTensorProto,
-      np.int64:
-          SlowAppendInt64ArrayToTensorProto,
-      np.uint8:
-          SlowAppendIntArrayToTensorProto,
-      np.uint16:
-          SlowAppendIntArrayToTensorProto,
-      np.uint32:
-          SlowAppendUInt32ArrayToTensorProto,
-      np.uint64:
-          SlowAppendUInt64ArrayToTensorProto,
-      np.int8:
-          SlowAppendIntArrayToTensorProto,
-      np.int16:
-          SlowAppendIntArrayToTensorProto,
-      np.complex64:
-          SlowAppendComplex64ArrayToTensorProto,
-      np.complex128:
-          SlowAppendComplex128ArrayToTensorProto,
-      np.object_:
-          SlowAppendObjectArrayToTensorProto,
-      np.bool_:
-          SlowAppendBoolArrayToTensorProto,
-      dtypes.qint8.as_numpy_dtype:
-          SlowAppendQIntArrayToTensorProto,
-      dtypes.quint8.as_numpy_dtype:
-          SlowAppendQIntArrayToTensorProto,
-      dtypes.qint16.as_numpy_dtype:
-          SlowAppendQIntArrayToTensorProto,
-      dtypes.quint16.as_numpy_dtype:
-          SlowAppendQIntArrayToTensorProto,
-      dtypes.qint32.as_numpy_dtype:
-          SlowAppendQIntArrayToTensorProto,
-      # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
+      dtypes.bfloat16.as_numpy_dtype: SlowAppendBFloat16ArrayToTensorProto,
+      dtypes.float8_e5m2.as_numpy_dtype: SlowAppendFloat8e5m2ArrayToTensorProto,
+      dtypes.float8_e4m3fn.as_numpy_dtype: (
+          SlowAppendFloat8e4m3fnArrayToTensorProto
+      ),
+      np.float16: SlowAppendFloat16ArrayToTensorProto,
+      np.float32: SlowAppendFloat32ArrayToTensorProto,
+      np.float64: SlowAppendFloat64ArrayToTensorProto,
+      np.int32: SlowAppendIntArrayToTensorProto,
+      np.int64: SlowAppendInt64ArrayToTensorProto,
+      np.uint8: SlowAppendIntArrayToTensorProto,
+      np.uint16: SlowAppendIntArrayToTensorProto,
+      np.uint32: SlowAppendUInt32ArrayToTensorProto,
+      np.uint64: SlowAppendUInt64ArrayToTensorProto,
+      np.int8: SlowAppendIntArrayToTensorProto,
+      np.int16: SlowAppendIntArrayToTensorProto,
+      np.complex64: SlowAppendComplex64ArrayToTensorProto,
+      np.complex128: SlowAppendComplex128ArrayToTensorProto,
+      np.object_: SlowAppendObjectArrayToTensorProto,
+      np.bool_: SlowAppendBoolArrayToTensorProto,
+      dtypes.qint8.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
+      dtypes.quint8.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
+      dtypes.qint16.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
+      dtypes.quint16.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
+      dtypes.qint32.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
+      dtypes.int4.as_numpy_dtype: SlowAppendInt4ArrayToTensorProto,
+      dtypes.uint4.as_numpy_dtype: SlowAppendUInt4ArrayToTensorProto,
   }
 
 
@@ -295,12 +281,29 @@ def _FlattenToStrings(nested_strings):
     yield nested_strings
 
 
-_TENSOR_CONTENT_TYPES = frozenset([
-    dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8,
-    dtypes.int16, dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8,
-    dtypes.qint16, dtypes.quint16, dtypes.qint32, dtypes.uint32, dtypes.uint64,
-    dtypes.float8_e5m2, dtypes.float8_e4m3fn
-])
+_TENSOR_CONTENT_TYPES = frozenset(
+    [
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.int32,
+        dtypes.uint8,
+        dtypes.int16,
+        dtypes.int8,
+        dtypes.int64,
+        dtypes.qint8,
+        dtypes.quint8,
+        dtypes.qint16,
+        dtypes.quint16,
+        dtypes.qint32,
+        dtypes.uint32,
+        dtypes.uint64,
+        dtypes.float8_e5m2,
+        dtypes.float8_e4m3fn,
+        # int4/uint4 intentionally not listed, since their binary representation
+        # is implementation-dependent.
+    ]
+)
 
 
 # pylint: disable=invalid-name
@@ -675,17 +678,30 @@ def MakeNdarray(tensor):
     # the half_val field of the TensorProto stores the binary representation
     # of the fp16: we need to reinterpret this as a proper float16
     values = np.fromiter(tensor.half_val, dtype=np.uint16)
-    values.dtype = tensor_dtype.as_numpy_dtype
-  elif tensor_dtype == dtypes.float8_e5m2 or tensor_dtype == dtypes.float8_e4m3fn:
+    values.dtype = dtype
+  elif tensor_dtype in [
+      dtypes.float8_e5m2,
+      dtypes.float8_e4m3fn,
+  ]:
     values = np.fromiter(tensor.float8_val, dtype=np.uint8)
-    values.dtype = tensor_dtype.as_numpy_dtype
+    values.dtype = dtype
   elif tensor_dtype == dtypes.float32:
     values = np.fromiter(tensor.float_val, dtype=dtype)
   elif tensor_dtype == dtypes.float64:
     values = np.fromiter(tensor.double_val, dtype=dtype)
   elif tensor_dtype in [
-      dtypes.int32, dtypes.uint8, dtypes.uint16, dtypes.int16, dtypes.int8,
-      dtypes.qint32, dtypes.quint8, dtypes.qint8, dtypes.qint16, dtypes.quint16
+      dtypes.int32,
+      dtypes.uint8,
+      dtypes.uint16,
+      dtypes.int16,
+      dtypes.int8,
+      dtypes.qint32,
+      dtypes.quint8,
+      dtypes.qint8,
+      dtypes.qint16,
+      dtypes.quint16,
+      dtypes.int4,
+      dtypes.uint4,
   ]:
     values = np.fromiter(tensor.int_val, dtype=dtype)
   elif tensor_dtype == dtypes.int64:

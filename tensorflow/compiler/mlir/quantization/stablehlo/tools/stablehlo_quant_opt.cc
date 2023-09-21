@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
 
 int main(int argc, char **argv) {
   tensorflow::InitMlir y(&argc, &argv);

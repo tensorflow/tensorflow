@@ -15,7 +15,7 @@ limitations under the License.
 #define EIGEN_USE_CUSTOM_THREAD_POOL
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/kernels/eigen_benchmark.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 

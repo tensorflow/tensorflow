@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -33,13 +34,19 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
 #include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/gpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
+#include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -47,10 +54,11 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 #include "tensorflow/core/tfrt/saved_model/utils/serialize_bef_utils.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
+#include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -226,8 +234,10 @@ std::string GetBEFFilePath(std::string aot_package_directory) {
                            std::string(kBefBufferFilenameMLIRBEF));
 }
 
-// TODO(b/295241000): Implement MLIR deserialization to skip it AoT and remove
-// redundant steps
+std::string GetMlirFilePath(const std::string& aot_package_directory) {
+  return tsl::io::JoinPath(aot_package_directory, kMLIRModuleFilename);
+}
+
 absl::StatusOr<tfrt::BefBuffer> LoadAotPackages(
     const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
     const std::string& saved_model_dir,
@@ -240,11 +250,32 @@ absl::StatusOr<tfrt::BefBuffer> LoadAotPackages(
   if (bef.empty()) {
     return absl::InternalError("BefBuffer is empty.");
   }
-  // TODO (b/295241000): Currently AoT for TFRT only supports GPU so we only
-  // check for GPU. Remove after MLIR deserialization.
-  TF_RETURN_IF_ERROR(
-      RunTFXLABridgeAndAddXlaFunctions(options, fallback_state, mlir_module));
+
+  if (options.device_target == TfrtDeviceInfraTarget::kGpu) {
+    TF_RETURN_IF_ERROR(AddXlaFunctions(fallback_state, mlir_module));
+  }
+
   return bef;
+}
+
+absl::Status DeserializeAoTMlirModule(
+    absl::string_view saved_model_dir, mlir::MLIRContext* context,
+    mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
+  const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
+  const std::string mlir_file_path = GetMlirFilePath(aot_package_directory);
+  std::string mlir_module_str;
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), mlir_file_path,
+                                           &mlir_module_str));
+  TF_RETURN_IF_ERROR(
+      DeserializeMlirModule(mlir_module_str, context, mlir_module));
+  return absl::OkStatus();
+}
+
+void RegisterTFRTDialectsForAoT(mlir::DialectRegistry& registry) {
+  tfrt::RegisterTFRTDialects(registry);
+  registry.insert<tfrt::fallback::FallbackDialect>();
+  registry.insert<tfrt::fallback_async::FallbackAsyncDialect>();
+  tensorflow::RegisterGpuDialects(&registry);
 }
 
 }  // namespace tfrt_stub

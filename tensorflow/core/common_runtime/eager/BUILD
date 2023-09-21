@@ -90,8 +90,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -121,6 +121,7 @@ tf_cuda_library(
         "//tensorflow/core/nccl:collective_communicator",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -233,10 +234,10 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime/eager:cluster_function_library_runtime",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:remote_mgr",
-            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
-            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
-            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_impl",
-            "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
+            "@local_tsl//tsl/distributed_runtime/coordination:coordination_service",
+            "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
+            "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_impl",
+            "@local_tsl//tsl/distributed_runtime/preemption:preemption_notifier",
         ],
     }),
 )
@@ -840,11 +841,11 @@ cc_library(
     name = "rendezvous_cache",
     hdrs = ["rendezvous_cache.h"],
     deps = [
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:mutex",
-        "//tensorflow/tsl/platform:refcount",
-        "//tensorflow/tsl/platform:thread_annotations",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:refcount",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 

@@ -45,7 +45,7 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/framework:types_proto",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
+        "@local_xla//xla/stream_executor:dnn_proto",
     ],
 )
 
@@ -103,7 +103,7 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
+        "@local_xla//xla/stream_executor:dnn_proto",
     ],
     visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 )
@@ -132,14 +132,14 @@ tf_cuda_library(
         ":conv_autotune_maps",
         ":conv_parameters",
         ":conv_parameters_proto_cc",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor:lazy_op_runner",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stream_executor",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla/stream_executor:dnn_proto_cc",
+        "@local_xla//xla/stream_executor:lazy_op_runner",
+        "@local_xla//xla/stream_executor:stream_executor_headers",
+        "@local_xla//xla/stream_executor/gpu:gpu_init",
     ],
 )
 
@@ -153,10 +153,10 @@ tf_cuda_only_cc_test(
         ":conv_autotune_maps",
         ":conv_parameters",
         ":conv_parameters_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
+        "@local_xla//xla/stream_executor/gpu:gpu_driver_header",
+        "@local_xla//xla/stream_executor/gpu:gpu_init",
     ],
 )

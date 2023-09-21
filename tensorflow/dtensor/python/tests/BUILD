@@ -287,6 +287,25 @@ dtensor_test(
     ],
 )
 
+dtensor_test(
+    name = "mesh_util_test",
+    srcs = ["mesh_util_test.py"],
+    additional_backends = [
+        TPU_V3_DONUT_BACKEND,
+        GPU_2DEVS_BACKEND,
+    ],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:config",
+        "//tensorflow/dtensor/python:mesh_util",
+        "//tensorflow/dtensor/python:tpu_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 pytype_strict_library(
     name = "multi_client_test_util",
     testonly = if_google(
@@ -366,7 +385,7 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "NCCL_PROTO": "Simple",  # FIXME(b/272050398): Delete this when the Clang-16/NCCL incompatibility has been resolved.
+        "NCCL_PROTO": "Simple",  # FIXME(b/272050398): Delete this after the migration to LLVM-17.
     },
     tags = [
         "no_windows",
@@ -412,7 +431,7 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "NCCL_PROTO": "Simple",  # FIXME(b/272050398): Delete this when the Clang-16/NCCL incompatibility has been resolved.
+        "NCCL_PROTO": "Simple",  # FIXME(b/272050398): Delete this after the migration to LLVM-17.
     },
     tags = [
         "no_windows",

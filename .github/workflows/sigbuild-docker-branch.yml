@@ -33,6 +33,8 @@ jobs:
       matrix:
         python-version: [python3.9, python3.10, python3.11]
     steps:
+      - name: Delete unnecessary tools folder
+        run: rm -rf /opt/hostedtoolcache
       -
         name: Checkout
         uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v3.2.0

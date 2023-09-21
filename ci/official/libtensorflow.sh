@@ -28,11 +28,11 @@ fi
 tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" test "${TFCI_BAZEL_COMMON_ARGS[@]}" --config=libtensorflow_test
 tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" build "${TFCI_BAZEL_COMMON_ARGS[@]}" --config=libtensorflow_build
 
-tfrun ./ci/official/utilities/repack_libtensorflow.sh build "$TFCI_LIB_SUFFIX"
+tfrun ./ci/official/utilities/repack_libtensorflow.sh "$TFCI_OUTPUT_DIR" "$TFCI_LIB_SUFFIX"
 
 if [[ "$TFCI_UPLOAD_LIB_ENABLE" == 1 ]]; then
-  gsutil cp build/*.tar.gz "$TFCI_UPLOAD_LIB_GCS_URI"
+  gsutil cp "$TFCI_OUTPUT_DIR"/*.tar.gz "$TFCI_UPLOAD_LIB_GCS_URI"
   if [[ "$TFCI_UPLOAD_LIB_LATEST_ENABLE" == 1 ]]; then
-    gsutil cp build/*.tar.gz "$TFCI_UPLOAD_LIB_LATEST_GCS_URI"
+    gsutil cp "$TFCI_OUTPUT_DIR"/*.tar.gz "$TFCI_UPLOAD_LIB_LATEST_GCS_URI"
   fi
 fi

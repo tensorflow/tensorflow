@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_MATH_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_MATH_UTILS_H_
 
-#include "tensorflow/tsl/profiler/utils/math_utils.h"
+#include "tsl/profiler/utils/math_utils.h"
 
 namespace tensorflow {
 namespace profiler {

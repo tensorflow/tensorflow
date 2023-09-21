@@ -54,6 +54,7 @@ tf_cc_shared_test(
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
+            "//tensorflow/c:c_api",
             "//tensorflow/core:test",
             "//tensorflow/core:test_main",
             "//tensorflow/core/framework:types_proto_cc",
@@ -120,6 +121,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":attr_util",
+        "//tensorflow/c:tf_tensor",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -392,9 +394,6 @@ cc_library(
         # JIT compilation kernels need access to fallback state to set up
         # Eigen thread pool as async runtime worker threads.
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
-        # TPU runtime needs to access fallback state to configure MLIR bridge
-        # rollout state
-        "//third_party/tf_runtime_google:__pkg__",
         # Sync fallback kernels need access to the fallback state.
         "//learning/brain/experimental/tfrt/native_lowering/kernels:__subpackages__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",

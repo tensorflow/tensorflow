@@ -44,6 +44,14 @@ tf_module {
     name: "float8_e5m2"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
+  member {
+    name: "int4"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "uint4"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
   member_method {
     name: "async_clear_error"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"

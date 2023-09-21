@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 #include <variant>
 
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "xla/service/hlo_graph_dumper.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"

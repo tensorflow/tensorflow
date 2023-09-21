@@ -22,9 +22,9 @@ limitations under the License.
 #include <vector>
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
 #endif
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"

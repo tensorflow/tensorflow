@@ -26,8 +26,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "xla/client/xla_computation.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 

@@ -47,6 +47,7 @@ extern llvm::cl::opt<bool> guarantee_all_funcs_one_use;
 extern llvm::cl::opt<bool> enable_dynamic_update_slice;
 extern llvm::cl::opt<bool> preserve_assert_op;
 extern llvm::cl::opt<bool> legalize_custom_tensor_list_ops;
+extern llvm::cl::opt<bool> reduce_type_precision;
 
 // Import saved model.
 extern llvm::cl::opt<bool> import_saved_model_object_graph;
@@ -66,4 +67,7 @@ extern llvm::cl::opt<bool> post_training_quantization;
 
 // TF to stablehlo pass flags
 extern llvm::cl::opt<bool> enable_stablehlo_conversion;
+
+// Wether serialize stablehlo ops or not
+extern llvm::cl::opt<bool> serialize_stablehlo_ops;
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_TRANSLATE_CL_H_

@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
-#include "tensorflow/tsl/platform/protobuf.h"
+#include "tsl/platform/protobuf.h"
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
@@ -116,12 +116,20 @@ std::string GetAotPackagePath(absl::string_view saved_model_dir);
 
 std::string GetBEFFilePath(std::string aot_package_directory);
 
+std::string GetMlirFilePath(const std::string& aot_package_directory);
+
 // TODO(b/295241000): Implement MLIR deserialization to skip it AoT and remove
 // redundant steps
 absl::StatusOr<tfrt::BefBuffer> LoadAotPackages(
     const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
     const std::string& saved_model_dir,
     tfrt_stub::FallbackState* fallback_state);
+
+absl::Status DeserializeAoTMlirModule(
+    absl::string_view saved_model_dir, mlir::MLIRContext* context,
+    mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
+
+void RegisterTFRTDialectsForAoT(mlir::DialectRegistry& registry);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

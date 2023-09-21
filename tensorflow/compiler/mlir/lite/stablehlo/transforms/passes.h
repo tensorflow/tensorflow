@@ -52,6 +52,13 @@ CreateUniformQuantizedStablehloToTflPass();
 // Create a pass that legalizes MHLO to TF dialect.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass();
 
+// Creates a pass which replaces a splat constant tensor with a BroadcastInDim
+// op.
+std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldSplatConstantPass();
+
+// Create a pass that legalizes MHLO to TFLite dialect.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfLitePass();
+
 // Adds the HLO to TF rewrite patterns to the specified pattern list.
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context);

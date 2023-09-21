@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/tsl/platform/path.h"
+#include "tsl/platform/path.h"
 
 namespace mlir {
 namespace tf_saved_model {

@@ -53,8 +53,7 @@ namespace quant {
 
 namespace {
 
-using QuantMethod =
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 
 // Applies prepare quantization on the model in TF dialect. This pass runs
 // before the quantization pass and propagate the quantization parameters
@@ -84,8 +83,8 @@ class PrepareQuantizePass
     quant_specs_.inference_type = tensorflow::DT_QINT8;
     enable_per_channel_quantization_ = !quant_specs_.disable_per_channel;
     enable_post_training_quantize_ =
-        (quantization_method ==
-         tensorflow::quantization::QuantizationMethod::STATIC_RANGE);
+        (quantization_method == tensorflow::quantization::QuantizationMethod::
+                                    METHOD_STATIC_RANGE_INT8);
   }
 
   PrepareQuantizePass(const PrepareQuantizePass& other) {

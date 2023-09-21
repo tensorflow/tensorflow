@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -31,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -41,8 +43,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/math_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/transforms/rewriters.h"
 
 namespace mlir {
 namespace stablehlo {
@@ -81,7 +83,7 @@ LogicalResult RequantizeWithoutClamping(
       input_quantized_type.getScale() / result_quantized_type.getScale();
   int32_t effective_quantized_fraction;
   int32_t effective_shift;
-  if (failed(stablehlo::QuantizeMultiplier(
+  if (failed(quant::stablehlo::QuantizeMultiplier(
           effective_scale, effective_quantized_fraction, effective_shift))) {
     op->emitError("Invalid effective quantization scale.");
     return failure();
@@ -163,15 +165,13 @@ class ConvertUniformQuantizeOp
     Value scale = rewriter.create<mhlo::ConstantOp>(
         op->getLoc(), rewriter.getF32FloatAttr(quantized_type.getScale()));
     Value zero_point = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(
-                          static_cast<int32_t>(quantized_type.getZeroPoint())));
-    Value half = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getF32FloatAttr(0.5f));
+        op->getLoc(), rewriter.getF32FloatAttr(
+                          static_cast<float>(quantized_type.getZeroPoint())));
     Value quantization_min = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
+        op->getLoc(), rewriter.getF32FloatAttr(static_cast<float>(
                           quantized_type.getStorageTypeMin())));
     Value quantization_max = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
+        op->getLoc(), rewriter.getF32FloatAttr(static_cast<float>(
                           quantized_type.getStorageTypeMax())));
 
     auto res_float_tensor_type =
@@ -179,28 +179,18 @@ class ConvertUniformQuantizeOp
     Value res_float = rewriter.create<chlo::BroadcastDivOp>(
         op->getLoc(), res_float_tensor_type, adaptor.getOperand(), scale,
         nullptr);
-    // TODO: b/260280919 - Consider using round_nearest_even.
     res_float = rewriter.create<chlo::BroadcastAddOp>(
-        op->getLoc(), res_float_tensor_type, res_float, half, nullptr);
-    res_float = rewriter.create<mhlo::FloorOp>(op->getLoc(), res_float);
-    // TODO: b/260280919 - Consider avoiding conversion to int32.
-    auto res_int32_tensor_type =
-        res_float_tensor_type.clone(rewriter.getI32Type());
-    Value res_int32 = rewriter.create<mhlo::ConvertOp>(
-        op->getLoc(), res_int32_tensor_type, res_float);
-    // TODO: b/260280919 - Use mhlo::Clamp instead.
-    res_int32 = rewriter.create<chlo::BroadcastAddOp>(
-        op->getLoc(), res_int32_tensor_type, res_int32, zero_point, nullptr);
-    res_int32 = rewriter.create<chlo::BroadcastMaxOp>(
-        op->getLoc(), res_int32_tensor_type, res_int32, quantization_min,
-        nullptr);
-    res_int32 = rewriter.create<chlo::BroadcastMinOp>(
-        op->getLoc(), res_int32_tensor_type, res_int32, quantization_max,
-        nullptr);
+        op->getLoc(), res_float_tensor_type, res_float, zero_point, nullptr);
+
+    res_float = rewriter.create<mhlo::ClampOp>(
+        op->getLoc(), res_float_tensor_type, quantization_min, res_float,
+        quantization_max);
+    res_float = rewriter.create<mhlo::RoundNearestEvenOp>(
+        op->getLoc(), res_float_tensor_type, res_float);
     auto res_final_tensor_type =
-        res_int32_tensor_type.clone(quantized_type.getStorageType());
+        res_float_tensor_type.clone(quantized_type.getStorageType());
     rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, res_final_tensor_type,
-                                                 res_int32);
+                                                 res_float);
     return success();
   }
 
@@ -210,11 +200,13 @@ class ConvertUniformQuantizeOp
   // Quantize: input / scale + zp
   //
   // Hence,
-  // Requantize: (input - input_zp) * input_scale / output_scale + output_zp
+  //   result = (input - input_zp) * input_scale / output_scale + output_zp
   //
-  // This function makes the above formula slightly more efficient by
-  // precalculating and bundling the "* input_scale / output_scale" part into
-  // a single multiplication.
+  // This is simplified as:
+  //   result = input * merged_scale + merged_zp
+  // where:
+  //   merged_zp = output_zp - input_zp * merged_scale.
+  //   merged_scale = input_scale / output_scale.
   LogicalResult matchAndRewriteRequantize(
       mhlo::UniformQuantizeOp op, mhlo::UniformQuantizeOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter,
@@ -224,35 +216,49 @@ class ConvertUniformQuantizeOp
     auto result_quantized_type = getElementTypeOrSelf(op.getResult().getType())
                                      .cast<quant::UniformQuantizedType>();
 
-    Value input = adaptor.getOperand();
-    Value res_int32;
-    auto res_int32_tensor_type =
-        input.getType().cast<TensorType>().clone(rewriter.getI32Type());
+    double merged_scale_fp =
+        input_quantized_type.getScale() / result_quantized_type.getScale();
+    Value merged_scale = rewriter.create<mhlo::ConstantOp>(
+        op->getLoc(),
+        rewriter.getF32FloatAttr(static_cast<float>(merged_scale_fp)));
 
-    // Requantize input tensor to have be the same scale/zp as the result.
-    auto res = RequantizeWithoutClamping(
-        op, input, res_int32_tensor_type, input_quantized_type,
-        result_quantized_type, res_int32, rewriter);
-    if (failed(res)) {
-      return failure();
+    auto res_float_tensor_type =
+        op.getOperand().getType().clone(rewriter.getF32Type());
+    Value res_float = rewriter.create<mhlo::ConvertOp>(
+        op->getLoc(), res_float_tensor_type, adaptor.getOperand());
+
+    res_float = rewriter.create<chlo::BroadcastMulOp>(
+        op->getLoc(), res_float_tensor_type, res_float, merged_scale, nullptr);
+
+    // Add merged_zp only when it is non-zero.
+    double merged_zp_fp = result_quantized_type.getZeroPoint() -
+                          input_quantized_type.getZeroPoint() * merged_scale_fp;
+    if (merged_zp_fp != 0) {
+      Value merged_zp = rewriter.create<mhlo::ConstantOp>(
+          op->getLoc(),
+          rewriter.getF32FloatAttr(static_cast<float>(merged_zp_fp)));
+      res_float = rewriter.create<chlo::BroadcastAddOp>(
+          op->getLoc(), res_float_tensor_type, res_float, merged_zp, nullptr);
     }
 
     Value quantization_min = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
+        op->getLoc(), rewriter.getF32FloatAttr(static_cast<float>(
                           output_quantized_type.getStorageTypeMin())));
     Value quantization_max = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
+        op->getLoc(), rewriter.getF32FloatAttr(static_cast<float>(
                           output_quantized_type.getStorageTypeMax())));
 
     // Clamp results by [quantization_min, quantization_max].
-    res_int32 = rewriter.create<mhlo::ClampOp>(
-        op->getLoc(), res_int32_tensor_type, quantization_min, res_int32,
+    res_float = rewriter.create<mhlo::ClampOp>(
+        op->getLoc(), res_float_tensor_type, quantization_min, res_float,
         quantization_max);
+    res_float = rewriter.create<mhlo::RoundNearestEvenOp>(
+        op->getLoc(), res_float_tensor_type, res_float);
 
     auto res_final_tensor_type =
-        res_int32_tensor_type.clone(output_quantized_type.getStorageType());
+        res_float_tensor_type.clone(output_quantized_type.getStorageType());
     rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, res_final_tensor_type,
-                                                 res_int32);
+                                                 res_float);
     return success();
   }
 };
@@ -349,12 +355,6 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
       return failure();
     }
 
-    Value result_quantization_min = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                          result_element_type.getStorageTypeMin())));
-    Value result_quantization_max = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                          result_element_type.getStorageTypeMax())));
     Value zero_point = rewriter.create<mhlo::ConstantOp>(
         op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
                           result_element_type.getZeroPoint())));
@@ -374,16 +374,28 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
     Value res_int32 = rewriter.create<chlo::BroadcastSubOp>(
         op->getLoc(), res_int32_tensor_type, add_result, zero_point, nullptr);
 
-    // Clamp results by [quantization_min, quantization_max].
-    res_int32 = rewriter.create<mhlo::ClampOp>(
-        op->getLoc(), res_int32_tensor_type, result_quantization_min, res_int32,
-        result_quantization_max);
+    if (result_element_type.getStorageType().isInteger(32)) {
+      // For i32, clamping is not needed.
+      rewriter.replaceOp(op, res_int32);
+    } else {
+      // Clamp results by [quantization_min, quantization_max] when storage type
+      // is not i32.
+      Value result_quantization_min = rewriter.create<mhlo::ConstantOp>(
+          op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
+                            result_element_type.getStorageTypeMin())));
+      Value result_quantization_max = rewriter.create<mhlo::ConstantOp>(
+          op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
+                            result_element_type.getStorageTypeMax())));
+      res_int32 = rewriter.create<mhlo::ClampOp>(
+          op->getLoc(), res_int32_tensor_type, result_quantization_min,
+          res_int32, result_quantization_max);
+      // Convert results back to result storage type.
+      auto res_final_tensor_type =
+          res_int32_tensor_type.clone(result_element_type.getStorageType());
+      rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, res_final_tensor_type,
+                                                   res_int32);
+    }
 
-    // Convert results back to result storage type.
-    auto res_final_tensor_type =
-        res_int32_tensor_type.clone(result_element_type.getStorageType());
-    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, res_final_tensor_type,
-                                                 res_int32);
     return success();
   }
 };
@@ -591,6 +603,18 @@ class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
   }
 };
 
+class ConvertUniformQuantizedDotGeneralOp
+    : public OpConversionPattern<mhlo::DotGeneralOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DotGeneralOp op, mhlo::DotGeneralOpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    return matchAndRewriteDotLikeOp(op, adaptor, rewriter);
+  }
+};
+
 class ConvertUniformQuantizedConvolutionOp
     : public OpConversionPattern<mhlo::ConvolutionOp> {
  public:
@@ -603,58 +627,64 @@ class ConvertUniformQuantizedConvolutionOp
   }
 };
 
-// This pattern converts uq <-> int ConvertOps to int -> int ConvertOps.
-// The former are introduced in ConvertTFQuantToMHLO pass. The resulting int ->
-// int ConvertOps are no-ops and can be removed later in a Canonicalizer pass.
-class ConvertMhloConvertOp : public OpConversionPattern<mhlo::ConvertOp> {
+// This pattern lowers a generic MHLO op for uq->int.
+// This pattern essentially just performs type change, with no algorithm change.
+class ConvertGenericOp : public ConversionPattern {
  public:
-  using OpConversionPattern::OpConversionPattern;
+  explicit ConvertGenericOp(MLIRContext *ctx)
+      : ConversionPattern(MatchAnyOpTypeTag(), 1, ctx) {}
 
   LogicalResult matchAndRewrite(
-      mhlo::ConvertOp op, mhlo::ConvertOpAdaptor adaptor,
+      Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    Value input = adaptor.getOperand();
-
-    Type output_type;
-    if (auto qtype = op.getOperand()
-                         .getType()
-                         .getElementType()
-                         .dyn_cast<quant::UniformQuantizedType>()) {
-      // This lowers uq->int mhlo.convert. Since the input type should be
-      // converted with the defining op. No explicit type conversion is done
-      // here.
-      output_type = qtype.getStorageType();
-    } else if (auto qtype = op.getResult()
-                                .getType()
-                                .getElementType()
-                                .dyn_cast<quant::UniformQuantizedType>()) {
-      output_type = qtype.getStorageType();
-    } else {
+    // This pattern only handle selected ops.
+    if (!llvm::isa<mhlo::ConstantOp, mhlo::ConvertOp, mhlo::BroadcastInDimOp,
+                   mhlo::MaxOp, mhlo::MinOp>(op)) {
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, input, output_type);
-    return success();
-  }
-};
-
-class ConvertMhloConstantOp : public OpConversionPattern<mhlo::ConstantOp> {
- public:
-  using OpConversionPattern::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      mhlo::ConstantOp op, mhlo::ConstantOpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    auto output_element_type = getElementTypeOrSelf(op.getOutput().getType());
-    // Convert mhlo.ConstantOp to int type for uq type only.
-    if (auto quant_type =
-            output_element_type.dyn_cast<quant::UniformQuantizedType>()) {
-      rewriter.replaceOpWithNewOp<mhlo::ConstantOp>(
-          op, op.getOutput().getType().clone(quant_type.getStorageType()),
-          op.getValue());
-      return success();
+    // Check that all operands and result uq types are the same.
+    llvm::SmallVector<Type> uq_types;
+    for (auto result_type : op->getResultTypes()) {
+      auto type = getElementTypeOrSelf(result_type)
+                      .dyn_cast<quant::UniformQuantizedType>();
+      if (type) {
+        uq_types.push_back(type);
+      }
     }
-    return failure();
+    for (auto operand : op->getOperands()) {
+      auto type = getElementTypeOrSelf(operand.getType())
+                      .dyn_cast<quant::UniformQuantizedType>();
+      if (type) {
+        uq_types.push_back(type);
+      }
+    }
+    for (auto type : uq_types) {
+      if (type != uq_types.front()) {
+        return failure();
+      }
+    }
+
+    // Determine new result type: use storage type for uq types; use original
+    // type otherwise.
+    llvm::SmallVector<Type, 4> new_result_types;
+    for (auto result_type : op->getResultTypes()) {
+      if (getElementTypeOrSelf(result_type)
+              .isa<quant::UniformQuantizedType>()) {
+        new_result_types.push_back(result_type.cast<TensorType>().clone(
+            getElementTypeOrSelf(result_type)
+                .cast<quant::UniformQuantizedType>()
+                .getStorageType()));
+      } else {
+        new_result_types.push_back(result_type);
+      }
+    }
+
+    OperationState state(op->getLoc(), op->getName().getStringRef(), operands,
+                         new_result_types, op->getAttrs(), op->getSuccessors());
+    Operation *new_op = rewriter.create(state);
+    rewriter.replaceOp(op, new_op);
+    return success();
   }
 };
 
@@ -667,8 +697,8 @@ void ConvertMHLOQuantToInt::runOnOperation() {
   // Populate MHLO quant ops conversion patterns.
   patterns.add<ConvertUniformQuantizeOp, ConvertUniformDequantizeOp,
                ConvertUniformQuantizedAddOp, ConvertUniformQuantizedDotOp,
-               ConvertUniformQuantizedConvolutionOp, ConvertMhloConvertOp,
-               ConvertMhloConstantOp>(context);
+               ConvertUniformQuantizedDotGeneralOp,
+               ConvertUniformQuantizedConvolutionOp, ConvertGenericOp>(context);
 
   ConversionTarget target(*op->getContext());
   // An addDynamicallyLegalDialect callback that declares a given operation as

@@ -23,11 +23,11 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/platform:env",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:env",
         "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
     ],
@@ -50,9 +50,9 @@ tf_cc_shared_test(
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/core/tfrt/utils",
-        "//tensorflow/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:Parser",
+        "@local_tsl//tsl/lib/core:status_test_util",
         "@tf_runtime//:bef",
     ],
 )

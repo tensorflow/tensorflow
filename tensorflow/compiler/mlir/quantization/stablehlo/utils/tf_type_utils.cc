@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -32,8 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
 
-namespace mlir {
-namespace stablehlo {
+namespace mlir::quant::tensorflow {
 
 bool IsTFQintType(Type type) {
   return type.isa<TF::Qint8Type, TF::Qint16Type, TF::Qint32Type, TF::Quint8Type,
@@ -61,25 +61,25 @@ Type GetIntTypeFromTFQint(Type type) {
 
 FailureOr<mlir::DenseElementsAttr> GetDenseAttrFromTensorProtoAttr(
     llvm::StringRef mangled_tensor_proto, TensorType tensor_type) {
-  tensorflow::TensorProto tensor_proto;
-  tensorflow::Status status = tensorflow::mangling_util::DemangleTensor(
+  ::tensorflow::TensorProto tensor_proto;
+  ::tensorflow::Status status = ::tensorflow::mangling_util::DemangleTensor(
       mangled_tensor_proto, &tensor_proto);
   if (!status.ok()) {
     return failure();
   }
 
-  tensorflow::Tensor t;
+  ::tensorflow::Tensor t;
   if (!t.FromProto(tensor_proto)) {
     return failure();
   }
 
-  if (t.dtype() == tensorflow::DT_QINT8) {
-    auto arr = t.flat<tensorflow::qint8>();
+  if (t.dtype() == ::tensorflow::DT_QINT8) {
+    auto arr = t.flat<::tensorflow::qint8>();
     return mlir::DenseElementsAttr::get(
         tensor_type.clone(IntegerType::get(tensor_type.getContext(), 8)),
         llvm::ArrayRef(arr.data(), arr.size()));
-  } else if (t.dtype() == tensorflow::DT_QINT32) {
-    auto arr = t.flat<tensorflow::qint32>();
+  } else if (t.dtype() == ::tensorflow::DT_QINT32) {
+    auto arr = t.flat<::tensorflow::qint32>();
     return mlir::DenseElementsAttr::get(
         tensor_type.clone(IntegerType::get(tensor_type.getContext(), 32)),
         llvm::ArrayRef(arr.data(), arr.size()));
@@ -88,5 +88,22 @@ FailureOr<mlir::DenseElementsAttr> GetDenseAttrFromTensorProtoAttr(
   }
 }
 
-}  // namespace stablehlo
-}  // namespace mlir
+bool IsTFUniformQuantizedOp(Operation *op) {
+  return llvm::isa<
+      // clang-format off
+      // go/keep-sorted start
+      TF::UniformDequantizeOp,
+      TF::UniformQuantizeOp,
+      TF::UniformQuantizedAddOp,
+      TF::UniformQuantizedClipByValueOp,
+      TF::UniformQuantizedConvolutionHybridOp,
+      TF::UniformQuantizedConvolutionOp,
+      TF::UniformQuantizedDotHybridOp,
+      TF::UniformQuantizedDotOp,
+      TF::UniformRequantizeOp
+      // go/keep-sorted end
+      // clang-format on
+      >(op);
+}
+
+}  // namespace mlir::quant::tensorflow

@@ -81,10 +81,21 @@ class LinearOperatorAdjointTest(
         is_positive_definite=True,
         is_non_singular=True,
         is_self_adjoint=False)
-    operator_adjoint = LinearOperatorAdjoint(operator)
+    operator_adjoint = operator.adjoint()
+    self.assertIsInstance(operator_adjoint, LinearOperatorAdjoint)
     self.assertTrue(operator_adjoint.is_positive_definite)
     self.assertTrue(operator_adjoint.is_non_singular)
     self.assertFalse(operator_adjoint.is_self_adjoint)
+
+  def test_adjoint_of_adjoint_is_operator(self):
+    # The matrix values do not effect auto-setting of the flags.
+    matrix = [[1., 0.], [1., 1.]]
+    operator = linalg.LinearOperatorFullMatrix(matrix)
+    operator_adjoint = operator.adjoint()
+    self.assertIsInstance(operator_adjoint, LinearOperatorAdjoint)
+    adjoint_of_op_adjoint = operator_adjoint.adjoint()
+    self.assertIsInstance(adjoint_of_op_adjoint,
+                          linalg.LinearOperatorFullMatrix)
 
   def test_supplied_hint_used(self):
     # The matrix values do not effect auto-setting of the flags.

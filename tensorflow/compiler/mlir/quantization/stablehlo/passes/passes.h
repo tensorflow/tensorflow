@@ -25,8 +25,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
 
-namespace mlir {
-namespace stablehlo {
+namespace mlir::quant::stablehlo {
 
 // Creates a pass that quantizes weight component of StableHLO graph.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
@@ -42,7 +41,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass(
 // default.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass();
 
-}  // namespace stablehlo
-}  // namespace mlir
+}  // namespace mlir::quant::stablehlo
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_PASSES_H_

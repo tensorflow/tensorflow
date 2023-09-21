@@ -64,7 +64,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 

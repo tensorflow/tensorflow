@@ -40,7 +40,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 59.
+// Next ID to use: 60.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -333,4 +333,11 @@ message TocoFlags {
   // Whether to legalize "tf.TensorList*" ops to custom tflite if they
   // can all be supported.
   optional bool legalize_custom_tensor_list_ops = 58 [default = false];
+
+  // Whether to convert some tensor types to a lower precision if all values
+  // within that tensor are within the range of the lower precision. This could
+  // have side effects e.g. reduced flatbuffer size. Only certain type
+  // conversions are supported.
+  // WARNING: Experimental interface, subject to change.
+  optional bool reduce_type_precision = 59 [default = false];
 }

@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/function.pb.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tsl/platform/errors.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 

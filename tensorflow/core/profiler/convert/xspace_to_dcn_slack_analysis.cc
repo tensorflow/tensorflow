@@ -28,22 +28,22 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/side_effect_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
 #include "tensorflow/core/profiler/utils/hlo_module_utils.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/tsl/profiler/utils/math_utils.h"
-#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
-#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
-#include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/utils/math_utils.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tsl/profiler/utils/xplane_schema.h"
+#include "tsl/profiler/utils/xplane_utils.h"
+#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -79,6 +79,10 @@ std::optional<std::string> GetRendezvous(const xla::HloInstruction* instr) {
   return GetAttributeFromInstr(instr, xla::kXlaHostTransferRendezvousNameAttr);
 }
 
+std::optional<std::string> GetTransferType(const xla::HloInstruction* instr) {
+  return GetAttributeFromInstr(instr, "_xla_megascale_transfer_type");
+}
+
 }  // namespace
 
 namespace dcn_analysis_internal {
@@ -98,6 +102,7 @@ absl::StatusOr<InstrMetadata> DcnTracker::GetInstrMetadataFromHloModule(
   instr_metadata.opcode = instr->opcode();
   instr_metadata.channel_id = instr->channel_id().value();
   instr_metadata.rendezvous_name = GetRendezvous(instr);
+  instr_metadata.transfer_type = GetTransferType(instr);
   instr_metadata.size = 0;
   if (instr->shape().IsArray()) {
     instr_metadata.size = xla::ShapeUtil::ByteSizeOfElements(instr->shape());
@@ -166,17 +171,29 @@ void DcnTracker::VisitOp(const InstrMetadata& instr,
     case HloOpcode::kSend:
       opState.start_time = visitor.TimestampNs();
       opState.rendezvous_name = rendezvous_name;
+      opState.transfer_type =
+          instr.transfer_type.has_value() ? *instr.transfer_type : "";
       opState.overlapping_duration = 0;
       opState.stall_duration_ns = visitor.DurationNs();
       opState.send_op_name = visitor.DisplayName();
+      opState.send.set_duration_ns(visitor.DurationNs());
+      opState.send.set_start_time_ns(visitor.TimestampNs());
       break;
     case HloOpcode::kRecv:
+      opState.recv.set_duration_ns(visitor.DurationNs());
+      opState.recv.set_start_time_ns(visitor.TimestampNs());
+      break;
     case HloOpcode::kSendDone:
+      opState.send_done.set_duration_ns(visitor.DurationNs());
+      opState.send_done.set_start_time_ns(visitor.TimestampNs());
       break;
     case HloOpcode::kRecvDone: {
+      opState.recv_done.set_duration_ns(visitor.DurationNs());
+      opState.recv_done.set_start_time_ns(visitor.TimestampNs());
       if (opState.start_time != 0) {
         DcnSlack* analysis = slack_analysis_.add_dcn_slack();
         analysis->set_rendezvous(rendezvous_name);
+        analysis->set_transfer_type(opState.transfer_type);
         analysis->set_send_start_time_us(NanoToMicro(opState.start_time));
         analysis->set_recv_done_end_time_us(
             NanoToMicro(visitor.EndTimestampNs()));
@@ -185,11 +202,21 @@ void DcnTracker::VisitOp(const InstrMetadata& instr,
                                            opState.overlapping_duration));
         // TODO(b/294584919): The current transmitted bytes measures the
         // buffer size at the recv-done. This could include bytes that were not
-        // received over the network. Fix the calculation to improve accuracy.
-        analysis->set_bytes_transmitted_over_network(instr.size);
+        // received over the network. Fix the calculation based on the number of
+        // replica groups.
+        // In case of ALL_REDUCE, Since the reduced buffer now
+        // has to be sent back to the replicas, the total bytes transmitted over
+        // the network is 2x the shape of the op.
+        analysis->set_bytes_transmitted_over_network(
+            analysis->transfer_type() == "ALL_REDUCE" ? 2 * instr.size
+                                                      : instr.size);
         analysis->set_stall_duration_us(NanoToMicro(opState.stall_duration_ns));
         analysis->set_recv_op_name(std::string(visitor.DisplayName()));
         analysis->set_send_op_name(opState.send_op_name);
+        *analysis->mutable_send() = opState.send;
+        *analysis->mutable_recv() = opState.recv;
+        *analysis->mutable_send_done() = opState.send_done;
+        *analysis->mutable_recv_done() = opState.recv_done;
       }
 
       break;
@@ -207,6 +234,7 @@ void DcnTracker::SummarizeDcnSlackAnalysis() {
     s.set_slack_us(s.slack_us() + analysis.slack_us());
     s.set_occurrences(s.occurrences() + 1);
     s.set_rendezvous(analysis.rendezvous());
+    s.set_transfer_type(analysis.transfer_type());
     s.set_bytes_transmitted_over_network(
         analysis.bytes_transmitted_over_network());
     s.set_stall_duration_us(s.stall_duration_us() +
@@ -216,6 +244,16 @@ void DcnTracker::SummarizeDcnSlackAnalysis() {
                                analysis.send_start_time_us());
     s.set_recv_op_name(analysis.recv_op_name());
     s.set_send_op_name(analysis.send_op_name());
+    s.set_send_duration_us(s.send_duration_us() +
+                           NanoToMicro(analysis.send().duration_ns()));
+    s.set_recv_duration_us(s.recv_duration_us() +
+                           NanoToMicro(analysis.recv().duration_ns()));
+    s.set_send_done_duration_us(
+        s.send_done_duration_us() +
+        NanoToMicro(analysis.send_done().duration_ns()));
+    s.set_recv_done_duration_us(
+        s.recv_done_duration_us() +
+        NanoToMicro(analysis.recv_done().duration_ns()));
   }
 
   for (auto& [_, s] : summary) {
@@ -223,6 +261,12 @@ void DcnTracker::SummarizeDcnSlackAnalysis() {
     s.set_stall_duration_us(SafeDivide(s.stall_duration_us(), s.occurrences()));
     s.set_observed_duration_us(
         SafeDivide(s.observed_duration_us(), s.occurrences()));
+    s.set_send_done_duration_us(
+        SafeDivide(s.send_done_duration_us(), s.occurrences()));
+    s.set_recv_done_duration_us(
+        SafeDivide(s.recv_done_duration_us(), s.occurrences()));
+    s.set_send_duration_us(SafeDivide(s.send_duration_us(), s.occurrences()));
+    s.set_recv_duration_us(SafeDivide(s.recv_duration_us(), s.occurrences()));
     *slack_analysis_.add_dcn_slack_summary() = s;
   }
 }

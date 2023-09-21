@@ -493,7 +493,7 @@ class _ControlFlowState:
   def __init__(self):
     self._map = {}  # maps forward loop context to _GradLoopState
 
-  def GetGradState(self, op, before):
+  def GetGradState(self, op: ops.Operation, before):
     """Return the grad state for this op if it's in a forward loop context."""
     if before and util.IsLoopExit(op):
       forward_ctxt = op._get_control_flow_context()  # pylint: disable=protected-access

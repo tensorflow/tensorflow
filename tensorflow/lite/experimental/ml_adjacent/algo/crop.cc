@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/experimental/ml_adjacent/algo/crop.h"
+
 #include <cstring>
 
 #include "tensorflow/lite/experimental/ml_adjacent/lib.h"
@@ -27,6 +29,38 @@ using ::ml_adj::algo::OutputPack;
 using ::ml_adj::data::DataRef;
 using ::ml_adj::data::MutableDataRef;
 using ::ml_adj::data::TypeWidth;
+
+// Crops given input to the bounding box. Works on any datatype.
+// Output buffer must be already resized.
+inline void CropToBoundingBox(dim_t offset_height, dim_t offset_width,
+                              dim_t out_height, dim_t out_width,
+                              const DataRef* input, MutableDataRef* output) {
+  const dim_t in_height = input->Dims()[1];
+  const dim_t in_width = input->Dims()[2];
+  const dim_t num_channels = input->Dims()[3];
+  const dim_t chunk = TypeWidth(input->Type()) * num_channels;
+  const dim_t in_img_size = in_height * in_width;
+  const dim_t out_img_size = out_height * out_width;
+
+  for (int b = 0; b < input->Dims()[0]; ++b) {
+    for (int i = 0; i < out_height; ++i) {
+      const dim_t read_byte_ofs =
+          (in_img_size * b + (i + offset_height) * in_width + offset_width) *
+          chunk;
+
+      const void* read_start_addr =
+          reinterpret_cast<const char*>(input->Data()) + read_byte_ofs;
+
+      const dim_t write_byte_ofs = chunk * (out_img_size * b + i * out_width);
+
+      void* write_addr =
+          reinterpret_cast<char*>(output->Data()) + write_byte_ofs;
+
+      // Copy slice of each input row by row.
+      std::memcpy(write_addr, read_start_addr, chunk * out_width);
+    }
+  }
+}
 
 // Crop given input from the center. Works on any datatype.
 void ComputeCenterCrop(const InputPack& inputs, const OutputPack& outputs) {
@@ -54,32 +88,42 @@ void ComputeCenterCrop(const InputPack& inputs, const OutputPack& outputs) {
   MutableDataRef* output = outputs[0];
   output->Resize({img->Dims()[0], out_height, out_width, img->Dims()[3]});
 
-  // Write rectangle window from input to output for each batch.
-  const dim_t num_channels = img->Dims()[3];
-  const dim_t chunk = TypeWidth(img->Type()) * num_channels;
-  const dim_t in_img_size = in_height * in_width;
+  CropToBoundingBox(out_height_offset, out_width_offset, out_height, out_width,
+                    img, output);
+}
 
-  const dim_t out_img_size = out_height * out_width;
+// Crop given input from the center. Works on any datatype.
+void ComputeCropToBoundingBox(const InputPack& inputs,
+                              const OutputPack& outputs) {
+  TFLITE_DCHECK(inputs.size() == 5);
+  TFLITE_DCHECK(outputs.size() == 1);
 
-  for (int b = 0; b < img->Dims()[0]; ++b) {
-    for (int i = 0; i < out_height; ++i) {
-      const dim_t read_byte_ofs =
-          (in_img_size * b + (i + out_height_offset) * in_width +
-           out_width_offset) *
-          chunk;
+  // Extract inputs.
+  const DataRef* img = inputs[0];
 
-      const void* read_start_addr =
-          reinterpret_cast<const char*>(img->Data()) + read_byte_ofs;
+  const DataRef* offset_height = inputs[1];
+  const dim_t offset_height_data =
+      *reinterpret_cast<const dim_t*>(offset_height->Data());
 
-      const dim_t write_byte_ofs = chunk * (out_img_size * b + i * out_width);
+  const DataRef* offset_width = inputs[2];
+  const dim_t offset_width_data =
+      *reinterpret_cast<const dim_t*>(offset_width->Data());
 
-      void* write_addr =
-          reinterpret_cast<char*>(output->Data()) + write_byte_ofs;
+  const DataRef* target_height = inputs[3];
+  const dim_t target_height_data =
+      *reinterpret_cast<const dim_t*>(target_height->Data());
 
-      // Copy slice of each input row by row.
-      std::memcpy(write_addr, read_start_addr, chunk * out_width);
-    }
-  }
+  const DataRef* target_width = inputs[4];
+  const dim_t target_width_data =
+      *reinterpret_cast<const dim_t*>(target_width->Data());
+
+  // Resize output buffer.
+  MutableDataRef* output = outputs[0];
+  output->Resize(
+      {img->Dims()[0], target_height_data, target_width_data, img->Dims()[3]});
+
+  CropToBoundingBox(offset_height_data, offset_width_data, target_height_data,
+                    target_width_data, img, output);
 }
 
 }  // namespace
@@ -87,6 +131,11 @@ void ComputeCenterCrop(const InputPack& inputs, const OutputPack& outputs) {
 const Algo* Impl_CenterCrop() {
   static const Algo center_crop = {&ComputeCenterCrop, nullptr};
   return &center_crop;
+}
+
+const Algo* Impl_CropToBoundingBox() {
+  static const Algo crop_to_bounding_box = {&ComputeCropToBoundingBox, nullptr};
+  return &crop_to_bounding_box;
 }
 
 }  // namespace crop
