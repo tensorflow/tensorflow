@@ -173,7 +173,9 @@ inline string GetMklEagerOpName(const string& name) {
 }
 
 static inline bool IsBF16SupportedByOneDNNOnThisCPU() {
-  return port::TestCPUFeature(port::CPUFeature::AVX512F);
+  return  port::TestCPUFeature(port::CPUFeature::AVX512F) &&
+         (port::TestCPUFeature(port::CPUFeature::AVX512_BF16) ||
+          port::TestCPUFeature(port::CPUFeature::AMX_BF16));
 }
 
 static inline void BF16UnsupportedWarning() {

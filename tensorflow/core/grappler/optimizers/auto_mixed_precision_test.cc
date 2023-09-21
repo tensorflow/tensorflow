@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/graph_view.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -1637,7 +1638,7 @@ TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
 }
 
 TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamAllow) {
-  if (!IsMKLEnabled())
+  if (!(IsMKLEnabled() && mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()))
     GTEST_SKIP() << "Test only applicable to MKL auto-mixed precision.";
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
       "/job:localhost/replica:0/task:0/device:CPU:0");
