@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/float_normalization.h"
@@ -212,14 +213,12 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
 
  private:
   GemmConfigSet GetGemmConfigSet(const HloFusionInstruction* fusion) {
-    const HloComputation& fusion_computation =
-        *fusion->called_computations().at(0);
-    const HloInstruction& fusion_root = *fusion_computation.root_instruction();
     const DebugOptions& debug_options =
         fusion->GetModule()->config().debug_options();
     se::StreamExecutor* stream_exec = config_.GetExecutor();
     return {GetPossibleMatmulAutotuneConfigs(
-        fusion_root,
+        *Cast<HloDotInstruction>(hlo_query::GetFirstInstructionWithOpcode(
+            *fusion->called_computations().at(0), HloOpcode::kDot)),
         stream_exec->GetDeviceDescription().cuda_compute_capability(),
         debug_options, config_.ExhaustiveTilingSearch())};
   }
@@ -739,9 +738,15 @@ Status Autotune(const AutotuneConfig& config, AutotunerCompileUtil& util,
 }  // anonymous namespace
 
 std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
-    const HloInstruction& instr,
+    const HloDotInstruction& dot,
     const se::CudaComputeCapability compute_capability,
     const DebugOptions& debug_options, bool exhaustive_tiling_search) {
+  // Avoid autotuning tiny fusions.
+  constexpr int kMinGemmElements = 32 * 32;
+  if (ShapeUtil::ElementsIn(dot.operand(0)->shape()) <= kMinGemmElements &&
+      ShapeUtil::ElementsIn(dot.operand(1)->shape()) <= kMinGemmElements) {
+    return {GemmKey(32, 32, 32, 1, 1, 4)};
+  }
   // Split-K optimization enables more even utilization of a GPU in cases
   // where tiling just the non-contracting dimensions of a GEMM does not create
   // a sufficient number of thread block programs to occupy all available cores.
@@ -756,7 +761,7 @@ std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
       debug_options.xla_gpu_enable_split_k_autotuning()
           ? std::max<int64_t>(1L, kSufficientNumberOfTiles * kMaxTileSize *
                                       kMaxTileSize /
-                                      ShapeUtil::ElementsIn(instr.shape()))
+                                      ShapeUtil::ElementsIn(dot.shape()))
           : 1;
   return exhaustive_tiling_search
              ? GetExhaustiveMatmulAutotuneConfigs(compute_capability,

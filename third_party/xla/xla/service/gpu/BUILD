@@ -673,6 +673,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
         "//xla/service:dump",
         "//xla/service:executable",
         "//xla/service:float_normalization",
@@ -710,7 +711,9 @@ xla_test(
         ":gemm_rewriter_triton",
         ":triton_autotuner",
         "//xla:autotuning_proto_cc",
+        "//xla:error_spec",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_pass_pipeline",
@@ -721,10 +724,15 @@ xla_test(
         "//xla/tests:test_utils",
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
