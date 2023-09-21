@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_parser.h"
@@ -2086,6 +2087,55 @@ class HloInstructionReplicaGroupsImpl {
   std::vector<std::vector<int64_t>> replica_groups_;
 };
 
+class HloInstructionShardingImpl {
+ public:
+  explicit HloInstructionShardingImpl(
+      const std::optional<HloSharding>& sharding)
+      : sharding_(sharding) {}
+
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    if (sharding_.has_value()) {
+      *os << "with sharding " << sharding_->ToString();
+    } else {
+      *os << "with no sharding";
+    }
+  }
+
+ private:
+  template <typename HloInstructionType>
+  bool MatchImpl(HloInstructionType* inst, MatchOption option) const {
+    if (!sharding_.has_value()) {
+      if (!inst->has_sharding()) {
+        return true;
+      }
+      EXPLAIN << "HloInstruction is expected to have no sharding.";
+      return false;
+    }
+    if (inst->has_sharding()) {
+      if (inst->sharding() == sharding_.value()) {
+        return true;
+      }
+      EXPLAIN << "sharding " << inst->sharding().ToString()
+              << " don't match expected " << sharding_->ToString();
+      return false;
+    } else {
+      EXPLAIN << "HloInstruction has no sharding. Expected: "
+              << sharding_->ToString();
+      return false;
+    }
+  }
+
+  std::optional<HloSharding> sharding_;
+};
+
 // Matches a constant scalar or effective scalar, optionally with a given value.
 template <typename ScalarTy>
 class HloConstantScalarImpl {
@@ -2396,6 +2446,11 @@ class HloInstructionPattern {
       std::vector<std::vector<int64_t>> replica_groups) const {
     return AppendImpl(
         HloInstructionReplicaGroupsImpl(std::move(replica_groups)));
+  }
+
+  auto WithSharding(absl::string_view sharding) const {
+    return AppendImpl(
+        HloInstructionShardingImpl(ParseSharding(sharding).value()));
   }
 
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {

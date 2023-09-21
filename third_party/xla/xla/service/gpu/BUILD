@@ -2781,6 +2781,8 @@ xla_cc_test(
     deps = [
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:gpu_plugin",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
     ],
@@ -3013,7 +3015,6 @@ xla_cc_test(
         ":all_reduce_blueconnect",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_matchers",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/tests:hlo_test_base",
@@ -4314,7 +4315,9 @@ xla_cc_test(
     srcs = ["scatter_slice_simplifier_test.cc"],
     deps = [
         ":scatter_slice_simplifier",
-        "//xla/hlo/utils:hlo_matchers",
+        "//xla:shape_util",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
     ],
