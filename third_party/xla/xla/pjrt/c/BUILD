@@ -141,6 +141,7 @@ cc_library(
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "//xla/python:inspect_sharding",  # To register "InspectSharding" custom partitioning handler.
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
