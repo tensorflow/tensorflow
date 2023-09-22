@@ -153,7 +153,7 @@ Type TritonType(mlir::OpBuilder b, PrimitiveType t) {
     case S16:
       return b.getI16Type();
     case PRED:
-      // Treat PRED as S8.
+      return b.getI1Type();
     case S8:
       return b.getI8Type();
     default:
@@ -162,57 +162,11 @@ Type TritonType(mlir::OpBuilder b, PrimitiveType t) {
   }
 }
 
-// Triton type conversions.
-Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
-  Type src_ty = value.getType();
-  Type src_element_ty = src_ty;
-  Type fp32_ty = b.getF32Type();
-  Type dst_ty = dst_element_ty;
-  if (auto src_shaped_ty = src_ty.dyn_cast<mlir::ShapedType>()) {
-    src_element_ty = src_shaped_ty.getElementType();
-    dst_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), dst_element_ty);
-    fp32_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), b.getF32Type());
+Type StorageType(mlir::OpBuilder b, Type t) {
+  if (t.isInteger(1)) {
+    return b.getI8Type();
   }
-  if (src_ty == dst_ty) {
-    return value;
-  }
-
-  // All operations on bf16 are done through f32.
-  if (src_element_ty.isBF16()) {
-    return Cast(b, b.create<ma::ExtFOp>(fp32_ty, value), dst_element_ty);
-  }
-  if (dst_element_ty.isBF16()) {
-    return b.create<ma::TruncFOp>(dst_ty, Cast(b, value, b.getF32Type()));
-  }
-
-  // Float <=> float
-  auto src_fp_element_ty = src_element_ty.dyn_cast<mlir::FloatType>();
-  auto dst_fp_element_ty = dst_element_ty.dyn_cast<mlir::FloatType>();
-  if (src_fp_element_ty && dst_fp_element_ty) {
-    if (src_fp_element_ty.getFPMantissaWidth() >
-        dst_fp_element_ty.getFPMantissaWidth()) {
-      return b.create<ma::TruncFOp>(dst_ty, value);
-    } else {
-      return b.create<ma::ExtFOp>(dst_ty, value);
-    }
-  }
-  // int => float
-  if (src_element_ty.isa<mlir::IntegerType>() && dst_fp_element_ty) {
-    // TODO(b/266862493): Support unsigned integer types.
-    if (src_element_ty.isInteger(1)) {
-      return b.create<ma::UIToFPOp>(dst_ty, value);
-    }
-    return b.create<ma::SIToFPOp>(dst_ty, value);
-  }
-  // float => int
-  if (src_fp_element_ty && dst_element_ty.isa<mlir::IntegerType>()) {
-    // TODO(b/266862493): Support unsigned integer types.
-    return b.create<ma::FPToSIOp>(dst_ty, value);
-  }
-
-  LOG(FATAL) << "Type conversion not supported: "
-             << llvm_ir::DumpToString(src_element_ty) << " -> "
-             << llvm_ir::DumpToString(dst_element_ty);
+  return t;
 }
 
 // Get the value of the scalar constant's literal in a C++ type.
@@ -253,6 +207,88 @@ ma::ConstantOp CreateConst(ImplicitLocOpBuilder& b, Type type, T value,
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
 }
 
+Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
+  if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
+    Type src_ty = src_shaped_ty.getElementType();
+    return CreateConst(b, src_ty, 0, src_shaped_ty.getShape());
+  }
+  return CreateConst(b, x.getType(), 0);
+}
+
+Value OnesLike(ImplicitLocOpBuilder& b, Value x) {
+  if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
+    Type src_ty = src_shaped_ty.getElementType();
+    return CreateConst(b, src_ty, 1, src_shaped_ty.getShape());
+  }
+  return CreateConst(b, x.getType(), 1);
+}
+
+// Triton type conversions.
+Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
+  Type src_ty = value.getType();
+  Type src_element_ty = src_ty;
+  Type fp32_ty = b.getF32Type();
+  Type dst_ty = dst_element_ty;
+  if (auto src_shaped_ty = src_ty.dyn_cast<mlir::ShapedType>()) {
+    src_element_ty = src_shaped_ty.getElementType();
+    dst_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), dst_element_ty);
+    fp32_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), b.getF32Type());
+  }
+  if (src_ty == dst_ty) {
+    return value;
+  }
+
+  // All operations on bf16 are done through f32.
+  if (src_element_ty.isBF16()) {
+    return Cast(b, b.create<ma::ExtFOp>(fp32_ty, value), dst_element_ty);
+  }
+  if (dst_element_ty.isBF16()) {
+    return b.create<ma::TruncFOp>(dst_ty, Cast(b, value, b.getF32Type()));
+  }
+
+  // float => float
+  auto src_fp_element_ty = src_element_ty.dyn_cast<mlir::FloatType>();
+  auto dst_fp_element_ty = dst_element_ty.dyn_cast<mlir::FloatType>();
+  if (src_fp_element_ty && dst_fp_element_ty) {
+    if (src_fp_element_ty.getFPMantissaWidth() >
+        dst_fp_element_ty.getFPMantissaWidth()) {
+      return b.create<ma::TruncFOp>(dst_ty, value);
+    } else {
+      return b.create<ma::ExtFOp>(dst_ty, value);
+    }
+  }
+  // int => int
+  if (src_element_ty.isa<mlir::IntegerType>() &&
+      dst_element_ty.isa<mlir::IntegerType>()) {
+    if (src_element_ty.getIntOrFloatBitWidth() <
+        dst_element_ty.getIntOrFloatBitWidth()) {
+      return b.create<ma::ExtSIOp>(dst_ty, value);
+    }
+    return b.create<ma::TruncIOp>(dst_ty, value);
+  }
+  // int => float
+  if (src_element_ty.isa<mlir::IntegerType>() && dst_fp_element_ty) {
+    // TODO(b/266862493): Support unsigned integer types.
+    if (src_element_ty.isInteger(1)) {
+      return b.create<ma::UIToFPOp>(dst_ty, value);
+    }
+    return b.create<ma::SIToFPOp>(dst_ty, value);
+  }
+  // float => int
+  if (src_fp_element_ty && dst_element_ty.isa<mlir::IntegerType>()) {
+    // TODO(b/266862493): Support unsigned integer types.
+    if (dst_element_ty.isInteger(1)) {
+      return b.create<ma::CmpFOp>(ma::CmpFPredicate::UNE, value,
+                                  ZerosLike(b, value));
+    }
+    return b.create<ma::FPToSIOp>(dst_ty, value);
+  }
+
+  LOG(FATAL) << "Type conversion not supported: "
+             << llvm_ir::DumpToString(src_element_ty) << " -> "
+             << llvm_ir::DumpToString(dst_element_ty);
+}
+
 Value Subtract(ImplicitLocOpBuilder& b, ValueRange values) {
   if (mlir::getElementTypeOrSelf(values[0]).isa<mlir::IntegerType>()) {
     return b.create<ma::SubIOp>(values[0], values[1]);
@@ -285,22 +321,6 @@ Value Maximum(ImplicitLocOpBuilder& b, ValueRange values) {
 Value Minimum(ImplicitLocOpBuilder& b, ValueRange values) {
   auto cmp = Compare(b, values, mlir::mhlo::ComparisonDirection::LT);
   return b.create<ma::SelectOp>(cmp, values[0], values[1]);
-}
-
-Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
-  if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
-    Type src_ty = src_shaped_ty.getElementType();
-    return CreateConst(b, src_ty, 0, src_shaped_ty.getShape());
-  }
-  return CreateConst(b, x.getType(), 0);
-}
-
-Value OnesLike(ImplicitLocOpBuilder& b, Value x) {
-  if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
-    Type src_ty = src_shaped_ty.getElementType();
-    return CreateConst(b, src_ty, 1, src_shaped_ty.getShape());
-  }
-  return CreateConst(b, x.getType(), 1);
 }
 
 // TODO(b/269489810): Contribute nicer builders to Triton, so we don't need to
@@ -1633,13 +1653,15 @@ StatusOr<TritonWrapperResult> TritonWrapper(
   SmallVector<Type> fn_arg_types;
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
     fn_arg_types.push_back(mt::PointerType::get(
-        TritonType(b, p->shape().element_type()), mn::kGlobalMemorySpace));
+        StorageType(b, TritonType(b, p->shape().element_type())),
+        mn::kGlobalMemorySpace));
   }
 
   for (const ShapeUtil::IndexedShape& s :
        ShapeUtil::GetLeafShapes(hlo_computation->root_instruction()->shape())) {
     fn_arg_types.push_back(mt::PointerType::get(
-        TritonType(b, s.shape.element_type()), mn::kGlobalMemorySpace));
+        StorageType(b, TritonType(b, s.shape.element_type())),
+        mn::kGlobalMemorySpace));
   }
 
   auto fn = b.create<mt::FuncOp>(loc, fn_name,
