@@ -165,7 +165,7 @@ struct ExecutableCandidate {
 // This contains all alternative executables related to one fusion.
 struct ExecutableSet {
   std::vector<ExecutableCandidate> candidates;
-  // This is nullptr iff correctness check is disabled.
+  // Not nullptr.
   std::unique_ptr<Executable> reference;
 };
 
@@ -397,9 +397,8 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
     const GemmConfigSet& gemm_config_set = key_value.second;
     config_count += gemm_config_set.configs.size();
   }
-  if (config.should_check_correctness()) {
-    config_count += gemm_config_sets.size();
-  }
+  // The cuBLAS configs:
+  config_count += gemm_config_sets.size();
 
   std::atomic<int> done_count = 0;
   std::atomic<int> good_count = 0;
@@ -490,14 +489,12 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
         });
       }
 
-      if (config.should_check_correctness()) {
-        thread_pool->Schedule([&, fusion] {
-          StatusOr<bool> has_executable = compile_reference_executable(fusion);
-          TF_CHECK_OK(has_executable.status());
-          log(has_executable.value());
-          counter.DecrementCount();
-        });
-      }
+      thread_pool->Schedule([&, fusion] {
+        StatusOr<bool> has_executable = compile_reference_executable(fusion);
+        TF_CHECK_OK(has_executable.status());
+        log(has_executable.value());
+        counter.DecrementCount();
+      });
     }
     counter.Wait();
   } else {
@@ -521,11 +518,9 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
         log(has_executable);
       }
 
-      if (config.should_check_correctness()) {
-        TF_ASSIGN_OR_RETURN(bool has_executable,
-                            compile_reference_executable(fusion));
-        log(has_executable);
-      }
+      TF_ASSIGN_OR_RETURN(bool has_executable,
+                          compile_reference_executable(fusion));
+      log(has_executable);
     }
   }
 
@@ -534,9 +529,9 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
   return executable_sets;
 }
 
-// Runs matmul fusion contents without Triton - with cuBLAS, to generate
-// a reference output.
-StatusOr<ScopedShapedBuffer> RunMatmulWithCublas(
+// Runs matmul fusion contents without Triton - with cuBLAS, to measure time and
+// generate a reference output.
+StatusOr<ProfilingOutput> RunMatmulWithCublas(
     AutotunerCompileUtil& util, se::Stream* stream, Executable& executable,
     absl::Span<se::DeviceMemoryBase const> input_buffers,
     absl::Span<Shape const> input_shapes) {
@@ -544,7 +539,7 @@ StatusOr<ScopedShapedBuffer> RunMatmulWithCublas(
       std::optional<ProfilingOutput> output,
       util.ProfileExecutable(&executable, stream, input_buffers, input_shapes));
   TF_RET_CHECK(output.has_value());
-  return std::move(output->output);
+  return std::move(output.value());
 }
 
 StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
@@ -569,7 +564,6 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
       se::RedzoneAllocator rz_allocator,
       AutotunerUtil::CreateRedzoneAllocator(config, debug_opts));
 
-  std::optional<ScopedShapedBuffer> reference_buffer;
   const HloInstruction& root = *fusion_computation->root_instruction();
   BufferComparator comparator(root.shape(),
                               fusion_computation->parent()->config());
@@ -588,13 +582,21 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
     input_shapes.push_back(param->shape());
   }
 
-  if (config.should_check_correctness()) {
+  // Run with cuBLAS.
+  std::optional<ScopedShapedBuffer> reference_buffer;
+  absl::Duration cublas_duration;
+  {
     TF_RET_CHECK(executable_set.reference != nullptr);
     TF_ASSIGN_OR_RETURN(
-        reference_buffer,
+        ProfilingOutput output,
         RunMatmulWithCublas(util, stream, *executable_set.reference, inputs,
                             input_shapes));
+    if (config.should_check_correctness()) {
+      reference_buffer = std::move(output.output);
+    }
+    cublas_duration = output.duration;
   }
+  VLOG(3) << "Running with cuBLAS took: " << cublas_duration;
 
   const int log_every_n = GetLogEveryN();
   int64_t executable_count =
