@@ -809,7 +809,7 @@ class DataObjectsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ("EmptyList", []),
       ("None", None),
   )
-  def testGraphOpDigestWithNoOutpusReturnsNumOutputsZero(
+  def testGraphOpDigestWithNoOutputsReturnsNumOutputsZero(
       self, output_tensor_ids):
     op_creation_digest = debug_events_reader.GraphOpCreationDigest(
         1234,
