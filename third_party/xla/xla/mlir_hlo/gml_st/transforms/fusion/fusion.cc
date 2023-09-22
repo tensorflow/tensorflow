@@ -510,8 +510,8 @@ SmallVector<Value> getRootOpInitOperands(PatternRewriter& rewriter,
 
   SmallVector<Value> initOperands;
 
-  for (auto* operand : dstStyleOp.getDpsInitOperands()) {
-    initOperands.push_back(getTiedSourceOp(rewriter, operand, fusionCluster));
+  for (OpOperand& operand : dstStyleOp.getDpsInitsMutable()) {
+    initOperands.push_back(getTiedSourceOp(rewriter, &operand, fusionCluster));
   }
 
   return initOperands;

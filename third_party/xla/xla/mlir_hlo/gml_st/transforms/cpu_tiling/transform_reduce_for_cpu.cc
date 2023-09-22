@@ -74,7 +74,7 @@ LogicalResult validateOp(linalg::ReduceOp reduceOp, PatternRewriter &rewriter,
     return rewriter.notifyMatchFailure(
         reduceOp, "expects 1 reduction dimension element. 0 or > 1 received.");
   }
-  OpOperandVector operands = reduceOp.getDpsInputOperands();
+  SmallVector<OpOperand *> operands = reduceOp.getDpsInputOperands();
   if (operands.size() != 1) {
     return rewriter.notifyMatchFailure(reduceOp,
                                        "expects 1 operand. 0 or > 1 received.");
