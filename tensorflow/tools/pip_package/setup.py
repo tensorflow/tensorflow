@@ -316,6 +316,10 @@ matches = []
 for path in so_lib_paths:
   matches.extend(['../' + x for x in find_files('*', path) if '.py' not in x])
 
+# If building a tpu package, bundle libtpu.so as part of the wheel
+if '_tpu' in project_name:
+  matches.append('tensorflow/lib/libtpu.so')
+
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'
 else:
