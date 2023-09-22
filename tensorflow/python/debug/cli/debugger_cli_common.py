@@ -813,7 +813,7 @@ class CommandHandlerRegistry:
         aliases.
 
     Returns:
-      A list of str as the help information fo cmd_prefix. If the cmd_prefix
+      A list of str as the help information for cmd_prefix. If the cmd_prefix
         does not exist, the returned list of str will indicate that.
     """
     lines = []
