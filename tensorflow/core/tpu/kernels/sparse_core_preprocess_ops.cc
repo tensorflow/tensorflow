@@ -878,7 +878,6 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
         continue;
       }
       int32_t col_id = item >> 32;
-      std::string col_id_str = std::to_string(col_id);
       int32_t replica_id = col_id % num_physical_replica;
       int32_t bucket_id;
       int32_t main_index;
