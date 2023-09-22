@@ -373,6 +373,20 @@ cc_library(
 )
 
 cc_library(
+    name = "stream_executor_unloaded_executable",
+    srcs = ["stream_executor_unloaded_executable.cc"],
+    hdrs = ["stream_executor_unloaded_executable.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_executable",
+        "//xla:statusor",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compiler",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
     name = "pjrt_stream_executor_client",
     srcs = ["pjrt_stream_executor_client.cc"],
     hdrs = ["pjrt_stream_executor_client.h"],
@@ -383,6 +397,7 @@ cc_library(
         ":metrics",
         ":mlir_to_hlo",
         ":pjrt_client",
+        ":pjrt_executable",
         ":pjrt_future",
         ":tracked_device_buffer",
         ":transpose",
@@ -417,6 +432,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",

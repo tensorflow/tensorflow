@@ -257,21 +257,6 @@ GpuXlaRuntimeAotCompilationResult::LoadExecutable(
       gpu_compiler->GetGpuVersion(executor), executor);
 }
 
-GpuTargetConfig::GpuTargetConfig(const se::GpuTargetConfigProto& proto)
-    : gpu_device_info(proto.gpu_device_info()),
-      platform_name(proto.platform_name()),
-      dnn_version_info(proto.dnn_version_info()),
-      device_description_str(proto.device_description_str()) {}
-
-se::GpuTargetConfigProto GpuTargetConfig::ToProto() const {
-  se::GpuTargetConfigProto proto;
-  *proto.mutable_gpu_device_info() = gpu_device_info.ToProto();
-  proto.set_platform_name(platform_name);
-  *proto.mutable_dnn_version_info() = dnn_version_info.ToProto();
-  proto.set_device_description_str(device_description_str);
-  return proto;
-}
-
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
                          const char* target_triple, const char* data_layout)
     : platform_id_(platform_id),

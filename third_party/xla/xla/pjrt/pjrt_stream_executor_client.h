@@ -880,6 +880,7 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
   friend class PjRtStreamExecutorClient;
   friend class PjRtTpuClient;
   friend class InternalPjRtTpuClient;
+  friend class StreamExecutorGpuClient;
   // Initializes information about which arguments to which executables must be
   // donated due to aliases that were specified by the computation.
   Status SetUpDonation(bool tuple_inputs);

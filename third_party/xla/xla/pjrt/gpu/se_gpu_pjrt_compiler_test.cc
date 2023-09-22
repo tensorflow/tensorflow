@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/client/xla_computation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/literal_test_util.h"
 #include "tsl/platform/status_matchers.h"
