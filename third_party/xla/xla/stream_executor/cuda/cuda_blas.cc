@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -198,6 +199,19 @@ bool CUDABlas::Init() {
   }
 #endif  // CUDA_VERSION >= 11000
 
+  // Initialize cuBLAS workspace memory on device. The workspace size is
+  // determined by the GPU architecture:
+  // https://docs.nvidia.com/cuda/cublas/index.html#cublassetworkspace
+  absl::MutexLock lock(&mu_);
+  uint64_t workspace_size =
+      parent_->cc_major() >= 9 ? 1 << 25 /*32 MiB*/ : 1 << 22 /*4 MiB*/;
+  workspace_ = parent_->Allocate(workspace_size, /*memory_space=*/0);
+
+  if (workspace_.is_null()) {
+    LOG(ERROR) << "Failed to allocate workspace memory";
+    return false;
+  }
+
   return true;
 }
 
@@ -214,6 +228,9 @@ CUDABlas::CUDABlas(gpu::GpuExecutor *parent)
 CUDABlas::~CUDABlas() {
   if (blas_ != nullptr) {
     gpu::ScopedActivateExecutorContext sac{parent_};
+    if (!workspace_.is_null()) {
+      parent_->Deallocate(&workspace_);
+    }
     cublasDestroy(blas_);
   }
 }
@@ -229,6 +246,24 @@ bool CUDABlas::SetStream(Stream *stream) {
     return false;
   }
 
+  return true;
+}
+
+bool CUDABlas::SetWorkspace() {
+  CHECK(blas_ != nullptr);
+  gpu::ScopedActivateExecutorContext sac{parent_};
+
+  if (workspace_.is_null()) {
+    LOG(ERROR) << "cuBLAS workspace is not allocated";
+    return false;
+  }
+
+  cublasStatus_t ret =
+      cublasSetWorkspace(blas_, workspace_.opaque(), workspace_.size());
+  if (ret != CUBLAS_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to set workspace for cuBLAS calls: " << ToString(ret);
+    return false;
+  }
   return true;
 }
 
@@ -357,6 +392,10 @@ tsl::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
   CHECK(blas_ != nullptr);
   if (!SetStream(stream)) {
     return tsl::errors::Internal("Failed setting stream");
+  }
+
+  if (!SetWorkspace()) {
+    return tsl::errors::Internal("Failed setting workspace");
   }
 
   ScopedCublasMathMode math_mode{blas_};
