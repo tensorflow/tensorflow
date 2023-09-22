@@ -200,7 +200,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
                                    KernelBase* kernel) {
   GpuKernel* rocm_kernel = AsGpuKernel(kernel);
   hipModule_t module = nullptr;
-  const string* kernelname;
+  const string* kernel_name;
 
   const OnDiskKernelLoaderSpec* on_disk_spec = nullptr;
   bool has_cubin = spec.has_cuda_cubin_on_disk();
@@ -212,7 +212,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     return tsl::errors::Internal(
         "Loading ROCM kernel from disk is not supported");
   } else if (spec.has_cuda_cubin_in_memory()) {
-    kernelname = &spec.cuda_cubin_in_memory().kernelname();
+    kernel_name = &spec.cuda_cubin_in_memory().kernel_name();
 
     const char* hsaco = spec.cuda_cubin_in_memory().bytes();
     absl::MutexLock lock{&in_memory_modules_mu_};
@@ -226,9 +226,9 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     return tsl::errors::Internal("No method of loading ROCM kernel provided");
   }
 
-  VLOG(2) << "getting function " << *kernelname << " from module " << module;
+  VLOG(2) << "getting function " << *kernel_name << " from module " << module;
   TF_RETURN_IF_ERROR(GpuDriver::GetModuleFunction(
-      context_, module, kernelname->c_str(), rocm_kernel->gpu_function_ptr()));
+      context_, module, kernel_name->c_str(), rocm_kernel->gpu_function_ptr()));
 
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the ROCM API.
@@ -237,7 +237,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   KernelMetadata kernel_metadata;
   TF_RETURN_IF_ERROR(GetKernelMetadata(rocm_kernel, &kernel_metadata));
   kernel->set_metadata(kernel_metadata);
-  kernel->set_name(*kernelname);
+  kernel->set_name(*kernel_name);
   return tsl::OkStatus();
 }
 
