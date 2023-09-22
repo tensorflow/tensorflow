@@ -1015,8 +1015,10 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // f32).
   add_float_normalization(pipeline);
 
-  TF_RETURN_IF_ERROR(
-      AddAutotuningPasses(&pipeline, hlo_module, autotune_config, thread_pool));
+  TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPasses(
+      &pipeline, hlo_module, autotune_config, thread_pool));
+  TF_RETURN_IF_ERROR(AddTritonGemmAutotuningPasses(
+      &pipeline, hlo_module, autotune_config, thread_pool));
 
   // The Triton autotuner can insert new bf16 reductions that need to be
   // normalized again.

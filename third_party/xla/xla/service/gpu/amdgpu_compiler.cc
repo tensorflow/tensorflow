@@ -149,7 +149,7 @@ bool AMDGPUCompiler::RequiresCollectiveScheduleLinearizer(
   return false;
 }
 
-Status AMDGPUCompiler::AddAutotuningPasses(
+Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
   if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
@@ -157,7 +157,6 @@ Status AMDGPUCompiler::AddAutotuningPasses(
   }
   // TODO:
   // pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
-  // pipeline->AddPass<TritonAutotuner>(autotune_config, thread_pool);
   return OkStatus();
 }
 

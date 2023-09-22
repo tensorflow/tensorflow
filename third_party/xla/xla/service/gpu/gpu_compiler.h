@@ -193,11 +193,17 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
-  // Add autotuning passes for convolution, gemm and triton.
-  virtual Status AddAutotuningPasses(HloPassPipeline* pipeline,
-                                     HloModule* hlo_module,
-                                     AutotuneConfig& autotune_config,
-                                     tsl::thread::ThreadPool* thread_pool) {
+  // Add autotuning passes for convolution and gemm (except triton).
+  virtual Status AddConvAndGemmAutotuningPasses(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
+    return OkStatus();
+  }
+
+  // Add autotuning passes for triton gemm.
+  virtual Status AddTritonGemmAutotuningPasses(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
     return OkStatus();
   }
 
