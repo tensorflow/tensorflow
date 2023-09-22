@@ -50,7 +50,6 @@ package_group(
         "//third_party/deepmind/deepmind_research/density_functional_approximation_dm21/...",
         "//third_party/mlir_edge/model_curriculum/iree/...",
         "//third_party/mlperf/submissions/training/v0_7/models/...",
-        "//third_party/py/keras/...",
         "//third_party/py/keras_cv/...",
         "//third_party/py/tf_keras/...",
         "//waymo/ml/deploy/benchmark/...",

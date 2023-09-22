@@ -2035,7 +2035,6 @@ py_strict_library(
         "//tensorflow_estimator/python/estimator:__subpackages__",
         "//tensorflow_model_optimization:__subpackages__",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/py/keras:__subpackages__",
         "//third_party/py/neural_structured_learning:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
         "//third_party/py/tf_keras:__subpackages__",
@@ -2109,7 +2108,6 @@ py_strict_library(
     visibility = visibility + [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
-        "//third_party/py/keras:__subpackages__",
         "//third_party/py/keras_cv:__subpackages__",
         "//third_party/py/tf_keras:__subpackages__",
     ],
