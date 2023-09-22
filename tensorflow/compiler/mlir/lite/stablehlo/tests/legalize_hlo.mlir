@@ -3113,6 +3113,25 @@ func.func @convert_pad(%arg0: tensor<8x128xf32>, %arg1: tensor<f32>) -> tensor<1
   func.return %0 : tensor<11x131xf32>
 }
 
+// CHECK-LABEL:   func @convert_pad_negative_amount(
+// CHECK-SAME:                      %[[VAL_0:.*]]: tensor<8x128xf32>,
+// CHECK-SAME:                      %[[VAL_1:.*]]: tensor<f32>) -> tensor<7x128xf32> {
+// CHECK:           %[[VAL_2:.*]] = arith.constant dense<{{\[\[}}0, 0], [0, 1]]> : tensor<2x2xi64>
+// CHECK:           %[[VAL_3:.*]] = "tf.PadV2"(%[[VAL_0]], %[[VAL_2]], %[[VAL_1]]) : (tensor<8x128xf32>, tensor<2x2xi64>, tensor<f32>) -> tensor<8x129xf32>
+// CHECK:           %[[VAL_4:.*]] = arith.constant dense<[0, 1]> : tensor<2xi64>
+// CHECK:           %[[VAL_5:.*]] = arith.constant dense<[7, 128]> : tensor<2xi64>
+// CHECK:           %[[VAL_6:.*]] = "tf.Slice"(%[[VAL_3]], %[[VAL_4]], %[[VAL_5]]) : (tensor<8x129xf32>, tensor<2xi64>, tensor<2xi64>) -> tensor<7x128xf32>
+// CHECK:           return %[[VAL_6]] : tensor<7x128xf32>
+// CHECK:         }
+func.func @convert_pad_negative_amount(%arg0: tensor<8x128xf32>, %arg1: tensor<f32>) -> tensor<7x128xf32> {
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_low = dense<[0, -1]> : tensor<2xi64>,
+    edge_padding_high = dense<[-1, 1]> : tensor<2xi64>,
+    interior_padding = dense<0> : tensor<2xi64>
+  } : (tensor<8x128xf32>, tensor<f32>) -> tensor<7x128xf32>
+  func.return %0 : tensor<7x128xf32>
+}
+
 // CHECK-LABEL:   func @convert_round(
 // CHECK-SAME:                        %[[VAL_0:.*]]: tensor<8x128xbf16>) -> tensor<8x128xbf16>
 // CHECK:           %[[VAL_1:.*]] = "tf.Round"(%[[VAL_0]]) : (tensor<8x128xbf16>) -> tensor<8x128xbf16>

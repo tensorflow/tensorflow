@@ -3344,20 +3344,69 @@ Value ConvertPadOp(PatternRewriter& rewriter, Operation* old_op) {
   auto pad_op = cast<mhlo::PadOp>(old_op);
   mlir::Location loc = pad_op.getLoc();
 
-  llvm::SmallVector<APInt, 8> padding;
-  for (auto p : llvm::zip(pad_op.getEdgePaddingLow().getValues<APInt>(),
+  // Calculates non-negative padding amount and slice begins/sizes.
+  llvm::SmallVector<int64_t, 8> padding;
+  llvm::SmallVector<int64_t, 8> pad_output_shape;
+
+  bool has_negative_padding_amount = false;
+  llvm::SmallVector<int64_t, 8> slice_begins;
+  llvm::SmallVector<int64_t, 8> slice_sizes;
+
+  for (auto p : llvm::zip(pad_op.getOperand().getType().getShape(),
+                          pad_op.getEdgePaddingLow().getValues<APInt>(),
                           pad_op.getEdgePaddingHigh().getValues<APInt>())) {
-    padding.push_back(std::get<0>(p));
-    padding.push_back(std::get<1>(p));
+    const int64_t input_dim_size = std::get<0>(p);
+    int64_t pad_output_dim_size = input_dim_size;
+
+    const int64_t pad_low = std::get<1>(p).getSExtValue();
+    if (pad_low < 0) {
+      has_negative_padding_amount = true;
+      padding.push_back(0);
+    } else {
+      padding.push_back(pad_low);
+      pad_output_dim_size += pad_low;
+    }
+
+    const int64_t pad_high = std::get<2>(p).getSExtValue();
+    if (pad_high < 0) {
+      has_negative_padding_amount = true;
+      padding.push_back(0);
+    } else {
+      padding.push_back(pad_high);
+      pad_output_dim_size += pad_high;
+    }
+
+    pad_output_shape.push_back(pad_output_dim_size);
+
+    slice_begins.push_back(pad_low < 0 ? -pad_low : 0);
+    slice_sizes.push_back(input_dim_size + pad_low + pad_high);
   }
-  auto attr_type = RankedTensorType::get({pad_op.getEdgePaddingLow().size(), 2},
-                                         rewriter.getI64Type());
-  auto padding_attr = DenseIntElementsAttr::get(attr_type, padding);
-  auto padding_op =
-      rewriter.create<arith::ConstantOp>(loc, attr_type, padding_attr);
-  return rewriter.create<TF::PadV2Op>(loc, pad_op.getType(),
-                                      pad_op.getOperand(), padding_op,
-                                      pad_op.getPaddingValue());
+
+  // Convert to PadV2.
+  auto padding_attr_type = RankedTensorType::get(
+      {pad_op.getEdgePaddingLow().size(), 2}, rewriter.getI64Type());
+  auto padding_attr = DenseIntElementsAttr::get(padding_attr_type, padding);
+  auto padding_amount_const_op =
+      rewriter.create<arith::ConstantOp>(loc, padding_attr_type, padding_attr);
+  auto new_pad_op = rewriter.create<TF::PadV2Op>(
+      loc, pad_op.getType().clone(pad_output_shape), pad_op.getOperand(),
+      padding_amount_const_op, pad_op.getPaddingValue());
+  if (!has_negative_padding_amount) {
+    return new_pad_op;
+  }
+
+  // Convert negative padding amount into slice.
+  auto slice_attr_type = RankedTensorType::get(
+      {pad_op.getEdgePaddingLow().size()}, rewriter.getI64Type());
+  auto slice_begins_const_op = rewriter.create<arith::ConstantOp>(
+      loc, slice_attr_type,
+      DenseIntElementsAttr::get(slice_attr_type, slice_begins));
+  auto slice_sizes_const_op = rewriter.create<arith::ConstantOp>(
+      loc, slice_attr_type,
+      DenseIntElementsAttr::get(slice_attr_type, slice_sizes));
+  return rewriter.create<TF::SliceOp>(loc, pad_op.getType(), new_pad_op,
+                                      slice_begins_const_op,
+                                      slice_sizes_const_op);
 }
 
 class ConvertPopulationCountOp
