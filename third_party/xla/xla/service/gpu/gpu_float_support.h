@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_FLOAT_SUPPORT_H_
 #define XLA_SERVICE_GPU_GPU_FLOAT_SUPPORT_H_
 
+#include <cstdint>
+
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/float_support.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -35,6 +39,8 @@ class GpuFloatSupport : public FloatSupport {
   bool SupportsLowPrecisionOutput(const HloInstruction& hlo) const override {
     return FloatSupport::SupportsLowPrecisionOutput(hlo) || IsSupported(hlo);
   }
+
+  bool SupportsMixedPrecisions(const HloInstruction& hlo) const override;
 
  private:
   bool IsSupported(const HloInstruction& hlo) const;
