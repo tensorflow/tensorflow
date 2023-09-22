@@ -56,6 +56,7 @@ load("//tensorflow/tools/toolchains/remote:configure.bzl", "remote_execution_con
 load("//tensorflow/tools/toolchains/clang6:repo.bzl", "clang6_configure")
 load("@rules_jvm_external//:defs.bzl", "maven_install")
 
+
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     FP16()
@@ -90,6 +91,7 @@ def _initialize_third_party():
 
     # copybara: tsl vendor
 
+
 # Toolchains & platforms required by Tensorflow to build.
 def _tf_toolchains():
     native.register_execution_platforms("@local_execution_config_platform//:platform")
@@ -113,10 +115,6 @@ def _tf_toolchains():
     # For windows bazel build
     # TODO: Remove def file filter when TensorFlow can export symbols properly on Windows.
     def_file_filter_configure(name = "local_config_def_file_filter")
-
-    # Register the toolchain to support clang-cl on Windows
-    native.register_toolchains("@local_config_cc//:cc-toolchain-x64_windows-clang-cl")
-
 
     # Point //external/local_config_arm_compiler to //external/arm_compiler
     arm_compiler_configure(
