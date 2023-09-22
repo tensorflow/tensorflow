@@ -707,6 +707,7 @@ py_strict_library(
         "//tensorflow/python/ops:check_ops",
         "//tensorflow/python/ops:control_flow_util",
         "//tensorflow/python/ops:default_gradient",
+        "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:unconnected_gradients",
