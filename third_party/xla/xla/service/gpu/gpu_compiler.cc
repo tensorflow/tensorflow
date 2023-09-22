@@ -84,10 +84,12 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/flatten_call_graph.h"
 #include "xla/service/float_normalization.h"
+#include "xla/service/float_support.h"
 #include "xla/service/gather_expander.h"
 #include "xla/service/gather_simplifier.h"
 #include "xla/service/gpu/alias_passthrough_params.h"
 #include "xla/service/gpu/all_reduce_blueconnect.h"
+#include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/copy_fusion.h"
@@ -897,22 +899,53 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
     const AutotuneResults* autotune_results,
     tsl::thread::ThreadPool* thread_pool) {
+  // Constants:
   const DebugOptions& debug_options = hlo_module->config().debug_options();
+  const GpuVersion gpu_version =
+      gpu_target_config.gpu_device_info.compute_capability;
+  const se::CudaComputeCapability* const cuda_cc =
+      std::get_if<se::CudaComputeCapability>(&gpu_version);
+  const AlgebraicSimplifierOptions simplifier_options = [&] {
+    AlgebraicSimplifierOptions opts;
+    opts.set_supports_non_canonical_dots(false);
+    opts.set_is_layout_sensitive(true);
+    opts.set_enable_conv_operand_swap(false);
+    // "slow" minmax means we propagate nan.
+    opts.set_minmax_propagate_nan(!debug_options.xla_gpu_enable_fast_min_max());
+    opts.set_enable_unconditional_reduce_of_concat_replacement(false);
+    return opts;
+  }();
+  TF_ASSIGN_OR_RETURN(AutotuneConfig autotune_config,
+                      GetAutotuneConfig(stream_exec, debug_options, options,
+                                        gpu_target_config, autotune_results));
+  // Lambdas and related constants:
+  const GpuFloatSupport bf16_support(BF16);
+  const GpuFloatSupport f8e5m2_support(F8E5M2);
+  const GpuFloatSupport f8e4m3fn_support(F8E4M3FN);
+  const FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ);
+  const FloatSupport f8e5m2fnuz_support(F8E5M2FNUZ);
+  const FloatSupport f8e4m3fnuz_support(F8E4M3FNUZ);
+  auto add_float_normalization = [&](HloPassPipeline& pipeline) {
+    auto& sub_pipeline =
+        pipeline.AddPass<HloPassPipeline>("float_normalization");
+    sub_pipeline.AddPass<FloatNormalization>(&bf16_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e4m3b11fnuz_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e5m2fnuz_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e4m3fnuz_support);
+    // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
+    if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
+      sub_pipeline.AddPass<SimplifyFPConversions>();
+    }
+  };
 
   {
     HloPassPipeline pipeline("hlo normalization");
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-    AlgebraicSimplifierOptions options;
-    options.set_supports_non_canonical_dots(false);
-    options.set_is_layout_sensitive(true);
-    options.set_enable_conv_operand_swap(false);
-    // "slow" minmax means we propagate nan.
-    options.set_minmax_propagate_nan(
-        !debug_options.xla_gpu_enable_fast_min_max());
-    options.set_enable_unconditional_reduce_of_concat_replacement(false);
-    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_options);
 
     // GemmRewriter assumes that all transposes are folded into gemms, but,
     // since commit 7d529df, this is not always true at this point.
@@ -927,9 +960,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
     // Rewrite GEMMs into custom calls.
-    GpuVersion gpu_version =
-        gpu_target_config.gpu_device_info.compute_capability;
-    const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
     if (debug_options.xla_gpu_enable_triton_gemm() && cuda_cc != nullptr &&
         cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) {
       pipeline.AddPass<GemmRewriterTriton>(gpu_version);
@@ -941,7 +971,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
     if (debug_options.xla_gpu_normalize_layouts()) {
       pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
-      pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+      pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_options);
     }
     pipeline.AddPass<BroadcastCanonicalizer>();
 
@@ -954,7 +984,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     if (debug_options.xla_gpu_enable_triton_softmax_fusion() &&
         cuda_cc != nullptr &&
         cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) {
-      pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+      pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_options);
       pipeline.AddPass<SoftmaxRewriterTriton>(gpu_version);
     }
 
@@ -981,34 +1011,10 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
         return RequiresCollectiveScheduleLinearizer(module, stream_exec);
       });
 
-  GpuFloatSupport bf16_support(BF16);
-  GpuFloatSupport f8e5m2_support(F8E5M2);
-  GpuFloatSupport f8e4m3fn_support(F8E4M3FN);
-  FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ);
-  FloatSupport f8e5m2fnuz_support(F8E5M2FNUZ);
-  FloatSupport f8e4m3fnuz_support(F8E4M3FNUZ);
-
-  auto add_float_normalization = [&](HloPassPipeline& pipeline) {
-    auto& sub_pipeline =
-        pipeline.AddPass<HloPassPipeline>("float_normalization");
-    sub_pipeline.AddPass<FloatNormalization>(&bf16_support);
-    sub_pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
-    sub_pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
-    sub_pipeline.AddPass<FloatNormalization>(&f8e4m3b11fnuz_support);
-    sub_pipeline.AddPass<FloatNormalization>(&f8e5m2fnuz_support);
-    sub_pipeline.AddPass<FloatNormalization>(&f8e4m3fnuz_support);
-    // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
-    if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
-      sub_pipeline.AddPass<SimplifyFPConversions>();
-    }
-  };
   // Triton compilation needs normalized operations on bf16 (i.e. converted to
   // f32).
   add_float_normalization(pipeline);
 
-  TF_ASSIGN_OR_RETURN(AutotuneConfig autotune_config,
-                      GetAutotuneConfig(stream_exec, debug_options, options,
-                                        gpu_target_config, autotune_results));
   TF_RETURN_IF_ERROR(
       AddAutotuningPasses(&pipeline, hlo_module, autotune_config, thread_pool));
 
@@ -1019,19 +1025,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // Clean up new_tuple described above.
   pipeline.AddPass<TupleSimplifier>();
 
-  {
-    // The LayoutAssignment pass may leave behind kCopy instructions which are
-    // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-    AlgebraicSimplifierOptions options;
-    options.set_supports_non_canonical_dots(false);
-    options.set_is_layout_sensitive(true);
-    options.set_enable_conv_operand_swap(false);
-    // "slow" minmax means we propagate nan.
-    options.set_minmax_propagate_nan(
-        !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());
-    options.set_enable_unconditional_reduce_of_concat_replacement(false);
-    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
-  }
+  // The LayoutAssignment pass may leave behind kCopy instructions which are
+  // duplicate or NOPs, so remove them with algebraic simplification and CSE.
+  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_options);
 
   // Since this CSE runs after collective schedule linearizer which inserts
   // control dependencies, ignore these control deps when replacing instructions
