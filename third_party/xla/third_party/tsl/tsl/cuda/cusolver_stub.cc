@@ -35,28 +35,40 @@ void* GetDsoHandle() {
 #endif
 }
 
-template <typename T>
-T LoadSymbol(const char* symbol_name) {
+void* LoadSymbol(const char* symbol_name) {
   void* symbol = nullptr;
   if (auto handle = GetDsoHandle()) {
     tsl::Env::Default()
         ->GetSymbolFromLibrary(handle, symbol_name, &symbol)
         .IgnoreError();
   }
-  return reinterpret_cast<T>(symbol);
+  return symbol;
 }
 
-cusolverStatus_t GetSymbolNotFoundError() {
-  return CUSOLVER_STATUS_INTERNAL_ERROR;
-}
+const char* kSymbols[] = {
+#include "tsl/cuda/cusolver.inc"
+};
+
+constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char*);
+
 }  // namespace
 
-#if CUDA_VERSION < 10010
-#include "tsl/cuda/cusolver_dense_10_0.inc"
-#elif CUDA_VERSION < 10020
-#include "tsl/cuda/cusolver_dense_10_1.inc"
-#elif CUDA_VERSION < 11000
-#include "tsl/cuda/cusolver_dense_10_2.inc"
-#else
-#include "tsl/cuda/cusolver_dense_11_0.inc"
-#endif
+extern "C" {
+
+static cusolverStatus_t GetSymbolNotFoundError() {
+  return CUSOLVER_STATUS_INTERNAL_ERROR;
+}
+
+extern void* _cusolver_tramp_table[];
+
+void _cusolver_tramp_resolve(int i) {
+  CHECK_LE(0, i);
+  CHECK_LT(i, kNumSymbols);
+  void* p = LoadSymbol(kSymbols[i]);
+  if (!p) {
+    p = reinterpret_cast<void*>(&GetSymbolNotFoundError);
+  }
+  _cusolver_tramp_table[i] = p;
+}
+
+}  // extern "C"
