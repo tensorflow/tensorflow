@@ -33,12 +33,14 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_gpu_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_test.h"
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/service/custom_call_target_registry.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "tsl/platform/status.h"
@@ -235,5 +237,34 @@ TEST(PjrtCApiGpuAllocatorTest, InvalidAllocatorOptionsParsing) {
 
   api->PJRT_Error_Destroy(&error_destroy_args);
 }
+
+void TestCustomCall() {}
+
+TEST(PjrtCApiGpuPrivTest, CustomCall) {
+  PJRT_Gpu_Register_Custom_Call_Args args;
+  args.struct_size = PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE;
+  std::string function_name = "function_name";
+  args.function_name = function_name.c_str();
+  args.function_name_size = function_name.size();
+  args.custom_call_function = reinterpret_cast<void*>(&TestCustomCall);
+  auto api = GetPjrtApi();
+  const PJRT_Structure_Base* next =
+      reinterpret_cast<const PJRT_Structure_Base*>(api->extension_start);
+  while (next != nullptr &&
+         next->type !=
+             PJRT_Structure_Type::PJRT_Structure_Type_Gpu_Custom_Call) {
+    next = next->next;
+  }
+  ASSERT_NE(next, nullptr);
+
+  PJRT_Error* error =
+      reinterpret_cast<const PJRT_Gpu_Custom_Call*>(next)->custom_call(&args);
+
+  CHECK_EQ(error, nullptr);
+  void* custom_call =
+      xla::CustomCallTargetRegistry::Global()->Lookup(function_name, "CUDA");
+  EXPECT_EQ(custom_call, reinterpret_cast<void*>(&TestCustomCall));
+}
+
 }  // namespace
 }  // namespace pjrt
