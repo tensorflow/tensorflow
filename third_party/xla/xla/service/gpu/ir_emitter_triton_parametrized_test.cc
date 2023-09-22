@@ -719,6 +719,7 @@ ENTRY e {
   float tolerance;
   switch (data_type) {
     case F32:
+    case BF16:
       tolerance = 1e-6;
       break;
     case F16:
