@@ -256,8 +256,11 @@ function prepare_src() {
 
   # Move vendored files into proper locations
   # This is required because TSL/XLA don't publish their own wheels
-  cp -rL bazel-bin/external/local_tsl/tsl/ ${TMPDIR}/tensorflow
-  cp -rL bazel-bin/external/local_xla/xla/ ${TMPDIR}/tensorflow/compiler
+  # We copy from bazel-bin/tensorflow instead of bazel-bin/internal to copy
+  # headers from TSL/XLA into tensorflow so that InstallHeaders can move
+  # them back into tensorflow/include
+  cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_tsl/tsl/ ${TMPDIR}/tensorflow
+  cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_xla/xla/ ${TMPDIR}/tensorflow/compiler
   # Fix the proto stubs
   if is_macos; then
     find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from tsl\./from tensorflow.tsl./' {} \;
