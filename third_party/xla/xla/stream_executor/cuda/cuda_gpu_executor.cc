@@ -183,18 +183,18 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
                                    KernelBase* kernel) {
   GpuKernel* cuda_kernel = AsGpuKernel(kernel);
   CUmodule module;
-  const std::string* kernelname;
+  const std::string* kernel_name;
 
   VLOG(3) << "GetKernel on kernel " << kernel << " : " << kernel->name();
 
   if (spec.has_cuda_cubin_in_memory()) {
     absl::MutexLock lock{&in_memory_modules_mu_};
-    kernelname = &spec.cuda_cubin_in_memory().kernelname();
+    kernel_name = &spec.cuda_cubin_in_memory().kernel_name();
     const char* cubin = spec.cuda_cubin_in_memory().bytes();
     TF_RETURN_IF_ERROR(LoadModuleFromCuBin(cubin, &module));
     kernel_to_gpu_binary_[kernel] = cubin;
   } else if (spec.has_cuda_ptx_in_memory()) {
-    kernelname = &spec.cuda_ptx_in_memory().kernelname();
+    kernel_name = &spec.cuda_ptx_in_memory().kernel_name();
 
     if (cc_major_ == 0 && cc_minor_ == 0) {
       return tsl::errors::Internal("Compute capability not set");
@@ -205,7 +205,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
       ptx = spec.cuda_ptx_in_memory().default_text();
     }
     if (ptx == nullptr) {
-      LOG(FATAL) << "Loader spec has no ptx for kernel " << *kernelname;
+      LOG(FATAL) << "Loader spec has no ptx for kernel " << *kernel_name;
     }
 
     absl::MutexLock lock{&in_memory_modules_mu_};
@@ -214,9 +214,9 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   } else {
     return tsl::errors::Internal("No method of loading CUDA kernel provided");
   }
-  VLOG(2) << "getting function " << *kernelname << " from module " << module;
+  VLOG(2) << "getting function " << *kernel_name << " from module " << module;
   TF_RETURN_IF_ERROR(GpuDriver::GetModuleFunction(
-      context_, module, kernelname->c_str(), cuda_kernel->gpu_function_ptr()));
+      context_, module, kernel_name->c_str(), cuda_kernel->gpu_function_ptr()));
 
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the CUDA API.
@@ -225,7 +225,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   KernelMetadata kernel_metadata;
   TF_RETURN_IF_ERROR(GetKernelMetadata(cuda_kernel, &kernel_metadata));
   kernel->set_metadata(kernel_metadata);
-  kernel->set_name(*kernelname);
+  kernel->set_name(*kernel_name);
   return ::tsl::OkStatus();
 }
 
