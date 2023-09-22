@@ -265,6 +265,7 @@ class InstallHeaders(Command):
     external_header_locations = {
         '/tensorflow/include/external/eigen_archive': '',
         '/tensorflow/include/external/com_google_absl': '',
+        '/tensorflow/include/external/ml_dtypes': '/ml_dtypes',
         '/tensorflow/include/tensorflow/compiler/xla': '/tensorflow/include/xla',
         '/tensorflow/include/tensorflow/tsl': '/tensorflow/include/tsl',
     }
@@ -345,7 +346,8 @@ headers = (
     list(find_files('*', 'third_party/gpus')) +
     list(find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
+    list(find_files('*', 'tensorflow/include/external/eigen_archive')) +
+    list(find_files('*.h', 'tensorflow/include/external/ml_dtypes')))
 
 # Quite a lot of setup() options are different if this is a collaborator package
 # build. We explicitly list the differences here, then unpack the dict as
