@@ -171,6 +171,7 @@ class PjRtDevice {
   }
 
   // Returns all memory spaces attached to this device.
+  // The memory spaces are in no particular order.
   virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const = 0;
 
   // Returns the default memory space attached to this device.
@@ -485,6 +486,7 @@ class PjRtClient {
       int local_hardware_id) const = 0;
 
   // Return all memory spaces owned by the client.
+  // The memory spaces are in no particular order.
   virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const = 0;
 
   // Return an ID that identifies the platform (CPU/GPU/TPU).
