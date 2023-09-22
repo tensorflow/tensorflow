@@ -261,6 +261,34 @@ void DefineMetricsModule(py::module main_module) {
           "Get tuple of `path` and `singleprint` values of "
           "'/tensorflow/core/saved_model/write/path_and_singleprint' gauge."));
 
+  m.attr("kFingerprintFound") = metrics::kFingerprintFound;
+  m.attr("kFingerprintNotFound") = metrics::kFingerprintNotFound;
+  m.attr("kFingerprintError") = metrics::kFingerprintError;
+
+  m.def(
+      "GetFoundFingerprintOnLoad",
+      []() { return metrics::SavedModelFoundFingerprintOnLoad().value(); },
+      py::doc(
+          "Get value of "
+          "'/tensorflow/core/saved_model/found_fingerprint_on_load' gauge."));
+
+  m.def(
+      "SetFoundFingerprintOnLoad",
+      [](std::string found_status) {
+        if (found_status == metrics::kFingerprintFound ||
+            found_status == metrics::kFingerprintNotFound ||
+            found_status == metrics::kFingerprintError) {
+          metrics::SavedModelFoundFingerprintOnLoad().Set(found_status);
+        } else {
+          metrics::SavedModelFoundFingerprintOnLoad().Set("");
+        }
+      },
+      py::kw_only(), py::arg("found_status"),
+      py::doc("Set value of "
+              "'/tensorflow/core/saved_model/found_fingerprint_on_load' gauge "
+              "with 'found_status' if status is one of { \"FOUND\", "
+              "\"NOT_FOUND\", \"ERROR\" }."));
+
   m.def(
       "AddCheckpointReadDuration",
       [](const char* api_label, double microseconds) {

@@ -175,5 +175,16 @@ TEST(MetricsTest, TestMakeFingerprintJson) {
   EXPECT_EQ(fingerprint_json["checkpoint_hash"].asUInt64(), 5);
 }
 
+TEST(MetricsTest, TestFoundFingerprintOnLoad) {
+  EXPECT_EQ(SavedModelFoundFingerprintOnLoad().value(), "");
+
+  SavedModelFoundFingerprintOnLoad().Set(kFingerprintFound);
+  EXPECT_EQ(SavedModelFoundFingerprintOnLoad().value(), "FOUND");
+  SavedModelFoundFingerprintOnLoad().Set(kFingerprintNotFound);
+  EXPECT_EQ(SavedModelFoundFingerprintOnLoad().value(), "NOT_FOUND");
+  SavedModelFoundFingerprintOnLoad().Set(kFingerprintError);
+  EXPECT_EQ(SavedModelFoundFingerprintOnLoad().value(), "ERROR");
+}
+
 }  // namespace metrics
 }  // namespace tensorflow
