@@ -35,7 +35,6 @@ xla_cc_binary(
         ":hlo_runner_flags",
         "//xla:debug_options_flags",
         "//xla:status",
-        "//xla/stream_executor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",

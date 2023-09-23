@@ -64,7 +64,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor:kernel",
-        "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:denormal",
