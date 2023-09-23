@@ -335,6 +335,9 @@ class Parser(ast.NodeVisitor):
         v1_apis = tuple(
             f'{self._api_name}.{v}' for v in self._literal_value(kw.value)
         )
+      elif kw.arg == 'allow_multiple_exports':
+        # no-op kept for backward comapatibility of `tf-keras` with TF 2.13
+        pass
       else:
         raise BadExportError(
             f'{self._current_file}:{node.lineno} export called'
