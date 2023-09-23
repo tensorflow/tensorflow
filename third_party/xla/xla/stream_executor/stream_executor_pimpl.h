@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory_allocator.h"
