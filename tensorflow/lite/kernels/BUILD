@@ -1181,8 +1181,9 @@ cc_test(
 
 cc_test(
     name = "sub_test",
-    size = "small",
+    size = "medium",
     srcs = ["sub_test.cc"],
+    shard_count = 10,
     tags = ["tflite_nnapi"],
     deps = [
         ":test_main",
