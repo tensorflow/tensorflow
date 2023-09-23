@@ -22,7 +22,6 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
-#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
 #include "xla/statusor.h"
