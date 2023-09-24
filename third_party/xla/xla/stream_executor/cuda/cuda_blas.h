@@ -25,7 +25,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 
@@ -70,8 +69,6 @@ class CUDABlas : public blas::BlasSupport {
   // enqueue dispatch) at a given time. As a result, this generally must be
   // invoked before calling into cuBLAS.
   bool SetStream(Stream *stream) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  bool SetWorkspace() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Returns the underlying CUDA stream.
   cudaStream_t CUDAStream(Stream *stream);
@@ -123,8 +120,6 @@ class CUDABlas : public blas::BlasSupport {
   cublasHandle_t blas_ ABSL_GUARDED_BY(mu_);
 
   BlasLt blas_lt_;
-
-  DeviceMemoryBase workspace_ ABSL_GUARDED_BY(mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(CUDABlas);
 };
