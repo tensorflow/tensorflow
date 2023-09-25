@@ -96,7 +96,6 @@ def xla_cc_test(
                        clean_dep("//xla/service/gpu:hlo_op_profile_proto_cc_impl"),
                        clean_dep("//xla/stream_executor:dnn_proto_cc_impl"),
                        clean_dep("//xla/stream_executor:stream_executor_impl"),
-                       clean_dep("//xla/stream_executor:device_id_utils"),
                        clean_dep("//xla/stream_executor/gpu:gpu_cudamallocasync_allocator"),
                        clean_dep("//xla/stream_executor/gpu:gpu_init_impl"),
                        clean_dep("@local_tsl//tsl/profiler/utils:time_utils_impl"),

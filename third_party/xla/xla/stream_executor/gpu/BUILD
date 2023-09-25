@@ -407,7 +407,6 @@ tsl_gpu_library(
     deps = [
         ":gpu_init_impl",
         "//xla/stream_executor",
-        "//xla/stream_executor:device_id_utils",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",

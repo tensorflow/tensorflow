@@ -188,7 +188,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/framework:device_id_utils",
-        "@local_xla//xla/stream_executor:device_id_utils",
+        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "@local_xla//xla/stream_executor/gpu:gpu_init_impl",
     ] + if_google(
@@ -232,7 +232,7 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:stream_executor",
         "@eigen_archive//:eigen3",
-        "@local_xla//xla/stream_executor:device_id_utils",
+        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
     ] + if_static([":gpu_runtime_impl"]),
 )

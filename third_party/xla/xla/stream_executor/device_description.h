@@ -20,7 +20,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
 #define XLA_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
 
-#include <map>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>

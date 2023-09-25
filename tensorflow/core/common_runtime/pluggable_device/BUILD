@@ -57,10 +57,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/framework:device_id_utils",
-        "@local_xla//xla/stream_executor:device_id_utils",
+        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:device_mem_allocator",
-        "@local_xla//xla/stream_executor:event",
-        "@local_xla//xla/stream_executor:kernel",
     ],
     alwayslink = 1,
 )
