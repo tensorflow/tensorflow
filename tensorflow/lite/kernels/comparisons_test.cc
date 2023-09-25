@@ -607,8 +607,8 @@ TEST(ComparisonsTest, GreaterInt16QuantizedSmallRange) {
       std::numeric_limits<int16_t>::max() /
       static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
   ComparisonOpModel model(
-      {TensorType_INT16, {1, 2, 2, 1}, 1.0 * kMin, 1.0 * kMax},
-      {TensorType_INT16, {1, 2, 2, 1}, 2.0 * kMin, 2.0 * kMax},
+      {TensorType_INT16, {1, 2, 2, 1}, 1.0f * kMin, 1.0f * kMax},
+      {TensorType_INT16, {1, 2, 2, 1}, 2.0f * kMin, 2.0f * kMax},
       TensorType_INT16, BuiltinOperator_GREATER);
   model.QuantizeAndPopulate<int16_t>(model.input1(), {-1.0, 0.5, -0.35, 0.1});
   model.QuantizeAndPopulate<int16_t>(model.input2(), {-1.01, 0.25, -0.3, 0.4});
