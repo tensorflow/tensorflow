@@ -72,5 +72,6 @@ REGISTER_LINALG_OP("Cholesky", (CholeskyOp<complex64>), complex64);
 REGISTER_LINALG_OP("Cholesky", (CholeskyOp<complex128>), complex128);
 REGISTER_LINALG_OP("BatchCholesky", (CholeskyOp<float>), float);
 REGISTER_LINALG_OP("BatchCholesky", (CholeskyOp<double>), double);
+REGISTER_LINALG_OP_CPU("Cholesky", (CholeskyOp<Eigen::half>), half);
 
 }  // namespace tensorflow
