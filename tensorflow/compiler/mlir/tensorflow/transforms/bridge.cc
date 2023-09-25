@@ -254,6 +254,9 @@ void CreateTPUBridgePipelineImpl(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateRewriteTPUEmbeddingOpsPass());
   pm.addPass(CreateTPUAnnotateDynamicShapeInputsPass());
+  pm.addNestedPass<func::FuncOp>(
+      TF::CreateHoistReplicateInvariantResourceWritesPass());
+
   pm.addPass(CreateTPURewritePass(module_name));
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<func::FuncOp>(TFDevice::CreateEmbeddingProgramKeyPass());
@@ -261,8 +264,6 @@ void CreateTPUBridgePipelineImpl(
       TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addPass(CreateTPUMergeVariablesWithExecutePass());
   pm.addNestedPass<func::FuncOp>(CreateExtractTPUCopyWithDynamicShapeOpPass());
-  pm.addNestedPass<func::FuncOp>(
-      TF::CreateHoistReplicateInvariantResourceWritesPass());
   pm.addNestedPass<func::FuncOp>(CreateTPUColocateCompositeResourceOps());
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_tpu_variable_runtime_reformatting_pass) {
