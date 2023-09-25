@@ -19,6 +19,9 @@ on:
     paths:
       - '**.py'
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: PyLint
