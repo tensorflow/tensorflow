@@ -70,7 +70,6 @@ cc_library(
     visibility = [
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
         "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt/mlrt/application/tensorflow/tests:__subpackages__",
     ],
     deps = [
         ":tfrt_fallback_common",
