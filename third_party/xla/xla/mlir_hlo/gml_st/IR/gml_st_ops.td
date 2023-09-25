@@ -51,10 +51,8 @@ def GMLST_FusionOp : GMLST_Op<"fusion", [
     YieldOp getTerminator();
 
     // Implement method necessary for DestinationStyleOpInterface.
-    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
-      int64_t numOperands = this->getNumOperands();
-      int64_t numInits = this->getInits().size();
-      return {numOperands - numInits, numOperands};
+    mlir::MutableOperandRange getDpsInitsMutable() {
+      return getInitsMutable();
     }
   }];
 }

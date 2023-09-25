@@ -196,6 +196,7 @@ TfLiteRegistration* Register_ZEROS_LIKE();
 TfLiteRegistration* Register_BITCAST();
 TfLiteRegistration* Register_BITWISE_XOR();
 TfLiteRegistration* Register_RIGHT_SHIFT();
+TfLiteRegistration* Register_STABLEHLO_RNG_BIT_GENERATOR();
 TfLiteRegistration*
 Register_STABLEHLO_LOGISTIC();  // WARNING: not implemented, using this op will
                                 // crash the runtime

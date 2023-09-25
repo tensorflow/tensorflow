@@ -259,6 +259,13 @@ class SavedModelImpl final : public SavedModel {
 
     std::unique_ptr<OpKernelRunnerTable> runner_table;
     std::unique_ptr<tfd::FallbackResourceArray> resource_array;
+
+    // There are some resources that need re-creating when the executable is
+    // re-created, so a resource context is stored along with the executable.
+    // This resource context is meant to be passed to the op kernels for their
+    // references. See the comment above `GraphExecutor::resource_context_`
+    // about the todo to merge that resource context with this one.
+    std::unique_ptr<tfrt::ResourceContext> resource_context;
   };
 
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,

@@ -142,6 +142,8 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
 
   absl::string_view device_vendor() const;
 
+  absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
+
  private:
   std::string device_vendor_;
   int slice_index_;
@@ -192,6 +194,11 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
     return absl::WrapUnique<PjRtLoadedExecutable>(
         tensorflow::down_cast<PjRtLoadedExecutable*>(executable.release()));
   }
+
+  // TODO(b/296466237): Unify `Load` method after (de)serialization and tests on
+  // existing use cases are done.
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+      std::unique_ptr<PjRtExecutable> executable);
 
  private:
   xla::StreamExecutorGpuTopologyDescription topology_;

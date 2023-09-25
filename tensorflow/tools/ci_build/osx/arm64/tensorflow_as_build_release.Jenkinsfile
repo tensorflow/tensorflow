@@ -24,7 +24,7 @@ pipeline {
             parallel {
                 stage("Python 3.9") {
                     agent {
-                        label "nightly-build"
+                        label "nightly-build-release"
                     }
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
@@ -73,7 +73,7 @@ pipeline {
                 }
                 stage("Python 3.10") {
                     agent {
-                        label "nightly-build"
+                        label "nightly-build-release"
                     }
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
@@ -122,7 +122,7 @@ pipeline {
                 }
                 stage("Python 3.11") {
                     agent {
-                        label "nightly-build"
+                        label "nightly-build-release"
                     }
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"

@@ -135,23 +135,13 @@ Status DecomposeCollectivePermute(
       HloInstruction::CreateSend(data, after_all, channel_id));
   send->set_frontend_attributes(attributes);
   send->set_metadata(metadata);
-  // We want the Recv to be scheduled before the Send, enforce this with a
-  // control dependency.
-  TF_RETURN_IF_ERROR(recv->AddControlDependencyTo(send));
 
   HloInstruction* recv_done =
       computation->AddInstruction(HloInstruction::CreateRecvDone(recv));
-  HloInstruction* send_done =
-      computation->AddInstruction(HloInstruction::CreateSendDone(send));
+  computation->AddInstruction(HloInstruction::CreateSendDone(send));
 
   HloInstruction* recv_data = computation->AddInstruction(
       HloInstruction::CreateGetTupleElement(recv_done, 0));
-  // We want the Send to be scheduled before RecvDone to prevent the scheduler
-  // from interleaving two Send-Recv sequences.
-  TF_RETURN_IF_ERROR(send->AddControlDependencyTo(recv_done));
-  // We want the RecvDone to be scheduled before the SendDone, enforce this
-  // with a control dependency.
-  TF_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send_done));
   TF_RETURN_IF_ERROR(collective_permute_done->ReplaceAllUsesWith(recv_data));
   TF_RETURN_IF_ERROR(
       computation->RemoveInstructionAndUnusedOperands(collective_permute_done));

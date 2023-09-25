@@ -540,8 +540,6 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
 };
 
 using mlir::lmhlo_gpu::fusedMHAOp;
-using mlir::lmhlo_gpu::fusedMHAWithScaledBiasOp;
-using mlir::lmhlo_gpu::fusedMHAWithScaledMaskOp;
 
 template <typename FusedDotAttentionForward>
 class FusedAttentionForwardLowering
@@ -729,20 +727,7 @@ class FusedAttentionForwardOpLowering
   using FusedAttentionForwardLowering::FusedAttentionForwardLowering;
 };
 
-class FusedAttentionScaledMaskForwardOpLowering
-    : public FusedAttentionForwardLowering<fusedMHAWithScaledMaskOp> {
- public:
-  using FusedAttentionForwardLowering::FusedAttentionForwardLowering;
-};
-
-class FusedAttentionScaledBiasForwardOpLowering
-    : public FusedAttentionForwardLowering<fusedMHAWithScaledBiasOp> {
- public:
-  using FusedAttentionForwardLowering::FusedAttentionForwardLowering;
-};
-
 using mlir::lmhlo_gpu::fusedMHABackwardOp;
-using mlir::lmhlo_gpu::fusedMHAWithMaskBackwardOp;
 
 template <typename FusedDotAttentionBackward>
 class FusedAttentionBackwardLowering
@@ -760,10 +745,6 @@ class FusedAttentionBackwardLowering
 
   LogicalResult matchAndRewrite(FusedDotAttentionBackward op,
                                 PatternRewriter& rewriter) const override {
-    // if (auto bwd_op =
-    // dyn_cast<fusedMHAWithMaskBackwardOp>(op.getOperation())) {
-    //   return op.emitOpError("fusedMHAWithMaskBackwardOp not supported yet.");
-    // }
     // Get the custom call target.
     std::string fused_attention = kCustomCallTarget;
     auto num_operands = op.getNumOperands();
@@ -874,12 +855,6 @@ class FusedAttentionBackwardOpLowering
   using FusedAttentionBackwardLowering::FusedAttentionBackwardLowering;
 };
 
-class FusedAttentionScaledMaskBackwardOpLowering
-    : public FusedAttentionBackwardLowering<fusedMHAWithMaskBackwardOp> {
- public:
-  using FusedAttentionBackwardLowering::FusedAttentionBackwardLowering;
-};
-
 //===----------------------------------------------------------------------===//
 
 void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
@@ -914,16 +889,13 @@ void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
   // Each unique fused_attention operation in the module will get assigned a
   // uid.
   UidGenerator fused_attention_uid;
-  patterns.insert<FusedAttentionForwardOpLowering,
-                  FusedAttentionScaledMaskForwardOpLowering,
-                  FusedAttentionScaledBiasForwardOpLowering>(
-      ctx, fused_attention_uid, custom_calls);
+  patterns.insert<FusedAttentionForwardOpLowering>(ctx, fused_attention_uid,
+                                                   custom_calls);
 
   // Each unique fused_attention_backward operation in the module will get
   // assigned a uid.
   UidGenerator fused_attention_backward_uid;
-  patterns.insert<FusedAttentionBackwardOpLowering,
-                  FusedAttentionScaledMaskBackwardOpLowering>(
+  patterns.insert<FusedAttentionBackwardOpLowering>(
       ctx, fused_attention_backward_uid, custom_calls);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))

@@ -258,6 +258,13 @@ message GPUOptions {
     // gpu_host_mem_limit_in_mb, because the default GPU host memory limit is
     // quite high.
     bool gpu_host_mem_disallow_growth = 14;
+
+    // Memory limit for gpu system. This can also be set by
+    // TF_DEVICE_MIN_SYS_MEMORY_IN_MB, which takes precedence over
+    // gpu_system_memory_size_in_mb. With this, user can configure the gpu
+    // system memory size for better resource estimation of multi-tenancy(one
+    // gpu with multiple model) use case.
+    int32 gpu_system_memory_size_in_mb = 16;
   }
 
   // Everything inside experimental is subject to change and is not subject

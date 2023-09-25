@@ -1610,8 +1610,30 @@ cc_library(
         ":pjrt_tensor_buffer",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:dma_helper",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/pjrt:pjrt_client",
-        "@local_xla//xla/pjrt:pjrt_stream_executor_client",
+    ],
+)
+
+tf_cuda_only_cc_test(
+    name = "pjrt_tensor_buffer_util_test",
+    srcs = ["pjrt_tensor_buffer_util_test.cc"],
+    tags = tf_cuda_tests_tags() + [
+        "config-cuda-only",
+        "no_oss",
+    ],
+    deps = [
+        ":pjrt_tensor_buffer_util",
+        ":test_util",
+        ":xla_gpu_jit",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tfrt/common:pjrt_util",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla/pjrt:pjrt_client",
     ],
 )
 

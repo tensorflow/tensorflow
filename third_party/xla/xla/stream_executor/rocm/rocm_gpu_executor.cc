@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <unistd.h>
 
+#include <memory>
+
 #include "absl/base/casts.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/strings/ascii.h"
@@ -22,16 +24,17 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/kernel_cache_config.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_diagnostics.h"
@@ -41,6 +44,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 #ifdef PLATFORMS_GPUS_ROCM_DYNAMIC_LIBROCM_DYNAMIC_LIBROCM_H_
 #error \
@@ -178,7 +182,7 @@ tsl::Status GpuExecutor::Init(int device_ordinal,
 //                 would return /usr/bin.
 static string GetBinaryDir(bool strip_exe) {
   char exe_path[PATH_MAX] = {0};
-  PCHECK(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1) != -1);
+  CHECK_NE(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1), -1);
   // Make sure it's null-terminated:
   exe_path[sizeof(exe_path) - 1] = 0;
 
@@ -196,7 +200,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
                                    KernelBase* kernel) {
   GpuKernel* rocm_kernel = AsGpuKernel(kernel);
   hipModule_t module = nullptr;
-  const string* kernelname;
+  const string* kernel_name;
 
   const OnDiskKernelLoaderSpec* on_disk_spec = nullptr;
   bool has_cubin = spec.has_cuda_cubin_on_disk();
@@ -208,7 +212,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     return tsl::errors::Internal(
         "Loading ROCM kernel from disk is not supported");
   } else if (spec.has_cuda_cubin_in_memory()) {
-    kernelname = &spec.cuda_cubin_in_memory().kernelname();
+    kernel_name = &spec.cuda_cubin_in_memory().kernel_name();
 
     const char* hsaco = spec.cuda_cubin_in_memory().bytes();
     absl::MutexLock lock{&in_memory_modules_mu_};
@@ -222,9 +226,9 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     return tsl::errors::Internal("No method of loading ROCM kernel provided");
   }
 
-  VLOG(2) << "getting function " << *kernelname << " from module " << module;
+  VLOG(2) << "getting function " << *kernel_name << " from module " << module;
   TF_RETURN_IF_ERROR(GpuDriver::GetModuleFunction(
-      context_, module, kernelname->c_str(), rocm_kernel->gpu_function_ptr()));
+      context_, module, kernel_name->c_str(), rocm_kernel->gpu_function_ptr()));
 
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the ROCM API.
@@ -233,7 +237,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   KernelMetadata kernel_metadata;
   TF_RETURN_IF_ERROR(GetKernelMetadata(rocm_kernel, &kernel_metadata));
   kernel->set_metadata(kernel_metadata);
-  kernel->set_name(*kernelname);
+  kernel->set_name(*kernel_name);
   return tsl::OkStatus();
 }
 
@@ -609,8 +613,7 @@ tsl::Status GpuExecutor::BlockHostUntilDone(Stream* stream) {
 blas::BlasSupport* GpuExecutor::CreateBlas() {
   PluginRegistry* registry = PluginRegistry::Instance();
   tsl::StatusOr<PluginRegistry::BlasFactory> status =
-      registry->GetFactory<PluginRegistry::BlasFactory>(rocm::kROCmPlatformId,
-                                                        plugin_config_.blas());
+      registry->GetFactory<PluginRegistry::BlasFactory>(rocm::kROCmPlatformId);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve BLAS factory: "
                << status.status().message();
@@ -623,8 +626,7 @@ blas::BlasSupport* GpuExecutor::CreateBlas() {
 dnn::DnnSupport* GpuExecutor::CreateDnn() {
   PluginRegistry* registry = PluginRegistry::Instance();
   tsl::StatusOr<PluginRegistry::DnnFactory> status =
-      registry->GetFactory<PluginRegistry::DnnFactory>(rocm::kROCmPlatformId,
-                                                       plugin_config_.dnn());
+      registry->GetFactory<PluginRegistry::DnnFactory>(rocm::kROCmPlatformId);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve DNN factory: "
                << status.status().message();
@@ -637,8 +639,7 @@ dnn::DnnSupport* GpuExecutor::CreateDnn() {
 fft::FftSupport* GpuExecutor::CreateFft() {
   PluginRegistry* registry = PluginRegistry::Instance();
   tsl::StatusOr<PluginRegistry::FftFactory> status =
-      registry->GetFactory<PluginRegistry::FftFactory>(rocm::kROCmPlatformId,
-                                                       plugin_config_.fft());
+      registry->GetFactory<PluginRegistry::FftFactory>(rocm::kROCmPlatformId);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve FFT factory: "
                << status.status().message();
@@ -716,6 +717,12 @@ GpuExecutor::CreateKernelImplementation() {
 std::unique_ptr<internal::StreamInterface>
 GpuExecutor::GetStreamImplementation() {
   return std::unique_ptr<internal::StreamInterface>(new GpuStream(this));
+}
+
+tsl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
+GpuExecutor::GetCommandBufferImplementation() {
+  return std::unique_ptr<internal::CommandBufferInterface>(
+      new GpuCommandBuffer());
 }
 
 void* GpuExecutor::GpuContextHack() { return context_; }

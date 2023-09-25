@@ -127,9 +127,6 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kCos: {
       return {"__nv_cos", "__ocml_cos"};
     }
-    case TargetDeviceFunctionID::kErfcinv: {
-      return {"__nv_erfcinv", "__ocml_erfcinv"};
-    }
     case TargetDeviceFunctionID::kExp: {
       return {"__nv_exp", "__ocml_exp"};
     }
@@ -150,9 +147,6 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     }
     case TargetDeviceFunctionID::kPow: {
       return {"__nv_pow", "__ocml_pow"};
-    }
-    case TargetDeviceFunctionID::kRound: {
-      return {"__nv_round", "__ocml_round"};
     }
     case TargetDeviceFunctionID::kRsqrt: {
       return {"__nv_rsqrt", "__ocml_rsqrt"};
@@ -192,6 +186,8 @@ StatusOr<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
       return TargetDeviceFunctionID::kLog1p;
     case HloOpcode::kPower:
       return TargetDeviceFunctionID::kPow;
+    case HloOpcode::kRemainder:
+      return TargetDeviceFunctionID::kFmod;
     case HloOpcode::kRsqrt:
       return TargetDeviceFunctionID::kRsqrt;
     case HloOpcode::kSin:

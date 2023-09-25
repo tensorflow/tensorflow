@@ -207,24 +207,6 @@ typedef struct TpuExecutable_LoadProgramAndEnqueueToStream_Params {
 TFTPU_CAPI_EXPORT void TpuExecutable_LoadProgramAndEnqueueToStream(
     TpuExecutable_LoadProgramAndEnqueueToStream_Params* params);
 
-typedef struct TpuExecutable_CreateOpaqueTransferManager_Params {
-  int32_t struct_size;
-  void* priv;
-  SE_Stream* stream;
-
-  OpaqueTransferManagerImpl* transfer_manager;  // out
-  TF_Status* status;                            // out
-} TpuExecutable_CreateOpaqueTransferManager_Params;
-
-#define TpuExecutable_CreateOpaqueTransferManager_Params_SIZE \
-  (sizeof(struct TpuExecutable_CreateOpaqueTransferManager_Params))
-
-TFTPU_CAPI_EXPORT void TpuExecutable_CreateOpaqueTransferManager(
-    TpuExecutable_CreateOpaqueTransferManager_Params* params);
-
-TFTPU_CAPI_EXPORT void TpuExecutable_FreeOpaqueTransferManager(
-    OpaqueTransferManagerImpl* transfer_manager);
-
 TFTPU_CAPI_EXPORT void HardwareLayout_HostShapeToDeviceShape(
     XLA_Shape* host_shape, XLA_Shape* device_shape);
 TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSize(XLA_Shape* shape);
@@ -483,6 +465,9 @@ TFTPU_CAPI_EXPORT uint64_t TpuCompile_CreateGuaranteedConstFingerprint(
 // Returns a pointer to the TPU topology struct.
 TFTPU_CAPI_EXPORT SE_TpuTopology* TpuUtil_GetTopologyPtr();
 
+// Returns XLA pad size from TPU topology.
+TFTPU_CAPI_EXPORT size_t TpuUtil_GetXlaPadSizeFromTpuTopology();
+
 XLA_TpuNodeContext* TpuNodeContext_Create(int device_ordinal,
                                           TF_Status* status);
 void TpuNodeContext_Free(XLA_TpuNodeContext* node_context);
@@ -731,8 +716,6 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngineState_GetState);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_LoadProgramAndEnqueueToStream);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_CreateOpaqueTransferManager);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_FreeOpaqueTransferManager);
 
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_HostShapeToDeviceShape);
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSize);
@@ -786,6 +769,7 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_DestroyCompilationCacheKey);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CreateGuaranteedConstFingerprint);
   TFTPU_ADD_FN_IN_STRUCT(TpuUtil_GetTopologyPtr);
+  TFTPU_ADD_FN_IN_STRUCT(TpuUtil_GetXlaPadSizeFromTpuTopology);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_Create);
   TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_Free);

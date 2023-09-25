@@ -81,7 +81,7 @@ def heap_profile(client: Client) -> bytes:
   ...
 
 
-def make_cpu_client(*, use_tfrt: bool = ...) -> Client:
+def make_cpu_client() -> Client:
   ...
 
 
@@ -91,10 +91,6 @@ def make_gpu_client(
     num_nodes: int = ...,
     platform_name: Optional[str] = ...,
     allowed_devices: Optional[Set[int]] = ...) -> Client:
-  ...
-
-
-def make_interpreter_client() -> Client:
   ...
 
 

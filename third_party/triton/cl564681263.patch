@@ -1,0 +1,28 @@
+==== triton/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp#12 - /google/src/cloud/shyshkov/mlir_8a6e54c9b3080f1b8e1a925bf1a39730223b99f9_1694519202/triton/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp ====
+# action=edit type=text
+--- triton/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp	2023-08-23 07:42:50.000000000 -0700
++++ triton/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp	2023-09-12 05:17:12.000000000 -0700
+@@ -1172,7 +1172,7 @@
+   POPULATE_BINARY_OP(arith::ShLIOp, LLVM::ShlOp)    // <<
+   POPULATE_BINARY_OP(arith::ShRSIOp, LLVM::AShrOp)  // >>
+   POPULATE_BINARY_OP(arith::ShRUIOp, LLVM::LShrOp)  // >>
+-  POPULATE_BINARY_OP(arith::MinFOp, LLVM::MinNumOp) // fmin
++  POPULATE_BINARY_OP(arith::MinimumFOp, LLVM::MinNumOp) // fmin
+   POPULATE_BINARY_OP(arith::MinSIOp, LLVM::SMinOp)  // smin
+ #undef POPULATE_BINARY_OP
+ 
+==== triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp#15 - /google/src/cloud/shyshkov/mlir_8a6e54c9b3080f1b8e1a925bf1a39730223b99f9_1694519202/triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp ====
+# action=edit type=text
+--- triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp	2023-07-12 12:22:54.000000000 -0700
++++ triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp	2023-09-12 05:17:03.000000000 -0700
+@@ -128,8 +128,8 @@
+       // Floating point
+       GenericOpPattern<arith::AddFOp>, GenericOpPattern<arith::SubFOp>,
+       // MaxMin
+-      GenericOpPattern<arith::MaxFOp>, GenericOpPattern<arith::MaxSIOp>,
+-      GenericOpPattern<arith::MaxUIOp>, GenericOpPattern<arith::MinFOp>,
++      GenericOpPattern<arith::MaximumFOp>, GenericOpPattern<arith::MaxSIOp>,
++      GenericOpPattern<arith::MaxUIOp>, GenericOpPattern<arith::MinimumFOp>,
+       GenericOpPattern<arith::MinSIOp>, GenericOpPattern<arith::MinUIOp>,
+       // Floating point
+       GenericOpPattern<arith::MulFOp>, GenericOpPattern<arith::DivFOp>,

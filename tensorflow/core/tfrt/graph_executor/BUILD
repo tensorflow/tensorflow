@@ -122,6 +122,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:refcount",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/profiler/lib:traceme",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",

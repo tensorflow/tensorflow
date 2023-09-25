@@ -309,10 +309,8 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
   const auto& caller_fallback_request_state =
       caller_tf_context.fallback_request_state();
 
-  // Using the same logic as in the c'tor of FunctionLibraryRuntime::Options,
-  // to avoid clash with any Session-generated step ID. DirectSession and
-  // MasterSession generates non-negative step IDs.
-  int64_t step_id = -std::abs(static_cast<int64_t>(random::New64()));
+  // Connect to the batch step id propagated from batch task.
+  int64_t step_id = caller_fallback_request_state.step_id();
 
   // Copy per-request states to create a new KernelFallbackCompatRequestState.
   //

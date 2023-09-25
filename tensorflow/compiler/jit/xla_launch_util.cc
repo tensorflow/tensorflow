@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/local_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/tracked_device_buffer.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #include "tsl/framework/device_id_utils.h"
@@ -727,8 +729,10 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
         TF_RETURN_IF_ERROR(tensor_shape.AddDimWithStatus(dims[i]));
       }
       if (use_pjrt_tensor_buffer) {
-        Tensor output_tensor = MakeTensorFromPjRtStreamExecutorBuffer(
-            type, tensor_shape, std::move(executable_outputs[output_num]));
+        TF_ASSIGN_OR_RETURN(
+            Tensor output_tensor,
+            MakeTensorFromPjRtBuffer(
+                type, tensor_shape, std::move(executable_outputs[output_num])));
         ctx->set_output(i, output_tensor);
       } else {
         // Uses AsyncValueTensor. This path currently used by TPU but is going
@@ -768,9 +772,9 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
     }
 
     if (use_pjrt_tensor_buffer) {
-      PjRtTensorBufferUtil::UpdateOrMakeTensorWithPjRtStreamExecutorBuffer(
+      TF_RETURN_IF_ERROR(PjRtTensorBufferUtil::UpdateOrMakeTensorWithPjRtBuffer(
           write.type, write.shape, std::move(executable_outputs[output_num]),
-          var->tensor());
+          var->tensor()));
     } else {
       TF_RETURN_IF_ERROR(
           ctx->allocate_temp(write.type, write.shape, var->tensor()));
@@ -874,7 +878,6 @@ StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
   std::vector<xla::PjRtBuffer*> executable_args;
   executable_args.reserve(compilation_result.input_mapping.size());
   std::vector<std::unique_ptr<xla::PjRtBuffer>> owned_executable_args;
-
   absl::flat_hash_set<int> non_donatable_input_indices;
 
   TF_RETURN_IF_ERROR(PreparePjRtExecutableArguments(
@@ -883,32 +886,35 @@ StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
       &executable_args, &owned_executable_args, &non_donatable_input_indices));
 
   std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs;
+  std::optional<xla::PjRtFuture<Status>> future;
   if (executable->num_replicas() != 1 || executable->num_partitions() != 1) {
     TF_ASSIGN_OR_RETURN(
         execute_outputs,
         executable->ExecuteSharded(
             executable_args, device,
             GetPjRtExecuteOptions(device_type,
-                                  std::move(non_donatable_input_indices))));
+                                  std::move(non_donatable_input_indices)),
+            future));
   } else {
     TF_ASSIGN_OR_RETURN(
         execute_outputs,
         executable->ExecutePortable(
             executable_args, device,
             GetPjRtExecuteOptions(device_type,
-                                  std::move(non_donatable_input_indices))));
+                                  std::move(non_donatable_input_indices)),
+            future));
   }
 
   // We need to ensure the PjRtBuffers owned by `owned_executable_args` live
-  // until execution is complete.
-  //
-  // TODO(b/289080674): Blocking here affects performance. Consider using the
-  // PjRtFuture populated by ExecutePortable() to extend the lifetime.
-  if (!owned_executable_args.empty()) {
-    for (const auto& output : execute_outputs) {
-      TF_RETURN_IF_ERROR(output->GetReadyFuture().Await());
-    }
+  // until execution is complete. We do this by capturing
+  // `owned_executable_args` by move, so it is owned by the lambda
+  // that is executed when the future returned by ExecutePortable/ExecuteSharded
+  // is ready i.e. when the execution is complete.
+  if (!owned_executable_args.empty() && future.has_value()) {
+    future->OnReady([owned_executable_args =
+                         std::move(owned_executable_args)](Status s) {});
   }
+
   return execute_outputs;
 }
 

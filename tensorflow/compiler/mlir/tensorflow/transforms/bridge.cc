@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
+#include "tsl/platform/error_logging.h"
 
 namespace mlir {
 namespace {
@@ -54,6 +55,10 @@ void EnableDetailedLogging(PassManager *pm,
       /*print_module_scope=*/true));
   pm->enableTiming();
 }
+
+// Name of component for error logging. This name is fixed and required to
+// enable logging.
+constexpr char kBridgeComponent[] = "TFXLABridge";
 }  // namespace
 
 namespace TFTPU {
@@ -263,7 +268,6 @@ void CreateTPUBridgePipelineImpl(
           ->tf_mlir_enable_tpu_variable_runtime_reformatting_pass) {
     pm.addPass(CreateTPUVariableRuntimeReformattingPass());
   }
-  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 }  // namespace
 
@@ -293,6 +297,7 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandOutliningPass());
   OpPassManager &nested_module = pm.nest<ModuleOp>();
   CreateTPUBridgePipelineImpl(nested_module);
+
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
   // There are cases where we don't consume all compilation and replication
   // attributes like we do for the V2 pipeline, so we need to convert them from
@@ -328,6 +333,11 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
   tsl::OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
       status);
+  if (!status.ok()) {
+    tsl::error_logging::Log(kBridgeComponent, "TFXLA_PHASE_ONE_MLIR_TPU_BRIDGE",
+                            status.ToString())
+        .IgnoreError();
+  }
   return status;
 }
 tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool fallback_enabled) {
@@ -342,6 +352,12 @@ tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool fallback_enabled) {
   });
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v1", fallback_enabled, status.ok() ? "success" : "failure");
+  if (!status.ok()) {
+    tsl::error_logging::Log(kBridgeComponent,
+                            "TFXLA_PHASE_ONE_MLIR_TPU_V1_COMPAT_BRIDGE",
+                            status.ToString())
+        .IgnoreError();
+  }
   return status;
 }
 
@@ -357,6 +373,7 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
     pm.addPass(CreateBreakUpIslandsPass());
   };
 
+  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
   add_pass(CreateFunctionalToExecutorDialectConversionPass());
   add_pass(TFDevice::CreateReplicateToIslandPass(/*legacy_graph_export=*/true));
   add_pass(TFDevice::CreateReplicaIDToDeviceOrdinalPass());
@@ -375,6 +392,8 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
 }
 
 void AddGraphExportLoweringPassesV2(OpPassManager &pm) {
+  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
+
   // First, we need to convert from functional, to executor dialect.
   pm.addNestedPass<func::FuncOp>(
       CreateFunctionalToExecutorDialectConversionPass());
@@ -504,7 +523,6 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
 
   pm.addNestedPass<func::FuncOp>(createCSEPass());
   pm.addPass(createSymbolDCEPass());
-  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 
 tensorflow::Status RunTFXLABridge(ModuleOp module,
@@ -525,6 +543,12 @@ tensorflow::Status RunTFXLABridge(ModuleOp module,
       /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
       /*fallback_enabled*/ false,
       /*result*/ status.ok() ? "success" : "failure");
+  if (!status.ok()) {
+    tsl::error_logging::Log(kBridgeComponent,
+                            "TFXLA_PHASE_ONE_MLIR_CPU/GPU_BRIDGE",
+                            status.ToString())
+        .IgnoreError();
+  }
   return status;
 }
 

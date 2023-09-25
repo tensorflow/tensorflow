@@ -50,7 +50,6 @@ tsl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
     int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
-  config.plugin_config = PluginConfig();
   config.device_options = DeviceOptions::Default();
   return GetExecutor(config);
 }
@@ -65,8 +64,7 @@ tsl::StatusOr<std::unique_ptr<StreamExecutor>>
 XlaInterpreterPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
-      this, std::make_unique<XlaInterpreterExecutor>(config.plugin_config),
-      config.ordinal);
+      this, std::make_unique<XlaInterpreterExecutor>(), config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
     return tsl::Status{

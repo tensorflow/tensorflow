@@ -1046,7 +1046,8 @@ class TableConfig:
         'mean' the default. 'sqrtn' often achieves good accuracy, in particular
         with bag-of-words columns. For more information, see
         `tf.nn.embedding_lookup_sparse`.
-      name: An optional string used to name the table. Useful for debugging.
+      name: An optional string used to name the table. Must be defined if
+        running on SparseCore.
       quantization_config: The simulated quantization config. An instance of
         `tf.tpu.experimental.embedding.QuantizationConfig`. See the class for
         more documentation.
@@ -1082,6 +1083,12 @@ class TableConfig:
       raise ValueError(
           f"Argument `combiner` must be one of {accepted_combiners}. "
           f"Received: {combiner}")
+
+    if name is None:
+      logging.warning(
+          "Name of the table config must be specified for running on"
+          " SparseCore. Different table configs must have unique names."
+      )
 
     self.vocabulary_size = vocabulary_size
     self.dim = dim
@@ -1224,7 +1231,8 @@ class FeatureConfig:
         has to match the shape (for ragged tensor, the input shape and output
         shape can mismatch). If not provided, the shape can be either provided
         to the `embedding.build` or auto detected at the runtime.
-      name: An optional name for the feature, useful for debugging.
+      name: An optional string used to name the table. Must be defined if
+        running on SparseCore.
 
     Returns:
       `FeatureConfig`.
@@ -1242,6 +1250,11 @@ class FeatureConfig:
       raise ValueError(
           f"Argument `max_sequence_length` must be an int and must be >= 0. "
           f"Received: {max_sequence_length}")
+    if name is None:
+      logging.warning(
+          "Name of the Feature config must be specified for running on"
+          " SparseCore. Different feature configs must have unique names."
+      )
 
     self.table = table
     self.max_sequence_length = max_sequence_length

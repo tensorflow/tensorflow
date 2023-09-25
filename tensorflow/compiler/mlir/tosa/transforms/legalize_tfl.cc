@@ -2594,13 +2594,6 @@ LogicalResult ConvertTFLRsqrtOp::matchAndRewrite(
 
   // Quantization case
   if (input_qtype && output_qtype) {
-    auto rsqrt_func = [](double x) -> double {
-      // Negative numbers are undefined for rsqrt
-      // 0 should return the max value of the storage data type for rsqrt
-      if (x <= 0.0) return DBL_MAX;
-      return 1.0 / std::sqrt(x);
-    };
-
     // 16-bit is pending review for TFL
     // https://github.com/tensorflow/tensorflow/pull/58406
     if (input_qtype.getStorageTypeIntegralWidth() != 8) {
@@ -2609,9 +2602,9 @@ LogicalResult ConvertTFLRsqrtOp::matchAndRewrite(
     }
 
     // Implement with 8-bit table lookup.
-    Value table_const = getTosaConst8bitTable(
+    Value table_const = getTosaConstRsqrt8bitTable(
         rewriter, op, input_qtype.getScale(), input_qtype.getZeroPoint(),
-        output_qtype.getScale(), output_qtype.getZeroPoint(), rsqrt_func);
+        output_qtype.getScale(), output_qtype.getZeroPoint());
 
     CreateReplaceOpAndInfer<tosa::TableOp>(rewriter, op, output_type,
                                            tfl_rsqrt_op.getX(), table_const);

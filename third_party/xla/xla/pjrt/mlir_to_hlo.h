@@ -30,7 +30,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
 // Converts an CHLO/MHLO module to XLA HLO.
 Status MlirToXlaComputation(mlir::ModuleOp module,
                             XlaComputation& xla_computation,
-                            bool use_tuple_args, bool return_tuple);
+                            bool use_tuple_args, bool return_tuple,
+                            bool legalize_sparse_ops = false);
 
 // Converts an MHLO/CHLO module string to an XLA computation.
 Status ParseMlirModuleStringAndConvertToXlaComputation(

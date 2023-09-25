@@ -1112,7 +1112,10 @@ tf_cuda_library(
     ] + if_rocm_is_configured([
         "@local_xla//xla/stream_executor/rocm:miopen_plugin",
     ]),
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/master
 )
 
 # Like stream_executor library, but compiles without --config=cuda

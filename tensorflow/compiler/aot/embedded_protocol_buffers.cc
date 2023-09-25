@@ -83,7 +83,7 @@ static StatusOr<string> CodegenModule(llvm::TargetMachine* target_machine,
   llvm::legacy::PassManager codegen_passes;
 
   if (target_machine->addPassesToEmitFile(codegen_passes, ostream, nullptr,
-                                          llvm::CGFT_ObjectFile)) {
+                                          llvm::CodeGenFileType::ObjectFile)) {
     return xla::InternalError(
         "Could not create pass pipeline to generate object file");
   }

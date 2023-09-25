@@ -27,3 +27,9 @@ TFCI_UPLOAD_WHL_GCS_ENABLE=
 TFCI_UPLOAD_WHL_PYPI_ENABLE=
 
 # You can add other custom settings below.
+# 
+# Just for reference, you can dump the resolved contents of an env with
+# something like the following:
+# 
+# cd tensorflow_root_directory
+# bash -c "set -a; set -o posix; source ci/official/envs/MYENV; set" | grep TFCI

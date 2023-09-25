@@ -52,11 +52,29 @@ inline constexpr absl::string_view kIdentityMarker = "identity";
 inline constexpr absl::string_view kPipelineMarkerStartType = "start";
 inline constexpr absl::string_view kPipelineMarkerEndType = "end";
 
+inline bool IsManualShardingBoundaryCustomCall(const HloInstruction* ins) {
+  return ins->IsCustomCall("SPMDFullToShardShape") ||
+         ins->IsCustomCall("SPMDShardToFullShape");
+}
+
 inline std::pair<int, int> ParseMeshDims(const std::string& strategy_name) {
   if (absl::StrContains(strategy_name, "{0,1}")) {
     return {0, 1};
   }
   return {1, 0};
+}
+
+inline std::string ToAdaptiveString(const HloInstruction* ins) {
+  bool is_large_instruction =
+      ins->shape().IsTuple() && ins->shape().tuple_shapes_size() > 500;
+  if (!is_large_instruction) {
+    for (const auto& operand : ins->operands()) {
+      is_large_instruction =
+          is_large_instruction || (operand->shape().IsTuple() &&
+                                   operand->shape().tuple_shapes_size() > 500);
+    }
+  }
+  return is_large_instruction ? ins->ToShortString() : ins->ToString();
 }
 
 // Return whether the tensor shape is divisible by

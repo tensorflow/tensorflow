@@ -17,12 +17,15 @@ limitations under the License.
 
 #include <memory>
 
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/backend.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/status_macros.h"
+#include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -91,6 +94,25 @@ ENTRY entry {
       all_reduce, {0}, all_reduce->operand(0), {}));
   EXPECT_TRUE(buffer_assignment->SharesSliceAtIndex(
       all_reduce, {1}, all_reduce->operand(1), {}));
+}
+
+TEST_F(NVPTXCompilerTest,
+       DotDimensionAreSortedBeforePaddingForCublasEnablingTritonFusion) {
+  MatchOptimizedHlo(R"(
+ENTRY e {
+ p0 = f16[11,22,33,44] parameter(0)
+ p1 = s8[11,22,33,44] parameter(1)
+ p1c = f16[11,22,33,44] convert(p1)
+ ROOT d = f16[11,22,44,44] dot(p0, p1c),
+  lhs_batch_dims={0,1}, lhs_contracting_dims={2},
+  rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+})",
+                    R"(
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: __triton_gemm
+  )");
 }
 
 }  // namespace gpu

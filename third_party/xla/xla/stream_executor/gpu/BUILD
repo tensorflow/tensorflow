@@ -83,6 +83,21 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_command_buffer",
+    srcs = if_gpu_is_configured(["gpu_command_buffer.cc"]),
+    hdrs = if_gpu_is_configured(["gpu_command_buffer.h"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gpu_driver_header",
+        ":gpu_executor_header",
+        ":gpu_stream",
+        "//xla/stream_executor:stream_executor_headers",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "gpu_event_header",
     hdrs = if_gpu_is_configured(["gpu_event.h"]),
     visibility = ["//visibility:public"],
@@ -117,6 +132,7 @@ cc_library(
         ":gpu_kernel_header",
         "//xla/stream_executor:event",
         "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream_executor_internal",
         "//xla/stream_executor:stream_executor_pimpl_header",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
@@ -180,8 +196,10 @@ cc_library(
     deps = [
         ":gpu_driver_header",
         "//xla/stream_executor:event",
+        "//xla/stream_executor:stream_executor_internal",
         "//xla/stream_executor:stream_executor_pimpl_header",
         "//xla/stream_executor/platform",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -383,6 +401,7 @@ tsl_gpu_library(
     hdrs = ["gpu_cudamallocasync_allocator.h"],
     cuda_deps = [
         "//xla/stream_executor/cuda:cuda_activation",
+        "//xla/stream_executor/cuda:cuda_gpu_executor",
     ],
     visibility = ["//visibility:public"],
     deps = [

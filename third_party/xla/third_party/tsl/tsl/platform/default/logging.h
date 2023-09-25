@@ -583,6 +583,10 @@ class TFLogEntry {
   std::string ToString() const { return message_; }
   absl::string_view text_message() const { return message_; }
 
+  // Returning similar result as `text_message` as there is no prefix in this
+  // implementation.
+  absl::string_view text_message_with_prefix() const { return message_; }
+
  private:
   const absl::LogSeverity severity_;
   const std::string fname_;

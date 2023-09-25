@@ -399,10 +399,11 @@ PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args);
 constexpr PJRT_Api CreatePjrtApi(
     PJRT_Client_Create* create_fn,
     PJRT_TopologyDescription_Create* topology_create_fn,
-    PJRT_Plugin_Initialize* plugin_initialize_fn) {
+    PJRT_Plugin_Initialize* plugin_initialize_fn,
+    void* extension_start = nullptr) {
   return PJRT_Api{
       /*struct_size=*/PJRT_Api_STRUCT_SIZE,
-      /*priv=*/nullptr,
+      /*extension_start=*/extension_start,
 
       /*pjrt_api_version=*/
       PJRT_Api_Version{/*struct_size=*/PJRT_Api_Version_STRUCT_SIZE,

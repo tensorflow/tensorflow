@@ -88,7 +88,7 @@ TEST(XlaLegalizeTest, IllegalOp) {
     }
   })";
   CellReader<int64_t> legalize_failure_count(
-      "/tensorflow/core/tf2xla/v0/mlir_failed_xla_legalize_tf_pass_count");
+      "/tensorflow/core/tf2xla/v1/mlir_failed_xla_legalize_tf_pass_count");
 
   auto status = BuildAndRunPipeline(kMlirIllegalOpStr, legalizeTFPasses());
 
@@ -103,7 +103,7 @@ TEST(XlaLegalizeTest, LegalOp) {
      %0:2 = "tf.InfeedDequeueTuple"() : () -> (tensor<3x3xf32>, tensor<4x?xf32>) func.return %0#0, %0#1 : tensor<3x3xf32>, tensor<4x?xf32>
    })";
   CellReader<int64_t> legalize_failure_count(
-      "/tensorflow/core/tf2xla/v0/mlir_failed_xla_legalize_tf_pass_count");
+      "/tensorflow/core/tf2xla/v1/mlir_failed_xla_legalize_tf_pass_count");
 
   auto status = BuildAndRunPipeline(kMlirLegalOpStr, legalizeTFPasses());
 

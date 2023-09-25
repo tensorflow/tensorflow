@@ -589,7 +589,8 @@ class TestSparseCount(test_util.TensorFlowTestCase, parameterized.TestCase):
       expected,
       axis,
   ):
-    if "GPU" in set([d.device_type for d in tf_config.list_physical_devices()]):
+    device_set = set([d.device_type for d in tf_config.list_physical_devices()])
+    if "GPU" in device_set and not test_util.is_xla_enabled():
       self.skipTest(
           "b/263004039 The DenseBincount GPU kernel does not support weights."
           " unsorted_segment_sum should be used instead on GPU."

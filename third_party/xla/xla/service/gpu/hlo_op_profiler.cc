@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/hlo_op_profiler.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <random>
@@ -24,18 +26,23 @@ limitations under the License.
 
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/hlo_op_profile.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_runner.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/statusor.h"
 #include "xla/tests/test_utils.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 #ifdef GOOGLE_CUDA
 #include "xla/backends/profiler/gpu/cupti_collector.h"
@@ -69,7 +76,9 @@ class CuptiKernelTracer : public profiler::CuptiTraceCollector {
     std::sort(kernel_times_ns_.begin(), kernel_times_ns_.end());
     size_t i = kernel_times_ns_.size() / 2;
     // Return median value if number of values is odd.
-    if (kernel_times_ns_.size() % 2 != 0) kernel_times_ns_[i];
+    if (kernel_times_ns_.size() % 2 != 0) {
+      return kernel_times_ns_[i];
+    }
     // Return average of the two middle values if the number of values is even.
     return (kernel_times_ns_[i - 1] + kernel_times_ns_[i] + 1) / 2;
   }

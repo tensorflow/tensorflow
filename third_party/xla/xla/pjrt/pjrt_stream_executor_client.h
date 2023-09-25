@@ -672,6 +672,11 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;
 
+  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
+      PjRtMemorySpace* dst_memory_space) override {
+    return Unimplemented("Implement CopyToMemorySpace");
+  }
+
   void CopyToRemoteDevice(
       PjRtFuture<StatusOr<std::string>> serialized_descriptor,
       RemoteSendCallback on_done) override;
@@ -875,6 +880,7 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
   friend class PjRtStreamExecutorClient;
   friend class PjRtTpuClient;
   friend class InternalPjRtTpuClient;
+  friend class StreamExecutorGpuClient;
   // Initializes information about which arguments to which executables must be
   // donated due to aliases that were specified by the computation.
   Status SetUpDonation(bool tuple_inputs);

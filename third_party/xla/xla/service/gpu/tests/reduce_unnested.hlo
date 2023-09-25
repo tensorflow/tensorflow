@@ -375,3 +375,38 @@ ENTRY reduce.1 {
         f32[131072,1024] parameter0
     ), kind=kLoop, calls=fusion_vectorized
 }
+
+// -----
+
+// CHECK: define void @vectorized_col_reduction_exceeding_shmem_budget(
+// CHECK-COUNT-12: call void @add
+// CHECK-NOT: call void @add
+
+// We are trying to have a column reduction that:
+// - triggers vectorization (thus large number of elements 1048576)
+// - has a small "smallest input size" (1 for pred)
+// - exceeds the shmem budget because `num_partial_results` is 8
+
+HloModule m
+
+add {
+ a = f64[] parameter(0)
+ b = f64[] parameter(1)
+ ROOT out = f64[] add(a, b)
+}
+
+fused_computation {
+ p1 = f64[1048576,1048576]{1,0} parameter(0)
+ p2 = f64[1048576,1048576]{1,0} parameter(1)
+ s = pred[1048576,1048576]{1,0} parameter(2)
+ p = f64[1048576,1048576]{1,0} select(s, p1, p2)
+ z = f64[] constant(0)
+ ROOT out = f64[1048576]{0} reduce(p, z), to_apply=add, dimensions={0}
+}
+
+ENTRY e {
+ p1 = f64[1048576,1048576]{1,0} parameter(0)
+ p2 = f64[1048576,1048576]{1,0} parameter(1)
+ s = pred[1048576,1048576]{1,0} parameter(2)
+ ROOT vectorized_col_reduction_exceeding_shmem_budget = f64[1048576]{0} fusion(p1, p2, s), kind=kInput, calls=fused_computation
+}

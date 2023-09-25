@@ -364,7 +364,7 @@ bool VerifySubOpShapeConstraints(SubOp op) {
       IsQI16Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/5);
+        /*max_bcast_rank=*/6);
   }
 
   // Allows QI8 output when the operands have valid shapes, which are
@@ -372,7 +372,7 @@ bool VerifySubOpShapeConstraints(SubOp op) {
   if (IsQI8Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/4);
+        /*max_bcast_rank=*/6);
   }
   return false;
 }
@@ -3859,7 +3859,7 @@ void WhileOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add<WhileResultOperandsMatchAndImplicitCapture>(context);
 }
 
-Region& WhileOp::getLoopBody() { return getBody(); }
+SmallVector<Region*> WhileOp::getLoopRegions() { return {&getBody()}; }
 
 bool WhileOp::isDefinedOutsideOfLoop(Value value) {
   // TODO(jpienaar): This is to overly conservative and disables anything other

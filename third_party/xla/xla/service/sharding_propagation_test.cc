@@ -9549,5 +9549,40 @@ ENTRY %entry {
   EXPECT_EQ(add_1->sharding(), output->sharding());
 }
 
+TEST_F(ShardingPropagationTest, LookaheadUsersOfDot) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  p0 = bf16[512,512,1024]{2,1,0} parameter(0), sharding={devices=[16,1,4]<=[64]}
+  p1 = bf16[512,512,16,128]{3,2,1,0} parameter(1), sharding={devices=[16,1,4,1]<=[64]}
+  p2 = bf16[16,1024,16,128]{3,2,1,0} parameter(2), sharding={devices=[1,4,4,1,4]<=[4,16]T(1,0) last_tile_dim_replicate}
+  p3 = s32[] parameter(3)
+  dot.1 = bf16[1024,16,128]{2,1,0} dot(p0, p1), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+  reshape.1 = bf16[1,1024,16,128]{3,2,1,0} reshape(dot.1)
+  constant.1 = s32[] constant(0)
+  ROOT dynamic-update-slice.113 = bf16[16,1024,16,128]{3,2,1,0} dynamic-update-slice(p2, reshape.1, p3, constant.1, constant.1, /*index=5*/constant.1), sharding={devices=[1,4,4,1,4]<=[4,16]T(1,0) last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  XLA_VLOG_LINES(1, module->ToString());
+  // Check dangling sharding custom-call can be removed by DCE after
+  // propagation.
+  auto* instruction = FindInstruction(module.get(), "dot.1");
+  // Check sharding is correctly propagated.
+  EXPECT_THAT(instruction,
+              op::Sharding(
+                  "{devices=[4,4,1,4]<=[4,16]T(1,0) last_tile_dim_replicate}"));
+}
+
 }  // namespace
 }  // namespace xla

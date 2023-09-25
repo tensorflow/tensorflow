@@ -44,6 +44,7 @@ add_mlir_library(MhloPasses
   expand_hlo_tuples/expand_hlo_tuples.cc
   expand_ops_simplifier/expand_ops_simplifier.cc
   group_reduction_dimensions/group_reduction_dimensions.cc
+  legalize_broadcast_to_broadcast_in_dim/legalize_broadcast_to_broadcast_in_dim.cc
   legalize_create_token_to_after_all/legalize_create_token_to_after_all.cc
   legalize_cross_replica_sum_to_all_reduce/legalize_cross_replica_sum_to_all_reduce.cc
   legalize_dot_general_to_dot/legalize_dot_general_to_dot.cc
@@ -51,6 +52,8 @@ add_mlir_library(MhloPasses
   legalize_einsum_to_dot_general/legalize_einsum_to_dot_general.cc
   legalize_gather_to_torch_index_select/legalize_gather_to_torch_index_select.cc
   legalize_shape_computations/legalize_shape_computations.cc
+  legalize_sparse_ops/legalize_sparse_ops.cc
+  legalize_sparse_ops/sparse_ops_to_custom_calls.cc
   legalize_torch_index_select_to_gather/legalize_torch_index_select_to_gather.cc
   legalize_trigonometric_to_approximation/legalize_trigonometric_to_approximation.cc
   lower_complex/lower_complex.cc
@@ -125,31 +128,6 @@ add_mlir_library(MhloToThloConversion
   MLIRTransformUtils
 )
 
-add_mlir_library(MhloToLhloConversion
-  hlo_legalize_to_lhlo/hlo_legalize_to_lhlo.cc
-
-  DEPENDS
-  MLIRhlo_opsIncGen
-  MLIRlhlo_opsIncGen
-  MLIRMhloPassIncGen
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  MhloDialect
-  LmhloDialect
-  MLIRArithDialect
-  MLIRArithTransforms
-  MLIRFuncTransforms
-  MLIRIR
-  MLIRPass
-  MLIRMathDialect
-  MLIRShapeOpsTransforms
-  MLIRTransformUtils
-  MLIRTransforms
-)
-
 add_mlir_library(MhloToMemrefConversion
   hlo_legalize_to_memref/hlo_legalize_to_memref.cc
 
@@ -220,7 +198,6 @@ add_mlir_library(MhloToStandard
 add_mlir_library(ChloPasses
   chlo_legalize_to_hlo/chlo_legalize_to_hlo.cc
   chlo_legalize_to_hlo/chlo_legalize_to_hlo_pass.cc
-  sparse_chlo_legalize_to_linalg/sparse_chlo_legalize_to_linalg.cc
 
   DEPENDS
   MLIRhlo_opsIncGen
@@ -334,7 +311,6 @@ add_library(AllMhloPasses INTERFACE)
 target_link_libraries(AllMhloPasses INTERFACE
   ChloPasses
   MhloPasses
-  MhloToLhloConversion
   MhloToArithmeticConversion
   MhloToMemrefConversion
   MhloToStandard

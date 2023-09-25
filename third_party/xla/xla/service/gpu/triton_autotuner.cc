@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/float_normalization.h"
@@ -164,7 +165,7 @@ struct ExecutableCandidate {
 // This contains all alternative executables related to one fusion.
 struct ExecutableSet {
   std::vector<ExecutableCandidate> candidates;
-  // This is nullptr iff correctness check is disabled.
+  // Not nullptr.
   std::unique_ptr<Executable> reference;
 };
 
@@ -212,14 +213,12 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
 
  private:
   GemmConfigSet GetGemmConfigSet(const HloFusionInstruction* fusion) {
-    const HloComputation& fusion_computation =
-        *fusion->called_computations().at(0);
-    const HloInstruction& fusion_root = *fusion_computation.root_instruction();
     const DebugOptions& debug_options =
         fusion->GetModule()->config().debug_options();
     se::StreamExecutor* stream_exec = config_.GetExecutor();
     return {GetPossibleMatmulAutotuneConfigs(
-        fusion_root,
+        *Cast<HloDotInstruction>(hlo_query::GetFirstInstructionWithOpcode(
+            *fusion->called_computations().at(0), HloOpcode::kDot)),
         stream_exec->GetDeviceDescription().cuda_compute_capability(),
         debug_options, config_.ExhaustiveTilingSearch())};
   }
@@ -318,9 +317,14 @@ int GetLogEveryN() { return VLOG_IS_ON(2) ? 100 : 1000; }
 
 StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     const AutotuneResult::TritonGemmKey& key,
-    const GpuDeviceInfo& gpu_device_info, const HloFusionInstruction* fusion) {
+    const GpuDeviceInfo& gpu_device_info, const HloFusionInstruction* fusion,
+    DebugOptions debug_opts) {
   std::unique_ptr<HloModule> new_module =
       AutotunerUtil::ExtractInstructionIntoNewModule(*fusion);
+  // Reduce memory usage during compilation by disabling GPU runtime.
+  debug_opts.set_xla_gpu_enable_xla_runtime_executable(false);
+  new_module->config().set_debug_options(debug_opts);
+
   HloComputation* entry_computation = new_module->entry_computation();
   HloInstruction* cloned_dot_fusion = entry_computation->root_instruction();
 
@@ -355,11 +359,14 @@ StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
 }
 
 StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
-    const AutotuneConfig& config, const HloFusionInstruction* fusion) {
+    const AutotuneConfig& config, const HloFusionInstruction* fusion,
+    const DebugOptions& debug_opts) {
   const HloComputation* fusion_computation =
       fusion->called_computations().at(0);
   std::unique_ptr<HloModule> new_module =
       AutotunerUtil::ExtractComputationIntoNewModule(*fusion_computation);
+  new_module->config().set_debug_options(debug_opts);
+
   GemmRewriter rewriter(config.GetCudaComputeCapability());
   GpuInstructionFusion fusion_pass(/*may_duplicate=*/false,
                                    GetGpuDeviceInfo(config.GetExecutor()));
@@ -390,9 +397,8 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
     const GemmConfigSet& gemm_config_set = key_value.second;
     config_count += gemm_config_set.configs.size();
   }
-  if (config.should_check_correctness()) {
-    config_count += gemm_config_sets.size();
-  }
+  // The cuBLAS configs:
+  config_count += gemm_config_sets.size();
 
   std::atomic<int> done_count = 0;
   std::atomic<int> good_count = 0;
@@ -418,12 +424,10 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
     // We can also remove the force_disable_gpu_runtime argument at that
     // point.
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                        util.Compile(
-                            [&] {
-                              return TritonGemmAutotuneExtractor(
-                                  conf, gpu_device_info, fusion);
-                            },
-                            /*force_disable_gpu_runtime=*/true));
+                        util.Compile([&](const DebugOptions& opts) {
+                          return TritonGemmAutotuneExtractor(
+                              conf, gpu_device_info, fusion, opts);
+                        }));
 
     if (executable != nullptr) {
       absl::MutexLock lock(&executable_sets_mu);
@@ -439,11 +443,11 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
   // Returns true on success.
   auto compile_reference_executable =
       [&](const HloFusionInstruction* fusion) -> StatusOr<bool> {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Executable> executable,
-        util.Compile(
-            [&] { return CublasGemmAutotuneExtractor(config, fusion); },
-            /*force_disable_gpu_runtime=*/false));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                        util.Compile([&](const DebugOptions& opts) {
+                          return CublasGemmAutotuneExtractor(config, fusion,
+                                                             opts);
+                        }));
 
     if (executable != nullptr) {
       absl::MutexLock lock(&executable_sets_mu);
@@ -485,14 +489,12 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
         });
       }
 
-      if (config.should_check_correctness()) {
-        thread_pool->Schedule([&, fusion] {
-          StatusOr<bool> has_executable = compile_reference_executable(fusion);
-          TF_CHECK_OK(has_executable.status());
-          log(has_executable.value());
-          counter.DecrementCount();
-        });
-      }
+      thread_pool->Schedule([&, fusion] {
+        StatusOr<bool> has_executable = compile_reference_executable(fusion);
+        TF_CHECK_OK(has_executable.status());
+        log(has_executable.value());
+        counter.DecrementCount();
+      });
     }
     counter.Wait();
   } else {
@@ -516,11 +518,9 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
         log(has_executable);
       }
 
-      if (config.should_check_correctness()) {
-        TF_ASSIGN_OR_RETURN(bool has_executable,
-                            compile_reference_executable(fusion));
-        log(has_executable);
-      }
+      TF_ASSIGN_OR_RETURN(bool has_executable,
+                          compile_reference_executable(fusion));
+      log(has_executable);
     }
   }
 
@@ -529,9 +529,9 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
   return executable_sets;
 }
 
-// Runs matmul fusion contents without Triton - with cuBLAS, to generate
-// a reference output.
-StatusOr<ScopedShapedBuffer> RunMatmulWithCublas(
+// Runs matmul fusion contents without Triton - with cuBLAS, to measure time and
+// generate a reference output.
+StatusOr<ProfilingOutput> RunMatmulWithCublas(
     AutotunerCompileUtil& util, se::Stream* stream, Executable& executable,
     absl::Span<se::DeviceMemoryBase const> input_buffers,
     absl::Span<Shape const> input_shapes) {
@@ -539,7 +539,7 @@ StatusOr<ScopedShapedBuffer> RunMatmulWithCublas(
       std::optional<ProfilingOutput> output,
       util.ProfileExecutable(&executable, stream, input_buffers, input_shapes));
   TF_RET_CHECK(output.has_value());
-  return std::move(output->output);
+  return std::move(output.value());
 }
 
 StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
@@ -564,7 +564,6 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
       se::RedzoneAllocator rz_allocator,
       AutotunerUtil::CreateRedzoneAllocator(config, debug_opts));
 
-  std::optional<ScopedShapedBuffer> reference_buffer;
   const HloInstruction& root = *fusion_computation->root_instruction();
   BufferComparator comparator(root.shape(),
                               fusion_computation->parent()->config());
@@ -583,13 +582,21 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
     input_shapes.push_back(param->shape());
   }
 
-  if (config.should_check_correctness()) {
+  // Run with cuBLAS.
+  std::optional<ScopedShapedBuffer> reference_buffer;
+  absl::Duration cublas_duration;
+  {
     TF_RET_CHECK(executable_set.reference != nullptr);
     TF_ASSIGN_OR_RETURN(
-        reference_buffer,
+        ProfilingOutput output,
         RunMatmulWithCublas(util, stream, *executable_set.reference, inputs,
                             input_shapes));
+    if (config.should_check_correctness()) {
+      reference_buffer = std::move(output.output);
+    }
+    cublas_duration = output.duration;
   }
+  VLOG(3) << "Running with cuBLAS took: " << cublas_duration;
 
   const int log_every_n = GetLogEveryN();
   int64_t executable_count =
@@ -668,12 +675,16 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
 }
 
 Status DumpAutotunedFusions(const AutotuneConfig& config,
+                            AutotunerCompileUtil& util,
                             const AutotuneResult result,
                             const HloFusionInstruction* fusion, int fusion_id) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> module,
-      TritonGemmAutotuneExtractor(
-          result.triton(), GetGpuDeviceInfo(config.GetExecutor()), fusion));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      util.ExtractModule([&](const DebugOptions& debug_opts) {
+                        return TritonGemmAutotuneExtractor(
+                            result.triton(),
+                            GetGpuDeviceInfo(config.GetExecutor()), fusion,
+                            debug_opts);
+                      }));
   module->set_name(std::string(fusion->name()));
   // Using the original module for its debug info and name in the first
   // parameter. It's better to include the name of both the original module
@@ -708,8 +719,8 @@ Status Autotune(const AutotuneConfig& config, AutotunerCompileUtil& util,
                                                        fusion, executable_set));
 
     if (debug_opts.xla_gpu_dump_autotuned_triton_fusions()) {
-      TF_RETURN_IF_ERROR(
-          DumpAutotunedFusions(config, result, fusion, fusion_id_for_dump));
+      TF_RETURN_IF_ERROR(DumpAutotunedFusions(config, util, result, fusion,
+                                              fusion_id_for_dump));
     }
 
     const AutotuneCacheKey key = AutotunerUtil::GetKey(fusion, config);
@@ -729,9 +740,15 @@ Status Autotune(const AutotuneConfig& config, AutotunerCompileUtil& util,
 }  // anonymous namespace
 
 std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
-    const HloInstruction& instr,
+    const HloDotInstruction& dot,
     const se::CudaComputeCapability compute_capability,
     const DebugOptions& debug_options, bool exhaustive_tiling_search) {
+  // Avoid autotuning tiny fusions.
+  constexpr int kMinGemmElements = 32 * 32;
+  if (ShapeUtil::ElementsIn(dot.operand(0)->shape()) <= kMinGemmElements &&
+      ShapeUtil::ElementsIn(dot.operand(1)->shape()) <= kMinGemmElements) {
+    return {GemmKey(32, 32, 32, 1, 1, 4)};
+  }
   // Split-K optimization enables more even utilization of a GPU in cases
   // where tiling just the non-contracting dimensions of a GEMM does not create
   // a sufficient number of thread block programs to occupy all available cores.
@@ -746,7 +763,7 @@ std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
       debug_options.xla_gpu_enable_split_k_autotuning()
           ? std::max<int64_t>(1L, kSufficientNumberOfTiles * kMaxTileSize *
                                       kMaxTileSize /
-                                      ShapeUtil::ElementsIn(instr.shape()))
+                                      ShapeUtil::ElementsIn(dot.shape()))
           : 1;
   return exhaustive_tiling_search
              ? GetExhaustiveMatmulAutotuneConfigs(compute_capability,

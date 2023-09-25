@@ -102,7 +102,7 @@ def float_cases(shape_dtypes=(None,)):
   )
   # Explicitly passing in params because capturing cell variable from loop is
   # problematic in Python
-  def wrap(op, dtype, shape, shape_dtype, seed, **kwargs):
+  def wrap(op: ops.Operation, dtype, shape, shape_dtype, seed, **kwargs):
     device_type = get_device().device_type
     # Some dtypes are not supported on some devices
     if (dtype == dtypes.bfloat16 and device_type == 'GPU' and
@@ -134,7 +134,8 @@ def float_cases(shape_dtypes=(None,)):
 
 def int_cases(shape_dtypes=(None,), minval_maxval=None):
 
-  def wrap(op, minval, maxval, shape, shape_dtype, dtype, seed, **kwargs):
+  def wrap(op: ops.Operation, minval, maxval, shape, shape_dtype, dtype,
+           seed, **kwargs):
     shape_ = (constant_op.constant(shape, dtype=shape_dtype)
               if shape_dtype is not None else shape)
     return op(
@@ -156,7 +157,7 @@ def int_cases(shape_dtypes=(None,), minval_maxval=None):
 
 def multinomial_cases():
   num_samples = 10
-  def wrap(op, logits, logits_dtype, output_dtype, seed):
+  def wrap(op: ops.Operation, logits, logits_dtype, output_dtype, seed):
     device_type = get_device().device_type
     # Some dtypes are not supported on some devices
     if (logits_dtype == dtypes.bfloat16 and device_type == 'GPU' and
@@ -183,7 +184,7 @@ def multinomial_cases():
 
 
 def gamma_cases():
-  def wrap(op, alpha, dtype, shape, seed):
+  def wrap(op: ops.Operation, alpha, dtype, shape, seed):
     return op(seed=seed, shape=shape,
               alpha=constant_op.constant(alpha, dtype=dtype), dtype=dtype)
   for dtype in np.float16, np.float32, np.float64:
@@ -196,7 +197,7 @@ def gamma_cases():
 
 
 def poisson_cases():
-  def wrap(op, lam, lam_dtype, out_dtype, shape, seed):
+  def wrap(op: ops.Operation, lam, lam_dtype, out_dtype, shape, seed):
     return op(seed=seed, shape=shape,
               lam=constant_op.constant(lam_dtype(lam), dtype=lam_dtype),
               dtype=out_dtype)

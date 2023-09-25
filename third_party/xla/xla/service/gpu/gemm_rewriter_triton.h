@@ -77,10 +77,14 @@ class TensorIterationSpec {
   struct IterationSpecFragment {
     int64_t stride;
     int64_t count;
+    int64_t slice_start;
+    int64_t slice_limit;
     // Logical subfragments when this iteration is composed
-    // of several HLO dimensions. Product of subfragments equals `count`.
+    // of several HLO dimensions.
     std::vector<int64_t> subfragments;
 
+    bool is_sliced() const { return count != slice_limit - slice_start; }
+    bool operator!=(const IterationSpecFragment& other) const;
     std::string ToString() const;
   };
   // Description of complex iteration over a sequence of several strides.

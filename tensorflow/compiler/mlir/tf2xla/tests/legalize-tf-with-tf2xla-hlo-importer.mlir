@@ -178,7 +178,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   func.func @non_const_inputs(%arg0: tensor<2x2xf64>, %arg1: tensor<f64>, %arg2: tensor<2xi32>, %arg3: tensor<2xi32>, %arg4: tensor<2xi32>) -> tensor<6x5xf64> {
-    // expected-remark@+1 {{lowering requires operand #2 to be a constant}}
+    // expected-remark@+1 {{compilation to HLO failed: INVALID_ARGUMENT: Input 2 to node `tf.XlaPad` with op XlaPad must be a compile-time constant.}}
     %0 = "tf.XlaPad"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<2x2xf64>, tensor<f64>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<6x5xf64>
     func.return %0 : tensor<6x5xf64>
   }

@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -185,11 +186,9 @@ class PjRtCApiClient : public PjRtClient {
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
-  PjRtPlatformId platform_id() const override {
-    CHECK(false) << "PJRT C API does not support platform_id.";
-  }
+  PjRtPlatformId platform_id() const override { return platform_id_; }
 
-  absl::string_view platform_name() const override;
+  absl::string_view platform_name() const override { return platform_name_; };
 
   absl::string_view platform_version() const override;
 
@@ -358,6 +357,8 @@ class PjRtCApiClient : public PjRtClient {
   absl::flat_hash_map<PJRT_Memory*, PjRtCApiMemorySpace*> c_to_cpp_memory_map_;
 
   const std::string platform_version_;
+  const std::string platform_name_;
+  const PjRtPlatformId platform_id_;
 };
 
 class PjRtCApiBuffer : public PjRtBuffer {
@@ -379,11 +380,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   bool has_dynamic_dimensions() const override;
 
-  absl::Span<const bool> is_dynamic_dimension() const override {
-    LOG(FATAL) << "PjRtCApiBuffer::is_dynamic_dimension() not implemented. "
-               << "Considering using has_dynamic_dimensions() or "
-                  "logical_dimensions() if applicable.";
-  }
+  absl::Span<const bool> is_dynamic_dimension() const override;
 
   StatusOr<std::vector<int64_t>> logical_dimensions() override;
 
@@ -423,6 +420,11 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;
+
+  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
+      PjRtMemorySpace* dst_memory_space) override {
+    return Unimplemented("PJRT C API does not support CopyToMemorySpace");
+  }
 
   void CopyToRemoteDevice(
       PjRtFuture<StatusOr<std::string>> serialized_descriptor,
@@ -464,6 +466,9 @@ class PjRtCApiBuffer : public PjRtBuffer {
   std::shared_ptr<PjRtFuture<Status>::Promise> readiness_promise_;
   // Set and cached the first time layout() is called.
   mutable std::optional<xla::Layout> layout_;
+  // Set and cached the first time is_dynamic_dimension() is called.
+  mutable std::optional<absl::InlinedVector<bool, InlineRank()>>
+      is_dynamic_dimension_;
   // Used to synchronize concurrent setting of cached values.
   mutable absl::Mutex mu_;
 };

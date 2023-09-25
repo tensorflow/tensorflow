@@ -225,6 +225,8 @@ class LocalClient : public Client {
   const Backend& backend() const;
   Backend* mutable_backend();
 
+  LocalService* local_service() { return local_service_; }
+
  private:
   LocalService* local_service_;
 };

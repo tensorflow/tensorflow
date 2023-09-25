@@ -1172,7 +1172,7 @@ alias(
 
 alias(
     name = "cuda",
-    actual = "@local_tsl//tsl/platform:cuda",
+    actual = "@local_tsl//tsl/cuda:cudart",
     visibility = ["//visibility:public"],
 )
 
@@ -1478,7 +1478,7 @@ cc_library(
         "@local_xla//xla:xla_proto_cc_impl",
         "@local_xla//xla:xla_data_proto_cc_impl",
         "@local_xla//xla/service:hlo_proto_cc_impl",
-        "@local_xla//xla/service:memory_space_assignment_proto_cc_impl",
+        "@local_xla//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl",
         "@local_xla//xla/service/gpu:backend_configs_cc_impl",
         "@local_xla//xla/service/gpu:hlo_op_profile_proto_cc_impl",
     ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),

@@ -1465,7 +1465,7 @@ Status BufferAssigner::AssignBuffersForComputations(
     }
   }
 
-  absl::c_stable_sort(
+  absl::c_sort(
       sorted_buffers, [&post_order_position, &alias_analysis, assignment](
                           const HloBuffer* a, const HloBuffer* b) {
         // Primary sort is by decreasing buffer size.
@@ -1487,7 +1487,16 @@ Status BufferAssigner::AssignBuffersForComputations(
         };
         const HloValue* a_min = *absl::c_min_element(a->values(), compare);
         const HloValue* b_min = *absl::c_min_element(b->values(), compare);
-        return compare(a_min, b_min);
+        if (post_order_position.at(a_min->instruction()) <
+            post_order_position.at(b_min->instruction())) {
+          return true;
+        } else if (post_order_position.at(a_min->instruction()) >
+                   post_order_position.at(b_min->instruction())) {
+          return false;
+        }
+
+        // Use buffer ids to break ties and ensure a stable ordering.
+        return a->id() < b->id();
       });
 
   std::vector<BufferAllocation::Index> allocation_indices;

@@ -1,10 +1,10 @@
 load(
-    "//tensorflow:tensorflow.default.bzl",
-    "get_compatible_with_portable",
-)
-load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+)
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "get_compatible_with_portable",
 )
 
 package(
@@ -12,6 +12,7 @@ package(
     # By default, these targets should only be used within the quantization library.
     default_visibility = [
         "//learning/brain/mlir/quantization:__subpackages__",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
         "//tensorflow/compiler/mlir/quantization/tensorflow:__subpackages__",
     ],
     licenses = ["notice"],

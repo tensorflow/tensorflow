@@ -218,6 +218,17 @@ TEST_F(LiteralUtilTest, R2DynamicToString) {
   EXPECT_EQ(expected2, literal2.ToString());
 }
 
+TEST_F(LiteralUtilTest, R2BoolDynamicToString) {
+  auto literal = LiteralUtil::CreateR2<bool>(
+      {{true, true, true}, {true, true, true}, {true, true, true}});
+  literal.SetDynamicSize(0, {}, 2);
+  const std::string expected = R"(pred[<=3,3](2,3) {
+  { 1, 1, 1 },
+  { 1, 1, 1 }
+})";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
 TEST_F(LiteralUtilTest, R3ToString) {
   const auto literal =
       LiteralUtil::CreateR3({{{1}, {2}}, {{3}, {4}}, {{5}, {6}}});

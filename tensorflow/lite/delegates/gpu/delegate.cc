@@ -1387,7 +1387,9 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       context, "GpuDelegate::DelegatePrepare",
       telemetry::TelemetrySource::TFLITE_GPU, delegate_setting);
 
-  SetTfLiteProfiler(context->profiler);
+  if (delegate->flags & kTfLiteDelegateFlagsPerOperatorProfiling) {
+    SetTfLiteProfiler(context->profiler);
+  }
   return status;
 }
 

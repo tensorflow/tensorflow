@@ -2228,6 +2228,64 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     else:
       self.assertAllClose(new_outputs, expected_outputs, atol=0.13)
 
+  # NOTE: Isolated the most basic configuration from `test_matmul_ptq_model`
+  # for StableHLO PTQ prototype testing while integrating. Please note this
+  # test is for intermediate testing purposes as the migration is not complete.
+  # TODO: b/298581932 - Add the full test case for STABLEHLO opset once
+  # migration is complete.
+  @test_util.run_in_graph_and_eager_modes
+  def test_matmul_ptq_model_stablehlo(self):
+    activation_fn = None
+    has_bias = False
+    batch_sizes = ([], [])
+    target_opset = quant_opts_pb2.STABLEHLO
+
+    lhs_batch_size, rhs_batch_size = batch_sizes
+    input_shape = (*lhs_batch_size, 1, 1024)
+    filter_shape = (*rhs_batch_size, 1024, 3)
+    static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
+    self._create_matmul_model(
+        input_shape,
+        filter_shape,
+        self._input_saved_model_path,
+        has_bias,
+        activation_fn,
+    )
+    rng = np.random.default_rng(seed=1234)
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(5):
+        yield {
+            'input_tensor': rng.uniform(
+                low=0.0, high=1.0, size=static_input_shape
+            ).astype(np.float32)
+        }
+
+    tags = {tag_constants.SERVING}
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+        ),
+        tags=tags,
+        signature_keys=['serving_default'],
+        op_set=target_opset,
+    )
+    # TODO: b/299545836 - Remove exception handling below after migrating
+    # StableHLO export passes.
+    with self.assertRaisesRegex(  # pylint: disable=g-error-prone-assert-raises
+        Exception,
+        "Failed to convert MLIR to GraphDef. op node 'stablehlo.constant' was"
+        ' not a TF op!',
+    ):
+      converted_model = quantize_model.quantize(
+          self._input_saved_model_path,
+          self._output_saved_model_path,
+          quantization_options,
+          representative_dataset=data_gen(),
+      )
+      self.assertIsNotNone(converted_model)
+
   @parameterized.named_parameters(
       {
           'testcase_name': 'with_biasadd',

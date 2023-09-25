@@ -847,6 +847,8 @@ class IteratorContext {
 
   bool warm_start() { return params_.warm_start; }
 
+  RunMode run_mode() { return params_.run_mode; }
+
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
     if (params_.thread_pool) {

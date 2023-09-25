@@ -535,6 +535,25 @@ int64_t SharedMemoryUsage(const HloInstruction& instr, FusionInfoCache* cache) {
   return it->second;
 }
 
+int64_t ReductionProjectedShmemUsageBytes(
+    const ReductionDimensions& reduction_dimensions,
+    const std::vector<std::vector<const HloInstruction*>>& instr_index_groups) {
+  int64_t out = 0;
+  // Different groups are computed in parallel on different blocks, so they are
+  // not sharing the shmem budget. The overall usage is given by the largest
+  // one.
+  for (const auto& group : instr_index_groups) {
+    int64_t sum = 0;
+    for (const HloInstruction* root : group) {
+      if (IsReductionFromOrToContiguousDimensions(*root)) {
+        sum += SharedMemoryUsage(*root);
+      }
+    }
+    out = std::max(out, sum);
+  }
+  return out;
+}
+
 // Codegen'ing unnested reductions requires a lot of registers, so a MOF
 // combining many of those runs a high risk of spilling.
 constexpr int64_t kMaxUnnestedReductionOutputsPerFusion = 8;
@@ -806,13 +825,13 @@ size_t GetOutputSizeOfFusible(const HloInstruction& instr) {
 }
 
 // Recursive helper for GetFusionRoots below.
-static void GetFusionRootsRec(HloInstruction* root,
-                              std::vector<HloInstruction*>& out) {
+static void GetFusionRootsRec(const HloInstruction* root,
+                              std::vector<const HloInstruction*>& out) {
   if (root->opcode() == HloOpcode::kGetTupleElement) {
-    return GetFusionRootsRec(root->mutable_operand(0), out);
+    return GetFusionRootsRec(root->operand(0), out);
   } else if (root->opcode() == HloOpcode::kTuple) {
     for (int i = 0; i < root->operand_count(); i++) {
-      GetFusionRootsRec(root->mutable_operand(i), out);
+      GetFusionRootsRec(root->operand(i), out);
     }
   } else {
     if (!out.empty() && out.back() == root) {
@@ -825,8 +844,9 @@ static void GetFusionRootsRec(HloInstruction* root,
   }
 }
 
-std::vector<HloInstruction*> GetFusionRoots(const HloComputation& computation) {
-  std::vector<HloInstruction*> out;
+std::vector<const HloInstruction*> GetFusionRoots(
+    const HloComputation& computation) {
+  std::vector<const HloInstruction*> out;
   GetFusionRootsRec(computation.root_instruction(), out);
   return out;
 }

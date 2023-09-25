@@ -163,17 +163,21 @@ if collaborator_build:
 EXTRA_PACKAGES = {}
 EXTRA_PACKAGES['and-cuda'] = [
     # TODO(nluehr): set nvidia-* versions based on build components.
-    'nvidia-cuda-runtime-cu11 == 11.8.89',
-    'nvidia-cublas-cu11 == 11.11.3.6',
-    'nvidia-cufft-cu11 == 10.9.0.58',
-    'nvidia-cudnn-cu11 == 8.7.0.84',
-    'nvidia-curand-cu11 == 10.3.0.86',
-    'nvidia-cusolver-cu11 == 11.4.1.48',
-    'nvidia-cusparse-cu11 == 11.7.5.86',
-    'nvidia-nccl-cu11 == 2.16.5',
-    'nvidia-cuda-cupti-cu11 == 11.8.87',
-    'nvidia-cuda-nvcc-cu11 == 11.8.89',
-    'tensorrt == 8.5.3.1',
+    'nvidia-cublas-cu12 == 12.2.5.6',
+    'nvidia-cuda-cupti-cu12 == 12.2.142',
+    'nvidia-cuda-nvcc-cu12 == 12.2.140',
+    'nvidia-cuda-nvrtc-cu12 == 12.2.140',
+    'nvidia-cuda-runtime-cu12 == 12.2.140',
+    'nvidia-cudnn-cu12 == 8.9.4.25',
+    'nvidia-cufft-cu12 == 11.0.8.103',
+    'nvidia-curand-cu12 == 10.3.3.141',
+    'nvidia-cusolver-cu12 == 11.5.2.141',
+    'nvidia-cusparse-cu12 == 12.1.2.141',
+    'nvidia-nccl-cu12 == 2.16.5',
+    'nvidia-nvjitlink-cu12 == 12.2.140',
+    'tensorrt == 8.6.1.post1',
+    'tensorrt-bindings == 8.6.1',
+    'tensorrt-libs == 8.6.1',
 ]
 
 DOCLINES = __doc__.split('\n')
@@ -257,13 +261,20 @@ class InstallHeaders(Command):
     # symlink within the directory hierarchy.
     # NOTE(keveman): Figure out how to customize bdist_wheel package so
     # we can do the symlink.
-    external_header_locations = [
-        'tensorflow/include/external/eigen_archive/',
-        'tensorflow/include/external/com_google_absl/',
-    ]
+    # pylint: disable=line-too-long
+    external_header_locations = {
+        '/tensorflow/include/external/eigen_archive': '',
+        '/tensorflow/include/external/com_google_absl': '',
+        '/tensorflow/include/external/ml_dtypes': '/ml_dtypes',
+        '/tensorflow/include/tensorflow/compiler/xla': '/tensorflow/include/xla',
+        '/tensorflow/include/tensorflow/tsl': '/tensorflow/include/tsl',
+    }
+    # pylint: enable=line-too-long
+
     for location in external_header_locations:
       if location in install_dir:
-        extra_dir = install_dir.replace(location, '')
+        extra_dir = install_dir.replace(location,
+                                        external_header_locations[location])
         if not os.path.exists(extra_dir):
           self.mkpath(extra_dir)
         self.copy_file(header, extra_dir)
@@ -305,6 +316,10 @@ matches = []
 for path in so_lib_paths:
   matches.extend(['../' + x for x in find_files('*', path) if '.py' not in x])
 
+# If building a tpu package, bundle libtpu.so as part of the wheel
+if '_tpu' in project_name:
+  matches.append('tensorflow/lib/libtpu.so')
+
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'
 else:
@@ -335,7 +350,8 @@ headers = (
     list(find_files('*', 'third_party/gpus')) +
     list(find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
+    list(find_files('*', 'tensorflow/include/external/eigen_archive')) +
+    list(find_files('*.h', 'tensorflow/include/external/ml_dtypes')))
 
 # Quite a lot of setup() options are different if this is a collaborator package
 # build. We explicitly list the differences here, then unpack the dict as

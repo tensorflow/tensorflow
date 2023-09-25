@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -30,6 +31,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/statusor.h"
@@ -39,6 +43,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
@@ -590,6 +595,23 @@ TEST(StreamExecutorGpuClientTest, DistributeInit) {
       EXPECT_EQ(client->addressable_device_count(), 2);
       EXPECT_EQ(client->device_count(), 4);
     });
+  }
+}
+
+TEST(StreamExecutorGpuClientTest, GetAllocatorStatsTest) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
+                                              /*node_id=*/0));
+  ASSERT_GE(client->addressable_devices().size(), 2);
+
+  for (auto device : client->addressable_devices()) {
+    const xla::Literal literal = xla::LiteralUtil::CreateR0<int32_t>(0);
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> buffer,
+                            client->BufferFromHostLiteral(literal, device));
+
+    auto stats = device->GetAllocatorStats();
+    TF_ASSERT_OK(stats.status());
+    ASSERT_GT(stats.value().peak_bytes_in_use, 0);
   }
 }
 

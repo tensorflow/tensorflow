@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 29
+#define PJRT_API_MINOR 31
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -145,6 +145,7 @@ typedef enum {
   PJRT_NamedValue_kInt64,
   PJRT_NamedValue_kInt64List,
   PJRT_NamedValue_kFloat,
+  PJRT_NamedValue_kBool,
 } PJRT_NamedValue_Type;
 
 // Named value for key-value pairs.
@@ -159,6 +160,7 @@ struct PJRT_NamedValue {
     int64_t int64_value;
     const int64_t* int64_array_value;
     float float_value;
+    bool bool_value;
   };
   // `value_size` is the number of elements for array/string and 1 for scalar
   // values.
@@ -1899,6 +1901,20 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Compile_Args, executable);
 // PJRT_Client before execution.
 typedef PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 
+// -------------------------------- Extension ----------------------------------
+
+typedef enum {
+  PJRT_Structure_Type_Gpu_Custom_Call = 0,
+} PJRT_Structure_Type;
+
+// PJRT_Structure_Base contains a type and a pointer to next
+// PJRT_Structure_Base. The framework can go through this chain to find
+// structure and identify it with the type.
+typedef struct PJRT_Structure_Base {
+  PJRT_Structure_Type type;
+  const struct PJRT_Structure_Base* next;
+} PJRT_Structure_Base;
+
 // -------------------------------- API access ---------------------------------
 
 #define _PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
@@ -1906,7 +1922,7 @@ typedef PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 // Please modify PJRT_Api_STRUCT_SIZE if the last field of PJRT_Api is changed.
 typedef struct {
   size_t struct_size;
-  void* priv;
+  void* extension_start;
 
   PJRT_Api_Version pjrt_api_version;
 
@@ -2023,7 +2039,6 @@ const size_t PJRT_Api_STRUCT_SIZE =
     PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Executable_OutputDimensions);
 
 #undef _PJRT_API_STRUCT_FIELD
-#undef PJRT_DEFINE_STRUCT_TRAITS
 
 #ifdef __cplusplus
 }

@@ -238,16 +238,16 @@ build:cuda_clang --@local_config_cuda//:cuda_compiler=clang
 # See https://developer.nvidia.com/cuda-gpus#compute
 # TODO(angerson, perfinion): What does sm_ vs compute_ mean? How can users
 # select a good value for this? See go/tf-pip-cuda
-build:cuda_clang --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_35,sm_50,sm_60,sm_70,sm_75,compute_80"
+build:cuda_clang --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_50,sm_60,sm_70,sm_75,compute_80"
 
 # Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
 build:cuda_clang_official --config=cuda_clang
-build:cuda_clang_official --action_env=TF_CUDA_VERSION="11"
+build:cuda_clang_official --action_env=TF_CUDA_VERSION="12"
 build:cuda_clang_official --action_env=TF_CUDNN_VERSION="8"
-build:cuda_clang_official --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.8"
+build:cuda_clang_official --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-12.2"
 build:cuda_clang_official --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
-build:cuda_clang_official --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-16/bin/clang"
-build:cuda_clang_official --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
+build:cuda_clang_official --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-17/bin/clang"
+build:cuda_clang_official --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 build:cuda_clang_official --crosstool_top="@sigbuild-r2.14-clang_config_cuda//crosstool:toolchain"
 
 # Debug config
@@ -267,8 +267,11 @@ build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
 build:dbg --copt -DDEBUG_BUILD
 
-# Config to build TPU backend
+# Config to build TF TPU
 build:tpu --define=with_tpu_support=true
+build:tpu --define=framework_shared_object=true
+build:tpu --copt=-DLIBTPU_ON_GCE
+build:tpu --define=enable_mlir_bridge=true
 
 build:tensorrt --repo_env TF_NEED_TENSORRT=1
 
@@ -302,7 +305,6 @@ build:linux --copt="-Wno-deprecated"
 build:linux --copt="-Wno-deprecated-declarations"
 build:linux --copt="-Wno-ignored-attributes"
 build:linux --copt="-Wno-array-bounds"
-build:linux --copt="-Wno-error=array-parameter"
 
 # Add unused-result as an error on Linux.
 build:linux --copt="-Wunused-result"
@@ -461,6 +463,13 @@ build:rbe_linux_cpu --extra_toolchains="@sigbuild-r2.14-clang_config_cuda//cross
 build:rbe_linux_cpu --extra_execution_platforms="@sigbuild-r2.14-clang_config_platform//:platform"
 build:rbe_linux_cpu --host_platform="@sigbuild-r2.14-clang_config_platform//:platform"
 build:rbe_linux_cpu --platforms="@sigbuild-r2.14-clang_config_platform//:platform"
+# This is needed for all Clang17 builds but must not be present in GCC builds.
+build:rbe_linux_cpu --copt=-Wno-error=unused-command-line-argument
+# This was added in clang-16 by https://reviews.llvm.org/D133574.
+# Can be removed once upb is updated, since a type definition is used within
+# offset of in the current version of ubp.
+# See https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
+build:rbe_linux_cpu --copt=-Wno-gnu-offsetof-extensions
 # Python config is the same across all containers because the binary is the same
 build:rbe_linux_cpu --repo_env=TF_PYTHON_CONFIG_REPO="@sigbuild-r2.14-clang_config_python"
 build:rbe_linux_cpu --python_path="/usr/bin/python3"
@@ -556,17 +565,24 @@ build:release_cpu_linux --crosstool_top="@sigbuild-r2.14-clang_config_cuda//cros
 # offset of in the current version of ubp.
 # See https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
 build:release_cpu_linux --copt=-Wno-gnu-offsetof-extensions
+build:release_cpu_linux --copt=-Wno-error=array-parameter
+build:release_cpu_linux --copt=-Wno-error=unused-command-line-argument
 # Set lld as the linker.
 build:release_cpu_linux --linkopt="-fuse-ld=lld"
 build:release_cpu_linux --linkopt="-lm"
+
+# We have some invalid linker scripts in the build,
+# so we need to disable this check
+build:release_cpu_linux --linkopt=-Wl,--undefined-version
+
 # Container environment settings below this point.
 # Use Python 3.X as installed in container image
 build:release_cpu_linux --action_env PYTHON_BIN_PATH="/usr/bin/python3"
 build:release_cpu_linux --action_env PYTHON_LIB_PATH="/usr/lib/tf_python"
 build:release_cpu_linux --python_path="/usr/bin/python3"
 # Set Clang as compiler. Use the actual path to clang installed in container.
-build:release_cpu_linux --repo_env=CC="/usr/lib/llvm-16/bin/clang"
-build:release_cpu_linux --repo_env=BAZEL_COMPILER="/usr/lib/llvm-16/bin/clang"
+build:release_cpu_linux --repo_env=CC="/usr/lib/llvm-17/bin/clang"
+build:release_cpu_linux --repo_env=BAZEL_COMPILER="/usr/lib/llvm-17/bin/clang"
 # Store performance profiling log in the mounted artifact directory.
 # The profile can be viewed by visiting chrome://tracing in a Chrome browser.
 # See https://docs.bazel.build/versions/main/skylark/performance.html#performance-profiling

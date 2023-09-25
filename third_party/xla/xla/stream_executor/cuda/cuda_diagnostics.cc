@@ -45,8 +45,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "tsl/platform/host_info.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 
 namespace stream_executor {
@@ -245,8 +245,8 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
 #if !defined(PLATFORM_WINDOWS) && !defined(ANDROID_TEGRA)
   // Callback used when iterating through DSOs. Looks for the driver-interfacing
   // DSO and yields its version number into the callback data, when found.
-  auto iterate_phdr =
-      [](struct dl_phdr_info *info, size_t size, void *data) -> int {
+  auto iterate_phdr = [](struct dl_phdr_info *info, size_t size,
+                         void *data) -> int {
     if (strstr(info->dlpi_name, "libcuda.so.1")) {
       VLOG(1) << "found DLL info with name: " << info->dlpi_name;
       char resolved_path[PATH_MAX] = {0};

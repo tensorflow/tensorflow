@@ -91,6 +91,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
 #include "xla/service/gpu/gpu_device_info.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
@@ -152,7 +153,7 @@ Type TritonType(mlir::OpBuilder b, PrimitiveType t) {
     case S16:
       return b.getI16Type();
     case PRED:
-      // Treat PRED as S8.
+      return b.getI1Type();
     case S8:
       return b.getI8Type();
     default:
@@ -161,57 +162,11 @@ Type TritonType(mlir::OpBuilder b, PrimitiveType t) {
   }
 }
 
-// Triton type conversions.
-Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
-  Type src_ty = value.getType();
-  Type src_element_ty = src_ty;
-  Type fp32_ty = b.getF32Type();
-  Type dst_ty = dst_element_ty;
-  if (auto src_shaped_ty = src_ty.dyn_cast<mlir::ShapedType>()) {
-    src_element_ty = src_shaped_ty.getElementType();
-    dst_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), dst_element_ty);
-    fp32_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), b.getF32Type());
+Type StorageType(mlir::OpBuilder b, Type t) {
+  if (t.isInteger(1)) {
+    return b.getI8Type();
   }
-  if (src_ty == dst_ty) {
-    return value;
-  }
-
-  // All operations on bf16 are done through f32.
-  if (src_element_ty.isBF16()) {
-    return Cast(b, b.create<ma::ExtFOp>(fp32_ty, value), dst_element_ty);
-  }
-  if (dst_element_ty.isBF16()) {
-    return b.create<ma::TruncFOp>(dst_ty, Cast(b, value, b.getF32Type()));
-  }
-
-  // Float <=> float
-  auto src_fp_element_ty = src_element_ty.dyn_cast<mlir::FloatType>();
-  auto dst_fp_element_ty = dst_element_ty.dyn_cast<mlir::FloatType>();
-  if (src_fp_element_ty && dst_fp_element_ty) {
-    if (src_fp_element_ty.getFPMantissaWidth() >
-        dst_fp_element_ty.getFPMantissaWidth()) {
-      return b.create<ma::TruncFOp>(dst_ty, value);
-    } else {
-      return b.create<ma::ExtFOp>(dst_ty, value);
-    }
-  }
-  // int => float
-  if (src_element_ty.isa<mlir::IntegerType>() && dst_fp_element_ty) {
-    // TODO(b/266862493): Support unsigned integer types.
-    if (src_element_ty.isInteger(1)) {
-      return b.create<ma::UIToFPOp>(dst_ty, value);
-    }
-    return b.create<ma::SIToFPOp>(dst_ty, value);
-  }
-  // float => int
-  if (src_fp_element_ty && dst_element_ty.isa<mlir::IntegerType>()) {
-    // TODO(b/266862493): Support unsigned integer types.
-    return b.create<ma::FPToSIOp>(dst_ty, value);
-  }
-
-  LOG(FATAL) << "Type conversion not supported: "
-             << llvm_ir::DumpToString(src_element_ty) << " -> "
-             << llvm_ir::DumpToString(dst_element_ty);
+  return t;
 }
 
 // Get the value of the scalar constant's literal in a C++ type.
@@ -252,6 +207,88 @@ ma::ConstantOp CreateConst(ImplicitLocOpBuilder& b, Type type, T value,
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
 }
 
+Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
+  if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
+    Type src_ty = src_shaped_ty.getElementType();
+    return CreateConst(b, src_ty, 0, src_shaped_ty.getShape());
+  }
+  return CreateConst(b, x.getType(), 0);
+}
+
+Value OnesLike(ImplicitLocOpBuilder& b, Value x) {
+  if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
+    Type src_ty = src_shaped_ty.getElementType();
+    return CreateConst(b, src_ty, 1, src_shaped_ty.getShape());
+  }
+  return CreateConst(b, x.getType(), 1);
+}
+
+// Triton type conversions.
+Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
+  Type src_ty = value.getType();
+  Type src_element_ty = src_ty;
+  Type fp32_ty = b.getF32Type();
+  Type dst_ty = dst_element_ty;
+  if (auto src_shaped_ty = src_ty.dyn_cast<mlir::ShapedType>()) {
+    src_element_ty = src_shaped_ty.getElementType();
+    dst_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), dst_element_ty);
+    fp32_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), b.getF32Type());
+  }
+  if (src_ty == dst_ty) {
+    return value;
+  }
+
+  // All operations on bf16 are done through f32.
+  if (src_element_ty.isBF16()) {
+    return Cast(b, b.create<ma::ExtFOp>(fp32_ty, value), dst_element_ty);
+  }
+  if (dst_element_ty.isBF16()) {
+    return b.create<ma::TruncFOp>(dst_ty, Cast(b, value, b.getF32Type()));
+  }
+
+  // float => float
+  auto src_fp_element_ty = src_element_ty.dyn_cast<mlir::FloatType>();
+  auto dst_fp_element_ty = dst_element_ty.dyn_cast<mlir::FloatType>();
+  if (src_fp_element_ty && dst_fp_element_ty) {
+    if (src_fp_element_ty.getFPMantissaWidth() >
+        dst_fp_element_ty.getFPMantissaWidth()) {
+      return b.create<ma::TruncFOp>(dst_ty, value);
+    } else {
+      return b.create<ma::ExtFOp>(dst_ty, value);
+    }
+  }
+  // int => int
+  if (src_element_ty.isa<mlir::IntegerType>() &&
+      dst_element_ty.isa<mlir::IntegerType>()) {
+    if (src_element_ty.getIntOrFloatBitWidth() <
+        dst_element_ty.getIntOrFloatBitWidth()) {
+      return b.create<ma::ExtSIOp>(dst_ty, value);
+    }
+    return b.create<ma::TruncIOp>(dst_ty, value);
+  }
+  // int => float
+  if (src_element_ty.isa<mlir::IntegerType>() && dst_fp_element_ty) {
+    // TODO(b/266862493): Support unsigned integer types.
+    if (src_element_ty.isInteger(1)) {
+      return b.create<ma::UIToFPOp>(dst_ty, value);
+    }
+    return b.create<ma::SIToFPOp>(dst_ty, value);
+  }
+  // float => int
+  if (src_fp_element_ty && dst_element_ty.isa<mlir::IntegerType>()) {
+    // TODO(b/266862493): Support unsigned integer types.
+    if (dst_element_ty.isInteger(1)) {
+      return b.create<ma::CmpFOp>(ma::CmpFPredicate::UNE, value,
+                                  ZerosLike(b, value));
+    }
+    return b.create<ma::FPToSIOp>(dst_ty, value);
+  }
+
+  LOG(FATAL) << "Type conversion not supported: "
+             << llvm_ir::DumpToString(src_element_ty) << " -> "
+             << llvm_ir::DumpToString(dst_element_ty);
+}
+
 Value Subtract(ImplicitLocOpBuilder& b, ValueRange values) {
   if (mlir::getElementTypeOrSelf(values[0]).isa<mlir::IntegerType>()) {
     return b.create<ma::SubIOp>(values[0], values[1]);
@@ -284,22 +321,6 @@ Value Maximum(ImplicitLocOpBuilder& b, ValueRange values) {
 Value Minimum(ImplicitLocOpBuilder& b, ValueRange values) {
   auto cmp = Compare(b, values, mlir::mhlo::ComparisonDirection::LT);
   return b.create<ma::SelectOp>(cmp, values[0], values[1]);
-}
-
-Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
-  if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
-    Type src_ty = src_shaped_ty.getElementType();
-    return CreateConst(b, src_ty, 0, src_shaped_ty.getShape());
-  }
-  return CreateConst(b, x.getType(), 0);
-}
-
-Value OnesLike(ImplicitLocOpBuilder& b, Value x) {
-  if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
-    Type src_ty = src_shaped_ty.getElementType();
-    return CreateConst(b, src_ty, 1, src_shaped_ty.getShape());
-  }
-  return CreateConst(b, x.getType(), 1);
 }
 
 // TODO(b/269489810): Contribute nicer builders to Triton, so we don't need to
@@ -431,9 +452,16 @@ Value EmitConstant(ImplicitLocOpBuilder& b, const HloInstruction& constant) {
 }
 
 struct DimProperties {
+  DimProperties(int64_t index, Value offset, int block_size, int split_value)
+      : index(index),
+        offset(offset),
+        block_size(block_size),
+        split_value(split_value) {}
+
   int64_t index;
   Value offset;
   int block_size;
+  int split_value;
 };
 
 Value EmitBroadcast(ImplicitLocOpBuilder& b,
@@ -497,9 +525,23 @@ StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
   const int block_row = input_shape.back();
   const int row_len = hlo_reduce.operand(0)->shape().dimensions_minor(0);
   CHECK_GE(block_row, row_len);
-  // We assume here that the reduction value was input as a constant, and/or has
-  // been constant-folded.
-  CHECK_EQ(hlo_reduce.operand(1)->opcode(), HloOpcode::kConstant);
+
+  const HloInstruction* operand = hlo_reduce.operand(1);
+  Value neutral;
+
+  // We assume that the reduction value was input as a constant, or in the case
+  // of a data type affected by float normalization, a convert of a constant.
+  if (operand->opcode() == HloOpcode::kConvert) {
+    CHECK_EQ(operand->operand(0)->opcode(), HloOpcode::kConstant);
+    CHECK_EQ(operand->operand(0)->shape().element_type(), BF16);
+    PrimitiveType dest_ty = operand->shape().element_type();
+    CHECK_EQ(dest_ty, F32);
+    neutral = EmitConstant(b, *operand->operand(0));
+    neutral = Cast(b, neutral, TritonType(b, dest_ty));
+  } else {
+    CHECK_EQ(operand->opcode(), HloOpcode::kConstant);
+    neutral = EmitConstant(b, *operand);
+  }
 
   // Since every shape is padded to a power of 2 in Triton, the input tile may
   // be padded with arbitrary values. These values could affect the result of
@@ -513,7 +555,6 @@ StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
     Value mask = b.create<ma::CmpIOp>(
         ma::CmpIPredicate::slt, Range(b, block_row),
         Splat(b, CreateConst(b, b.getI32Type(), row_len), block_row));
-    Value neutral = EmitConstant(b, *hlo_reduce.operand(1));
     input = b.create<ma::SelectOp>(mask, input, Splat(b, neutral, input_shape));
   }
 
@@ -593,7 +634,13 @@ StatusOr<Value> EmitScope(
     } else if (hlo->opcode() == HloOpcode::kTuple) {
       TF_RET_CHECK(hlo->IsRoot()) << hlo->ToString();
     } else if (hlo->opcode() == HloOpcode::kBitcast ||
-               hlo->opcode() == HloOpcode::kReshape) {
+               hlo->opcode() == HloOpcode::kTranspose ||
+               hlo->opcode() == HloOpcode::kSlice ||
+               hlo->opcode() == HloOpcode::kReshape ||
+               hlo->opcode() == HloOpcode::kPad) {
+      // All these are currently supported only as operations on indices
+      // which are pushed to loads and stores. No operations on tiles are
+      // performed here.
       result = values[hlo->operand(0)];
     } else {
       LOG(FATAL) << hlo->ToString();
@@ -839,8 +886,19 @@ MatMulDims::MatMulDims(const AutotuneResult::TritonGemmKey& config,
           ->at(0)
           .count;
   // Contracting dimension length.
-  k = dot.operand(0)->shape().dimensions(dims.lhs_contracting_dimensions(0)) *
-      config.split_k();
+  if (config.split_k() > 1 &&
+      dot.operand(0)->operand(0)->opcode() == HloOpcode::kPad) {
+    // Unpadded LHS shape:  [..., k, ...]
+    // Padded LHS shape:    [..., padded_k, ...]
+    // Bitcasted LHS shape: [..., split_k, padded_k / split_k, ...]
+    CHECK_EQ(dot.operand(0)->opcode(), HloOpcode::kBitcast);
+    const Shape& unpadded_lhs_shape =
+        dot.operand(0)->operand(0)->operand(0)->shape();
+    k = unpadded_lhs_shape.dimensions(dims.lhs_contracting_dimensions(0) - 1);
+  } else {
+    k = dot.operand(0)->shape().dimensions(dims.lhs_contracting_dimensions(0)) *
+        config.split_k();
+  }
 
   auto* lhs_noncontracting_split_spec =
       GetLhsNoncontractingSplitSpec(analysis, lhs_noncontracting_dim_idx);
@@ -932,20 +990,234 @@ void ValidateMatMulConfig(const AutotuneResult::TritonGemmKey& config,
            2 + (config.split_k() > 1 ? 1 : 0) + num_batch_dims);
 }
 
+struct Side {
+  TritonFusionAnalysis::Scope scope;
+  std::vector<DimProperties> tiled_dims;
+  std::optional<int64_t> batch_dim_idx;
+};
+
+class MatMulEmitterHelper {
+ public:
+  MatMulEmitterHelper(mlir::OpBuilder builder, absl::string_view libdevice_path,
+                      const HloDotInstruction* dot_instr,
+                      ImplicitLocOpBuilder& b, Type index_ty, MatMulDims dims,
+                      const MatMulLaunchConfig& launch_config,
+                      const TritonFusionAnalysis& analysis)
+      : b_(b),
+        libdevice_path_(libdevice_path),
+        dot_instr_(dot_instr),
+        index_ty_(index_ty),
+        analysis_(analysis),
+        dims_(dims),
+        launch_config_(launch_config) {}
+
+  // TODO(b/266862493): Accumulator can be integer too.
+  // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
+  mlir::FloatType GetDotAccumulatorType() {
+    Type dot_output_ty = TritonType(b_, dot_instr_->shape().element_type());
+    // Data type of dot() immediate inputs.
+    Type dot_input_ty = [&] {
+      const Type lhs_ty =
+          TritonType(b_, dot_instr_->operand(0)->shape().element_type());
+      const Type rhs_ty =
+          TritonType(b_, dot_instr_->operand(1)->shape().element_type());
+      CHECK(lhs_ty == rhs_ty);
+      return lhs_ty;
+    }();
+    // TODO(b/266862493): Accumulator can be integer too.
+    // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
+    return (dot_output_ty.isF64() && dot_input_ty.isF64()) ? b_.getF64Type()
+                                                           : b_.getF32Type();
+  }
+
+  std::vector<const HloInstruction*> EpiloguePostOrderTransitiveOperands(
+      const HloInstruction* root) {
+    // Collect all instructions of the dot's output scope.
+    absl::flat_hash_set<const HloInstruction*> to_order;
+    {
+      std::queue<const HloInstruction*> to_add;
+      if (root != dot_instr_) {
+        to_add.push(root);
+      }
+      while (!to_add.empty()) {
+        const HloInstruction* current = to_add.front();
+        for (const HloInstruction* operand : current->operands()) {
+          if (!to_order.contains(operand)) {
+            if (operand != dot_instr_) {
+              to_add.push(operand);
+            }
+          }
+        }
+        CHECK(to_order.insert(current).second);
+        to_add.pop();
+      }
+    }
+    // Order them producers before consumers.
+    std::vector<const HloInstruction*> to_emit;
+    for (const HloInstruction* hlo :
+         dot_instr_->parent()->MakeInstructionPostOrder()) {
+      if (to_order.contains(hlo)) {
+        to_emit.push_back(hlo);
+      }
+    }
+    return to_emit;
+  }
+
+  Value MakeInput(Side& side, int64_t operand_index,
+                  absl::flat_hash_map<const HloInstruction*, Value>& values) {
+    return *EmitScope(
+        b_, libdevice_path_, &analysis_, side.scope, side.tiled_dims,
+        dot_instr_->parent()->MakeInstructionPostOrderFrom(
+            const_cast<HloInstruction&>(*dot_instr_->operand(operand_index))),
+        values);
+  }
+
+  Value EmitTensorPointer(const HloInstruction* hlo, const Side& side,
+                          Value base, Value pid_k,
+                          std::vector<int32_t>& boundary_checks) {
+    auto pid_batch =
+        b_.create<mt::GetProgramIdOp>(launch_config_.batch_program_id_dim);
+
+    std::vector<Value> bounds;
+    std::vector<Value> strides;
+    // Offsets from tensor origin, same for all thread blocks.
+    std::vector<Value> tensor_offsets;
+    // Offsets for a given thread block, typically pid * block size.
+    std::vector<Value> block_offsets;
+    std::vector<int32_t> block_dims;
+    std::vector<int32_t> dim_order;
+
+    auto add_dim = [&](const DimProperties& properties) {
+      const TensorIterationSpec::DimIterationSpec* spec =
+          analysis_.IterSpec(side.scope, hlo, properties.index);
+      if (spec == nullptr) {
+        return;
+      }
+      const int64_t stride = spec->at(0).stride;
+      int64_t count = spec->at(0).count;
+      if (side.scope == TritonFusionAnalysis::Scope::OUTPUT &&
+          properties.index == dims_.out_lhs_noncontracting_dim_idx &&
+          spec->size() == 1 && dims_.lhs_noncontracting_split.has_value()) {
+        // Dimension of the output produced by the non-contracting LHS one
+        // is logically split, major part is addressed using pid_batch.
+        count /= *dims_.lhs_noncontracting_split;
+      }
+      if (count % (properties.block_size * properties.split_value) != 0) {
+        boundary_checks.push_back(bounds.size());
+      }
+      bounds.push_back(Cst64(count));
+      strides.push_back(Cst64(stride));
+      block_offsets.push_back(properties.offset);
+      tensor_offsets.push_back(Cst32(spec->at(0).slice_start));
+      block_dims.push_back(properties.block_size);
+      dim_order.emplace(dim_order.begin(), dim_order.size());
+    };
+    for (const DimProperties& dim : side.tiled_dims) {
+      add_dim(dim);
+    }
+
+    int64_t stride_batch = 0;
+    int64_t offset_batch = 0;
+    if (side.scope != TritonFusionAnalysis::Scope::RHS &&
+        dims_.lhs_noncontracting_split) {
+      const TensorIterationSpec::DimIterationSpec* spec =
+          analysis_.IterSpec(side.scope, hlo, side.tiled_dims[0].index);
+      if (spec != nullptr) {
+        if (spec->size() > 1) {
+          // Support one specific kind of output transpose that splits the
+          // dimension originating from the split LHS non-contracting one.
+          stride_batch = spec->at(1).stride;
+        } else {
+          // Because the major part of the split is implemented using the
+          // batch logic stride_batch is populated here as the stride of
+          // the minor part times its size.
+          stride_batch = spec->at(0).stride *
+                         (spec->at(0).count / *dims_.lhs_noncontracting_split);
+        }
+        CHECK_NE(stride_batch, 0);
+      }
+    } else if (side.batch_dim_idx.has_value()) {
+      const TensorIterationSpec::DimIterationSpec* spec =
+          analysis_.IterSpec(side.scope, hlo, *side.batch_dim_idx);
+      if (spec != nullptr) {
+        stride_batch = spec->at(0).stride;
+        offset_batch = spec->at(0).slice_start;
+        CHECK_NE(stride_batch, 0);
+      }
+    }
+    if (stride_batch != 0) {
+      Value pid_offset_batch = b_.create<ma::MulIOp>(
+          b_.create<ma::AddIOp>(Cst(offset_batch), ConvertScalar(pid_batch)),
+          Cst(stride_batch));
+      base = AddPtr(b_, base, pid_offset_batch);
+    }
+
+    if (dims_.out_split_k_dim_idx.has_value()) {
+      const TensorIterationSpec::DimIterationSpec* spec = analysis_.IterSpec(
+          TritonFusionAnalysis::Scope::OUTPUT, hlo, *dims_.out_split_k_dim_idx);
+      if (spec != nullptr) {
+        int64_t stride_split_k = spec->at(0).stride;
+        Value offset_split_k =
+            b_.create<ma::MulIOp>(ConvertScalar(pid_k), Cst(stride_split_k));
+        base = AddPtr(b_, base, offset_split_k);
+      }
+    }
+
+    if (block_dims.empty()) {
+      return base;
+    }
+    auto tensor_ptr =
+        b_.create<mt::MakeTensorPtrOp>(base, bounds, strides, tensor_offsets,
+                                       block_dims, dim_order)
+            .getResult()
+            .cast<Value>();
+    tensor_ptr = b_.create<mt::AdvanceOp>(tensor_ptr.getType(), tensor_ptr,
+                                          block_offsets);
+    return tensor_ptr;
+  }
+
+ private:
+  // Extend int32 indexes to int64, if necessary.
+  Value ConvertScalar(Value value) {
+    if (index_ty_.getIntOrFloatBitWidth() == 64) {
+      return b_.create<ma::ExtSIOp>(index_ty_, value);
+    }
+    return value;
+  }
+
+  Value Cst(int64_t v) { return CreateConst(b_, index_ty_, v); }
+  Value Cst32(int64_t v) { return CreateConst(b_, i32_ty_, v); }
+  Value Cst64(int64_t v) { return CreateConst(b_, i64_ty_, v); }
+
+  ImplicitLocOpBuilder& b_;
+  absl::string_view libdevice_path_;
+  const HloDotInstruction* dot_instr_;
+  Type index_ty_;
+  TritonFusionAnalysis analysis_;
+  MatMulDims dims_;
+  MatMulLaunchConfig launch_config_;
+  Type i32_ty_ = b_.getI32Type();
+  Type i64_ty_ = b_.getI64Type();
+};
+
 }  // namespace
 
 LaunchDimensions GetMatMulLaunchDimensions(
-    const TritonFusionAnalysis& analysis, const HloComputation* computation,
+    const TritonFusionAnalysis& analysis,
+    absl::Span<const HloInstruction* const> roots,
+    const FusionBoundaryFn& fusion_boundary,
     const AutotuneResult::TritonGemmKey& config) {
-  const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(
-      hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot));
-  const MatMulDims dims(config, *dot_instr, analysis);
-  const MatMulLaunchConfig launch_config(config, *dot_instr, dims);
+  const auto* dot = static_cast<const HloDotInstruction*>(
+      HloFindIf(roots, fusion_boundary, [](const HloInstruction& node) {
+        return node.opcode() == HloOpcode::kDot;
+      }));
+  CHECK_NE(dot, nullptr);
+  const MatMulDims dims(config, *dot, analysis);
+  const MatMulLaunchConfig launch_config(config, *dot, dims);
   return launch_config.launch_dims;
 }
 
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
-// TODO(b/270937368): Split this up into smaller functions.
 Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
                   const TritonFusionAnalysis& analysis,
                   const HloComputation* computation, mlir::triton::FuncOp fn,
@@ -960,7 +1232,7 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
       ShapeUtil::ElementsIn(dot_instr->operand(0)->shape()) > INT_MAX ||
       ShapeUtil::ElementsIn(dot_instr->operand(1)->shape()) > INT_MAX ||
       ShapeUtil::ElementsIn(dot_instr->shape()) * config.split_k() > INT_MAX;
-  mlir::Type index_ty = builder.getIntegerType(use_64bit_indexing ? 64 : 32);
+  Type index_ty = builder.getIntegerType(use_64bit_indexing ? 64 : 32);
 
   const HloInstruction* root = dot_instr->parent()->root_instruction();
   CHECK(!root->shape().IsTuple());
@@ -971,7 +1243,6 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
   auto loc = mlir::NameLoc::get(builder.getStringAttr(dot_instr->name()));
   ImplicitLocOpBuilder b(loc, builder);
   Type i32_ty = b.getI32Type();
-  Type i64_ty = b.getI64Type();
 
   ValidateMatMulConfig(config, *dot_instr);
   const int split_k = config.split_k();
@@ -983,62 +1254,38 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
   const MatMulLaunchConfig launch_config(config, *dot_instr, dims);
   VLOG(6) << analysis.ToString();
 
-  constexpr int group_m = 8;
+  MatMulEmitterHelper emitter(builder, libdevice_path, dot_instr, b, index_ty,
+                              dims, launch_config, analysis);
 
+  constexpr int group_m = 8;
   const int64_t width = group_m * launch_config.grid_n;
 
-  auto pid_batch =
-      b.create<mt::GetProgramIdOp>(launch_config.batch_program_id_dim);
+  auto c32 = [&](int64_t v) { return CreateConst(b, b.getI32Type(), v); };
+
   auto pid_nc =
       b.create<mt::GetProgramIdOp>(launch_config.noncontracting_program_id_dim);
   auto pid_k = b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::Z);
 
-  auto group_id = b.create<ma::DivSIOp>(pid_nc, CreateConst(b, i32_ty, width));
-  ma::ConstantOp group_m_op = CreateConst(b, i32_ty, group_m);
+  auto group_id = b.create<ma::DivSIOp>(pid_nc, c32(width));
+  ma::ConstantOp group_m_op = c32(group_m);
   auto first_pid_m = b.create<ma::MulIOp>(group_id, group_m_op);
-  auto sub0 = b.create<ma::SubIOp>(CreateConst(b, i32_ty, launch_config.grid_m),
-                                   first_pid_m);
+  auto sub0 = b.create<ma::SubIOp>(c32(launch_config.grid_m), first_pid_m);
   auto group_size = b.create<ma::SelectOp>(
       b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, sub0, group_m_op), sub0,
       group_m_op);
 
-  // Extend int32 indexes to int64, if necessary.
-  auto convert_scalar = [&](Value value) -> Value {
-    if (index_ty.getIntOrFloatBitWidth() == 64) {
-      return b.create<ma::ExtSIOp>(index_ty, value);
-    }
-    return value;
-  };
-
   auto pid_m = b.create<ma::AddIOp>(first_pid_m,
                                     b.create<ma::RemSIOp>(pid_nc, group_size));
-  auto pid_m_offset =
-      b.create<ma::MulIOp>(pid_m, CreateConst(b, i32_ty, block_m));
+  auto pid_m_offset = b.create<ma::MulIOp>(pid_m, c32(block_m));
 
-  auto pid_n = b.create<ma::DivSIOp>(
-      b.create<ma::RemSIOp>(pid_nc, CreateConst(b, i32_ty, width)), group_size);
-  auto pid_n_offset =
-      b.create<ma::MulIOp>(pid_n, CreateConst(b, i32_ty, block_n));
+  auto pid_n = b.create<ma::DivSIOp>(b.create<ma::RemSIOp>(pid_nc, c32(width)),
+                                     group_size);
+  auto pid_n_offset = b.create<ma::MulIOp>(pid_n, c32(block_n));
 
-  auto pid_k_offset =
-      b.create<ma::MulIOp>(pid_k, CreateConst(b, i32_ty, block_k));
+  auto pid_k_offset = b.create<ma::MulIOp>(pid_k, c32(block_k));
 
-  Type dot_output_ty = TritonType(b, dot_instr->shape().element_type());
-  // Data type of dot() immediate inputs.
-  Type dot_input_ty = b.getF32Type();
-  {
-    const Type lhs_ty =
-        TritonType(b, dot_instr->operand(0)->shape().element_type());
-    const Type rhs_ty =
-        TritonType(b, dot_instr->operand(1)->shape().element_type());
-    CHECK(lhs_ty == rhs_ty);
-    dot_input_ty = lhs_ty;
-  }
-  // TODO(b/266862493): Accumulator can be integer too.
-  // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
-  mlir::FloatType acc_ty = (dot_output_ty.isF64() && dot_input_ty.isF64())
-                               ? b.getF64Type()
-                               : b.getF32Type();
+  mlir::FloatType acc_ty = emitter.GetDotAccumulatorType();
+
   ma::ConstantOp accumulator_init =
       CreateConst(b, acc_ty, 0, {block_m, block_n});
 
@@ -1047,25 +1294,26 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
   absl::flat_hash_map<int, const HloInstruction*> iter_args_to_parameters;
   absl::flat_hash_map<int, std::vector<int32_t>> iter_args_to_boundary_checks;
 
-  struct Side {
-    TritonFusionAnalysis::Scope scope;
-    std::vector<DimProperties> tiled_dims;
-    std::optional<int64_t> batch_dim_idx;
-  };
   Side lhs{TritonFusionAnalysis::Scope::LHS,
            /*tiled_dims=*/
-           {{dims.lhs_noncontracting_dim_idx, pid_m_offset, block_m},
-            {dims.lhs_contracting_dim_idx, pid_k_offset, block_k}},
+           {DimProperties(dims.lhs_noncontracting_dim_idx, pid_m_offset,
+                          block_m, /*split_value=*/1),
+            DimProperties(dims.lhs_contracting_dim_idx, pid_k_offset, block_k,
+                          split_k)},
            dims.lhs_batch_dim_idx};
   Side rhs{TritonFusionAnalysis::Scope::RHS,
            /*tiled_dims=*/
-           {{dims.rhs_contracting_dim_idx, pid_k_offset, block_k},
-            {dims.rhs_noncontracting_dim_idx, pid_n_offset, block_n}},
+           {DimProperties(dims.rhs_contracting_dim_idx, pid_k_offset, block_k,
+                          split_k),
+            DimProperties(dims.rhs_noncontracting_dim_idx, pid_n_offset,
+                          block_n, /*split_value=*/1)},
            dims.rhs_batch_dim_idx};
   Side out{TritonFusionAnalysis::Scope::OUTPUT,
            /*tiled_dims=*/
-           {{dims.out_lhs_noncontracting_dim_idx, pid_m_offset, block_m},
-            {dims.out_rhs_noncontracting_dim_idx, pid_n_offset, block_n}},
+           {DimProperties(dims.out_lhs_noncontracting_dim_idx, pid_m_offset,
+                          block_m, /*split_value=*/1),
+            DimProperties(dims.out_rhs_noncontracting_dim_idx, pid_n_offset,
+                          block_n, /*split_value=*/1)},
            dims.out_batch_dim_idx};
 
   auto body_builder = [&](mlir::OpBuilder&, mlir::Location, Value ki,
@@ -1095,10 +1343,9 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
         // Only the contracting dimensions are advanced.
         if (dim.index == (is_lhs ? dims.lhs_contracting_dim_idx
                                  : dims.rhs_contracting_dim_idx)) {
-          increments.push_back(
-              CreateConst(b, i32_ty, dim.block_size * split_k));
+          increments.push_back(c32(dim.block_size * split_k));
         } else {
-          increments.push_back(CreateConst(b, i32_ty, 0));
+          increments.push_back(c32(0));
         }
       }
       if (increments.empty()) {
@@ -1110,15 +1357,8 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
     }
 
     // Emit all operations of LHS and RHS scopes.
-    auto make_input = [&](Side& side, int64_t operand_index, auto& values) {
-      return *EmitScope(
-          b, libdevice_path, &analysis, side.scope, side.tiled_dims,
-          dot_instr->parent()->MakeInstructionPostOrderFrom(
-              const_cast<HloInstruction&>(*dot_instr->operand(operand_index))),
-          values);
-    };
-    Value dot_input_lhs = make_input(lhs, 0, values_lhs);
-    Value dot_input_rhs = make_input(rhs, 1, values_rhs);
+    Value dot_input_lhs = emitter.MakeInput(lhs, 0, values_lhs);
+    Value dot_input_rhs = emitter.MakeInput(rhs, 1, values_rhs);
 
     // Operation in the fusion before the dot can alter the elements of the
     // tiles that were zero masked during loads. These have to be zeroed here
@@ -1167,151 +1407,35 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
       analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).size() +
       analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).size() + 1);
 
-  auto emit_tensor_pointer =
-      [&](const HloInstruction* hlo, const Side& side, Value base,
-          std::vector<int32_t>& boundary_checks) -> Value {
-    std::vector<Value> bounds;
-    std::vector<Value> strides;
-    std::vector<Value> offsets;
-    std::vector<int32_t> block_dims;
-    std::vector<int32_t> dim_order;
-
-    auto add_dim = [&](const DimProperties& properties) {
-      const TensorIterationSpec::DimIterationSpec* spec =
-          analysis.IterSpec(side.scope, hlo, properties.index);
-      if (spec == nullptr) {
-        return;
-      }
-      const int64_t stride = spec->at(0).stride;
-      int64_t count = spec->at(0).count;
-      if (side.scope == TritonFusionAnalysis::Scope::OUTPUT &&
-          properties.index == dims.out_lhs_noncontracting_dim_idx &&
-          spec->size() == 1 && dims.lhs_noncontracting_split.has_value()) {
-        // Dimension of the output produced by the non-contracting LHS one
-        // is logically split, major part is addressed using pid_batch.
-        count /= *dims.lhs_noncontracting_split;
-      }
-      if (count % properties.block_size != 0) {
-        boundary_checks.push_back(bounds.size());
-      }
-      bounds.push_back(CreateConst(b, i64_ty, count));
-      strides.push_back(CreateConst(b, i64_ty, stride));
-      offsets.push_back(properties.offset);
-      block_dims.push_back(properties.block_size);
-      dim_order.emplace(dim_order.begin(), dim_order.size());
-    };
-    for (const DimProperties& dim : side.tiled_dims) {
-      add_dim(dim);
-    }
-
-    int64_t stride_batch = 0;
-    if (side.scope != TritonFusionAnalysis::Scope::RHS &&
-        dims.lhs_noncontracting_split) {
-      const TensorIterationSpec::DimIterationSpec* spec =
-          analysis.IterSpec(side.scope, hlo, side.tiled_dims[0].index);
-      if (spec != nullptr) {
-        if (spec->size() > 1) {
-          // Support one specific kind of output transpose that splits the
-          // dimension originating from the split LHS non-contracting one.
-          stride_batch = spec->at(1).stride;
-        } else {
-          // Because the major part of the split is implemented using the
-          // batch logic stride_batch is populated here as the stride of
-          // the minor part times its size.
-          stride_batch = spec->at(0).stride *
-                         (spec->at(0).count / *dims.lhs_noncontracting_split);
-        }
-        CHECK_NE(stride_batch, 0);
-      }
-    } else if (side.batch_dim_idx.has_value()) {
-      const TensorIterationSpec::DimIterationSpec* spec =
-          analysis.IterSpec(side.scope, hlo, *side.batch_dim_idx);
-      if (spec != nullptr) {
-        stride_batch = spec->at(0).stride;
-        CHECK_NE(stride_batch, 0);
-      }
-    }
-    if (stride_batch != 0) {
-      Value offset_batch = b.create<ma::MulIOp>(
-          convert_scalar(pid_batch), CreateConst(b, index_ty, stride_batch));
-      base = AddPtr(b, base, offset_batch);
-    }
-
-    if (dims.out_split_k_dim_idx.has_value()) {
-      const TensorIterationSpec::DimIterationSpec* spec = analysis.IterSpec(
-          TritonFusionAnalysis::Scope::OUTPUT, hlo, *dims.out_split_k_dim_idx);
-      if (spec != nullptr) {
-        int64_t stride_split_k = spec->at(0).stride;
-        Value offset_split_k = b.create<ma::MulIOp>(
-            convert_scalar(pid_k), CreateConst(b, index_ty, stride_split_k));
-        base = AddPtr(b, base, offset_split_k);
-      }
-    }
-
-    if (block_dims.empty()) {
-      return base;
-    }
-    return b.create<mt::MakeTensorPtrOp>(base, bounds, strides, offsets,
-                                         block_dims, dim_order);
-  };
-  for (const auto& side : {lhs, rhs}) {
+  for (const Side& side : {lhs, rhs}) {
     for (const HloInstruction* param : analysis.ScopeParameters(side.scope)) {
       CHECK(iter_args_to_parameters.insert({iter_args.size(), param}).second);
-      iter_args.push_back(emit_tensor_pointer(
-          param, side, fn.getArgument(param->parameter_number()),
+      iter_args.push_back(emitter.EmitTensorPointer(
+          param, side, fn.getArgument(param->parameter_number()), pid_k,
           iter_args_to_boundary_checks[iter_args.size()]));
     }
   }
 
   iter_args.push_back(accumulator_init);
-  Value acc_final =
-      b.create<mlir::scf::ForOp>(
-           /*lowerBound=*/b.create<ma::ConstantIntOp>(0, /*width=*/32),
-           /*upperBound=*/b.create<ma::ConstantIntOp>(dims.k, /*width=*/32),
-           /*step=*/
-           b.create<ma::ConstantIntOp>(block_k * split_k,
-                                       /*width=*/32),
-           /*iterArgs=*/iter_args, body_builder)
-          .getResult(iter_args.size() - 1);
+  Value acc_final = b.create<mlir::scf::ForOp>(
+                         /*lowerBound=*/c32(0),
+                         /*upperBound=*/c32(dims.k),
+                         /*step=*/c32(block_k * split_k),
+                         /*iterArgs=*/iter_args, body_builder)
+                        .getResult(iter_args.size() - 1);
   absl::flat_hash_map<const HloInstruction*, Value> values_out;
   values_out[dot_instr] =
       Cast(b, acc_final, TritonType(b, dot_instr->shape().element_type()));
 
-  // Collect all instructions of the dot's output scope.
-  absl::flat_hash_set<const HloInstruction*> to_order;
-  {
-    std::queue<const HloInstruction*> to_add;
-    if (root != dot_instr) {
-      to_add.push(root);
-    }
-    while (!to_add.empty()) {
-      const HloInstruction* current = to_add.front();
-      for (const HloInstruction* operand : current->operands()) {
-        if (!to_order.contains(operand)) {
-          if (operand != dot_instr) {
-            to_add.push(operand);
-          }
-        }
-      }
-      CHECK(to_order.insert(current).second);
-      to_add.pop();
-    }
-  }
-  // Order them producers before consumers.
-  std::vector<const HloInstruction*> to_emit;
-  for (const HloInstruction* hlo :
-       dot_instr->parent()->MakeInstructionPostOrder()) {
-    if (to_order.contains(hlo)) {
-      to_emit.push_back(hlo);
-    }
-  }
   // Emit the output scope.
-  if (!to_emit.empty()) {
+  if (std::vector<const HloInstruction*> to_emit =
+          emitter.EpiloguePostOrderTransitiveOperands(root);
+      !to_emit.empty()) {
     for (const HloInstruction* parameter :
          analysis.ScopeParameters(TritonFusionAnalysis::Scope::OUTPUT)) {
       std::vector<int32_t> boundary_checks;
-      Value tensor_pointer = emit_tensor_pointer(
-          parameter, out, fn.getArgument(parameter->parameter_number()),
+      Value tensor_pointer = emitter.EmitTensorPointer(
+          parameter, out, fn.getArgument(parameter->parameter_number()), pid_k,
           boundary_checks);
       CHECK(values_out
                 .insert({parameter,
@@ -1330,9 +1454,9 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
     const HloInstruction* producer =
         root->shape().IsTuple() ? root->operand(i) : root;
     std::vector<int32_t> boundary_checks;
-    Value tensor_pointer = emit_tensor_pointer(
+    Value tensor_pointer = emitter.EmitTensorPointer(
         producer, out,
-        fn.getArgument(i + dot_instr->parent()->num_parameters()),
+        fn.getArgument(i + dot_instr->parent()->num_parameters()), pid_k,
         boundary_checks);
     b.create<mt::StoreOp>(tensor_pointer, values_out[producer], boundary_checks,
                           mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
@@ -1341,10 +1465,13 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
 }
 
 LaunchDimensions GetSoftMaxLaunchDimensions(
-    const TritonFusionAnalysis&, const HloComputation* computation,
+    absl::Span<const HloInstruction* const> roots,
+    const FusionBoundaryFn& fusion_boundary,
     const AutotuneResult::TritonGemmKey& config) {
-  const HloInstruction* reduce = hlo_query::GetFirstInstructionWithOpcode(
-      *computation, HloOpcode::kReduce);
+  const HloInstruction* reduce =
+      HloFindIf(roots, fusion_boundary, [](const HloInstruction& node) {
+        return node.opcode() == HloOpcode::kReduce;
+      });
   CHECK_NE(reduce, nullptr);
   const Shape& reduce_input_shape = reduce->operand(0)->shape();
   int num_rows = 1;
@@ -1422,7 +1549,8 @@ Status EmitSoftMax(mlir::OpBuilder builder, absl::string_view libdevice_path,
       b, make_tensor_pointer(fn.getArgument(0)), boundary_checks);
   // Dimension 0 is the reduced one by construction and it's the only one
   // present in the tile shapes.
-  std::vector<DimProperties> tiled_dims = {{0, row_index, block_row}};
+  std::vector<DimProperties> tiled_dims = {
+      DimProperties(0, row_index, block_row, /*split_value=*/1)};
   TF_ASSIGN_OR_RETURN(
       Value result,
       EmitScope(b, libdevice_path, &analysis,
@@ -1468,13 +1596,12 @@ StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
   return llvmModule;
 }
 
-StatusOr<LaunchDimensions> TritonWrapper(
-    absl::string_view fn_name, const HloComputation* hlo_computation,
-    absl::string_view fusion_kind, const se::CudaComputeCapability& cc,
-    const GpuDeviceInfo& device_info,
+StatusOr<TritonWrapperResult> TritonWrapper(
+    const TritonFusionAnalysis& analysis, absl::string_view fn_name,
+    const HloComputation* hlo_computation, absl::string_view fusion_kind,
+    const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
     const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
-    LaunchDimensionsGenerator launch_dims_generator, TritonIrEmitter ir_emitter,
-    mlir::MLIRContext& mlir_context) {
+    TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context) {
   if (fusion_kind == kTritonGemmFusionKind) {
     // This is a heuristic that serves as a proxy for register usage and code
     // size.
@@ -1515,7 +1642,8 @@ StatusOr<LaunchDimensions> TritonWrapper(
   mlir_context.loadDialect<mt::TritonDialect>();
   mlir::OpBuilder b(&mlir_context);
   auto loc = mlir::NameLoc::get(b.getStringAttr(hlo_computation->name()));
-  mlir::OwningOpRef<mlir::ModuleOp> triton_module = mlir::ModuleOp::create(loc);
+  mlir::OwningOpRef<mlir::ModuleOp> triton_module =
+      llvm_ir::CreateMlirModuleOp(loc);
   b.setInsertionPointToEnd(triton_module->getBody());
 
   VLOG(3) << hlo_computation->ToString(HloPrintOptions::ShortParsable());
@@ -1525,13 +1653,15 @@ StatusOr<LaunchDimensions> TritonWrapper(
   SmallVector<Type> fn_arg_types;
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
     fn_arg_types.push_back(mt::PointerType::get(
-        TritonType(b, p->shape().element_type()), mn::kGlobalMemorySpace));
+        StorageType(b, TritonType(b, p->shape().element_type())),
+        mn::kGlobalMemorySpace));
   }
 
   for (const ShapeUtil::IndexedShape& s :
        ShapeUtil::GetLeafShapes(hlo_computation->root_instruction()->shape())) {
     fn_arg_types.push_back(mt::PointerType::get(
-        TritonType(b, s.shape.element_type()), mn::kGlobalMemorySpace));
+        StorageType(b, TritonType(b, s.shape.element_type())),
+        mn::kGlobalMemorySpace));
   }
 
   auto fn = b.create<mt::FuncOp>(loc, fn_name,
@@ -1548,16 +1678,13 @@ StatusOr<LaunchDimensions> TritonWrapper(
                                .debug_options()
                                .xla_gpu_cuda_data_dir());
 
-  TF_ASSIGN_OR_RETURN(
-      auto analysis,
-      fusion_kind == kTritonGemmFusionKind
-          ? TritonFusionAnalysis::Execute(*hlo_computation, config.split_k())
-          : TritonFusionAnalysis::Execute(*hlo_computation));
   TF_RETURN_IF_ERROR(ir_emitter(b, libdevice_path, analysis, hlo_computation,
                                 fn, config,
                                 device_info.shared_memory_per_block_optin));
 
   b.create<mt::ReturnOp>(loc);
+
+  VLOG(6) << llvm_ir::DumpToString(*triton_module);
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
     DumpToFileInDirOrStdout(*hlo_computation->parent(), "triton_ir", "ttir",
                             llvm_ir::DumpToString(*triton_module));
@@ -1645,10 +1772,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
                                    llvm::Linker::Flags::OverrideFromSrc));
   LogAndVerify(llvm_module);
 
-  LaunchDimensions launch_dimensions =
-      launch_dims_generator(analysis, hlo_computation, config);
-  launch_dimensions.SetSharedMemBytes(shared_mem_bytes);
-  return launch_dimensions;
+  return {{shared_mem_bytes}};
 }
 
 }  // namespace gpu

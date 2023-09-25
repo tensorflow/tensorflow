@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/pattern_matcher.h"
@@ -4680,6 +4681,40 @@ comp2 {
   EXPECT_EQ(
       module->entry_computation()->ComputeProgramShape().result().layout(),
       Layout({1, 0, 2, 3}));
+}
+
+// Note that nontrivial async op is not legal semantics and should be rejected
+// by HloVerifier, but illegal modules should still be inspectable during
+// debugging.
+TEST_F(HloParserTest, NontrivialAsyncOpRoundTrip) {
+  const std::string original = R"(
+HloModule module
+
+%async_wrapped {
+  %async_param.1 = s32[1024]{0} parameter(0)
+  %copy = s32[1024]{0} copy(s32[1024]{0} %async_param.1)
+  %async_param.2 = s32[256]{0} parameter(1)
+  %async_param.3 = s32[] parameter(2)
+  ROOT %dus = s32[1024]{0} dynamic-update-slice(s32[1024]{0} %copy, s32[256]{0} %async_param.2, s32[] %async_param.3)
+}
+
+ENTRY %main {
+  %input.5 = s32[] parameter(1)
+  %broadcast = s32[1024]{0} broadcast(s32[] %input.5), dimensions={}
+  %input.0 = s32[256]{0} parameter(0)
+  %async-start = ((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) async-start(%broadcast, %input.0, %input.5), async_group_id=0, calls=%async_wrapped
+  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) %async-start), async_group_id=0, calls=%async_wrapped
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(original));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_module,
+      ParseAndReturnUnverifiedModule(module->ToString(
+          HloPrintOptions().set_syntax_sugar_async_ops(true))));
+  auto fp_options = HloPrintOptions::Fingerprint();
+  EXPECT_EQ(roundtrip_module->ToString(fp_options),
+            module->ToString(fp_options));
 }
 
 TEST_F(HloParserTest, LexesAsJsonDict) {

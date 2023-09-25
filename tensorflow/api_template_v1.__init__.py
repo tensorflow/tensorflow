@@ -22,7 +22,7 @@ import site as _site
 import sys as _sys
 import typing as _typing
 
-# pylint: disable=g-bad-import-order
+# pylint: disable=g-bad-import-order,protected-access,g-import-not-at-top
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.platform import tf_logging as _logging
@@ -65,11 +65,9 @@ elif _tf_api_dir not in __path__:
 _current_module.compat.v2  # pylint: disable=pointless-statement
 
 # Load tensorflow-io-gcs-filesystem if enabled
-# pylint: disable=g-import-not-at-top
 if (_os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "true" or
     _os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "1"):
   import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
-# pylint: enable=g-import-not-at-top
 
 # Lazy-load estimator.
 _estimator_module = "tensorflow_estimator.python.estimator.api._v1.estimator"
@@ -79,15 +77,48 @@ if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "estimator", estimator)
 
-_keras_module = "keras.api._v1.keras"
-keras = _LazyLoader("keras", globals(), _keras_module)
-_module_dir = _module_util.get_parent_dir_for_name(_keras_module)
-if _module_dir:
-  _current_module.__path__ = [_module_dir] + _current_module.__path__
-setattr(_current_module, "keras", keras)
+# Keras v1 loading.
+_keras_to_use = None
+_keras_package_name = None
+_keras_version = None
+if _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"):
+  # Users can opt out of Keras 3 with this environment variable.
+  try:
+    import tf_keras.api._v1.keras as _keras_to_use
+    _keras_package_name = "tf_keras.api._v1.keras"
+    _keras_version = "tf_keras"
+  except ImportError:
+    _logging.warning(
+        "Your environment has TF_USE_LEGACY_KERAS set to True, but you "
+        "do not have the tf_keras package installed. You must install it "
+        "in order to use the legacy tf.keras. Install it via: "
+        "`pip install tf_keras`"
+    )
+else:
+  try:
+    import keras as _keras_module
+
+    if _keras_module.__version__.startswith("3."):
+      # This is the Keras 3.x case. It does not have v1 compatibility.
+      _keras_to_use = None
+      _keras_package_name = None
+      _keras_version = "keras_3"
+    else:
+      # This is the Keras 2.x case.
+      import keras.api._v1.keras as _keras_to_use
+      _keras_package_name = "keras.api._v1.keras"
+      _keras_version = "keras_2"
+  except (ImportError, AttributeError):
+    pass
+
+if _keras_to_use is not None:
+  setattr(_current_module, "keras", _keras_to_use)
+else:
+    # TF will not have `tf.keras` in this case. This should not be silent.
+  _logging.warning("Unable to load `tf.keras`. Check that the `keras` package "
+                   "is installed.")
 
 
-from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
 _CONTRIB_WARNING = """
 The TensorFlow contrib module will not be included in TensorFlow 2.0.
 For more information, please see:
@@ -96,16 +127,15 @@ For more information, please see:
   * https://github.com/tensorflow/io (for I/O related ops)
 If you depend on functionality not listed there, please file an issue.
 """
-contrib = LazyLoader("contrib", globals(), "tensorflow.contrib",
-                     _CONTRIB_WARNING)
-del LazyLoader
+contrib = _LazyLoader("contrib", globals(), "tensorflow.contrib",
+                      _CONTRIB_WARNING)
 # The templated code that replaces the placeholder above sometimes
 # sets the __all__ variable. If it does, we have to be sure to add
 # "contrib".
 if "__all__" in vars():
   vars()["__all__"].append("contrib")
 
-from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
+from tensorflow.python.platform import flags
 # The "app" module will be imported as part of the placeholder section above.
 _current_module.app.flags = flags  # pylint: disable=undefined-variable
 setattr(_current_module, "flags", flags)
@@ -114,19 +144,20 @@ _major_api_version = 1
 
 # Add module aliases from Keras to TF.
 # Some tf endpoints actually lives under Keras.
-if hasattr(_current_module, "keras"):
+if (hasattr(_current_module, "keras") and
+    _keras_version in ("tf_keras", "keras_2")):
   # It is possible that keras is a lazily loaded module, which might break when
   # actually trying to import it. Have a Try-Catch to make sure it doesn't break
   # when it doing some very initial loading, like tf.compat.v2, etc.
   try:
-    _layer_package = "keras.api._v1.keras.__internal__.legacy.layers"
+    _layer_package = f"{_keras_package_name}.__internal__.legacy.layers"
     layers = _LazyLoader("layers", globals(), _layer_package)
     _module_dir = _module_util.get_parent_dir_for_name(_layer_package)
     if _module_dir:
       _current_module.__path__ = [_module_dir] + _current_module.__path__
     setattr(_current_module, "layers", layers)
 
-    _legacy_rnn_package = "keras.api._v1.keras.__internal__.legacy.rnn_cell"
+    _legacy_rnn_package = f"{_keras_package_name}.__internal__.legacy.rnn_cell"
     _rnn_cell = _LazyLoader("legacy_rnn", globals(), _legacy_rnn_package)
     _module_dir = _module_util.get_parent_dir_for_name(_legacy_rnn_package)
     if _module_dir:
@@ -140,11 +171,10 @@ if hasattr(_current_module, "keras"):
   # SavedModel registry.
   # See b/196254385 for more details.
   try:
-    importlib.import_module("keras.optimizers")
-  except (ImportError, AttributeError):
-    pass
-  try:
-    importlib.import_module("keras.src.optimizers")
+    if _keras_version == "keras_2":
+      importlib.import_module("keras.src.optimizers")
+    elif _keras_version == "tf_keras":
+      importlib.import_module("tf_keras.src.optimizers")
   except (ImportError, AttributeError):
     pass
 del importlib
@@ -197,15 +227,20 @@ if _os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH", ""):
   )
 
 # Explicitly import lazy-loaded modules to support autocompletion.
-# pylint: disable=g-import-not-at-top
 if _typing.TYPE_CHECKING:
   from tensorflow_estimator.python.estimator.api._v1 import estimator as estimator
-  from keras.api._v1 import keras
-  from keras.api._v1.keras import losses
-  from keras.api._v1.keras import metrics
-  from keras.api._v1.keras import optimizers
-  from keras.api._v1.keras import initializers
-# pylint: enable=g-import-not-at-top
+  if _keras_version == "keras_2":
+    from keras.api._v1 import keras
+    from keras.api._v1.keras import losses
+    from keras.api._v1.keras import metrics
+    from keras.api._v1.keras import optimizers
+    from keras.api._v1.keras import initializers
+  elif _keras_version == "tf_keras":
+    from tf_keras.api._v1 import keras
+    from tf_keras.api._v1.keras import losses
+    from tf_keras.api._v1.keras import metrics
+    from tf_keras.api._v1.keras import optimizers
+    from tf_keras.api._v1.keras import initializers
 
 # Delete modules that should be hidden from dir().
 # Don't fail if these modules are not available.

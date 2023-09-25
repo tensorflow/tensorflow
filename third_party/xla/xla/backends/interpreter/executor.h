@@ -46,8 +46,7 @@ using Args = absl::Span<const DeviceMemoryBase>;
 
 class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
  public:
-  explicit XlaInterpreterExecutor(const PluginConfig &plugin_config);
-  ~XlaInterpreterExecutor() override;
+  XlaInterpreterExecutor() = default;
 
   tsl::Status Init(int device_ordinal, DeviceOptions device_options) override {
     return ::tsl::OkStatus();
@@ -187,8 +186,6 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   DeviceMemoryBase AllocateSingleOutput(const xla::Shape &shape);
 
   tsl::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(const xla::Shape &shape);
-
-  const PluginConfig plugin_config_;
 };
 
 }  // namespace interpreter

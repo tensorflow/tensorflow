@@ -94,14 +94,13 @@ TEST(ExecuteOptionsTest, SendRecvNotSupported) {
 }
 
 TEST(ExecuteOptionsTest, ApplyOptionsCanParseStrings) {
-  using OptionOverride = std::variant<std::string, bool, int64_t>;
+  using OptionOverride = std::variant<std::string, bool, int64_t, double>;
   std::vector<std::pair<std::string, OptionOverride>> env_override_options;
   env_override_options = {
       {"xla_gpu_use_runtime_fusion", std::string("True")},
       {"xla_gpu_graph_min_graph_size", std::string("2")},
       {"xla_gpu_redzone_scratch_max_megabytes", std::string("3400")},
-      {"xla_gpu_auto_spmd_partitioning_memory_budget_ratio",
-       std::string("0.9")},
+      {"xla_gpu_auto_spmd_partitioning_memory_budget_ratio", 0.9},
       {"xla_gpu_pgle_profile_file_or_directory_path", std::string("abc")}};
   CompileOptions src;
   src.env_option_overrides = env_override_options;

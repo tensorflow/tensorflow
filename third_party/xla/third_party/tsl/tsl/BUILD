@@ -94,9 +94,9 @@ config_setting(
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = if_oss(
         {"crosstool_top": "//external:android/crosstool"},
@@ -107,9 +107,9 @@ config_setting(
 
 config_setting(
     name = "emscripten",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "emscripten"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/cpu:wasm32"],
+        [],
     ),
     values = if_oss(
         {"crosstool_top": "//external:android/emscripten"},
@@ -124,9 +124,9 @@ config_setting(
 # Google builds.
 config_setting(
     name = "macos_x86_64_default",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:macos"],
+        [],
     ),
     values = {
         "apple_platform_type": "macos",
@@ -137,9 +137,9 @@ config_setting(
 
 config_setting(
     name = "macos_x86_64_crosscompile",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:macos"],
+        [],
     ),
     values = {
         "apple_platform_type": "macos",
@@ -159,9 +159,9 @@ selects.config_setting_group(
 
 config_setting(
     name = "macos_arm64",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:macos"],
+        [],
     ),
     values = {
         "apple_platform_type": "macos",
@@ -182,9 +182,9 @@ selects.config_setting_group(
 config_setting(
     name = "windows",
     # Internal builds query the target OS.
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "windows"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:windows"],
+        [],
     ),
     # OSS builds query the CPU type.
     values = if_oss(
@@ -197,9 +197,9 @@ config_setting(
 # TODO(jakeharmon): Remove equivalent from tensorflow/BUILD
 config_setting(
     name = "ios",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:ios"],
+        [],
     ),
     values = if_oss(
         {"apple_platform_type": "ios"},
@@ -225,9 +225,9 @@ config_setting(
 
 config_setting(
     name = "android_arm",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -270,9 +270,9 @@ config_setting(
 
 config_setting(
     name = "ios_x86_64",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:ios"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -299,9 +299,9 @@ config_setting(
 
 config_setting(
     name = "fuchsia",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "fuchsia"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:fuchsia"],
+        [],
     ),
     values = if_oss(
         # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
@@ -314,9 +314,9 @@ config_setting(
 # TODO(jakeharmon): Remove equivalent from tensorflow/BUILD
 config_setting(
     name = "android_x86",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -367,9 +367,9 @@ selects.config_setting_group(
 # TODO(jakeharmon): Remove equivalent from tensorflow/BUILD
 config_setting(
     name = "fuchsia_x86_64",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "fuchsia"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:fuchsia"],
+        [],
     ),
     values = {
         "cpu": "x86_64",
@@ -441,7 +441,6 @@ package_group(
         "//third_party/cloud_tpu/inference_converter/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
-        "//third_party/py/keras/...",
         "//third_party/yggdrasil_decision_forests/...",
         "//tsl/...",
     ],

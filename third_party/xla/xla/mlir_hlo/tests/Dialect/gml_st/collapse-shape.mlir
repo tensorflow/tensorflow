@@ -108,7 +108,7 @@ func.func @reduction(%arg0: tensor<2x4x2048x4096xf32>) -> tensor<2x4x2048xf32> {
   %0 = tensor.empty() : tensor<2x4x2048xf32>
   %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<2x4x2048xf32>)
       -> tensor<2x4x2048xf32>
-  %2 = linalg.reduce { arith.maxf }
+  %2 = linalg.reduce { arith.maximumf }
       ins(%arg0 : tensor<2x4x2048x4096xf32>)
       outs(%1 : tensor<2x4x2048xf32>)
       dimensions = [3]
@@ -125,7 +125,7 @@ func.func @reduction(%arg0: tensor<2x4x2048x4096xf32>) -> tensor<2x4x2048xf32> {
 // CHECK-1-SAME:     [0, 1, 2], [3]]
 // CHECK-1:        %[[EMPTY:.*]] = tensor.empty()
 // CHECK-1:        %[[FILL:.*]] = linalg.fill ins(%[[CST]] : f32) outs(%[[EMPTY]] : tensor<16384xf32>)
-// CHECK-1:        %[[REDUCED:.*]] = linalg.reduce { arith.maxf }
+// CHECK-1:        %[[REDUCED:.*]] = linalg.reduce { arith.maximumf }
 // CHECK-1-SAME:       ins(%[[COLLAPSED]] : tensor<16384x4096xf32>)
 // CHECK-1-SAME:       outs(%[[FILL]] : tensor<16384xf32>)
 // CHECK-1:        %[[EXPANDED:.*]] = tensor.expand_shape %[[REDUCED]] [
@@ -195,7 +195,7 @@ func.func @partial_softmax(%arg0: tensor<2x4x2048x4096xf32>)
   %0 = tensor.empty() : tensor<2x4x2048xf32>
   %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<2x4x2048xf32>)
       -> tensor<2x4x2048xf32>
-  %2 = linalg.reduce { arith.maxf }
+  %2 = linalg.reduce { arith.maximumf }
          ins(%arg0 : tensor<2x4x2048x4096xf32>)
          outs(%1 : tensor<2x4x2048xf32>)
          dimensions = [3]
@@ -216,7 +216,7 @@ func.func @partial_softmax(%arg0: tensor<2x4x2048x4096xf32>)
 // CHECK-1-SAME:     [0, 1, 2], [3]]
 // CHECK-1:        %[[EMPTY:.*]] = tensor.empty()
 // CHECK-1:        %[[FILL:.*]] = linalg.fill ins(%[[CST]] : f32) outs(%[[EMPTY]] : tensor<16384xf32>)
-// CHECK-1:        %[[REDUCE:.*]] = linalg.reduce { arith.maxf }
+// CHECK-1:        %[[REDUCE:.*]] = linalg.reduce { arith.maximumf }
 // CHECK-1-SAME:       ins(%[[COLLAPSED]] : tensor<16384x4096xf32>)
 // CHECK-1-SAME:       outs(%[[FILL]] : tensor<16384xf32>)
 // CHECK-1-SAME:       dimensions = [1]
@@ -241,7 +241,7 @@ func.func @partial_softmax(%arg0: tensor<2x4x2048x4096xf32>)
 // CHECK-2-SAME:     [0, 1], [2], [3]]
 // CHECK-2:        %[[EMPTY:.*]] = tensor.empty()
 // CHECK-2:        %[[FILL:.*]] = linalg.fill ins(%[[CST]] : f32) outs(%[[EMPTY]] : tensor<8x2048xf32>)
-// CHECK-2:        %[[REDUCE:.*]] = linalg.reduce { arith.maxf }
+// CHECK-2:        %[[REDUCE:.*]] = linalg.reduce { arith.maximumf }
 // CHECK-2-SAME:       ins(%[[COLLAPSED]] : tensor<8x2048x4096xf32>)
 // CHECK-2-SAME:       outs(%[[FILL]] : tensor<8x2048xf32>)
 // CHECK-2-SAME:       dimensions = [2]

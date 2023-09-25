@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
 #include "tsl/platform/blocking_counter.h"
 
 namespace xla {

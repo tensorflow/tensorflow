@@ -44,7 +44,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 193
+_version = 197
 
 # Version number for MLIR:Python components.
 mlir_api_version = 54
@@ -59,12 +59,7 @@ logger = logging.getLogger(__name__)
 _NameValueMapping = Mapping[str, Union[str, int, List[int], float]]
 
 
-def make_interpreter_client():
-  return _xla.get_interpreter_client()
-
-
-def make_cpu_client(*, use_tfrt: bool = True) -> ...:
-  assert use_tfrt
+def make_cpu_client() -> ...:
   return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 

@@ -3225,7 +3225,9 @@ void HloInstruction::PrintWithCanonicalNameMap(
   }
 
   // Print opcode, operand(s).
-  if (options.syntax_sugar_async_ops() && HloOpcodeIsAsync(opcode())) {
+  if (options.syntax_sugar_async_ops() && HloOpcodeIsAsync(opcode()) &&
+      (!called_computations_.empty() &&
+       called_computations_[0]->CanExpandIntoSingleInstruction())) {
     absl::string_view suffix = [&]() {
       switch (opcode()) {
         case HloOpcode::kAsyncStart:
@@ -3423,7 +3425,9 @@ void HloInstruction::PrintExtraAttributes(
         });
       }
     } else if (HloOpcodeIsAsync(opcode())) {
-      if (!options.syntax_sugar_async_ops()) {
+      if (!options.syntax_sugar_async_ops() ||
+          (!called_computations().empty() &&
+           !called_computations_[0]->CanExpandIntoSingleInstruction())) {
         printer.Next([this, &options](Printer* printer) {
           printer->Append("calls=");
           PrintNameInternal(printer, async_wrapped_computation()->name(),
@@ -5117,9 +5121,7 @@ const DomainMetadata& HloInstruction::user_side_metadata() const {
 }
 
 bool HloInstruction::IsAsynchronous() const {
-  return opcode() == HloOpcode::kAsyncStart ||
-         opcode() == HloOpcode::kAsyncUpdate ||
-         opcode() == HloOpcode::kAsyncDone;
+  return HloOpcodeIsAsync(opcode());
 }
 
 HloComputation* HloInstruction::async_wrapped_computation() const {
