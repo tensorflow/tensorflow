@@ -662,7 +662,7 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
 /* static */ tsl::Status GpuDriver::DestroyGraphExec(CUgraphExec exec) {
   VLOG(2) << "Destroying CUDA executable graph " << exec;
   RETURN_IF_CUDA_RES_ERROR(cuGraphExecDestroy(exec),
-                           "Failed to destroy CUDA graph");
+                           "Failed to destroy CUDA executable graph");
   return ::tsl::OkStatus();
 }
 

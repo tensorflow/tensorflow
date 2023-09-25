@@ -40,9 +40,11 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
+#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel_cache_config.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
@@ -844,8 +846,10 @@ GpuExecutor::GetStreamImplementation() {
 
 tsl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
 GpuExecutor::GetCommandBufferImplementation() {
-  return std::unique_ptr<internal::CommandBufferInterface>(
-      new GpuCommandBuffer());
+  VLOG(2) << "Create CUDA command buffer (CUDA graph)";
+  GpuGraphHandle graph = nullptr;
+  TF_RETURN_IF_ERROR(GpuDriver::CreateGraph(&graph));
+  return std::make_unique<GpuCommandBuffer>(graph);
 }
 
 void* GpuExecutor::GpuContextHack() { return context_; }
