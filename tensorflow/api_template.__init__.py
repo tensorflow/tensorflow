@@ -112,7 +112,7 @@ else:
     if _keras_module.__version__.startswith("3."):
       # This is the Keras 3.x case.
       _keras_to_use = _keras_module._tf_keras
-      _keras_package_name = "keras._tf_keras"
+      _keras_package_name = "keras._tf_keras.keras"
       _keras_version = "keras_3"
     else:
       # This is the Keras 2.x case.
@@ -123,7 +123,12 @@ else:
     pass
 
 if _keras_to_use is not None:
-  setattr(_current_module, "keras", _keras_to_use)
+  _module_dir = _module_util.get_parent_dir_for_name(_keras_package_name)
+  if _module_dir:
+    _current_module.__path__ = [_module_dir] + _current_module.__path__
+  setattr(_current_module,
+          "keras",
+          _LazyLoader("keras", globals(), _keras_package_name))
 else:
     # TF will not have `tf.keras` in this case. This should not be silent.
   _logging.warning("Unable to load `tf.keras`. Check that the `keras` package "
@@ -235,11 +240,11 @@ if _typing.TYPE_CHECKING:
     from tf_keras.api._v2.keras import optimizers
     from tf_keras.api._v2.keras import initializers
   elif _keras_version == "keras_3":
-    from keras import _tf_keras as keras
-    from keras._tf_keras import losses
-    from keras._tf_keras import metrics
-    from keras._tf_keras import optimizers
-    from keras._tf_keras import initializers
+    from keras._tf_keras import keras
+    from keras._tf_keras.keras import losses
+    from keras._tf_keras.keras import metrics
+    from keras._tf_keras.keras import optimizers
+    from keras._tf_keras.keras import initializers
 
 # pylint: enable=undefined-variable
 

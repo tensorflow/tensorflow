@@ -112,7 +112,12 @@ else:
     pass
 
 if _keras_to_use is not None:
-  setattr(_current_module, "keras", _keras_to_use)
+  _module_dir = _module_util.get_parent_dir_for_name(_keras_package_name)
+  if _module_dir:
+    _current_module.__path__ = [_module_dir] + _current_module.__path__
+  setattr(_current_module,
+          "keras",
+          _LazyLoader("keras", globals(), _keras_package_name))
 else:
     # TF will not have `tf.keras` in this case. This should not be silent.
   _logging.warning("Unable to load `tf.keras`. Check that the `keras` package "
