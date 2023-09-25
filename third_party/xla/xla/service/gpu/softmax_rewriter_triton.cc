@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
@@ -123,6 +124,26 @@ bool BitcastIsTilingNoop(HloInstruction* bitcast,
            last_dimension(bitcast->operand(0)) == last_dimension(bitcast)));
 }
 
+inline bool HasOneUse(const HloInstruction* instr) {
+  return instr->user_count() == 1;
+}
+
+using hlo_query::IsBroadcastOfScalarConstant;
+
+// Chooses which operand to use for fusion processing. Taking in a unary or
+// binary instruction, returns the first non-splat operand. If none is
+// present, returns any operand.
+HloInstruction* ChooseOperandForFusionProcessing(HloInstruction* instr) {
+  CHECK_GT(instr->operand_count(), 0);
+  CHECK_LE(instr->operand_count(), 2);
+
+  if (instr->operand_count() > 1 &&
+      IsBroadcastOfScalarConstant(*instr->operand(0))) {
+    return instr->mutable_operand(1);
+  }
+  return instr->mutable_operand(0);
+}
+
 bool IsTriviallyFusible(HloInstruction* instr, const GpuVersion& gpu_version,
                         int num_allowed_users = 1) {
   // Checks whether an op is trivially fusible. An op is said to be trivially
@@ -144,8 +165,36 @@ bool IsTriviallyFusible(HloInstruction* instr, const GpuVersion& gpu_version,
     return IsTritonSupportedInstruction(instr, gpu_version);
   }
 
-  if (instr->IsElementwiseBinary() && instr->operand(0) == instr->operand(1)) {
-    return IsTritonSupportedInstruction(instr, gpu_version);
+  // Elementwise binary ops are trivially fusible if the operands are the same,
+  // or if exactly one of the operands is a splat constant with a single user.
+  if (instr->IsElementwiseBinary()) {
+    const HloInstruction* operand_0 = instr->operand(0);
+    const HloInstruction* operand_1 = instr->operand(1);
+
+    // Elementwise binary ops should be fused if both operands are the same and
+    // if the operand is triton supported.
+    if (operand_0 == operand_1) {
+      return IsTritonSupportedInstruction(instr, gpu_version);
+    }
+
+    // If either operand is a splat constant with multiple users, we should not
+    // fuse.
+    bool operand_0_is_shared_splat_constant =
+        IsBroadcastOfScalarConstant(*operand_0) && !HasOneUse(operand_0);
+    bool operand_1_is_shared_splat_constant =
+        IsBroadcastOfScalarConstant(*operand_1) && !HasOneUse(operand_1);
+
+    if (operand_0_is_shared_splat_constant ||
+        operand_1_is_shared_splat_constant) {
+      return false;
+    }
+
+    // For simplicity we only fuse elementwise binary ops with splat operands
+    // if they contain one non-splat operand.
+    if (IsBroadcastOfScalarConstant(*operand_0) ^
+        IsBroadcastOfScalarConstant(*operand_1)) {
+      return IsTritonSupportedInstruction(instr, gpu_version);
+    }
   }
 
   return false;
@@ -155,7 +204,7 @@ bool TrivialEdge(HloInstruction** producer, HloInstruction* consumer,
                  HloOpcode opcode, const GpuVersion& gpu_version) {
   while (consumer->opcode() != opcode) {
     if (IsTriviallyFusible(consumer, gpu_version)) {
-      consumer = consumer->mutable_operand(0);
+      consumer = ChooseOperandForFusionProcessing(consumer);
     } else {
       return false;
     }
@@ -187,10 +236,6 @@ bool IsTriviallyConnectedProducerOf(HloInstruction* producer,
   }
 
   return false;
-}
-
-inline bool HasOneUse(const HloInstruction* instr) {
-  return instr->user_count() == 1;
 }
 
 bool IsTritonSupportedComputation(const HloComputation* computation,
@@ -264,7 +309,7 @@ std::optional<HloInstruction*> MatchesTritonCompatibleClosedReductionDiamond(
   }
 
   while (IsTriviallyFusible(producer, gpu_version)) {
-    producer = producer->mutable_operand(0);
+    producer = ChooseOperandForFusionProcessing(producer);
   }
 
   if (!HasDefaultLayout(producer->shape()) ||
@@ -288,9 +333,9 @@ HloInstruction* FindFirstNonFusibleDiamondProducer(
     HloInstruction* diamond_producer, const GpuVersion& gpu_version) {
   if (IsTriviallyFusible(diamond_producer, gpu_version,
                          /*num_allowed_users=*/2)) {
-    diamond_producer = diamond_producer->mutable_operand(0);
+    diamond_producer = ChooseOperandForFusionProcessing(diamond_producer);
     while (IsTriviallyFusible(diamond_producer, gpu_version)) {
-      diamond_producer = diamond_producer->mutable_operand(0);
+      diamond_producer = ChooseOperandForFusionProcessing(diamond_producer);
     }
   }
 
@@ -393,7 +438,7 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
       [](HloInstruction* diamond_root) {
         HloInstruction* instr = diamond_root->mutable_operand(1);
         while (instr->opcode() != HloOpcode::kReduce) {
-          instr = instr->mutable_operand(0);
+          instr = ChooseOperandForFusionProcessing(instr);
         }
 
         int operand_rank = instr->operand(0)->shape().rank();

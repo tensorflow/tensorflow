@@ -598,8 +598,16 @@ StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
     b.setInsertionPointAfter(reduction);
   }
 
-  return Cast(b, reduction.getResult().front(),
-              TritonType(b, hlo_reduce.shape().element_type()));
+  Value result = reduction.getResult().front();
+
+  // We want to return a tensor of float32, but the ReturnReduceOp produces an
+  // f32 constant when reducing a single dim. To convert to a tensor we splat
+  // the result.
+  if (!reduction.getResult().front().dyn_cast<TensorValue>()) {
+    result = Splat(b, result, {});
+  }
+
+  return Cast(b, result, TritonType(b, hlo_reduce.shape().element_type()));
 }
 
 // Emit sequence of instructions using compatible tiling ordered producers
