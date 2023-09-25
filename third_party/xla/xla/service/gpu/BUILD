@@ -548,16 +548,11 @@ xla_test(
     backends = [
         "gpu",
     ],
-<<<<<<< HEAD
-    shard_count = 10,
+    shard_count = 20,
     tags = [
         "nomac",
         "no_rocm",
     ],
-=======
-    shard_count = 20,
-    tags = ["nomac"],
->>>>>>> upstream/master
     deps = [
         ":backend_configs_cc",
         ":gpu_device_info",
