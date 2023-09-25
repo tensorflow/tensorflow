@@ -225,6 +225,23 @@ def : Pat<(MHLO_RoundNearestEvenOp $input), (TF_RoundOp $input)>;
 def : Pat<(MHLO_ClampOp $min, $arg, $max),
           (TF_MaximumOp (TF_MinimumOp $arg, $max), $min)>;
 def : Pat<(MHLO_SelectOp $cond, $t, $e), (TF_SelectOp $cond, $t, $e)>;
+def : Pat<(MHLO_SelectOp (MHLO_BroadcastInDimOp:$output
+                                  $bcast_cond,
+                                  $broadcast_dimensions), $t, $e),
+          (TF_SelectV2Op $bcast_cond, $t, $e),
+          [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
+def : Pat<(MHLO_SelectOp $cond, $t,
+                                (MHLO_BroadcastInDimOp:$output
+                                  $bcast_operand,
+                                  $broadcast_dimensions)),
+          (TF_SelectV2Op $cond, $t, $bcast_operand),
+          [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
+def : Pat<(MHLO_SelectOp $cond, (MHLO_BroadcastInDimOp:$output
+                                  $bcast_operand,
+                                  $broadcast_dimensions),
+                                $e),
+          (TF_SelectV2Op $cond, $bcast_operand, $e),
+          [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
 
 //===----------------------------------------------------------------------===//
 // Variadic op patterns.

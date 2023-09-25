@@ -986,6 +986,32 @@ func.func @selectv2_pred_scalar(%arg0: tensor<i1>, %arg1: tensor<2xi32>, %arg2: 
   func.return %0 : tensor<2xi32>
 }
 
+// CHECK-LABEL:   func @selectv2_broadcasted_operand(
+// CHECK-SAME:                               %[[VAL_0:.*]]: tensor<i1>,
+// CHECK-SAME:                               %[[VAL_1:.*]]: tensor<1x1xi32>,
+// CHECK-SAME:                               %[[VAL_2:.*]]: tensor<1x100xi32>) -> tensor<1x100xi32> {
+// CHECK:           %[[VAL_3:.*]] = "tf.SelectV2"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) : (tensor<i1>, tensor<1x1xi32>, tensor<1x100xi32>) -> tensor<1x100xi32>
+// CHECK:           return %[[VAL_3]] : tensor<1x100xi32>
+// CHECK:         }
+func.func @selectv2_broadcasted_operand(%arg0: tensor<i1>, %arg1: tensor<1x1xi32>, %arg2: tensor<1x100xi32>) -> tensor<1x100xi32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x1xi32>) -> tensor<1x100xi32>
+  %1 = "mhlo.select"(%arg0, %0, %arg2) : (tensor<i1>, tensor<1x100xi32>, tensor<1x100xi32>) -> tensor<1x100xi32>
+  func.return %1 : tensor<1x100xi32>
+}
+
+// CHECK-LABEL:   func @selectv2_broadcasted_condition(
+// CHECK-SAME:                               %[[VAL_0:.*]]: tensor<1x1xi1>,
+// CHECK-SAME:                               %[[VAL_1:.*]]: tensor<1x100xi32>,
+// CHECK-SAME:                               %[[VAL_2:.*]]: tensor<1x100xi32>) -> tensor<1x100xi32> {
+// CHECK:           %[[VAL_3:.*]] = "tf.SelectV2"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) : (tensor<1x1xi1>, tensor<1x100xi32>, tensor<1x100xi32>) -> tensor<1x100xi32>
+// CHECK:           return %[[VAL_3]] : tensor<1x100xi32>
+// CHECK:         }
+func.func @selectv2_broadcasted_condition(%arg0: tensor<1x1xi1>, %arg1: tensor<1x100xi32>, %arg2: tensor<1x100xi32>) -> tensor<1x100xi32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x1xi1>) -> tensor<1x100xi1>
+  %1 = "mhlo.select"(%0, %arg1, %arg2) : (tensor<1x100xi1>, tensor<1x100xi32>, tensor<1x100xi32>) -> tensor<1x100xi32>
+  func.return %1 : tensor<1x100xi32>
+}
+
 // CHECK-LABEL:   func @transpose_2d(
 // CHECK-SAME:                       %[[VAL_0:.*]]: tensor<2x3xf32>) -> tensor<3x2xf32> {
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
