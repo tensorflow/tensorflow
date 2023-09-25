@@ -145,6 +145,17 @@ cc_library(
 )
 
 cc_library(
+    name = "device_id_utils",
+    hdrs = ["device_id_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":platform",
+        ":stream_executor",
+        "@local_tsl//tsl/framework:device_id_impl",
+    ],
+)
+
+cc_library(
     name = "host_or_device_scalar",
     hdrs = ["host_or_device_scalar.h"],
     visibility = ["//visibility:public"],
