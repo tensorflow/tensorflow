@@ -28,6 +28,8 @@ constexpr char kMinInflightBatchesAttr[] = "_min_inflight_batches";
 constexpr char kInitialInflightBatchesAttr[] = "_initial_inflight_batches";
 constexpr char kMaxInflightBatchesAttr[] = "_max_inflight_batches";
 constexpr char kBatchesToAverageOverAttr[] = "_batches_to_average_over";
+constexpr char kFullBatchSchedulingBoostMicros[] =
+    "_full_batch_scheduling_boost_micros";  // NOLINT(whitespace/line_length)
 
 constexpr int64_t kMinInflightBatches = 16;
 constexpr int64_t kInitialInflightBatches = 16;

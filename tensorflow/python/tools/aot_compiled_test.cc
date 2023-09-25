@@ -19,7 +19,7 @@ limitations under the License.
 // for AOT compilation in the PIP package. We don't have access to
 // platform/logging, nor to platform/test, but we can use gtest.h instead.
 // LINT.IfChange
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #ifndef TF_PIP_INTEGRATION_TEST
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"

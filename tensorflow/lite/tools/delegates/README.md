@@ -42,6 +42,16 @@ TFLite delegate.
     Unique tokens ensure that the delegate doesn't read inapplicable/invalid
     data. Note that delegate_serialize_dir is also required to enable this
     feature.
+*   `first_delegate_node_index`: `int` (default=0) \
+    The index of the first node that could be delegated. Debug only. Add
+    '--define=tflite_debug_delegate=true' in your build command line to use it.
+    \
+    Currently only supported by CoreML delegate.
+*   `last_delegate_node_index`: `int` (default=INT_MAX) \
+    The index of the last node that could be delegated. Debug only. Add
+    '--define=tflite_debug_delegate=true' in your build command line to use it.
+    \
+    Currently only supported by CoreML delegate.
 
 ### GPU delegate provider
 
@@ -164,7 +174,7 @@ delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
 The stable delegate provider provides a `TfLiteOpaqueDelegate` object pointer
 and its corresponding deleter by loading a dynamic library that encapsulates the
 actual TFLite delegate implementation in a
-[`TfLiteStableDelegate`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/experimental/acceleration/configuration/c/stable_delegate.h)
+[`TfLiteStableDelegate`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/acceleration/configuration/c/stable_delegate.h)
 struct instance.
 
 While the structure of the stable delegate provider is similar to the external
@@ -184,7 +194,7 @@ different.
 The stable delegates and the external delegates use different APIs for
 diagnosing errors, creating and destroying the delegates. For more details of
 the concrete API differences, please check
-[stable_delegate.h](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/experimental/acceleration/configuration/c/stable_delegate.h)
+[stable_delegate.h](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/acceleration/configuration/c/stable_delegate.h)
 and
 [external_delegate.h](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/external/external_delegate.h).
 

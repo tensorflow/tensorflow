@@ -41,14 +41,23 @@ class ExtractImagePatches(test.TestCase):
     strides = [1] + strides + [1]
     rates = [1] + rates + [1]
 
-    out_tensor = array_ops.extract_image_patches(
-        constant_op.constant(image),
-        ksizes=ksizes,
-        strides=strides,
-        rates=rates,
-        padding=padding,
-        name="im2col")
-    self.assertAllClose(patches, self.evaluate(out_tensor))
+    for dtype in [
+        np.float16,
+        np.float32,
+        np.float64,
+        dtypes.bfloat16.as_numpy_dtype,
+    ]:
+      out_tensor = array_ops.extract_image_patches(
+          constant_op.constant(image, dtype=dtype),
+          ksizes=ksizes,
+          strides=strides,
+          rates=rates,
+          padding=padding,
+          name="im2col",
+      )
+      self.assertAllClose(
+          np.array(patches, dtype=dtype), self.evaluate(out_tensor)
+      )
 
   def testKsize1x1Stride1x1Rate1x1(self):
     """Verifies that for 1x1 kernel the output equals the input."""

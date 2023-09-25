@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_3d.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 
 typedef Eigen::GpuDevice GPUDevice;
 
@@ -48,11 +49,13 @@ void DnnPooling3dImpl(OpKernelContext* context,
 
   Tensor transformed_input;
   if (data_format == FORMAT_NHWC) {
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DataTypeToEnum<T>::value,
-                                ShapeFromFormat(FORMAT_NCHW, tensor_in.shape(),
-                                                data_format),
-                                &transformed_input));
+    TensorShape transformed_input_shape;
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                FORMAT_NCHW, tensor_in.shape(), data_format,
+                                &transformed_input_shape));
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                   transformed_input_shape,
+                                                   &transformed_input));
     functor::NHWCToNCHW<GPUDevice, T, 5>()(context->eigen_device<GPUDevice>(),
                                            tensor_in.tensor<T, 5>(),
                                            transformed_input.tensor<T, 5>());
@@ -61,11 +64,13 @@ void DnnPooling3dImpl(OpKernelContext* context,
   }
   Tensor transformed_output;
   if (data_format == FORMAT_NHWC) {
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(
-                       DataTypeToEnum<T>::value,
-                       ShapeFromFormat(FORMAT_NCHW, out_shape, data_format),
-                       &transformed_output));
+    TensorShape transformed_output_shape;
+    OP_REQUIRES_OK(
+        context, ShapeFromFormatWithStatus(FORMAT_NCHW, out_shape, data_format,
+                                           &transformed_output_shape));
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                   transformed_output_shape,
+                                                   &transformed_output));
   } else {
     transformed_output = *output;
   }
@@ -107,13 +112,14 @@ void DnnPooling3dImpl(OpKernelContext* context,
   );
 
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
-  OP_REQUIRES_OK(context, stream->ThenPoolForward(
-                              pooling_desc, input_desc, input_data, output_desc,
-                              &output_data, &scratch_allocator));
-#else
   OP_REQUIRES_OK(context,
-                 stream->ThenPoolForward(pooling_desc, input_desc, input_data,
-                                         output_desc, &output_data));
+                 stream->ThenPoolForward(pooling_desc, GetNumericOptions(),
+                                         input_desc, input_data, output_desc,
+                                         &output_data, &scratch_allocator));
+#else
+  OP_REQUIRES_OK(context, stream->ThenPoolForward(
+                              pooling_desc, GetNumericOptions(), input_desc,
+                              input_data, output_desc, &output_data));
 #endif
 
   if (data_format == FORMAT_NHWC) {
@@ -197,8 +203,9 @@ void DnnPooling3dGradImpl(
   Tensor transformed_input;
   TensorShape transformed_input_shape;
   if (data_format == FORMAT_NHWC || tensor_in == nullptr) {
-    transformed_input_shape =
-        ShapeFromFormat(FORMAT_NCHW, tensor_in_shape, data_format);
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                FORMAT_NCHW, tensor_in_shape, data_format,
+                                &transformed_input_shape));
     OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
                                                    transformed_input_shape,
                                                    &transformed_input));
@@ -208,8 +215,9 @@ void DnnPooling3dGradImpl(
   Tensor transformed_output;
   TensorShape transformed_output_shape;
   if (data_format == FORMAT_NHWC || tensor_out == nullptr) {
-    transformed_output_shape =
-        ShapeFromFormat(FORMAT_NCHW, out_backprop.shape(), data_format);
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                FORMAT_NCHW, out_backprop.shape(), data_format,
+                                &transformed_output_shape));
     OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
                                                    transformed_output_shape,
                                                    &transformed_output));
@@ -296,16 +304,18 @@ void DnnPooling3dGradImpl(
   );
 
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
+  OP_REQUIRES_OK(
+      context,
+      stream->ThenPoolBackward(
+          pooling_desc, GetNumericOptions(), orig_input_desc, orig_input_data,
+          orig_output_desc, orig_output_data, output_backprop_data,
+          &input_backprop_data, &scratch_allocator));
+#else
   OP_REQUIRES_OK(context,
                  stream->ThenPoolBackward(
-                     pooling_desc, orig_input_desc, orig_input_data,
-                     orig_output_desc, orig_output_data, output_backprop_data,
-                     &input_backprop_data, &scratch_allocator));
-#else
-  OP_REQUIRES_OK(context, stream->ThenPoolBackward(
-                              pooling_desc, orig_input_desc, orig_input_data,
-                              orig_output_desc, orig_output_data,
-                              output_backprop_data, &input_backprop_data));
+                     pooling_desc, GetNumericOptions(), orig_input_desc,
+                     orig_input_data, orig_output_desc, orig_output_data,
+                     output_backprop_data, &input_backprop_data));
 #endif
 
   if (data_format == FORMAT_NHWC) {

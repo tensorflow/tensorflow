@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/c/common.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/lite/core/c/common.h"
 
 using tflite::delegates::coreml::IsBinaryOpSupported;
 

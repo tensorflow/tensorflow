@@ -180,15 +180,14 @@ class FixedUnigramCandidateSamplerOp : public BaseCandidateSamplerOp {
     OP_REQUIRES_OK(context, context->GetAttr("num_shards", &num_shards));
     int64_t shard;
     OP_REQUIRES_OK(context, context->GetAttr("shard", &shard));
-
-    if (!vocab_file.empty()) {
-      set_sampler(new FixedUnigramSampler(context->env(), range_max, vocab_file,
-                                          distortion, num_reserved_ids,
-                                          num_shards, shard));
-    } else {
-      set_sampler(new FixedUnigramSampler(range_max, unigrams, distortion,
-                                          num_reserved_ids, num_shards, shard));
-    }
+    FixedUnigramSampler* sampler = new FixedUnigramSampler(
+        range_max, distortion, num_reserved_ids, num_shards, shard);
+    if (!vocab_file.empty())
+      OP_REQUIRES_OK(
+          context, sampler->SetDistributionSampler(context->env(), vocab_file));
+    else
+      OP_REQUIRES_OK(context, sampler->SetDistributionSampler(unigrams));
+    set_sampler(sampler);
   }
 };
 

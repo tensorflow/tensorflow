@@ -18,14 +18,13 @@ limitations under the License.
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // Converts the TensorFlow DataType 'dtype' into an MLIR (scalar) type.
 Status ConvertDataType(DataType dtype, mlir::Builder builder, mlir::Type* type);

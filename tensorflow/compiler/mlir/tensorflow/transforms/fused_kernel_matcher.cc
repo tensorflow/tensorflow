@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdio>
 #include <iostream>
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/StringRef.h"
@@ -238,24 +239,24 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
 const char kDeviceAttr[] = "device";
 const char kDeviceGpu[] = "GPU";
 
-llvm::Optional<std::string> GetDevice(mlir::Operation *op) {
+std::optional<std::string> GetDevice(mlir::Operation *op) {
   mlir::StringAttr device = op->getAttrOfType<mlir::StringAttr>(kDeviceAttr);
   if (!device || device.getValue().empty()) {
-    return llvm::None;
+    return std::nullopt;
   }
   const std::string device_name = device.str();
   tensorflow::DeviceNameUtils::ParsedName parsed_name;
   if (!tensorflow::DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
-    return llvm::None;
+    return std::nullopt;
   }
   if (!parsed_name.has_type) {
-    return llvm::None;
+    return std::nullopt;
   }
   return parsed_name.type;
 }
 
 bool IsGpuDevice(mlir::Operation *op) {
-  llvm::Optional<std::string> device = GetDevice(op);
+  std::optional<std::string> device = GetDevice(op);
   if (!device) return false;
   return *device == kDeviceGpu;
 }

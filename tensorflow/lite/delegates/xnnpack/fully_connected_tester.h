@@ -29,6 +29,20 @@ namespace xnnpack {
 
 class FullyConnectedTester {
  public:
+  enum class WeightsType {
+    kFP32,
+    kFP16,
+    kTensorWiseQuantizedInt8,
+    kChannelWiseQuantizedInt8,
+    kDynamic,
+  };
+  enum class BiasType {
+    kNone,
+    kFP32,
+    kFP16,
+    kDynamic,
+  };
+
   FullyConnectedTester() = default;
   FullyConnectedTester(const FullyConnectedTester&) = delete;
   FullyConnectedTester& operator=(const FullyConnectedTester&) = delete;
@@ -73,35 +87,38 @@ class FullyConnectedTester {
   inline bool KeepDims() const { return keep_dims_; }
 
   inline FullyConnectedTester& FP16Weights() {
-    fp16_weights_ = true;
+    weights_type_ = WeightsType::kFP16;
+    bias_type_ = BiasType::kFP16;
     return *this;
   }
 
-  inline bool FP16Weights() const { return fp16_weights_; }
-
-  inline FullyConnectedTester& INT8Weights() {
-    int8_weights_ = true;
+  inline FullyConnectedTester& TensorWiseQuantizedInt8Weights() {
+    weights_type_ = WeightsType::kTensorWiseQuantizedInt8;
+    // Bias is stored in FP32 even when filter is quantized to INT8
+    bias_type_ = BiasType::kFP32;
     return *this;
   }
 
-  inline bool INT8Weights() const { return int8_weights_; }
-
-  inline FullyConnectedTester& INT8ChannelWiseWeights() {
-    int8_channel_wise_weights_ = true;
+  inline FullyConnectedTester& ChannelWiseQuantizedInt8Weights() {
+    weights_type_ = WeightsType::kChannelWiseQuantizedInt8;
+    // Bias is stored in FP32 even when filter is quantized to INT8
+    bias_type_ = BiasType::kFP32;
     return *this;
   }
 
-  inline bool INT8ChannelWiseWeights() const {
-    return int8_channel_wise_weights_;
+  inline FullyConnectedTester& DynamicWeights() {
+    weights_type_ = WeightsType::kDynamic;
+    bias_type_ = BiasType::kFP32;
+    return *this;
   }
 
   inline FullyConnectedTester& NoBias() {
-    has_bias_ = false;
+    bias_type_ = BiasType::kNone;
     return *this;
   }
 
-  inline FullyConnectedTester& WithBias() {
-    has_bias_ = true;
+  inline FullyConnectedTester& DynamicBias() {
+    bias_type_ = BiasType::kDynamic;
     return *this;
   }
 
@@ -131,7 +148,11 @@ class FullyConnectedTester {
  private:
   std::vector<char> CreateTfLiteModel() const;
 
-  inline bool HasBias() const { return has_bias_; }
+  inline bool HasBias() const { return bias_type_ != BiasType::kNone; }
+
+  inline WeightsType WeightsType() const { return weights_type_; }
+
+  inline BiasType BiasType() const { return bias_type_; }
 
   inline ::tflite::ActivationFunctionType Activation() const {
     return activation_;
@@ -144,10 +165,8 @@ class FullyConnectedTester {
   int32_t input_channels_ = 1;
   int32_t output_channels_ = 1;
   bool keep_dims_ = false;
-  bool fp16_weights_ = false;
-  bool int8_weights_ = false;
-  bool int8_channel_wise_weights_ = false;
-  bool has_bias_ = true;
+  enum WeightsType weights_type_ { WeightsType::kFP32 };
+  enum BiasType bias_type_ { BiasType::kFP32 };
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
   TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;

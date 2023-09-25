@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/cpu_function_runtime.h"
+#include "xla/client/local_client.h"
+#include "xla/cpu_function_runtime.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"

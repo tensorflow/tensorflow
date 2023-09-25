@@ -1,0 +1,24 @@
+diff --git a/BUILD b/BUILD
+--- a/BUILD
++++ b/BUILD
+@@ -58,6 +58,11 @@ config_setting(
+     "//conditions:default": ["-Wno-unused-variable -Wno-parentheses"],
+ })
+ 
++_no_parentheses = select({
++    ":compiler_is_msvc": [],
++    "//conditions:default": ["-Wno-parentheses"],
++})
++
+ td_library(
+     name = "td_files",
+     srcs = glob(["include/triton/**/*.td"]),
+@@ -356,7 +361,7 @@ cc_library(
+     name = "TritonTransforms",
+     srcs = glob(["lib/Dialect/Triton/Transforms/*.cpp"]),
+     hdrs = glob(["include/triton/Dialect/Triton/Transforms/*.h"]),
+-    copts = ["-Wno-parentheses"],
++    copts = _no_parentheses,
+     includes = ["include"],
+     deps = [
+         ":TritonDialects",

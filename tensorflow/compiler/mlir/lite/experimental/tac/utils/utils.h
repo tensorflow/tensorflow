@@ -37,7 +37,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
 
 // Export the module to file, can be either mlir or flatbuffer.
 absl::Status ExportFlatbufferOrMlir(const std::string& output_filename,
-                                    bool output_mlir, mlir::ModuleOp module);
+                                    bool output_mlir, mlir::ModuleOp module,
+                                    bool enable_select_tf_ops);
 
 }  // namespace tac
 }  // namespace TFL

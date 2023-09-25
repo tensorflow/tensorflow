@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <iostream>
+#include <optional>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -484,21 +485,21 @@ bool Conv2DInputShapeCanTransform(Value input) {
 }
 
 // Get block argument id and number of users for the input arg.
-Optional<BlockArgumentInfo> GetBlockArgNum(Value arg) {
+std::optional<BlockArgumentInfo> GetBlockArgNum(Value arg) {
   if (auto block_arg = arg.dyn_cast<mlir::BlockArgument>()) {
-    if (!Conv2DInputShapeCanTransform(arg)) return None;
+    if (!Conv2DInputShapeCanTransform(arg)) return std::nullopt;
     unsigned num_users =
         std::distance(block_arg.getUsers().begin(), block_arg.getUsers().end());
     BlockArgumentInfo block_arg_info = {block_arg.getArgNumber(), num_users};
     return block_arg_info;
   }
-  return None;
+  return std::nullopt;
 }
 
 // Gets input block argument id and number of users for the input recursively.
 // Current supported ops between convolution input and the block arguments are
 // PadOp and CastOp.
-Optional<BlockArgumentInfo> GetInputBlockArgNum(Value input) {
+std::optional<BlockArgumentInfo> GetInputBlockArgNum(Value input) {
   auto block_arg_num = GetBlockArgNum(input);
   if (block_arg_num.has_value()) return block_arg_num;
 
@@ -520,15 +521,15 @@ Optional<BlockArgumentInfo> GetInputBlockArgNum(Value input) {
     cast_op = dyn_cast_or_null<TF::CastOp>(next_input.getDefiningOp());
   }
 
-  return None;
+  return std::nullopt;
 }
 
 // Checks if a convoluton can apply SpaceToDepth transform.
 // Only the first convolution in the graph whose batch size smaller than 8
 // and its input feature size smaller than 8 can be transformed.
-Optional<BlockArgumentInfo> GetConv2DInputArgNum(TF::Conv2DOp conv2d) {
+std::optional<BlockArgumentInfo> GetConv2DInputArgNum(TF::Conv2DOp conv2d) {
   if (conv2d.getDataFormat() != "NHWC" || conv2d.getStrides().size() != 4) {
-    return None;
+    return std::nullopt;
   }
   // Current supported ops between convolution input and the block arguments are
   // PadOp and CastOp.
@@ -605,7 +606,7 @@ int32_t GetConv2DBlockSize(TF::Conv2DOp conv2d) {
 }
 
 void TPUSpaceToDepthPass::runOnOperation() {
-  Optional<tf_device::ClusterFuncOp> cluster_func;
+  std::optional<tf_device::ClusterFuncOp> cluster_func;
   // Space to depth only supports training loop.
   auto func_result = getOperation().walk([&](tf_device::ClusterFuncOp cluster) {
     cluster_func = cluster;
@@ -630,7 +631,7 @@ void TPUSpaceToDepthPass::runOnOperation() {
 
   // Find out the qualified convolutions and its block argument ids.
   auto conv2d_result = device_func.walk([&](TF::Conv2DOp conv2d) {
-    Optional<BlockArgumentInfo> arg_num_and_num_users =
+    std::optional<BlockArgumentInfo> arg_num_and_num_users =
         GetConv2DInputArgNum(conv2d);
     if (arg_num_and_num_users.has_value()) {
       // Get block size for the first convolution.

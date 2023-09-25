@@ -188,7 +188,7 @@ func.func @QuantizeFullyConnected(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x11
 func.func @QuantizeTransposeConv(%arg0: tensor<32x4x4x128xf32>, %arg1: tensor<4xi32>) -> tensor<1x32x42x128xf32> {
   %w = arith.constant dense<127.0> : tensor<1x32x42x128xf32>
   %b = arith.constant dense<0.0> : tensor<1x32x42x128xf32>
-  %tc = "tfl.transpose_conv"(%arg1, %w, %arg0, %b) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<1x32x42x128xf32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>) -> tensor<1x32x42x128xf32>
+  %tc = "tfl.transpose_conv"(%arg1, %w, %arg0, %b) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<1x32x42x128xf32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>) -> tensor<1x32x42x128xf32>
   func.return %tc : tensor<1x32x42x128xf32>
 
 // CHECK: %[[CST:.*]] = arith.constant dense<1.270000e+02> : tensor<1x32x42x128xf32>
@@ -231,7 +231,7 @@ func.func @bias_adjust_perchannel(%arg0: tensor<1x5x5x2xf32>, %arg1: tensor<4xi3
   %w = arith.constant dense<[[[[-1.0, 1.0]]], [[[1.0, 2.0]]], [[[-2.0, 1.0]]]]> : tensor<3x1x1x2xf32>
   %b = arith.constant dense<[1.0e-2, 2.1473647e1, -2.1473647e2]> : tensor<3xf32>
   %transpose_conv = "tfl.transpose_conv"(%arg1, %w, %0, %b) {
-    padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32
+    padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"
   } : (tensor<4xi32>, tensor<3x1x1x2xf32>, tensor<1x5x5x2xf32>, tensor<3xf32>) -> tensor<1x5x5x3xf32>
   func.return %transpose_conv : tensor<1x5x5x3xf32>
 // CHECK: %[[bias:.*]] = arith.constant dense<[0.00999999977, 21.4736462, -214.736465]>

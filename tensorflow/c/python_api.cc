@@ -15,51 +15,43 @@ limitations under the License.
 
 #include "tensorflow/c/python_api.h"
 
+#include <string>
+
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/core/framework/cpp_shape_inference.pb.h"
 #include "tensorflow/core/framework/full_type.pb.h"
-#include "tensorflow/python/framework/cpp_shape_inference.pb.h"
 
 namespace tensorflow {
 
-void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input) {
+// Hack to export the tensorflow::RecordMutation symbol for windows.
+// Do not delete. Do not use.
+void ExportRecordMutation(  // NOLINT: Intentionally unused function.
+    TF_Graph* graph, const TF_Operation& op, const char* mutation_type) {
   mutex_lock l(graph->mu);
-  graph->graph.AddControlEdge(&input->node, &op->node);
-  RecordMutation(graph, *op, "adding control input");
+  RecordMutation(graph, op, mutation_type);
+}
+
+void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input) {
+  TF_AddOperationControlInput(graph, op, input);
 }
 
 void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
              TF_Buffer* attr_value_proto, TF_Status* status) {
-  AttrValue attr_val;
-  if (!attr_val.ParseFromArray(attr_value_proto->data,
-                               attr_value_proto->length)) {
-    status->status =
-        tensorflow::errors::InvalidArgument("Invalid AttrValue proto");
-    return;
-  }
-
-  mutex_lock l(graph->mu);
-  op->node.AddAttr(attr_name, attr_val);
-  RecordMutation(graph, *op, "setting attribute");
+  TF_SetAttr(graph, op, attr_name, attr_value_proto, status);
 }
 
 void ClearAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
                TF_Status* status) {
-  mutex_lock l(graph->mu);
-  op->node.ClearAttr(attr_name);
-  RecordMutation(graph, *op, "clearing attribute");
+  TF_ClearAttr(graph, op, attr_name, status);
 }
 
 void SetFullType(TF_Graph* graph, TF_Operation* op,
-                 const FullTypeDef& full_type) {
-  mutex_lock l(graph->mu);
-  *op->node.mutable_def()->mutable_experimental_type() = full_type;
-  RecordMutation(graph, *op, "setting fulltype");
+                 const TF_Buffer* full_type_proto) {
+  TF_SetFullType(graph, op, full_type_proto);
 }
 
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device) {
-  mutex_lock l(graph->mu);
-  op->node.set_requested_device(device);
-  RecordMutation(graph, *op, "setting device");
+  TF_SetRequestedDevice(graph, op, device);
 }
 
 void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
@@ -67,31 +59,13 @@ void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
   TF_UpdateEdge(graph, new_src, dst, status);
 }
 
-void RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op) {
-  mutex_lock l(graph->mu);
-  std::vector<const Edge*> control_edges;
-  for (const Edge* edge : op->node.in_edges()) {
-    if (!edge->IsControlEdge()) continue;
-    control_edges.push_back(edge);
-  }
-  for (const Edge* edge : control_edges) {
-    graph->graph.RemoveControlEdge(edge);
-  }
-}
-
-void SetRequireShapeInferenceFns(TF_Graph* graph, bool require) {
-  mutex_lock l(graph->mu);
-  graph->refiner.set_require_shape_inference_fns(require);
-}
-
 void ExtendSession(TF_Session* session, TF_Status* status) {
-  ExtendSessionGraphHelper(session, status);
-  session->extend_before_run = false;
+  TF_ExtendSession(session, status);
 }
 
 std::string GetHandleShapeAndType(TF_Graph* graph, TF_Output output) {
   Node* node = &output.oper->node;
-  CppShapeInferenceResult::HandleData handle_data;
+  tensorflow::core::CppShapeInferenceResult::HandleData handle_data;
   handle_data.set_is_set(true);
   {
     mutex_lock l(graph->mu);
@@ -117,41 +91,12 @@ std::string GetHandleShapeAndType(TF_Graph* graph, TF_Output output) {
 
 void SetHandleShapeAndType(TF_Graph* graph, TF_Output output, const void* proto,
                            size_t proto_len, TF_Status* status) {
-  tensorflow::CppShapeInferenceResult::HandleData handle_data;
-  if (!handle_data.ParseFromArray(proto, proto_len)) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Couldn't deserialize HandleData proto");
-    return;
-  }
-  DCHECK(handle_data.is_set());
-
-  tensorflow::mutex_lock l(graph->mu);
-  tensorflow::shape_inference::InferenceContext* ic =
-      graph->refiner.GetContext(&output.oper->node);
-
-  std::vector<tensorflow::shape_inference::ShapeAndType> shapes_and_types;
-  for (const auto& shape_and_type_proto : handle_data.shape_and_type()) {
-    tensorflow::shape_inference::ShapeHandle shape;
-    status->status =
-        ic->MakeShapeFromShapeProto(shape_and_type_proto.shape(), &shape);
-    if (TF_GetCode(status) != TF_OK) return;
-    shapes_and_types.emplace_back(shape, shape_and_type_proto.dtype(),
-                                  shape_and_type_proto.type());
-  }
-  ic->set_output_handle_shapes_and_types(output.index, shapes_and_types);
+  TF_SetHandleShapeAndType(graph, output, proto, proto_len, status);
 }
 
 void AddWhileInputHack(TF_Graph* graph, TF_Output new_src, TF_Operation* dst,
                        TF_Status* status) {
-  mutex_lock l(graph->mu);
-  status->status = graph->graph.AddWhileInputHack(&new_src.oper->node,
-                                                  new_src.index, &dst->node);
-  if (TF_GetCode(status) == TF_OK) {
-    // This modification only updates the destination node for
-    // the purposes of running this graph in a session. Thus, we don't
-    // record the source node as being modified.
-    RecordMutation(graph, *dst, "adding input tensor");
-  }
+  TF_AddWhileInputHack(graph, new_src, dst, status);
 }
 
 }  // namespace tensorflow

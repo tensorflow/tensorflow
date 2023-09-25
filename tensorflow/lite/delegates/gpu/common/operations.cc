@@ -30,11 +30,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-Padding2D& Padding2D::operator=(const Padding2D& value) {
-  prepended = value.prepended;
-  appended = value.appended;
-  return *this;
-}
 
 bool Padding2D::operator==(const Padding2D& value) const {
   return this->prepended == value.prepended && this->appended == value.appended;
@@ -49,12 +44,6 @@ Padding2D& Padding2D::operator-(const Padding2D& value) {
   prepended.w -= value.prepended.w;
   appended.h -= value.appended.h;
   appended.w -= value.appended.w;
-  return *this;
-}
-
-Padding3D& Padding3D::operator=(const Padding3D& value) {
-  prepended = value.prepended;
-  appended = value.appended;
   return *this;
 }
 
@@ -130,6 +119,8 @@ std::string ToString(enum OperationType op) {
       return "fully_connected_int8";
     case OperationType::GATHER:
       return "gather";
+    case OperationType::GELU:
+      return "gelu";
     case OperationType::GREATER:
       return "greater";
     case OperationType::GREATER_EQUAL:
@@ -142,6 +133,8 @@ std::string ToString(enum OperationType op) {
       return "less_equal";
     case OperationType::LOG:
       return "log";
+    case OperationType::LOGICAL_AND:
+      return "logical_and";
     case OperationType::LSTM:
       return "lstm";
     case OperationType::MAXIMUM:
@@ -164,6 +157,8 @@ std::string ToString(enum OperationType op) {
       return "one_hot";
     case OperationType::PAD:
       return "pad";
+    case OperationType::PAD_V2:
+      return "pad_v2";
     case OperationType::POOLING_2D:
       return "pooling_2d";
     case OperationType::POW:
@@ -190,10 +185,14 @@ std::string ToString(enum OperationType op) {
       return "resize";
     case OperationType::RSQRT:
       return "rsqrt";
+    case OperationType::SELECT:
+      return "select";
     case OperationType::SELECT_V2:
       return "select_v2";
     case OperationType::SIGMOID:
       return "sigmoid";
+    case OperationType::SIGN:
+      return "sign";
     case OperationType::SIN:
       return "sin";
     case OperationType::SLICE:
@@ -253,12 +252,14 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"fully_connected", OperationType::FULLY_CONNECTED},
           {"fully_connected_int8", OperationType::FULLY_CONNECTED_INT8},
           {"gather", OperationType::GATHER},
+          {"gelu", OperationType::GELU},
           {"greater", OperationType::GREATER},
           {"greater_equal", OperationType::GREATER_EQUAL},
           {"hard_swish", OperationType::HARD_SWISH},
           {"less", OperationType::LESS},
           {"less_equal", OperationType::LESS_EQUAL},
           {"log", OperationType::LOG},
+          {"logical_and", OperationType::LOGICAL_AND},
           {"lstm", OperationType::LSTM},
           {"maximum", OperationType::MAXIMUM},
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},
@@ -271,6 +272,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"not_equal", OperationType::NOT_EQUAL},
           {"one_hot", OperationType::ONE_HOT},
           {"pad", OperationType::PAD},
+          {"pad_v2", OperationType::PAD_V2},
           {"pooling_2d", OperationType::POOLING_2D},
           {"pow", OperationType::POW},
           {"prelu", OperationType::PRELU},
@@ -284,8 +286,10 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"resize", OperationType::RESIZE},
           {"reshape", OperationType::RESHAPE},
           {"rsqrt", OperationType::RSQRT},
+          {"select", OperationType::SELECT},
           {"select_v2", OperationType::SELECT_V2},
           {"sigmoid", OperationType::SIGMOID},
+          {"sign", OperationType::SIGN},
           {"sin", OperationType::SIN},
           {"slice", OperationType::SLICE},
           {"softmax", OperationType::SOFTMAX},

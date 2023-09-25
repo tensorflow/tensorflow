@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for tensorflow.ops.histogram_ops."""
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -25,7 +26,7 @@ from tensorflow.python.ops import histogram_ops
 from tensorflow.python.platform import test
 
 
-class BinValuesFixedWidth(test.TestCase):
+class BinValuesFixedWidth(test.TestCase, parameterized.TestCase):
 
   def test_empty_input_gives_all_zero_counts(self):
     # Bins will be:
@@ -39,23 +40,14 @@ class BinValuesFixedWidth(test.TestCase):
       self.assertEqual(dtypes.int32, bins.dtype)
       self.assertAllClose(expected_bins, self.evaluate(bins))
 
-  def test_1d_values_int32_output(self):
+  @parameterized.parameters(
+      np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
+  )
+  def test_1d_values_int32_output(self, dtype):
     # Bins will be:
     #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
-    value_range = [0.0, 5.0]
-    values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
-    expected_bins = [0, 0, 1, 2, 4, 4]
-    with self.cached_session():
-      bins = histogram_ops.histogram_fixed_width_bins(
-          values, value_range, nbins=5, dtype=dtypes.int64)
-      self.assertEqual(dtypes.int32, bins.dtype)
-      self.assertAllClose(expected_bins, self.evaluate(bins))
-
-  def test_1d_float64_values_int32_output(self):
-    # Bins will be:
-    #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
-    value_range = np.float64([0.0, 5.0])
-    values = np.float64([-1.0, 0.0, 1.5, 2.0, 5.0, 15])
+    value_range = np.array([0.0, 5.0]).astype(dtype)
+    values = np.array([-1.0, 0.0, 1.5, 2.0, 5.0, 15]).astype(dtype)
     expected_bins = [0, 0, 1, 2, 4, 4]
     with self.cached_session():
       bins = histogram_ops.histogram_fixed_width_bins(
@@ -85,7 +77,6 @@ class BinValuesFixedWidth(test.TestCase):
         bins = histogram_ops.histogram_fixed_width_bins(
             values, value_range, nbins=-1)
         self.evaluate(bins)
-
 
 
 class HistogramFixedWidthTest(test.TestCase):
@@ -191,6 +182,19 @@ class HistogramFixedWidthTest(test.TestCase):
         value_range=constant_op.constant([-1e+38, 3e+38]),
         nbins=2)
     self.assertAllEqual(hist, [1, 1])
+
+  def test_large_range(self):
+    hist = histogram_ops.histogram_fixed_width(
+        values=constant_op.constant(
+            [-(2**31), 2**31 - 1], dtype=dtypes.int32
+        ),
+        value_range=constant_op.constant(
+            [-(2**31), 2**31 - 1], dtype=dtypes.int32
+        ),
+        nbins=2,
+    )
+    self.assertAllEqual(hist, [1, 1])
+
 
 if __name__ == '__main__':
   test.main()

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/summary/summary_file_writer.h"
 
+#include <memory>
+
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -24,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/summary/summary_converter.h"
 #include "tensorflow/core/util/events_writer.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -56,7 +57,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
         ".", pid, ".", file_id_counter.fetch_add(1), sep, filename_suffix);
     mutex_lock ml(mu_);
     events_writer_ =
-        tensorflow::MakeUnique<EventsWriter>(io::JoinPath(logdir, "events"));
+        std::make_unique<EventsWriter>(io::JoinPath(logdir, "events"));
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         events_writer_->InitWithSuffix(uniquified_filename_suffix),
         "Could not initialize events writer.");

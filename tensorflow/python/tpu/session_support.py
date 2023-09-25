@@ -272,7 +272,7 @@ class WatchdogManager(threading.Thread):
     # If we hit an exception, reset our session as it is likely broken.
     while self._running:
       try:
-        self._worker_manager.ping(request=None)
+        self._worker_manager.ping(request=None)  # pytype: disable=attribute-error
         time.sleep(self.ping_interval)
       except errors.OpError as e:
         # Catch any TF errors that occur so we don't stop sending heartbeats

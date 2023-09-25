@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/backends/profiler/cpu/python_tracer.h"
-#include "tensorflow/tsl/profiler/lib/profiler_interface.h"
+#include "xla/backends/profiler/cpu/python_tracer.h"
+#include "tsl/profiler/lib/profiler_interface.h"
 
 namespace tensorflow {
 namespace profiler {

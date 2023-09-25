@@ -929,14 +929,18 @@ Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64_t* val) {
     return errors::InvalidArgument("Input must be scalar but has rank ", rank);
   }
 
-  if (t->dtype() == DataType::DT_INT32) {
+  if (t->dtype() == DataType::DT_INT16) {
+    *val = t->scalar<int16_t>()();
+    return OkStatus();
+  } else if (t->dtype() == DataType::DT_INT32) {
     *val = t->scalar<int32>()();
     return OkStatus();
   } else if (t->dtype() == DataType::DT_INT64) {
     *val = t->scalar<int64_t>()();
     return OkStatus();
   } else {
-    return errors::InvalidArgument("Scalar input must be int32 or int64.");
+    return errors::InvalidArgument(
+        "Scalar input must be int16, int32 or int64.");
   }
 }
 
@@ -1197,7 +1201,7 @@ Status InferenceContext::AttachContext(const Status& status) {
 
   strings::StrAppend(&error_context, ".");
   return errors::CreateWithUpdatedMessage(
-      status, strings::StrCat(status.error_message(), error_context));
+      status, strings::StrCat(status.message(), error_context));
 }
 
 bool InferenceContext::MergeHandleShapesAndTypes(

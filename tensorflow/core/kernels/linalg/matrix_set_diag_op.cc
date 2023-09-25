@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/linalg/matrix_set_diag_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -136,11 +136,13 @@ class MatrixSetDiagOp : public OpKernel {
 
     TensorShape expected_diag_shape = input_shape;
     expected_diag_shape.RemoveLastDims(2);
-    if (num_diags > 1) expected_diag_shape.AddDim(num_diags);
+    if (num_diags > 1) {
+      OP_REQUIRES_OK(context, expected_diag_shape.AddDimWithStatus(num_diags));
+    }
     const int32_t max_diag_len =
         std::min(num_rows + std::min(upper_diag_index, 0),
                  num_cols - std::max(lower_diag_index, 0));
-    expected_diag_shape.AddDim(max_diag_len);
+    OP_REQUIRES_OK(context, expected_diag_shape.AddDimWithStatus(max_diag_len));
     OP_REQUIRES(
         context, expected_diag_shape == diag_shape,
         errors::InvalidArgument(

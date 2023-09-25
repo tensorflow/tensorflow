@@ -1,7 +1,5 @@
 // RUN: tf-quant-opt %s -split-input-file -quant-prepare-quantize | FileCheck %s
 
-// -----
-
 module {
   func.func @same_scale_test(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     %cst = arith.constant dense<[-1, 144]> : tensor<2xi32>
@@ -26,10 +24,8 @@ module {
   func.func private @composite_matmul_with_bias_fn_1(%a: tensor<*xf32>, %b: tensor<*xf32>, %c: tensor<*xf32>) -> tensor<*xf32> {
     func.return %a: tensor<*xf32>
   }
-}
 
 // CHECK-LABEL: same_scale_test
-
 // CHECK: %[[maxpool:.*]] = "tf.MaxPool"
 // CHECK: %[[q1:.*]] = "quantfork.qcast"(%[[maxpool]])
 // CHECK-SAME: quant.uniform<i8:f32, 5.000000e-02:-10>
@@ -42,5 +38,5 @@ module {
 // CHECK-SAME: quant.uniform<i8:f32, 5.000000e-02:-10>
 // CHECK: "tf.PartitionedCall"(%[[dq2]]
 // CHECK-SAME: f = @composite_matmul_with_bias_fn_1
+}
 
-// -----

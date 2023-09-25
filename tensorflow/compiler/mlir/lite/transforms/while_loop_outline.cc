@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -79,11 +80,13 @@ bool IsAlreadyOutlined(WhileOp while_op) {
 
 bool IsCompatibleTypeWithTFLCastOp(Type type) {
   auto elemType = getElementTypeOrSelf(type);
-  // F32 and BF16 types are allowed.
-  if (elemType.isBF16() || elemType.isF32()) return true;
+  // F16, F32, F64, BF16 types are allowed.
+  if (elemType.isBF16() || elemType.isF16() || elemType.isF32() ||
+      elemType.isF64())
+    return true;
 
-  // I1, I8 I16, I32, I64 types are allowed.
-  if (elemType.isInteger(1) || elemType.isInteger(8) ||
+  // I1, I4, I8, I16, I32, I64 types are allowed.
+  if (elemType.isInteger(1) || elemType.isInteger(4) || elemType.isInteger(8) ||
       elemType.isInteger(16) || elemType.isInteger(32) ||
       elemType.isInteger(64))
     return true;
@@ -180,7 +183,7 @@ void ReplaceRegionWithCall(StringRef name, Region& region,
   auto block = b.createBlock(&region);
   SmallVector<Value, 4> new_operands;
   new_operands.reserve(types.size());
-  for (Type t : llvm::makeArrayRef(types).drop_back(extern_values.size()))
+  for (Type t : llvm::ArrayRef(types).drop_back(extern_values.size()))
     new_operands.push_back(block->addArgument(t, loc));
   for (Value v : extern_values) new_operands.push_back(v);
   auto call = b.create<func::CallOp>(loc, func, new_operands);
@@ -208,9 +211,11 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
     llvm::SetVector<Value> region_extern_values;
     getUsedValuesDefinedAbove(*it.value(), region_extern_values);
 
-    // Sink down constants into the functions.
+    // Sink down constants (including quantized constant) into the functions.
     for (auto extern_value : region_extern_values) {
-      if (!matchPattern(extern_value, m_Constant())) {
+      if (!matchPattern(extern_value, m_Constant()) &&
+          !llvm::dyn_cast_or_null<TFL::QConstOp>(
+              extern_value.getDefiningOp())) {
         extern_values.insert(extern_value);
         continue;
       }

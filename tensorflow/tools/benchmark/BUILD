@@ -32,10 +32,10 @@ cc_library(
         ],
         "//conditions:default": [
             "//tensorflow/core:core_cpu",
-            "//tensorflow/core:lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:framework_lite",
+            "//tensorflow/core:lib",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:tensorflow",
             "//tensorflow/core:test",

@@ -134,7 +134,7 @@ Status RendezvousInterface::Recv(const ParsedKey& key, const Args& recv_args,
     int64_t timeout_us = timeout_ms * 1000;
     bool notified = WaitForNotificationWithTimeout(&n, timeout_us);
     if (!notified) {
-      return Status(error::DEADLINE_EXCEEDED,
+      return Status(absl::StatusCode::kDeadlineExceeded,
                     "Timed out waiting for notification");
     }
   } else {

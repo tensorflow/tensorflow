@@ -21,7 +21,7 @@
 
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -406,7 +406,6 @@ static inline Status PotrfImpl(BufSizeFnT bufsize, SolverFnT solver,
 
 TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
 
-#if CUDA_VERSION >= 9020
 template <typename Scalar, typename SolverFnT>
 static inline Status PotrfBatchedImpl(
     SolverFnT solver, GpuSolver* cuda_solver, OpKernelContext* context,
@@ -441,7 +440,6 @@ static inline Status PotrfBatchedImpl(
   }
 
 TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
-#endif  // CUDA_VERSION >= 9020
 
 template <typename Scalar, typename BufSizeFnT, typename SolverFnT>
 static inline Status GetrfImpl(BufSizeFnT bufsize, SolverFnT solver,

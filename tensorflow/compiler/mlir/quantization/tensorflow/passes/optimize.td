@@ -27,8 +27,7 @@ def RemoveRedundantCastOps : Pat<
       (TF_ClipByValueOp:$clip $input, $min_value, $max_value),
       ConstBoolAttrFalse:$truncate2),
     ConstBoolAttrFalse:$truncate1),
-  (CreateOpWithOutputType<"TF::CastOp">
-    (GetValueType $root_cast), $clip, ConstBoolAttrFalse),
+  (TF_CastOp $clip, ConstBoolAttrFalse),
   [(TensorOf<[I8]> $i8_cast),
    (TensorOf<[I32]> $clip),
    (IsIntSplatValueEqual<"int32_t", "-128"> $min_value),

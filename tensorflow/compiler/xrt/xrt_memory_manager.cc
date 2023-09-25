@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <list>
+#include <memory>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xrt/xrt_metrics.h"
@@ -316,7 +319,7 @@ XRTMemoryManager::DeviceContext* XRTMemoryManager::GetDeviceContext(
   }
   DeviceContext* device_context = device_contexts_[device_ordinal].get();
   if (device_context == nullptr && create_if_missing) {
-    device_contexts_[device_ordinal] = absl::make_unique<DeviceContext>();
+    device_contexts_[device_ordinal] = std::make_unique<DeviceContext>();
     device_context = device_contexts_[device_ordinal].get();
   }
   return device_context;

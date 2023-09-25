@@ -193,7 +193,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   }
 
   // Resize the output tensor.
-  if (!IsConstantTensor(output_shape)) {
+  if (!IsConstantOrPersistentTensor(output_shape)) {
     SetTensorToDynamic(output);
     if (opdata->need_col2im) {
       SetTensorToDynamic(col2im);

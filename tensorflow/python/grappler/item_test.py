@@ -25,7 +25,7 @@ from tensorflow.python.grappler import item
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import test
 
 
@@ -108,7 +108,7 @@ class ItemTest(test.TestCase):
   def testColocationConstraints(self):
     with ops.Graph().as_default() as g:
       c = constant_op.constant([10])
-      v = variables.VariableV1([3], dtype=dtypes.int32)
+      v = variable_v1.VariableV1([3], dtype=dtypes.int32)
       i = gen_array_ops.ref_identity(v)
       a = state_ops.assign(i, c)
       train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)

@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Must be included first
 // clang-format off
-#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+#include "tensorflow/c/tf_datatype.h"
+#include "tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
@@ -28,9 +29,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/python/lib/core/bfloat16.h"
-#include "tensorflow/python/lib/core/float8.h"
+#include "tensorflow/core/util/port.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
+#include "tsl/python/lib/core/ml_dtypes.h"
 
 namespace tensorflow {
 namespace {
@@ -122,6 +124,8 @@ Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
 
 Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
                                    TF_DataType* out_tf_datatype) {
+  const tsl::ml_dtypes::NumpyDtypes& custom_dtypes =
+      tsl::ml_dtypes::GetNumpyDtypes();
   int pyarray_type = PyArray_TYPE(array);
   PyArray_Descr* descr = PyArray_DESCR(array);
   switch (pyarray_type) {
@@ -180,7 +184,7 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       // custom struct type.
       return PyArrayDescr_to_TF_DataType(descr, out_tf_datatype);
     default:
-      if (pyarray_type == Bfloat16NumpyType()) {
+      if (pyarray_type == custom_dtypes.bfloat16) {
         *out_tf_datatype = TF_BFLOAT16;
         break;
       } else if (pyarray_type == NPY_ULONGLONG) {
@@ -203,13 +207,20 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
         // be different on certain platforms.
         *out_tf_datatype = TF_UINT32;
         break;
-      } else if (pyarray_type == Float8e5m2NumpyType()) {
+      } else if (pyarray_type == custom_dtypes.float8_e5m2) {
         *out_tf_datatype = TF_FLOAT8_E5M2;
         break;
-      } else if (pyarray_type == Float8e4m3fnNumpyType()) {
+      } else if (pyarray_type == custom_dtypes.float8_e4m3fn) {
         *out_tf_datatype = TF_FLOAT8_E4M3FN;
         break;
+      } else if (pyarray_type == custom_dtypes.int4) {
+        *out_tf_datatype = TF_INT4;
+        break;
+      } else if (pyarray_type == custom_dtypes.uint4) {
+        *out_tf_datatype = TF_UINT4;
+        break;
       }
+
       return errors::Internal("Unsupported numpy type: ",
                               numpy_type_name(pyarray_type));
   }
@@ -467,13 +478,26 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
   }
   PyArrayObject* py_array =
       reinterpret_cast<PyArrayObject*>(safe_out_array.get());
+
   if (TF_TensorType(tensor.get()) == TF_STRING) {
     Status s = CopyTF_TensorStringsToPyArray(tensor.get(), nelems, py_array);
     if (!s.ok()) {
       return s;
     }
-  } else if (static_cast<size_t>(PyArray_NBYTES(py_array)) !=
-             TF_TensorByteSize(tensor.get())) {
+  } else if ((!IsZenDnnEnabled()) &&
+             (static_cast<size_t>(PyArray_NBYTES(py_array)) !=
+              TF_TensorByteSize(tensor.get()))) {
+    return errors::Internal("ndarray was ", PyArray_NBYTES(py_array),
+                            " bytes but TF_Tensor was ",
+                            TF_TensorByteSize(tensor.get()), " bytes");
+  }
+  // Default TF implementation compares ndarray bytes with TF_Tensor bytes
+  // which is allocated using allocate_output API for fixed size.
+  // ZenDNN mempool optimization utilizes pre-allocated buffers with TF_Tensor.
+  // Hence, the amount of allocated TF_Tensor bytes is always greater than or
+  // equal to the number of bytes requested by the op execution.
+  else if (IsZenDnnEnabled() && (static_cast<size_t>(PyArray_NBYTES(py_array)) >
+                                 TF_TensorByteSize(tensor.get()))) {
     return errors::Internal("ndarray was ", PyArray_NBYTES(py_array),
                             " bytes but TF_Tensor was ",
                             TF_TensorByteSize(tensor.get()), " bytes");

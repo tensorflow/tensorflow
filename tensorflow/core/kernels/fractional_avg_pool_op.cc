@@ -20,7 +20,7 @@ limitations under the License.
 #include <random>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/fractional_pool_common.h"
@@ -51,7 +51,7 @@ class FractionalAvgPoolOp : public OpKernel {
                       pooling_ratio_[i]));
     }
     OP_REQUIRES(
-        context, pooling_ratio_[0] == 1 || pooling_ratio_[3] == 1,
+        context, pooling_ratio_[0] == 1 && pooling_ratio_[3] == 1,
         errors::Unimplemented("Fractional average pooling is not yet "
                               "supported on the batch nor channel dimension."));
     OP_REQUIRES_OK(context, context->GetAttr("deterministic", &deterministic_));
@@ -322,7 +322,8 @@ class FractionalAvgPoolGradOp : public OpKernel {
     // Transform orig_input_tensor_shape into TensorShape
     TensorShape in_shape;
     for (auto i = 0; i < tensor_in_and_out_dims; ++i) {
-      in_shape.AddDim(orig_input_tensor_shape_flat(i));
+      OP_REQUIRES_OK(
+          context, in_shape.AddDimWithStatus(orig_input_tensor_shape_flat(i)));
     }
 
     // Create intermediate in_backprop.

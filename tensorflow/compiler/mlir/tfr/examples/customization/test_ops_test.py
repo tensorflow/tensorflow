@@ -24,7 +24,7 @@ from tensorflow.python.platform import test
 class TestOpsDefsTest(test_utils.OpsDefsTest):
 
   def test_test_ops(self):
-    attr = tf.function(test_ops.test_attr)(T=tf.float32)
+    attr = tf.function(test_ops.test_attr)(tf.float32)
     self.assertAllClose(attr.numpy(), 100.0)
 
 

@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/tensor_bundle.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
+#include "tensorflow/core/util/tensor_bundle/naming.h"
 
 namespace tensorflow {
 using ::testing::ElementsAre;
@@ -531,8 +532,7 @@ void VersionTest(const VersionDef& version, StringPiece expected_error) {
   // Read it back in and verify that we get the expected error.
   BundleReader reader(Env::Default(), path);
   EXPECT_TRUE(errors::IsInvalidArgument(reader.status()));
-  EXPECT_TRUE(
-      absl::StartsWith(reader.status().error_message(), expected_error));
+  EXPECT_TRUE(absl::StartsWith(reader.status().message(), expected_error));
 }
 
 }  // namespace

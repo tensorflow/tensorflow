@@ -15,11 +15,13 @@
 """API for specifying `tf.data` options."""
 
 import enum
+import platform
 
 from absl import logging
 
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import model_pb2
+from tensorflow.python.data.ops import test_mode
 from tensorflow.python.data.util import options as options_lib
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -449,7 +451,7 @@ class ThreadingOptions(options_lib.OptionsBase):
   """Represents options for dataset threading.
 
   You can set the threading options of a dataset through the
-  `experimental_threading` property of `tf.data.Options`; the property is
+  `threading` property of `tf.data.Options`; the property is
   an instance of `tf.data.ThreadingOptions`.
 
   ```python
@@ -587,6 +589,20 @@ class Options(options_lib.OptionsBase):
       ty=ThreadingOptions,
       docstring="DEPRECATED. Use `threading` instead.")
 
+  experimental_warm_start = options_lib.create_option(
+      name="experimental_warm_start",
+      ty=bool,
+      docstring=(
+          "Whether to start background threads of asynchronous transformations "
+          "upon iterator creation, as opposed to during the first call to "
+          "`next()`. Defaults to `False`. "
+          "This improves the latency of the initial 'next()' calls at "
+          "the expense of requiring more memory to hold prefetched elements "
+          "between the time of iterator construction and usage."
+      ),
+      default_factory=lambda: True if test_mode.TEST_MODE else None,
+  )
+
   threading = options_lib.create_option(
       name="threading",
       ty=ThreadingOptions,
@@ -618,6 +634,11 @@ class Options(options_lib.OptionsBase):
       #                 "Use options.deterministic instead.")
       super(Options, self).__setattr__("deterministic", value)
       return
+    if name == "experimental_symbolic_checkpoint":
+      # TODO(b/276269493): Add support for MacOS.
+      if platform.system() == "Darwin":
+        logging.warning("Symbolic checkpointing is not supported on MacOS.")
+        return
     super(Options, self).__setattr__(name, value)
 
   def _to_proto(self):
@@ -635,6 +656,8 @@ class Options(options_lib.OptionsBase):
       pb.slack = self.experimental_slack
     if self.experimental_symbolic_checkpoint is not None:
       pb.symbolic_checkpoint = self.experimental_symbolic_checkpoint
+    if self.experimental_warm_start is not None:
+      pb.warm_start = self.experimental_warm_start
     pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
     return pb
 
@@ -652,6 +675,8 @@ class Options(options_lib.OptionsBase):
       self.experimental_slack = pb.slack
     if pb.WhichOneof("optional_symbolic_checkpoint") is not None:
       self.experimental_symbolic_checkpoint = pb.symbolic_checkpoint
+    if pb.WhichOneof("optional_warm_start") is not None:
+      self.experimental_warm_start = pb.warm_start
     self.threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
 
   def _set_mutable(self, mutable):

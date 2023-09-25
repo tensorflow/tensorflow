@@ -14,10 +14,10 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
-        ":telemetry_settings",
         ":telemetry_status",
         "//tensorflow/lite/core/api",
-        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/profiling/telemetry/c:profiler",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting",
     ],
 )
 
@@ -28,11 +28,11 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
-        ":telemetry_settings",
         ":telemetry_status",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting",
     ],
 )
 
@@ -45,6 +45,21 @@ cc_test(
         ":telemetry_status",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "profiler_test",
+    srcs = ["profiler_test.cc"],
+    deps = [
+        ":profiler",
+        ":telemetry",
+        ":telemetry_status",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -55,12 +70,4 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = ["//tensorflow/lite/core/c:c_api_types"],
-)
-
-cc_library(
-    name = "telemetry_settings",
-    hdrs = ["telemetry_settings.h"],
-    compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts(),
-    deps = [":telemetry_status"],
 )

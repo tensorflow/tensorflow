@@ -190,15 +190,19 @@ def tpu_system_init_helper(task_id,
   for i in range(len(my_core_ids)):
     all_core_ids[task_id * num_devices_per_task + i] = my_core_ids[i]
 
-  # Only one local device gets valid input: 8 local core IDs among
-  # (num_tasks - 1) * 8 zeros. The 8 core IDs are set using task ID as offset.
-  # The other 7 local devices get zero inputs. All devices on all host
-  # participate in one AllReduce, whose result will be core IDs arranged by
-  # task-device ordinals.
+  # Only one local device gets a valid input. To give an example, assume we have
+  # 2 tasks and each of them has 8 local devices, then `all_core_ids` in task 0
+  # will have 8 tensors, where 1 of them may have its value as
+  # [0,1,2,3,4,5,6,7,0,0,0,0,0,0,0,0] and the other tensors are all zeros. For
+  # task 1, the case may be one with [0,0,0,0,0,0,0,0,8,9,10,11,12,13,14,15]
+  # and other 7 are all zeros.
   all_core_ids = constant_op.constant([all_core_ids])
   zeros = array_ops.zeros_like(all_core_ids)
   all_core_ids = [all_core_ids] + [zeros] * (num_devices_per_task - 1)
 
+  # All devices on all hosts participate in one AllReduce, whose result will be
+  # core IDs arranged by task-device ordinals. For the above example, the result
+  # will be [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].
   with ops.device(device.name):
     all_core_ids = device.pack(all_core_ids, layout)
     all_core_ids = math_ops.reduce_sum(all_core_ids, axis=[0])
@@ -274,7 +278,7 @@ def initialize_tpu_system():
 
   except errors.InternalError as e:
     logging.error("Hit internal error during TPU system initialization. "
-                  + "It is likely hareware failure. \nPlease check the error "
+                  + "It is likely hardware failure. \nPlease check the error "
                   + "messages above to see whether that's the case. \nIf so, "
                   + "consider to restart the job or try another machine.")
     raise e
@@ -714,8 +718,14 @@ def create_tpu_mesh(
   ]
   global_device_ids, local_device_ids, local_device_list = _create_device_array(
       mesh_shape, _TPU_DEVICE_TYPE, None, local_device_ids=indexes)
-  return layout_lib.Mesh(mesh_dim_names, global_device_ids, local_device_ids,
-                         local_device_list, mesh_name, use_xla_spmd)
+  return layout_lib.Mesh(
+      mesh_dim_names,
+      global_device_ids,
+      local_device_ids,
+      local_device_list,
+      mesh_name,
+      use_xla_spmd=use_xla_spmd,
+  )
 
 
 def get_device_ids(mesh: layout_lib.Mesh,

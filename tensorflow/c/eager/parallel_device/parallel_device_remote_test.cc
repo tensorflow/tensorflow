@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <memory>
 #include <string>
 
 #include "tensorflow/c/c_api.h"
@@ -37,6 +38,8 @@ tensorflow::ServerDef GetServerDef(const std::string& job_name, int num_tasks) {
     int port = tensorflow::testing::PickUnusedPortOrDie();
     job_def->mutable_tasks()->insert(
         {i, tensorflow::strings::StrCat("localhost", ":", port)});
+    LOG(INFO) << "Picked test port: " << port << " for job: " << job_name
+              << ", task: " << i;
   }
   return server_def;
 }

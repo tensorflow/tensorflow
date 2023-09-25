@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_KERNEL_FALLBACK_UTILS_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_KERNEL_FALLBACK_UTILS_H_
 
+#include <functional>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
@@ -27,6 +29,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfd {
+
+std::function<void(std::function<void()>)>* GetDefaultRunner();
 
 using TfInputs =
     tfrt::Variant<tfrt::Monostate, llvm::ArrayRef<tfrt::AsyncValue*>,

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -24,17 +26,17 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/lib/comparators.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/comparison_util.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/lib/arithmetic.h"
+#include "xla/client/lib/comparators.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/comparison_util.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -147,6 +149,10 @@ class UniqueOpBase : public XlaOpKernel {
     StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
     auto input_shape = input_shape_or.value();
+    axis = axis < 0 ? axis + input_shape.rank() : axis;
+    OP_REQUIRES(ctx, 0 <= axis && axis < input_shape.rank(),
+                errors::InvalidArgument("axis has to be between [0, ",
+                                        input_shape.rank(), ")"));
     auto aux = MoveAxis(input, axis, 0, input_shape);
     auto aux_shape = ctx->builder()->GetShape(aux).value();
     int64_t leading_size = aux_shape.dimensions(0);

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -41,33 +42,32 @@ StatusOr<Layout> GetOutputLayout(const absl::optional<Layout>& tensor_layout,
   // to replicated. The remainder are set from tensor_layout and updates_layout
   // with tensor_layout taking priority, as it is generally larger than updates
   // (as unsharding updates is faster).
-  std::vector<ShardingSpec> output_specs(tensor_rank);
+  std::vector<std::string> output_specs(tensor_rank);
 
   // The number of dimensions at the start of the tensor input that are used
   // for the index, also the size of the second dimension of the indices tensor.
   const int index_dimensions = tensor_rank - (updates_rank - 1);
 
-  for (int i = 0; i < tensor_rank; ++i)
-    output_specs[i].set_sharding_spec(Layout::kUnshardedDim);
+  for (int i = 0; i < tensor_rank; ++i) output_specs[i] = Layout::kUnshardedDim;
 
   absl::flat_hash_set<std::string> used_mesh_dims;
 
   if (tensor_layout) {
     for (int i = index_dimensions; i < tensor_rank; ++i) {
-      output_specs[i] = tensor_layout->dim(i);
-      if (Layout::IsShardedSpec(output_specs[i]))
-        used_mesh_dims.emplace(output_specs[i].sharding_spec());
+      output_specs[i] = tensor_layout->sharding_spec(i);
+      if (Layout::IsShardedDimension(output_specs[i]))
+        used_mesh_dims.emplace(output_specs[i]);
     }
   }
 
   if (updates_layout) {
     for (int i = index_dimensions; i < tensor_rank; ++i) {
-      const ShardingSpec& update_spec =
-          updates_layout->dim(i - index_dimensions + 1);
+      const auto& update_spec =
+          updates_layout->sharding_spec(i - index_dimensions + 1);
 
-      if (Layout::IsUnshardedSpec(output_specs[i]) &&
-          Layout::IsShardedSpec(update_spec) &&
-          !used_mesh_dims.contains(update_spec.sharding_spec()))
+      if (Layout::IsUnshardedDimension(output_specs[i]) &&
+          Layout::IsShardedDimension(update_spec) &&
+          !used_mesh_dims.contains(update_spec))
         output_specs[i] = update_spec;
     }
   }
@@ -122,13 +122,14 @@ StatusOr<mlir::Operation*> TensorScatterOpExpand(mlir::Operation* op) {
       GetOutputLayout(tensor_layout, tensor_rank, updates_layout, updates_rank,
                       tensor_layout->mesh()));
 
-  std::vector<ShardingSpec> updates_specs(updates_rank);
-  updates_specs[0].set_sharding_spec(Layout::kUnshardedDim);
+  std::vector<std::string> updates_specs(updates_rank);
+  updates_specs[0] = Layout::kUnshardedDim;
 
   const int index_dimensions = tensor_rank - (updates_rank - 1);
 
   for (int i = 0; i < updates_rank - 1; ++i)
-    updates_specs[i + 1] = pre_output_layout.dim(index_dimensions + i);
+    updates_specs[i + 1] =
+        pre_output_layout.sharding_spec(index_dimensions + i);
 
   TF_ASSIGN_OR_RETURN(Layout new_updates_layout,
                       Layout::GetLayout(updates_specs, updates_layout->mesh()));

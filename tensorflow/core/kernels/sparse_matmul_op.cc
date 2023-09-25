@@ -23,7 +23,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/op.h"
@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #define ALWAYS_INLINE EIGEN_ALWAYS_INLINE

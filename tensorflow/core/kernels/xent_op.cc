@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/xent_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -143,7 +143,6 @@ TF_CALL_bfloat16(REGISTER_CPU);
                           SoftmaxXentWithLogitsOp<GPUDevice, T>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_bfloat16(REGISTER_GPU);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

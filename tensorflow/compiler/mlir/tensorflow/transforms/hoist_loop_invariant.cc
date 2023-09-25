@@ -120,7 +120,7 @@ size_t HoistLoopInvariantCode(
     LoopLikeOpInterface loopLike,
     const llvm::DenseSet<ResourceHandle> &read_only_vars) {
   return moveLoopInvariantCode(
-      &loopLike.getLoopBody(),
+      loopLike.getLoopRegions(),
       [&](Value value, Region *) {
         return loopLike.isDefinedOutsideOfLoop(value);
       },

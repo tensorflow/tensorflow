@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_to_dense_op_gpu.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -244,9 +244,9 @@ void LaunchSparseToDense<T, Index>::operator()(
   template struct functor::LaunchSparseToDense<T, int64>; \
   template struct functor::LaunchSparseToDense<T, int32>;
 
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC)
-TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_SPEC)
-DEFINE_GPU_SPEC(bool)
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
+TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_SPEC);
+DEFINE_GPU_SPEC(bool);
 
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

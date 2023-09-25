@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_UTILITY_H_
 #define TENSORFLOW_CORE_IR_UTILITY_H_
 
+#include <optional>
+
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -59,7 +61,7 @@ Value LookupControlDependency(Value data);
 // will always have an associated data value: the previous argument. For ops,
 // if the only result is a control token, return None. Otherwise, returns the
 // first result.
-Optional<Value> LookupDataValue(Value ctl);
+std::optional<Value> LookupDataValue(Value ctl);
 
 // Given a range of values, operands, or results, that contains data and control
 // values, where all control tokens come after the data values, split the range

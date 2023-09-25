@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_SIMPLE_ALLOCATOR_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -30,14 +31,14 @@ namespace tensorflow {
 class PluggableDeviceSimpleAllocator : public Allocator {
  public:
   explicit PluggableDeviceSimpleAllocator(DeviceMemAllocator* sub_allocator);
-  ~PluggableDeviceSimpleAllocator() override {}
+  ~PluggableDeviceSimpleAllocator() override = default;
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
 
   bool TracksAllocationSizes() const override { return false; }
   string Name() override { return "Simple allocator"; }
-  absl::optional<AllocatorStats> GetStats() override;
+  std::optional<AllocatorStats> GetStats() override;
 
   AllocatorMemoryType GetMemoryType() const override {
     return sub_allocator_->GetMemoryType();

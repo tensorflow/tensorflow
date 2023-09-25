@@ -101,6 +101,12 @@ class ReverseSequenceTest(test.TestCase):
   def testFloatBasic(self):
     self._testBasic(np.float32)
 
+  def testFloat16Basic(self):
+    self._testBasic(np.float16)
+
+  def testBfloat16Basic(self):
+    self._testBasic(dtypes.bfloat16.as_numpy_dtype)
+
   def testDoubleBasic(self):
     self._testBasic(np.float64)
 

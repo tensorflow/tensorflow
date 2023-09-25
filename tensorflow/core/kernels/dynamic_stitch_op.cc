@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/data_flow_ops.cc.
 
+#include <algorithm>
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -24,6 +26,12 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/gpu_device_array.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) &&                       \
+    (!defined(TARGET_OS_IOS) || !TARGET_OS_IOS)
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
 
 namespace tensorflow {
 
@@ -97,6 +105,17 @@ class DynamicStitchOpImplBase : public OpKernel {
 
     *first_dim_size = max_index + 1;
 
+    for (const Tensor& indices : *indices_inputs) {
+      auto indices_vec = indices.flat<int32>();
+
+      for (int i = 0; i < indices_vec.size(); i++) {
+        int32_t index = internal::SubtleMustCopy(indices_vec(i));
+        OP_REQUIRES(
+            c, FastBoundsCheck(index, *first_dim_size),
+            errors::InvalidArgument("indices[", i, "] is out of range"));
+      }
+    }
+
     // Validate that data[i].shape = indices[i].shape + constant
     OP_REQUIRES_OK(c, c->input_list("data", data_inputs));
     const Tensor& data0 = (*data_inputs)[0];
@@ -125,9 +144,9 @@ class DynamicStitchOpImplBase : public OpKernel {
     // Allocate result tensor of shape
     //   [*first_dim_size] + data.shape[indices.dims:]
     TensorShape result_shape;
-    result_shape.AddDim(*first_dim_size);
+    OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(*first_dim_size));
     for (int d = indices0.dims(); d < data0.dims(); d++) {
-      result_shape.AddDim(data0.dim_size(d));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(data0.dim_size(d)));
     }
     OP_REQUIRES_OK(c, c->allocate_output(0, result_shape, result_ptr));
   }
@@ -265,9 +284,6 @@ class DynamicStitchOpImplCPU : public DynamicStitchOpImplBase<T> {
           const T* data_base = data_flat.data();
           for (int i = 0; i < indices_vec.size(); i++) {
             int32_t index = internal::SubtleMustCopy(indices_vec(i));
-            OP_REQUIRES(
-                c, FastBoundsCheck(index, first_dim_size),
-                errors::InvalidArgument("indices[", i, "] is out of range"));
             memcpy(merged_base + index * slice_size, data_base + i * slice_size,
                    slice_bytes);
           }
@@ -277,9 +293,6 @@ class DynamicStitchOpImplCPU : public DynamicStitchOpImplBase<T> {
             // Copy slice data[i] to merged[indices[i]]
             Eigen::DSizes<Eigen::DenseIndex, 2> data_indices(i, 0);
             int32_t index = internal::SubtleMustCopy(indices_vec(i));
-            OP_REQUIRES(
-                c, FastBoundsCheck(index, first_dim_size),
-                errors::InvalidArgument("indices[", i, "] is out of range"));
             Eigen::DSizes<Eigen::DenseIndex, 2> merged_indices(index, 0);
             merged_flat.slice(merged_indices, sizes) =
                 data_flat.slice(data_indices, sizes);
@@ -373,7 +386,23 @@ TF_CALL_int64(REGISTER_DYNAMIC_STITCH_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
 #undef REGISTER_DYNAMIC_STITCH_GPU
-
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+#define REGISTER_DYNAMIC_STITCH_DEFAULT_DEVICE(type)     \
+  REGISTER_KERNEL_BUILDER(Name("DynamicStitch")          \
+                              .Device(DEVICE_DEFAULT)    \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("indices")     \
+                              .HostMemory("data")        \
+                              .HostMemory("merged"),     \
+                          DynamicStitchOpCPU<type>)
+
+TF_CALL_int32(REGISTER_DYNAMIC_STITCH_DEFAULT_DEVICE);
+TF_CALL_int64(REGISTER_DYNAMIC_STITCH_DEFAULT_DEVICE);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_DYNAMIC_STITCH_DEFAULT_DEVICE);
+TF_CALL_COMPLEX_TYPES(REGISTER_DYNAMIC_STITCH_DEFAULT_DEVICE);
+#undef REGISTER_DYNAMIC_STITCH_DEFAULT_DEVICE
+#endif
 
 }  // namespace tensorflow

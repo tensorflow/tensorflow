@@ -45,3 +45,14 @@ message TensorMetadata {
 message SnapshotTensorMetadata {
   repeated TensorMetadata tensor_metadata = 1;
 }
+
+// Metadata for a `tf.data.Dataset` distributed snapshot.
+message DistributedSnapshotMetadata {
+  // The element spec of the snapshotted dataset.
+  bytes element_spec = 1;
+
+  // Whether and how to compress the snapshot.  Supported values are defined in
+  // `tsl::io::compression`.  In particular, an empty string specifies not to
+  // compress.
+  string compression = 2;
+}

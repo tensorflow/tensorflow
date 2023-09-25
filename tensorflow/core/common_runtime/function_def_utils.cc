@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 
 namespace tensorflow {
 
@@ -50,15 +51,19 @@ Status FunctionDefToBodyHelper(
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.expect_device_spec = false;
-  TF_RETURN_IF_ERROR(ConvertNodeDefsToGraph(opts, result.nodes, graph.get()));
 
-  const StackTracesMap& stack_traces =
+  TF_RETURN_IF_ERROR(ConvertNodeDefsToGraph(opts, result.nodes, graph.get(),
+                                            /*debug_info=*/nullptr));
+
+  const StackTracesMap* stack_traces =
       lib_def->GetStackTraces(fdef.signature().name());
-  for (Node* n : graph->nodes()) {
-    if (n) {
-      auto it = stack_traces.find(n->name());
-      if (it != stack_traces.end()) {
-        n->SetStackTrace(it->second);
+  if (stack_traces) {
+    for (Node* n : graph->nodes()) {
+      if (n) {
+        auto it = stack_traces->find(n->name());
+        if (it != stack_traces->end()) {
+          n->SetStackTrace(it->second);
+        }
       }
     }
   }
@@ -69,7 +74,7 @@ Status FunctionDefToBodyHelper(
   TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph.get(), &dummy));
 
   *fbody = std::make_unique<FunctionBody>(fdef, result.arg_types,
-                                           result.ret_types, graph.release());
+                                          result.ret_types, graph.release());
   return OkStatus();
 }
 

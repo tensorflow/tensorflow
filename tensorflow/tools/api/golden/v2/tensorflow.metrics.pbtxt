@@ -37,6 +37,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "F1Score"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FBetaScore"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "FalseNegatives"
     mtype: "<type \'type\'>"
   }
@@ -121,6 +129,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "R2Score"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Recall"
     mtype: "<type \'type\'>"
   }
@@ -172,6 +184,10 @@ tf_module {
     name: "TruePositives"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "KLD"
     argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
@@ -213,8 +229,12 @@ tf_module {
     argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'label_smoothing\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'0.0\', \'-1\'], "
   }
   member_method {
+    name: "categorical_focal_crossentropy"
+    argspec: "args=[\'y_true\', \'y_pred\', \'alpha\', \'gamma\', \'from_logits\', \'label_smoothing\', \'axis\'], varargs=None, keywords=None, defaults=[\'0.25\', \'2.0\', \'False\', \'0.0\', \'-1\'], "
+  }
+  member_method {
     name: "deserialize"
-    argspec: "args=[\'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'config\', \'custom_objects\', \'use_legacy_format\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "get"
@@ -282,7 +302,7 @@ tf_module {
   }
   member_method {
     name: "serialize"
-    argspec: "args=[\'metric\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'metric\', \'use_legacy_format\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "sparse_categorical_accuracy"

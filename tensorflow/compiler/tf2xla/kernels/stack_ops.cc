@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/literal.h"
+#include "xla/literal.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -68,7 +68,7 @@ Status MaybeInitializeStack(xla::XlaBuilder* builder, XlaResource* resource,
   }
 
   TensorShape stack_shape;
-  stack_shape.AddDim(resource->max_array_size());
+  TF_RETURN_IF_ERROR(stack_shape.AddDimWithStatus(resource->max_array_size()));
   stack_shape.AppendShape(elem_shape);
 
   if (!resource->initialized()) {

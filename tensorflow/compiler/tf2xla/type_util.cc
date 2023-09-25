@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -25,6 +28,9 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
   switch (data_type) {
     case tensorflow::DT_BOOL:
       *type = xla::PRED;
+      return OkStatus();
+    case tensorflow::DT_INT4:
+      *type = xla::S4;
       return OkStatus();
     case tensorflow::DT_INT8:
     case tensorflow::DT_QINT8:
@@ -41,6 +47,9 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
     case tensorflow::DT_INT64:
       *type = xla::S64;
       return OkStatus();
+    case tensorflow::DT_UINT4:
+      *type = xla::U4;
+      return OkStatus();
     case tensorflow::DT_UINT8:
     case tensorflow::DT_QUINT8:
       *type = xla::U8;
@@ -54,6 +63,12 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
       return OkStatus();
     case tensorflow::DT_UINT64:
       *type = xla::U64;
+      return OkStatus();
+    case tensorflow::DT_FLOAT8_E5M2:
+      *type = xla::F8E5M2;
+      return OkStatus();
+    case tensorflow::DT_FLOAT8_E4M3FN:
+      *type = xla::F8E4M3FN;
       return OkStatus();
     case tensorflow::DT_BFLOAT16:
       *type = xla::BF16;
@@ -84,15 +99,19 @@ StatusOr<DataType> EncodePrimitiveTypeAsDataType(xla::PrimitiveType type) {
   static const absl::flat_hash_map<xla::PrimitiveType, DataType>&
       data_type_map = *new absl::flat_hash_map<xla::PrimitiveType, DataType>({
           {xla::PRED, DT_BOOL},
+          {xla::F8E5M2, DT_FLOAT8_E5M2},
+          {xla::F8E4M3FN, DT_FLOAT8_E4M3FN},
           {xla::BF16, DT_BFLOAT16},
           {xla::F16, DT_HALF},
           {xla::F32, DT_FLOAT},
           {xla::F64, DT_DOUBLE},
           {xla::C64, DT_COMPLEX64},
+          {xla::S4, DT_INT4},
           {xla::S8, DT_INT8},
           {xla::S16, DT_INT16},
           {xla::S32, DT_INT32},
           {xla::S64, DT_INT64},
+          {xla::U4, DT_UINT4},
           {xla::U8, DT_UINT8},
           {xla::U16, DT_UINT16},
           {xla::U32, DT_UINT32},

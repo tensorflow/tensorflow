@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/histogram_op.h"
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -70,15 +71,17 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
     //   step = (b - a) / nbins
     //   (x - a) / step
     // , then the entries are mapped to output.
-
-    // Bug fix: Switch the order of cwiseMin and int32-casting to avoid
-    // producing a negative index when casting an big int64 number to int32
-    index_to_bin.device(d) =
-        ((values.cwiseMax(value_range(0)) - values.constant(value_range(0)))
-             .template cast<double>() /
-         step)
-            .cwiseMin(nbins_minus_1)
-            .template cast<int32>();
+    //
+    // Bound range and cast to double _before_ subtracting the lower-bound to
+    // avoid overflow.  Otherwise the difference may not fit within the type
+    // (e.g. int32).
+    index_to_bin.device(d) = ((values.cwiseMax(value_range(0))
+                                   .cwiseMin(value_range(1))
+                                   .template cast<double>() -
+                               static_cast<double>(value_range(0))) /
+                              step)
+                                 .cwiseMin(nbins_minus_1)
+                                 .template cast<int32>();
 
     out.setZero();
     for (int32_t i = 0; i < index_to_bin.size(); i++) {

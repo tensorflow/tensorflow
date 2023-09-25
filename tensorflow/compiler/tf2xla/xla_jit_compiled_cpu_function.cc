@@ -21,16 +21,16 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/cpu_function_runtime.h"
-#include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
-#include "tensorflow/compiler/xla/service/platform_util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/stream_executor/platform.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/client_library.h"
+#include "xla/client/local_client.h"
+#include "xla/client/xla_computation.h"
+#include "xla/cpu_function_runtime.h"
+#include "xla/service/cpu/buffer_info_util.h"
+#include "xla/service/cpu/cpu_executable.h"
+#include "xla/service/platform_util.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
@@ -77,6 +77,15 @@ void CollectNames(const T& entries, std::vector<string>* nonempty_names,
     }
   }
   name_ptrs->push_back(nullptr);  // array terminator
+}
+
+bool RunXlaRuntime(const xla::cpu::CpuExecutable* cpu_executable,
+                   const std::vector<xla::cpu::BufferDesc>& descriptor_table,
+                   const xla::ExecutableRunOptions* run_options) {
+  assert(cpu_executable->IsXlaRuntime());
+  Status status =
+      cpu_executable->ExecuteXlaRuntime(descriptor_table, run_options);
+  return status.ok();
 }
 
 }  // namespace
@@ -131,7 +140,8 @@ XlaJitCompiledCpuFunction::Compile(
 
   // Compute buffer infos and the result index, needed to run the raw function.
   std::vector<xla::cpu_function_runtime::BufferInfo> buffer_infos =
-      xla::cpu::CreateBufferInfosFromBufferAssignment(buffer_assignment);
+      xla::cpu::CreateBufferInfosFromBufferAssignment(cpu_executable->module(),
+                                                      buffer_assignment);
   std::vector<int32> arg_index_table =
       xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
   TF_ASSIGN_OR_RETURN(size_t result_index,
@@ -147,6 +157,12 @@ XlaJitCompiledCpuFunction::Compile(
       std::make_unique<xla::ProgramShapeProto>(program_shape->ToProto());
   XlaCompiledCpuFunction::set_static_data_raw_function(&jit->static_data_,
                                                        raw_function);
+  if (cpu_executable->IsXlaRuntime()) {
+    XlaCompiledCpuFunction::set_static_data_external_run_function(
+        &jit->static_data_, RunXlaRuntime);
+    XlaCompiledCpuFunction::set_static_data_cpu_executable(&jit->static_data_,
+                                                           cpu_executable);
+  }
   XlaCompiledCpuFunction::set_static_data_buffer_infos(
       &jit->static_data_, jit->buffer_infos_.data());
   XlaCompiledCpuFunction::set_static_data_num_buffers(

@@ -25,12 +25,14 @@ from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import fingerprinting_utils
+from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import signature_def_utils
-from tensorflow.python.saved_model import utils_impl as saved_model_utils
+from tensorflow.python.saved_model.pywrap_saved_model import constants
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
@@ -362,8 +364,8 @@ class _SavedModelBuilder(object):
     _add_op_to_signature_def_map(signature_def_map, train_op,
                                  constants.TRAIN_OP_SIGNATURE_KEY)
 
-    saved_model_utils.get_or_create_variables_dir(self._export_dir)
-    variables_path = saved_model_utils.get_variables_path(self._export_dir)
+    path_helpers.get_or_create_variables_dir(self._export_dir)
+    variables_path = path_helpers.get_variables_path(self._export_dir)
 
     saver = self._maybe_create_saver(saver)
 
@@ -427,8 +429,10 @@ class _SavedModelBuilder(object):
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
       file_io.write_string_to_file(
           path, self._saved_model.SerializeToString(deterministic=True))
+      # Placeholder for internal TF1 model fingerprint write
     tf_logging.info("SavedModel written to: %s", compat.as_text(path))
     metrics.IncrementWrite(write_version="1")
+
     return path
 
 
@@ -511,7 +515,7 @@ class SavedModelBuilder(_SavedModelBuilder):
       TypeError if Train op is not of type `Operation`.
     """
     if train_op is not None:
-      if (not isinstance(train_op, ops.Tensor) and
+      if (not isinstance(train_op, tensor.Tensor) and
           not isinstance(train_op, ops.Operation)):
         raise TypeError(f"`train_op` {train_op} needs to be a Tensor or Op.")
       ops.add_to_collection(constants.TRAIN_OP_KEY, train_op)
@@ -590,8 +594,8 @@ class SavedModelBuilder(_SavedModelBuilder):
     # Add assets and ops
     self._add_collections(assets_collection, main_op, None)
 
-    saved_model_utils.get_or_create_variables_dir(self._export_dir)
-    variables_path = saved_model_utils.get_variables_path(self._export_dir)
+    path_helpers.get_or_create_variables_dir(self._export_dir)
+    variables_path = path_helpers.get_variables_path(self._export_dir)
 
     saver = self._maybe_create_saver(saver)
 
@@ -734,7 +738,7 @@ def _asset_path_from_tensor(path_tensor):
   Raises:
     TypeError if tensor does not match expected op type, dtype or value.
   """
-  if not isinstance(path_tensor, ops.Tensor):
+  if not isinstance(path_tensor, tensor.Tensor):
     raise TypeError(f"Asset path tensor {path_tensor} must be a Tensor.")
   if path_tensor.op.type != "Const":
     raise TypeError(f"Asset path tensor {path_tensor} must be of type constant."
@@ -776,7 +780,7 @@ def copy_assets_to_destination_dir(asset_filename_map, destination_dir,
   if saved_files is None:
     saved_files = set()
 
-  assets_destination_dir = saved_model_utils.get_or_create_assets_dir(
+  assets_destination_dir = path_helpers.get_or_create_assets_dir(
       destination_dir)
 
   # Copy each asset from source path to destination path.

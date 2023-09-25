@@ -85,6 +85,7 @@ RegisterDatasetOp::RegisterDatasetOp(OpKernelConstruction* ctx)
 }
 
 void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
+  VLOG(1) << "Registering dataset with tf.data service";
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
@@ -165,6 +166,7 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
     auto output_dataset_id = output->tensor<int64_t, /*NDIMS=*/0>();
     output_dataset_id() = dataset_id_int;
   }
+  VLOG(1) << "dataset successfully registered with tf.data service";
 }
 
 REGISTER_KERNEL_BUILDER(Name(kRegisterDatasetV1).Device(DEVICE_CPU),

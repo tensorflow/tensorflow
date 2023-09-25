@@ -17,7 +17,7 @@ syntax = "proto3";
 
 package tensorflow;
 
-import "tensorflow/compiler/xla/service/hlo.proto";
+import "xla/service/hlo.proto";
 
 // Represents the cache key used for persistence.
 message XlaSerializedCacheKey {
@@ -25,6 +25,7 @@ message XlaSerializedCacheKey {
   uint64 cluster_fingerprint = 2;
   string device_type = 3;
   string prefix = 4;
+  bool compiled_using_pjrt = 5;
 }
 
 // Represents an entry in the XLA compile cache.

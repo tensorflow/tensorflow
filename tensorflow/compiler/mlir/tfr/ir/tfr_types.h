@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_TYPES_H_
 #define TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_TYPES_H_
 
+#include <memory>
+#include <string>
+
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project

@@ -20,9 +20,9 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
-const llvm::SmallVector<llvm::StringLiteral>&
-TPUEmbeddingOpsRegistry::GetOpsNames() {
-  return ops_names_;
+const llvm::SmallDenseSet<mlir::TypeID>&
+TPUEmbeddingOpsRegistry::GetOpsTypeIds() {
+  return ops_type_ids_;
 }
 
 // static

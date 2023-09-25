@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
+#include "tensorflow/lite/delegates/gpu/tflite_profile.h"
 
 #ifdef CL_DELEGATE_ALLOW_GL
 #include <EGL/eglext.h>
@@ -454,6 +455,7 @@ class InferenceRunnerImpl : public CLInferenceRunner {
 #endif
                       )
       : queue_(environment->queue()),
+        profiling_queue_(environment->profiling_queue()),
         context_(std::move(context))
 #ifdef CL_DELEGATE_ALLOW_GL
         ,
@@ -555,9 +557,18 @@ class InferenceRunnerImpl : public CLInferenceRunner {
   }
 
   absl::Status RunWithoutExternalBufferCopy() override {
+    if (IsTfLiteProfilerActive()) {
+      ProfilingInfo profiling_info;
+      RETURN_IF_ERROR(context_->Profile(profiling_queue_, &profiling_info));
+      AddTfLiteProfilerEvents(&profiling_info);
+    }
+
+    // TODO(b/300902515): This code introduces duplicate runs, it should not
+    // be needed if the profiling execution would produce result correctly,
+    // but currently it does not, see the bug for details. Once fixed, this
+    // code should be in an else clause of the above if statement.
     RETURN_IF_ERROR(context_->AddToQueue(queue_));
     clFlush(queue_->queue());
-
     return absl::OkStatus();
   }
 
@@ -585,6 +596,7 @@ class InferenceRunnerImpl : public CLInferenceRunner {
   }
 
   CLCommandQueue* queue_;
+  ProfilingCommandQueue* profiling_queue_;
   std::unique_ptr<InferenceContext> context_;
 #ifdef CL_DELEGATE_ALLOW_GL
   std::unique_ptr<GlInteropFabric> gl_interop_fabric_;

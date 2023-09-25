@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Demo of the tfdbg curses CLI: Locating the source of bad numerical values.
+"""Demo of the tfdbg readline CLI: Locating the source of bad numerical values.
 
 The neural network in this demo is larged based on the tutorial at:
   tensorflow/examples/tutorials/mnist/mnist_with_summaries.py
@@ -70,8 +70,8 @@ def parse_args():
   parser.add_argument(
       "--ui_type",
       type=str,
-      default="curses",
-      help="Command-line user interface type (curses | readline)")
+      default="readline",
+      help="Command-line user interface type (only readline is supported)")
   parser.add_argument(
       "--fake_data",
       type="bool",

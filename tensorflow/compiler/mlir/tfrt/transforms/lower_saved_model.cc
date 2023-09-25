@@ -23,8 +23,8 @@ limitations under the License.
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -33,25 +33,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
 
 namespace tensorflow {
 namespace {
 
+using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
+
 constexpr char kCpuDeviceName[] =
     "/job:localhost/replica:0/task:0/device:CPU:0";
-
-bool IsSessionInitializer(mlir::func::FuncOp op) {
-  auto session_initializer_op = mlir::tf_saved_model::GetSessionInitializerOp(
-      op->getParentOfType<mlir::ModuleOp>());
-  if (!session_initializer_op) return false;
-
-  for (auto sym_ref : session_initializer_op.getInitializers()) {
-    if (op.getSymName() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
-      return true;
-  }
-
-  return false;
-}
 
 mlir::TF::ResourceHandle GetResourceHandle(mlir::Operation *op) {
   llvm::StringRef device;
@@ -78,7 +69,7 @@ struct HoistInfo {
 
   // Mapping from the old values produced by hoisted ops before hoisting to the
   // new values after hoisting.
-  mlir::BlockAndValueMapping value_mapping;
+  mlir::IRMapping value_mapping;
 
   // `hoisted_values` is to keep all values that are produced by hoisted ops
   // but used by non-hoisted ops. These values will be replaced by results of
@@ -91,84 +82,11 @@ struct HoistInfo {
       hoisted_values;
 };
 
-void ReplaceHoistedValues(
-    llvm::ArrayRef<std::pair<mlir::Value, mlir::TF::ResourceHandle>>
-        hoisted_values,
-    mlir::OpBuilder &builder) {
-  struct HoistedValueInfo {
-    llvm::SmallVector<mlir::Value, 4> hoisted_values;
-    llvm::SmallVector<int64_t, 4> indices;
-    llvm::SmallVector<llvm::StringRef, 4> shared_names;
-    llvm::SmallVector<llvm::StringRef, 4> containers;
-  };
-  // Rearrange the hoisted values by each function and each device.
-  llvm::DenseMap<mlir::Block *, llvm::StringMap<HoistedValueInfo>>
-      hoisted_values_by_block_device;
-
-  // Find a block where to place tf._TfrtGetResource operation. We do not place
-  // get resource operations inside the `tf_device.cluster` operations, because
-  // these blocks are intended for later on-device compilation. Insert resource
-  // reads to the closest block outside of the `tf_device.cluster` operation.
-  auto hoist_into_block = [](mlir::Value value) -> mlir::Block * {
-    mlir::Operation *cluster_op =
-        value.getDefiningOp()->getParentOfType<mlir::tf_device::ClusterOp>();
-    return cluster_op ? cluster_op->getBlock() : value.getParentBlock();
-  };
-
-  for (auto iter : llvm::enumerate(hoisted_values)) {
-    auto value = iter.value().first;
-    auto index = iter.index();
-    auto &device_map = hoisted_values_by_block_device[hoist_into_block(value)];
-
-    assert(value.getDefiningOp() && "hoisted values must not be arguments.");
-    llvm::StringRef device = kCpuDeviceName;
-    if (auto device_attr =
-            value.getDefiningOp()->getAttrOfType<mlir::StringAttr>("device")) {
-      if (!device_attr.getValue().empty()) device = device_attr.getValue();
-    }
-
-    auto &item = device_map[device];
-
-    item.hoisted_values.push_back(value);
-    item.indices.push_back(index);
-    item.shared_names.push_back(iter.value().second.name);
-    item.containers.push_back(iter.value().second.container);
-  }
-
-  // Create tf._TfrtGetResource op for each function and device.
-  for (const auto &block_iter : hoisted_values_by_block_device) {
-    auto *block = block_iter.first;
-    const auto &device_map = block_iter.second;
-
-    builder.setInsertionPointToStart(block);
-    for (const auto &device_iter : device_map) {
-      llvm::StringRef device = device_iter.getKey();
-      mlir::ValueRange old_values = device_iter.getValue().hoisted_values;
-      const auto &indices = device_iter.getValue().indices;
-      const auto &shared_name_arr = device_iter.getValue().shared_names;
-      const auto &container_arr = device_iter.getValue().containers;
-
-      auto get_resource_op = builder.create<mlir::TF::_TfrtGetResourceOp>(
-          block->getParentOp()->getLoc(), old_values.getTypes(),
-          builder.getI64ArrayAttr(indices),
-          builder.getStrArrayAttr(shared_name_arr),
-          builder.getStrArrayAttr(container_arr));
-      get_resource_op->setAttr("device", builder.getStringAttr(device));
-
-      auto new_values = get_resource_op.getResults();
-      for (auto iter : llvm::zip(old_values, new_values)) {
-        auto old_value = std::get<0>(iter);
-        auto new_value = std::get<1>(iter);
-        old_value.replaceAllUsesWith(new_value);
-      }
-    }
-  }
-}
-
-bool OnlyHasReadEffect(mlir::Operation *op) {
+bool OnlyHasReadOrNoEffect(mlir::Operation *op) {
   auto interface = llvm::dyn_cast<mlir::MemoryEffectOpInterface>(op);
   if (!interface) return false;
-  return interface.onlyHasEffect<mlir::MemoryEffects::Read>();
+  return interface.onlyHasEffect<mlir::MemoryEffects::Read>() ||
+         interface.hasNoEffect();
 }
 
 bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
@@ -283,28 +201,163 @@ void HoistInvariantOpsInFunction(
   }
 }
 
+void FindCalleesRecursiveForOp(const mlir::SymbolTable &symbol_table,
+                               mlir::Operation *op,
+                               llvm::StringSet<> &callees) {
+  for (const auto &named_attr : op->getAttrs()) {
+    if (auto symbol_attr =
+            named_attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
+      auto symbol = symbol_attr.getValue();
+      if (!callees.contains(symbol)) {
+        callees.insert(symbol);
+
+        auto func = symbol_table.lookup<mlir::func::FuncOp>(symbol);
+        if (!func) continue;
+
+        func.walk([&](mlir::Operation *op) {
+          FindCalleesRecursiveForOp(symbol_table, op, callees);
+        });
+      }
+    }
+  }
+}
+
 void FindCalleesRecursive(const mlir::SymbolTable &symbol_table,
                           mlir::func::FuncOp func, llvm::StringSet<> &callees) {
   assert(func);
   func.walk([&](mlir::Operation *op) {
-    for (const auto &named_attr : op->getAttrs()) {
-      if (auto symbol_attr =
-              named_attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
-        auto symbol = symbol_attr.getValue();
-        if (!callees.contains(symbol)) {
-          callees.insert(symbol);
-
-          auto func = symbol_table.lookup<mlir::func::FuncOp>(symbol);
-          if (!func) continue;
-
-          FindCalleesRecursive(symbol_table, func, callees);
-        }
-      }
-    }
+    FindCalleesRecursiveForOp(symbol_table, op, callees);
   });
 }
 
-void HoistInvariantOps(mlir::ModuleOp module) {
+// This pass rewrites tf_saved_model dialect's ops according to TFRT's
+// requirements:
+//
+// 1) Remove all tf_saved_model's attributes and ops.
+// 2) Create a function for every exported names of the original function.
+// 3) Hoist invariant ops (ie. guaranteed to return the same value on every
+// invocation) for every non-init function.
+//
+class LowerTFSavedModelPass
+    : public mlir::PassWrapper<LowerTFSavedModelPass,
+                               mlir::OperationPass<mlir::ModuleOp>> {
+  void getDependentDialects(mlir::DialectRegistry &registry) const override {
+    registry.insert<mlir::func::FuncDialect>();
+  }
+
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerTFSavedModelPass)
+
+  explicit LowerTFSavedModelPass(bool hoist_invariant_ops,
+                                 bool fuse_get_resource_ops) {
+    hoist_invariant_ops_ = hoist_invariant_ops;
+    fuse_get_resource_ops_ = fuse_get_resource_ops;
+  }
+  LowerTFSavedModelPass() = default;
+  LowerTFSavedModelPass(const LowerTFSavedModelPass &) {}
+
+  llvm::StringRef getArgument() const final {
+    return "tfrt-lower-tf-savedmodel";
+  }
+  llvm::StringRef getDescription() const final {
+    return "Lower tf-saved-model ops according to TFRT's requirements.";
+  }
+
+  void runOnOperation() override {
+    auto module = getOperation();
+
+    // TODO(b/185928201): Create a standalone pass for hoisting invariant ops so
+    // that it can be reusable and configurable in other contexts than saved
+    // models.
+    if (hoist_invariant_ops_) HoistInvariantOps(module);
+
+    // Skip non-savedmodel MLIR module.
+    if (!mlir::tf_saved_model::HasTfSavedModelSemantics(module)) return;
+
+    mlir::SymbolTable symbol_table(module);
+
+    module->removeAttr("tf_saved_model.semantics");
+
+    mlir::OpBuilder builder(&getContext());
+    auto resource_id = builder.getStringAttr("tf.resource_name");
+    auto bound_id = builder.getStringAttr("tf_saved_model.bound_input");
+    auto path_id = builder.getStringAttr(kTfSavedModelIndexPathAttr);
+
+    module.walk([resource_id, bound_id, path_id,
+                 &builder](mlir::Operation *op) mutable {
+      if (auto func_op = llvm::dyn_cast<mlir::func::FuncOp>(op)) {
+        // Remove tf_saved_model specific function arg attributes.
+        for (unsigned i = 0, e = func_op.getNumArguments(); i != e; ++i) {
+          if (auto sym = func_op.getArgAttrOfType<mlir::FlatSymbolRefAttr>(
+                  i, bound_id)) {
+            func_op.removeArgAttr(i, bound_id);
+            func_op.setArgAttr(i, resource_id,
+                               builder.getStringAttr(sym.getValue()));
+          }
+          func_op.removeArgAttr(i, path_id);
+        }
+        for (unsigned i = 0, e = func_op.getNumResults(); i != e; ++i) {
+          func_op.removeResultAttr(i, bound_id);
+          func_op.removeResultAttr(i, path_id);
+        }
+        if (auto exported_names = func_op->getAttrOfType<mlir::ArrayAttr>(
+                kTfSavedModelExportedNamesAttr)) {
+          bool is_session_initializer = IsSessionInitializer(func_op);
+
+          // Create a function for each exported name.
+          //
+          // TODO(b/148477882): TFRT dialect should have similar concepts of
+          // exported names so that a function can be referenced by multiple
+          // exported names.
+          func_op->removeAttr(kTfSavedModelExportedNamesAttr);
+          for (auto exported_name : exported_names) {
+            auto exported_func_op = func_op.clone();
+            exported_func_op.setName(exported_name.cast<mlir::StringAttr>());
+
+            // If it is a session initializer, we want to maximize parallelism
+            // and do not perform any stream merge, to minimize latency.
+            //
+            // TODO(b/183219530): This is a workaround as the cost model used
+            // currently is not very accurate, and leads to performance
+            // regression on IO ops that are common in initialization functions.
+            if (is_session_initializer) {
+              exported_func_op->setAttr("tfrt.cost_threshold",
+                                        builder.getI64IntegerAttr(1));
+            }
+
+            builder.setInsertionPoint(func_op);
+            builder.insert(exported_func_op);
+          }
+          func_op.erase();
+        }
+      }
+    });
+
+    module.walk([](mlir::Operation *op) {
+      if (llvm::isa<mlir::tf_saved_model::TensorFlowSavedModelDialect>(
+              op->getDialect())) {
+        // Remove all tf_saved_model ops.
+        op->erase();
+      }
+    });
+  }
+
+ private:
+  void HoistInvariantOps(mlir::ModuleOp module);
+  void ReplaceHoistedValues(
+      llvm::ArrayRef<std::pair<mlir::Value, mlir::TF::ResourceHandle>>
+          hoisted_values,
+      mlir::OpBuilder &builder);
+
+  Option<bool> hoist_invariant_ops_{*this, "hoist-invariant-ops",
+                                    llvm::cl::desc("hoist-invariant-ops"),
+                                    llvm::cl::init(false)};
+  Option<bool> fuse_get_resource_ops_{*this, "fuse-get-resource-ops",
+                                      llvm::cl::desc("fuse get resource ops"),
+                                      llvm::cl::init(true)};
+};
+
+void LowerTFSavedModelPass::HoistInvariantOps(mlir::ModuleOp module) {
   mlir::SymbolTable symbol_table(module);
 
   // Find all resources used in non-init functions.
@@ -315,6 +368,11 @@ void HoistInvariantOps(mlir::ModuleOp module) {
   // Find all callees referenced in the initialization functions.
   llvm::StringSet<> init_callees;
 
+  // Recursively find all callees referenced in the tf.XlaLaunch op.
+  // At and after the point of calling this pass, the MLIR xla function is no
+  // longer used. So there is no point to do hoisting for xla functions.
+  llvm::StringSet<> xla_launch_callees;
+
   module.walk([&](mlir::Operation *op) {
     if (llvm::isa<mlir::TF::VarHandleOp, mlir::TF::HashTableV2Op>(op)) {
       auto func = op->getParentOfType<mlir::func::FuncOp>();
@@ -323,6 +381,11 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     } else if (auto func = llvm::dyn_cast<mlir::func::FuncOp>(op)) {
       if (!IsSessionInitializer(func)) return;
       FindCalleesRecursive(symbol_table, func, init_callees);
+    } else if (op->getName().getStringRef().str() == "tf.XlaLaunch") {
+      // TODO(b/275095412): Clean up MLIR XLA functions after they are written
+      // back to function library, so that we don't need to do special handling
+      // for those functions here.
+      FindCalleesRecursiveForOp(symbol_table, op, xla_launch_callees);
     }
   });
 
@@ -332,7 +395,7 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     const auto &vars = iter.second;
     if (std::all_of(vars.begin(), vars.end(), [](mlir::Operation *op) {
           for (auto *user : op->getUsers()) {
-            if (!OnlyHasReadEffect(user)) return false;
+            if (!OnlyHasReadOrNoEffect(user)) return false;
           }
           return true;
         })) {
@@ -360,7 +423,8 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     // including recursive ones, of an init functions, because otherwise the
     // hoisted values won't be initialized when this function is called.
     if (IsSessionInitializer(func) ||
-        init_callees.contains(func.getSymName()) || func == init_func_op)
+        init_callees.contains(func.getSymName()) || func == init_func_op ||
+        xla_launch_callees.contains(func.getSymName()))
       continue;
 
     // Skips hoisting if this function runs on TPU. This is will happen when
@@ -413,117 +477,95 @@ void HoistInvariantOps(mlir::ModuleOp module) {
   }
 }
 
-// This pass rewrites tf_saved_model dialect's ops according to TFRT's
-// requirements:
-//
-// 1) Remove all tf_saved_model's attributes and ops.
-// 2) Create a function for every exported names of the original function.
-// 3) Hoist invariant ops (ie. guaranteed to return the same value on every
-// invocation) for every non-init function.
-//
-class LowerTFSavedModelPass
-    : public mlir::PassWrapper<LowerTFSavedModelPass,
-                               mlir::OperationPass<mlir::ModuleOp>> {
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerTFSavedModelPass)
+void LowerTFSavedModelPass::ReplaceHoistedValues(
+    llvm::ArrayRef<std::pair<mlir::Value, mlir::TF::ResourceHandle>>
+        hoisted_values,
+    mlir::OpBuilder &builder) {
+  struct HoistedValueInfo {
+    llvm::SmallVector<mlir::Value, 4> hoisted_values;
+    llvm::SmallVector<int64_t, 4> indices;
+    llvm::SmallVector<llvm::StringRef, 4> shared_names;
+    llvm::SmallVector<llvm::StringRef, 4> containers;
+  };
+  // Rearrange the hoisted values by each function and each device.
+  llvm::DenseMap<mlir::Block *, llvm::StringMap<HoistedValueInfo>>
+      hoisted_values_by_block_device;
 
-  explicit LowerTFSavedModelPass(bool hoist_invariant_ops) {
-    hoist_invariant_ops_ = hoist_invariant_ops;
+  // Find a block where to place tf._TfrtGetResource operation. We do not place
+  // get resource operations inside the `tf_device.cluster` operations, because
+  // these blocks are intended for later on-device compilation. Insert resource
+  // reads to the closest block outside of the `tf_device.cluster` operation.
+  auto hoist_into_block = [](mlir::Value value) -> mlir::Block * {
+    mlir::Operation *cluster_op =
+        value.getDefiningOp()->getParentOfType<mlir::tf_device::ClusterOp>();
+    return cluster_op ? cluster_op->getBlock() : value.getParentBlock();
+  };
+
+  for (auto iter : llvm::enumerate(hoisted_values)) {
+    auto value = iter.value().first;
+    auto index = iter.index();
+    auto &device_map = hoisted_values_by_block_device[hoist_into_block(value)];
+
+    assert(value.getDefiningOp() && "hoisted values must not be arguments.");
+    llvm::StringRef device = kCpuDeviceName;
+    if (auto device_attr =
+            value.getDefiningOp()->getAttrOfType<mlir::StringAttr>("device")) {
+      if (!device_attr.getValue().empty()) device = device_attr.getValue();
+    }
+
+    auto &item = device_map[device];
+
+    item.hoisted_values.push_back(value);
+    item.indices.push_back(index);
+    item.shared_names.push_back(iter.value().second.name);
+    item.containers.push_back(iter.value().second.container);
   }
-  LowerTFSavedModelPass() = default;
-  LowerTFSavedModelPass(const LowerTFSavedModelPass &) {}
 
-  llvm::StringRef getArgument() const final {
-    return "tfrt-lower-tf-savedmodel";
-  }
-  llvm::StringRef getDescription() const final {
-    return "Lower tf-saved-model ops according to TFRT's requirements.";
-  }
+  // Create tf._TfrtGetResource op for each function and device.
+  for (const auto &block_iter : hoisted_values_by_block_device) {
+    auto *block = block_iter.first;
+    const auto &device_map = block_iter.second;
 
-  void runOnOperation() override {
-    auto module = getOperation();
+    builder.setInsertionPointToStart(block);
+    for (const auto &device_iter : device_map) {
+      llvm::StringRef device = device_iter.getKey();
+      mlir::ValueRange old_values = device_iter.getValue().hoisted_values;
+      const auto &indices = device_iter.getValue().indices;
+      const auto &shared_name_arr = device_iter.getValue().shared_names;
+      const auto &container_arr = device_iter.getValue().containers;
 
-    // TODO(b/185928201): Create a standalone pass for hoisting invariant ops so
-    // that it can be reusable and configurable in other contexts than saved
-    // models.
-    if (hoist_invariant_ops_) HoistInvariantOps(module);
+      llvm::SmallVector<mlir::Value> new_values;
 
-    // Skip non-savedmodel MLIR module.
-    if (!mlir::tf_saved_model::HasTfSavedModelSemantics(module)) return;
-
-    mlir::SymbolTable symbol_table(module);
-
-    module->removeAttr("tf_saved_model.semantics");
-
-    mlir::OpBuilder builder(&getContext());
-    auto resource_id = builder.getStringAttr("tf.resource_name");
-    auto bound_id = builder.getStringAttr("tf_saved_model.bound_input");
-    auto path_id = builder.getStringAttr("tf_saved_model.index_path");
-
-    module.walk([resource_id, bound_id, path_id,
-                 &builder](mlir::Operation *op) mutable {
-      if (auto func_op = llvm::dyn_cast<mlir::func::FuncOp>(op)) {
-        // Remove tf_saved_model specific function arg attributes.
-        for (unsigned i = 0, e = func_op.getNumArguments(); i != e; ++i) {
-          if (auto sym = func_op.getArgAttrOfType<mlir::FlatSymbolRefAttr>(
-                  i, bound_id)) {
-            func_op.removeArgAttr(i, bound_id);
-            func_op.setArgAttr(i, resource_id,
-                               builder.getStringAttr(sym.getValue()));
-          }
-          func_op.removeArgAttr(i, path_id);
-        }
-        for (unsigned i = 0, e = func_op.getNumResults(); i != e; ++i) {
-          func_op.removeResultAttr(i, bound_id);
-          func_op.removeResultAttr(i, path_id);
-        }
-        if (auto exported_names = func_op->getAttrOfType<mlir::ArrayAttr>(
-                "tf_saved_model.exported_names")) {
-          bool is_session_initializer = IsSessionInitializer(func_op);
-
-          // Create a function for each exported name.
-          //
-          // TODO(b/148477882): TFRT dialect should have similar concepts of
-          // exported names so that a function can be referenced by multiple
-          // exported names.
-          func_op->removeAttr("tf_saved_model.exported_names");
-          for (auto exported_name : exported_names) {
-            auto exported_func_op = func_op.clone();
-            exported_func_op.setName(exported_name.cast<mlir::StringAttr>());
-
-            // If it is a session initializer, we want to maximize parallelism
-            // and do not perform any stream merge, to minimize latency.
-            //
-            // TODO(b/183219530): This is a workaround as the cost model used
-            // currently is not very accurate, and leads to performance
-            // regression on IO ops that are common in initialization functions.
-            if (is_session_initializer) {
-              exported_func_op->setAttr("tfrt.cost_threshold",
-                                        builder.getI64IntegerAttr(1));
-            }
-
-            builder.setInsertionPoint(func_op);
-            builder.insert(exported_func_op);
-          }
-          func_op.erase();
+      if (fuse_get_resource_ops_) {
+        auto get_resource_op = builder.create<mlir::TF::_TfrtGetResourceOp>(
+            block->getParentOp()->getLoc(), old_values.getTypes(),
+            builder.getI64ArrayAttr(indices),
+            builder.getStrArrayAttr(shared_name_arr),
+            builder.getStrArrayAttr(container_arr));
+        get_resource_op->setAttr("device", builder.getStringAttr(device));
+        new_values = get_resource_op.getResults();
+      } else {
+        for (int i = 0; i < old_values.size(); ++i) {
+          auto get_resource_op = builder.create<mlir::TF::_TfrtGetResourceOp>(
+              block->getParentOp()->getLoc(),
+              mlir::TypeRange(old_values[i].getType()),
+              builder.getI64ArrayAttr(indices[i]),
+              builder.getStrArrayAttr(shared_name_arr[i]),
+              builder.getStrArrayAttr(container_arr[i]));
+          get_resource_op->setAttr("device", builder.getStringAttr(device));
+          new_values.append(get_resource_op->result_begin(),
+                            get_resource_op->result_end());
         }
       }
-    });
 
-    module.walk([](mlir::Operation *op) {
-      if (llvm::isa<mlir::tf_saved_model::TensorFlowSavedModelDialect>(
-              op->getDialect())) {
-        // Remove all tf_saved_model ops.
-        op->erase();
+      for (auto iter : llvm::zip(old_values, new_values)) {
+        auto old_value = std::get<0>(iter);
+        auto new_value = std::get<1>(iter);
+        old_value.replaceAllUsesWith(new_value);
       }
-    });
+    }
   }
-
- private:
-  Option<bool> hoist_invariant_ops_{*this, "hoist-invariant-ops",
-                                    llvm::cl::desc("hoist-invariant-ops"),
-                                    llvm::cl::init(false)};
-};
+}
 
 static llvm::SmallVector<unsigned, 4> CompareTypes(mlir::TypeRange x,
                                                    mlir::TypeRange y) {
@@ -680,8 +722,10 @@ void ConvertReferenceVariableToResourceVariablePass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateLowerTFSavedModelPass(bool hoist_invariant_ops) {
-  return std::make_unique<LowerTFSavedModelPass>(hoist_invariant_ops);
+CreateLowerTFSavedModelPass(bool hoist_invariant_ops,
+                            bool fuse_get_resource_ops) {
+  return std::make_unique<LowerTFSavedModelPass>(hoist_invariant_ops,
+                                                 fuse_get_resource_ops);
 }
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

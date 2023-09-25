@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <memory>
 #include <set>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -64,7 +66,7 @@ bool TFShow::LookUpCheckPoint(const string& name,
     TF_DeleteStatus(status);
     return false;
   }
-  tensor->reset(new TFProfTensor(std::move(out_tensor)));
+  *tensor = std::make_unique<TFProfTensor>(std::move(out_tensor));
   TF_DeleteStatus(status);
   return true;
 }
