@@ -105,7 +105,7 @@ flags.DEFINE_string("output_dir", None, "Output directory of analysis results.")
 flags.DEFINE_enum("output_format", "CSV", ["CSV", "JSON"],
                   "Output format of analysis results.")
 
-DEFAUL_TRT_CONVERT_PARAMS = trt.DEFAULT_TRT_CONVERSION_PARAMS
+DEFAULT_TRT_CONVERT_PARAMS = trt.DEFAULT_TRT_CONVERSION_PARAMS
 
 
 # pylint: disable=bad-whitespace
