@@ -64,6 +64,18 @@ foreach fromToBinPair = [[MHLO_AddOp, CHLO_BroadcastAddOp, TF_AddV2Op],
   def : Pat<(fromToBinPair[1] $l, $r, $broadcast_dimensions),
             (fromToBinPair[2] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
+  def : Pat<(fromToBinPair[0] $l,
+                              (MHLO_BroadcastInDimOp:$output
+                                $bcast_operand,
+                                $broadcast_dimensions)),
+            (fromToBinPair[2] $l, $bcast_operand),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
+  def : Pat<(fromToBinPair[0] (MHLO_BroadcastInDimOp:$output
+                                $bcast_operand,
+                                $broadcast_dimensions),
+                              $r),
+            (fromToBinPair[2] $bcast_operand, $r),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
 }
 
 foreach pair  = [[MHLO_AndOp, CHLO_BroadcastAndOp, TF_BitwiseAndOp],

@@ -47,12 +47,27 @@ func.func @add(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 }
 
 // CHECK-LABEL:   func @broadcast_add(
+// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1x1xf32>,
+// CHECK-SAME:                        %[[VAL_1:.*]]: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+// CHECK-DAG.       %cst = arith.constant dense<[1, 1000]> : tensor<2xi64>
+// CHECK:           %[[VAL_2:.*]] = "tf.AddV2"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK:           %[[VAL_3:.*]] = "tf.AddV2"(%[[VAL_1]], %[[VAL_0]]) : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+// CHECK:           return %[[VAL_2]], %[[VAL_3]] : tensor<1x1000xf32>, tensor<1x1000xf32>
+// CHECK:         }
+func.func @broadcast_add(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.add %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.add %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK-LABEL:   func @broadcast_add_chlo(
 // CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1xi32>,
 // CHECK-SAME:                        %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi32> {
 // CHECK:           %[[VAL_2:.*]] = "tf.AddV2"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi32>
 // CHECK:         }
-func.func @broadcast_add(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
+func.func @broadcast_add_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
   %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   func.return %0 : tensor<1x2xi32>
 }
@@ -86,12 +101,27 @@ func.func @div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 }
 
 // CHECK-LABEL:   func @broadcast_div(
+// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1x1xf32>,
+// CHECK-SAME:                        %[[VAL_1:.*]]: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+// CHECK-DAG.       %cst = arith.constant dense<[1, 1000]> : tensor<2xi64>
+// CHECK:           %[[VAL_2:.*]] = "tf.Div"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK:           %[[VAL_3:.*]] = "tf.Div"(%[[VAL_1]], %[[VAL_0]]) : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+// CHECK:           return %[[VAL_2]], %[[VAL_3]] : tensor<1x1000xf32>, tensor<1x1000xf32>
+// CHECK:         }
+func.func @broadcast_div(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.divide %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.divide %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK-LABEL:   func @broadcast_div_chlo(
 // CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1xi32>,
 // CHECK-SAME:                        %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi32> {
 // CHECK:           %[[VAL_2:.*]] = "tf.Div"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi32>
 // CHECK:         }
-func.func @broadcast_div(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
+func.func @broadcast_div_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
   %0 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   func.return %0 : tensor<1x2xi32>
 }
@@ -105,6 +135,21 @@ func.func @broadcast_div(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor
 func.func @shift_left(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   %0 = mhlo.shift_left %arg0, %arg1 : tensor<4xi32>
   func.return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL:   func @broadcast_shift_left(
+// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1xi32>,
+// CHECK-SAME:                        %[[VAL_1:.*]]: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>) {
+// CHECK-DAG.       %cst = arith.constant dense<[4]> : tensor<1xi64>
+// CHECK:           %[[VAL_2:.*]] = "tf.LeftShift"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xi32>, tensor<4xi32>) -> tensor<4xi32>
+// CHECK:           %[[VAL_3:.*]] = "tf.LeftShift"(%[[VAL_1]], %[[VAL_0]]) : (tensor<4xi32>, tensor<1xi32>) -> tensor<4xi32>
+// CHECK:           return %[[VAL_2]], %[[VAL_3]] : tensor<4xi32>, tensor<4xi32>
+// CHECK:         }
+func.func @broadcast_shift_left(%arg0: tensor<1xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0]> : tensor<1xi64>} : (tensor<1xi32>) -> tensor<4xi32>
+  %1 = mhlo.shift_left %0, %arg1 : tensor<4xi32>
+  %2 = mhlo.shift_left %arg1, %0 : tensor<4xi32>
+  func.return %1, %2 : tensor<4xi32>, tensor<4xi32>
 }
 
 // CHECK-LABEL:   func @div_dynamic(
@@ -129,6 +174,21 @@ func.func @maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> 
   func.return %0 : tensor<4xf32>
 }
 
+// CHECK-LABEL:   func @broadcast_maximum(
+// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1x1xf32>,
+// CHECK-SAME:                        %[[VAL_1:.*]]: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+// CHECK-DAG.       %cst = arith.constant dense<[1, 1000]> : tensor<2xi64>
+// CHECK:           %[[VAL_2:.*]] = "tf.Maximum"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK:           %[[VAL_3:.*]] = "tf.Maximum"(%[[VAL_1]], %[[VAL_0]]) : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+// CHECK:           return %[[VAL_2]], %[[VAL_3]] : tensor<1x1000xf32>, tensor<1x1000xf32>
+// CHECK:         }
+func.func @broadcast_maximum(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.maximum %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.maximum %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
 // CHECK-LABEL:   func @minimum(
 // CHECK-SAME:                  %[[VAL_0:.*]]: tensor<4xf32>,
 // CHECK-SAME:                  %[[VAL_1:.*]]: tensor<4xf32>) -> tensor<4xf32> {
@@ -138,6 +198,21 @@ func.func @maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> 
 func.func @minimum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   %0 = mhlo.minimum %arg0, %arg1 : tensor<4xf32>
   func.return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL:   func @broadcast_minimum(
+// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1x1xf32>,
+// CHECK-SAME:                        %[[VAL_1:.*]]: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+// CHECK-DAG.       %cst = arith.constant dense<[1, 1000]> : tensor<2xi64>
+// CHECK:           %[[VAL_2:.*]] = "tf.Minimum"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK:           %[[VAL_3:.*]] = "tf.Minimum"(%[[VAL_1]], %[[VAL_0]]) : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+// CHECK:           return %[[VAL_2]], %[[VAL_3]] : tensor<1x1000xf32>, tensor<1x1000xf32>
+// CHECK:         }
+func.func @broadcast_minimum(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.minimum %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.minimum %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
 }
 
 // CHECK-LABEL:   func @mul(
@@ -151,12 +226,27 @@ func.func @mul(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 }
 
 // CHECK-LABEL:   func @broadcast_mul(
+// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1x1xf32>,
+// CHECK-SAME:                        %[[VAL_1:.*]]: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+// CHECK-DAG.       %cst = arith.constant dense<[1, 1000]> : tensor<2xi64>
+// CHECK:           %[[VAL_2:.*]] = "tf.Mul"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK:           %[[VAL_3:.*]] = "tf.Mul"(%[[VAL_1]], %[[VAL_0]]) : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+// CHECK:           return %[[VAL_2]], %[[VAL_3]] : tensor<1x1000xf32>, tensor<1x1000xf32>
+// CHECK:         }
+func.func @broadcast_mul(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.multiply %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.multiply %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK-LABEL:   func @broadcast_mul_chlo(
 // CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1xi32>,
 // CHECK-SAME:                        %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi32> {
 // CHECK:           %[[VAL_2:.*]] = "tf.Mul"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi32>
 // CHECK:         }
-func.func @broadcast_mul(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
+func.func @broadcast_mul_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
   %0 = "chlo.broadcast_multiply"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   func.return %0 : tensor<1x2xi32>
 }
@@ -193,14 +283,44 @@ func.func @sub(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 }
 
 // CHECK-LABEL:   func @broadcast_sub(
+// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1x1xf32>,
+// CHECK-SAME:                        %[[VAL_1:.*]]: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+// CHECK-DAG.       %cst = arith.constant dense<[1, 1000]> : tensor<2xi64>
+// CHECK:           %[[VAL_2:.*]] = "tf.Sub"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK:           %[[VAL_3:.*]] = "tf.Sub"(%[[VAL_1]], %[[VAL_0]]) : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+// CHECK:           return %[[VAL_2]], %[[VAL_3]] : tensor<1x1000xf32>, tensor<1x1000xf32>
+// CHECK:         }
+func.func @broadcast_sub(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.subtract %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.subtract %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK-LABEL:   func @broadcast_sub_chlo(
 // CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1xi32>,
 // CHECK-SAME:                        %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi32> {
 // CHECK:           %[[VAL_2:.*]] = "tf.Sub"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi32>
 // CHECK:         }
-func.func @broadcast_sub(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
+func.func @broadcast_sub_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
   %0 = "chlo.broadcast_subtract"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   func.return %0 : tensor<1x2xi32>
+}
+
+// CHECK-LABEL:   func @broadcast_atan2(
+// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1xf32>,
+// CHECK-SAME:                        %[[VAL_1:.*]]: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
+// CHECK-DAG.       %cst = arith.constant dense<[4]> : tensor<1xi64>
+// CHECK:           %[[VAL_2:.*]] = "tf.Atan2"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xf32>, tensor<4xf32>) -> tensor<4xf32>
+// CHECK:           %[[VAL_3:.*]] = "tf.Atan2"(%[[VAL_1]], %[[VAL_0]]) : (tensor<4xf32>, tensor<1xf32>) -> tensor<4xf32>
+// CHECK:           return %[[VAL_2]], %[[VAL_3]] : tensor<4xf32>, tensor<4xf32>
+// CHECK:         }
+func.func @broadcast_atan2(%arg0: tensor<1xf32>, %arg1: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0]> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<4xf32>
+  %1 = mhlo.atan2 %0, %arg1 : tensor<4xf32>
+  %2 = mhlo.atan2 %arg1, %0 : tensor<4xf32>
+  func.return %1, %2 : tensor<4xf32>, tensor<4xf32>
 }
 
 // CHECK-LABEL:   func @shift_right(
@@ -365,6 +485,21 @@ func.func @bitwise_and_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> te
 func.func @pow(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = mhlo.power %arg0, %arg0 : tensor<2xf32>
   func.return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL:   func @broadcast_pow(
+// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1xi32>,
+// CHECK-SAME:                        %[[VAL_1:.*]]: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>) {
+// CHECK-DAG.       %cst = arith.constant dense<[4]> : tensor<1xi64>
+// CHECK:           %[[VAL_2:.*]] = "tf.Pow"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xi32>, tensor<4xi32>) -> tensor<4xi32>
+// CHECK:           %[[VAL_3:.*]] = "tf.Pow"(%[[VAL_1]], %[[VAL_0]]) : (tensor<4xi32>, tensor<1xi32>) -> tensor<4xi32>
+// CHECK:           return %[[VAL_2]], %[[VAL_3]] : tensor<4xi32>, tensor<4xi32>
+// CHECK:         }
+func.func @broadcast_pow(%arg0: tensor<1xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0]> : tensor<1xi64>} : (tensor<1xi32>) -> tensor<4xi32>
+  %1 = mhlo.power %0, %arg1 : tensor<4xi32>
+  %2 = mhlo.power %arg1, %0 : tensor<4xi32>
+  func.return %1, %2 : tensor<4xi32>, tensor<4xi32>
 }
 
 // CHECK-LABEL:   func @pow_dynamic(
