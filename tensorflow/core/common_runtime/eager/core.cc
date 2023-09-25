@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <utility>
+#include <variant>
+
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/abstract_function.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -161,7 +164,7 @@ Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
   }
 
   // Run eager placement logic.
-  class Device* device = absl::get<class Device*>(Device());
+  class Device* device = std::get<class Device*>(Device());
   if (device == nullptr) {
     TF_RETURN_IF_ERROR(eager::MaybePinToResourceDevice(&device, *this));
   }

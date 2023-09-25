@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/container/flat_hash_set.h"
@@ -24,6 +26,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_os_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -132,6 +135,7 @@ static void RegisterDialects(mlir::DialectRegistry& registry) {
                   mlir::shape::ShapeDialect,
                   mlir::tf_device::TensorFlowDeviceDialect,
                   mlir::tf_executor::TensorFlowExecutorDialect>();
+  mlir::func::registerAllExtensions(registry);
   // clang-format on
 }
 
@@ -232,6 +236,10 @@ Status MlirFunctionOptimizationPass::Run(
       return module_ref_status.status();
     }
     // Do not fail, just keep the original TF graph unchanged in fallback mode.
+    LOG(WARNING) << "Failed to convert graph to MLIR: "
+                 << module_ref_status.status()
+                 << " , continuing without MlirOptimizationPass because "
+                    "fallback enabled.";
     return OkStatus();
   }
 
@@ -394,9 +402,14 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   auto module_ref_status = ConvertGraphToMlir(
       **options.graph, debug_info, *options.flib_def, import_config, &context);
   if (!module_ref_status.ok()) {
-    return (pass_state == MlirOptimizationPassState::Enabled)
-               ? module_ref_status.status()
-               : OkStatus();
+    if (pass_state == MlirOptimizationPassState::Enabled) {
+      return module_ref_status.status();
+    }
+    LOG(WARNING) << "Failed to convert graph to MLIR: "
+                 << module_ref_status.status()
+                 << " , continuing without MlirOptimizationPass because "
+                    "fallback enabled.";
+    return OkStatus();
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =

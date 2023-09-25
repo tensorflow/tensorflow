@@ -38,6 +38,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -59,7 +60,8 @@ def check_destinations(destinations):
   """
   # Calling bool() on a ResourceVariable is not allowed.
   if isinstance(destinations,
-                (resource_variable_ops.BaseResourceVariable, ops.Tensor)):
+                (resource_variable_ops.BaseResourceVariable,
+                 tensor_lib.Tensor)):
     return bool(destinations.device)
   return bool(destinations)
 
@@ -68,9 +70,9 @@ def validate_destinations(destinations):
   """Validates the `destination` is one of expected types."""
   if not isinstance(
       destinations,
-      (value_lib.DistributedValues, ops.Tensor, indexed_slices.IndexedSlices,
-       ps_values.AggregatingVariable, six.string_types,
-       tpu_values.TPUMirroredVariable
+      (value_lib.DistributedValues, tensor_lib.Tensor,
+       indexed_slices.IndexedSlices, ps_values.AggregatingVariable,
+       six.string_types, tpu_values.TPUMirroredVariable
       )) and not resource_variable_ops.is_resource_variable(destinations):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
                      " a tf.Variable object, or a device string.")

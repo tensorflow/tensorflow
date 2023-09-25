@@ -135,7 +135,7 @@ bool HasOutsideCompilationNested(Operation* op) {
   return op
       ->walk([&](Operation* walked_op) {
         if (op == walked_op) return WalkResult::advance();
-        if (walked_op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+        if (walked_op->hasAttr(kXlaOutsideCompilationAttr)) {
           return WalkResult::interrupt();
         }
         return WalkResult::advance();
@@ -146,7 +146,7 @@ bool HasOutsideCompilationNested(Operation* op) {
 // Returns whether `op` or any ancestors of `op` are outside compiled.
 bool HasOutsideCompilationAncestor(Operation* op) {
   while (op) {
-    if (op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+    if (op->hasAttr(kXlaOutsideCompilationAttr)) {
       return true;
     }
     op = op->getParentOp();
@@ -257,29 +257,17 @@ TF::WhileRegionOp CloneEmptyWhile(uint64_t parallel_iterations, Location loc,
   return host_side_while;
 }
 
-// TODO(b/157054714): Use a better abstraction instead of
-// _TPUCompileMlirOp and _XlaRecvAtHostOp and _XlaSendFromHostOp.
 // Creates a compilation key as placeholder. A placeholder compilation cache key
 // is created because it is a required input to _XlaRecvAtHost and
-// _XlaSendFromHost but the _TPUCompileMlir has not yet been created for device
+// _XlaSendFromHost but the _XlaCompileMlir has not yet been created for device
 // cluster that contains the outside compiled ops. This placeholder should be
-// replaced by the TPU cluster _TPUCompileMlir in a subsequent pass.
-TF::_TPUCompileMlirPlaceholderProgramKeyOp CreateCompilationKeyPlaceholder(
+// replaced by the TPU cluster _XlaCompileMlir in a subsequent pass.
+TF::_XlaCompileMlirPlaceholderProgramKeyOp CreateCompilationKeyPlaceholder(
     Location loc, OpBuilder& builder) {
   auto result_type =
       RankedTensorType::get({3}, builder.getType<TF::StringType>());
-  return builder.create<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
+  return builder.create<TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
       loc, /*program=*/result_type, llvm::ArrayRef<Value>{});
-}
-
-TF::ConstOp CreateCpuGpuComilationKeyPlaceholder(Location loc,
-                                                 OpBuilder& builder) {
-  auto shape_type =
-      RankedTensorType::get({3}, builder.getType<TF::StringType>());
-
-  return builder.create<TF::ConstOp>(
-      loc, DenseStringElementsAttr::get(shape_type,
-                                        llvm::ArrayRef<StringRef>{"", "", ""}));
 }
 
 // Creates a `tf_device.launch` to wrap cluster ops.
@@ -501,15 +489,16 @@ LogicalResult GetShardingOfValue(Operation* context_op, Value val,
 
 // Create an `_XlaHostComputeMlir` for the map_outside_compilation case. Inputs
 // are converted from split sharding to MANUAL sharding and outputs are
-// converted from MANUAL sharding to split sharding. Output `full_outputs`,
-// which is the outputs of the `_XlaHostComputeMlir` and add the
+// converted from MANUAL sharding to split sharding. Set `common_split_sharding`
+// if it has not yet been set. Output `full_outputs`, which is the outputs of
+// the `_XlaHostComputeMlir` and add the
 // `_XlaHostComputeMlir` to `host_compute_out_ops`.
 LogicalResult CreateHostComputeMap(
     Operation* original_op, OpBuilder& builder, Location loc,
     ArrayRef<Value> inputs, ArrayRef<Value> outputs,
     StringRef args_communication_key, StringRef retvals_communication_key,
     StringRef serialized_func_module, int num_cores_per_replica,
-    SmallVector<Value, 4>& full_outputs,
+    std::string& common_split_sharding, SmallVector<Value, 4>& full_outputs,
     SmallVector<Operation*, 4>& host_compute_out_ops) {
   // Get output types.
   llvm::SmallVector<Type, 4> shard_output_types;
@@ -525,15 +514,9 @@ LogicalResult CreateHostComputeMap(
     full_output_types.push_back(output.getType());
   }
 
-  // There should be at least 1 input so common_split_sharding can be defined.
-  if (inputs.empty())
-    return original_op->emitOpError()
-           << "map_outside_compilation should have at least one input";
-
   // Convert split sharded inputs to MANUAL sharded inputs.
   // common_split_sharding is the split sharding that is common to all inputs
   // and outputs.
-  std::string common_split_sharding;
   llvm::SmallVector<Value, 4> manual_inputs;
   manual_inputs.reserve(inputs.size());
   for (Value in : inputs) {
@@ -609,20 +592,22 @@ void CreateHostComputeNotMap(OpBuilder& builder, Location loc,
 }
 
 // Create the _XlaHostComputeMlir with `inputs` and `outputs`.
-// Output `full_outputs`, which is the outputs of the `_XlaHostComputeMlir` and
-// add the `_XlaHostComputeMlir` to `host_compute_out_ops`.
+// Set `common_split_sharding` if it has not yet been set. Output
+// `full_outputs`, which is the outputs of the `_XlaHostComputeMlir` and add the
+// `_XlaHostComputeMlir` to `host_compute_out_ops`.
 LogicalResult CreateHostCompute(
     Operation* original_op, OpBuilder& builder, Location loc,
     ArrayRef<Value> inputs, ArrayRef<Value> outputs,
     StringRef args_communication_key, StringRef retvals_communication_key,
     StringRef serialized_func_module, bool is_map_oc, int num_cores_per_replica,
-    SmallVector<Value, 4>& full_outputs,
+    std::string& common_split_sharding, SmallVector<Value, 4>& full_outputs,
     SmallVector<Operation*, 4>& host_compute_out_ops) {
   if (is_map_oc) {
     return CreateHostComputeMap(
         original_op, builder, loc, inputs, outputs, args_communication_key,
         retvals_communication_key, serialized_func_module,
-        num_cores_per_replica, full_outputs, host_compute_out_ops);
+        num_cores_per_replica, common_split_sharding, full_outputs,
+        host_compute_out_ops);
   } else {
     CreateHostComputeNotMap(builder, loc, inputs, outputs,
                             args_communication_key, retvals_communication_key,
@@ -791,17 +776,17 @@ Operation* CreateHostOps(ArrayRef<Operation*> clustered_ops,
 // Clone the first outside compiled region to one for each TPU core. This is
 // used for map_outside_compilation.
 // Message identification arguments to RecvAtHost and SendFromHost are changed.
-void CloneFirstHost(ArrayRef<Operation*> core_to_host_insertion_point,
+void CloneFirstHost(llvm::SmallVector<IRMapping>& core_to_mapping,
+                    ArrayRef<Operation*> core_to_host_insertion_point,
                     ArrayRef<Value> core_to_compilation_key,
                     ArrayRef<Value> core_to_device_ordinal,
                     int num_cores_per_replica, ArrayRef<Operation*> host0_ops,
                     OpBuilder& builder) {
   for (int core = 1; core < num_cores_per_replica; ++core) {
-    IRMapping mapper;
     for (Operation* op : host0_ops) {
       builder.setInsertionPoint(core_to_host_insertion_point[core]);
-      Operation* clone = builder.clone(*op, mapper);
-      mapper.map(op, clone);
+      Operation* clone = builder.clone(*op, core_to_mapping[core]);
+      core_to_mapping[core].map(op, clone);
       if (auto recv_at_host = llvm::dyn_cast<TF::_XlaRecvAtHostOp>(clone)) {
         recv_at_host.setDeviceOrdinal(core);
         clone->setOperand(0, core_to_compilation_key[core]);
@@ -813,28 +798,12 @@ void CloneFirstHost(ArrayRef<Operation*> core_to_host_insertion_point,
                      llvm::dyn_cast<TF::_XlaRecvAtHostV2Op>(clone)) {
         recv_at_host.setOperand(0, core_to_compilation_key[core]);
         builder.setInsertionPoint(recv_at_host);
-        // core_ordinal = device_ordinal + core
-        // where device_ordinal is the base device for the replica
-        Value device_ordinal = core_to_device_ordinal[core];
-        Value const_core = builder.create<TF::ConstOp>(
-            recv_at_host.getLoc(), builder.getI64IntegerAttr(core));
-        Value core_ordinal = builder.create<TF::AddV2Op>(
-            recv_at_host.getLoc(), device_ordinal.getType(), device_ordinal,
-            const_core);
-        recv_at_host.setOperand(1, core_ordinal);
+        recv_at_host.setOperand(1, core_to_device_ordinal[core]);
       } else if (auto send_from_host =
                      llvm::dyn_cast<TF::_XlaSendFromHostV2Op>(clone)) {
         send_from_host.setOperand(1, core_to_compilation_key[core]);
         builder.setInsertionPoint(send_from_host);
-        // core_ordinal = device_ordinal + core
-        // where device_ordinal is the base device for the replica
-        Value device_ordinal = core_to_device_ordinal[core];
-        Value const_core = builder.create<TF::ConstOp>(
-            send_from_host.getLoc(), builder.getI64IntegerAttr(core));
-        Value core_ordinal = builder.create<TF::AddV2Op>(
-            send_from_host.getLoc(), device_ordinal.getType(), device_ordinal,
-            const_core);
-        send_from_host.setOperand(2, core_ordinal);
+        send_from_host.setOperand(2, core_to_device_ordinal[core]);
       }
     }
   }
@@ -847,11 +816,12 @@ void CloneFirstHost(ArrayRef<Operation*> core_to_host_insertion_point,
 LogicalResult MoveToHostSingleCluster(
     ArrayRef<Operation*> clustered_ops, ArrayRef<Value> external_operands,
     ArrayRef<Value> external_outputs,
+    llvm::SmallVector<IRMapping>& core_to_mapping,
     ArrayRef<Operation*> core_to_host_insertion_point,
     ArrayRef<Value> core_to_compilation_key,
     ArrayRef<Value> core_to_device_ordinal, int default_device_ordinal,
     StringAttr device_type_attr, bool is_map_oc, int num_cores_per_replica,
-    int& communication_key_index) {
+    std::string& common_split_sharding, int& communication_key_index) {
   OpBuilder builder(core_to_host_insertion_point[0]);
   Operation& op = *clustered_ops.back();
   Block* original_op_block = op.getBlock();
@@ -873,7 +843,7 @@ LogicalResult MoveToHostSingleCluster(
           &op, builder, op.getLoc(), external_operands, external_outputs,
           args_communication_key, retvals_communication_key,
           serialized_func_module, is_map_oc, num_cores_per_replica,
-          host_compute_outputs, host_compute_out_ops)))
+          common_split_sharding, host_compute_outputs, host_compute_out_ops)))
     return failure();
 
   // Insert ops on the host side computation to receive data from device.
@@ -900,9 +870,9 @@ LogicalResult MoveToHostSingleCluster(
 
   // Clone the first outside compiled region to one for each TPU core.
   if (is_map_oc)
-    CloneFirstHost(core_to_host_insertion_point, core_to_compilation_key,
-                   core_to_device_ordinal, num_cores_per_replica, host0_ops,
-                   builder);
+    CloneFirstHost(core_to_mapping, core_to_host_insertion_point,
+                   core_to_compilation_key, core_to_device_ordinal,
+                   num_cores_per_replica, host0_ops, builder);
 
   ReplaceExternalOutputUsage(external_outputs, host_compute_outputs);
 
@@ -920,8 +890,7 @@ LogicalResult MoveToHostSingleCluster(
 // of is_map_oc.
 LogicalResult UpdateIsMapOutsideCompilation(Operation& op, bool control_above,
                                             std::optional<bool>& is_map_oc) {
-  bool op_is_map_oc =
-      op.hasAttrOfType<StringAttr>(kXlaMapOutsideCompilationAttr);
+  bool op_is_map_oc = op.hasAttr(kXlaMapOutsideCompilationAttr);
   if (is_map_oc) {
     if (op_is_map_oc != *is_map_oc) {
       return op.emitOpError()
@@ -959,7 +928,12 @@ LogicalResult MoveToHostMultiCluster(
     bool control_above, std::optional<bool>& is_map_oc,
     int& communication_key_index,
     llvm::SmallVector<Value, 4>* return_value_from_host = nullptr) {
-  int num_cores_per_replica = core_to_host_insertion_point.size();
+  const int num_cores_per_replica = core_to_host_insertion_point.size();
+  // common_split_sharding is set upon the first use of map_outside_compilation.
+  std::string common_split_sharding;
+  llvm::SmallVector<IRMapping> core_to_mapping;
+  for (int core = 0; core < num_cores_per_replica; ++core)
+    core_to_mapping.emplace_back();
   // Contains all of the outside compiled operations that should be moved to the
   // host using a single `_XlaHostComputeMlir` op.  This should only contain a
   // single op except in the case where some of the input/output shapes are
@@ -970,7 +944,7 @@ LogicalResult MoveToHostMultiCluster(
 
   for (Operation& op : llvm::make_early_inc_range(*src)) {
     if (HasOutsideCompilationAncestorExclusive(&op) ||
-        !op.hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
+        !op.hasAttr(kXlaOutsideCompilationAttr))
       continue;
 
     if (failed(UpdateIsMapOutsideCompilation(op, control_above, is_map_oc)))
@@ -993,10 +967,11 @@ LogicalResult MoveToHostMultiCluster(
       }
       if (failed(MoveToHostSingleCluster(
               clustered_ops.getArrayRef(), external_operands.getArrayRef(),
-              external_outputs.getArrayRef(), core_to_host_insertion_point,
-              core_to_compilation_key, core_to_device_ordinal,
-              default_device_ordinal, device_type_attr, *is_map_oc,
-              num_cores_per_replica, communication_key_index)))
+              external_outputs.getArrayRef(), core_to_mapping,
+              core_to_host_insertion_point, core_to_compilation_key,
+              core_to_device_ordinal, default_device_ordinal, device_type_attr,
+              *is_map_oc, num_cores_per_replica, common_split_sharding,
+              communication_key_index)))
         return failure();
       clustered_ops.clear();
     }
@@ -1020,10 +995,11 @@ LogicalResult MoveToHostMultiCluster(
 
       if (failed(MoveToHostSingleCluster(
               clustered_ops.getArrayRef(), external_operands.getArrayRef(),
-              external_outputs.getArrayRef(), core_to_host_insertion_point,
-              core_to_compilation_key, core_to_device_ordinal,
-              default_device_ordinal, device_type_attr, *is_map_oc,
-              num_cores_per_replica, communication_key_index)))
+              external_outputs.getArrayRef(), core_to_mapping,
+              core_to_host_insertion_point, core_to_compilation_key,
+              core_to_device_ordinal, default_device_ordinal, device_type_attr,
+              *is_map_oc, num_cores_per_replica, common_split_sharding,
+              communication_key_index)))
         return failure();
       clustered_ops.clear();
     }
@@ -1140,7 +1116,7 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp device_cluster,
 // `host_launch_op`.
 void RemoveOutsideCompilation(tf_device::LaunchOp host_launch_op) {
   host_launch_op.GetBody().walk([&](Operation* op) {
-    if (op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+    if (op->hasAttr(kXlaOutsideCompilationAttr)) {
       op->removeAttr(
           StringAttr::get(op->getContext(), kXlaOutsideCompilationAttr));
     }
@@ -1440,21 +1416,18 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
     Operation* compilation_key_op = nullptr;
     Value compilation_key = nullptr;
     Operation* device_ordinal_op = nullptr;
+    compilation_key_op =
+        CreateCompilationKeyPlaceholder(device_cluster.getLoc(), builder);
+    compilation_key =
+        llvm::dyn_cast<TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
+            compilation_key_op)
+            .getProgram();
     if (has_tpu_device) {
-      compilation_key_op =
-          CreateCompilationKeyPlaceholder(device_cluster.getLoc(), builder);
-      compilation_key =
-          llvm::dyn_cast<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
-              compilation_key_op)
-              .getProgram();
       device_ordinal_op = builder.create<TF::_TPUDeviceOrdinalPlaceholderOp>(
           device_cluster.getLoc(),
-          RankedTensorType::get({}, builder.getI64Type()));
+          RankedTensorType::get({}, builder.getI64Type()),
+          builder.getI64IntegerAttr(core));
     } else {
-      compilation_key_op = CreateCpuGpuComilationKeyPlaceholder(
-          device_cluster.getLoc(), builder);
-      compilation_key =
-          llvm::dyn_cast<Value>(compilation_key_op->getResults()[0]);
       device_ordinal_op = builder.create<TF::ConstOp>(
           device_cluster.getLoc(),
           DenseIntElementsAttr::get(

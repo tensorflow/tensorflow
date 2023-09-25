@@ -38,54 +38,41 @@ T baseline_add(T lhs, T rhs) {
   return lhs + rhs;
 }
 
-template <typename T>
-T baseline_div(T lhs, T rhs) {
-  return lhs / rhs;
-}
-
-template <typename T>
-T baseline_sub(T lhs, T rhs) {
-  return lhs - rhs;
-}
-
-template <typename T>
-T baseline_greater(T lhs, T rhs) {
-  return lhs > rhs;
-}
-
 /// Test `tf.Addv2`.
 
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 TEST_F(BinaryOpsLargeTensorTest, AddV2LargeTensors) {
   TestEqualShapes<float, float, float, float>(
       "AddV2", /*shape=*/test::DefaultInputShapeExceedingInt32(),
       test::DefaultInput<float>(), test::DefaultInput<float>(), baseline_add,
       test::OpsTestConfig().ExpectStrictlyEqual());
 }
-
 #endif
 
 /// Test `tf.Sub`.
 
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+template <typename T>
+T baseline_sub(T lhs, T rhs) {
+  return lhs - rhs;
+}
 
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 TEST_F(BinaryOpsLargeTensorTest, SubLargeTensors) {
   TestEqualShapes<float, float, float, float>(
       "Sub", /*shape=*/test::DefaultInputShapeExceedingInt32(),
       test::DefaultInput<float>(), test::DefaultInput<float>(), baseline_sub,
       test::OpsTestConfig().ExpectStrictlyEqual());
 }
-
 #endif
 
 /// Test `tf.Div`.
 
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+template <typename T>
+T baseline_div(T lhs, T rhs) {
+  return lhs / rhs;
+}
 
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 TEST_F(BinaryOpsLargeTensorTest, DivV2LargeTensors) {
   TestEqualShapes<float, float, float, float>(
       "Div", /*shape=*/test::DefaultInputShapeExceedingInt32(),
@@ -96,14 +83,54 @@ TEST_F(BinaryOpsLargeTensorTest, DivV2LargeTensors) {
 
 /// Test `tf.Greater`.
 
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+template <typename T>
+T baseline_greater(T lhs, T rhs) {
+  return lhs > rhs;
+}
 
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 TEST_F(BinaryOpsLargeTensorTest, GreaterLargeTensors) {
   TestEqualShapes<float, float, bool, float>(
       "Greater", /*shape=*/test::DefaultInputShapeExceedingInt32(),
       test::DefaultInput<float>(), test::DefaultInput<float>(),
       baseline_greater, test::OpsTestConfig().ExpectStrictlyEqual());
+}
+#endif
+
+/// Test `tf.Mul`.
+
+template <typename T>
+T baseline_mul(T lhs, T rhs) {
+  return lhs * rhs;
+}
+
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+TEST_F(BinaryOpsLargeTensorTest, MulLargeTensorsLimit) {
+  TestEqualShapes<float, float, float, float>(
+      "Mul", /*shape=*/{2147483648 / 2, 2}, test::DefaultInput<float>(),
+      test::DefaultInput<float>(), baseline_mul,
+      test::OpsTestConfig().ExpectStrictlyEqual());
+}
+
+TEST_F(BinaryOpsLargeTensorTest, MulLargeTensorsBetweenI32AndUI32) {
+  TestEqualShapes<float, float, float, float>(
+      "Mul", /*shape=*/{268435456, 9}, test::DefaultInput<float>(),
+      test::DefaultInput<float>(), baseline_mul,
+      test::OpsTestConfig().ExpectStrictlyEqual());
+}
+
+TEST_F(BinaryOpsLargeTensorTest, MulLargeTensorsOneLessThanLimit) {
+  TestEqualShapes<float, float, float, float>(
+      "Mul", /*shape=*/{2147483647, 1}, test::DefaultInput<float>(),
+      test::DefaultInput<float>(), baseline_mul,
+      test::OpsTestConfig().ExpectStrictlyEqual());
+}
+
+TEST_F(BinaryOpsLargeTensorTest, MulLargeTensorsOneMoreThanLimit) {
+  TestEqualShapes<float, float, float, float>(
+      "Mul", /*shape=*/{1, 2147483649}, test::DefaultInput<float>(),
+      test::DefaultInput<float>(), baseline_mul,
+      test::OpsTestConfig().ExpectStrictlyEqual());
 }
 #endif
 

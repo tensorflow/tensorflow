@@ -411,12 +411,14 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       GetExplicitPaddingForDim(explicit_paddings_, data_format_, 'W', &pad_left,
                                &pad_right);
     }
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                input_rows, filter_rows, stride_, padding_,
-                                &out_rows, &pad_top, &pad_bottom));
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                input_cols, filter_cols, stride_, padding_,
-                                &out_cols, &pad_left, &pad_right));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSizeVerbose(
+                       input_rows, filter_rows, /*dilation_rate=*/1, stride_,
+                       padding_, &out_rows, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSizeVerbose(
+                       input_cols, filter_cols, /*dilation_rate=*/1, stride_,
+                       padding_, &out_cols, &pad_left, &pad_right));
     TensorShape out_shape;
     OP_REQUIRES_OK(context,
                    ShapeFromFormatWithStatus(data_format_, batch, out_rows,

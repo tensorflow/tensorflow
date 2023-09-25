@@ -32,6 +32,7 @@ from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
+# Placeholder for protosplitter merger import.
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
@@ -93,6 +94,10 @@ def parse_saved_model(export_dir):
   path_to_pb = file_io.join(
       compat.as_bytes(compat.path_to_str(export_dir)),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
+  # Build the path to the SavedModel in cpb format.
+  path_to_cpb = file_io.join(
+      compat.as_bytes(compat.path_to_str(export_dir)),
+      compat.as_bytes(constants.SAVED_MODEL_FILENAME_CPB))
 
   # Parse the SavedModel protocol buffer.
   saved_model = saved_model_pb2.SavedModel()
@@ -101,22 +106,21 @@ def parse_saved_model(export_dir):
       file_content = f.read()
     try:
       saved_model.ParseFromString(file_content)
-      return saved_model
     except message.DecodeError as e:
-      raise IOError(f"Cannot parse file {path_to_pb}: {str(e)}.")
+      raise IOError(f"Cannot parse file {path_to_pb}: {str(e)}.") from e
   elif file_io.file_exists(path_to_pbtxt):
     with file_io.FileIO(path_to_pbtxt, "rb") as f:
       file_content = f.read()
     try:
-      text_format.Merge(file_content.decode("utf-8"), saved_model)
-      return saved_model
+      text_format.Parse(file_content.decode("utf-8"), saved_model)
     except text_format.ParseError as e:
-      raise IOError(f"Cannot parse file {path_to_pbtxt}: {str(e)}.")
+      raise IOError(f"Cannot parse file {path_to_pbtxt}: {str(e)}.") from e
   else:
     raise IOError(
         f"SavedModel file does not exist at: {export_dir}{os.path.sep}"
         f"{{{constants.SAVED_MODEL_FILENAME_PBTXT}|"
         f"{constants.SAVED_MODEL_FILENAME_PB}}}")
+  return saved_model
 
 
 def get_asset_tensors(export_dir, meta_graph_def_to_load, import_scope=None):

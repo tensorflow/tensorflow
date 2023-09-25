@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <array>
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -76,15 +76,16 @@ Pool3dParameters::Pool3dParameters(OpKernelContext* context,
       errors::Unimplemented(
           "Pooling3d only supports pooling across plane/width/height."));
 
-  OP_REQUIRES_OK(context, GetWindowedOutputSize(tensor_in_planes, window_planes,
-                                                plane_stride, padding,
-                                                &out_plane, &pad_planes));
-  OP_REQUIRES_OK(context,
-                 GetWindowedOutputSize(tensor_in_rows, window_rows, row_stride,
-                                       padding, &out_height, &pad_rows));
-  OP_REQUIRES_OK(context,
-                 GetWindowedOutputSize(tensor_in_cols, window_cols, col_stride,
-                                       padding, &out_width, &pad_cols));
+  OP_REQUIRES_OK(
+      context, GetWindowedOutputSize(tensor_in_planes, window_planes,
+                                     /*dilation_rate=*/1, plane_stride, padding,
+                                     &out_plane, &pad_planes));
+  OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                              tensor_in_rows, window_rows, /*dilation_rate=*/1,
+                              row_stride, padding, &out_height, &pad_rows));
+  OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                              tensor_in_cols, window_cols, /*dilation_rate=*/1,
+                              col_stride, padding, &out_width, &pad_cols));
 }
 
 Status Pool3dParameters::forward_output_shape(TensorShape* shape) {
@@ -184,9 +185,11 @@ class Pooling3DOp : public UnaryOp<T> {
                                    GetTensorDim(stride_, data_format_, '1'),
                                    GetTensorDim(stride_, data_format_, '0')}};
     std::array<int64_t, 3> padding, out;
+    std::array<int64_t, 3> dilations{1, 1, 1};
 
-    OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
-                                            padding_, &out, &padding));
+    OP_REQUIRES_OK(context,
+                   Get3dOutputSizeV2(input_size, window, dilations, stride,
+                                     padding_, &out, &padding));
 
     TensorShape out_shape;
     OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
@@ -362,9 +365,11 @@ class MaxPooling3dGradOp : public OpKernel {
                                    GetTensorDim(stride_, data_format_, '1'),
                                    GetTensorDim(stride_, data_format_, '0')}};
     std::array<int64_t, 3> out, padding;
+    std::array<int64_t, 3> dilations{1, 1, 1};
 
-    OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
-                                            padding_, &out, &padding));
+    OP_REQUIRES_OK(context,
+                   Get3dOutputSizeV2(input_size, window, dilations, stride,
+                                     padding_, &out, &padding));
 
     const int64_t depth = GetTensorDim(tensor_in, data_format_, 'C');
     const int64_t in_batch = GetTensorDim(tensor_in, data_format_, 'N');
@@ -497,6 +502,11 @@ class AvgPooling3dGradOp : public OpKernel {
     OP_REQUIRES(context, ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 5 dimensions"));
+    for (std::size_t i = 0; i < ksize_.size(); ++i) {
+      OP_REQUIRES(
+          context, ksize_[i] > 0,
+          errors::InvalidArgument("ksize must be positive, got: ", ksize_[i]));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window stride field must "
@@ -546,9 +556,11 @@ class AvgPooling3dGradOp : public OpKernel {
                                    GetTensorDim(stride_, data_format_, '1'),
                                    GetTensorDim(stride_, data_format_, '0')}};
     std::array<int64_t, 3> padding, out;
+    std::array<int64_t, 3> dilations{1, 1, 1};
 
-    OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
-                                            padding_, &out, &padding));
+    OP_REQUIRES_OK(context,
+                   Get3dOutputSizeV2(input_size, window, dilations, stride,
+                                     padding_, &out, &padding));
 
     LaunchAvgPooling3dGradOp<Device, T>::launch(
         context, output_shape, out_backprop, window, stride, out, padding,

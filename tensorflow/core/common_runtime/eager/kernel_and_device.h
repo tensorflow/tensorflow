@@ -18,8 +18,13 @@ limitations under the License.
 
 // Support for eager execution of TensorFlow kernels.
 
+#include <functional>
 #include <memory>
+#include <optional>
 #include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
@@ -62,19 +67,19 @@ const int64_t kInvalidOpId = -1;
 struct EagerFunctionParams {
   int64_t op_id = kInvalidOpId;
   bool is_component_function;
-  absl::optional<int64_t> step_id = absl::nullopt;
+  std::optional<int64_t> step_id = std::nullopt;
 };
 
 class EagerKernelArgs : public FunctionArgsInterface {
  public:
-  EagerKernelArgs() {}
+  EagerKernelArgs() = default;
 
   explicit EagerKernelArgs(int count) : tensor_args_(count) {}
 
   explicit EagerKernelArgs(gtl::InlinedVector<TensorValue, 4>&& tensor_args)
       : tensor_args_(std::move(tensor_args)) {}
 
-  ~EagerKernelArgs() override{};
+  ~EagerKernelArgs() override = default;
 
   bool HasRemoteOrPackedInputs() const override { return false; };
   TensorValue* MutableInput(int i) { return &tensor_args_[i]; }
@@ -91,7 +96,7 @@ class EagerKernelArgs : public FunctionArgsInterface {
   gtl::InlinedVector<TensorValue, 4> tensor_args_;
 };
 
-typedef absl::variant<Tensor, TensorShape> EagerKernelRet;
+typedef std::variant<Tensor, TensorShape> EagerKernelRet;
 
 // KernelAndDevice encapsulates the logic needed to run a computation eagerly.
 // The computation can be a single instantiated kernel (implemented by
@@ -108,7 +113,7 @@ class KernelAndDevice : public core::RefCounted {
   //
   // The provided FunctionLibraryRuntime MUST outlive all calls to
   // Run() on the returned KernelAndDevice.
-  virtual Status Init(const bool log_device_placement, const NodeDef& ndef,
+  virtual Status Init(bool log_device_placement, const NodeDef& ndef,
                       GraphCollector* graph_collector) = 0;
 
   // Non-multi-device functions are run using regular CallOp and look like
@@ -127,7 +132,7 @@ class KernelAndDevice : public core::RefCounted {
         runner_(runner) {}
 
   // Not thread safe.
-  ~KernelAndDevice() override {}
+  ~KernelAndDevice() override = default;
 
   virtual bool IsFunction() { return false; }
 
@@ -208,9 +213,9 @@ class KernelAndDeviceOp final : public KernelAndDevice {
         rendezvous_(rendezvous),
         log_memory_(log_memory) {}
 
-  ~KernelAndDeviceOp() override {}
+  ~KernelAndDeviceOp() override = default;
 
-  Status Init(const bool log_device_placement, const NodeDef& ndef,
+  Status Init(bool log_device_placement, const NodeDef& ndef,
               GraphCollector* graph_collector) override;
 
   Status Run(
@@ -282,7 +287,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       const bool allow_control_flow_sync_execution,
       const bool shape_inference_on_tfe_dialect_import,
       const bool int_args_and_retvals_on_device,
-      absl::optional<string> xla_compile_device_type,
+      std::optional<string> xla_compile_device_type,
       const bool allow_soft_placement, Rendezvous::Factory rendezvous_factory,
       std::function<int64_t()> get_op_id)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
@@ -311,10 +316,10 @@ class KernelAndDeviceFunc : public KernelAndDevice {
 
   bool IsCrossProcess() override { return is_cross_process_; }
 
-  Status InstantiateFunc(const bool log_device_placement, const NodeDef& ndef,
+  Status InstantiateFunc(bool log_device_placement, const NodeDef& ndef,
                          GraphCollector* graph_collector);
 
-  Status Init(const bool log_device_placement, const NodeDef& ndef,
+  Status Init(bool log_device_placement, const NodeDef& ndef,
               GraphCollector* graph_collector) override;
 
   Status Run(

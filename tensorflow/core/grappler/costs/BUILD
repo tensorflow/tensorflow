@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
@@ -182,10 +183,10 @@ tf_cuda_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/util:overflow",
-        "//third_party/eigen3",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@eigen_archive//:eigen3",
     ] + tf_protos_grappler(),
 )
 
@@ -287,6 +288,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/grappler/utils:transitive_fanin",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -345,8 +347,13 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/util:overflow",
-        "//third_party/eigen3",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:statusor",
     ] + tf_protos_grappler(),
 )
 
@@ -356,7 +363,7 @@ tf_cc_test(
     tags = [
         "no_oss",
         "not_run:arm",
-    ],  # b/163222310
+    ],
     deps = [
         ":op_level_cost_estimator",
         "//tensorflow/core:framework",

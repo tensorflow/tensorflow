@@ -1701,6 +1701,7 @@ Status DirectSession::CreateGraphs(
   TF_RETURN_IF_ERROR(Partition(popts, &client_graph->graph, &partitions));
 
   std::vector<string> device_names;
+  device_names.reserve(devices_.size());
   for (auto device : devices_) {
     // Extract the LocalName from the device.
     device_names.push_back(DeviceNameUtils::LocalName(device->name()));

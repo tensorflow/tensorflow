@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -1327,6 +1327,7 @@ REGISTER_OP("XlaCallModule")
     .Attr("platforms: list(string) = []")
     .Attr("function_list: list(func) = []")
     .Attr("has_token_input_output: bool = false")
+    .Attr("disabled_checks: list(string) = []")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<shape_inference::ShapeHandle> args_shapes;
@@ -1363,7 +1364,8 @@ version: Tracks changes the semantics of the op, to support backwards
   version 3, the op also supports the `platforms` attribute. From version 4,
   the op carries a StableHLO module with compatibility guarantees. From version
   5, XLACallModule can include `stablehlo.custom_call` op to execute tf
-  functions.
+  functions. From version 6 the op supports the `disabled_checks` attribute.
+  See more versioning details at https://github.com/search?q=repo%3Atensorflow%2Ftensorflow+path%3Axla_call_module+%22int+VERSION_MAXIMUM_SUPPORTED%22&type=code.
 module: A serialized computation, a text or bytecode representation of
   an mlir.Module. The return type must be a tuple if and only if the `Sout` is
   a list with 0 or more than 1 elements. The length of `Tout` and
@@ -1371,15 +1373,16 @@ module: A serialized computation, a text or bytecode representation of
   module returns a single result.
 Tout: List of output tensor data types.
 Sout: List of output tensor shapes.
-platforms: the list of platforms supported by `module`. If the list is empty,
-  the `module` is platform independent or there should be no platform checking
-  or preprocessing. The list can contain the strings "CPU", "CUDA", "ROCM",
-  or "TPU".
-  If the list is not empty then it is an error to compile this op for a
-  platform that does not appear in the list. If the list contains more than
+platforms: the list of platforms supported by `module`. The list can contain
+  the strings "CPU", "CUDA", "ROCM", or "TPU". It is an error to compile
+  this op for a platform that does not appear in the list. This check can be
+  disabled using `disabled_checks`. If the list contains more than
   one platform, then the `module` takes one additional 0-dimensional
   integer-tensor parameter in the first position, encoding the index in
-  `platforms` of the current compilation platform.
+  `platforms` of the current compilation platform. This parameter has value 0
+  if the plaform is not among `platforms` and the check has been disabled.
+  The list can be empty in old versions (earlier than 6) to denote that no
+  platform checking must be performed at loading time.
 dim_args_spec: in presence of dynamic shapes, this is the specification for the
   dimension arguments. In absence of dynamic shapes this list is empty. The
   `module` takes one 0-dimensional integer tensor dimension argument for each
@@ -1388,8 +1391,8 @@ dim_args_spec: in presence of dynamic shapes, this is the specification for the
   string of the form "<arg_idx>.<axis_idx>" that specifies that the value of
   the corresponding dimension argument must be "args[arg_idx].shape[axis_idx]",
   where "args" are the actual array arguments.
-  This attribute is not used anymore in modules serialized after March 28th,
-  2023 and JAX OSS versions higher than 0.4.6.
+  This attribute is not used anymore in modules serialized with version 5
+  after March 28th, 2023 and JAX OSS versions higher than 0.4.6.
   TODO(b/283439649): remove support for dim_args_spec.
 function_list: This list contains the TensorFlow FunctionDefs that are used by
   the XLACallModule. If the XLACallModule contains `stablehlo.custom_call`
@@ -1400,6 +1403,13 @@ has_token_input_output: If true, the embedded StableHLO module's main function
   must take a `!stablehlo.token` as its first argument and returns a token as
   its first result. This can be used in conjunction with the TF2XLA's side
   effect mechanism in order to model side effects.
+disabled_checks: A list of strings describing the safety checks that were
+  disabled at serialization time. This attribute was added in version 6.
+  For more details see
+  https://github.com/search?q=repo%3Agoogle%2Fjax+path%3Ajax_export+%22class+DisabledSafetyCheck%22&type=code.
+  This list, supplemented with a comma-separate list of directives specified
+  using the flag --tf_xla_call_module_disabled_checks,
+  is used at module loading time to skip the corresponding checks.
 )doc");
 
 }  // namespace

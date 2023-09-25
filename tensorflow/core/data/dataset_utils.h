@@ -15,8 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 #define TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 
+#include <atomic>
 #include <functional>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -362,6 +366,11 @@ inline int GetCpuBudget() {
 // Returns the initial value for parallelism parameter before the first Autotune
 // optimization.
 int64 GetAutotuneDefaultParallelism(IteratorContext* ctx);
+
+// Creates an iterator context appropriate for a nested dataset's iterator. A
+// nested dataset is a dataset created within another dataset, e.g. by the
+// function passed to `interleave` or `flat_map`.
+IteratorContext MakeNestedIteratorContext(IteratorContext* ctx);
 
 // A `DatasetExperimentRegistry::JobSelector` that randomly selects
 // `rollout_pct` percent of all jobs. `name_hash` is a hash of the experiment

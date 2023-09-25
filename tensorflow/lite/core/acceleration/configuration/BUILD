@@ -1,6 +1,7 @@
 load("//tensorflow/lite/core:special_rules.bzl", "delegate_registry_visibility_allowlist")
 load("//tensorflow/lite/core/c:special_rules.bzl", "experimental_acceleration_api_allowlist")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -19,6 +20,49 @@ cc_library(
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/core/c:common",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "nnapi_plugin",
+    srcs = ["nnapi_plugin.cc"],
+    hdrs = ["nnapi_plugin.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = nnapi_plugin_impl_visibility_allowlist() + [
+        "//tensorflow/lite:__subpackages__",
+    ],
+    deps = [
+        ":delegate_registry",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/core/acceleration/configuration/c:delegate_plugin",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/nnapi:nnapi_implementation_headers",
+        "@com_google_absl//absl/memory",
+    ],
+    alwayslink = 1,  # For registration to always run.
+)
+
+cc_test(
+    name = "nnapi_plugin_test",
+    srcs = ["nnapi_plugin_test.cc"],
+    tags = [
+        "no_mac",
+        "no_windows",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":delegate_registry",
+        ":nnapi_plugin",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate_mock_test",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
     ],
 )
 

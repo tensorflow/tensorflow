@@ -123,9 +123,9 @@ in the `.tf_configure.bazelrc` file in the root folder:
 
 ```shell
 build --action_env ANDROID_NDK_HOME="/usr/local/android/android-ndk-r21e"
-build --action_env ANDROID_NDK_API_LEVEL="21"
-build --action_env ANDROID_BUILD_TOOLS_VERSION="28.0.3"
-build --action_env ANDROID_SDK_API_LEVEL="23"
+build --action_env ANDROID_NDK_API_LEVEL="26"
+build --action_env ANDROID_BUILD_TOOLS_VERSION="30.0.3"
+build --action_env ANDROID_SDK_API_LEVEL="30"
 build --action_env ANDROID_SDK_HOME="/usr/local/android/android-sdk-linux"
 ```
 

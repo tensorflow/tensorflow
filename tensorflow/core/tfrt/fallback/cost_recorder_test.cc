@@ -14,14 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 
-#include <cstdint>
 #include <limits>
 #include <string>
 
 #include <gtest/gtest.h>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tfrt/fallback/op_cost_map.pb.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -30,16 +28,9 @@ namespace {
 constexpr int64_t kTestOpKey = 1;
 constexpr uint64_t kTestCost = 1234;
 constexpr uint64_t kTestAvgCost = 1851;
-constexpr uint64_t kTestNormalizedCost = 18;
 
-struct TestParams {
-  uint64_t normalize_ratio = 1;
-};
-
-class CostRecorderTest : public ::testing::TestWithParam<TestParams> {};
-
-TEST_P(CostRecorderTest, RecordCostTest) {
-  CostRecorder recorder(GetParam().normalize_ratio);
+TEST(CostRecorderTest, RecordCostTest) {
+  CostRecorder recorder;
 
   recorder.RecordCost(kTestOpKey, kTestCost);
   recorder.RecordCost(kTestOpKey, kTestCost);
@@ -47,27 +38,26 @@ TEST_P(CostRecorderTest, RecordCostTest) {
   EXPECT_EQ(recorder.size(), 1);
 }
 
-TEST_P(CostRecorderTest, GetCostTest) {
-  CostRecorder recorder(GetParam().normalize_ratio);
+TEST(CostRecorderTest, GetCostTest) {
+  CostRecorder recorder;
 
   recorder.RecordCost(kTestOpKey, kTestCost);
   recorder.RecordCost(kTestOpKey, 2 * kTestCost);
 
   EXPECT_EQ(recorder.size(), 1);
-  EXPECT_EQ(recorder.GetCost(kTestOpKey), GetParam().normalize_ratio == 1
-                                              ? kTestAvgCost
-                                              : kTestNormalizedCost);
+  EXPECT_EQ(recorder.GetCost(kTestOpKey), kTestAvgCost);
 }
 
-TEST_P(CostRecorderTest, GetCostDefaultValueTest) {
-  CostRecorder recorder(GetParam().normalize_ratio);
+TEST(CostRecorderTest, GetCostDefaultValueTest) {
+  CostRecorder recorder;
   ASSERT_EQ(recorder.size(), 0);
 
-  EXPECT_EQ(recorder.GetCost(kTestOpKey), std::numeric_limits<uint32_t>::max());
+  EXPECT_EQ(recorder.GetCost(kTestOpKey),
+            std::numeric_limits<uint32_t>::max());
 }
 
-TEST_P(CostRecorderTest, WriteToFileTest) {
-  CostRecorder recorder(GetParam().normalize_ratio);
+TEST(CostRecorderTest, WriteToFileTest) {
+  CostRecorder recorder;
   ASSERT_EQ(recorder.size(), 0);
 
   std::string measured_cost_path;
@@ -83,8 +73,8 @@ TEST_P(CostRecorderTest, WriteToFileTest) {
   EXPECT_EQ(op_cost_map_proto.op_cost_map_size(), 0);
 }
 
-TEST_P(CostRecorderTest, ProtoRecordsTest) {
-  CostRecorder recorder(GetParam().normalize_ratio);
+TEST(CostRecorderTest, ProtoRecordsTest) {
+  CostRecorder recorder;
 
   // Records the cost of op.
   recorder.RecordCost(kTestOpKey, kTestCost);
@@ -107,9 +97,6 @@ TEST_P(CostRecorderTest, ProtoRecordsTest) {
   EXPECT_EQ(op_cost_map_proto.op_cost_map().find(kTestOpKey)->second,
             kTestAvgCost);
 }
-
-INSTANTIATE_TEST_SUITE_P(CostRecorderTests, CostRecorderTest,
-                         ::testing::Values(TestParams{1}, TestParams{100}));
 
 }  // namespace
 }  // namespace tfrt_stub

@@ -90,10 +90,9 @@ TEST_F(AccuracyBenchmarkTest, FailedWithInvalidModelFileDescriptor) {
   ASSERT_NE(event, nullptr);
   EXPECT_EQ(event->event_type(), BenchmarkEventType_ERROR);
   ASSERT_NE(event->error(), nullptr);
-  EXPECT_EQ(event->error()->stage(), BenchmarkStage_INITIALIZATION);
-  EXPECT_EQ(
-      event->error()->exit_code(),
-      DelegatePerformanceBenchmarkStatus::kBenchmarkRunnerInitializationFailed);
+  EXPECT_EQ(event->error()->stage(), BenchmarkStage_INFERENCE);
+  EXPECT_EQ(event->error()->exit_code(),
+            DelegatePerformanceBenchmarkStatus::kBenchmarkResultCountMismatch);
 }
 
 TEST_F(AccuracyBenchmarkTest, SucceedWithSampleStableDelegate) {

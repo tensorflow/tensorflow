@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
@@ -102,7 +103,7 @@ genrule(
     tools = [":json_to_fb"],
 )
 
-py_binary(
+py_strict_binary(
     name = "convert_binary_to_cc_source",
     srcs = ["convert_binary_to_cc_source.py"],
     python_version = "PY3",

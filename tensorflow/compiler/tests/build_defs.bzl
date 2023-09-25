@@ -113,7 +113,7 @@ def tf_xla_py_test(
             extra_tag = []
             updated_name = test_name
 
-            mlir_bridge_dep = "//tensorflow/python:is_mlir_bridge_test_true"
+            mlir_bridge_dep = "//tensorflow/python/framework:is_mlir_bridge_test_true"
             has_mlir_dep = (mlir_bridge_dep in deps)
             if mlir_option:
                 if updated_name.endswith("_test"):

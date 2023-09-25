@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_KERNEL_FALLBACK_TENSOR_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_KERNEL_FALLBACK_TENSOR_H_
 
+#include <utility>
+
 #include "tensorflow/core/framework/tensor.h"
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime

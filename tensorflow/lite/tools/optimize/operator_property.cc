@@ -1156,6 +1156,11 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
       property.outputs = {{0, tensor_property_default}};
       property.version = 2;
       break;
+    case BuiltinOperator_LOG:
+      property.inputs = {{0, tensor_property_default}};
+      property.outputs = {{0, tensor_property_default}};
+      property.version = 2;
+      break;
     default:
       // No quantized implementation exists for this operation.
       property.quantizable = false;

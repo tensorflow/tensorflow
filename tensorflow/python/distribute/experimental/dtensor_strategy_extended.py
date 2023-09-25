@@ -223,7 +223,7 @@ class DTensorStrategyExtended(distribute_lib.StrategyExtendedV2):
                                mesh=self._mesh)
     return nest.map_structure(map_fn, result)
 
-  def call_for_each_replica(self, fn, args, kwargs):
+  def call_for_each_replica(self, fn, args=(), kwargs=None):
     """Run `fn` once per replica.
 
     This is a method that expected by the strategy base class in its `run()`.

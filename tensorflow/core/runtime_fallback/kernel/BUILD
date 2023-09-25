@@ -1,8 +1,8 @@
 # Fallback from TFRT to TF kernels and related utilities.
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_shared_test",
     "tf_cc_test",
-    "tf_cuda_library",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -41,7 +41,7 @@ cc_library(
     }),
 )
 
-tf_cc_test(
+tf_cc_shared_test(
     name = "tfrt_op_kernel_test",
     srcs = ["tfrt_op_kernel_test.cc"],
     tags = ["no_oss"],
@@ -54,6 +54,7 @@ tf_cc_test(
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
+            "//tensorflow/c:c_api",
             "//tensorflow/core:test",
             "//tensorflow/core:test_main",
             "//tensorflow/core/framework:types_proto_cc",
@@ -120,6 +121,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":attr_util",
+        "//tensorflow/c:tf_tensor",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -208,10 +210,6 @@ cc_library(
     includes = [
         "third_party/tf_runtime/include",
     ],
-    visibility = [
-        "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt:__subpackages__",
-    ],
     deps = [
         ":kernel_fallback_tensor",
         ":tensor_util",
@@ -241,49 +239,6 @@ cc_library(
         ":conversion_lib",
         "@tf_runtime//:tensor",
     ],
-    alwayslink = 1,
-)
-
-tf_cuda_library(
-    name = "kernel_fallback_gpu_alwayslink",
-    srcs = [
-        "gpu/conversion_function.cc",
-        "gpu/static_registration.cc",
-    ],
-    hdrs = [
-        "gpu/conversion_function.h",
-    ],
-    compatible_with = [],
-    # Only build this library with --config=cuda.
-    tags = [
-        "manual",
-        "no_oss",
-        "requires_cuda",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":kernel_fallback_execute_compat",
-        ":kernel_fallback_tensor",
-        ":tensor_util",
-        "//tensorflow/core/runtime_fallback/util:gpu_util",
-        "//tensorflow/core/runtime_fallback/util:tensor_util",
-        "//tensorflow/core/runtime_fallback/util:type_util",
-        "@com_google_absl//absl/strings",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:tensor",
-        "@tf_runtime//backends/gpu:gpu_config",
-        "@tf_runtime//backends/gpu:gpu_device",
-        "@tf_runtime//backends/gpu:gpu_op_handler_alwayslink",
-        "@tf_runtime//backends/gpu:gpu_tensor",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:protos_all_cc",
-            "//tensorflow/core/common_runtime/eager:tensor_handle",
-        ],
-    }),
     alwayslink = 1,
 )
 
@@ -345,7 +300,6 @@ cc_library(
     srcs = ["kernel_fallback_execute_compat.cc"],
     hdrs = ["kernel_fallback_execute_compat.h"],
     visibility = [
-        "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/core/runtime_fallback:internal",
         "//tensorflow/core/tfrt/graph_executor:__pkg__",
         "//tensorflow/core/tfrt/saved_model:__pkg__",
@@ -393,8 +347,6 @@ cc_library(
     visibility = [
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt/graph_executor:__pkg__",
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
     ],
     deps = [
         ":kernel_fallback_compat_request_state",
@@ -442,13 +394,12 @@ cc_library(
         # JIT compilation kernels need access to fallback state to set up
         # Eigen thread pool as async runtime worker threads.
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
-        # TPU runtime needs to access fallback state to configure MLIR bridge
-        # rollout state
-        "//third_party/tf_runtime_google:__pkg__",
         # Sync fallback kernels need access to the fallback state.
         "//learning/brain/experimental/tfrt/native_lowering/kernels:__subpackages__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
         "//tensorflow/core/tfrt/saved_model:__subpackages__",
+        "//tensorflow/core/tfrt/mlrt/kernel:__subpackages__",
+        "//tensorflow/core/tfrt/gpu/kernel:__subpackages__",
     ],
     deps = [
         "//tensorflow/core/tfrt/fallback:cost_recorder",
@@ -487,28 +438,4 @@ cc_library(
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "@com_google_absl//absl/container:inlined_vector",
     ],
-)
-
-cc_library(
-    name = "gpurt_kernels",
-    srcs = ["gpurt_kernels.cc"],
-    visibility = [
-        "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
-    ],
-    deps = [
-        ":kernel_fallback_compat_request_state",
-        ":kernel_fallback_tensor",
-        ":kernel_fallback_utils",
-        ":tensor_util",
-        "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
-        "//tensorflow/core/tfrt/utils:fallback_tensor",
-        "//tensorflow/core/tfrt/utils:gpu_variables_table",
-        "//tensorflow/core/tfrt/utils:tensor_util",
-        "@tf_runtime//:core_runtime",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
-        "@tf_runtime//:tensor_alwayslink",
-    ],
-    alwayslink = True,
 )

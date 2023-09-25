@@ -16,7 +16,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_UTILS_UTILS_H_
 
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "tensorflow/core/framework/types.pb.h"

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_STAT_SUMMARIZER_OPTIONS_H_
 #define TENSORFLOW_CORE_UTIL_STAT_SUMMARIZER_OPTIONS_H_
 
-#include "tensorflow/tsl/util/stat_summarizer_options.h"
+#include "tsl/util/stat_summarizer_options.h"
 
 namespace tensorflow {
 using tsl::StatSummarizerOptions;

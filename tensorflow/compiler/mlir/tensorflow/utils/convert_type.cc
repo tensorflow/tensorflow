@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 
+#include <limits>
+
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -85,6 +87,12 @@ Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
     case tensorflow::DT_FLOAT8_E5M2:
       *type = builder.getFloat8E5M2Type();
       return ::tensorflow::OkStatus();
+    case DT_INT4:
+      *type = builder.getIntegerType(4, /*isSigned=*/true);
+      return ::tensorflow::OkStatus();
+    case DT_UINT4:
+      *type = builder.getIntegerType(4, /*isSigned=*/false);
+      return ::tensorflow::OkStatus();
 #define HANDLE_TF_TYPE(tftype, enumerant, name)             \
   case DT_##enumerant:                                      \
     *type = builder.getType<mlir::tf_type::tftype##Type>(); \
@@ -120,6 +128,9 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
     switch (itype.getWidth()) {
       case 1:
         *dtype = DT_BOOL;
+        return OkStatus();
+      case 4:
+        *dtype = itype.isUnsigned() ? DT_UINT4 : DT_INT4;
         return OkStatus();
       case 8:
         *dtype = itype.isUnsigned() ? DT_UINT8 : DT_INT8;

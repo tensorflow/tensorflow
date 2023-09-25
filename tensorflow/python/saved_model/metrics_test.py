@@ -75,22 +75,21 @@ class MetricsTests(test.TestCase):
     self.assertEqual(metrics.GetWrite(write_version="1"), write_count + 1)
 
   def test_load_v2(self):
+    save_dir = self._create_save_v2_model()
+
     read_count = metrics.GetRead(write_version="2")
     load_v2_count = metrics.GetReadApi(load._LOAD_V2_LABEL)
-
-    save_dir = self._create_save_v2_model()
     load.load(save_dir)
 
     self.assertEqual(metrics.GetReadApi(load._LOAD_V2_LABEL), load_v2_count + 1)
     self.assertEqual(metrics.GetRead(write_version="2"), read_count + 1)
 
   def test_load_v1_in_v2(self):
+    save_dir = self._create_save_v1_model()
     read_v1_count = metrics.GetRead(write_version="1")
     read_v2_count = metrics.GetRead(write_version="2")
     load_v2_count = metrics.GetReadApi(load._LOAD_V2_LABEL)
     load_v1_v2_count = metrics.GetReadApi(load_v1_in_v2._LOAD_V1_V2_LABEL)
-
-    save_dir = self._create_save_v1_model()
     load.load(save_dir)
 
     # Check that `load_v2` was *not* incremented.
@@ -103,9 +102,10 @@ class MetricsTests(test.TestCase):
     self.assertEqual(metrics.GetRead(write_version="1"), read_v1_count + 1)
 
   def test_loader_v1(self):
-    read_count = metrics.GetRead(write_version="1")
     ops.disable_eager_execution()
     save_dir = self._create_save_v1_model()
+
+    read_count = metrics.GetRead(write_version="1")
     loader = loader_impl.SavedModelLoader(save_dir)
     with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["foo"])
@@ -144,16 +144,14 @@ class MetricsTests(test.TestCase):
 
   def test_save_sets_write_path_and_singleprint_metric(self):
     exported_dir = self._create_save_v2_model()
-    fingerprint = fingerprinting.read_fingerprint(exported_dir)
-    singleprint = fingerprint.singleprint()
+    singleprint = fingerprinting.read_fingerprint(exported_dir).singleprint()
     path_and_singleprint_metric = metrics.GetWritePathAndSingleprint()
     self.assertEqual(path_and_singleprint_metric, (exported_dir, singleprint))
 
   def test_save_sets_read_path_and_singleprint_metric(self):
     exported_dir = self._create_save_v2_model()
     load.load(exported_dir)
-    fingerprint = fingerprinting.read_fingerprint(exported_dir)
-    singleprint = fingerprint.singleprint()
+    singleprint = fingerprinting.read_fingerprint(exported_dir).singleprint()
     path_and_singleprint_metric = metrics.GetReadPathAndSingleprint()
     self.assertEqual(path_and_singleprint_metric, (exported_dir, singleprint))
 

@@ -22,7 +22,7 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -318,14 +318,6 @@ class Tensor {
     return true;
 #else
     void* ptr = base<void>();
-    // If ptr is allocated through AsyncValueAllocator, the last bit is 1,
-    // which indicates ptr points to an AsyncValueTensor instead of raw buffer,
-    // and disable alignemnt check for it.
-    constexpr uintptr_t kTag = 0x1ULL;
-    uintptr_t value = reinterpret_cast<uintptr_t>(ptr);
-    if (value & kTag) {
-      return true;
-    }
     return dtype() == DT_STRING || NumElements() == 0 ||
            (reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0);
 #endif
@@ -709,6 +701,7 @@ class Tensor {
   friend class TensorInterface;       // For access to set_shape.
   friend class CastOpBase;            // For access to set_dtype.
   friend class ScopedAllocator;       // For access to buf_.
+  friend class PjRtTensorBufferUtil;  // For access to buf_.
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
       int64_t index);  // For access to base<T>().

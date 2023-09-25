@@ -10,6 +10,10 @@ tf_class {
     name: "embedding_feature"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "num_embedding_devices_per_chip"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'tpu_hardware_feature_proto\'], varargs=None, keywords=None, defaults=None"

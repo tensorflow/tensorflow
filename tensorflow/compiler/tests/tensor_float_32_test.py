@@ -18,13 +18,15 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import sysconfig
 
 
-class TensorFloat32ConvTest(xla_test.XLATestCase):
+class TensorFloat32Test(xla_test.XLATestCase):
 
   def tearDown(self):
     super().tearDown()
@@ -40,8 +42,13 @@ class TensorFloat32ConvTest(xla_test.XLATestCase):
 
       # Test the output is sufficiently precise by comparing with FP64 results
       out = compiled_fn(*inputs)
-      f64_out = compiled_fn(*[math_ops.cast(x, 'float64') for x in inputs])
-      self.assertAllClose(out, f64_out, rtol=1e-5, atol=1e-5)
+      sys_details = sysconfig.get_build_info()
+      if sys_details['is_rocm_build']:  # MIOpen does not support fp64 data type
+        f32_out = compiled_fn(*[math_ops.cast(x, 'float32') for x in inputs])
+        self.assertAllClose(out, f32_out, rtol=1e-5, atol=1e-5)
+      else:
+        f64_out = compiled_fn(*[math_ops.cast(x, 'float64') for x in inputs])
+        self.assertAllClose(out, f64_out, rtol=1e-5, atol=1e-5)
 
       # Test with TF32 enabled. Recompile fn because enabling TF32 does not
       # reset function cache.
@@ -50,6 +57,13 @@ class TensorFloat32ConvTest(xla_test.XLATestCase):
       hlo_text = compiled_fn.experimental_get_compiler_ir(*inputs)(stage='hlo')
       # operand_precision is not in HLO if it's the default value.
       self.assertNotIn('operand_precision', hlo_text)
+
+      # On Ampere GPUs and above, which support TF32, test TF32 is used by
+      # asserting outputs are not close to FP64 result
+      if test_util.is_gpu_available(min_cuda_compute_capability=(8, 0)):
+        out = compiled_fn(*inputs)
+        f64_out = compiled_fn(*[math_ops.cast(x, 'float64') for x in inputs])
+        self.assertNotAllClose(out, f64_out, rtol=1e-5, atol=1e-5)
 
   def test_matmul(self):
     x = array_ops.fill((1024, 1024), 1 + 2**-12)
@@ -70,8 +84,8 @@ class TensorFloat32ConvTest(xla_test.XLATestCase):
     self._test_fn(batch_matmul, [x, y])
 
   def test_conv2d(self):
-    x = array_ops.fill((2, 20, 20, 32), 1 + 2**-12)
-    y = array_ops.fill((3, 3, 32, 32), 1.0)
+    x = array_ops.fill((16, 40, 40, 64), 1 + 2**-12)
+    y = array_ops.fill((3, 3, 64, 64), 1.0)
 
     def conv2d(x, y):
       return nn_ops.conv2d(x, y, [1, 1, 1, 1], padding='SAME')
@@ -79,23 +93,23 @@ class TensorFloat32ConvTest(xla_test.XLATestCase):
     self._test_fn(conv2d, [x, y])
 
   def test_conv2d_backprop_input(self):
-    y = array_ops.fill((3, 3, 32, 32), 1 + 2**-12)
-    out_backprop = array_ops.fill((2, 20, 20, 32), 1.0)
+    y = array_ops.fill((3, 3, 64, 64), 1 + 2**-12)
+    out_backprop = array_ops.fill((16, 40, 40, 64), 1.0)
 
     def conv2d_backprop_input(y, out_backprop):
       return nn_ops.conv2d_backprop_input(
-          (2, 20, 20, 32), y, out_backprop, [1, 1, 1, 1], padding='SAME'
+          (16, 40, 40, 64), y, out_backprop, [1, 1, 1, 1], padding='SAME'
       )
 
     self._test_fn(conv2d_backprop_input, [y, out_backprop])
 
   def test_conv2d_backprop_filter(self):
-    x = array_ops.fill((2, 20, 20, 32), 1 + 2**-12)
-    out_backprop = array_ops.fill((2, 20, 20, 32), 1.0)
+    x = array_ops.fill((16, 40, 40, 64), 1 + 2**-12)
+    out_backprop = array_ops.fill((16, 40, 40, 64), 1.0)
 
     def conv2d_backprop_filter(x, out_backprop):
       return nn_ops.conv2d_backprop_filter(
-          x, (3, 3, 32, 32), out_backprop, [1, 1, 1, 1], padding='SAME'
+          x, (3, 3, 64, 64), out_backprop, [1, 1, 1, 1], padding='SAME'
       )
 
     self._test_fn(conv2d_backprop_filter, [x, out_backprop])
@@ -103,4 +117,7 @@ class TensorFloat32ConvTest(xla_test.XLATestCase):
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
+  # Enable determinism, since otherwise the autotuner may nondeterministically
+  # chooses either a TF32 or non-TF32 algorithm
+  config.enable_op_determinism()
   googletest.main()

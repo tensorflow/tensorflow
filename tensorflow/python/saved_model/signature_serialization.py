@@ -18,9 +18,9 @@ from absl import logging
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
+from tensorflow.python.eager.polymorphic_function import attributes
 from tensorflow.python.framework import composite_tensor
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import revived_types
@@ -39,7 +39,7 @@ _NUM_DISPLAY_NORMALIZED_SIGNATURES = 5
 
 def _get_signature(function):
   if (
-      isinstance(function, (defun.Function, def_function.Function))
+      isinstance(function, def_function.Function)
       and function.input_signature is not None
   ):
     function = function._get_concrete_function_garbage_collected()  # pylint: disable=protected-access
@@ -172,12 +172,26 @@ def canonicalize_signatures(signatures):
 
     if hasattr(function, "__name__"):
       signature_wrapper.__name__ = "signature_wrapper_" + function.__name__
-    wrapped_function = def_function.function(signature_wrapper)
+
+    # Extract experimental attributes and propagate it to the wrapped_function.
+    # At the moment only the `disable_summaries_at_runtime` attr needs to be
+    # propagated.
+    experimental_attributes = {}
+    for attr in attributes.POLYMORPHIC_FUNCTION_ALLOWLIST:
+      attr_value = signature_function.function_def.attr.get(attr, None)
+      if attr != attributes.NO_INLINE and attr_value is not None:
+        experimental_attributes[attr] = attr_value
+    if not experimental_attributes:
+      experimental_attributes = None
+
+    wrapped_function = def_function.function(
+        signature_wrapper, experimental_attributes=experimental_attributes
+    )
     tensor_spec_signature = {}
     if signature_function.structured_input_signature is not None:
       # The structured input signature may contain other non-tensor arguments.
       inputs = filter(
-          lambda x: isinstance(x, tensor_spec.TensorSpec),
+          lambda x: isinstance(x, tensor.TensorSpec),
           nest.flatten(
               signature_function.structured_input_signature,
               expand_composites=True,
@@ -192,10 +206,10 @@ def canonicalize_signatures(signatures):
         inputs,
     ):
       keyword = compat.as_str(keyword)
-      if isinstance(inp, tensor_spec.TensorSpec):
-        spec = tensor_spec.TensorSpec(inp.shape, inp.dtype, name=keyword)
+      if isinstance(inp, tensor.TensorSpec):
+        spec = tensor.TensorSpec(inp.shape, inp.dtype, name=keyword)
       else:
-        spec = tensor_spec.TensorSpec.from_tensor(inp, name=keyword)
+        spec = tensor.TensorSpec.from_tensor(inp, name=keyword)
       tensor_spec_signature[keyword] = spec
     final_concrete = wrapped_function._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
         **tensor_spec_signature
@@ -212,7 +226,7 @@ def canonicalize_signatures(signatures):
     # pylint: enable=protected-access
     concrete_signatures[signature_key] = final_concrete
     # pylint: enable=cell-var-from-loop
-    if isinstance(function, core.GenericFunction):
+    if isinstance(function, core.PolymorphicFunction):
       flattened_defaults = nest.flatten(
           function.function_spec.fullargspec.defaults  # pylint: disable=protected-access
       )
@@ -225,7 +239,7 @@ def canonicalize_signatures(signatures):
             arg_names[-len_default:],  # pylint: disable=protected-access
             flattened_defaults or [],
         ):
-          if not isinstance(default, ops.Tensor):
+          if not isinstance(default, tensor.Tensor):
             continue
           defaults.setdefault(signature_key, {})[arg] = default
   return concrete_signatures, wrapped_functions, defaults
@@ -254,7 +268,7 @@ def _normalize_outputs(outputs, function_name, signature_key):
           f"the function {compat.as_str_any(function_name)} used to generate "
           f"the SavedModel signature {signature_key!r}."
       )
-    if not isinstance(value, (ops.Tensor, composite_tensor.CompositeTensor)):
+    if not isinstance(value, (tensor.Tensor, composite_tensor.CompositeTensor)):
       raise ValueError(
           f"Got a non-Tensor value {value!r} for key {key!r} in the output of "
           f"the function {compat.as_str_any(function_name)} used to generate "

@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -84,8 +85,8 @@ bool IsCompatibleTypeWithTFLCastOp(Type type) {
       elemType.isF64())
     return true;
 
-  // I1, I8 I16, I32, I64 types are allowed.
-  if (elemType.isInteger(1) || elemType.isInteger(8) ||
+  // I1, I4, I8, I16, I32, I64 types are allowed.
+  if (elemType.isInteger(1) || elemType.isInteger(4) || elemType.isInteger(8) ||
       elemType.isInteger(16) || elemType.isInteger(32) ||
       elemType.isInteger(64))
     return true;
@@ -210,9 +211,11 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
     llvm::SetVector<Value> region_extern_values;
     getUsedValuesDefinedAbove(*it.value(), region_extern_values);
 
-    // Sink down constants into the functions.
+    // Sink down constants (including quantized constant) into the functions.
     for (auto extern_value : region_extern_values) {
-      if (!matchPattern(extern_value, m_Constant())) {
+      if (!matchPattern(extern_value, m_Constant()) &&
+          !llvm::dyn_cast_or_null<TFL::QConstOp>(
+              extern_value.getDefiningOp())) {
         extern_values.insert(extern_value);
         continue;
       }

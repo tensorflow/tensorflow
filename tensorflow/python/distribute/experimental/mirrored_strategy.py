@@ -37,18 +37,18 @@ class MirroredStrategy(distribute_lib.Strategy):
   placed on the `mesh` that is specified in the __init__.
   """
 
-  def __init__(self, mesh=None, devices=None, cross_device_ops=None):
+  def __init__(self, devices=None, cross_device_ops=None, *, mesh=None):
     """Synchronous training across multiple replicas on one machine.
 
     Args:
-      mesh: optional DTensor mesh for the computation. Note that either `mesh`
-        or `devices` should be provided, and not both. The mesh should be 1D,
-        and will be used to split the input data among that dimension.
       devices: a list of device strings, such as ['/gpu:0', '/gpu:1']. If both
         `mesh` and `devices` are None, all the available GPU/TPU will be used.
         If no accelerators are found, CPU is used.
       cross_device_ops: optional, a descendant of `CrossDeviceOps`. The value is
         ignored at the moment, and support will be added later.
+      mesh: optional DTensor mesh for the computation. Note that either `mesh`
+        or `devices` should be provided, and not both. The mesh should be 1D,
+        and will be used to split the input data among that dimension.
     """
     self._validate_init_args(mesh, devices)
     if not mesh:
@@ -92,3 +92,8 @@ class MirroredStrategy(distribute_lib.Strategy):
 
   def reduce(self, reduce_op, value, axis):
     return dtensor_util.dtensor_reduce(self, reduce_op, value, axis)
+
+  @property
+  def mesh(self):
+    """Returns the mesh used by the strategy."""
+    return self._mesh

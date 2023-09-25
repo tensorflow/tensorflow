@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
+#include "xla/client/value_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -227,6 +227,14 @@ StatusOr<TensorShape> XlaExpression::GetShape() const {
       return errors::InvalidArgument(
           "GetShape() called on invalid XlaExpression");
   }
+}
+
+StatusOr<xla::Shape> XlaExpression::GetXlaShape() const {
+  if (kind_ == Kind::kXlaOp) {
+    return handle().builder()->GetShape(handle());
+  }
+  TF_ASSIGN_OR_RETURN(TensorShape shape, GetShape());
+  return TensorShapeToXLAShape(dtype_, shape);
 }
 
 const XlaExpression* XlaExpression::CastExpressionFromTensor(

@@ -164,12 +164,14 @@ PoolParameters::PoolParameters(OpKernelContext* context,
   }
 
   if (depth_window == 1) {
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                tensor_in_rows, window_rows, row_stride,
-                                padding, &out_height, &pad_top, &pad_bottom));
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                tensor_in_cols, window_cols, col_stride,
-                                padding, &out_width, &pad_left, &pad_right));
+    OP_REQUIRES_OK(
+        context, GetWindowedOutputSizeVerbose(
+                     tensor_in_rows, window_rows, /*dilation_rate=*/1,
+                     row_stride, padding, &out_height, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSizeVerbose(
+                       tensor_in_cols, window_cols, /*dilation_rate=*/1,
+                       col_stride, padding, &out_width, &pad_left, &pad_right));
     pad_depth = 0;
     out_depth = depth;
   } else {
@@ -195,12 +197,14 @@ PoolParameters::PoolParameters(OpKernelContext* context,
                 errors::Unimplemented("Depthwise max pooling is currently "
                                       "only implemented for CPU devices."));
 
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                tensor_in_rows, window_rows, row_stride,
-                                padding, &out_height, &pad_top, &pad_bottom));
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                tensor_in_cols, window_cols, col_stride,
-                                padding, &out_width, &pad_left, &pad_right));
+    OP_REQUIRES_OK(
+        context, GetWindowedOutputSizeVerbose(
+                     tensor_in_rows, window_rows, /*dilation_rate=*/1,
+                     row_stride, padding, &out_height, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSizeVerbose(
+                       tensor_in_cols, window_cols, /*dilation_rate=*/1,
+                       col_stride, padding, &out_width, &pad_left, &pad_right));
     pad_depth = 0;
     out_depth = depth / depth_window;
   }

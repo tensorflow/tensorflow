@@ -59,18 +59,11 @@ cc_library(
     hdrs = ["next_pluggable_device_api.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:statusor",
+        "@local_tsl//tsl/c:tsl_status_internal",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
-)
-
-cc_library(
-    name = "next_pluggable_device_c_api_flag",
-    srcs = ["next_pluggable_device_c_api_flag.cc"],
-    hdrs = ["next_pluggable_device_c_api_flag.h"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -90,12 +83,25 @@ cc_library(
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
-        "//tensorflow/tsl/framework:device_id_utils",
-        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/framework:device_id_utils",
+        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/stream_executor/tpu:c_api_conversions",
+    ],
+)
+
+cc_library(
+    name = "next_pluggable_device_factory_hdrs",
+    hdrs = ["next_pluggable_device_factory.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":next_pluggable_device_api",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:device_factory",
+        "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
     ],
 )
 
@@ -116,13 +122,13 @@ cc_library(
         "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
         "//tensorflow/compiler/jit:xla_launch_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/common:create_pjrt_client_util",
         "//tensorflow/core/util:determinism",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:statusor",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/pjrt:pjrt_client",
     ],
     alwayslink = 1,
 )
@@ -146,12 +152,12 @@ cc_library(
     hdrs = ["plugin_op_kernel.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:bfloat16",
         "//tensorflow/core/platform:status",
+        "@local_xla//xla/pjrt:pjrt_client",
     ],
 )
 
@@ -169,7 +175,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/platform:status",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -185,6 +191,23 @@ config_setting(
 )
 
 cc_library(
+    name = "flags",
+    srcs = ["flags.cc"],
+    hdrs = ["flags.h"],
+    defines = select({
+        "//tensorflow/core/common_runtime/next_pluggable_device:tf_npd_use_c_api_enabled": [
+            "DEFAULT_TF_NEXT_PLUGGABLE_DEVICE_USE_C_API=true",
+        ],
+        "//conditions:default": [
+            "DEFAULT_TF_NEXT_PLUGGABLE_DEVICE_USE_C_API=false",
+        ],
+    }),
+    visibility = ["//visibility:public"],
+    deps = ["@com_google_absl//absl/flags:flag"],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "c_plugin_op_kernel",
     srcs = ["c_plugin_op_kernel.cc"],
     hdrs = ["c_plugin_op_kernel.h"],
@@ -195,23 +218,30 @@ cc_library(
         ":plugin_coordination_service_agent_helper",
         ":plugin_op_kernel",
         ":plugin_variable",
-        "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:c_api_headers",
         "//tensorflow/c:kernels_experimental_hdrs",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_buffer",
         "//tensorflow/c:tf_buffer_internal",
+        "//tensorflow/c:tf_datatype_hdrs",
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c:tf_tensor_hdrs",
         "//tensorflow/c/experimental/next_pluggable_device:c_api_hdrs",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/framework:resource_handle_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:thread_annotations",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:thread_annotations",
+        "@local_xla//xla/pjrt:pjrt_client",
     ],
 )
 
@@ -223,10 +253,10 @@ cc_library(
         ":c_plugin_op_kernel",
         ":direct_plugin_op_kernel",
         ":loose_headers",
-        ":next_pluggable_device_c_api_flag",
         ":plugin_op_kernel",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core/common_runtime/next_pluggable_device:flags",
     ],
 )
 
@@ -262,7 +292,7 @@ cc_library(
     deps = [
         ":plugin_coordination_service_agent",
         "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
 )
 
@@ -290,10 +320,10 @@ cc_library(
     deps = [
         ":c_plugin_coordination_service_agent",
         ":direct_plugin_coordination_service_agent",
-        ":next_pluggable_device_c_api_flag",
         ":plugin_coordination_service_agent",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core/common_runtime/next_pluggable_device:flags",
     ],
 )
 
@@ -302,7 +332,7 @@ cc_library(
     hdrs = ["plugin_variable.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/tsl/platform:status",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -314,7 +344,7 @@ cc_library(
     deps = [
         ":plugin_variable",
         "//tensorflow/compiler/jit:variable_info",
-        "//tensorflow/tsl/platform:status",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -326,12 +356,13 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":plugin_variable",
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c:tf_tensor_hdrs",
         "//tensorflow/c/experimental/next_pluggable_device:c_api_hdrs",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:status",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -346,6 +377,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/xla/c:c_api_decl",
+        "@local_xla//xla/c:c_api_decl",
     ],
 )

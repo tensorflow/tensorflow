@@ -865,16 +865,19 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
     self.assertEqual(
         imported.f.pretty_printed_signature(),
-        """func(input1, input2)
-  Args:
-    input1: int32 Tensor, shape=()
-    input2: int32 Tensor, shape=()
-  Returns:
-    [NamedTupleHello(b=<1>, a=<2>), <3>, {'x': <4>}]
-      <1>: int32 Tensor, shape=()
-      <2>: int32 Tensor, shape=()
-      <3>: int32 Tensor, shape=()
-      <4>: float32 Tensor, shape=()""",
+        "Input Parameters:\n"
+        + "  input1 (POSITIONAL_OR_KEYWORD): TensorSpec(shape=(),"
+        " dtype=tf.int32, name='input1')\n"
+        + "  input2 (POSITIONAL_OR_KEYWORD): TensorSpec(shape=(),"
+        " dtype=tf.int32, name='input2')\n"
+        + "Output Type:\n"
+        + "  List[NamedTupleHello[['b', TensorSpec(shape=(), dtype=tf.int32,"
+        " name='tensor_0_b')], ['a', TensorSpec(shape=(), dtype=tf.int32,"
+        " name='tensor_0_a')]], TensorSpec(shape=(), dtype=tf.int32,"
+        " name='tensor_1'), Dict[['x', TensorSpec(shape=(), dtype=tf.float32,"
+        " name='tensor_2_x')]]]\n"
+        + "Captures:\n"
+        + "  None",
     )
 
   def test_positional_arguments(self, cycles, use_cpp_bindings):
@@ -2789,6 +2792,36 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(grads, expected_grads)
 
+  def test_signature_propagates_experimental_attr(
+      self, cycles, use_cpp_bindings
+  ):
+    # TODO(b/264869228) Fix LoadTest
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+    root = autotrackable.AutoTrackable()
+    experimental_attributes = {"disable_summaries_at_runtime": ["x", True]}
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)],
+        experimental_attributes=experimental_attributes,
+    )
+    def f(x):
+      return x * 2.0
+    root.f = f
+    self.assertEqual(root.f(constant_op.constant(1.0)).numpy(), 2.0)
+    loaded = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+    self.assertEqual(loaded.f(constant_op.constant(1.0)).numpy(), 2.0)
+    self.assertProtoEquals(
+        r"""
+        list {
+            s: 'x',
+            b: True
+        }
+        """,
+        loaded.signatures["serving_default"].function_def.attr[
+            "disable_summaries_at_runtime"
+        ],
+    )
+
 
 @parameterized.named_parameters(*_test_params())
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
@@ -2902,6 +2935,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
       @def_function.function
       def increment_v(x):
         obj.v.assign_add(x)
+        return x
 
       session.run(increment_v(constant_op.constant(3.0)))  # generate signatures
       self.assertAllClose(8, total())

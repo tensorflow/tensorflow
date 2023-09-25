@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/device_factory.h"

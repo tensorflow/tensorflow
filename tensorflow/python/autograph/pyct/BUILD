@@ -14,7 +14,7 @@ py_strict_library(
         ":ast_util",
         ":parser",
         ":qual_names",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -32,7 +32,7 @@ py_strict_library(
         ":templates",
         ":transformer",
         "//tensorflow/python/autograph/utils:ag_logging",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -44,7 +44,7 @@ py_strict_library(
         ":anno",
         ":parser",
         ":qual_names",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -62,7 +62,7 @@ py_strict_library(
     name = "gast_util",
     srcs = ["gast_util.py"],
     visibility = ["//visibility:public"],
-    deps = ["@gast_archive//:gast"],
+    deps = ["@pypi_gast//:pkg"],
 )
 
 py_strict_library(
@@ -79,8 +79,8 @@ py_strict_library(
         ":errors",
         ":inspect_utils",
         "//tensorflow/python/util:tf_inspect",
-        "@astunparse_archive//:astunparse",
-        "@gast_archive//:gast",
+        "@pypi_astunparse//:pkg",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -108,7 +108,7 @@ py_strict_library(
         ":parser",
         ":pretty_printer",
         "//tensorflow/python/util:tf_inspect",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -116,7 +116,7 @@ py_strict_library(
     name = "anno",
     srcs = ["anno.py"],
     visibility = ["//visibility:public"],
-    deps = ["@gast_archive//:gast"],
+    deps = ["@pypi_gast//:pkg"],
 )
 
 py_strict_library(
@@ -134,7 +134,7 @@ py_strict_library(
         ":parser",
         ":pretty_printer",
         ":templates",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -145,7 +145,7 @@ py_strict_library(
     deps = [
         ":anno",
         ":parser",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -155,8 +155,8 @@ py_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         ":anno",
-        "@astunparse_archive//:astunparse",
-        "@gast_archive//:gast",
+        "@pypi_astunparse//:pkg",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -181,8 +181,8 @@ py_strict_library(
     srcs = ["pretty_printer.py"],
     visibility = ["//visibility:public"],
     deps = [
-        "@gast_archive//:gast",
-        "@termcolor_archive//:termcolor",
+        "@pypi_gast//:pkg",
+        "@pypi_termcolor//:pkg",
     ],
 )
 
@@ -193,7 +193,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":anno",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -209,8 +209,8 @@ py_strict_test(
         ":parser",
         ":pretty_printer",
         ":qual_names",
-        "//tensorflow/python:client_testlib",
-        "@gast_archive//:gast",
+        "//tensorflow/python/platform:client_testlib",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -221,7 +221,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":cache",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -233,8 +233,8 @@ py_strict_test(
     deps = [
         ":cfg",
         ":parser",
-        "//tensorflow/python:client_testlib",
-        "@gast_archive//:gast",
+        "//tensorflow/python/platform:client_testlib",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -248,9 +248,9 @@ py_strict_test(
         ":loader",
         ":parser",
         ":pretty_printer",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:tf_inspect",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -262,7 +262,7 @@ py_strict_test(
     deps = [
         ":error_utils",
         ":origin_info",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -273,11 +273,11 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":inspect_utils",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/pyct/testing:basic_definitions",
         "//tensorflow/python/autograph/pyct/testing:decorators",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/lib:__init__",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -294,7 +294,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":naming",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -308,8 +308,8 @@ py_strict_test(
         ":inspect_utils",
         ":origin_info",
         ":parser",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/pyct/testing:basic_definitions",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:tf_inspect",
     ],
 )
@@ -324,8 +324,8 @@ py_strict_test(
         ":errors",
         ":parser",
         ":pretty_printer",
-        "//tensorflow/python:client_testlib",
-        "@gast_archive//:gast",
+        "//tensorflow/python/platform:client_testlib",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -336,7 +336,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":pretty_printer",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -349,7 +349,7 @@ py_strict_test(
         ":anno",
         ":parser",
         ":qual_names",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -363,9 +363,9 @@ py_strict_test(
         ":parser",
         ":qual_names",
         ":templates",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -379,8 +379,8 @@ py_strict_test(
         ":origin_info",
         ":parser",
         ":transformer",
-        "//tensorflow/python:client_testlib",
-        "@gast_archive//:gast",
+        "//tensorflow/python/platform:client_testlib",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -392,7 +392,7 @@ py_strict_test(
     deps = [
         ":transformer",
         ":transpiler",
-        "//tensorflow/python:client_testlib",
-        "@gast_archive//:gast",
+        "//tensorflow/python/platform:client_testlib",
+        "@pypi_gast//:pkg",
     ],
 )

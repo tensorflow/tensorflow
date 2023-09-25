@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <iterator>
+#include <limits>
+#include <memory>
 #include <numeric>
 #include <optional>
 #include <string>

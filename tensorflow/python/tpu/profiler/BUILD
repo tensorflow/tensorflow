@@ -15,7 +15,7 @@ py_strict_library(
     deps = [
         "//tensorflow/core/profiler:profiler_analysis_proto_py",
         "//tensorflow/python/util:all_util",
-        "//tensorflow/tsl/profiler/protobuf:trace_events_proto_py",
+        "@local_tsl//tsl/profiler/protobuf:trace_events_proto_py",
     ],
 )
 
@@ -35,9 +35,9 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:errors",
-        "//tensorflow/python:versions",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:versions",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:profiler_client",

@@ -23,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 
 from tensorflow.python.ops import array_ops
@@ -33,6 +34,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base as trackable
+from tensorflow.python.trackable import base_delegate
 from tensorflow.python.trackable import python_state
 from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object
@@ -94,7 +96,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
   def __init__(self, var, slice_spec, name):
     self._var_device = var.device
     self._var_shape = var.shape
-    if isinstance(var, ops.Tensor):
+    if isinstance(var, tensor_lib.Tensor):
       self.handle_op = var.op.inputs[0]
       tensor = var
     elif resource_variable_ops.is_resource_variable(var):
@@ -145,7 +147,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
 
 
 def _tensor_comes_from_variable(v):
-  return isinstance(v, ops.Tensor) and v.op.type in _VARIABLE_OPS
+  return isinstance(v, tensor_lib.Tensor) and v.op.type in _VARIABLE_OPS
 
 
 def saveable_objects_for_op(op, name):
@@ -589,7 +591,7 @@ class TrackableSaveable(saveable_object.SaveableObject):
     if not ops.executing_eagerly_outside_functions() and any([
         spec._tensor.op.type in _REF_VARIABLE_OPS
         for spec in self.specs
-        if isinstance(spec._tensor, ops.Tensor)]):
+        if isinstance(spec._tensor, tensor_lib.Tensor)]):
       return restore_fn(restored_tensor_dict)
     # pylint: enable=protected-access
 
@@ -653,6 +655,12 @@ class _PythonStringStateSaveable(saveable_object.SaveableObject):
 
 def trackable_has_serialize_to_tensor(obj):
   """Returns whether obj's class has `_serialize_to_tensors` defined."""
+  if obj is base_delegate.DelegatingTrackableMixin:
+    # DelegatingTrackableMixin always delegates "_serialize_to_tensors"
+    # to its inner `trackable`, so we check whether the inner trackable
+    # has `_serialize_to_tensor`.
+    return trackable_has_serialize_to_tensor(obj._trackable)  # pylint: disable=protected-access
+
   try:
     if "_serialize_to_tensors" in obj.__dict__:
       # In some cases (e.g. restored objects), the object may have
@@ -666,6 +674,11 @@ def trackable_has_serialize_to_tensor(obj):
   # object class has not yet been migrated, we'll continue to use the obj
   # class's `_gather_saveables_for_checkpoint` method.
   for t in type(obj).mro():
+    if t is base_delegate.DelegatingTrackableMixin:
+      # DelegatingTrackableMixin always delegates "_serialize_to_tensors"
+      # to its inner `trackable`, so we check whether the inner trackable
+      # has `_serialize_to_tensor`.
+      return trackable_has_serialize_to_tensor(obj._trackable)  # pylint: disable=protected-access
     if t is trackable.Trackable:
       # Base case. Return False since _serialize_to_tensors will raise a
       # NotImplemented Error.

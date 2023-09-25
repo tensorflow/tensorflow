@@ -1,0 +1,54 @@
+==== triton/lib/Target/HSACO/HSACOTranslation.cpp#1 - /google/src/cloud/kramerb/llvm-integrate/triton/lib/Target/HSACO/HSACOTranslation.cpp ====
+# action=edit type=text
+--- triton/lib/Target/HSACO/HSACOTranslation.cpp	2023-04-07 10:46:21.000000000 -0700
++++ triton/lib/Target/HSACO/HSACOTranslation.cpp	2023-09-15 06:37:08.000000000 -0700
+@@ -65,7 +65,7 @@
+   opt.NoNaNsFPMath = true;
+   llvm::TargetMachine *machine = target->createTargetMachine(
+       module->getTargetTriple(), proc, features, opt, llvm::Reloc::PIC_,
+-      std::nullopt, llvm::CodeGenOpt::Aggressive);
++      std::nullopt, llvm::CodeGenOptLevel::Aggressive);
+ 
+   module->setDataLayout(machine->createDataLayout());
+ 
+@@ -86,7 +86,7 @@
+ 
+   // emit
+   machine->addPassesToEmitFile(pass, stream, nullptr,
+-                               llvm::CodeGenFileType::CGFT_AssemblyFile);
++                               llvm::CodeGenFileType::AssemblyFile);
+   pass.run(*module);
+ 
+   std::string amdgcn(buffer.begin(), buffer.end());
+@@ -130,7 +130,7 @@
+   // emit
+   llvm::legacy::PassManager pass;
+   machine->addPassesToEmitFile(pass, *isabin_fs, nullptr,
+-                               llvm::CGFT_ObjectFile);
++                               llvm::CodeGenFileType::ObjectFile);
+   pass.run(*module);
+ 
+   // generate HASCO file
+==== triton/lib/Target/PTX/PTXTranslation.cpp#7 - /google/src/cloud/kramerb/llvm-integrate/triton/lib/Target/PTX/PTXTranslation.cpp ====
+# action=edit type=text
+# integrate=triton/lib/Target/PTX/PTXTranslation.cpp#6,6 copy
+--- triton/lib/Target/PTX/PTXTranslation.cpp	2023-08-22 12:55:24.000000000 -0700
++++ triton/lib/Target/PTX/PTXTranslation.cpp	2023-09-15 06:12:09.000000000 -0700
+@@ -79,7 +79,7 @@
+   opt.NoNaNsFPMath = true;
+   llvm::TargetMachine *machine = target->createTargetMachine(
+       module.getTargetTriple(), proc, features, opt, llvm::Reloc::PIC_,
+-      std::nullopt, llvm::CodeGenOpt::Aggressive);
++      std::nullopt, llvm::CodeGenOptLevel::Aggressive);
+   // set data layout
+   if (layout.empty())
+     module.setDataLayout(machine->createDataLayout());
+@@ -95,7 +95,7 @@
+     llvm::legacy::PassManager pass;
+     // emit
+     machine->addPassesToEmitFile(pass, pstream, nullptr,
+-                                 llvm::CodeGenFileType::CGFT_AssemblyFile);
++                                 llvm::CodeGenFileType::AssemblyFile);
+     pass.run(module);
+   }
+   // post-process

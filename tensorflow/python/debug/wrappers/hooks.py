@@ -33,7 +33,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
   """
 
   def __init__(self,
-               ui_type="curses",
+               ui_type="readline",
                dump_root=None,
                thread_name_filter=None,
                config_file_path=None):
@@ -41,7 +41,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
 
     Args:
       ui_type: (`str`) requested user-interface type. Currently supported:
-        (curses | readline).
+        (readline).
       dump_root: (`str`) optional path to the dump root directory. Must be a
         directory that does not exist or an empty directory. If the directory
         does not exist, it will be created by the debugger core during debug

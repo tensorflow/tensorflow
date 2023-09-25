@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_op_handler.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
@@ -241,7 +245,7 @@ KernelFallbackOpHandler::KernelFallbackOpHandler(
     CoreRuntime* runtime, RCReference<tfrt::Device> device)
     : OpHandler("tfkernel", runtime, nullptr), device_(std::move(device)) {}
 
-KernelFallbackOpHandler::~KernelFallbackOpHandler() {}
+KernelFallbackOpHandler::~KernelFallbackOpHandler() = default;
 
 llvm::Error KernelFallbackOpHandler::Initialize() {
   return llvm::Error::success();

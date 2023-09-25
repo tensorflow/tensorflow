@@ -737,11 +737,11 @@ def experimental_map_outside_compilation(
 
   def tpu_computation(x):
     x_split = strategy.experimental_split_to_logical_devices(
-                x, [8 * num_cores_per_replica, 4])
+                x, [num_cores_per_replica, 1])
     y = experimental_map_outside_compilation(
           normalize_each_split, x_split)
     y_split = strategy.experimental_split_to_logical_devices(
-                x, [8 * num_cores_per_replica, 4])
+                x, [num_cores_per_replica, 1])
     return y_split
   ```
 

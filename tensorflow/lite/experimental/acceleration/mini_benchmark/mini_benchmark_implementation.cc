@@ -547,6 +547,6 @@ std::unique_ptr<MiniBenchmark> CreateMiniBenchmarkImpl(
       new MiniBenchmarkImpl(settings, model_namespace, model_id));
 }
 
-TFLITE_REGISTER_MINI_BENCMARK_FACTORY_FUNCTION(Impl, CreateMiniBenchmarkImpl);
+TFLITE_REGISTER_MINI_BENCHMARK_FACTORY_FUNCTION(Impl, CreateMiniBenchmarkImpl);
 }  // namespace acceleration
 }  // namespace tflite

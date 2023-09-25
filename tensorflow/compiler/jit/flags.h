@@ -96,6 +96,13 @@ struct MarkForCompilationPassFlags {
   // specified file system directory path.
   std::string tf_xla_persistent_cache_directory;
 
+  // If non-empty, the persistent cache will only be used for the specified
+  // devices (comma separated). Each device type should be able to be converted
+  // to `DeviceType`.
+  std::string tf_xla_persistent_cache_device_types;
+
+  bool tf_xla_persistent_cache_read_only;
+
   // If true, entries loaded into the XLA compile cache will not have their
   // signatures checked strictly. This should generally not be disabled except
   // for debugging. Defaults to false.
@@ -108,7 +115,7 @@ struct MarkForCompilationPassFlags {
 // Flags associated with the XLA bridge's xla_device module.
 struct XlaDeviceFlags {
   // Switch the CPU device into "on-demand" mode, where instead of
-  // autoclustering ops are compiled one by one just-in-time.
+  // auto-clustering ops are compiled one by one just-in-time.
   // Enabling this mode by a legacy flag is a temporary mechanism. When this
   // feature is battle-tested, we will switch this to be a session option.
   bool tf_xla_compile_on_demand;
@@ -137,6 +144,7 @@ struct XlaOpsCommonFlags {
     }
 
     bool IsEnabledInXlaLaunchForDevice(const DeviceType& device_type) const {
+      if (!enabled_for_gpu_ && device_type.type_string() == "GPU") return false;
       return enabled_for_all_ ||
              (enabled_for_xla_launch_ &&
               xla_launch_allowed_devices_.contains(device_type.type_string()));
@@ -153,6 +161,7 @@ struct XlaOpsCommonFlags {
 
     bool IsEnabledInXlaCompileOnDemandForDevice(
         const DeviceType& device_type) const {
+      if (!enabled_for_gpu_ && device_type.type_string() == "GPU") return false;
       return enabled_for_all_ ||
              (enabled_for_compile_on_demand_ &&
               xla_compile_on_demand_allowed_devices_.contains(
@@ -170,10 +179,13 @@ struct XlaOpsCommonFlags {
 
     bool IsEnabledInXlaCompileAndRunForDevice(
         const DeviceType& device_type) const {
+      if (!enabled_for_gpu_ && device_type.type_string() == "GPU") return false;
       return enabled_for_all_ || (enabled_for_compile_and_run_ &&
                                   xla_compile_and_run_allowed_devices_.contains(
                                       device_type.type_string()));
     }
+
+    bool IsEnabledForGpu() const { return enabled_for_gpu_; }
 
     // If true, uses Device API (PjRt) for single device compilation and
     // execution of functions marked for JIT compilation i.e. jit_compile=True.
@@ -190,9 +202,16 @@ struct XlaOpsCommonFlags {
 
     // If true, uses Device API (PjRt) for compilation and execution everywhere
     // i.e. for functions marked for JIT compilation, for ops in "on-demand"
-    // mode and autoclustering, no matter whether other flags are enabled or
-    // not, and whether devices have been allowed or not. Defaults to false.
+    // mode and auto-clustering. Defaults to false.
+    //
+    // Note that this flag can be overridden by device flag like
+    // `enabled_for_gpu_` below.
     bool enabled_for_all_;
+
+    // If true, enable Device API (PjRt) for TF GPU device. This is a helper
+    // flag so that individual tests can turn on PjRt for GPU specifically.
+    // Once the rollout to GPU is complete, this flag can be deprecated.
+    bool enabled_for_gpu_;
 
    private:
     // Devices for which using Device API (PjRt) is allowed in the XlaLaunch op.
@@ -205,6 +224,12 @@ struct XlaOpsCommonFlags {
     // XlaCompile and XlaRun ops. This can only be modified programmatically.
     absl::flat_hash_set<std::string> xla_compile_and_run_allowed_devices_;
   } tf_xla_use_device_api;
+};
+
+// Flags for the XlaCallModule kernel.
+struct XlaCallModuleFlags {
+  // Used by XlaCallModuleOp to specify safety checks to disable.
+  absl::flat_hash_set<std::string> disabled_checks;
 };
 
 // Flags for the build_xla_ops pass.
@@ -228,6 +253,14 @@ struct BuildXlaOpsPassFlags {
   // Disables all constant folding. The primary use for this is for testing to
   // guarantee that tests are run on XLA and not on TF's CPU implementation.
   bool tf_xla_disable_constant_folding;
+
+  // Disables full embedding pipelining when true. Instead, strict SparseCore
+  // TensorCore sequencing will be used.
+  bool tf_xla_disable_full_embedding_pipelining;
+
+  // Force the WhileOps in embedding_pipelining and embedding_sequencing to use
+  // this many parallel_iterations
+  int tf_xla_embedding_parallel_iterations;
 };
 
 // Flags for common MLIR configurations.
@@ -236,7 +269,9 @@ struct MlirCommonFlags {
 
   bool tf_mlir_enable_merge_control_flow_pass;
   bool tf_mlir_enable_convert_control_to_data_outputs_pass;
+  bool tf_mlir_enable_strict_clusters;
   bool tf_mlir_enable_generic_outside_compilation;
+  bool tf_mlir_enable_tpu_variable_runtime_reformatting_pass;
 };
 
 // Flags for the JitRt pipeline -- see tf_jitrt_pipeline.h for details.
@@ -266,6 +301,7 @@ MarkForCompilationPassFlags* GetMarkForCompilationPassFlags();
 BuildXlaOpsPassFlags* GetBuildXlaOpsPassFlags();
 XlaDeviceFlags* GetXlaDeviceFlags();
 XlaOpsCommonFlags* GetXlaOpsCommonFlags();
+XlaCallModuleFlags* GetXlaCallModuleFlags();
 
 MlirCommonFlags* GetMlirCommonFlags();
 

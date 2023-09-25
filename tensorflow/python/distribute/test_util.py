@@ -32,6 +32,7 @@ from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.util import nest
@@ -142,7 +143,7 @@ def _op_dependencies(op):
   """Returns the data and control dependencies of a tf.Operation combined."""
   deps = []
   for node in itertools.chain(op.inputs, op.control_inputs):
-    if isinstance(node, ops.Tensor):
+    if isinstance(node, tensor.Tensor):
       node = node.op
     assert isinstance(node, ops.Operation)
     deps.append(node)

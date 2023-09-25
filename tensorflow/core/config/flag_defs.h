@@ -46,6 +46,9 @@ class Flags {
       "The default output of tf.shape (i.e. when out_type is not specified) is "
       "int64 when this flag is true and int32 otherwise. Setting this to true "
       "is an unsupported, experimental setting that causes known breakages.");
+  TF_DECLARE_FLAG(more_stack_traces, false,
+                  "Enable experimental code that preserves and propagates "
+                  "graph node stack traces in C++.");
   // LINT.ThenChange(//tensorflow/core/config/flags_api_wrapper.cc)
 };
 

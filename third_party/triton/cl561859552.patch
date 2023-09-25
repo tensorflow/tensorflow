@@ -1,0 +1,51 @@
+==== triton/BUILD#22 - /google/src/cloud/csigg/mlir_34a35a8b244243f5a4ad5d531007bccfeaa0b02e_1693547370/triton/BUILD ====
+# action=edit type=text
+--- triton/BUILD	2023-08-23 07:42:50.000000000 -0700
++++ triton/BUILD	2023-08-31 23:22:26.000000000 -0700
+@@ -339,6 +339,7 @@
+         "@llvm-project//mlir:ControlFlowInterfaces",
+         "@llvm-project//mlir:DestinationStyleOpInterface",
+         "@llvm-project//mlir:FuncDialect",
++        "@llvm-project//mlir:FunctionInterfaces",
+         "@llvm-project//mlir:GPUDialect",
+         "@llvm-project//mlir:IR",
+         "@llvm-project//mlir:LLVMDialect",
+==== triton/include/triton/Dialect/Triton/IR/TritonOps.td#17 - /google/src/cloud/csigg/mlir_34a35a8b244243f5a4ad5d531007bccfeaa0b02e_1693547370/triton/include/triton/Dialect/Triton/IR/TritonOps.td ====
+# action=edit type=text
+--- triton/include/triton/Dialect/Triton/IR/TritonOps.td	2023-08-03 10:50:52.000000000 -0700
++++ triton/include/triton/Dialect/Triton/IR/TritonOps.td	2023-08-31 23:00:34.000000000 -0700
+@@ -6,15 +6,14 @@
+ include "triton/Dialect/Triton/IR/TritonAttrDefs.td"
+ include "triton/Dialect/Triton/IR/TritonInterfaces.td"
+ include "mlir/IR/OpBase.td"
+-include "mlir/IR/FunctionInterfaces.td" // FunctionOpInterface
+ include "mlir/IR/SymbolInterfaces.td" // SymbolUserOpInterface
+ include "mlir/IR/OpAsmInterface.td" // OpAsmOpInterface
+-include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
++include "mlir/Interfaces/CallInterfaces.td" // CallOpInterface
++include "mlir/Interfaces/CastInterfaces.td" // CastOpInterface
+ include "mlir/Interfaces/ControlFlowInterfaces.td" // BranchOpInterface
++include "mlir/Interfaces/FunctionInterfaces.td" // FunctionOpInterface
+ include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
+ include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
+-include "mlir/Interfaces/CastInterfaces.td" // CastOpInterface
+-include "mlir/Interfaces/CallInterfaces.td" // CallOpInterface
+ 
+ //
+ // Op Base
+==== triton/lib/Dialect/Triton/IR/Ops.cpp#16 - /google/src/cloud/csigg/mlir_34a35a8b244243f5a4ad5d531007bccfeaa0b02e_1693547370/triton/lib/Dialect/Triton/IR/Ops.cpp ====
+# action=edit type=text
+--- triton/lib/Dialect/Triton/IR/Ops.cpp	2023-08-03 10:50:52.000000000 -0700
++++ triton/lib/Dialect/Triton/IR/Ops.cpp	2023-08-31 23:21:07.000000000 -0700
+@@ -1,9 +1,9 @@
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinTypes.h"
+-#include "mlir/IR/FunctionImplementation.h"
+-#include "mlir/IR/FunctionInterfaces.h"
+ #include "mlir/IR/OperationSupport.h"
++#include "mlir/Interfaces/FunctionImplementation.h"
++#include "mlir/Interfaces/FunctionInterfaces.h"
+ #include "triton/Dialect/Triton/IR/Dialect.h"
+ #include "triton/Dialect/Triton/IR/Types.h"
+ 

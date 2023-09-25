@@ -26,3 +26,11 @@ tf_cc_test(
         "@llvm-project//mlir:Parser",
     ],
 )
+
+filegroup(
+    name = "testdata",
+    srcs = glob(
+        ["testdata/**"],
+    ),
+    visibility = ["//visibility:public"],
+)

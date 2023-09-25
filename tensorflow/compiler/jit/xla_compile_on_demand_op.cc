@@ -40,13 +40,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/tf_pjrt_client.h"
-#include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/client/local_client.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/tf_pjrt_client.h"
+#include "xla/service/executable.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -56,7 +56,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -173,7 +173,8 @@ Status XlaCompileOnDemandOp::Compile(
     const XlaCompiler::CompilationResult** result,
     xla::PjRtLoadedExecutable** executable) {
   TF_RETURN_IF_ERROR(GetOrCreatePjRtDeviceCompilerAndProfiler(
-      platform_info_, ctx->function_library(), pjrt_device_compiler, profiler));
+      *ctx, platform_info_, ctx->function_library(), pjrt_device_compiler,
+      profiler));
 
   XlaCompiler::Options options =
       GenerateCompilerOptionsForPjRt(*(ctx->function_library()), ctx->device(),
@@ -266,9 +267,9 @@ void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
     VLOG(2) << "pjrt_executable != nullptr: " << (pjrt_executable != nullptr);
     VLOG(2) << "Executing with PJRT ...";
 
-    OP_REQUIRES_OK(ctx,
-                   RunPjRtExecutable(*pjrt_device_compiler->client(), inputs,
-                                     variables, *result, pjrt_executable, ctx));
+    OP_REQUIRES_OK(ctx, RunPjRtExecutable(inputs, variables, *result,
+                                          pjrt_device_compiler->client(),
+                                          pjrt_executable, ctx));
 
     VLOG(2) << "Completed executing with PJRT!";
   } else {

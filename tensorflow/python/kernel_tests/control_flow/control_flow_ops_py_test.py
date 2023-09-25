@@ -42,8 +42,8 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -177,7 +177,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       op = state_ops.assign(v, 9)
       v2 = control_flow_ops.with_dependencies([op], v)
 
-      self.assertTrue(isinstance(v2, ops.Tensor))
+      self.assertTrue(isinstance(v2, tensor_lib.Tensor))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(9, self.evaluate(v2))
 
@@ -2331,8 +2331,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     c = lambda i, _: i < 10
     b = lambda i, x: (i + 1, array_ops_stack.stack([x, x]))
     shape_invariants = [
-        tensor_spec.TensorSpec([], dtype=dtypes.int32),
-        tensor_spec.TensorSpec(None, dtype=dtypes.int32)]
+        tensor_lib.TensorSpec([], dtype=dtypes.int32),
+        tensor_lib.TensorSpec(None, dtype=dtypes.int32)]
     while_loop_tf.while_loop(c, b, [i, x], shape_invariants)
 
   # TODO(b/131265085) Remove this decorator when bug is fixed.
@@ -2343,7 +2343,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     i = constant_op.constant(0)
     x = sparse_tensor.SparseTensor([[0]], [1.0], [10])
     shape_invariants = [
-        tensor_spec.TensorSpec([], dtype=dtypes.int32),
+        tensor_lib.TensorSpec([], dtype=dtypes.int32),
         sparse_tensor.SparseTensorSpec([None])]
     while_loop_tf.while_loop(c, b, [i, x], shape_invariants)
 
@@ -3489,7 +3489,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertTrue(isinstance(r, list))
       self.assertTrue(isinstance(r[0], named))
       self.assertTrue(isinstance(r[1], tuple))
-      self.assertTrue(isinstance(r[2], ops.Tensor))
+      self.assertTrue(isinstance(r[2], tensor_lib.Tensor))
 
       r_flattened = nest.flatten(r)
       self.assertEqual([100.0, 1.0, 102.0, 3.0, 4.0 + 100 * 2.0],
@@ -4192,7 +4192,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       two = ops.convert_to_tensor(2, name="two")
       p = math_ops.greater_equal(c, 1)
       i = tf_cond.cond(p, lambda: one, lambda: two)
-      self.assertTrue(isinstance(i, ops.Tensor))
+      self.assertTrue(isinstance(i, tensor_lib.Tensor))
 
       # True case: c = 2 is >= 1
       self.assertEqual([1], i.eval(feed_dict={c: 2}))
@@ -4328,7 +4328,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         return state_ops.assign(v, two)
 
       i = tf_cond.cond(p, a, b)
-      self.assertTrue(isinstance(i, ops.Tensor))
+      self.assertTrue(isinstance(i, tensor_lib.Tensor))
       self.evaluate(variables.global_variables_initializer())
 
       self.assertEqual(0, self.evaluate(v))

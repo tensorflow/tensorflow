@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -47,7 +48,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -59,6 +59,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -75,12 +76,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
-#include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/service/shape_inference.h"
+#include "xla/shape.h"
+#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/window_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/ir/types/dialect.h"
@@ -1190,32 +1191,51 @@ bool ShapeInference::InferShapeForCaseRegion(CaseRegionOp op) {
 
 bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
   tensorflow::XlaCallModuleLoader* loader;
-  {
-    const auto [it, inserted] = xla_call_module_loaders_.insert({op, nullptr});
-
+  if (auto it = xla_call_module_loaders_.find(op);
+      it != xla_call_module_loaders_.end()) {
+    loader = it->second.get();
+  } else {
     // Lazily parse XlaCallModule's embedded HLO module and cache the loader to
     // avoid repeatedly parsing the module.
-    if (inserted) {
-      std::vector<std::string> dim_args_spec;
-      for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
-        dim_args_spec.push_back(attr.getValue().str());
-      }
 
-      // Always use the first platform. The assumption is that shape inference
-      // results should be the same regardless of which platform is chosen.
-      int platform_index = op.getPlatforms().size() > 1 ? 0 : -1;
+    std::vector<std::string> dim_args_spec;
+    for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
+      dim_args_spec.push_back(attr.getValue().str());
+    }
+    std::vector<std::string> disabled_checks;
+    for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
+      disabled_checks.push_back(attr.getValue().str());
+    }
+    std::vector<std::string> platforms;
+    for (auto attr : op.getPlatforms().getAsRange<StringAttr>()) {
+      platforms.push_back(attr.getValue().str());
+    }
+    // Always use the first platform. The assumption is that shape inference
+    // results should be the same regardless of which platform is chosen.
+    // Very old versions of the op have an empty platforms attribute.
+    std::string loading_platform =
+        (platforms.empty() ? "CPU" : platforms.front());
 
-      auto l = tensorflow::XlaCallModuleLoader::Create(
-          &xla_call_module_context_, op.getVersion(), op.getModule().str(),
-          std::move(dim_args_spec), platform_index);
-      if (!l.ok()) {
-        LLVM_DEBUG(llvm::dbgs() << "Parsing error in XlaCallModule: "
-                                << l.status().ToString() << "\n");
-        return false;
-      }
-      it->second = *std::move(l);
+    // It is a terrible idea to have local MLIR contexts so we need to
+    // register extensions here, again.
+    mlir::DialectRegistry registry;
+    registry.insert<mlir::func::FuncDialect>();
+    mlir::func::registerAllExtensions(registry);
+    xla_call_module_context_.appendDialectRegistry(registry);
+
+    auto l = tensorflow::XlaCallModuleLoader::Create(
+        &xla_call_module_context_, op.getVersion(), op.getModule().str(),
+        std::move(dim_args_spec), std::move(disabled_checks),
+        std::move(platforms), std::move(loading_platform),
+        /*num_invocation_args=*/op.getArgs().size(),
+        op.getHasTokenInputOutput());
+    if (!l.ok()) {
+      LLVM_DEBUG(llvm::dbgs() << "Parsing error in XlaCallModule: "
+                              << l.status().ToString() << "\n");
+      return false;
     }
 
+    it = xla_call_module_loaders_.insert({op, *std::move(l)}).first;
     loader = it->second.get();
   }
 

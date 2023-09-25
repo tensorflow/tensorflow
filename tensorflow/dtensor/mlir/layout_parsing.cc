@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
@@ -47,9 +49,9 @@ bool OpUsesV2LayoutAnnotation(mlir::Operation* op) {
 
 }  // namespace
 
-StatusOr<absl::optional<Layout>> ExtractSingleLayoutFromOp(
+StatusOr<std::optional<Layout>> ExtractSingleLayoutFromOp(
     mlir::Operation* op, std::string attr_name) {
-  absl::optional<Layout> out;
+  std::optional<Layout> out;
 
   // If v2 layout propagation algorithm is used, parse layout from DTensorLayout
   // op.
@@ -73,22 +75,21 @@ StatusOr<absl::optional<Layout>> ExtractSingleLayoutFromOp(
   return out;
 }
 
-StatusOr<absl::optional<Layout>> ExtractSingleLayoutFromOp(
-    mlir::Operation* op) {
+StatusOr<std::optional<Layout>> ExtractSingleLayoutFromOp(mlir::Operation* op) {
   return ExtractSingleLayoutFromOp(op, kLayoutAttr);
 }
 
 StatusOr<Layout> ExtractRequiredSingleLayoutFromOp(mlir::Operation* op) {
-  TF_ASSIGN_OR_RETURN(absl::optional<Layout> layout,
+  TF_ASSIGN_OR_RETURN(std::optional<Layout> layout,
                       ExtractSingleLayoutFromOp(op));
   if (!layout) return errors::Internal("expected layout missing");
 
   return *layout;
 }
 
-StatusOr<std::vector<absl::optional<Layout>>> ExtractLayoutFromOp(
+StatusOr<std::vector<std::optional<Layout>>> ExtractLayoutFromOp(
     mlir::Operation* op, std::string attr_name) {
-  std::vector<absl::optional<Layout>> outs;
+  std::vector<std::optional<Layout>> outs;
   outs.reserve(op->getNumResults());
 
   // If v2 layout propagation algorithm is used, parse layout from DTensorLayout
@@ -109,20 +110,20 @@ StatusOr<std::vector<absl::optional<Layout>>> ExtractLayoutFromOp(
         TF_ASSIGN_OR_RETURN(auto layout, Layout::FromString(attr_str));
         outs.emplace_back(std::move(layout));
       } else {
-        outs.emplace_back(absl::nullopt);
+        outs.emplace_back(std::nullopt);
       }
     }
   }
   return outs;
 }
 
-StatusOr<std::vector<absl::optional<Layout>>> ExtractLayoutFromOp(
+StatusOr<std::vector<std::optional<Layout>>> ExtractLayoutFromOp(
     mlir::Operation* op) {
   return ExtractLayoutFromOp(op, kLayoutAttr);
 }
 
 StatusOr<std::vector<Layout>> ExtractRequiredLayoutFromOp(mlir::Operation* op) {
-  TF_ASSIGN_OR_RETURN(std::vector<absl::optional<Layout>> optional_layouts,
+  TF_ASSIGN_OR_RETURN(std::vector<std::optional<Layout>> optional_layouts,
                       ExtractLayoutFromOp(op));
   std::vector<Layout> layouts;
   for (const absl::optional<Layout>& layout : optional_layouts) {
@@ -146,8 +147,8 @@ StatusOr<Mesh> ExtractDeviceMeshEnclosingCluster(mlir::Operation* op) {
   return *mesh;
 }
 
-StatusOr<absl::optional<Mesh>> ExtractDeviceMeshFromOp(mlir::Operation* op) {
-  absl::optional<Mesh> extracted_mesh;
+StatusOr<std::optional<Mesh>> ExtractDeviceMeshFromOp(mlir::Operation* op) {
+  std::optional<Mesh> extracted_mesh;
   if (op == nullptr) return extracted_mesh;
 
   auto mesh_str_attr = op->getAttrOfType<mlir::StringAttr>(kMeshAttr);
@@ -160,10 +161,10 @@ StatusOr<absl::optional<Mesh>> ExtractDeviceMeshFromOp(mlir::Operation* op) {
   return extracted_mesh;
 }
 
-StatusOr<absl::optional<Layout>> ExtractLayoutFromOperand(mlir::Value operand) {
+StatusOr<std::optional<Layout>> ExtractLayoutFromOperand(mlir::Value operand) {
   if (auto op_result = operand.dyn_cast<mlir::OpResult>()) {
     mlir::Operation* op = op_result.getDefiningOp();
-    absl::optional<Layout> out;
+    std::optional<Layout> out;
     if (auto layout_op = llvm::dyn_cast<mlir::TF::DTensorLayout>(op)) {
       out.emplace(layout_op.getLayout());
     } else {
@@ -195,7 +196,7 @@ StatusOr<absl::optional<Layout>> ExtractLayoutFromOperand(mlir::Value operand) {
     return errors::InvalidArgument("op must be enclosed by a function");
   }
 
-  absl::optional<Layout> extracted_layout;
+  std::optional<Layout> extracted_layout;
   auto layout_attr = func_op.getArgAttrOfType<mlir::StringAttr>(
       block_arg.getArgNumber(), kCustomDeviceAttr);
   if (!layout_attr) return extracted_layout;
@@ -207,7 +208,7 @@ StatusOr<absl::optional<Layout>> ExtractLayoutFromOperand(mlir::Value operand) {
 }
 
 StatusOr<Layout> ExtractRequiredLayoutFromOperand(mlir::Value operand) {
-  TF_ASSIGN_OR_RETURN(absl::optional<Layout> layout,
+  TF_ASSIGN_OR_RETURN(std::optional<Layout> layout,
                       ExtractLayoutFromOperand(operand));
   if (!layout) return errors::Internal("expected layout missing");
 
@@ -243,12 +244,12 @@ void SetLayoutOnOp(mlir::Operation* op,
 }
 
 void SetSingleLayoutOnOp(mlir::Operation* op, const Layout& layout) {
-  SetLayoutOnOp(op, mlir::OpBuilder(op), {absl::optional<Layout>(layout)});
+  SetLayoutOnOp(op, mlir::OpBuilder(op), {std::optional<Layout>(layout)});
 }
 
-StatusOr<absl::optional<Layout>> ExtractLayoutFromFunctionReturnAttr(
+StatusOr<std::optional<Layout>> ExtractLayoutFromFunctionReturnAttr(
     mlir::func::ReturnOp return_op, const int return_index) {
-  absl::optional<Layout> layout;
+  std::optional<Layout> layout;
   // If value feeds into func op return op, then check to see if layout
   // attribute is set for the return value.
   auto function = return_op->getParentOfType<mlir::func::FuncOp>();

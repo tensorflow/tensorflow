@@ -20,11 +20,13 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <algorithm>
+#include <functional>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -41,17 +43,18 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/gpu_utils.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
-#include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
+#include "xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "xla/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/core/kernels/matmul_util.h"
 #endif  // GOOGLE_CUDA
 
@@ -85,7 +88,7 @@ struct ParallelMatMulKernel {
   }
 
   static void Run(const OpKernelContext* context, const Tensor& in_x,
-                  const Tensor in_y, bool adj_x, bool adj_y, bool trans_x,
+                  const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
                   bool trans_y, const MatMulBCast& bcast, Tensor* out,
                   int batch_size) {
     static_assert(IsComplex, "Complex type expected.");
@@ -162,6 +165,21 @@ struct ParallelMatMulKernel<Scalar, false> {
   }
 };
 
+// Basic y-combinator implementation.
+template <class Func>
+struct YCombinatorImpl {
+  Func func;
+  template <class... Args>
+  decltype(auto) operator()(Args&&... args) const {
+    return func(*this, std::forward<Args>(args)...);
+  }
+};
+
+template <class Func>
+YCombinatorImpl<std::decay_t<Func>> YCombinator(Func&& func) {
+  return YCombinatorImpl<std::decay_t<Func>>{std::forward<Func>(func)};
+}
+
 // Sequential batch matmul kernel that calls the regular Eigen matmul.
 // We prefer this over the tensor contraction because it performs
 // better on vector-matrix and matrix-vector products.
@@ -227,6 +245,156 @@ struct SequentialMatMulKernel {
     }
   }
 };
+
+// For single-batch multiplications, manually parallize by splitting the output
+// matrix.
+template <typename Scalar>
+struct SingleBatchParallelMatMulKernel {
+  using Matrix =
+      Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+  using ConstMatrixMap = Eigen::Map<const Matrix>;
+  using MatrixMap = Eigen::Map<Matrix>;
+
+  static ConstMatrixMap ConstTensorToEigenMatrix(const Tensor& t) {
+    return ConstMatrixMap(t.flat<Scalar>().data(), t.dim_size(1),
+                          t.dim_size(2));
+  }
+
+  static MatrixMap TensorToEigenMatrix(Tensor* t) {
+    return MatrixMap(t->flat<Scalar>().data(), t->dim_size(1), t->dim_size(2));
+  }
+
+  static void Run(const CPUDevice& device, const Tensor& in_x,
+                  const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
+                  bool trans_y, Tensor* out) {
+    using Eigen::Index;
+    Eigen::ThreadPoolInterface* pool = device.getPool();
+
+    Index m = (trans_x || adj_x) ? in_x.dim_size(2) : in_x.dim_size(1);
+    Index k = (trans_x || adj_x) ? in_x.dim_size(1) : in_x.dim_size(2);
+    Index n = (trans_y || adj_y) ? in_y.dim_size(1) : in_y.dim_size(2);
+
+    auto x_mat = ConstTensorToEigenMatrix(in_x);
+    auto y_mat = ConstTensorToEigenMatrix(in_y);
+    auto out_mat = TensorToEigenMatrix(out);
+
+    // Computes a block of the output matrix.
+    auto compute_matmul_block = [&x_mat, &y_mat, &out_mat, adj_x, trans_x,
+                                 adj_y, trans_y](Index row, Index col,
+                                                 Index nrows, Index ncols) {
+      auto z = out_mat.block(row, col, nrows, ncols);
+
+      // Assume at most one of adj_x or trans_x is true. Similarly, for adj_y
+      // and trans_y.
+      if (!adj_x && !trans_x) {
+        auto x = x_mat.middleRows(row, nrows);
+        if (!adj_y && !trans_y) {
+          auto y = y_mat.middleCols(col, ncols);
+          z = x * y;
+        } else if (adj_y) {
+          auto y = y_mat.middleRows(col, ncols);
+          z.noalias() = x * y.adjoint();
+        } else {  // trans_y == true
+          auto y = y_mat.middleRows(col, ncols);
+          z.noalias() = x * y.transpose();
+        }
+      } else if (adj_x) {
+        auto x = x_mat.middleCols(row, nrows);
+        if (!adj_y && !trans_y) {
+          auto y = y_mat.middleCols(col, ncols);
+          z.noalias() = x.adjoint() * y;
+        } else if (adj_y) {
+          auto y = y_mat.middleRows(col, ncols);
+          z.noalias() = x.adjoint() * y.adjoint();
+        } else {  // trans_y == true
+          auto y = y_mat.middleRows(col, ncols);
+          z.noalias() = x.adjoint() * y.transpose();
+        }
+      } else {  // trans_x == true
+        auto x = x_mat.middleCols(row, nrows);
+        if (!adj_y && !trans_y) {
+          auto y = y_mat.middleCols(col, ncols);
+          z.noalias() = x.transpose() * y;
+        } else if (adj_y) {
+          auto y = y_mat.middleRows(col, ncols);
+          z.noalias() = x.transpose() * y.adjoint();
+        } else {  // trans_y == true
+          auto y = y_mat.middleRows(col, ncols);
+          z.noalias() = x.transpose() * y.transpose();
+        }
+      }
+    };
+
+    // Split the work across n threads, unless the total amount of work
+    // is small (e.g. 128 * 128) - in which case use fewer threads.  This is
+    // the same heuristic value used in LaunchBatchMatMul below.
+    const int64_t kMaxCostOuterParallelism = 128 * 128;
+    Index work_limit = std::max<Index>((m * k * n) / pool->NumThreads(),
+                                       kMaxCostOuterParallelism);
+    // Blocks should have a size no smaller than 8 * kPacketSize, except perhaps
+    // for tail blocks.
+    constexpr int kPacketSize = Eigen::internal::packet_traits<Scalar>::size;
+    constexpr Index kBlockMin = 8 * kPacketSize;
+
+    // Precompute how many blocks there will be.
+    auto compute_blocks = YCombinator([k, work_limit, kBlockMin](
+                                          auto& compute_blocks, Index row,
+                                          Index col, Index nrows,
+                                          Index ncols) -> Index {
+      Index work = nrows * k * ncols;
+      Index blocks = 0;
+      while (work > work_limit && (nrows > kBlockMin || ncols > kBlockMin)) {
+        if (nrows > ncols) {
+          Index half = Eigen::divup(nrows / 2, kBlockMin) * kBlockMin;
+          blocks += 1 + compute_blocks(row + half, col, nrows - half, ncols);
+          nrows = half;
+        } else {
+          Index half = Eigen::divup(ncols / 2, kBlockMin) * kBlockMin;
+          blocks += 1 + compute_blocks(row, col + half, nrows, ncols - half);
+          ncols = half;
+        }
+        work = nrows * k * ncols;
+      }
+      return blocks;
+    });
+    Index total_blocks = 1 + compute_blocks(0, 0, m, n);
+
+    // Recursively split work according to the exact same heuristic as above.
+    Eigen::Barrier barrier(total_blocks);
+    auto handle_range = YCombinator(
+        [k, pool, &barrier, work_limit, kBlockMin, &compute_matmul_block](
+            auto& handle_range, Index row, Index col, Index nrows,
+            Index ncols) -> void {
+          Index work = nrows * k * ncols;
+          while (work > work_limit &&
+                 (nrows > kBlockMin || ncols > kBlockMin)) {
+            if (nrows > ncols) {
+              Index half = Eigen::divup(nrows / 2, kBlockMin) * kBlockMin;
+              pool->Schedule([&handle_range, row, half, col, nrows, ncols]() {
+                handle_range(row + half, col, nrows - half, ncols);
+              });
+              nrows = half;
+            } else {
+              Index half = Eigen::divup(ncols / 2, kBlockMin) * kBlockMin;
+              pool->Schedule([&handle_range, row, half, col, nrows, ncols]() {
+                handle_range(row, col + half, nrows, ncols - half);
+              });
+              ncols = half;
+            }
+            work = nrows * k * ncols;
+          }
+
+          if (nrows > 0 && ncols > 0) {
+            // Compute the output block.
+            compute_matmul_block(row, col, nrows, ncols);
+          }
+          barrier.Notify();
+        });
+    handle_range(0, 0, m, n);
+    barrier.Wait();
+  }
+};
+
 }  // namespace
 
 template <typename Device, typename Scalar>
@@ -261,7 +429,7 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
       ParallelMatMulKernel::Run(context, in_x, in_y, adj_x, adj_y, trans_x,
                                 trans_y, bcast, out, batch_size);
       conjugate_result = adj_x;
-    } else {
+    } else if (batch_size > 1) {
       // Parallelize over outer dims. For small matrices and large batches, it
       // is counter-productive to parallelize the inner matrix multiplies.
       Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
@@ -272,7 +440,17 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
                                                   trans_x, trans_y, bcast, out,
                                                   start, limit);
             });
+    } else if (cost_per_unit > kMaxCostOuterParallelism) {
+      // Split along output blocks.
+      SingleBatchParallelMatMulKernel<Scalar>::Run(context->eigen_cpu_device(),
+                                                   in_x, in_y, adj_x, adj_y,
+                                                   trans_x, trans_y, out);
+    } else {
+      // Single small multiplication.
+      SequentialMatMulKernel<Scalar>::Run(in_x, in_y, adj_x, adj_y, trans_x,
+                                          trans_y, bcast, out, 0, batch_size);
     }
+
     if (conjugate_result) {
       // We used one of the identities
       //   conj(a) * conj(b) = conj(a * b)
@@ -525,7 +703,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                     static_cast<Coefficient>(1.0), b_ptrs,
                     adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
                     static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
-                    &scratch_allocator)
+                    GetNumericOptions(), &scratch_allocator)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(
@@ -619,12 +797,11 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
           }
         }
 
-        OP_REQUIRES_OK(context,
-                       stream->ThenBlasGemm(
-                           blas_transpose_b, blas_transpose_a, n, m, k,
-                           *(b_ptrs[0]), adj_y || trans_y ? k : n, *(a_ptrs[0]),
-                           adj_x || trans_x ? m : k, c_ptrs[0], n,
-                           se::blas::kDefaultComputePrecision));
+        OP_REQUIRES_OK(context, stream->ThenBlasGemm(
+                                    blas_transpose_b, blas_transpose_a, n, m, k,
+                                    *(b_ptrs[0]), adj_y || trans_y ? k : n,
+                                    *(a_ptrs[0]), adj_x || trans_x ? m : k,
+                                    c_ptrs[0], n, GetNumericOptions()));
       } else if (use_strided_batched) {
         OP_REQUIRES_OK(
             context, stream->ThenBlasGemmStridedBatched(
@@ -633,7 +810,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                          adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
                          adj_x || trans_x ? m : k, a_stride,
                          static_cast<Coefficient>(0.0), c_ptrs[0], n, c_stride,
-                         batch_size, se::blas::kDefaultComputePrecision));
+                         batch_size, GetNumericOptions()));
       } else {
         BlasScratchAllocator scratch_allocator(context);
         bool blas_launch_status =
@@ -643,7 +820,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                     static_cast<Coefficient>(1.0), b_ptrs,
                     adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
                     static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
-                    &scratch_allocator)
+                    GetNumericOptions(), &scratch_allocator)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(

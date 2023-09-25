@@ -30,11 +30,11 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/snapshot_stream_writer.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/standalone.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -76,19 +76,22 @@ PartialSnapshotWriter::PartialSnapshotWriter(const DatasetDef& dataset,
                                              const std::string& snapshot_path,
                                              int64_t stream_index,
                                              const std::string& compression,
-                                             int64_t max_chunk_size_bytes)
+                                             int64_t max_chunk_size_bytes,
+                                             absl::Duration checkpoint_interval)
     : dataset_(dataset),
       snapshot_path_(snapshot_path),
       stream_index_(stream_index),
       compression_(compression),
-      max_chunk_size_bytes_(max_chunk_size_bytes) {}
+      max_chunk_size_bytes_(max_chunk_size_bytes),
+      checkpoint_interval_(checkpoint_interval) {}
 
 tsl::StatusOr<PartialSnapshotWriter> PartialSnapshotWriter::Create(
     const DatasetDef& dataset, const std::string& snapshot_path,
     int64_t stream_index, const std::string& compression,
-    int64_t max_chunk_size_bytes) {
+    int64_t max_chunk_size_bytes, absl::Duration checkpoint_interval) {
   PartialSnapshotWriter writer(dataset, snapshot_path, stream_index,
-                               compression, max_chunk_size_bytes);
+                               compression, max_chunk_size_bytes,
+                               checkpoint_interval);
   TF_RETURN_IF_ERROR(writer.Initialize());
   return writer;
 }
@@ -101,6 +104,7 @@ tsl::Status PartialSnapshotWriter::Initialize() {
                                      compression_,
                                      Env::Default(),
                                      max_chunk_size_bytes_,
+                                     checkpoint_interval_,
                                      /*test_only_keep_temp_files=*/true};
   TF_ASSIGN_OR_RETURN(std::unique_ptr<StandaloneTaskIterator> iterator,
                       TestIterator(dataset_));

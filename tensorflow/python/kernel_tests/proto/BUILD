@@ -1,5 +1,6 @@
 # Tests of tf.io.*proto.
 
+# Placeholder: load py_proto_library
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
@@ -32,7 +33,7 @@ tf_py_strict_test(
     deps = [
         ":decode_proto_op_test_base",
         ":py_test_deps",
-        "//tensorflow/python:proto_ops",
+        "//tensorflow/python/ops:proto_ops",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -53,7 +54,7 @@ tf_py_strict_test(
     deps = [
         ":encode_proto_op_test_base",
         ":py_test_deps",
-        "//tensorflow/python:proto_ops",
+        "//tensorflow/python/ops:proto_ops",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -66,7 +67,7 @@ py_strict_library(
     deps = [
         ":test_example_proto_py",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -93,10 +94,10 @@ py_strict_library(
     deps = [
         ":proto_op_test_base",
         ":test_example_proto_py",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/ops:array_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -146,8 +147,8 @@ tf_py_strict_test(
     ],
     deps = [
         ":descriptor_source_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:proto_ops",
+        "//tensorflow/python/ops:proto_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

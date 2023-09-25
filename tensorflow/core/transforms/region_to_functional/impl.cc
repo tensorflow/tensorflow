@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/iterator.h"
 #include "llvm/Support/ScopedPrinter.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -465,8 +465,8 @@ FailureOr<std::vector<Value>> BasePattern::CollectValuesDefinedAboveAll(
   SetVector<Value> data_set, ctl_only;
   for (Region &region : llvm::make_pointee_range(regions))
     CollectValuesDefinedAbove(region, data_set, ctl_only);
-  std::vector<Value> datas = data_set.takeVector();
-
+  llvm::SmallVector<Value, 0> data_sv = data_set.takeVector();
+  std::vector<Value> datas(data_sv.begin(), data_sv.end());
   // If in any of the regions we found a use of a control token defined above
   // the regions with no associated data value, then it cannot be converted to
   // explicit capture unless we insert chain constants. If this option was not
@@ -579,8 +579,7 @@ StringAttr BasePattern::TryFindName(Value value,
     return TryFindName(for_op.getInit()[arg_idx - 1], {});
   }
   auto branch = cast<RegionBranchOpInterface>(parent);
-  ValueRange inputs = branch.getSuccessorEntryOperands(
-      arg.getParentRegion()->getRegionNumber());
+  ValueRange inputs = branch.getEntrySuccessorOperands(arg.getParentRegion());
   return TryFindName(inputs[arg.getArgNumber()], {});
 }
 

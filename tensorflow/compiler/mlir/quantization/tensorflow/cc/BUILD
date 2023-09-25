@@ -1,16 +1,18 @@
 load(
-    "//tensorflow:tensorflow.default.bzl",
-    "get_compatible_with_cloud",
-)
-load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+)
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "get_compatible_with_portable",
 )
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # By default, these targets should only be used within the quantization library.
     default_visibility = [
+        "//learning/brain/mlir/quantization:__subpackages__",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
         "//tensorflow/compiler/mlir/quantization/tensorflow:__subpackages__",
     ],
     licenses = ["notice"],
@@ -20,20 +22,20 @@ cc_library(
     name = "save_variables",
     srcs = ["save_variables.cc"],
     hdrs = ["save_variables.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:framework",
         "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/util/tensor_bundle",
-        "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -50,8 +52,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/util/tensor_bundle",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:status_matchers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -60,6 +60,8 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:status_matchers",
     ],
 )
 
@@ -67,7 +69,7 @@ cc_library(
     name = "const_op_size",
     srcs = ["const_op_size.cc"],
     hdrs = ["const_op_size.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_remaining_ops",
@@ -96,7 +98,7 @@ cc_library(
     name = "convert_asset_args",
     srcs = ["convert_asset_args.cc"],
     hdrs = ["convert_asset_args.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
@@ -127,10 +129,10 @@ tf_cc_test(
 cc_library(
     name = "status_macro",
     hdrs = ["status_macro.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/tsl/platform:macros",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:macros",
     ],
 )
 
@@ -142,5 +144,58 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "run_passes",
+    srcs = ["run_passes.cc"],
+    hdrs = ["run_passes.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:mlir_dump",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "constant_fold",
+    srcs = [
+        "constant_fold.cc",
+    ],
+    hdrs = [
+        "constant_fold.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:constant_fold_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+tf_cc_test(
+    name = "constant_fold_test",
+    srcs = ["constant_fold_test.cc"],
+    deps = [
+        ":constant_fold",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Transforms",
     ],
 )

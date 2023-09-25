@@ -455,7 +455,7 @@ class VariableTest(InteropTest):
 
 
 if __name__ == '__main__':
-  ops.enable_numpy_style_type_promotion()
+  ops.set_dtype_conversion_mode('legacy')
   np_math_ops.enable_numpy_methods_on_tensor()
   tf.compat.v1.enable_eager_execution()
   tf.test.main()

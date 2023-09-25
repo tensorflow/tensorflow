@@ -63,7 +63,7 @@ tf_cc_fuzz_test(
     deps = [
         ":checkpoint_reader_fuzz_input_proto_cc",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -225,5 +225,15 @@ tf_cc_fuzz_test(
         "//tensorflow/security/fuzzing/cc/core/framework:datatype_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "text_literal_reader_fuzz",
+    srcs = ["text_literal_reader_fuzz.cc"],
+    deps = [
+        "@local_tsl//tsl/platform:env",
+        "@local_xla//xla:text_literal_reader",
+        "@local_xla//xla/service:hlo_parser",
     ],
 )

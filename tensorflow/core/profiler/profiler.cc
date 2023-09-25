@@ -185,8 +185,8 @@ int Run(int argc, char** argv) {
   std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader;
   TF_Status* status = TF_NewStatus();
   if (!FLAGS_checkpoint_path.empty()) {
-    ckpt_reader.reset(
-        new checkpoint::CheckpointReader(FLAGS_checkpoint_path, status));
+    ckpt_reader = std::make_unique<checkpoint::CheckpointReader>(
+        FLAGS_checkpoint_path, status);
     if (TF_GetCode(status) != TF_OK) {
       absl::FPrintF(stderr, "%s\n", TF_Message(status));
       TF_DeleteStatus(status);
@@ -197,7 +197,8 @@ int Run(int argc, char** argv) {
 
   std::unique_ptr<TFStats> tf_stat;
   if (!FLAGS_profile_path.empty()) {
-    tf_stat.reset(new TFStats(FLAGS_profile_path, std::move(ckpt_reader)));
+    tf_stat =
+        std::make_unique<TFStats>(FLAGS_profile_path, std::move(ckpt_reader));
   } else {
     absl::PrintF(
         "Try to use a single --profile_path instead of "
@@ -224,8 +225,8 @@ int Run(int argc, char** argv) {
         return 1;
       }
     }
-    tf_stat.reset(new TFStats(std::move(graph), nullptr, std::move(op_log),
-                              std::move(ckpt_reader)));
+    tf_stat = std::make_unique<TFStats>(
+        std::move(graph), nullptr, std::move(op_log), std::move(ckpt_reader));
 
     std::vector<string> run_meta_files =
         absl::StrSplit(FLAGS_run_meta_path, ',', absl::SkipEmpty());

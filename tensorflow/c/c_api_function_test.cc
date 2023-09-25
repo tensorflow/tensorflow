@@ -36,6 +36,9 @@ namespace {
 // check the data type.
 typedef std::pair<string, DataType> IOSpec;
 
+const char* kFeedStackToString = "File \"feed.cc\", line 10, in alpha";
+const char* kNegStackToString = "File \"neg.cc\", line 15, in beta";
+
 std::vector<IOSpec> M(const std::initializer_list<string>& names) {
   std::vector<IOSpec> v;
   for (const string& name : names) {
@@ -1211,25 +1214,6 @@ TEST_F(CApiFunctionTest, OutputOpNotInBody) {
             string(TF_Message(s_)));
 }
 
-class TestStackTrace : public AbstractStackTrace {
-  absl::Span<StackFrame const> ToFrames() const override { return frames_; }
-
-  StackFrame LastUserFrame() const override { return frames_.back(); }
-
-  std::vector<StackFrame> GetUserFrames(int limit) const override {
-    return frames_;
-  }
-
-  string ToString(const TracePrintingOptions& opts) const override {
-    auto frame = LastUserFrame();
-    return absl::StrCat(frame.file_name, ":", frame.line_number, ":",
-                        frame.function_name);
-  }
-
-  std::vector<StackFrame> frames_{
-      StackFrame({"dummy_file_name", 10, "dummy_function_name"})};
-};
-
 void DefineFunction(const char* name, TF_Function** func,
                     const char* description = nullptr,
                     bool append_hash = false) {
@@ -1241,8 +1225,10 @@ void DefineFunction(const char* name, TF_Function** func,
   TF_Operation* feed = Placeholder(func_graph.get(), s.get());
   TF_Operation* neg = Neg(feed, func_graph.get(), s.get());
 
-  feed->node.SetStackTrace(std::make_shared<TestStackTrace>());
-  neg->node.SetStackTrace(std::make_shared<TestStackTrace>());
+  std::vector<StackFrame> feed_frames = {{"feed.cc", 10, "alpha"}};
+  std::vector<StackFrame> neg_frames = {{"neg.cc", 15, "beta"}};
+  feed->node.SetStackTrace(std::make_shared<FrozenStackTrace>(feed_frames));
+  neg->node.SetStackTrace(std::make_shared<FrozenStackTrace>(neg_frames));
 
   TF_Output inputs[] = {{feed, 0}};
   TF_Output outputs[] = {{neg, 0}};
@@ -1344,10 +1330,8 @@ TEST_F(CApiFunctionTest, TFGraphToFunctionWithStackTraces) {
   auto stack_traces = func_->record->stack_traces();
 
   EXPECT_EQ(stack_traces.size(), 4);
-  EXPECT_EQ(stack_traces["neg"]->ToString({}),
-            "dummy_file_name:10:dummy_function_name");
-  EXPECT_EQ(stack_traces["feed"]->ToString({}),
-            "dummy_file_name:10:dummy_function_name");
+  EXPECT_EQ(stack_traces["neg"]->ToString({}), kNegStackToString);
+  EXPECT_EQ(stack_traces["feed"]->ToString({}), kFeedStackToString);
 }
 
 TEST_F(CApiFunctionTest, TFGraphCopyFunctionWithStackTraces) {
@@ -1376,18 +1360,14 @@ TEST_F(CApiFunctionTest, TFGraphCopyFunctionWithStackTraces) {
   // Verify that stack traces of func is copied to graph function library.
   ASSERT_NE(func_stack_traces, nullptr);
   EXPECT_EQ(func_stack_traces->size(), 4);
-  EXPECT_EQ(func_stack_traces->at("neg")->ToString({}),
-            "dummy_file_name:10:dummy_function_name");
-  EXPECT_EQ(func_stack_traces->at("feed")->ToString({}),
-            "dummy_file_name:10:dummy_function_name");
+  EXPECT_EQ(func_stack_traces->at("neg")->ToString({}), kNegStackToString);
+  EXPECT_EQ(func_stack_traces->at("feed")->ToString({}), kFeedStackToString);
 
   // Verify that stack traces of grad_func is copied to graph function library.
   ASSERT_NE(grad_stack_traces, nullptr);
   EXPECT_EQ(grad_stack_traces->size(), 4);
-  EXPECT_EQ(grad_stack_traces->at("neg")->ToString({}),
-            "dummy_file_name:10:dummy_function_name");
-  EXPECT_EQ(grad_stack_traces->at("feed")->ToString({}),
-            "dummy_file_name:10:dummy_function_name");
+  EXPECT_EQ(grad_stack_traces->at("neg")->ToString({}), kNegStackToString);
+  EXPECT_EQ(grad_stack_traces->at("feed")->ToString({}), kFeedStackToString);
 }
 
 TEST_F(CApiFunctionTest, SetGradientAndRun) {

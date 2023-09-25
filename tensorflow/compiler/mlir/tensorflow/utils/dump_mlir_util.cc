@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -31,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/tsl/lib/io/buffered_file.h"
+#include "tsl/lib/io/buffered_file.h"
 
 using llvm::raw_ostream;
 
@@ -166,7 +167,8 @@ Status CreateFileForDumping(llvm::StringRef name,
 
   if (dir == kCrashReproducerStdErr) {
     *os = std::make_unique<LogInfoRawStream>();
-    *filepath = "(stderr)";
+    *filepath =
+        llvm::formatv("(stderr; requested filename: '{0}')", name).str();
     return Status();
   }
 
@@ -216,10 +218,10 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
   if (!result.ok()) return std::string(result.message());
 
+  LOG(INFO) << "Dumping MLIR operation '" << op->getName().getStringRef().str()
+            << "' to '" << filepath << "'";
   if (pass_manager) PrintPassPipeline(*pass_manager, op, *os);
   op->print(*os, mlir::OpPrintingFlags().useLocalScope());
-  LOG(INFO) << "Dumped MLIR operation '" << op->getName().getStringRef().str()
-            << "' to '" << filepath << "'";
   return filepath;
 }
 

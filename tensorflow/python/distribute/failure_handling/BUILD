@@ -18,7 +18,6 @@ py_strict_library(
     deps = [
         ":check_preemption_py",
         ":failure_handling_util",
-        "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_context",
         "//tensorflow/python/checkpoint:checkpoint_management",
@@ -29,6 +28,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:deprecation",
@@ -47,6 +47,7 @@ py_strict_library(
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform:tf_logging",
+        "@pypi_requests//:pkg",
         "@six_archive//:six",
     ],
 )
@@ -77,7 +78,6 @@ tf_py_strict_test(
     deps = [
         ":failure_handling_lib",
         ":failure_handling_util",
-        "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
@@ -94,6 +94,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
@@ -113,7 +114,6 @@ tf_py_strict_test(
     deps = [
         ":failure_handling_lib",
         ":failure_handling_util",
-        "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
@@ -128,12 +128,13 @@ tf_py_strict_test(
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:server_lib",
         "@absl_py//absl/testing:parameterized",
-        "@dill_archive//:dill",  # build_cleaner: keep
+        "@pypi_dill//:pkg",  # build_cleaner: keep
     ],
 )
 
@@ -146,6 +147,6 @@ tf_custom_op_py_strict_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core/distributed_runtime/preemption:gen_check_preemption_op",
-        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/framework:for_generated_wrappers",
     ],
 )

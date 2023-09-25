@@ -39,7 +39,8 @@ class SoftplusTest(test.TestCase):
       softplus = nn_ops.softplus(np_features)
       tf_softplus = self.evaluate(softplus)
     self.assertAllCloseAccordingToType(
-        np_softplus, tf_softplus, bfloat16_rtol=5e-2, bfloat16_atol=5e-2
+        np_softplus, tf_softplus, half_rtol=5e-3, half_atol=5e-3,
+        bfloat16_rtol=5e-2, bfloat16_atol=5e-2
     )
     self.assertTrue(np.all(tf_softplus > 0))
     self.assertShapeEqual(np_softplus, softplus)

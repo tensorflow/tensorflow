@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <queue>
 
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/statusor.h"
 
@@ -41,8 +43,8 @@ namespace {
 // This is the number of the latest gap times used to compute the target time
 // for stage based optimization.
 constexpr int32_t kGapTimeWindow = 100;
-// Gap time threshold: any gap time over the this duration will be dropped.
-constexpr uint64_t kGapDurationThresholdUsec = 10000000;  // 10 seconds
+// Gap time upper threshold: any gap time over this duration will be dropped.
+constexpr absl::Duration kGapDurationUpperThreshold = absl::Seconds(10);
 // In outlier computation, points that are larger than `kOutlierSigmas` standard
 // deviations are considered outliers.
 constexpr double kOutlierSigmas = 2.0;
@@ -59,6 +61,7 @@ constexpr double kBufferDownsizeMultipliter = 0.9;
 // upsizing.
 constexpr int64_t kBufferLowWatermarkThreshold = 2;
 
+constexpr char kDataService[] = "DataService";
 constexpr char kFlatMap[] = "FlatMap";
 constexpr char kInterleave[] = "Interleave";
 constexpr char kParallelInterleave[] = "ParallelInterleave";
@@ -91,7 +94,7 @@ class TargetTimeCalculator {
     ComputeMeanAndStandardDeviation(clean_points_usec, &mean,
                                     &standard_deviation);
     // Compute target time.
-    return mean - standard_deviation * target_time_sigmas_;
+    return std::max(0.0, mean - standard_deviation * target_time_sigmas_);
   }
 
  private:
@@ -765,7 +768,7 @@ class AsyncInterleaveMany : public Node {
         return 0.0;
       }
     }
-    return (*parameter)->value * AverageBufferedElementSize();
+    return (*parameter)->value * AverageBufferedElementSizeLocked();
   }
 
   Status ToProto(ModelProto::Node* node_proto) const {
@@ -874,8 +877,12 @@ class KnownRatio : public Node {
 class AsyncRatio : public Node {
  public:
   AsyncRatio(Node::Args args, double ratio, double memory_ratio,
-             std::vector<std::shared_ptr<Parameter>> parameters)
-      : Node(args), ratio_(ratio), memory_ratio_(memory_ratio) {
+             std::vector<std::shared_ptr<Parameter>> parameters,
+             bool is_legacy_prefetch_autotuned = false)
+      : Node(args),
+        ratio_(ratio),
+        memory_ratio_(memory_ratio),
+        is_legacy_prefetch_autotuned_(is_legacy_prefetch_autotuned) {
     for (auto& parameter : parameters) {
       parameters_[parameter->name] = std::move(parameter);
     }
@@ -1078,7 +1085,12 @@ class AsyncRatio : public Node {
         self_processing_time + inputs_processing_time;
   }
 
-  double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+  double MaximumBufferedBytes() const override TF_SHARED_LOCKS_REQUIRED(mu_) {
+    if (is_legacy_prefetch_autotuned_) {
+      // This node's memory is managed by a legacy prefetch autotuner instead of
+      // the model.
+      return 0;
+    }
     double result = 0;
     auto* parameter = gtl::FindOrNull(parameters_, kBufferSize);
     if (!parameter) {
@@ -1087,13 +1099,13 @@ class AsyncRatio : public Node {
 
     if (parameter) {
       if (memory_ratio_ == 0) {
-        result += (*parameter)->value * AverageBufferedElementSize();
+        result += (*parameter)->value * AverageBufferedElementSizeLocked();
       } else {
         // The estimation is currently not accurate for MapAndBatchDataset for
         // the maximum buffer size does not match `num_parallel_calls`
         // parameter.
-        result +=
-            (*parameter)->value * AverageBufferedElementSize() / memory_ratio_;
+        result += (*parameter)->value * AverageBufferedElementSizeLocked() /
+                  memory_ratio_;
       }
     }
     return result;
@@ -1111,6 +1123,9 @@ class AsyncRatio : public Node {
   // budget bound with given num_parallel_calls (or buffer_size) combined with
   // the estimated average size of buffered elements.
   const double memory_ratio_;
+  // Whether this node represents a prefetch node tuned by the legacy prefetch
+  // autotuner, rather than the model.
+  const bool is_legacy_prefetch_autotuned_;
 };
 
 class UnknownRatio : public Node {
@@ -1291,8 +1306,10 @@ class Unknown : public Node {
 class AsyncKnownRatio : public AsyncRatio {
  public:
   AsyncKnownRatio(Node::Args args, double ratio, double memory_ratio,
-                  std::vector<std::shared_ptr<Parameter>> parameters)
-      : AsyncRatio(args, ratio, memory_ratio, parameters) {}
+                  std::vector<std::shared_ptr<Parameter>> parameters,
+                  bool is_legacy_prefetch_autotuned = false)
+      : AsyncRatio(args, ratio, memory_ratio, parameters,
+                   is_legacy_prefetch_autotuned) {}
 
   virtual ~AsyncKnownRatio() {}
 
@@ -1402,16 +1419,20 @@ std::shared_ptr<Node> MakeKnownRatioNode(Node::Args args, double ratio) {
 
 std::shared_ptr<Node> MakeAsyncKnownRatioNode(
     Node::Args args, double ratio, double memory_ratio,
-    std::vector<std::shared_ptr<Parameter>> parameters) {
+    std::vector<std::shared_ptr<Parameter>> parameters,
+    bool is_legacy_prefetch_autotuned) {
   return std::make_shared<AsyncKnownRatio>(std::move(args), ratio, memory_ratio,
-                                           std::move(parameters));
+                                           std::move(parameters),
+                                           is_legacy_prefetch_autotuned);
 }
 
 std::shared_ptr<Node> MakeAsyncKnownRatioNode(
     Node::Args args, double ratio,
-    std::vector<std::shared_ptr<Parameter>> parameters) {
+    std::vector<std::shared_ptr<Parameter>> parameters,
+    bool is_legacy_prefetch_autotuned) {
   return MakeAsyncKnownRatioNode(std::move(args), /*ratio=*/ratio,
-                                 /*memory_ratio=*/ratio, std::move(parameters));
+                                 /*memory_ratio=*/ratio, std::move(parameters),
+                                 is_legacy_prefetch_autotuned);
 }
 
 std::shared_ptr<Node> MakeSourceNode(Node::Args args) {
@@ -1725,7 +1746,7 @@ double Node::TotalProcessingTime(Node::NodeValues* processing_times) {
   return total_processing_times[long_name()];
 }
 
-double Node::AverageBufferedElementSize() const {
+double Node::AverageBufferedElementSizeLocked() const {
   DCHECK_GE(num_elements_, 0);
   DCHECK_GE(buffered_elements_, 0);
   if (num_elements_ <= 0) {
@@ -2007,7 +2028,12 @@ std::shared_ptr<Node> Node::SnapshotHelper(
     cloned_current->processing_time_.store(processing_time_);
     {
       mutex_lock l2(cloned_current->mu_);
-      cloned_current->parameters_ = parameters_;
+      cloned_current->parameters_ =
+          absl::flat_hash_map<string, std::shared_ptr<Parameter>>();
+      for (const auto& [parameter_name, parameter_ptr] : parameters_) {
+        cloned_current->parameters_[parameter_name] =
+            std::make_shared<Parameter>(parameter_ptr);
+      }
       cloned_current->previous_processing_time_ = previous_processing_time_;
       cloned_current->processing_time_ema_ = processing_time_ema_;
     }
@@ -2252,37 +2278,51 @@ void Model::FlushMetrics() {
   }
 }
 
-void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
-                     int64_t ram_budget, double model_input_time,
+void Model::Optimize(AutotuneAlgorithm algorithm,
+                     std::function<int64_t()> cpu_budget_func,
+                     std::function<int64_t(int64_t)> ram_budget_func,
+                     double model_input_time,
+                     RamBudgetManager& ram_budget_manager,
                      CancellationManager* cancellation_manager) {
   std::shared_ptr<Node> snapshot;
   {
     tf_shared_lock l(mu_);
     snapshot = output_->Snapshot();
   }
+  int64_t total_ram_budget = ram_budget_func(TotalBufferedBytes(snapshot));
+  ram_budget_manager.UpdateBudget(total_ram_budget);
+  int64_t model_ram_budget = ram_budget_manager.AvailableModelRam();
+  int64_t original_model_bytes = TotalMaximumBufferedBytes(snapshot);
   if (!port::JobName().empty()) {
-    RecordAutotuneRamUsage(ram_budget, TotalMaximumBufferedBytes(snapshot));
+    RecordAutotuneRamUsage(model_ram_budget, original_model_bytes);
   }
   OptimizationParams optimization_params;
   optimization_params.set_algorithm(algorithm);
-  optimization_params.set_cpu_budget(cpu_budget);
-  optimization_params.set_ram_budget(ram_budget);
+  optimization_params.set_cpu_budget(cpu_budget_func());
+  optimization_params.set_ram_budget(model_ram_budget);
   optimization_params.set_model_input_time(model_input_time);
   switch (algorithm) {
     case AutotuneAlgorithm::DEFAULT:
     case AutotuneAlgorithm::MAX_PARALLELISM:
       OptimizeMaxParallelism(snapshot, optimization_params,
-                             cancellation_manager);
+                             cancellation_manager, ram_budget_manager);
       break;
     case AutotuneAlgorithm::HILL_CLIMB:
-      OptimizeHillClimb(snapshot, optimization_params, cancellation_manager);
+      OptimizeHillClimb(snapshot, optimization_params, cancellation_manager,
+                        ram_budget_manager);
       break;
     case AutotuneAlgorithm::GRADIENT_DESCENT:
+      LOG(WARNING) << "AutotuneAlgorithm::GRADIENT_DESCENT and prefetch "
+                      "legacy autotuner should not be turned on together"
+                   << "as OptimizeGradientDescent will update state values "
+                      "without consulting ram_budget_manager first."
+                   << "This might cause out-of-memory (OOM)";
       OptimizeGradientDescent(snapshot, optimization_params,
                               cancellation_manager);
       break;
     case AutotuneAlgorithm::STAGE_BASED:
-      OptimizeStageBased(snapshot, optimization_params, cancellation_manager);
+      OptimizeStageBased(snapshot, optimization_params, cancellation_manager,
+                         ram_budget_manager);
       break;
     default:
       VLOG(2) << "Autotuning algorithm was not recognized. Aborting "
@@ -2302,9 +2342,8 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
 }
 
 void Model::RemoveNode(std::shared_ptr<Node> node) {
-  mutex_lock l(mu_);
   if (node) {
-    if (node->output()) {
+    if (node->output() && !node->output_deleted()) {
       node->output()->remove_input(node);
     }
     VLOG(3) << "Removing " << node->long_name();
@@ -2314,6 +2353,21 @@ void Model::RemoveNode(std::shared_ptr<Node> node) {
 Model::ModelParameters Model::CollectTunableParameters(
     std::shared_ptr<Node> node) {
   return node->CollectTunableParameters();
+}
+
+void Model::MaybeSyncStateValuesToValues(Model::ModelParameters* parameters) {
+  for (auto& [node_name, parameter] : *parameters) {
+    // We only sync state values to values for `DataService` nodes because the
+    // `buffer_size` parameter is set by the `DataServiceClient` directly.
+    if (!absl::StartsWith(node_name, kDataService)) {
+      continue;
+    }
+    if (parameter->name != kBufferSize) {
+      continue;
+    }
+    mutex_lock l(*parameter->state->mu);
+    parameter->value = parameter->state->value;
+  }
 }
 
 bool Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
@@ -2374,8 +2428,10 @@ bool Model::ShouldStop(int64_t cpu_budget, int64_t ram_budget,
 }
 
 // TODO(jsimsa): Add support for tracking and using the model input time.
-Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
-                           int64_t ram_budget,
+Status Model::OptimizeLoop(AutotuneAlgorithm algorithm,
+                           std::function<int64_t()> cpu_budget_func,
+                           std::function<int64_t(int64_t)> ram_budget_func,
+                           RamBudgetManager& ram_budget_manager,
                            CancellationManager* cancellation_manager) {
   std::function<void()> unused;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
@@ -2413,8 +2469,8 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
     if (algorithm == AutotuneAlgorithm::STAGE_BASED) {
       model_input_time = ComputeTargetTimeNsec();
     }
-    Optimize(algorithm, cpu_budget, ram_budget, model_input_time,
-             cancellation_manager);
+    Optimize(algorithm, cpu_budget_func, ram_budget_func, model_input_time,
+             ram_budget_manager, cancellation_manager);
     int64_t end_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
     VLOG(2) << "Optimized for " << end_ms - start_ms << " ms.";
 
@@ -2501,10 +2557,12 @@ void Model::OptimizeGradientDescent(
 void Model::OptimizeHillClimbHelper(
     std::shared_ptr<Node> snapshot,
     const OptimizationParams& optimization_params,
-    CancellationManager* cancellation_manager, StopPredicate should_stop) {
+    CancellationManager* cancellation_manager, int64_t ram_budget,
+    RamBudgetManager& ram_budget_manager, StopPredicate should_stop) {
   VLOG(2) << "Starting optimization of tunable parameters with Hill Climb.";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
+  MaybeSyncStateValuesToValues(&parameters);
   if (parameters.empty()) {
     VLOG(2) << "There are no tunable parameters.";
     return;
@@ -2533,17 +2591,25 @@ void Model::OptimizeHillClimbHelper(
     }
     pair.second->value = pair.second->min;
   }
+  Parameter* best_parameter = nullptr;
   while (!cancellation_manager->IsCancelled()) {
     const double output_time =
         OutputTime(snapshot, optimization_params.model_input_time(),
                    /*gradients=*/nullptr);
+    const double new_buffered_bytes = TotalMaximumBufferedBytes(snapshot);
     if (should_stop(parameters, processing_time, output_time,
-                    TotalMaximumBufferedBytes(snapshot))) {
+                    new_buffered_bytes)) {
+      if (best_parameter && new_buffered_bytes > ram_budget) {
+        // Take a step back of the previous hill climbing attempt
+        // so that the final parameters will not exceed the ram budget
+        // as the current parameter meets should_stop(...) condition
+        best_parameter->value--;
+      }
       break;
     }
 
     double best_delta = -1.0L;
-    Parameter* best_parameter = nullptr;
+    best_parameter = nullptr;
     for (auto& pair : parameters) {
       if (pair.second->value >= pair.second->max ||
           (skip_buffer_sizes && (pair.second->name == kBufferSize))) {
@@ -2569,16 +2635,26 @@ void Model::OptimizeHillClimbHelper(
                  "attempt will stop now.";
       break;
     }
+    // Take a hill-climb step
     best_parameter->value++;
   }
-  UpdateStateValues(&parameters);
+  if (ram_budget_manager.RequestModelAllocation(
+          TotalMaximumBufferedBytes(snapshot))) {
+    // Note that `ram_budget` is only a snapshot of
+    // ram_budget_manager.AvailableModelRam()
+    // that is why we still need to invoke RequestModelAllocation
+    // as `ram_budget` might be outdated
+    UpdateStateValues(&parameters);
+  }
 }
 void Model::RecordIteratorGapTime(uint64_t duration_usec) {
   mutex_lock l(gap_mu_);
   // Drop duration if it is too large.
-  if (duration_usec >= kGapDurationThresholdUsec) {
+  if (duration_usec >= absl::ToInt64Microseconds(kGapDurationUpperThreshold)) {
+    VLOG(3) << "Dropped tf.data Model gap duration: " << duration_usec;
     return;
   }
+  VLOG(3) << "Reported tf.data Model gap duration: " << duration_usec;
   gap_times_usec_.push_back(duration_usec);
   // Keep only the latest `window` gap times. Drop the oldest one.
   while (gap_times_usec_.size() > kGapTimeWindow) {
@@ -2588,7 +2664,7 @@ void Model::RecordIteratorGapTime(uint64_t duration_usec) {
 
 double Model::ComputeTargetTimeNsec() {
   tf_shared_lock l(gap_mu_);
-  if (gap_times_usec_.empty()) {
+  if (gap_times_usec_.size() < kGapTimeWindow) {
     return 0.0;
   }
   double target_time_sigmas = 0.0;
@@ -2601,25 +2677,63 @@ double Model::ComputeTargetTimeNsec() {
          1.0e3;
 }
 
+// TODO(armandouv): Evaluate replacing original target time computation for
+// this.
+double Model::ComputeExperimentalTargetTimeNsec() {
+  tf_shared_lock l(gap_mu_);
+  if (gap_times_usec_.size() < kGapTimeWindow) {
+    return 0.0;
+  }
+
+  uint64_t sum =
+      std::accumulate(gap_times_usec_.begin(), gap_times_usec_.end(), 0);
+  // Return average gap time.
+  return (static_cast<double>(sum) /
+          static_cast<double>(gap_times_usec_.size())) *
+         1.0e3;
+}
+
+double Model::ComputeSnapshotProcessingTimeNsec() const {
+  std::unique_ptr<ModelTiming> model_timing = nullptr;
+  {
+    tf_shared_lock l(mu_);
+    if (snapshot_ == nullptr) {
+      return 0.0;
+    }
+    model_timing = std::make_unique<ModelTiming>(snapshot_);
+  }
+
+  ModelTimingPriorityQueue priority_queue(*model_timing);
+  StatusOr<std::pair<double, Node*>> critical_root_status =
+      priority_queue.PopSlowestStageRoot();
+  if (!critical_root_status.ok()) {
+    return 0.0;
+  }
+  return critical_root_status->first;
+}
+
 void Model::OptimizeStageBased(std::shared_ptr<Node> snapshot,
                                const OptimizationParams& optimization_params,
-                               CancellationManager* cancellation_manager) {
+                               CancellationManager* cancellation_manager,
+                               RamBudgetManager& ram_budget_manager) {
   VLOG(2) << "Starting optimization of tunable parameters with Stage-Based "
              "optimization with a target time of "
           << optimization_params.model_input_time() << " nanoseconds.";
   if (experiments_.contains("stage_based_autotune_v2")) {
     OptimizeStageBasedAsyncInterleaveManyNodes(snapshot, optimization_params,
-                                               cancellation_manager);
+                                               cancellation_manager,
+                                               ram_budget_manager);
   }
   OptimizeStageBasedNonAsyncInterleaveManyNodes(
       snapshot, optimization_params.model_input_time(), optimization_params,
-      cancellation_manager);
+      cancellation_manager, ram_budget_manager);
 }
 
 void Model::OptimizeStageBasedAsyncInterleaveManyNodes(
     std::shared_ptr<Node> snapshot,
     const OptimizationParams& optimization_params,
-    CancellationManager* cancellation_manager) {
+    CancellationManager* cancellation_manager,
+    RamBudgetManager& ram_budget_manager) {
   VLOG(2) << "Optimizing async interleave many nodes.";
   Node::NodeVector interleave_many_nodes =
       snapshot->CollectNodes(TraversalOrder::BFS, IsAnyNode);
@@ -2679,13 +2793,17 @@ void Model::OptimizeStageBasedAsyncInterleaveManyNodes(
         model_timing.GetTiming(critical_root.second);
     priority_queue.Push(critical_root.second, *root_timing);
   }
-  UpdateStateValues(&tunable_parameters);
+  if (ram_budget_manager.RequestModelAllocation(
+          TotalMaximumBufferedBytes(snapshot))) {
+    UpdateStateValues(&tunable_parameters);
+  }
 }
 
 void Model::OptimizeStageBasedNonAsyncInterleaveManyNodes(
     std::shared_ptr<Node> snapshot, double target_time_nsec,
     const OptimizationParams& optimization_params,
-    CancellationManager* cancellation_manager) {
+    CancellationManager* cancellation_manager,
+    RamBudgetManager& ram_budget_manager) {
   VLOG(2) << "Optimizing nodes other than async interleave many nodes.";
   Node::NodeVector all_nodes;
   if (experiments_.contains("stage_based_autotune_v2")) {
@@ -2786,7 +2904,10 @@ void Model::OptimizeStageBasedNonAsyncInterleaveManyNodes(
     }
     critical_root = critical_root_status.value();
   }
-  UpdateStateValues(&tunable_parameters);
+  if (ram_budget_manager.RequestModelAllocation(
+          TotalMaximumBufferedBytes(snapshot))) {
+    UpdateStateValues(&tunable_parameters);
+  }
 }
 
 void Model::OptimizeBuffers(std::shared_ptr<Node> snapshot,
@@ -2846,13 +2967,13 @@ bool Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
     parameter->value = std::min(parameter->max, new_value);
     VLOG(2) << "Upsize buffer " << node->long_name() << "::" << parameter->name
             << " from " << old_value << " to " << parameter->value;
-    if (parameter->value != parameter->state->value) {
-      {
-        mutex_lock l(*parameter->state->mu);
+    {
+      mutex_lock l(*parameter->state->mu);
+      if (parameter->value != parameter->state->value) {
         parameter->state->value = parameter->value;
         parameter->state->cond_var->notify_all();
+        upsized = true;
       }
-      upsized = true;
     }
   }
   return upsized;
@@ -2872,7 +2993,8 @@ void Model::ResetBufferWatermarks() {
 
 void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
                               const OptimizationParams& optimization_params,
-                              CancellationManager* cancellation_manager) {
+                              CancellationManager* cancellation_manager,
+                              RamBudgetManager& ram_budget_manager) {
   auto should_stop = [&optimization_params](const ModelParameters& parameters,
                                             double processing_time,
                                             double output_time,
@@ -2894,13 +3016,15 @@ void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
     return all_max || output_time_budget_exceeded || ram_budget_exceeded;
   };
   OptimizeHillClimbHelper(snapshot, optimization_params, cancellation_manager,
+                          optimization_params.ram_budget(), ram_budget_manager,
                           should_stop);
 }
 
 void Model::OptimizeMaxParallelism(
     std::shared_ptr<Node> snapshot,
     const OptimizationParams& optimization_params,
-    CancellationManager* cancellation_manager) {
+    CancellationManager* cancellation_manager,
+    RamBudgetManager& ram_budget_manager) {
   auto should_stop = [&optimization_params](const ModelParameters& parameters,
                                             double processing_time,
                                             double output_time,
@@ -2917,6 +3041,7 @@ void Model::OptimizeMaxParallelism(
     return all_max || ram_budget_exceeded;
   };
   OptimizeHillClimbHelper(snapshot, optimization_params, cancellation_manager,
+                          optimization_params.ram_budget(), ram_budget_manager,
                           should_stop);
 }
 

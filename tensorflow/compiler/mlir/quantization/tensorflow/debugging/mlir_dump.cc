@@ -27,9 +27,9 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace quantization {
@@ -100,7 +100,13 @@ void EnableIrPrinting(llvm::raw_ostream &out_stream, mlir::PassManager &pm) {
   flag.useLocalScope().elideLargeElementsAttrs().enableDebugInfo();
 
   // IR printing requires multithreading disabled.
-  pm.getContext()->disableMultithreading();
+  // Even if multithreading is already disabled, if we are executing within a
+  // pass-manager,  disableMultithreading throws assertion fail. Below if
+  // statement ensures that disableMultithreading will not be executed if
+  // multithreading is already disabled.
+  if (pm.getContext()->isMultithreadingEnabled()) {
+    pm.getContext()->disableMultithreading();
+  }
 
   // The configuration uses the default parameter values for
   // `PassManager::enableIRPrinting`, except for the `printModuleScope`

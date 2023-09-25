@@ -16,15 +16,12 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <cstddef>
-#include <cstdlib>
 #include <initializer_list>
-#include <iostream>
-#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/util.h"
 
@@ -55,42 +52,34 @@ TEST(TestUtilTest, QuantizeVectorScalingUp) {
 }
 
 TEST(DimsAreMatcherTestTensor, ValidOneD) {
-  auto t = std::make_unique<TfLiteTensor>();
-  t->dims = ConvertVectorToTfLiteIntArray({2});
+  TensorUniquePtr t = BuildTfLiteTensor(kTfLiteInt32, {2}, kTfLiteDynamic);
   EXPECT_THAT(t.get(), DimsAre({2}));
-  TfLiteIntArrayFree(t->dims);
 }
 
 TEST(DimsAreMatcherTestTensor, ValidTwoD) {
-  auto t = std::make_unique<TfLiteTensor>();
-  t->dims = ConvertVectorToTfLiteIntArray({2, 3});
+  TensorUniquePtr t = BuildTfLiteTensor(kTfLiteInt32, {2, 3}, kTfLiteDynamic);
   EXPECT_THAT(t.get(), DimsAre({2, 3}));
-  TfLiteIntArrayFree(t->dims);
 }
 
 TEST(DimsAreMatcherTestTensor, ValidScalar) {
-  auto t = std::make_unique<TfLiteTensor>();
-  t->dims = ConvertVectorToTfLiteIntArray({});
+  TensorUniquePtr t =
+      BuildTfLiteTensor(kTfLiteInt32, std::vector<int>{}, kTfLiteDynamic);
   EXPECT_THAT(t.get(), DimsAre({}));
-  TfLiteIntArrayFree(t->dims);
 }
 
 TEST(DimsAreMatcherTestArray, ValidOneD) {
-  auto* arr = ConvertVectorToTfLiteIntArray({2});
-  EXPECT_THAT(arr, DimsAre({2}));
-  TfLiteIntArrayFree(arr);
+  IntArrayUniquePtr arr = BuildTfLiteArray({2});
+  EXPECT_THAT(arr.get(), DimsAre({2}));
 }
 
 TEST(DimsAreMatcherTestArray, ValidTwoD) {
-  auto* arr = ConvertVectorToTfLiteIntArray({2, 3});
-  EXPECT_THAT(arr, DimsAre({2, 3}));
-  TfLiteIntArrayFree(arr);
+  IntArrayUniquePtr arr = BuildTfLiteArray({2, 3});
+  EXPECT_THAT(arr.get(), DimsAre({2, 3}));
 }
 
 TEST(DimsAreMatcherTestArray, ValidScalar) {
-  auto* arr = ConvertVectorToTfLiteIntArray({});
-  EXPECT_THAT(arr, DimsAre({}));
-  TfLiteIntArrayFree(arr);
+  IntArrayUniquePtr arr = BuildTfLiteArray({});
+  EXPECT_THAT(arr.get(), DimsAre({}));
 }
 
 }  // namespace

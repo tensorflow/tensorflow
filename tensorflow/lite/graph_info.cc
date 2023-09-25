@@ -79,6 +79,7 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
          node_index++) {
       const TfLiteNode& node = info_->node(node_index);
       for (int output_tensor_index : TfLiteIntArrayView(node.outputs)) {
+        if (output_tensor_index == kTfLiteOptionalTensor) continue;
         tensor_epochs_[output_tensor_index] = kEpochNotReady;
       }
     }
@@ -168,6 +169,7 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
       // All outputs of this node now are assigned to this epoch as
       // well.
       for (int output_tensor_index : TfLiteIntArrayView(node.outputs)) {
+        if (output_tensor_index == kTfLiteOptionalTensor) continue;
         tensor_epochs_[output_tensor_index] = current_epoch;
       }
       // Look at our inputs one more time to update that tensor's

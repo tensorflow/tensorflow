@@ -25,13 +25,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "xla/service/hlo.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
-std::vector<std::pair<uint64_t /*program_id*/, std::unique_ptr<xla::HloProto>>>
+absl::flat_hash_map<uint64_t /*program_id*/, std::unique_ptr<xla::HloProto>>
 ParseHloProtosFromXSpace(const XSpace& space);
 
 class HloProtoMap {

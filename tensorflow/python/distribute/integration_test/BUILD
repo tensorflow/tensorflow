@@ -17,7 +17,6 @@ distribute_py_strict_test(
     ],
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:lookup_ops",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:parameter_server_strategy_v2",
@@ -28,6 +27,7 @@ distribute_py_strict_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/ops:lookup_ops",
         "@absl_py//absl/testing:parameterized",
     ],
 )

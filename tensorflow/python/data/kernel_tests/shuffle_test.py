@@ -15,6 +15,7 @@
 """Tests for `tf.data.Dataset.shuffle()`."""
 import collections
 import functools
+import sys
 
 from absl.testing import parameterized
 import numpy as np
@@ -475,6 +476,8 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
         pywrap_sanitizers.is_tsan_enabled() or
         pywrap_sanitizers.is_msan_enabled()):
       self.skipTest("Skip to avoid OOM when using sanitizers.")
+    if sys.platform == "darwin":
+      self.skipTest("Skip to avoid memory issues on mac.")
     dataset = dataset_ops.Dataset.range(12).batch(2)
     dataset = dataset.map(
         # Create tensors of size 512M.

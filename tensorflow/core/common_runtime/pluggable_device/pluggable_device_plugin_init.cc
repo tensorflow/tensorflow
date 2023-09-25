@@ -22,8 +22,10 @@ limitations under the License.
 #include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/pjrt_device_context.h"
 #include "tensorflow/compiler/jit/xla_device.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/pjrt_api.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
@@ -33,8 +35,8 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -70,6 +72,7 @@ static Status InitDeviceModule(void* dso_handle) {
   return OkStatus();
 }
 
+typedef const PJRT_Api* (*PjrtApiInitFn)();
 static Status InitNextPluggableDeviceModule(void* dso_handle) {
   void* dso_symbol;
   tensorflow::Env* env = tensorflow::Env::Default();
@@ -100,8 +103,13 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
   } else if (!status.ok()) {
     return status;
   }
-  auto init_pjrt_fn = reinterpret_cast<pjrt::PjrtApiInitFn>(dso_symbol);
-  TF_RETURN_IF_ERROR(pjrt::InitPjrtPlugin(init_pjrt_fn, device_type));
+  auto init_pjrt_fn = reinterpret_cast<PjrtApiInitFn>(dso_symbol);
+  TF_RETURN_IF_ERROR(pjrt::SetPjrtApi(device_type, init_pjrt_fn()));
+  TF_ASSIGN_OR_RETURN(bool is_pjrt_plugin_initialized,
+                      pjrt::IsPjrtPluginInitialized(device_type));
+  if (!is_pjrt_plugin_initialized) {
+    TF_RETURN_IF_ERROR(pjrt::InitializePjrtPlugin(device_type));
+  }
 
   DeviceFactory::Register(device_type,
                           std::make_unique<NextPluggableDeviceFactory>(
@@ -127,6 +135,10 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
     VLOG(1) << "Registered XlaCompileOnDemand op for device_type: "
             << device_type;
   }
+
+  TF_RETURN_IF_ERROR(CopyTensor::Register(
+      DeviceType(device_type), DeviceType(device_type), PjRtDeviceToDeviceCopy,
+      /*is_pluggable_device=*/true));  // Register the Copy tensor.
 
   VLOG(1) << "Successfully initialized NextPluggableDevice module.";
   return OkStatus();

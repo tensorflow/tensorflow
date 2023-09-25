@@ -28,13 +28,13 @@ limitations under the License.
 #include "tensorflow/compiler/aot/quantize.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/compile_only_client.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/client_library.h"
+#include "xla/client/compile_only_client.h"
+#include "xla/client/xla_computation.h"
+#include "xla/service/cpu/cpu_compiler.h"
+#include "xla/statusor.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -273,6 +273,15 @@ Status Main(const MainFlags& flags) {
   codegen_opts.gen_name_to_index = flags.gen_name_to_index;
   codegen_opts.gen_program_shape = flags.gen_program_shape;
   codegen_opts.target_triple = flags.target_triple;
+  // Set the XLA Runtime bit if this is an HloLowering.
+  if (!flags.mlir_components.empty() && flags.mlir_components != "None") {
+    for (auto component : absl::StrSplit(flags.mlir_components, ',')) {
+      if (component == "HloLowering") {
+        codegen_opts.use_xla_runtime = true;
+      }
+    }
+  }
+
   if (flags.cpp_class.empty()) {
     return errors::InvalidArgument("Must specify --cpp_class");
   }

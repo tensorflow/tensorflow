@@ -39,7 +39,7 @@ tf_py_strict_test(
     python_version = "PY3",
     deps = [
         ":client",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/flags",
     ],
 )

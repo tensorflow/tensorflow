@@ -221,7 +221,6 @@ EOF
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cuda_driver + "\
     "@local_config_cuda//cuda:cudnn + "\
-    "@local_config_cuda//cuda:curand + "\
     "@local_config_cuda//cuda:cusolver + "\
     "@local_config_tensorrt//:tensorrt)" --keep_going > $BATS_TEST_TMPDIR/out
 
@@ -243,7 +242,6 @@ EOF
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cuda_driver + "\
     "@local_config_cuda//cuda:cudnn + "\
-    "@local_config_cuda//cuda:curand + "\
     "@local_config_cuda//cuda:cusolver + "\
     "@local_config_tensorrt//:tensorrt)" --keep_going > $BATS_TEST_TMPDIR/out
 

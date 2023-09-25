@@ -36,10 +36,10 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/utils/convert_op_folder.h"
-#include "tensorflow/compiler/xla/mlir_hlo/utils/hlo_utils.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/utils/convert_op_folder.h"
+#include "xla/mlir_hlo/utils/hlo_utils.h"
+#include "xla/xla_data.pb.h"
 
 namespace mlir {
 namespace mhlo {
@@ -144,6 +144,11 @@ LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
   Type element_type = getElementTypeOrSelf(input.getType());
   auto all_reduce = builder.create<AllReduceOp>(
       loc, result_type, input, replica_groups, channel_handle, nullptr);
+
+  if (all_reduce.getNumResults() != 1) {
+    return op->emitOpError()
+           << "AllReduceOp must have one result: " << *all_reduce;
+  }
   if (merge_op == "Add") {
     BuildReduceBody<AddOp>(element_type, &all_reduce.getComputation(),
                            &builder);
@@ -173,7 +178,7 @@ LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
         GetScalarConstOfType(element_type, loc, replica_group_size, &builder);
     auto broadcast_dims = GetI64ElementsAttr({}, &builder);
     result = builder.create<chlo::BroadcastDivOp>(
-        loc, all_reduce.getResult(), divisor.getResult(), broadcast_dims);
+        loc, all_reduce.getResult(0), divisor.getResult(), broadcast_dims);
   } else if (final_op != "Id") {
     return op->emitOpError()
            << "invalid final_op " << final_op << ", want one of [Id, Div]";
@@ -354,8 +359,8 @@ class ConvertCollectiveReduceV2
 
 void LegalizeTFCollective::runOnOperation() {
   // FIXME(b/226139061): Figure out a way to share the channel_id with
-  // send/recv Ops.
-  int64_t channel_id = 1;
+  // send/recv Ops. For now, start with a different range to avoid collision.
+  int64_t channel_id = 10000;
   auto module = getOperation();
   MLIRContext* context = module->getContext();
 

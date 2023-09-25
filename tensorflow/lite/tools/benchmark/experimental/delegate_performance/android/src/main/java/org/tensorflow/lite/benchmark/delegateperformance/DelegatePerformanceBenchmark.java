@@ -15,6 +15,10 @@ limitations under the License.
 
 package org.tensorflow.lite.benchmark.delegateperformance;
 
+import static org.tensorflow.lite.benchmark.delegateperformance.Preconditions.checkArgument;
+import static org.tensorflow.lite.benchmark.delegateperformance.Preconditions.checkNotNull;
+import static org.tensorflow.lite.benchmark.delegateperformance.Preconditions.checkState;
+
 import android.util.Log;
 import com.google.flatbuffers.FlatBufferBuilder;
 import java.io.File;
@@ -237,47 +241,6 @@ class DelegatePerformanceBenchmark {
       }
     }
     return true;
-  }
-
-  /**
-   * Ensures that an object reference passed as a parameter to the calling method is not null.
-   *
-   * <p>TODO(b/250876587): Consider adding proper annotation support.
-   *
-   * @param reference an object reference
-   * @return the non-null reference that was validated
-   * @throws NullPointerException if {@code reference} is null
-   */
-  public static <T> T checkNotNull(/* @Nullable */ T reference) {
-    if (reference == null) {
-      throw new NullPointerException();
-    }
-    return reference;
-  }
-
-  /**
-   * Ensures the truth of an expression involving one or more parameters to the calling method.
-   *
-   * @param expression a boolean expression
-   * @throws IllegalArgumentException if {@code expression} is false
-   */
-  public static void checkArgument(boolean expression) {
-    if (!expression) {
-      throw new IllegalArgumentException();
-    }
-  }
-
-  /**
-   * Ensures the truth of an expression involving the state of the calling instance, but not
-   * involving any parameters to the calling method.
-   *
-   * @param expression a boolean expression
-   * @throws IllegalStateException if {@code expression} is false
-   */
-  public static void checkState(boolean expression) {
-    if (!expression) {
-      throw new IllegalStateException();
-    }
   }
 
   private static native byte[] latencyBenchmarkNativeRun(

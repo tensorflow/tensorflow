@@ -13,14 +13,14 @@ module {
   func.func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32> {
     // CHECK:      %[[RESULT:.*]] = "tf.XlaCallModule"(%[[ARG0]], %[[ARG1]])
     // CHECK-SAME:   Sout = [#tf_type.shape<?>]
-    // CHECK-SAME:   _entry_function = @_stablehlo_main_0
+    // CHECK-SAME:   _entry_function = @main0
     // CHECK-SAME:   _stablehlo_module_attrs = {}
     // CHECK-NOT:    function_list
     // CHECK-SAME:   module = ""
     // CHECK-SAME:   platforms = []
     // CHECK-SAME:   version = 5
 
-    %0 = "tf.XlaCallModule"(%arg0, %arg1) {Sout = [#tf_type.shape<?>], dim_args_spec = [], _entry_function = @_stablehlo_main_0, module = "", platforms = [], version = 5 : i64} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
+    %0 = "tf.XlaCallModule"(%arg0, %arg1) {Sout = [#tf_type.shape<?>], dim_args_spec = [], _entry_function = @main0, module = "", platforms = [], version = 5 : i64} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
     // CHECK: return %[[RESULT]]
     func.return %0 : tensor<10xi32>
   }
@@ -34,12 +34,12 @@ module {
     func.return
   }
 
-  // CHECK-LABEL: func private @_stablehlo_main_0
+  // CHECK-LABEL: func private @main0
   // CHECK-SAME:    %[[ARG0:.*]]: tensor<?xi32> {jax.arg_info = "x", mhlo.sharding = "{replicated}"}
   // CHECK-SAME:    %[[ARG1:.*]]: tensor<*xi32>)
   // CHECK-SAME:    (tensor<?xi32> {jax.result_info = ""})
   // CHECK-SAME:    attributes {_from_xla_call_module}
-  func.func private @_stablehlo_main_0(%arg0: tensor<?xi32> {jax.arg_info = "x", mhlo.sharding = "{replicated}"}, %arg1: tensor<*xi32>) -> (tensor<?xi32> {jax.result_info = ""}) attributes {_from_xla_call_module} {
+  func.func private @main0(%arg0: tensor<?xi32> {jax.arg_info = "x", mhlo.sharding = "{replicated}"}, %arg1: tensor<*xi32>) -> (tensor<?xi32> {jax.result_info = ""}) attributes {_from_xla_call_module} {
     // CHECK:      stablehlo.custom_call @tf.call_tf_function(%[[ARG0]], %[[ARG1]])
     // CHECK-SAME: {
     // CHECK-SAME:  api_version = 2 : i32,
@@ -47,14 +47,14 @@ module {
     // CHECK-SAME:  tf.backend_config = {called_func = @_tf_func}
     // CHECK-SAME: }
     stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1) {api_version = 2 : i32, has_side_effect = true, tf.backend_config = {called_func = @_tf_func}} : (tensor<?xi32>, tensor<*xi32>) -> ()
-    // CHECK: call @_stablehlo__stablehlo_f_0
-    %arg2 = func.call @_stablehlo_f(%arg0) : (tensor<?xi32>) -> (tensor<?xi32>)
+    // CHECK: call @f
+    %arg2 = func.call @f(%arg0) : (tensor<?xi32>) -> (tensor<?xi32>)
     return %arg2 : tensor<?xi32>
   }
 
-  // CHECK-LABEL: func private @_stablehlo__stablehlo_f_0
+  // CHECK-LABEL: func private @f
   // CHECK:    attributes {_from_xla_call_module}
-  func.func private @_stablehlo_f(%arg0: tensor<?xi32>) -> (tensor<?xi32>) attributes {_from_xla_call_module} {
+  func.func private @f(%arg0: tensor<?xi32>) -> (tensor<?xi32>) attributes {_from_xla_call_module} {
     return %arg0 : tensor<?xi32>
   }
 }

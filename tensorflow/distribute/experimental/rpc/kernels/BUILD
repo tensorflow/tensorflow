@@ -1,4 +1,5 @@
-load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow/distribute/experimental/rpc/kernels/oss:defs.bzl", "grpc_credentials_dependency")
@@ -16,10 +17,10 @@ cc_library(
     srcs = ["grpc_rpc_service.h"],
     hdrs = ["grpc_rpc_service.h"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_cc_grpc_proto",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_proto_cc",
         "@com_github_grpc_grpc//:grpc++",
+        "@local_xla//xla/stream_executor/platform",
     ],
     alwayslink = 1,
 )
@@ -32,13 +33,24 @@ cc_library(
     ] + grpc_credentials_dependency(),
 )
 
+# Note: we cannot call the source file "rpc_ops_metadata.cc", as we
+# would normally like to do, because tf_kernel_library below uses a
+# glob (!) of sources with the pattern `prefix + "*.cc"`, which would
+# cause the metadata translation unit to be compiled and linked twice.
+cc_library(
+    name = "rpc_ops_metadata",
+    srcs = ["metadata_for_rpc_ops.cc"],
+    deps = ["//tensorflow/core:framework"],
+    alwayslink = 1,
+)
+
 tf_kernel_library(
     name = "rpc_ops",
     prefix = "rpc_ops",
     deps = [
         ":grpc_credentials",
         ":grpc_rpc_service",
-        "//tensorflow/compiler/xla/stream_executor/platform",
+        ":rpc_ops_metadata",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -54,6 +66,7 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@local_xla//xla/stream_executor/platform",
     ],
     alwayslink = 1,
 )
@@ -61,7 +74,12 @@ tf_kernel_library(
 tf_gen_op_wrapper_py(
     name = "gen_rpc_ops",
     out = "gen_rpc_ops.py",
-    deps = [
-        ":rpc_ops",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
+    py_lib_rule = py_strict_library,
+    deps = [":rpc_ops_metadata"],
 )

@@ -36,8 +36,8 @@ inline void PackInner(const int8_t* src, uint8_t* box, int src_rows,
                outer_cols, inner_rows, inner_cols);
 }
 
-// Prepack lhs matrix, and allocate destination pointer.
-inline void Prepack(uint8_t** dest, const int8_t* tensor, int layout_rows,
+// Prepack lhs matrix into dest.
+inline void Prepack(uint8_t* dest, const int8_t* tensor, int layout_rows,
                     int layout_cols, int src_rows, int src_cols, int width,
                     int depth) {
   SsePrepack(dest, tensor, layout_rows, layout_cols, src_rows, src_cols, width,

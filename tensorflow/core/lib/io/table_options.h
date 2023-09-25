@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_TABLE_OPTIONS_H_
 #define TENSORFLOW_CORE_LIB_IO_TABLE_OPTIONS_H_
 
-#include "tensorflow/tsl/lib/io/table_options.h"
+#include "tsl/lib/io/table_options.h"
 
 namespace tensorflow {
 namespace table {

@@ -22,7 +22,7 @@ limitations under the License.
 
 #include <sstream>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
@@ -191,7 +191,7 @@ __global__ __launch_bounds__(1024) void BlockReduceKernel(
   // elements: -----------------
   // grid:     |====|====|====|====|====|
   const int num_elements_to_reduce =
-      max(min(num_elems - bid * blockDim.x, num_threads), 0);
+      max(min(static_cast<int>(num_elems - bid * blockDim.x), num_threads), 0);
 
   sum = BlockReduce(temp_storage).Reduce(sum, op, num_elements_to_reduce);
 

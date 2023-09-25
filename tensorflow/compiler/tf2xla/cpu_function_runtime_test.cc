@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/cpu_function_runtime.h"
+#include "xla/cpu_function_runtime.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -151,7 +151,7 @@ TEST(XlaCompiledCpuFunctionTest, MallocFreeContiguousBuffers) {
 }
 
 void CheckRoundTripIsOk(const BufferInfo& buffer_info) {
-  BufferInfo round_trip(buffer_info.EncodeOld());
+  BufferInfo round_trip(buffer_info.Encode());
   ASSERT_EQ(round_trip, buffer_info);
 }
 

@@ -48,6 +48,7 @@ TODO: Make invariants more structured so that we can reference them in ops.
   }];
 
   let cppNamespace = "::mlir::TF";
+  let usePropertiesForAttributes = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -187,11 +188,11 @@ def TF_RecvResource : TF_ResourceBase<"Recv">;
 def TF_TPUExecuteResource : TF_ResourceBase<"TPUExecute">;
 def TF_RandomGeneratorResource : TF_ResourceBase<"RandomGenerator">;
 def TF_XlaHostComputeResource : TF_ResourceBase<"XlaHostCompute">;
-def TF_XlaLaunchResource : TF_ResourceBase<"XlaLaunch">;
 def TF_WriteTrainingPredictionsResource : TF_ResourceBase<"WriteTrainingPredictions">;
 def TF_CollectiveReduceOrderingResource : TF_ResourceBase<"CollectiveReduceOrdering">;
 def TF_NcclAllReduceOrderingResource : TF_ResourceBase<"NcclAllReduceOrdering">;
-
+def TF_GlobalIterIdResource : TF_ResourceBase<"GlobalIterId">;
+def TF__XlaRunResource : TF_ResourceBase<"_XlaRun">;
 // Fake resource, see `TF_MustExecute` below.
 def TF_MustExecuteResource : TF_ResourceBase<"MustExecute">;
 
@@ -251,16 +252,25 @@ def TF_SendSideEffect : MemoryEffects<[MemWrite<TF_SendResource>]>;
 def TF_RecvSideEffect : MemoryEffects<[MemWrite<TF_RecvResource>]>;
 def TF_XlaHostComputeSideEffect : MemoryEffects<[MemWrite<TF_XlaHostComputeResource>]>;
 
-def TF_XlaLaunchSideEffect : MemoryEffects<[MemWrite<TF_XlaLaunchResource>]>;
+def TF_WriteTrainingPredictions : MemoryEffects<[MemWrite<TF_WriteTrainingPredictionsResource>]>;
 
-def TF_WriteTrainingPredictions : MemoryEffects<[MemWrite<TF_WriteTrainingPredictionsResource>]>; 
-def TF_RandomGeneratorSideEffect : MemoryEffects<[MemWrite<TF_RandomGeneratorResource>]>;
+// The state among all RNG ops is shared in a single global variable. When an
+// RNG op runs, it uses the global variable to produce a random number, then
+// updates the global variable. This would be nondeterministic if the RNG ops
+// ran in a nondeterministic order, but XLA scheduler is deterministic so the
+// order is always determinstic. However, we cannot mark such ops as Pure as
+// that may lead to incorrect optimization, e.g. two instances of the same op
+// with the same constant input may end up returning
+// the same value, even though they should have not.
+def TF_RandomGeneratorSideEffect : MemoryEffects<[MemRead<TF_RandomGeneratorResource>]>;
 
 // Special effect for keeping `CollectiveReduce` ops in order.
 def TF_CollectiveReduceOrderingEffect : MemoryEffects<[MemWrite<TF_CollectiveReduceOrderingResource>]>;
 
 // Special effect for keeping `NcclAllReduce` ops on the same device in order.
 def TF_NcclAllReduceOrderingEffect : MemoryEffects<[MemWrite<TF_NcclAllReduceOrderingResource>]>;
+
+def TF_GlobalIterIdEffect : MemoryEffects<[MemRead<TF_GlobalIterIdResource>]>;
 
 // Trait for enforcing that a side-effecting op is executed, even if it would be
 // considered dead by MLIR (see b/195782952).
@@ -333,11 +343,13 @@ def TF_Complex64Ref : TF_TensorFlowType<"Complex64Ref", "complex64ref">;
 def TF_Complex128Ref : TF_TensorFlowType<"Complex128Ref", "complex128ref">;
 
 // Integer reference types
+def TF_Int4Ref : TF_TensorFlowType<"Int4Ref", "si4ref">;
 def TF_Int8Ref : TF_TensorFlowType<"Int8Ref", "i8ref">;
 def TF_Int16Ref : TF_TensorFlowType<"Int16Ref", "i16ref">;
 def TF_Int32Ref : TF_TensorFlowType<"Int32Ref", "i32ref">;
 def TF_Int64Ref : TF_TensorFlowType<"Int64Ref", "i64ref">;
 
+def TF_Uint4Ref : TF_TensorFlowType<"Uint4Ref", "ui8ref">;
 def TF_Uint8Ref : TF_TensorFlowType<"Uint8Ref", "ui8ref">;
 def TF_Uint16Ref : TF_TensorFlowType<"Uint16Ref", "ui16ref">;
 def TF_Uint32Ref : TF_TensorFlowType<"Uint32Ref", "ui32ref">;
@@ -361,6 +373,7 @@ def TF_VariantRef : TF_TensorFlowType<"VariantRef", "variantref">;
 
 def TF_Bool : AnyTypeOf<[I<1>, TF_BoolRef], "bool">;
 
+def TF_Int4 : AnyTypeOf<[SI<4>, TF_Int4Ref], "4-bit integer">;
 def TF_Int8 : AnyTypeOf<[I8, TF_Int8Ref], "8-bit integer">;
 def TF_Int16 : AnyTypeOf<[I16, TF_Int16Ref], "16-bit integer">;
 def TF_Int32 : AnyTypeOf<[I32, TF_Int32Ref], "32-bit integer">;
@@ -368,17 +381,18 @@ def TF_Int64 : AnyTypeOf<[I64, TF_Int64Ref], "64-bit integer">;
 def TF_I32OrI64 : AnyTypeOf<[I32, I64, TF_Int32Ref, TF_Int64Ref],
                            "32/64-bit signed integer">;
 
+def TF_Uint4 : AnyTypeOf<[UI<4>, TF_Uint4Ref], "4-bit unsigned integer">;
 def TF_Uint8 : AnyTypeOf<[UI<8>, TF_Uint8Ref], "8-bit unsigned integer">;
 def TF_Uint16 : AnyTypeOf<[UI<16>, TF_Uint16Ref], "16-bit unsigned integer">;
 def TF_Uint32 : AnyTypeOf<[UI<32>, TF_Uint32Ref], "32-bit unsigned integer">;
 def TF_Uint64 : AnyTypeOf<[UI<64>, TF_Uint64Ref], "64-bit unsigned integer">;
 
 // Any unsigned integer type
-def TF_UInt : AnyTypeOf<[TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64],
+def TF_UInt : AnyTypeOf<[TF_Uint4, TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64],
                         "unsigned integer">;
 
 // Any signed integer type
-def TF_SInt : AnyTypeOf<[TF_Int8, TF_Int16, TF_Int32, TF_Int64],
+def TF_SInt : AnyTypeOf<[TF_Int4, TF_Int8, TF_Int16, TF_Int32, TF_Int64],
                         "signed integer">;
 
 // Any integer type
@@ -388,12 +402,14 @@ def TF_Int : AnyTypeOf<[TF_SInt, TF_UInt], "integer">;
 def TF_BoolTensor : TensorOf<[TF_Bool]>;
 
 def TF_IntTensor : TensorOf<[TF_Int]>;
+def TF_Int4Tensor : TensorOf<[TF_Int4]>;
 def TF_Int8Tensor : TensorOf<[TF_Int8]>;
 def TF_Int16Tensor : TensorOf<[TF_Int16]>;
 def TF_Int32Tensor : TensorOf<[TF_Int32]>;
 def TF_Int64Tensor : TensorOf<[TF_Int64]>;
 def TF_I32OrI64Tensor : TensorOf<[TF_I32OrI64]>;
 
+def TF_Uint4Tensor : TensorOf<[TF_Uint4]>;
 def TF_Uint8Tensor : TensorOf<[TF_Uint8]>;
 def TF_Uint16Tensor : TensorOf<[TF_Uint16]>;
 def TF_Uint32Tensor : TensorOf<[TF_Uint32]>;

@@ -450,6 +450,7 @@ func.func @transpose_no_fold(%arg0 : tensor<2xi32>) -> tensor<2x2xi32> {
   func.return %0 : tensor<2x2xi32>
 }
 
+
 // CHECK-LABEL: @transpose_1d
 // Basic 1D identity
 func.func @transpose_1d() -> tensor<3xi32> {
@@ -482,6 +483,17 @@ func.func @transpose_2d() -> tensor<2x2xi32> {
   // CHECK: return %[[CST]]
   %0 = "tfl.transpose"(%cst, %cst_perm) : (tensor<2x2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
   func.return %0 : tensor<2x2xi32>
+}
+
+// CHECK-LABEL: @transpose_2d_splat
+func.func @transpose_2d_splat() -> tensor<3x2xi32> {
+  %cst = arith.constant dense<0> : tensor<2x3xi32>
+  %cst_perm = arith.constant dense<[1, 0]> : tensor<2xi32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<3x2xi32>
+  // CHECK: return %[[CST]]
+  %0 = "tfl.transpose"(%cst, %cst_perm) : (tensor<2x3xi32>, tensor<2xi32>) -> tensor<3x2xi32>
+  func.return %0 : tensor<3x2xi32>
 }
 
 // CHECK-LABEL: @transpose_2d_identity

@@ -128,7 +128,7 @@ class TfLiteFlatbufferModelBuilder {
 
   flatbuffers::FlatBufferBuilder builder_;
   MutableOpResolver resolver_;
-  TfLiteRegistration fake_op_;
+  TfLiteRegistration fake_op_{};
   std::vector<flatbuffers::Offset<Operator>> operators_;
   std::vector<flatbuffers::Offset<OperatorCode>> operator_codes_;
   std::vector<flatbuffers::Offset<Tensor>> tensors_;

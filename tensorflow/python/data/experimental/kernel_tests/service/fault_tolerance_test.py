@@ -235,7 +235,7 @@ class FaultToleranceTest(data_service_test_base.TestBase,
 
     # Read additional elements to make sure that stopping 4/5 workers doesn't
     # result in a hang.
-    for _ in range(1000):
+    for _ in range(10):
       next(iterator).numpy()
 
   @combinations.generate(

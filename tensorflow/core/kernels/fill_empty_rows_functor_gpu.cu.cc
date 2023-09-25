@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -31,10 +31,10 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_activation.h"
+#include "xla/stream_executor/rocm/rocm_activation.h"
 using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif
 
@@ -514,11 +514,13 @@ namespace {
 template <typename T, typename Tindex>
 __global__ __launch_bounds__(1024) void GatherOriginalGradValuesKernel(
     GpuLaunchConfig cfg, const Tindex* reverse_index_map, const T* grad_values,
-    T* d_values, bool* visited) {
+    T* d_values, bool* visited, Tindex N_full) {
   GPU_1D_KERNEL_LOOP(input_i, cfg.virtual_thread_count) {
     Tindex output_i = reverse_index_map[input_i];
-    d_values[input_i] = grad_values[output_i];
-    visited[output_i] = true;
+    if (output_i >= 0 && output_i < N_full) {
+      d_values[input_i] = grad_values[output_i];
+      visited[output_i] = true;
+    }
   }
 }
 
@@ -557,7 +559,8 @@ struct FillEmptyRowsGrad<GPUDevice, T, Tindex> {
     if (N > 0) {
       TF_RETURN_IF_ERROR(wrap_kernel_call(
           GatherOriginalGradValuesKernel<T, Tindex>, /*device=*/device,
-          /*size=*/N, reverse_index_map, grad_values, d_values, visited));
+          /*size=*/N, reverse_index_map, grad_values, d_values, visited,
+          N_full));
     }
 
     // Now we mask out the visited values and sum the remaining ones (which

@@ -19,6 +19,11 @@ py_strict_library(
         "base.py",
     ],
     srcs_version = "PY3",
+    visibility = visibility + [
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+        "//third_party/mlperf:__subpackages__",
+    ],
     deps = [
         "//tensorflow/python/keras/legacy_tf_layers:layers_base",
     ],
@@ -30,10 +35,11 @@ py_strict_library(
         "utils.py",
     ],
     srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:cond",
-        "//tensorflow/python:variables",
         "//tensorflow/python/framework:smart_cond",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:variables",
     ],
 )
 
@@ -47,6 +53,11 @@ py_strict_library(
         "pooling.py",
     ],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":layers_base",
         "//tensorflow/python/keras/legacy_tf_layers:convolutional",

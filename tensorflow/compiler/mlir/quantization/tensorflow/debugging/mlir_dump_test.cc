@@ -27,8 +27,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/test.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace quantization {
@@ -50,6 +50,40 @@ class NoOpPass
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateNoOpPass() {
   return std::make_unique<NoOpPass>();
+}
+
+class ParentPass
+    : public mlir::PassWrapper<ParentPass,
+                               mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ParentPass)
+
+  ParentPass() = default;
+
+  llvm::StringRef getArgument() const final { return "parent-pass"; }
+
+  void runOnOperation() override {
+    mlir::MLIRContext* ctx = &getContext();
+    mlir::ModuleOp module_op = getOperation();
+    mlir::PassManager pm(ctx);
+
+    pm.addPass(CreateNoOpPass());
+
+    std::error_code ec{};  // NOLINT: Required to create llvm::raw_fd_ostream
+    const std::string tmp_dump_filename =
+        tsl::io::GetTempFilename(/*extension=*/".mlir");
+    llvm::raw_fd_ostream dump_file{tmp_dump_filename, ec};
+
+    EnableIrPrinting(dump_file, pm);
+
+    if (failed(pm.run(module_op))) {
+      signalPassFailure();
+    }
+  }
+};
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateParentPass() {
+  return std::make_unique<ParentPass>();
 }
 
 TEST(EnableIrPrintingTest, PassSuccessfullyRuns) {
@@ -75,6 +109,28 @@ TEST(EnableIrPrintingTest, PassSuccessfullyRuns) {
   EXPECT_FALSE(failed(result));
 }
 
+TEST(EnableNestedIrPrintingTest, PassSuccessfullyRuns) {
+  mlir::MLIRContext ctx{};
+
+  mlir::PassManager pm = {&ctx};
+  pm.addPass(CreateParentPass());
+
+  std::error_code ec{};  // NOLINT: Required to create llvm::raw_fd_ostream
+  const std::string tmp_dump_filename =
+      tsl::io::GetTempFilename(/*extension=*/".mlir");
+  llvm::raw_fd_ostream dump_file{tmp_dump_filename, ec};
+
+  EnableIrPrinting(dump_file, pm);
+
+  mlir::OpBuilder builder(&ctx);
+  auto module_op = builder.create<mlir::ModuleOp>(builder.getUnknownLoc());
+  // Destroy by calling destroy() to avoid memory leak since it is allocated
+  // with malloc().
+  const absl::Cleanup module_op_cleanup = [module_op] { module_op->destroy(); };
+
+  const mlir::LogicalResult result = pm.run(module_op);
+  EXPECT_FALSE(failed(result));
+}
 }  // namespace
 }  // namespace quantization
 }  // namespace tensorflow

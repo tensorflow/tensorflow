@@ -679,14 +679,26 @@ class Loader(object):
       # to be able to load the "optimizer" object (OptimizerV2), which has
       # special logic around adding slot variables with `add_slot` in this file.
       try:
-        import keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+        import tf_keras  # pylint: disable=g-import-not-at-top,unused-import
+        try:
+          import tf_keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+        except ImportError:
+          try:
+            import tf_keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
+          except ImportError as e:
+            raise ImportError(
+                "Error when importing Keras. Unable to load SavedModel that "
+                "contains an optimizer without the Keras module.") from e
       except ImportError:
         try:
-          import keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
-        except ImportError as e:
-          raise ImportError(
-              "Error when importing Keras. Unable to load SavedModel that "
-              "contains an optimizer without the Keras module.") from e
+          import keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+        except ImportError:
+          try:
+            import keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
+          except ImportError as e:
+            raise ImportError(
+                "Error when importing Keras. Unable to load SavedModel that "
+                "contains an optimizer without the Keras module.") from e
     looked_up = revived_types.deserialize(proto)
     if looked_up is None:
       return self._recreate_base_user_object(proto, node_id)
@@ -1004,6 +1016,7 @@ def load_partial(export_dir, filters, tags=None, options=None):
   saved_model_proto, debug_info = (
       loader_impl.parse_saved_model_with_debug_info(export_dir))
 
+  loader = None
   if (len(saved_model_proto.meta_graphs) == 1 and
       saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
     metrics.IncrementReadApi(_LOAD_V2_LABEL)
@@ -1079,9 +1092,50 @@ def load_partial(export_dir, filters, tags=None, options=None):
         fingerprint=fingerprinting_utils.to_proto(
             fingerprint).SerializeToString())
     singleprint = fingerprint.singleprint()
-  metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
+  try:
+    metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
+  except metrics.MetricException:
+    logging.info("path_and_singleprint metric could not be logged. "
+                 "Saved model loading will continue.")
 
-  if filters:
+  if filters and loader is not None:
     return {node_id: loader.get(node_id) for node_id in filters}
   else:
     return {"root": root}
+
+
+def is_tf2_saved_model(export_dir):
+  """Identifies if an exported SavedModel is a TF2 SavedModel.
+
+  There are differences in SavedModel semantics between TF1 and TF2 that are
+  documented here:
+  https://www.tensorflow.org/guide/migrate/saved_model#savedmodel. This helper
+  util function serves to distinguish the TF1 vs TF2 semantics used when
+  exporting SavedModels.
+
+  Args:
+    export_dir: The SavedModel directory to load from.
+
+  Returns:
+    True if TF2 SavedModel semantics are used, False if TF1 SavedModel semantics
+    are used.
+  """
+  # Try reading the fingerprint first before parsing the SavedModel proto
+  try:
+    fingerprint = fingerprinting.read_fingerprint(export_dir)
+    if fingerprint.saved_object_graph_hash != 0:
+      logging.info("SavedModel at %s is a TF2 SavedModel", export_dir)
+      return True
+  except Exception:  # pylint: disable=broad-exception-caught
+    logging.info(
+        "Failed to read fingerprint from SavedModel. Parsing MetaGraph ..."
+    )
+    saved_model_proto = loader_impl.parse_saved_model(export_dir)
+    if len(
+        saved_model_proto.meta_graphs
+    ) == 1 and saved_model_proto.meta_graphs[0].HasField("object_graph_def"):
+      logging.info("SavedModel at %s is a TF2 SavedModel", export_dir)
+      return True
+
+  logging.info("SavedModel at %s is a TF1 SavedModel", export_dir)
+  return False

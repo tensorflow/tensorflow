@@ -71,6 +71,19 @@ LogicalResult _TfrtGetResourceOp::verify() {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// PwStreamResults
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult PwStreamResultsOp::verify() {
+  if (getArgs().size() != getNames().size()) {
+    return emitOpError()
+           << "has a mismatch between the number of arguments and their names ("
+           << getArgs().size() << " vs. " << getNames().size() << ")";
+  }
+  return mlir::success();
+}
+
 }  // namespace TF
 }  // namespace mlir
 

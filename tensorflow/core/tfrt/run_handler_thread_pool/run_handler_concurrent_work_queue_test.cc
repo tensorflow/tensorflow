@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdio>
 #include <memory>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"

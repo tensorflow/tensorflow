@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/client/sharding_builder.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 

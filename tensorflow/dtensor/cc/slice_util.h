@@ -86,12 +86,12 @@ class TokenProcessor {
 
  protected:
   // Loop for an ellipsis or the unconsumed axes in the end.
-  bool VisitEllipsisLoop(const Token* token, int64_t input_rank,
-                         int64_t output_rank, int64_t ellipsis_size,
-                         int64_t* input_index, int64_t* output_index);
+  bool VisitLoop(int64_t input_rank, int64_t output_rank, int64_t ellipsis_size,
+                 int64_t* input_index, int64_t* output_index);
 
-  virtual void VisitEllipsisAxis(const Token* token, int64_t input_index,
-                                 int64_t output_index) = 0;
+  virtual void VisitImplicitAxis(int64_t input_index, int64_t output_index) = 0;
+
+  virtual void VisitEllipsisAxis(const Token& token) = 0;
 
   virtual void VisitShrinkAxis(const Token& token, int64_t input_index,
                                int64_t output_index) = 0;
@@ -137,13 +137,13 @@ class ForwardLayoutInference : public TokenProcessor {
   const std::vector<Token>& local_tokens() const { return local_tokens_; }
 
  protected:
-  void VisitEllipsisAxis(const Token* token, int64_t input_index,
-                         int64_t output_index) override {
-    if (token) {
-      local_tokens_.push_back(*token);
-    }
-    expander_value_sharding_.push_back(input_sharding_[input_index]);
-    expander_input_sharding_.push_back(input_sharding_[input_index]);
+  void VisitEllipsisAxis(const Token& token) override {
+    local_tokens_.push_back(token);
+  }
+
+  void VisitImplicitAxis(int64_t input_index, int64_t output_index) override {
+    expander_input_sharding_.push_back(input_sharding_[output_index]);
+    expander_value_sharding_.push_back(input_sharding_[output_index]);
   }
 
   void VisitShrinkAxis(const Token& token, int64_t input_index,
@@ -232,11 +232,11 @@ class BackwardLayoutInference : public TokenProcessor {
   const std::vector<Token>& local_tokens() const { return local_tokens_; }
 
  protected:
-  void VisitEllipsisAxis(const Token* token, int64_t input_index,
-                         int64_t output_index) override {
-    if (token) {
-      local_tokens_.push_back(*token);
-    }
+  void VisitEllipsisAxis(const Token& token) override {
+    local_tokens_.push_back(token);
+  }
+
+  void VisitImplicitAxis(int64_t input_index, int64_t output_index) override {
     expander_input_sharding_.push_back(value_sharding_[output_index]);
     expander_value_sharding_.push_back(value_sharding_[output_index]);
   }

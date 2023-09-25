@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/cell_reader-inl.h"
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
-#include "tensorflow/tsl/lib/monitoring/cell_reader.h"
+#include "tsl/lib/monitoring/cell_reader.h"
 // NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {
 namespace monitoring {

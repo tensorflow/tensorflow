@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/threadpool.h"
+#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace thread {

@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <optional>
+#include <vector>
+
 #include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
@@ -49,6 +53,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
+#include "tensorflow/dtensor/mlir/topological_iterator.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -103,7 +108,7 @@ mlir::Operation* NextTFOp(mlir::Operation* op) {
 // this function is an no-op.
 mlir::LogicalResult UpdateResourceArgumentType(
     const int arg_index, mlir::func::FuncOp function,
-    absl::optional<mlir::RankedTensorType> new_subtype = absl::nullopt) {
+    std::optional<mlir::RankedTensorType> new_subtype = std::nullopt) {
   auto resource_arg = function.getArgument(arg_index);
   if (new_subtype) {
     auto new_var_type = mlir::RankedTensorType::get(
@@ -329,7 +334,7 @@ mlir::LogicalResult ConductSPMDExpansion(mlir::ModuleOp module) {
   TopologicalIterator iterator(main_func);
   while (iterator.hasNext()) {
     mlir::Operation* op = iterator.next();
-    absl::optional<mlir::func::FuncOp> func = MaybeFindFunction(op);
+    std::optional<mlir::func::FuncOp> func = MaybeFindFunction(op);
     if (func.has_value()) {
       if (mlir::failed(
               UpdateFunctionWithLocalInputShapes(op->getOpOperands(), *func)))

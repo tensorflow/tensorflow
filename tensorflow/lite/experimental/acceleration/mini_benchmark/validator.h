@@ -93,8 +93,16 @@ class Validator {
   Validator& operator=(Validator&&) = delete;
 
  private:
+  // An opaque version of Interpreter::TfLiteDelegatePtr.
+  using TfLiteOpaqueDelegatePtr =
+      std::unique_ptr<TfLiteOpaqueDelegateStruct,
+                      void (*)(TfLiteOpaqueDelegateStruct*)>;
+
   // Load delegate plugin and create delegate.
   MinibenchmarkStatus LoadDelegate();
+
+  // Retrieves a stable delegate and creates an opaque delegate.
+  MinibenchmarkStatus LoadOpaqueDelegate();
 
   // Create the interpreter with the delegate. Must be called after
   // LoadDelegate().
@@ -118,6 +126,8 @@ class Validator {
   std::unique_ptr<FlatBufferModel> model_;
   ::tflite::delegates::TfLiteDelegatePtr delegate_ =
       delegates::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  TfLiteOpaqueDelegatePtr opaque_delegate_ =
+      TfLiteOpaqueDelegatePtr(nullptr, [](TfLiteOpaqueDelegate*) {});
   std::unique_ptr<tflite::delegates::DelegatePluginInterface> delegate_plugin_;
   int validation_entrypoint_index_ = -1;
   Subgraph* validation_entrypoint_ = nullptr;

@@ -172,6 +172,7 @@ TEST(FourBitTest, BytesRequiredOdd) {
 TEST(TestMakeUniqueTensor, Valid) {
   TensorUniquePtr t = BuildTfLiteTensor(kTfLiteInt32, {2, 3}, kTfLiteDynamic);
   ASSERT_NE(t.get(), nullptr);
+  ASSERT_EQ(t->buffer_handle, kTfLiteNullBufferHandle);
 
   EXPECT_THAT(t.get(), DimsAre({2, 3}));
   EXPECT_EQ(t->bytes, 24);

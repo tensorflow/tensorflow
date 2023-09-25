@@ -151,6 +151,23 @@ filegroup(
     srcs = TFLITE_HEADERS,
 )
 
+# LINT.IfChange(tflite_acceleration_exported_headers)
+filegroup(
+    name = "tflite_acceleration_headers",
+    srcs = [
+        "//tensorflow/lite/acceleration/configuration/c:delegate_plugin.h",
+        "//tensorflow/lite/acceleration/configuration/c:gpu_plugin.h",
+        "//tensorflow/lite/acceleration/configuration/c:xnnpack_plugin.h",
+        "//tensorflow/lite/core/acceleration/configuration/c:delegate_plugin.h",
+        "//tensorflow/lite/core/acceleration/configuration/c:gpu_plugin.h",
+        "//tensorflow/lite/core/acceleration/configuration/c:xnnpack_plugin.h",
+    ],
+)
+# LINT.ThenChange(
+#     ../acceleration/configuration/c/BUILD:tflite_acceleration_exported_headers,
+#     ../core/acceleration/configuration/c/BUILD:tflite_acceleration_exported_headers
+# )
+
 #-----------------------------------------------------------------------------
 # AAR targets.
 

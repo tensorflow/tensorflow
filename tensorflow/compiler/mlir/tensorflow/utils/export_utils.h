@@ -57,7 +57,7 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
 // "name" and "device" attributes are ignored by default. Use attrs_to_ignore to
 // specify any other attributes that should be ignored.
 Status ConvertAttributes(
-    const llvm::ArrayRef<mlir::NamedAttribute> attrs,
+    llvm::ArrayRef<mlir::NamedAttribute> attrs,
     const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
     bool remove_ref_type, AttrValueMap* values);
 

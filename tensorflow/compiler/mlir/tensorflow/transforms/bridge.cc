@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -25,14 +26,16 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/inference/inference_passes.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
+#include "tsl/platform/error_logging.h"
 
 namespace mlir {
 namespace {
@@ -44,7 +47,7 @@ void EnableDetailedLogging(PassManager *pm,
   // multi-threading as well.
   pm->getContext()->disableMultithreading();
   pm->enableIRPrinting(std::make_unique<::tensorflow::DataDumperLoggerConfig>(
-      [module_name](const std::string &pass_tag_name) {
+      [module_name](const std::string &pass_tag_name, mlir::Operation *op) {
         return DEBUG_DATA_DUMPER()->GetDumpFilename(
             module_name.str(), kDebugGroupBridgePhase1, pass_tag_name);
       },
@@ -52,6 +55,10 @@ void EnableDetailedLogging(PassManager *pm,
       /*print_module_scope=*/true));
   pm->enableTiming();
 }
+
+// Name of component for error logging. This name is fixed and required to
+// enable logging.
+constexpr char kBridgeComponent[] = "TFXLABridge";
 }  // namespace
 
 namespace TFTPU {
@@ -131,6 +138,8 @@ void CreateTPUBridgePipelineImpl(
   const llvm::SmallVector<std::string, 4> ops_to_preserve = {
       "tf.TPUReplicateMetadata", "tf.TPUCompilationResult",
       "tf.TPUReplicatedOutput"};
+  bool strict_clusters =
+      tensorflow::GetMlirCommonFlags()->tf_mlir_enable_strict_clusters;
   pm.addNestedPass<func::FuncOp>(
       tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
   // It is assumed at this stage there are no V1 control flow ops as Graph
@@ -148,8 +157,14 @@ void CreateTPUBridgePipelineImpl(
   pm.addNestedPass<func::FuncOp>(
       CreateTPUReorderReplicateAndPartitionedInputsPass());
   pm.addNestedPass<func::FuncOp>(TF::CreateDecomposeReduceDatasetPass());
+  // Only one of EmbeddingSequencing and EmbeddingPipelining will actually
+  // run and the logic is in EmbeddingPipeliningPass. If the pipelining pass
+  // runs, embedding attributes are stripped and the sequencing pass will have
+  // no effect. If the pipelining pass doesn't run, embedding attributes are
+  // preserved and the sequencing rewrite will trigger.
   pm.addPass(TFDevice::CreateEmbeddingPipeliningPass());
-  pm.addPass(CreateTPUClusterFormationPass());
+  pm.addPass(TFDevice::CreateEmbeddingSequencingPass());
+  pm.addPass(CreateTPUClusterFormationPass(strict_clusters));
   // CreateEmbeddingPipeliningPass may have created more functions, but
   // TPUClusterCleanup and OutsideCompiledToHostLaunch need every function to be
   // only called from one cluster. Here, we choose to fix the all-funcs-one-use
@@ -158,7 +173,7 @@ void CreateTPUBridgePipelineImpl(
   // Run TPU cluster cleanup attributes so ops with no outside compiled
   // attribute have no host device attribute.
   pm.addPass(CreateTPUClusterCleanupAttributesPass());
-  pm.addPass(CreateOutsideCompiledToHostLaunchPass());
+  pm.addPass(TFDevice::CreateOutsideCompiledToHostLaunchPass());
   pm.addNestedPass<func::FuncOp>(TFDevice::CreateDeviceAttributeToLaunchPass());
   // Running canonicalizer before decomposing resource ops in cluster helps the
   // latter pass to converge faster as it does not have to spend time folding
@@ -189,7 +204,7 @@ void CreateTPUBridgePipelineImpl(
 
   // TODO(b/173622615): This can be removed once more passes support outside
   // compilation represented by op and conversion back to attribute is removed.
-  pm.addPass(CreateOutsideCompiledToHostLaunchPass());
+  pm.addPass(TFDevice::CreateOutsideCompiledToHostLaunchPass());
   // Note that the region-based control-flow produced here still contains
   // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
@@ -210,19 +225,22 @@ void CreateTPUBridgePipelineImpl(
   // op.
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
 
-  // TODO(b/173622615): This should incrementally be moved down as
-  // more passes support this representation and then can be removed once
-  // all passes support it.
-  pm.addPass(TFDevice::CreateHostLaunchToOutsideCompiledPass());
   pm.addNestedPass<func::FuncOp>(createCSEPass());
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_merge_control_flow_pass) {
     pm.addPass(TFDevice::CreateMergeControlFlowPass());
   }
 
+  // TODO(b/173622615): This should incrementally be moved down as
+  // more passes support this representation and then can be removed once
+  // all passes support it.
+  pm.addPass(TFDevice::CreateHostLaunchToOutsideCompiledPass());
+
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(TFDevice::CreateExtractHeadTailOutsideCompilationPass());
   pm.addPass(TFDevice::CreateExtractOutsideCompilationPass());
+  pm.addNestedPass<func::FuncOp>(
+      TFDevice::CreateVerifyNoOutsideCompilationMarkersPass());
 
   pm.addNestedPass<func::FuncOp>(TFDevice::CreateClusterConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
@@ -238,6 +256,7 @@ void CreateTPUBridgePipelineImpl(
   pm.addPass(CreateTPUAnnotateDynamicShapeInputsPass());
   pm.addPass(CreateTPURewritePass(module_name));
   pm.addPass(createSymbolDCEPass());
+  pm.addNestedPass<func::FuncOp>(TFDevice::CreateEmbeddingProgramKeyPass());
   pm.addNestedPass<func::FuncOp>(
       TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addPass(CreateTPUMergeVariablesWithExecutePass());
@@ -245,8 +264,10 @@ void CreateTPUBridgePipelineImpl(
   pm.addNestedPass<func::FuncOp>(
       TF::CreateHoistReplicateInvariantResourceWritesPass());
   pm.addNestedPass<func::FuncOp>(CreateTPUColocateCompositeResourceOps());
-  pm.addPass(CreateTPUVariableRuntimeReformattingPass());
-  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_tpu_variable_runtime_reformatting_pass) {
+    pm.addPass(CreateTPUVariableRuntimeReformattingPass());
+  }
 }
 }  // namespace
 
@@ -258,6 +279,8 @@ void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
+  pm.addPass(tf2xla::internal::CreateInferenceMetricsPass());
+
   // Convert to unified compilation and replication attributes.
   pm.addNestedPass<func::FuncOp>(
       TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
@@ -274,6 +297,7 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandOutliningPass());
   OpPassManager &nested_module = pm.nest<ModuleOp>();
   CreateTPUBridgePipelineImpl(nested_module);
+
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
   // There are cases where we don't consume all compilation and replication
   // attributes like we do for the V2 pipeline, so we need to convert them from
@@ -285,6 +309,10 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
 
 tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
                              llvm::StringRef module_name) {
+  VLOG(2)
+      << "TPU Bridge called stack trace is "
+      << "(NOTE: this is not an error; rather the stack trace for debugging) : "
+      << tensorflow::CurrentStackTrace();
   Status status = RunTFXLABridge(
       module,
       [module_name](OpPassManager &pm) {
@@ -305,9 +333,18 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
   tsl::OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
       status);
+  if (!status.ok()) {
+    tsl::error_logging::Log(kBridgeComponent, "TFXLA_PHASE_ONE_MLIR_TPU_BRIDGE",
+                            status.ToString())
+        .IgnoreError();
+  }
   return status;
 }
 tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool fallback_enabled) {
+  VLOG(2)
+      << "TPU V1 Compat Bridge called stack trace is "
+      << "(NOTE: this is not an error; rather the stack trace for debugging) : "
+      << tensorflow::CurrentStackTrace();
   Status status = RunTFXLABridge(module, [](OpPassManager &pm) {
     CreateTPUBridgePipelineV1(pm);
     // Add set of passes to lower back to graph (from tf_executor).
@@ -315,6 +352,12 @@ tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool fallback_enabled) {
   });
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v1", fallback_enabled, status.ok() ? "success" : "failure");
+  if (!status.ok()) {
+    tsl::error_logging::Log(kBridgeComponent,
+                            "TFXLA_PHASE_ONE_MLIR_TPU_V1_COMPAT_BRIDGE",
+                            status.ToString())
+        .IgnoreError();
+  }
   return status;
 }
 
@@ -330,6 +373,7 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
     pm.addPass(CreateBreakUpIslandsPass());
   };
 
+  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
   add_pass(CreateFunctionalToExecutorDialectConversionPass());
   add_pass(TFDevice::CreateReplicateToIslandPass(/*legacy_graph_export=*/true));
   add_pass(TFDevice::CreateReplicaIDToDeviceOrdinalPass());
@@ -348,6 +392,8 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
 }
 
 void AddGraphExportLoweringPassesV2(OpPassManager &pm) {
+  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
+
   // First, we need to convert from functional, to executor dialect.
   pm.addNestedPass<func::FuncOp>(
       CreateFunctionalToExecutorDialectConversionPass());
@@ -409,6 +455,8 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   VLOG(2) << "Create TF XLA Bridge pipeline";
   pm.addNestedPass<func::FuncOp>(
       TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
+  // This pass expectes unified compilation markers.
+  pm.addPass(TFDevice::CreateXlaValidateInputsPass());
   const llvm::SmallVector<std::string, 4> ops_to_preserve = {};
   pm.addNestedPass<func::FuncOp>(
       tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
@@ -461,7 +509,12 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   // Outline clusters into cluster functions.
   pm.addPass(TFDevice::CreateClusterOutliningPass());
   // Rewrite cluster functions into XLA  launch ops.
-  pm.addPass(TFDevice::CreateXlaRewritePass());
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_generic_outside_compilation) {
+    pm.addPass(TFDevice::CreateXlaRewriteV2Pass());
+  } else {
+    pm.addPass(TFDevice::CreateXlaRewritePass());
+  }
   // Re-run the canonicalizer pass as some cleanup during resource op lifting
   // pass opens up some opportunities for canonicalization of cluster ops.
   // Specifically, we want to eliminate pass through results from the cluster
@@ -470,23 +523,32 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
 
   pm.addNestedPass<func::FuncOp>(createCSEPass());
   pm.addPass(createSymbolDCEPass());
-  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 
 tensorflow::Status RunTFXLABridge(ModuleOp module,
                                   llvm::StringRef module_name) {
+  VLOG(2)
+      << "CPU/GPU Bridge called stack trace is "
+      << "(NOTE: this is not an error; rather the stack trace for debugging) : "
+      << tensorflow::CurrentStackTrace();
   Status status = mlir::TFTPU::RunTFXLABridge(
       module,
       [](OpPassManager &pm) {
         CreateTFXLABridgePipeline(pm);
         // Add set of passes to lower back to graph (from tf_executor).
-        TF::AddGraphExportLoweringPasses(pm);
+        TF::AddGraphExportLoweringPassesV2(pm);
       },
       module_name);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
       /*fallback_enabled*/ false,
       /*result*/ status.ok() ? "success" : "failure");
+  if (!status.ok()) {
+    tsl::error_logging::Log(kBridgeComponent,
+                            "TFXLA_PHASE_ONE_MLIR_CPU/GPU_BRIDGE",
+                            status.ToString())
+        .IgnoreError();
+  }
   return status;
 }
 

@@ -30,10 +30,10 @@ from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion_registry
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -168,7 +168,7 @@ class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
     return self._v.initial_value
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     return self._v.op
 
   def value(self):
@@ -230,6 +230,19 @@ class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
                                                          options, **kwargs)
     object_map[self] = object_map[self._v]
     return resource_list
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """For implementing `Trackable`."""
+    # Create a copy of `self._v` to object_map, then create a new copy of self
+    # that wraps the copy of `self._v`.
+    # When updating value, only the lowest-level variable will actually do that,
+    # the copy of `AggregatingVariable` is more like a shell.
+    self._v._copy_trackable_to_cpu(object_map)  # pylint:disable=protected-access
+    if self not in object_map:
+      # If copy of `self` not populated yet, initialize one.
+      object_map[self] = AggregatingVariable(self._distribute_strategy,
+                                             object_map[self._v],
+                                             self._aggregation)
 
   # pylint: disable=multiple-statements
   def __add__(self, o):
@@ -414,7 +427,7 @@ class CachingVariable(resource_variable_ops.BaseResourceVariable, core.Tensor):
     return self._v.initial_value
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     return self._v.op
 
   def value(self):
@@ -494,7 +507,7 @@ class CachingVariable(resource_variable_ops.BaseResourceVariable, core.Tensor):
   @classmethod
   def _overload_overloadable_operators(cls):
     """Register overloads for all operators."""
-    for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
+    for operator in tensor.Tensor.OVERLOADABLE_OPERATORS:
       # Overloading __eq__ or __ne__ does not work as expected.
       if operator == "__eq__" or operator == "__ne__":
         continue
@@ -502,8 +515,8 @@ class CachingVariable(resource_variable_ops.BaseResourceVariable, core.Tensor):
 
   @classmethod
   def _tensor_overload_operator(cls, operator):
-    """Delegate an operator overload to `ops.Tensor`."""
-    tensor_operator = getattr(ops.Tensor, operator)
+    """Delegate an operator overload to `tensor.Tensor`."""
+    tensor_operator = getattr(tensor.Tensor, operator)
 
     def _operator(v, *args, **kwargs):
       return tensor_operator(v.value(), *args, **kwargs)  # pylint: disable=protected-access
@@ -521,6 +534,17 @@ class CachingVariable(resource_variable_ops.BaseResourceVariable, core.Tensor):
                                                          options, **kwargs)
     object_map[self] = object_map[self._v]
     return resource_list
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """For implementing `Trackable`."""
+    # Create a copy of `self._v` to object_map, then create a new copy of self
+    # that wraps the copy of `self._v`.
+    # When updating value, only the lowest-level variable will actually do that,
+    # the copy of `CachingVariable` is more like a shell.
+    self._v._copy_trackable_to_cpu(object_map)  # pylint:disable=protected-access
+    if self not in object_map:
+      # If copy of `self` not populated yet, initialize one.
+      object_map[self] = CachingVariable(object_map[self._v])
 
 
 # Register a conversion function which reads the value of the variable,
@@ -548,18 +572,45 @@ CachingVariable._overload_overloadable_operators()  # pylint: disable=protected-
 class PerWorkerVariable(resource_variable_ops.BaseResourceVariable):
   """A wrapper around unsynced variables created on workers.
 
-  Overrides the Variable's handle to use the appropriate worker's variable
-  handle at call time. In doing so this class can support the built-in
-  `Variable` methods, but it is experimental.
+  `PerWorkerVariable`s are variables that are stored on workers and not
+  synchronized. A `PerWorkerVariable` is really a wrapper around multiple
+  independent `Variable`s stored on independent worker machines. 
+  `PerWorkerVariable` is currently only tested and supported when used with
+  `ParameterServerStrategy`. A `PerWorkerVariable` can be created by creating a
+  `Variable` within strategy scope and using the `per_worker_variable` flag,
+  e.g.:
 
-  All per-worker values can be read and retrieved as a list via
+  ```
+  with strategy.scope():
+    var = tf.Variable(initial_value=0.0, per_worker_variable=True)
+  ```
+
+  The implementation modifies the graph to ensure that a worker's local version
+  of the variable is used for computation at call time, while needing only one
+  function trace and requiring no code changes beyond the `per_worker_variable`
+  flag. `PerWorkerVariable`s can thus be treated like a standard `Variable`, but
+  support is experimental and not all ops have been tested.
+
+  All per-worker values can be retrieved and read into a list via
   `PerWorkerVariable.read_all()`.
+
+  Caveats:
+    - `PerWorkerVariable`s should not be used as direct inputs to a
+      `tf.function`. That is, they should not appear in a tf.function header as
+      an input argument. However they can still be read and manipulated in a
+      `tf.function`.
+    - The `shape` argument must be fully-defined (no `None` entries) or left
+      empty. Partially-defined shapes are not yet supported.
+    - Automatic control dependencies do not work with `PerWorkerVariable`s, so
+      returning a `PerWorkerVariable` is not supported, and `read_all()` should 
+      be used to retrieve values. (TODO: b/286052052)
+    - `PerWorkerVariable`s should not be created within a `tf.function`.
   """
 
   def __init__(self, strategy, next_creator, **kwargs):
     self._coordinator = strategy._cluster_coordinator
     self._per_worker_vars = None
-    self._next_creator = functools.partial(next_creator, **kwargs)
+    self._var_creator = functools.partial(next_creator, **kwargs)
 
     self._coordinator_instance = next_creator(**kwargs)
 
@@ -571,18 +622,15 @@ class PerWorkerVariable(resource_variable_ops.BaseResourceVariable):
       self._in_graph_mode = kwargs["in_graph_mode"]
 
     self._cached_value = None
-    self._shape = (
-        tensor_shape.as_shape(kwargs["shape"]) if kwargs.get("shape") else None
-    )
-    self._dtype = (
-        dtypes.as_dtype(kwargs["dtype"]) if kwargs.get("dtype") else None
-    )
+    self._shape = self._coordinator_instance.shape
+    self._dtype = self._coordinator_instance.dtype
     self._trainable = False  # not supported
     self._unique_id = kwargs.get("unique_id")
     if kwargs.get("handle_name") is None:
       self._handle_name = "Variable:0"
     else:
       self._handle_name = kwargs["handle_name"] + ":0"
+    self._validate_shape = kwargs.get("validate_shape", True)
 
   @classmethod
   def _variable_call(cls, *args, **kwargs):
@@ -591,11 +639,14 @@ class PerWorkerVariable(resource_variable_ops.BaseResourceVariable):
 
   @property
   def handle(self):
-    self._maybe_create_per_worker_vars()
-    closure, spec = self.handle_call_time_value()
-    return ops.get_default_graph().capture_call_time_value(
-        closure,
-        spec)
+    if context.executing_eagerly() or save_context.in_save_context():
+      return self._coordinator_instance.handle
+    else:
+      self._maybe_create_per_worker_vars()
+      closure, spec = self.handle_call_time_value()
+      return ops.get_default_graph().capture_call_time_value(
+          closure,
+          spec)
 
   def handle_call_time_value(self):
     """Returns a closure to run for a handle at call time and its spec.
@@ -614,19 +665,29 @@ class PerWorkerVariable(resource_variable_ops.BaseResourceVariable):
       else:
         # Only needed for tracing
         return self._coordinator_instance.handle
-
-    return closure, tensor_spec.TensorSpec(
-        shape=self.shape, dtype=dtypes.resource)
+    return closure, PerWorkerVariableSpec(
+        value=self._coordinator_instance.handle)
 
   def _maybe_create_per_worker_vars(self):
     """Create variable on each worker if it hasn't been created."""
     if not self._per_worker_vars:
       self._per_worker_vars = (
-          self._coordinator._create_per_worker_resources(self._next_creator))  # pylint: disable=protected-access
+          self._coordinator._create_per_worker_variables(self._var_creator))  # pylint: disable=protected-access
 
   def read_all(self):
     """Synchronously read variables from all workers into a list of Tensors."""
     return [wv.get() for wv in self._per_worker_vars._values]  # pylint: disable=protected-access
+
+
+class PerWorkerVariableSpec(tensor.TensorSpec):
+  def __init__(self, value=None, name=None):
+    super().__init__(value.shape, value.dtype, name=name)
+    self._value = value
+
+  def placeholder_value(self, placeholder_context):
+    placeholder = super().placeholder_value(placeholder_context)
+    handle_data_util.set_handle_data(placeholder, self._value._handle_data)  # pylint: disable=protected-access
+    return placeholder
 
 
 class DistributedTable(lookup_ops.StaticHashTable):
@@ -708,7 +769,7 @@ class DistributedTable(lookup_ops.StaticHashTable):
       else:
         return self._coordinator_instance.resource_handle
 
-    return closure, tensor_spec.TensorSpec([], dtype=dtypes.resource)
+    return closure, tensor.TensorSpec([], dtype=dtypes.resource)
 
   def _maybe_build_distributed_table(self):
     """Create table objects and resources on each worker if hasn't been created."""
@@ -834,7 +895,7 @@ class RestoredDistributedTable(DistributedTable):
 
         return self._coordinator_instance.resource_handle
 
-    return closure, tensor_spec.TensorSpec(shape=(), dtype=dtypes.resource)
+    return closure, tensor.TensorSpec(shape=(), dtype=dtypes.resource)
 
   def __setattr__(self, name, value):
     if name in TRACKABLE_RESOURCE_METHODS:

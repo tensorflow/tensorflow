@@ -30,13 +30,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
-namespace {
-
-bool Equal(const ShardingSpec& a, const ShardingSpec& b) {
-  return a.sharding_spec() == b.sharding_spec();
-}
-
-}  // namespace
 
 // Einsum, like reductions, is implemented as a local operation followed by
 // an all-reduce over dimensions that have been reduced.
@@ -150,10 +143,10 @@ Status ExtractEquationRelations(
 // sharding specs we raise an error if replicate_incompatible_dimensions is
 // false. Otherwise we treat the dimension as if it were unsharded.
 // Labels with unsharded dimensions are not recorded in the output.
-StatusOr<absl::flat_hash_map<char, ShardingSpec>> GetLabelToShardingSpec(
+StatusOr<absl::flat_hash_map<char, std::string>> GetLabelToShardingSpec(
     bool replicate_incompatible_dimensions, const std::vector<Layout>& layouts,
     const std::vector<absl::flat_hash_map<char, std::vector<int>>>& mappings) {
-  absl::flat_hash_map<char, ShardingSpec> label_to_sharding_spec;
+  absl::flat_hash_map<char, std::string> label_to_sharding_spec;
   absl::flat_hash_set<char> incompatible_labels;
 
   // For each mapping, identify the mesh dimension and whether it has been
@@ -171,23 +164,23 @@ StatusOr<absl::flat_hash_map<char, ShardingSpec>> GetLabelToShardingSpec(
                   layouts[index].rank())
                   .str());
 
-        const ShardingSpec& sharding_spec = layouts[index].dim(offset);
+        const std::string& sharding_spec = layouts[index].sharding_spec(offset);
 
         if (label_to_sharding_spec.contains(mapping.first)) {
-          if (Layout::IsShardedSpec(sharding_spec) &&
-              !Equal(label_to_sharding_spec[mapping.first], sharding_spec)) {
+          if (Layout::IsShardedDimension(sharding_spec) &&
+              label_to_sharding_spec[mapping.first] != sharding_spec) {
             if (!replicate_incompatible_dimensions)
               return errors::InvalidArgument(
                   llvm::formatv(
                       "incompatible mesh dimensions in equation, label '{0}' "
                       "is mapped to mesh dimension '{1}' and '{2}'",
-                      mapping.first, sharding_spec.sharding_spec(),
-                      label_to_sharding_spec[mapping.first].sharding_spec())
+                      mapping.first, sharding_spec,
+                      label_to_sharding_spec[mapping.first])
                       .str());
             else
               incompatible_labels.insert(mapping.first);
           }
-        } else if (Layout::IsShardedSpec(sharding_spec)) {
+        } else if (Layout::IsShardedDimension(sharding_spec)) {
           label_to_sharding_spec[mapping.first] = sharding_spec;
         }
       }
@@ -205,42 +198,41 @@ StatusOr<absl::flat_hash_map<char, ShardingSpec>> GetLabelToShardingSpec(
 // multiple times. E.g. ab,bc->ac (i.e. matmul) with a and c sharded over the
 // same dim. In this case we mark all such dimensions as replicated.
 StatusOr<Layout> VerifyOrFixLayout(
-    std::pair<std::vector<ShardingSpec>, absl::flat_hash_map<std::string, int>>
+    std::pair<std::vector<std::string>, absl::flat_hash_map<std::string, int>>
         pair,
     const Mesh& mesh) {
-  std::vector<ShardingSpec> sharding_specs = pair.first;
+  std::vector<std::string> sharding_specs = pair.first;
   absl::flat_hash_map<std::string, int> dimension_use_count = pair.second;
   for (int i = 0; i < sharding_specs.size(); ++i)
-    if (Layout::IsShardedSpec(sharding_specs[i]) &&
-        dimension_use_count[sharding_specs[i].sharding_spec()] > 1)
-      sharding_specs[i].set_sharding_spec(Layout::kUnshardedDim);
+    if (Layout::IsShardedDimension(sharding_specs[i]) &&
+        dimension_use_count[sharding_specs[i]] > 1)
+      sharding_specs[i] = Layout::kUnshardedDim;
   return Layout::GetLayout(sharding_specs, mesh);
 }
 
 // Construct a layout on a given mesh from the label to tensor dimension map
 // and the label to mesh_dimension map.
-std::pair<std::vector<ShardingSpec>, absl::flat_hash_map<std::string, int>>
+std::pair<std::vector<std::string>, absl::flat_hash_map<std::string, int>>
 GetSpecsFromLabelsAndMap(
     const absl::flat_hash_map<char, std::vector<int>>& label_to_index,
-    const absl::flat_hash_map<char, ShardingSpec>& label_to_sharding_spec) {
+    const absl::flat_hash_map<char, std::string>& label_to_sharding_spec) {
   int layout_rank = 0;
   for (const auto& label_and_indices : label_to_index)
     layout_rank += label_and_indices.second.size();
 
-  std::vector<ShardingSpec> sharding_specs(layout_rank);
+  std::vector<std::string> sharding_specs(layout_rank);
   absl::flat_hash_map<std::string, int> dimension_use_count;
   absl::flat_hash_set<std::string> dimension_use_set;
   for (const auto& label_and_indices : label_to_index) {
     const auto& loc = label_to_sharding_spec.find(label_and_indices.first);
     if (loc != label_to_sharding_spec.end()) {
-      const ShardingSpec& sharding_spec = loc->second;
+      const std::string& sharding_spec = loc->second;
       for (int index : label_and_indices.second)
         sharding_specs[index] = sharding_spec;
-      dimension_use_count[sharding_spec.sharding_spec()] +=
-          label_and_indices.second.size();
+      dimension_use_count[sharding_spec] += label_and_indices.second.size();
     } else {
       for (int index : label_and_indices.second)
-        sharding_specs[index].set_sharding_spec(Layout::kUnshardedDim);
+        sharding_specs[index] = Layout::kUnshardedDim;
     }
   }
   return std::make_pair(sharding_specs, dimension_use_count);
@@ -353,11 +345,11 @@ StatusOr<llvm::DenseMap<int, Layout>> EinsumSPMDExpander::ComputeLayoutBackward(
   for (size_t i = 0; i < num_inputs; ++i) {
     absl::flat_hash_map<char, std::vector<int>> labels_to_indices =
         input_mappings[i];
-    std::pair<std::vector<ShardingSpec>, absl::flat_hash_map<std::string, int>>
+    std::pair<std::vector<std::string>, absl::flat_hash_map<std::string, int>>
         sharding_specs_and_dim_count = GetSpecsFromLabelsAndMap(
             labels_to_indices, output_label_to_sharding_spec);
 
-    std::vector<ShardingSpec> sharding_specs =
+    std::vector<std::string> sharding_specs =
         sharding_specs_and_dim_count.first;
     absl::flat_hash_map<std::string, int> dim_count =
         sharding_specs_and_dim_count.second;
@@ -367,7 +359,7 @@ StatusOr<llvm::DenseMap<int, Layout>> EinsumSPMDExpander::ComputeLayoutBackward(
       char label = label_to_indices.first;
       if (labels_for_any.contains(label)) {
         int index = label_to_indices.second[0];
-        sharding_specs[index].set_sharding_spec(Layout::kAny);
+        sharding_specs[index] = Layout::kAny;
       }
     }
     TF_ASSIGN_OR_RETURN(
@@ -422,13 +414,12 @@ Status EinsumSPMDExpander::MaybeRelayoutInputs(
   for (const char label : all_labels) {
     if (input_label_to_sharding_spec.contains(label) &&
         output_label_to_sharding_spec.contains(label) &&
-        !Equal(input_label_to_sharding_spec[label],
-               output_label_to_sharding_spec.find(label)->second))
+        input_label_to_sharding_spec[label] !=
+            output_label_to_sharding_spec.find(label)->second)
       return errors::InvalidArgument(
           "for label ", label, " input and output layouts are sharded on ",
-          " non-equal dimensions ",
-          input_label_to_sharding_spec[label].sharding_spec(), " and ",
-          output_label_to_sharding_spec.find(label)->second.sharding_spec(),
+          " non-equal dimensions ", input_label_to_sharding_spec[label],
+          " and ", output_label_to_sharding_spec.find(label)->second,
           "respectively");
   }
 
@@ -438,23 +429,21 @@ Status EinsumSPMDExpander::MaybeRelayoutInputs(
   for (const auto& input_mapping : input_mappings)
     for (const auto& char_and_positions : input_mapping)
       if (char_and_positions.second.size() > 1)
-        input_label_to_sharding_spec[char_and_positions.first]
-            .set_sharding_spec(Layout::kUnshardedDim);
+        input_label_to_sharding_spec[char_and_positions.first] =
+            Layout::kUnshardedDim;
 
   absl::flat_hash_map<std::string, absl::flat_hash_set<char>>
       sharding_dim_to_non_contracting_labels;
   absl::flat_hash_map<std::string, absl::flat_hash_set<char>>
       sharding_dim_to_contracting_labels;
   for (const auto& label_and_spec : input_label_to_sharding_spec) {
-    if (Layout::IsShardedSpec(label_and_spec.second)) {
+    if (Layout::IsShardedDimension(label_and_spec.second)) {
       if (contracting_labels.contains(label_and_spec.first))
-        sharding_dim_to_contracting_labels[label_and_spec.second
-                                               .sharding_spec()]
-            .insert(label_and_spec.first);
+        sharding_dim_to_contracting_labels[label_and_spec.second].insert(
+            label_and_spec.first);
       else
-        sharding_dim_to_non_contracting_labels[label_and_spec.second
-                                                   .sharding_spec()]
-            .insert(label_and_spec.first);
+        sharding_dim_to_non_contracting_labels[label_and_spec.second].insert(
+            label_and_spec.first);
     }
   }
 
@@ -469,12 +458,11 @@ Status EinsumSPMDExpander::MaybeRelayoutInputs(
     if (!contracting_labels.contains(label) &&
         output_label_to_sharding_spec.contains(label) &&
         !input_label_to_sharding_spec.contains(label)) {
-      const ShardingSpec& sharding_spec =
+      const std::string& string_spec =
           output_label_to_sharding_spec.find(label)->second;
-      const std::string& string_spec = sharding_spec.sharding_spec();
       if (!sharding_dim_to_non_contracting_labels.contains(string_spec) &&
           !sharding_dim_to_contracting_labels.contains(string_spec)) {
-        input_label_to_sharding_spec[label] = sharding_spec;
+        input_label_to_sharding_spec[label] = string_spec;
         sharding_dim_to_non_contracting_labels[string_spec].insert(label);
       }
     }
@@ -503,8 +491,7 @@ Status EinsumSPMDExpander::MaybeRelayoutInputs(
     // keep this stable with respect to ordering.
     for (const char label : sharding_dim_to_non_contracting_labels[dim]) {
       if (output_label_to_sharding_spec.contains(label) &&
-          output_label_to_sharding_spec.find(label)->second.sharding_spec() ==
-              dim) {
+          output_label_to_sharding_spec.find(label)->second == dim) {
         label_to_keep = label;
         break;
       } else if (label < label_to_keep) {
@@ -513,8 +500,7 @@ Status EinsumSPMDExpander::MaybeRelayoutInputs(
     }
     for (const char label : sharding_dim_to_non_contracting_labels[dim])
       if (label != label_to_keep)
-        input_label_to_sharding_spec[label].set_sharding_spec(
-            Layout::kUnshardedDim);
+        input_label_to_sharding_spec[label] = Layout::kUnshardedDim;
     sharding_dim_to_non_contracting_labels[dim].clear();
     sharding_dim_to_non_contracting_labels[dim].insert(label_to_keep);
   }
@@ -530,8 +516,8 @@ Status EinsumSPMDExpander::MaybeRelayoutInputs(
       assert(spec_and_labels.second.size() == 1);
       assert(sharding_dim_to_non_contracting_labels[spec_and_labels.first]
                  .size() == 1);
-      input_label_to_sharding_spec[*spec_and_labels.second.begin()]
-          .set_sharding_spec(Layout::kUnshardedDim);
+      input_label_to_sharding_spec[*spec_and_labels.second.begin()] =
+          Layout::kUnshardedDim;
     }
   }
 
@@ -557,8 +543,7 @@ Status EinsumSPMDExpander::MaybeRelayoutInputs(
                         output_layout.mesh()));
 
   for (const auto& contracting : contracting_labels)
-    reduce_dims.emplace(
-        input_label_to_sharding_spec[contracting].sharding_spec());
+    reduce_dims.emplace(input_label_to_sharding_spec[contracting]);
 
   return OkStatus();
 }

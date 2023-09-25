@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -370,6 +370,51 @@ TEST_F(InferenceTest, EllipsisMask) {
   EXPECT_EQ(backward->local_tokens()[0].end, 0);
   EXPECT_EQ(backward->local_tokens()[1].end, 0);
   EXPECT_EQ(backward->local_tokens()[2].end, 0);
+}
+
+TEST_F(InferenceTest, EllipsisNewAxisEndMask) {
+  const Layout input_layout = *Layout::GetLayout(
+      std::vector<std::string>{Layout::kUnshardedDim}, GetMesh());
+  const Layout output_layout = *Layout::GetLayout(
+      std::vector<std::string>{Layout::kUnshardedDim, Layout::kUnshardedDim},
+      GetMesh());
+  const auto specs = std::vector<Token>{
+      Token(Token::ELLIPSIS, /*begin=*/0, /*end=*/0, /*stride=*/1,
+            /*dynamic_mask=*/false,
+            /*begin_mask=*/false,
+            /*end_mask=*/false),
+      Token(Token::NEW_AXIS, /*begin=*/0, /*end=*/0, /*stride=*/1,
+            /*dynamic_mask=*/false,
+            /*begin_mask=*/false,
+            /*end_mask=*/false),
+      Token(Token::REGULAR, /*begin=*/0, /*end=*/0, /*stride=*/1,
+            /*dynamic_mask=*/false,
+            /*begin_mask=*/true,
+            /*end_mask=*/true),
+  };
+  auto forward = CreateAndRun<ForwardLayoutInference>(specs, input_layout,
+                                                      std::vector<int64_t>{2});
+  ASSERT_THAT(forward, IsOk());
+  EXPECT_EQ(forward->expander_input_layout().sharding_spec_strs(),
+            std::vector<std::string>({Layout::kUnshardedDim}));
+  EXPECT_EQ(forward->expander_value_layout(), output_layout);
+  EXPECT_THAT(forward->local_tokens(), SizeIs(3));
+  EXPECT_EQ(forward->local_tokens()[0].end, 0);
+  EXPECT_EQ(forward->local_tokens()[1].end, 0);
+  EXPECT_EQ(forward->local_tokens()[2].end, 2);
+
+  auto backward = CreateAndRun<BackwardLayoutInference>(
+      specs, output_layout, std::vector<int64_t>{2});
+  ASSERT_THAT(backward, IsOk());
+  EXPECT_EQ(
+      backward->expander_value_layout().sharding_spec_strs(),
+      std::vector<std::string>({Layout::kUnshardedDim, Layout::kUnshardedDim}));
+  EXPECT_EQ(backward->expander_input_layout().sharding_spec_strs(),
+            std::vector<std::string>({Layout::kUnshardedDim}));
+  EXPECT_THAT(backward->local_tokens(), SizeIs(3));
+  EXPECT_EQ(backward->local_tokens()[0].end, 0);
+  EXPECT_EQ(backward->local_tokens()[1].end, 0);
+  EXPECT_EQ(backward->local_tokens()[2].end, 2);
 }
 
 TEST_F(InferenceTest, AdditionalAxes) {

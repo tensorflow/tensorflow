@@ -340,9 +340,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteOk;
   }
   if (IsConstantOrPersistentTensor(op_context.input) &&
+      IsConstantOrPersistentTensor(op_context.begin) &&
       IsConstantOrPersistentTensor(op_context.end)) {
     SetTensorToPersistentRo(op_context.output);
-    ResizeOutputTensor(context, &op_context);
+    TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
     op_data->noop = true;
     return EvalImpl<kGenericOptimized>(context, node);
   }

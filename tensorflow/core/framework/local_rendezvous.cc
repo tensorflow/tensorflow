@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/refcount.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/refcount.h"
 
 namespace tensorflow {
 
@@ -380,10 +380,11 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
   delete item;
 }
 
-mutex LocalRendezvous::aborted_rendezs_mu_;
+mutex& LocalRendezvous::aborted_rendezs_mu_ = *new mutex();
 
-std::vector<tsl::core::RefCountPtr<Rendezvous> >
-    LocalRendezvous::aborted_rendezs_;
+std::vector<tsl::core::RefCountPtr<Rendezvous> >&
+    LocalRendezvous::aborted_rendezs_ =
+        *new std::vector<tsl::core::RefCountPtr<Rendezvous> >();
 
 void LocalRendezvous::StartAbort(const Status& status) {
   DoAbort(status);
