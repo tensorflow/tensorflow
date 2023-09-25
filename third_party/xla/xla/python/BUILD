@@ -1071,6 +1071,7 @@ cc_library(
         ":weakref_lru_cache",
         ":xla_compiler",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:initialize",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -1089,6 +1090,7 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:tfrt_cpu_pjrt_client",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
         "//xla/pjrt/distributed:protocol_proto_cc",
