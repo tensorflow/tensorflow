@@ -122,8 +122,15 @@ Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
     // The row ids are just the sample ids which is the first dim of the
     // indices.
     auto indices_matrix = indices_or_row_splits.matrix<int32>();
+    int32 previous_row_id = -1;
     for (int32 i = 0; i < total_id_count; ++i) {
-      *(row_ids_before_padding + i) = indices_matrix(i, 0);
+      int32 current_row_id = indices_matrix(i, 0);
+      if (current_row_id < previous_row_id) {
+        return absl::InvalidArgumentError(
+            "Invalid indices_or_row_splits input, indices of SparseTensor need "
+            "to be sorted in ascending order.");
+      }
+      *(row_ids_before_padding + i) = current_row_id;
     }
   } else if (indices_or_row_splits.dims() == 1 &&
              indices_or_row_splits.NumElements() > 0) {
