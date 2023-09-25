@@ -904,7 +904,7 @@ tf_kernel_library(
         "//tensorflow/core/grappler/utils:symbolic_shapes",
         "//tensorflow/core/grappler/utils:topological_sort",
         "@com_google_absl//absl/container:flat_hash_set",
-    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util"]),
+    ],
 )
 
 tf_cuda_cc_test(
@@ -948,7 +948,8 @@ tf_cc_test_mkl(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
         "//tensorflow/core/grappler/utils:grappler_test",
-    ],
+    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util"]),
+
 )
 
 cc_library(

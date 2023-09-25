@@ -64,13 +64,13 @@ bool GpuSupportsHalfMatMulAndConv() {
 
 // Returns whether oneDNN should be enabled or disabled by default.
 //   - Linux: Enabled by default for CPUs with neural network features.
-//   - Windows: Enabled by default.
+//   - Windows: Enabled by default on x86 CPUs
 inline bool DefaultOneDnnPolicy() {
 #if !defined(INTEL_MKL)
   return false;
 #elif defined(PLATFORM_GOOGLE)
   return true;
-#elif defined(PLATFORM_WINDOWS)
+#elif defined(PLATFORM_WINDOWS) && defined(PLATFORM_IS_X86)
   return true;
 #elif defined(__linux__)
   return port::TestCPUFeature(port::CPUFeature::AVX512_VNNI) ||
