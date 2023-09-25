@@ -81,9 +81,14 @@ std::optional<mlir::TFL::ConstBytesAttr> CustomOptions(
     mlir::MLIRContext* context, mlir::Operation* op) {
   if (auto reserve =
           llvm::dyn_cast_or_null<mlir::TF::TensorListReserveOp>(op)) {
-    mlir::Type element_type = reserve.getElementDtype();
     tflite::TensorType tflite_type =
-        tflite::ConvertTypeToTensorType(element_type);
+        tflite::ConvertTypeToTensorType(reserve.getElementDtype());
+
+    return CreateListReserveOptions(context, tflite_type);
+  }
+  if (auto empty = llvm::dyn_cast_or_null<mlir::TF::EmptyTensorListOp>(op)) {
+    tflite::TensorType tflite_type =
+        tflite::ConvertTypeToTensorType(empty.getElementDtype());
 
     return CreateListReserveOptions(context, tflite_type);
   }
@@ -119,6 +124,9 @@ bool IsOpSupported(mlir::Operation* op) {
   }
   if (auto get_item = llvm::dyn_cast_or_null<TF::TensorListGetItemOp>(op)) {
     element_type = get_item.getElementDtype();
+  }
+  if (auto empty = llvm::dyn_cast_or_null<TF::EmptyTensorListOp>(op)) {
+    element_type = empty.getElementDtype();
   }
 
   if (!element_type.has_value()) return false;
