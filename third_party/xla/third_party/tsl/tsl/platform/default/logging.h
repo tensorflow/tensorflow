@@ -156,6 +156,12 @@ class LogMessageNull : public std::basic_ostringstream<char> {
 
 #define _TF_LOG_QFATAL _TF_LOG_FATAL
 
+#ifdef NDEBUG
+#define _TF_LOG_DFATAL _TF_LOG_ERROR
+#else
+#define _TF_LOG_DFATAL _TF_LOG_FATAL
+#endif
+
 #define LOG(severity) _TF_LOG_##severity
 
 #ifdef IS_MOBILE_PLATFORM
