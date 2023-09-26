@@ -92,6 +92,8 @@ class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
                      const std::optional<ShapeTree<int>>& root_depth);
   EinsumDepthMap::iterator GetOrCreateDepthTree(HloInstruction* instruction);
   Status SetInstructionDepth(HloInstruction* instruction, int depth);
+  Status SetInstructionDepth(HloInstruction* instruction,
+                             const ShapeTree<int>& depth);
   Status HandleDepthIncrementInstruction(HloInstruction* instruction);
   Status HandleCalledComputation(const HloComputation& called_computation,
                                  const ShapeTree<int>& root_depth,
