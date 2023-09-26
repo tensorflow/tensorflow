@@ -33,6 +33,7 @@ extern "C" {
 // number of dimensions.
 #define TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT 8
 #define TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT 8
+#define TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT 8
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
@@ -587,6 +588,22 @@ typedef enum {
 typedef struct {
   TfLiteRngAlgorithm algorithm;
 } TfLiteStablehloRngBitGeneratorParams;
+
+typedef struct {
+  // See the stablehlo spec for the explanation of the attributes:
+  // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#gather
+  int64_t offset_dims[TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_offset_dims;
+  int64_t
+      collapsed_slice_dims[TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_collapsed_slice_dims;
+  int64_t start_index_map[TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_start_index_map;
+  int64_t index_vector_dim;
+  int64_t slice_sizes[TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_slice_sizes;
+  bool indices_are_sorted;
+} TfLiteStablehloGatherParams;
 
 #ifdef __cplusplus
 }  // extern "C"
