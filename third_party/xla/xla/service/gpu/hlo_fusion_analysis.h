@@ -88,14 +88,14 @@ class HloFusionAnalysis {
   HloFusionAnalysis(FusionBackendConfig fusion_backend_config,
                     std::vector<const HloInstruction*> fusion_roots,
                     FusionBoundaryFn fusion_boundary_fn,
-                    std::vector<const HloInstruction*> fusion_parameters,
+                    std::vector<const HloInstruction*> fusion_arguments,
                     std::vector<const HloInstruction*> fusion_heroes,
                     const GpuDeviceInfo* device_info,
                     std::optional<TransposeDescription> tiled_transpose)
       : fusion_backend_config_(std::move(fusion_backend_config)),
         fusion_roots_(std::move(fusion_roots)),
         fusion_boundary_fn_(std::move(fusion_boundary_fn)),
-        fusion_parameter_inputs_(std::move(fusion_parameters)),
+        fusion_arguments_(std::move(fusion_arguments)),
         fusion_heroes_(std::move(fusion_heroes)),
         device_info_(device_info),
         tiled_transpose_(tiled_transpose) {}
@@ -123,7 +123,7 @@ class HloFusionAnalysis {
   FusionBoundaryFn fusion_boundary_fn_;
   // The HLO instructions that are inputs into the fusion. These instructions
   // are /outside/ the fusion.
-  std::vector<const HloInstruction*> fusion_parameter_inputs_;
+  std::vector<const HloInstruction*> fusion_arguments_;
   std::vector<const HloInstruction*> fusion_heroes_;
   const GpuDeviceInfo* device_info_;
   std::optional<TransposeDescription> tiled_transpose_;

@@ -119,7 +119,7 @@ void HloBfsConsumersFirstTraversal(
   }
 }
 
-void FindFusionParameters(
+void FindFusionArguments(
     absl::Span<const HloInstruction* const> roots,
     const FusionBoundaryFn& boundary,
     const std::function<void(const HloInstruction& param)>& visit) {
