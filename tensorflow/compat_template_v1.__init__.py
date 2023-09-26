@@ -14,14 +14,14 @@
 # ==============================================================================
 """Bring in all of the public TensorFlow interface into this module."""
 
-import os as _os
+# pylint: disable=g-bad-import-order,g-import-not-at-top,protected-access
+
 import sys as _sys
 import typing as _typing
 
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
-
-# pylint: disable=g-bad-import-order
+from tensorflow.python.util.lazy_loader import KerasLazyLoader as _KerasLazyLoader
 
 # API IMPORTS PLACEHOLDER
 
@@ -38,21 +38,11 @@ if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "estimator", estimator)
 
-_keras_package_name = None
-_keras_version = None
-if _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"):
-  # Users can opt out of Keras 3 with this environment variable.
-  _keras_package_name = "tf_keras.api._v1.keras"
-  _keras_version = "tf_keras"
-else:
-  _keras_package_name = "keras.api._v1.keras"
-  _keras_version = "keras_2"
+# Lazy load Keras v1
+setattr(_current_module, "keras", _KerasLazyLoader(globals(), mode="v1"))
+_module_dir = _module_util.get_parent_dir_for_name("keras.api._v1.keras")
+_current_module.__path__ = [_module_dir] + _current_module.__path__
 
-keras = _LazyLoader("keras", globals(), _keras_package_name)
-_module_dir = _module_util.get_parent_dir_for_name(_keras_package_name)
-if _module_dir:
-  _current_module.__path__ = [_module_dir] + _current_module.__path__
-setattr(_current_module, "keras", keras)
 
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
 _current_module.app.flags = flags  # pylint: disable=undefined-variable
@@ -60,44 +50,30 @@ setattr(_current_module, "flags", flags)
 
 # Add module aliases from Keras to TF.
 # Some tf endpoints actually lives under Keras.
-if hasattr(_current_module, "keras"):
-  # It is possible that keras is a lazily loaded module, which might break when
-  # actually trying to import it. Have a Try-Catch to make sure it doesn't break
-  # when it doing some very initial loading, like tf.compat.v2, etc.
-  try:
-    _layer_package = f"{_keras_package_name}.__internal__.legacy.layers"
-    layers = _LazyLoader("layers", globals(), _layer_package)
-    _module_dir = _module_util.get_parent_dir_for_name(_layer_package)
-    if _module_dir:
-      _current_module.__path__ = [_module_dir] + _current_module.__path__
-    setattr(_current_module, "layers", layers)
+_current_module.layers = _KerasLazyLoader(
+    globals(),
+    submodule="__internal__.legacy.layers",
+    name="layers",
+    mode="v1")
+for _module_dir in (
+    "keras.api._v1.keras.__internal__.legacy.layers",
+    "tf_keras.api._v1.keras.__internal__.legacy.layers"):
+  _module_dir = _module_util.get_parent_dir_for_name(_module_dir)
+  _current_module.__path__ = [_module_dir] + _current_module.__path__
 
-    _legacy_rnn_package = f"{_keras_package_name}.__internal__.legacy.rnn_cell"
-    _rnn_cell = _LazyLoader("legacy_rnn", globals(), _legacy_rnn_package)
-    _module_dir = _module_util.get_parent_dir_for_name(_legacy_rnn_package)
-    if _module_dir:
-      _current_module.nn.__path__ = [_module_dir] + _current_module.nn.__path__
-    _current_module.nn.rnn_cell = _rnn_cell
-  except ImportError:
-    pass
+_current_module.nn.rnn_cell = _KerasLazyLoader(
+    globals(),
+    submodule="__internal__.legacy.rnn_cell",
+    name="rnn_cell",
+    mode="v1")
+for _module_dir in (
+    "keras.api._v1.keras.__internal__.legacy.rnn_cell",
+    "tf_keras.api._v1.keras.__internal__.legacy.rnn_cell"):
+  _module_dir = _module_util.get_parent_dir_for_name(_module_dir)
+  _current_module.nn.__path__ = [_module_dir] + _current_module.nn.__path__
 
 # Explicitly import lazy-loaded modules to support autocompletion.
 # pylint: disable=g-import-not-at-top
 if _typing.TYPE_CHECKING:
   from tensorflow_estimator.python.estimator.api._v1 import estimator as estimator
-  try:
-    if _keras_version == "keras_2":
-      from keras.api._v1 import keras
-      from keras.api._v1.keras import losses
-      from keras.api._v1.keras import metrics
-      from keras.api._v1.keras import optimizers
-      from keras.api._v1.keras import initializers
-    elif _keras_version == "tf_keras":
-      from tf_keras.api._v1 import keras
-      from tf_keras.api._v1.keras import losses
-      from tf_keras.api._v1.keras import metrics
-      from tf_keras.api._v1.keras import optimizers
-      from tf_keras.api._v1.keras import initializers
-  except (ImportError, AttributeError):
-    pass
 # pylint: enable=g-import-not-at-top

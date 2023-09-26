@@ -27,6 +27,7 @@ from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.platform import tf_logging as _logging
 from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
+from tensorflow.python.util.lazy_loader import KerasLazyLoader as _KerasLazyLoader
 
 # API IMPORTS PLACEHOLDER
 
@@ -77,52 +78,11 @@ if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "estimator", estimator)
 
-# Keras v1 loading.
-_keras_to_use = None
-_keras_package_name = None
-_keras_version = None
-if _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"):
-  # Users can opt out of Keras 3 with this environment variable.
-  try:
-    import tf_keras.api._v1.keras as _keras_to_use
-    _keras_package_name = "tf_keras.api._v1.keras"
-    _keras_version = "tf_keras"
-  except ImportError:
-    _logging.warning(
-        "Your environment has TF_USE_LEGACY_KERAS set to True, but you "
-        "do not have the tf_keras package installed. You must install it "
-        "in order to use the legacy tf.keras. Install it via: "
-        "`pip install tf_keras`"
-    )
-else:
-  try:
-    import keras as _keras_module
-
-    if _keras_module.__version__.startswith("3."):
-      # This is the Keras 3.x case. It does not have v1 compatibility.
-      _keras_to_use = None
-      _keras_package_name = None
-      _keras_version = "keras_3"
-    else:
-      # This is the Keras 2.x case.
-      import keras.api._v1.keras as _keras_to_use
-      _keras_package_name = "keras.api._v1.keras"
-      _keras_version = "keras_2"
-  except (ImportError, AttributeError):
-    pass
-
-if _keras_to_use is not None:
-  _module_dir = _module_util.get_parent_dir_for_name(_keras_package_name)
-  if _module_dir:
-    _current_module.__path__ = [_module_dir] + _current_module.__path__
-  setattr(_current_module,
-          "keras",
-          _LazyLoader("keras", globals(), _keras_package_name))
-else:
-    # TF will not have `tf.keras` in this case. This should not be silent.
-  _logging.warning("Unable to load `tf.keras`. Check that the `keras` package "
-                   "is installed.")
-
+# Lazy-load Keras v1.
+setattr(_current_module, "keras", _KerasLazyLoader(globals(), mode="v1"))
+for _module_dir in ("keras._tf_keras.keras", "keras.api._v1.keras"):
+  _module_dir = _module_util.get_parent_dir_for_name(_module_dir)
+  _current_module.__path__ = [_module_dir] + _current_module.__path__
 
 _CONTRIB_WARNING = """
 The TensorFlow contrib module will not be included in TensorFlow 2.0.
@@ -149,39 +109,28 @@ _major_api_version = 1
 
 # Add module aliases from Keras to TF.
 # Some tf endpoints actually lives under Keras.
-if (hasattr(_current_module, "keras") and
-    _keras_version in ("tf_keras", "keras_2")):
-  # It is possible that keras is a lazily loaded module, which might break when
-  # actually trying to import it. Have a Try-Catch to make sure it doesn't break
-  # when it doing some very initial loading, like tf.compat.v2, etc.
-  try:
-    _layer_package = f"{_keras_package_name}.__internal__.legacy.layers"
-    layers = _LazyLoader("layers", globals(), _layer_package)
-    _module_dir = _module_util.get_parent_dir_for_name(_layer_package)
-    if _module_dir:
-      _current_module.__path__ = [_module_dir] + _current_module.__path__
-    setattr(_current_module, "layers", layers)
+_current_module.layers = _KerasLazyLoader(
+    globals(),
+    submodule="__internal__.legacy.layers",
+    name="layers",
+    mode="v1")
+for _module_dir in (
+    "keras.api._v1.keras.__internal__.legacy.layers",
+    "tf_keras.api._v1.keras.__internal__.legacy.layers"):
+  _module_dir = _module_util.get_parent_dir_for_name(_module_dir)
+  _current_module.__path__ = [_module_dir] + _current_module.__path__
 
-    _legacy_rnn_package = f"{_keras_package_name}.__internal__.legacy.rnn_cell"
-    _rnn_cell = _LazyLoader("legacy_rnn", globals(), _legacy_rnn_package)
-    _module_dir = _module_util.get_parent_dir_for_name(_legacy_rnn_package)
-    if _module_dir:
-      _current_module.nn.__path__ = [_module_dir] + _current_module.nn.__path__
-    _current_module.nn.rnn_cell = _rnn_cell
-  except ImportError:
-    pass
+_current_module.nn.rnn_cell = _KerasLazyLoader(
+    globals(),
+    submodule="__internal__.legacy.rnn_cell",
+    name="rnn_cell",
+    mode="v1")
+for _module_dir in (
+    "keras.api._v1.keras.__internal__.legacy.rnn_cell",
+    "tf_keras.api._v1.keras.__internal__.legacy.rnn_cell"):
+  _module_dir = _module_util.get_parent_dir_for_name(_module_dir)
+  _current_module.nn.__path__ = [_module_dir] + _current_module.nn.__path__
 
-  # Do an eager load for Keras' code so that any function/method that needs to
-  # happen at load time will trigger, eg registration of optimizers in the
-  # SavedModel registry.
-  # See b/196254385 for more details.
-  try:
-    if _keras_version == "keras_2":
-      importlib.import_module("keras.src.optimizers")
-    elif _keras_version == "tf_keras":
-      importlib.import_module("tf_keras.src.optimizers")
-  except (ImportError, AttributeError):
-    pass
 del importlib
 
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
@@ -234,18 +183,6 @@ if _os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH", ""):
 # Explicitly import lazy-loaded modules to support autocompletion.
 if _typing.TYPE_CHECKING:
   from tensorflow_estimator.python.estimator.api._v1 import estimator as estimator
-  if _keras_version == "keras_2":
-    from keras.api._v1 import keras
-    from keras.api._v1.keras import losses
-    from keras.api._v1.keras import metrics
-    from keras.api._v1.keras import optimizers
-    from keras.api._v1.keras import initializers
-  elif _keras_version == "tf_keras":
-    from tf_keras.api._v1 import keras
-    from tf_keras.api._v1.keras import losses
-    from tf_keras.api._v1.keras import metrics
-    from tf_keras.api._v1.keras import optimizers
-    from tf_keras.api._v1.keras import initializers
 
 # Delete modules that should be hidden from dir().
 # Don't fail if these modules are not available.

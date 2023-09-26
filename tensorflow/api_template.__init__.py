@@ -38,6 +38,7 @@ import typing as _typing
 
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
+from tensorflow.python.util.lazy_loader import KerasLazyLoader as _KerasLazyLoader
 
 # Make sure code inside the TensorFlow codebase can use tf2.enabled() at import.
 _os.environ["TF2_BEHAVIOR"] = "1"
@@ -87,52 +88,11 @@ if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "estimator", estimator)
 
-# Keras v2 loading.
-_keras_to_use = None
-_keras_package_name = None
-_keras_version = None
-if _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"):
-  # Users can opt out of Keras 3 with this environment variable.
-  try:
-    import tf_keras.api._v2.keras as _keras_to_use
-
-    _keras_package_name = "tf_keras.api._v2.keras"
-    _keras_version = "tf_keras"
-  except ImportError:
-    _logging.warning(
-        "Your environment has TF_USE_LEGACY_KERAS set to True, but you "
-        "do not have the tf_keras package installed. You must install it "
-        "in order to use the legacy tf.keras. Install it via: "
-        "`pip install tf_keras`"
-    )
-else:
-  try:
-    import keras as _keras_module
-
-    if _keras_module.__version__.startswith("3."):
-      # This is the Keras 3.x case.
-      _keras_to_use = _keras_module._tf_keras
-      _keras_package_name = "keras._tf_keras.keras"
-      _keras_version = "keras_3"
-    else:
-      # This is the Keras 2.x case.
-      import keras.api._v2.keras as _keras_to_use
-      _keras_package_name = "keras.api._v2.keras"
-      _keras_version = "keras_2"
-  except (ImportError, AttributeError):
-    pass
-
-if _keras_to_use is not None:
-  _module_dir = _module_util.get_parent_dir_for_name(_keras_package_name)
-  if _module_dir:
-    _current_module.__path__ = [_module_dir] + _current_module.__path__
-  setattr(_current_module,
-          "keras",
-          _LazyLoader("keras", globals(), _keras_package_name))
-else:
-    # TF will not have `tf.keras` in this case. This should not be silent.
-  _logging.warning("Unable to load `tf.keras`. Check that the `keras` package "
-                   "is installed.")
+# Lazy-load Keras v2/3.
+setattr(_current_module, "keras", _KerasLazyLoader(globals()))
+for _module_dir in ("keras._tf_keras.keras", "keras.api._v2.keras"):
+  _module_dir = _module_util.get_parent_dir_for_name(_module_dir)
+  _current_module.__path__ = [_module_dir] + _current_module.__path__
 
 
 # Enable TF2 behaviors
@@ -189,62 +149,36 @@ if _os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH", ""):
       _os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH")
   )
 
-# Add module aliases
-if hasattr(_current_module, "keras"):
-  # It is possible that keras is a lazily loaded module, which might break when
-  # actually trying to import it. Have a Try-Catch to make sure it doesn't break
-  # when it doing some very initial loading, like tf.compat.v2, etc.
-  try:
-    _losses = _LazyLoader("losses", globals(), _keras_package_name + ".losses")
-    _metrics = _LazyLoader(
-        "metrics", globals(), _keras_package_name + ".metrics")
-    _optimizers = _LazyLoader(
-        "optimizers", globals(), _keras_package_name + ".optimizers")
-    _initializers = _LazyLoader(
-        "initializers", globals(), _keras_package_name + ".initializers")
-    setattr(_current_module, "losses", _losses)
-    setattr(_current_module, "metrics", _metrics)
-    setattr(_current_module, "optimizers", _optimizers)
-    setattr(_current_module, "initializers", _initializers)
-  except ImportError:
-    pass
+# Add Keras module aliases
+_losses = _KerasLazyLoader(globals(), submodule="losses", name="losses")
+_metrics = _KerasLazyLoader(globals(), submodule="metrics", name="metrics")
+_optimizers = _KerasLazyLoader(
+    globals(), submodule="optimizers", name="optimizers")
+_initializers = _KerasLazyLoader(
+    globals(), submodule="initializers", name="initializers")
+setattr(_current_module, "losses", _losses)
+setattr(_current_module, "metrics", _metrics)
+setattr(_current_module, "optimizers", _optimizers)
+setattr(_current_module, "initializers", _initializers)
 
-  # Do an eager load for Keras' code so that any function/method that needs to
-  # happen at load time will trigger, eg registration of optimizers in the
-  # SavedModel registry.
-  # See b/196254385 for more details.
-  try:
-    if _keras_version == "keras_2":
-      importlib.import_module("keras.src.optimizers")
-    elif _keras_version == "tf_keras":
-      importlib.import_module("tf_keras.src.optimizers")
-  except (ImportError, AttributeError):
-    pass
+
+# Do an eager load for Keras' code so that any function/method that needs to
+# happen at load time will trigger, eg registration of optimizers in the
+# SavedModel registry.
+# See b/196254385 for more details.
+try:
+  if _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"):
+    importlib.import_module("tf_keras.src.optimizers")
+  else:
+    importlib.import_module("keras.src.optimizers")
+except (ImportError, AttributeError):
+  pass
 
 del importlib
 
 # Explicitly import lazy-loaded modules to support autocompletion.
 if _typing.TYPE_CHECKING:
   from tensorflow_estimator.python.estimator.api._v2 import estimator as estimator
-
-  if _keras_version == "keras_2":
-    from keras.api._v2 import keras
-    from keras.api._v2.keras import losses
-    from keras.api._v2.keras import metrics
-    from keras.api._v2.keras import optimizers
-    from keras.api._v2.keras import initializers
-  elif _keras_version == "tf_keras":
-    from tf_keras.api._v2 import keras
-    from tf_keras.api._v2.keras import losses
-    from tf_keras.api._v2.keras import metrics
-    from tf_keras.api._v2.keras import optimizers
-    from tf_keras.api._v2.keras import initializers
-  elif _keras_version == "keras_3":
-    from keras._tf_keras import keras
-    from keras._tf_keras.keras import losses
-    from keras._tf_keras.keras import metrics
-    from keras._tf_keras.keras import optimizers
-    from keras._tf_keras.keras import initializers
 
 # pylint: enable=undefined-variable
 
