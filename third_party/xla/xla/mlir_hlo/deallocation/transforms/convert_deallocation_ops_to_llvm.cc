@@ -41,7 +41,7 @@ struct NullOpLowering : public ConvertOpToLLVMPattern<NullOp> {
   LogicalResult matchAndRewrite(
       NullOp nullOp, OpAdaptor,
       ConversionPatternRewriter& rewriter) const override {
-    rewriter.replaceOpWithNewOp<LLVM::NullOp>(
+    rewriter.replaceOpWithNewOp<LLVM::ZeroOp>(
         nullOp, LLVM::LLVMPointerType::get(rewriter.getContext(), 0));
     return success();
   }
