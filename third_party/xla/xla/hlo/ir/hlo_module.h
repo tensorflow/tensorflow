@@ -563,6 +563,14 @@ class HloModule {
     autofdo_profile_keys_[profile_type] = std::string(profile_key);
   }
 
+  void set_autofdo_profile_keys(
+      const absl::flat_hash_map<HloModuleProto::ProfileType, std::string>&
+          profile_keys) {
+    for (const auto& [profile_type, profile_key] : profile_keys) {
+      autofdo_profile_keys_[profile_type] = profile_key;
+    }
+  }
+
   const absl::flat_hash_map<HloModuleProto::ProfileType, std::string>&
   autofdo_profile_keys() const {
     return autofdo_profile_keys_;
