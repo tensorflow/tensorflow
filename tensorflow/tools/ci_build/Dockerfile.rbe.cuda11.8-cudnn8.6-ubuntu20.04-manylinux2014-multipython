@@ -31,9 +31,6 @@ RUN apt-get update && apt-get install -y \
       && \
     rm -rf /var/lib/apt/lists/*
 
-COPY install/install_bazel.sh /install/
-RUN /install/install_bazel.sh
-
 COPY install/build_and_install_python.sh /install/
 RUN /install/build_and_install_python.sh "3.9.4"
 RUN /install/build_and_install_python.sh "3.10.0"
