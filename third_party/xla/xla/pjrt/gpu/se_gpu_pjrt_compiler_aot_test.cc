@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -158,6 +160,37 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
       compiler.Compile(xla::CompileOptions(), computation, *topology, nullptr));
   TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
                           se_client->Load(std::move(executable)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
+  ValidateResult(result);
+}
+
+TEST(StreamExecutorGpuCompilerTest, SuccessLoadFromSerializedExecutable) {
+  ASSERT_OK_AND_ASSIGN(const gpu::GpuTargetConfig gpu_config,
+                       GetGpuTargetConfig());
+  CompileOptions options = xla::CompileOptions();
+  StreamExecutorGpuCompiler compiler(gpu_config);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
+                                              /*node_id=*/0));
+  auto se_client = absl::WrapUnique(
+      tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
+  TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      compiler.Compile(xla::CompileOptions(), computation, *topology, nullptr));
+
+  // Serialize the executable and load it.
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
+                          executable->SerializeExecutable());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto loaded_executable,
+      se_client->LoadSerializedExecutable(serialized_executable, std::nullopt,
+                                          LoadOptions()));
+
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
   ValidateResult(result);

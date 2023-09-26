@@ -55,6 +55,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt:stream_executor_unloaded_executable",
+        "//xla/pjrt:stream_executor_unloaded_executable_proto_cc",
         "//xla/pjrt:tracked_device_buffer",
         "//xla/pjrt:utils",
         "//xla/pjrt/distributed:client",

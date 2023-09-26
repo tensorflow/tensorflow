@@ -62,13 +62,21 @@ limitations under the License.
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/gpu/nccl_id_store.h"
+#include "xla/pjrt/stream_executor_unloaded_executable.pb.h"
+#include "xla/service/gpu/gpu_compiler.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
+#include "xla/xla.pb.h"
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
+#include "xla/pjrt/compile_options.pb.h"  // NOLINT(build/include)
 #include "xla/pjrt/gpu/nccl_id_store.h"  // NOLINT(build/include)
+#include "xla/pjrt/stream_executor_unloaded_executable.pb.h"  // NOLINT(build/include)
+#include "xla/service/gpu/gpu_compiler.h"  // NOLINT(build/include)
+#include "xla/xla.pb.h"  // NOLINT(build/include)
 #endif  // TENSORFLOW_USE_ROCM
 
 #include "xla/client/client_library.h"
@@ -522,6 +530,51 @@ PjRtFuture<absl::Status> StreamExecutorGpuClient::CopyRawSubBufferToHost(
             "StreamExecutorGpuClient::CopyRawSubBufferToHost",
             keys.traceme_context_id);
       });
+}
+
+namespace {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+StatusOr<std::unique_ptr<StreamExecutorUnloadedExecutable>> FromProto(
+    const StreamExecutorUnloadedExecutableProto& proto) {
+  TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
+                      CompileOptions::FromProto(proto.compile_options()));
+  std::vector<std::unique_ptr<xla::AotCompilationResult>>
+      deserialized_aot_executables;
+  for (const auto& executable : proto.executables()) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<xla::AotCompilationResult> deserialized,
+        gpu::GpuXlaRuntimeAotCompilationResult::FromString(executable));
+    deserialized_aot_executables.push_back(std::move(deserialized));
+  }
+  return std::make_unique<StreamExecutorUnloadedExecutable>(
+      compile_options, std::move(deserialized_aot_executables),
+      proto.num_replicas(), proto.num_partitions(), proto.name());
+}
+#endif
+}  // namespace
+
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+StreamExecutorGpuClient::LoadSerializedExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options,
+    const LoadOptions& load_options) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  StreamExecutorUnloadedExecutableProto proto;
+  if (serialized.size() > std::numeric_limits<int>::max()) {
+    return Internal(
+        "PjRtStreamExecutorClient::DeserializeExecutable proto too large "
+        "(>2GB)");
+  }
+  if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
+    return Internal(
+        "StreamExecutorGpuClient::DeserializeExecutable proto deserialization "
+        "failed");
+  }
+  TF_ASSIGN_OR_RETURN(auto se_executable, FromProto(proto));
+  // TODO(b/296466237): Unify the `Load` method.
+  return Load(std::move(se_executable));
+#endif
+  return absl::InternalError(
+      "LoadSerializedExecutable only works with cuda or rocm.");
 }
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(

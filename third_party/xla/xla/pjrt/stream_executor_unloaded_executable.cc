@@ -15,17 +15,28 @@ limitations under the License.
 
 #include "xla/pjrt/stream_executor_unloaded_executable.h"
 
+#include <memory>
 #include <string>
 
-#include "absl/status/status.h"
+#include "xla/pjrt/stream_executor_unloaded_executable.pb.h"
+#include "xla/service/compiler.h"
 #include "xla/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
-// TODO(b/296466237): Add serialization.
 StatusOr<std::string> StreamExecutorUnloadedExecutable::SerializeExecutable()
     const {
-  return absl::UnimplementedError(
-      "StreamExecutorUnloadedExecutable::SerializeExecutable() not "
-      "implemented");
+  StreamExecutorUnloadedExecutableProto proto;
+  TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                      compile_options_.ToProto());
+  for (const std::unique_ptr<xla::AotCompilationResult>& aot_executable :
+       aot_executables_) {
+    TF_ASSIGN_OR_RETURN(*proto.add_executables(),
+                        aot_executable->SerializeAsString());
+  }
+  proto.set_num_replicas(num_replicas_);
+  proto.set_num_partitions(num_partitions_);
+  proto.set_name(name_);
+  return proto.SerializeAsString();
 }
 }  // namespace xla
