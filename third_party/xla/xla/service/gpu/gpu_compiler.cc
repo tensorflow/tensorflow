@@ -921,7 +921,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     sub_pipeline.AddPass<FloatNormalization>(&f8e4m3fnuz_support);
     // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
     if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
-      sub_pipeline.AddPass<SimplifyFPConversions>();
+      sub_pipeline.AddPass<SimplifyFPConversions>(
+          SimplifyFPConversions::Scope::kSimplifyAllConversions);
     }
   };
 
