@@ -160,6 +160,38 @@ cc_library(
 )
 
 cc_library(
+    name = "sparse_core_xla_ops",
+    srcs = ["sparse_core_xla_ops.cc"],
+    hdrs = ["sparse_core_xla_ops.h"],
+    deps = [
+        ":sparse_core_ops_utils",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla:literal_util",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/client/lib:constants",
+        "@local_xla//xla/client/lib:slicing",
+        "@local_xla//xla/stream_executor/tpu:c_api_decl",
+        "@local_xla//xla/stream_executor/tpu:status_helper",
+        "@local_xla//xla/stream_executor/tpu:tpu_api",
+        "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "sparse_core_ops_stats_handler",
     hdrs = ["sparse_core_ops_stats_handler.h"],
 )

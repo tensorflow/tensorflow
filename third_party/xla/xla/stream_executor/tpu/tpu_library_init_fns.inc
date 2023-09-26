@@ -111,6 +111,7 @@ tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
                TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation);
   TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_DedupDataTupleMaskComputation);
 
+  TFTPU_SET_FN(ops_api_fn, SparseCore_GetMaxIdsAndUniques);
   return tsl::OkStatus();
 }
 
