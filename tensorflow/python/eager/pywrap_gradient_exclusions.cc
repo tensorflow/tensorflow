@@ -50,7 +50,7 @@ auto OpGradientInfoInit(const T &a) {
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 366> a = {{
+  static std::array<OpIndexInfo, 363> a = {{
       {"Acosh"},
       {"AllToAll", 1, {0}},
       {"ApproximateEqual"},
@@ -96,9 +96,6 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"CropAndResize", 1, {3}},
       {"CrossReplicaSum", 1, {0}},
       {"Cumsum", 1, {0}},
-      {"DebugGradientIdentity"},
-      {"DebugGradientRefIdentity"},
-      {"DebugIdentityV2"},
       {"DecodeBase64"},
       {"DecodePaddedRaw"},
       {"DecodeProtoV2"},
@@ -429,7 +426,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 485> a = {{
+  static std::array<OpIndexInfo, 482> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -507,9 +504,6 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"CrossReplicaSum"},
       {"Cumprod"},
       {"Cumsum"},
-      {"DebugGradientIdentity"},
-      {"DebugGradientRefIdentity"},
-      {"DebugIdentityV2"},
       {"DecodeBase64"},
       {"DecodePaddedRaw"},
       {"DecodeRaw"},
