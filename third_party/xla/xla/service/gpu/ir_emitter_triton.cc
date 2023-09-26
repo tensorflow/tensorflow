@@ -1604,6 +1604,68 @@ StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
   return llvmModule;
 }
 
+namespace {
+
+std::string GetLibdevicePath(const HloComputation* hlo_computation) {
+  return nvptx::LibDevicePath(hlo_computation->parent()
+                                  ->config()
+                                  .debug_options()
+                                  .xla_gpu_cuda_data_dir());
+}
+
+}  // namespace
+
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
+    const TritonFusionAnalysis& analysis, absl::string_view fn_name,
+    const HloComputation* hlo_computation, const GpuDeviceInfo& device_info,
+    const AutotuneResult::TritonGemmKey& config, TritonIrEmitter ir_emitter,
+    mlir::MLIRContext& mlir_context) {
+  mlir_context.loadDialect<mt::TritonDialect>();
+  mlir::OpBuilder b(&mlir_context);
+  auto loc = mlir::NameLoc::get(b.getStringAttr(hlo_computation->name()));
+  mlir::OwningOpRef<mlir::ModuleOp> triton_module =
+      llvm_ir::CreateMlirModuleOp(loc);
+  b.setInsertionPointToEnd(triton_module->getBody());
+
+  // Build Triton kernel.
+  SmallVector<Type> fn_arg_types;
+  for (HloInstruction* p : hlo_computation->parameter_instructions()) {
+    fn_arg_types.push_back(mt::PointerType::get(
+        StorageType(b, TritonType(b, p->shape().element_type())),
+        mn::kGlobalMemorySpace));
+  }
+
+  for (const ShapeUtil::IndexedShape& s :
+       ShapeUtil::GetLeafShapes(hlo_computation->root_instruction()->shape())) {
+    fn_arg_types.push_back(mt::PointerType::get(
+        StorageType(b, TritonType(b, s.shape.element_type())),
+        mn::kGlobalMemorySpace));
+  }
+
+  auto fn = b.create<mt::FuncOp>(loc, fn_name,
+                                 b.getFunctionType(fn_arg_types, std::nullopt));
+  for (int i = 0; i < fn.getNumArguments(); ++i) {
+    fn.setArgAttr(i, "tt.divisibility", b.getIntegerAttr(b.getI32Type(), 16));
+  }
+  fn.addEntryBlock();
+  b.setInsertionPointToStart(&fn.front());
+
+  TF_RETURN_IF_ERROR(ir_emitter(b, GetLibdevicePath(hlo_computation), analysis,
+                                hlo_computation, fn, config,
+                                device_info.shared_memory_per_block_optin));
+
+  b.create<mt::ReturnOp>(loc);
+
+  VLOG(6) << llvm_ir::DumpToString(*triton_module);
+  if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
+    DumpToFileInDirOrStdout(*hlo_computation->parent(), "triton_ir", "ttir",
+                            llvm_ir::DumpToString(*triton_module));
+  }
+
+  CHECK(mlir::succeeded(mlir::verify(*triton_module)));
+  return std::move(triton_module);
+}
+
 StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloComputation* hlo_computation, absl::string_view fusion_kind,
@@ -1647,58 +1709,13 @@ StatusOr<TritonWrapperResult> TritonWrapper(
     }
   }
 
-  mlir_context.loadDialect<mt::TritonDialect>();
-  mlir::OpBuilder b(&mlir_context);
-  auto loc = mlir::NameLoc::get(b.getStringAttr(hlo_computation->name()));
-  mlir::OwningOpRef<mlir::ModuleOp> triton_module =
-      llvm_ir::CreateMlirModuleOp(loc);
-  b.setInsertionPointToEnd(triton_module->getBody());
+  TF_ASSIGN_OR_RETURN(
+      auto triton_module,
+      CreateTritonModule(analysis, fn_name, hlo_computation, device_info,
+                         config, ir_emitter, mlir_context));
 
   VLOG(3) << hlo_computation->ToString(HloPrintOptions::ShortParsable());
   VLOG(2) << config.ShortDebugString();
-
-  // Build Triton kernel.
-  SmallVector<Type> fn_arg_types;
-  for (HloInstruction* p : hlo_computation->parameter_instructions()) {
-    fn_arg_types.push_back(mt::PointerType::get(
-        StorageType(b, TritonType(b, p->shape().element_type())),
-        mn::kGlobalMemorySpace));
-  }
-
-  for (const ShapeUtil::IndexedShape& s :
-       ShapeUtil::GetLeafShapes(hlo_computation->root_instruction()->shape())) {
-    fn_arg_types.push_back(mt::PointerType::get(
-        StorageType(b, TritonType(b, s.shape.element_type())),
-        mn::kGlobalMemorySpace));
-  }
-
-  auto fn = b.create<mt::FuncOp>(loc, fn_name,
-                                 b.getFunctionType(fn_arg_types, std::nullopt));
-  for (int i = 0; i < fn.getNumArguments(); ++i) {
-    fn.setArgAttr(i, "tt.divisibility", b.getIntegerAttr(b.getI32Type(), 16));
-  }
-  fn.addEntryBlock();
-  b.setInsertionPointToStart(&fn.front());
-
-  const std::string libdevice_path =
-      nvptx::LibDevicePath(hlo_computation->parent()
-                               ->config()
-                               .debug_options()
-                               .xla_gpu_cuda_data_dir());
-
-  TF_RETURN_IF_ERROR(ir_emitter(b, libdevice_path, analysis, hlo_computation,
-                                fn, config,
-                                device_info.shared_memory_per_block_optin));
-
-  b.create<mt::ReturnOp>(loc);
-
-  VLOG(6) << llvm_ir::DumpToString(*triton_module);
-  if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
-    DumpToFileInDirOrStdout(*hlo_computation->parent(), "triton_ir", "ttir",
-                            llvm_ir::DumpToString(*triton_module));
-  }
-
-  CHECK(mlir::succeeded(mlir::verify(*triton_module)));
 
   // Compile Triton kernel to LLVM.
   mlir::PassManager pm(&mlir_context);
@@ -1765,9 +1782,10 @@ StatusOr<TritonWrapperResult> TritonWrapper(
     return ResourceExhausted("Shared memory size limit exceeded.");
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> ll_triton_module,
-                      TranslateLLVMToLLVMIR(&llvm_module->getContext(),
-                                            *triton_module, libdevice_path));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<llvm::Module> ll_triton_module,
+      TranslateLLVMToLLVMIR(&llvm_module->getContext(), *triton_module,
+                            GetLibdevicePath(hlo_computation)));
   LogAndVerify(ll_triton_module.get());
 
   // Integrate LLVM matmul kernel into XLA's LLVM module.

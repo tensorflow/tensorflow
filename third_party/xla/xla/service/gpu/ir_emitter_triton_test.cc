@@ -25,12 +25,16 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gemm_rewriter_triton.h"
 #include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -38,6 +42,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/xla.pb.h"
@@ -85,6 +90,135 @@ class TritonGemmNoTF32Test : public TritonGemmTest {
  private:
   bool tf32_state_;
 };
+
+class TritonFilecheckTest : public TritonGemmTest {
+ public:
+  StatusOr<bool> CreateTritonIrAndFileCheck(
+      absl::string_view hlo_text, const AutotuneResult::TritonGemmKey& config,
+      TritonIrEmitter emitter, absl::string_view triton_fusion_name,
+      absl::string_view filecheck_pattern);
+};
+
+StatusOr<bool> TritonFilecheckTest::CreateTritonIrAndFileCheck(
+    absl::string_view hlo_text, const AutotuneResult::TritonGemmKey& config,
+    TritonIrEmitter emitter, absl::string_view triton_fusion_name,
+    absl::string_view filecheck_pattern) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
+                      ParseAndReturnVerifiedModule(hlo_text));
+
+  auto* computation =
+      verified_module->GetComputationWithName(triton_fusion_name);
+  TF_ASSIGN_OR_RETURN(auto analysis,
+                      TritonFusionAnalysis::Execute(*computation));
+
+  mlir::MLIRContext context;
+  TF_ASSIGN_OR_RETURN(
+      auto module, CreateTritonModule(analysis, "triton_fn", computation,
+                                      TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                                      config, emitter, context));
+  mlir::PassManager pm(&context);
+  pm.addPass(mlir::createCanonicalizerPass());
+  TF_RET_CHECK(pm.run(module.get()).succeeded());
+
+  std::string out;
+  llvm::raw_string_ostream os(out);
+  module->print(os);
+  return RunFileCheck(out, filecheck_pattern);
+}
+
+TEST_F(TritonFilecheckTest, TestGemm) {
+  const std::string kHloText = R"(
+HloModule t, is_scheduled=true
+
+triton_gemm_r {
+  parameter_0 = s8[80,115]{1,0} parameter(0)
+  convert.3 = f32[80,115]{1,0} convert(parameter_0)
+  parameter_1 = f32[137,115]{1,0} parameter(1)
+  ROOT r.1 = f32[80,137]{1,0} dot(convert.3, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p1 = f32[137,115]{1,0} parameter(1)
+  p0 = s8[80,115]{1,0} parameter(0)
+  ROOT triton_gemm_r = f32[80,137]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_gemm_r,
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,"split_k":1,"num_stages":1,"num_warps":2}}
+})";
+  AutotuneResult::TritonGemmKey config;
+  config.set_split_k(1);
+  config.set_block_m(16);
+  config.set_block_k(32);
+  config.set_block_n(64);
+
+  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul,
+                                         "triton_gemm_r", R"(
+CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<i8> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
+CHECK-DAG:  %[[ZERO_KN:.*]] = arith.constant dense<0.000000e+00> : tensor<32x64xf32>
+CHECK-DAG:  %[[ZERO_MK:.*]] = arith.constant dense<0.000000e+00> : tensor<16x32xf32>
+CHECK-DAG:  %[[ZERO_MN:.*]] = arith.constant dense<0.000000e+00> : tensor<16x64xf32>
+CHECK-DAG:  %[[SIZE_K:.*]] = arith.constant 115 : i32
+CHECK-DAG:  %[[SIZE_M:.*]] = arith.constant 137 : i64
+CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : i64
+CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : i32
+CHECK-DAG:  %[[C80:.*]] = arith.constant 80 : i64
+CHECK-DAG:  %[[TILE_SIZE_K:.*]] = arith.constant 32 : i32
+CHECK-DAG:  %[[TILE_SIZE_N:.*]] = arith.constant 64 : i32
+CHECK-DAG:  %[[TILE_SIZE_M:.*]] = arith.constant 16 : i32
+CHECK-DAG:  %[[NUM_TILES_M:.*]] = arith.constant 5 : i32
+CHECK-DAG:  %[[GROUP_M:.*]] = arith.constant 8 : i32
+CHECK-DAG:  %[[WIDTH:.*]] = arith.constant 24 : i32
+CHECK:      %[[PID_NC:.*]] = tt.get_program_id x
+CHECK:      %[[PID_K:.*]] = tt.get_program_id z
+CHECK:      %[[GROUP_ID:.*]] = arith.divsi %[[PID_NC]], %[[WIDTH]]
+CHECK:      %[[FIRST_PID_M:.*]] = arith.muli %[[GROUP_ID]], %[[GROUP_M]]
+CHECK:      %[[MAX_M:.*]] = arith.subi %[[NUM_TILES_M]], %[[FIRST_PID_M]]
+CHECK:      %[[CMP:.*]] = arith.cmpi slt, %[[MAX_M]], %[[GROUP_M]]
+CHECK:      %[[GROUP_SIZE:.*]] = arith.select %[[CMP]], %[[MAX_M]], %[[GROUP_M]]
+CHECK:      %[[PID_M:.*]] = arith.remsi %[[PID_NC]], %[[GROUP_SIZE]]
+CHECK:      %[[TILE_INDEX_M:.*]] = arith.addi %[[FIRST_PID_M]], %[[PID_M]] : i32
+CHECK:      %[[TILE_OFFSET_M:.*]] = arith.muli %[[TILE_INDEX_M]], %[[TILE_SIZE_M]]
+CHECK:      %[[TMP:.*]] = arith.remsi %[[PID_NC]], %[[WIDTH]] : i32
+CHECK:      %[[TILE_INDEX_N:.*]] = arith.divsi %[[TMP]], %[[GROUP_SIZE]] : i32
+CHECK:      %[[TILE_OFFSET_N:.*]] = arith.muli %[[TILE_INDEX_N]], %[[TILE_SIZE_N]]
+CHECK:      %[[TILE_OFFSET_K:.*]] = arith.muli %[[PID_K]], %[[TILE_SIZE_K]]
+CHECK:      %[[LHS_PTR:.*]] = tt.make_tensor_ptr %[[LHS]]
+CHECK:      %[[LHS_TILE_PTR:.*]] = tt.advance %[[LHS_PTR]], [%[[TILE_OFFSET_M]], %[[TILE_OFFSET_K]]]
+CHECK:      %[[RHS_PTR:.*]] = tt.make_tensor_ptr %[[RHS]]
+CHECK:      %[[RHS_TILE_PTR:.*]] = tt.advance %[[RHS_PTR]], [%[[TILE_OFFSET_K]], %[[TILE_OFFSET_N]]]
+CHECK:        %[[FOR:.*]]:3 = scf.for %[[BLOCK_K:.*]] = %[[C0]] to %[[SIZE_K]] step %[[TILE_SIZE_K]]
+CHECK-SAME:       iter_args(%[[LHS_ITER_PTR:.*]] = %[[LHS_TILE_PTR]], %[[RHS_ITER_PTR:.*]] = %[[RHS_TILE_PTR]], %[[ACC:.*]] = %[[ZERO_MN]])
+CHECK:        %[[LHS_TILE:.*]] = tt.load %[[LHS_ITER_PTR]] {boundaryCheck = array<i32: 1>
+CHECK:        %[[LHS_ITER_PTR_NEXT:.*]] = tt.advance %[[LHS_ITER_PTR]], [%[[C0]], %[[TILE_SIZE_K]]]
+CHECK:        %[[RHS_TILE:.*]] = tt.load %[[RHS_ITER_PTR]] {boundaryCheck = array<i32: 0, 1>
+CHECK:        %[[RHS_ITER_PTR_NEXT:.*]] = tt.advance %[[RHS_ITER_PTR]], [%[[TILE_SIZE_K]], %[[C0]]]
+CHECK:        %[[CONVERTED:.*]] = arith.sitofp %[[LHS_TILE]] : tensor<16x32xi8> to tensor<16x32xf32>
+CHECK:        %[[TILE_K_LIMIT:.*]] = arith.subi %[[SIZE_K]], %[[BLOCK_K]] : i32
+CHECK:        %[[K_OFFSET:.*]] = arith.muli %[[PID_K]], %[[TILE_SIZE_K]] : i32
+CHECK:        %[[K_OFFSET_SPLAT_K:.*]] = tt.splat %[[K_OFFSET]] : (i32) -> tensor<32xi32>
+CHECK:        %[[K_TILE_IOTA:.*]] = tt.make_range {end = 32 : i32, start = 0 : i32} : tensor<32xi32>
+CHECK:        %[[K_OFFSETS:.*]] = arith.addi %[[K_OFFSET_SPLAT_K]], %[[K_TILE_IOTA]] : tensor<32xi32>
+CHECK:        %[[K_OFFSETS_1K:.*]] = tt.expand_dims %[[K_OFFSETS]] {axis = 0 : i32} : (tensor<32xi32>) -> tensor<1x32xi32>
+CHECK:        %[[TILE_K_LIMIT_1K:.*]] = tt.splat %[[TILE_K_LIMIT]] : (i32) -> tensor<1x32xi32>
+CHECK:        %[[LHS_INBOUNDS_1K:.*]] = arith.cmpi slt, %[[K_OFFSETS_1K]], %[[TILE_K_LIMIT_1K]] : tensor<1x32xi32>
+CHECK:        %[[LHS_INBOUNDS_MK:.*]] = tt.broadcast %[[LHS_INBOUNDS_1K]] : (tensor<1x32xi1>) -> tensor<16x32xi1>
+CHECK:        %[[LHS_MASKED:.*]] = arith.select %[[LHS_INBOUNDS_MK]], %[[CONVERTED]], %[[ZERO_MK]]
+CHECK:        %[[K_OFFSETS_K1:.*]] = tt.expand_dims %[[K_OFFSETS]] {axis = 1 : i32} : (tensor<32xi32>) -> tensor<32x1xi32>
+CHECK:        %[[TILE_K_LIMIT_K1:.*]] = tt.splat %[[TILE_K_LIMIT]] : (i32) -> tensor<32x1xi32>
+CHECK:        %[[RHS_INBOUNDS_K1:.*]] = arith.cmpi slt, %[[K_OFFSETS_K1]], %[[TILE_K_LIMIT_K1]] : tensor<32x1xi32>
+CHECK:        %[[RHS_INBOUNDS_KN:.*]] = tt.broadcast %[[RHS_INBOUNDS_K1]] : (tensor<32x1xi1>) -> tensor<32x64xi1>
+CHECK:        %[[RHS_MASKED:.*]] = arith.select %[[RHS_INBOUNDS_KN]], %[[RHS_TILE]], %[[ZERO_KN]] : tensor<32x64xi1>, tensor<32x64xf32>
+CHECK:        %[[ACC_NEXT:.*]] = tt.dot %[[LHS_MASKED]], %[[RHS_MASKED]], %[[ACC]]
+CHECK:        scf.yield %[[LHS_ITER_PTR_NEXT]], %[[RHS_ITER_PTR_NEXT]], %[[ACC_NEXT]] : !tt.ptr<tensor<16x32xi8>>, !tt.ptr<tensor<32x64xf32>>, tensor<16x64xf32>
+CHECK:      }
+CHECK:      %[[OUT_PTR:.*]] = tt.make_tensor_ptr %[[OUT]], [%[[C80]], %[[SIZE_M]]], [%[[SIZE_M]], %[[C1]]], [%[[C0]], %[[C0]]] {order = array<i32: 1, 0>} : <tensor<16x64xf32>>
+CHECK:      %[[OUT_OFFSET:.*]] = tt.advance %[[OUT_PTR]], [%[[TILE_OFFSET_M]], %[[TILE_OFFSET_N]]] : <tensor<16x64xf32>>
+CHECK:      tt.store %[[OUT_OFFSET]], %[[FOR]]#2 {boundaryCheck = array<i32: 1>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<16x64xf32>>, tensor<16x64xf32>
+CHECK:      tt.return
+CHECK:    }
+)"),
+              tsl::testing::IsOkAndHolds(true));
+}
 
 TEST_F(TritonGemmNoTF32Test, DoNotUseTensorCoresForF32) {
   const std::string kHloText = R"(
