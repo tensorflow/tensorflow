@@ -59,7 +59,6 @@ cc_library(
             ":cuda_platform_id",
             ":cuda_activation",
             "//xla/stream_executor",  # buildcleaner: keep
-            "//xla/stream_executor:executor_cache",
             "//xla/stream_executor:multi_platform_manager",
             "//xla/stream_executor:stream_executor_headers",
             "//xla/stream_executor/platform",

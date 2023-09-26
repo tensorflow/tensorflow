@@ -248,6 +248,26 @@ filegroup(
 # implementation) if they want to use StreamExecutor.
 
 cc_library(
+    name = "executor_cache",
+    srcs = ["executor_cache.cc"],
+    hdrs = ["executor_cache.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":platform",
+        ":stream_executor_headers",
+        "//xla/stream_executor/platform",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "kernel_spec",
     srcs = ["kernel_spec.cc"],
     hdrs = ["kernel_spec.h"],
@@ -376,30 +396,6 @@ cc_library(
         "@local_tsl//tsl/framework:device_id",
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/profiler/lib:traceme",
-    ],
-)
-
-cc_library(
-    name = "executor_cache",
-    srcs = ["executor_cache.cc"],
-    hdrs = ["executor_cache.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":platform",
-        ":stream_executor_headers",
-        "//xla/stream_executor/platform",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -747,6 +743,7 @@ cc_library(
         ":dnn",
         ":dnn_proto_cc",
         ":event",
+        ":executor_cache",
         ":kernel",
         ":kernel_spec",
         ":multi_platform_manager",

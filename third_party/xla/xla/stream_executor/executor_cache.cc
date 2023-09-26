@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
