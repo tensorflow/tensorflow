@@ -97,6 +97,7 @@ class TPUCompileMlirAndExecuteOpPreParallelizationConversion
             rewriter.getDenseI32ArrayAttr(constant_operand_indices),
             op.getMetadataAttr(), op.getMlirModuleAttr(),
             rewriter.getUI32IntegerAttr(tensor_operands_size),
+            op.getNumOperandsPerExecuteAttr(),
             rewriter.getDenseI32ArrayAttr(operands_with_static_shapes),
             producer_name);
 
@@ -131,7 +132,8 @@ class TPUCompileMlirAndExecuteOpConversion
         rewriter.create<tf_mlrt_tpu::CompileAndExecuteOp>(
             op.getLoc(), result_types, operands, op.getConstantOperandIndices(),
             op.getMetadataAttr(), op.getMlirModuleAttr(), op.getNumOperands(),
-            op.getOperandsWithStaticShape(), op.getProducerName());
+            op.getNumOperandsPerExecute(), op.getOperandsWithStaticShape(),
+            op.getProducerName());
 
     rewriter.replaceOp(op, compile_and_execute_op->getResults());
 
