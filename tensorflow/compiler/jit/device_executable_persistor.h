@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/log/log.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.pb.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -278,8 +279,33 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::SaveSerializedEntry(
     const XlaSerializedCacheEntry& entry) const {
   Env* env = Env::Default();
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(persistent_cache_directory_));
-  const std::string file_path = GetFilePath(entry.key());
-  return WriteBinaryProto(env, file_path, entry);
+
+  // The cache on the filesystem can be read while we're writing out the proto.
+  // To prevent reads of partially-written files, we write the proto to a temp
+  // file, then move it into place once we're done writing.  And we warn the
+  // user if these moves are not known to be atomic.
+  bool has_atomic_move = false;
+  env->HasAtomicMove(persistent_cache_directory_, &has_atomic_move)
+      .IgnoreError();
+  if (!has_atomic_move) {
+    LOG_EVERY_POW_2(WARNING)
+        << "Filesystem for XLA persistent cache at "
+        << persistent_cache_directory_
+        << " does not support atomic moves.  Therefore the persistent cache is "
+           "racy if you have multiple XLA compilations occurring "
+           "simultaneously!  You have been warned. :)";
+  }
+
+  // Write to temp location, then when that completes, atomically move into the
+  // final location.
+  std::string temp_path = io::JoinPath(
+      persistent_cache_directory_, XlaSerializedCacheKeyToString(entry.key()));
+  if (!env->CreateUniqueFileName(&temp_path, ".pb.tmp")) {
+    return absl::UnavailableError(absl::StrCat(
+        "Could not create a unique file inside ", persistent_cache_directory_));
+  }
+  TF_RETURN_IF_ERROR(WriteBinaryProto(env, temp_path, entry));
+  return env->RenameFile(temp_path, GetFilePath(entry.key()));
 }
 
 template <typename ExecutableType, typename ClientType>
