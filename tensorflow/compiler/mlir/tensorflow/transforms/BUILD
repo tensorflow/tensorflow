@@ -144,6 +144,7 @@ cc_library(
         "rewrite_util.h",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/core:framework",
         "@llvm-project//mlir:IR",
     ],
