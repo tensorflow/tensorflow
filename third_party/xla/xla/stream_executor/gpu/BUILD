@@ -90,11 +90,13 @@ cc_library(
     deps = [
         ":gpu_driver_header",
         ":gpu_executor_header",
+        ":gpu_kernel_header",
         ":gpu_stream",
         ":gpu_types_header",
         "//xla/stream_executor:stream_executor_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],

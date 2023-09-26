@@ -849,7 +849,7 @@ GpuExecutor::GetCommandBufferImplementation() {
   VLOG(2) << "Create CUDA command buffer (CUDA graph)";
   GpuGraphHandle graph = nullptr;
   TF_RETURN_IF_ERROR(GpuDriver::CreateGraph(&graph));
-  return std::make_unique<GpuCommandBuffer>(graph);
+  return std::make_unique<GpuCommandBuffer>(this, graph);
 }
 
 void* GpuExecutor::GpuContextHack() { return context_; }

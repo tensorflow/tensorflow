@@ -52,6 +52,10 @@ namespace stream_executor {
 
 class Stream;
 
+//===----------------------------------------------------------------------===//
+// ModuleHandle
+//===----------------------------------------------------------------------===//
+
 // An opaque handle to a loaded module.
 //
 // An instance of this is returned from StreamExecutor::GetModule.
@@ -71,6 +75,10 @@ class ModuleHandle {
 
 namespace internal {
 
+//===----------------------------------------------------------------------===//
+// EventInterface
+//===----------------------------------------------------------------------===//
+
 // Platform-dependent interface class for the generic Events interface, in
 // the PIMPL style.
 class EventInterface {
@@ -81,6 +89,10 @@ class EventInterface {
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(EventInterface);
 };
+
+//===----------------------------------------------------------------------===//
+// KernelInterface
+//===----------------------------------------------------------------------===//
 
 // Pointer-to-implementation object type (i.e. the KernelBase class delegates to
 // this interface) with virtual destruction. This class exists for the
@@ -107,15 +119,38 @@ class KernelInterface {
   SE_DISALLOW_COPY_AND_ASSIGN(KernelInterface);
 };
 
-// Platform-dependent interface class implementing generic CommandBuffer.
+//===----------------------------------------------------------------------===//
+// CommandBufferInterface
+//===----------------------------------------------------------------------===//
+
+// Platform-dependent interface class for implementing generic CommandBuffer.
+//
+// TODO(ezhulenev): Currently we assume that all operations between barriers
+// can execute concurrently, and it's up to the caller to insert barriers to
+// guarantee correctness. Consider adding finer grained synchronization
+// mechanism between different commands.
 class CommandBufferInterface {
  public:
   CommandBufferInterface() = default;
   virtual ~CommandBufferInterface() = default;
 
+  // Adds a kernel launch command to the command buffer.
+  virtual tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
+                             const KernelBase& kernel,
+                             const KernelArgsArrayBase& args) = 0;
+
+  // Adds a device-to-device memory copy to the command buffer.
+  virtual tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
+                                           const DeviceMemoryBase& src,
+                                           uint64_t size) = 0;
+
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(CommandBufferInterface);
 };
+
+//===----------------------------------------------------------------------===//
+// StreamInterface
+//===----------------------------------------------------------------------===//
 
 // Pointer-to-implementation object type (i.e. the Stream class delegates to
 // this interface) with virtual destruction. This class exists for the
@@ -154,6 +189,10 @@ class StreamInterface {
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamInterface);
 };
+
+//===----------------------------------------------------------------------===//
+// StreamExecutorInterface
+//===----------------------------------------------------------------------===//
 
 // Interface for the different StreamExecutor platforms (i.e. CUDA, OpenCL).
 //

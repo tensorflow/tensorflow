@@ -19,8 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <type_traits>
 
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor_internal.h"
+#include "tsl/platform/status.h"
 
 namespace stream_executor::gpu {
 
@@ -28,8 +32,16 @@ namespace stream_executor::gpu {
 // implementation (it's backed by CUDA or HIP graphs on NVIDIA and AMD devices).
 class GpuCommandBuffer : public internal::CommandBufferInterface {
  public:
-  explicit GpuCommandBuffer(GpuGraphHandle graph);
+  GpuCommandBuffer(GpuExecutor* parent, GpuGraphHandle graph);
   ~GpuCommandBuffer() override;
+
+  tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
+                     const KernelBase& kernel,
+                     const KernelArgsArrayBase& args) override;
+
+  tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
+                                   const DeviceMemoryBase& src,
+                                   uint64_t size) override;
 
   // We track the total number of allocated and alive executable graphs in the
   // process to track the command buffers resource usage. Executable graph
@@ -50,6 +62,7 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   static_assert(std::is_pointer_v<GpuGraphExecHandle>,
                 "GpuGraphExecHandle must be a pointer");
 
+  GpuExecutor* parent_;                // not owned, must outlive *this
   GpuGraphHandle graph_ = nullptr;     // owned handle
   GpuGraphExecHandle exec_ = nullptr;  // owned handle
 };

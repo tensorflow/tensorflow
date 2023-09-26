@@ -42,6 +42,10 @@ class CommandBuffer {
 
   static tsl::StatusOr<CommandBuffer> Create(StreamExecutor* executor);
 
+  internal::CommandBufferInterface* operator->() {
+    return implementation_.get();
+  }
+
  private:
   std::unique_ptr<internal::CommandBufferInterface> implementation_;
 
