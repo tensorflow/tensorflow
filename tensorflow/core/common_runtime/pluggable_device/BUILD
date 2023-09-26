@@ -102,9 +102,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@local_xla//xla/pjrt:pjrt_api",
         "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
+        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:device_mem_allocator",
-        "@local_xla//xla/stream_executor:event",
-        "@local_xla//xla/stream_executor:kernel",
     ] + if_static([
         "//tensorflow/core/common_runtime:copy_tensor",
     ]),
@@ -126,9 +125,8 @@ cc_library(
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:device_mem_allocator",
-        "@local_xla//xla/stream_executor:event",
-        "@local_xla//xla/stream_executor:kernel",
     ] + if_static([
         # Temporary workaround for duplicated symbols issues.
         ":pluggable_device_runtime_impl",
