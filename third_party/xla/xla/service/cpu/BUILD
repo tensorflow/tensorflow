@@ -243,7 +243,6 @@ cc_library(
         "//xla/mlir/runtime/transforms:compilation_pipeline_cpu",
         "//xla/mlir/runtime/transforms:compiler",
         "//xla/mlir/runtime/transforms:jit_compiler",
-        "//xla/mlir/tools/mlir_replay/public:compiler_trace_instrumentation",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:all_passes",
         "//xla/mlir_hlo:gml_st_passes",
