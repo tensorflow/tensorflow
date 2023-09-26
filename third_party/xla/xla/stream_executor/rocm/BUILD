@@ -111,7 +111,7 @@ cc_library(
         "//xla/stream_executor:event",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:stream_executor_internal",
-        "//xla/stream_executor:stream_executor_pimpl_header",
+        "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/gpu:gpu_activation_header",
         "//xla/stream_executor/gpu:gpu_event",
         "//xla/stream_executor/gpu:gpu_kernel_header",
@@ -161,7 +161,7 @@ cc_library(
         "//xla/stream_executor",  # buildcleaner: keep
         "//xla/stream_executor:executor_cache",
         "//xla/stream_executor:multi_platform_manager",
-        "//xla/stream_executor:stream_executor_pimpl_header",
+        "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/platform",
     ]),
     alwayslink = True,  # Registers itself with the MultiPlatformManager.
@@ -318,7 +318,7 @@ cc_library(
         "//xla/stream_executor:event",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:scratch_allocator",
-        "//xla/stream_executor:stream_executor_pimpl_header",
+        "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor:temporary_device_memory",
         "//xla/stream_executor/gpu:gpu_activation_header",
         "//xla/stream_executor/gpu:gpu_stream_header",

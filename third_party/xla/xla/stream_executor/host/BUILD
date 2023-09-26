@@ -88,7 +88,6 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:stream_executor_internal",
-        "//xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",

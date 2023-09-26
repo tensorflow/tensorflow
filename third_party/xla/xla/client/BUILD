@@ -142,7 +142,6 @@ cc_library(
         "//xla/service:stream_pool",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
         "@com_google_absl//absl/types:span",
     ],
 )
