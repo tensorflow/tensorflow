@@ -124,6 +124,10 @@ Status ReplicateConstantsPass::Run(
              "number-of-elements <= "
           << kMaxSize;
 
+  if (options.graph == nullptr) {
+    VLOG(1) << "No graph in replicate_constants_pass.";
+    return OkStatus();
+  }
   Graph* graph = options.graph->get();
   if (VLOG_IS_ON(1)) {
     VLOG(1) << DumpGraphToFile("before_replicate_constants_pass", *graph,
@@ -183,7 +187,7 @@ Status ReplicateConstantsPass::Run(
   return OkStatus();
 }
 
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_PLACEMENT, 3,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 3,
                       ReplicateConstantsPass);
 
 }  // namespace tensorflow
