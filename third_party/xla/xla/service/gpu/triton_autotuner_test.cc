@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "xla/service/gpu/triton_autotuner.h"
 
 #include <algorithm>
@@ -149,6 +148,7 @@ class TritonAutotunerTest : public HloTestBase {
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(true);
+    debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
 
@@ -459,6 +459,7 @@ class TritonAutotunerLevelTest : public HloTestBase,
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(GetParam());
+    debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
 };
@@ -498,8 +499,7 @@ INSTANTIATE_TEST_SUITE_P(TritonAutotunerLevelSweep, TritonAutotunerLevelTest,
 class TritonAutotunerExhaustiveTest : public TritonAutotunerTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_triton_gemm(true);
+    DebugOptions debug_options = TritonAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_exhaustive_tiling_search(true);
     return debug_options;
   }
@@ -543,7 +543,7 @@ ENTRY e {
 class TritonAutotunerDisableSplitK : public TritonAutotunerTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = TritonAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);
     return debug_options;
   }

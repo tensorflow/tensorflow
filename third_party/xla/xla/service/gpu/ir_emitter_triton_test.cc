@@ -57,7 +57,22 @@ namespace {
 
 namespace m = ::xla::match;
 
-class TritonGemmNoTF32Test : public GpuCodegenTest {
+class TritonGemmTest : public GpuCodegenTest {
+ public:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_cublas_fallback(false);
+    return debug_options;
+  }
+};
+
+class TritonGemmNoTF32Test : public TritonGemmTest {
  public:
   void SetUp() override {
     tf32_state_ = tsl::tensor_float_32_execution_enabled();
@@ -99,16 +114,6 @@ ENTRY e {
 CHECK-NOT: mma
 )");
 }
-
-class TritonGemmTest : public GpuCodegenTest {
- public:
-  se::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
-  }
-};
 
 TEST_F(TritonGemmTest, DebugOptionsArePropagated) {
   const std::string kHloText = R"(

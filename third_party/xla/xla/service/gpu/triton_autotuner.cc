@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -133,14 +134,28 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
               }));
       VLOG(2) << "Result: " << autotune_result.ShortDebugString();
 
-      TF_RET_CHECK(autotune_result.has_triton());
-      *backend_config.mutable_triton_gemm_config() = autotune_result.triton();
-      TF_RETURN_IF_ERROR(hlo->set_backend_config(backend_config));
+      if (autotune_result.has_triton()) {
+        *backend_config.mutable_triton_gemm_config() = autotune_result.triton();
+        TF_RETURN_IF_ERROR(hlo->set_backend_config(backend_config));
+      } else {
+        // Falling back to cuBLAS: Converting the fusion to a Call, so that it
+        // can be inlined back again.
+        HloComputation* const computation = hlo->parent();
+        HloInstruction* const call = computation->AddInstruction(
+            HloInstruction::CreateCall(hlo->shape(), hlo->operands(),
+                                       hlo->fused_instructions_computation()));
+        TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, call));
+        hlo = call;
+      }
     }
-    const AutotuneResult::TritonGemmKey& tiling =
-        backend_config.triton_gemm_config();
-    if (tiling.split_k() > 1) {
-      TF_RETURN_IF_ERROR(MakeDotSplitKBatch(hlo, tiling));
+
+    // This cannot be the "else" branch of the previous "if".
+    if (backend_config.has_triton_gemm_config()) {
+      const AutotuneResult::TritonGemmKey& tiling =
+          backend_config.triton_gemm_config();
+      if (tiling.split_k() > 1) {
+        TF_RETURN_IF_ERROR(MakeDotSplitKBatch(hlo, tiling));
+      }
     }
 
     MarkAsChanged();
@@ -372,6 +387,11 @@ StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
                                    GetGpuDeviceInfo(config.GetExecutor()));
   TF_RETURN_IF_ERROR(rewriter.Run(new_module.get()).status());
   TF_RETURN_IF_ERROR(fusion_pass.Run(new_module.get()).status());
+  // TODO(tdanyluk): Consider running GemmAlgorithmPicker here for better cuBLAS
+  // performance. It is probably not needed on Ampere and later because cuBLAS
+  // ignores the algorithm parameter for those targets. If we run
+  // GemmAlgorithmPicker, we probably should not run this in parallel with other
+  // compilations.
   return new_module;
 }
 
@@ -668,10 +688,26 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
   VLOG(2) << "Done running.";
 
   TF_ASSIGN_OR_RETURN(
-      AutotuneResult best,
+      AutotuneResult best_triton,
       PickBestResult(results, root.ToString(), root.GetModule()->config()));
 
-  return best;
+  if (debug_opts.xla_gpu_cublas_fallback()) {
+    const absl::Duration best_triton_duration =
+        tsl::proto_utils::FromDurationProto(best_triton.run_time());
+    if (cublas_duration < best_triton_duration) {
+      VLOG(1) << "Falling back to cuBLAS for " << fusion->name();
+
+      AutotuneResult cublas;
+      *cublas.mutable_run_time() =
+          tsl::proto_utils::ToDurationProto(cublas_duration);
+      // We will ignore this value anyway.
+      cublas.mutable_gemm()->set_algorithm(CUBLAS_GEMM_DEFAULT);
+
+      return cublas;
+    }
+  }
+
+  return best_triton;
 }
 
 Status DumpAutotunedFusions(const AutotuneConfig& config,

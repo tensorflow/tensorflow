@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -37,6 +38,15 @@ class NVPTXCompilerTest : public HloTestBase {
     NVPTXCompiler compiler;
     return compiler.AssignBuffers(module,
                                   test_backend.default_stream_executor());
+  }
+};
+
+class NVPTXCompilerTestTriton : public NVPTXCompilerTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_cublas_fallback(false);
+    return debug_options;
   }
 };
 
@@ -96,7 +106,7 @@ ENTRY entry {
       all_reduce, {1}, all_reduce->operand(1), {}));
 }
 
-TEST_F(NVPTXCompilerTest,
+TEST_F(NVPTXCompilerTestTriton,
        DotDimensionAreSortedBeforePaddingForCublasEnablingTritonFusion) {
   MatchOptimizedHlo(R"(
 ENTRY e {

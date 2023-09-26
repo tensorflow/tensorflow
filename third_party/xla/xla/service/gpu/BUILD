@@ -605,6 +605,7 @@ xla_test(
         "//xla:error_spec",
         "//xla:xla_proto_cc",
         "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_googletest//:gtest",
     ],
@@ -669,6 +670,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@local_config_cuda//cuda:cuda_headers",
         "//xla:autotuning_proto_cc",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -2918,6 +2920,7 @@ xla_cc_test(
         ":nvptx_compiler_impl",
         "//xla:statusor",
         "//xla:util",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:backend",
         "//xla/service:buffer_assignment",

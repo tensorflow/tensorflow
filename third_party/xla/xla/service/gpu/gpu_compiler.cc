@@ -1000,9 +1000,17 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // f32).
   add_float_normalization(pipeline);
 
-  TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPasses(
-      &pipeline, hlo_module, autotune_config, thread_pool));
   TF_RETURN_IF_ERROR(AddTritonGemmAutotuningPasses(
+      &pipeline, hlo_module, autotune_config, thread_pool));
+  // Inline back the calls which have better performance with cuBLAS.
+  pipeline.AddPass<CallInliner>();
+  // TODO(tdanyluk): Apply CublasPadForGemms to the cuBLAS GEMMs generated
+  // here for possibly better cuBLAS performance.
+  pipeline.AddPass<GemmRewriter>(gpu_version);
+  // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
+  pipeline.AddPass<GemmBroadcastFoldingRewriter>();
+
+  TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPasses(
       &pipeline, hlo_module, autotune_config, thread_pool));
 
   // The Triton autotuner can insert new bf16 reductions that need to be
