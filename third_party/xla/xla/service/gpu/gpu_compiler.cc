@@ -116,6 +116,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_stats.h"
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/loop_double_buffer_transformer.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/move_copy_to_users.h"
@@ -781,6 +782,12 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
         debug_options.xla_gpu_all_reduce_blueconnect_num_devices_per_host();
     if (blueconnect_num_devices_per_host > 0) {
       pipeline.AddPass<AllReduceBlueConnect>(blueconnect_num_devices_per_host);
+    }
+
+    if (debug_options.xla_gpu_enable_while_loop_double_buffering()) {
+      pipeline.AddPass<LoopDoubleBufferTransformer>();
+      pipeline.AddPass<TupleSimplifier>();
+      pipeline.AddPass<HloDCE>();
     }
 
     {

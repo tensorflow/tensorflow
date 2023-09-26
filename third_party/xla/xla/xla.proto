@@ -620,7 +620,10 @@ message DebugOptions {
   // faster.
   bool xla_gpu_cublas_fallback = 247;
 
-  // Next id: 248
+  // Enable double buffering for loops.
+  bool xla_gpu_enable_while_loop_double_buffering = 248;
+
+  // Next id: 249
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
