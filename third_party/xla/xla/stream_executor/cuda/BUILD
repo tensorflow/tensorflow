@@ -1,6 +1,7 @@
 # Description:
 #   CUDA-platform specific StreamExecutor support code.
 
+load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla:xla.bzl",
     "xla_cc_test",
@@ -381,6 +382,20 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_kernel_header",
         "//xla/stream_executor/platform",
     ]),
+)
+
+xla_test(
+    name = "cuda_kernel_test",
+    srcs = ["cuda_kernel_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":cuda_kernel",
+        "//xla/stream_executor",
+        "//xla/stream_executor:multi_platform_manager",
+        "//xla/stream_executor:platform",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
 )
 
 # TODO(leary) we likely need to canonicalize/eliminate this.
