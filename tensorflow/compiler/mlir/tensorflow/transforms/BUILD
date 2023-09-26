@@ -74,6 +74,7 @@ cc_library(
         "mlprogram.h",
     ],
     deps = [
+        ":bridge",
         ":tensorflow_passes",
         ":tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
@@ -438,7 +439,6 @@ cc_library(
         "annotate_parameter_replication.cc",
         "batchmatmul_to_einsum.cc",
         "breakup-islands.cc",
-        "bridge.cc",
         "canonicalize_compile_and_replicate_attributes.cc",
         "check_control_dependencies.cc",
         "cluster_formation.cc",
@@ -554,7 +554,6 @@ cc_library(
         "xla_validate_inputs.cc",
     ],
     hdrs = [
-        "bridge.h",
         "cluster_ops_by_policy.h",
         "collection_ops_util.h",
         "einsum.h",
@@ -690,6 +689,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tf2xla/internal:clustering_bridge_passes",
         "//tensorflow/compiler/mlir/tf2xla/internal/inference:inference_metrics_pass",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
@@ -792,6 +792,7 @@ cc_library(
         "bridge_pass.cc",
     ],
     deps = [
+        ":bridge",
         ":tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "@llvm-project//mlir:Pass",

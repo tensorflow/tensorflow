@@ -1573,6 +1573,7 @@ tf_cc_test(
     deps = [
         ":dump_mlir_util",
         ":tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:bridge",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
