@@ -19,11 +19,12 @@ from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 
 
-def _make_elementwise_tests(op,
+def _make_elementwise_tests(
+    op,
     allow_fully_quantize=False,
-    allow_quant_16x8=False,
     min_value=-100,
-    max_value=100,):
+    max_value=100,
+):
   """Make a set of tests to do element-wise operations."""
 
   def f(options):
@@ -49,13 +50,6 @@ def _make_elementwise_tests(op,
       test_parameters = [
           test_parameter for test_parameter in test_parameters
           if True not in test_parameter["fully_quantize"]
-      ]
-
-    if not allow_quant_16x8:
-      test_parameters = [
-          test_parameter
-          for test_parameter in test_parameters
-          if True not in test_parameter["quant_16x8"]
       ]
 
     def build_graph(parameters):
@@ -92,7 +86,6 @@ def make_log_tests(options):
   return _make_elementwise_tests(
       tf.math.log,
       allow_fully_quantize=True,
-      allow_quant_16x8=True,
       min_value=0.1,
       max_value=10,
   )(options)
@@ -110,7 +103,6 @@ def make_rsqrt_tests(options):
   return _make_elementwise_tests(
       tf.math.rsqrt,
       allow_fully_quantize=True,
-      allow_quant_16x8=True,
       min_value=0.1,
       max_value=1,
   )(options)
