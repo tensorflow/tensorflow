@@ -160,6 +160,9 @@ class GpuCompiler : public LLVMCompiler {
   StatusOr<std::unique_ptr<AotCompilationResult>> Export(
       Executable* executable) const override;
 
+  Status RunPostSchedulingPipelines(HloModule* module,
+                                    int64_t scheduler_mem_limit) const;
+
  protected:
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and

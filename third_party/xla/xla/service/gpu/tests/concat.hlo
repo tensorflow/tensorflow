@@ -152,7 +152,7 @@
 // CHECK:         store half %[[VAL_119]], ptr %[[VAL_120]], align 2
 // CHECK:         br label %[[VAL_8]]
 
-HloModule module
+HloModule module, is_scheduled=true
 
 %fused_computation (param_0.1: f32[1000], param_1.2: f32[1000], param_2.3: f32[1000], param_3.4: f32[1000], param_4.5: f32[1000], param_5.6: f32[1000], param_6.7: f32[1000], param_7.8: f32[1000], param_8.9: f32[1000], param_9.10: f32[1000], param_10.11: f32[1000]) -> f16[11000] {
   %param_10.11 = f32[1000]{0} parameter(10)

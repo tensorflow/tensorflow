@@ -65,7 +65,7 @@
 // CHECK:         br label %[[VAL_31]]
 
 
-HloModule PadToStatic
+HloModule PadToStatic, is_scheduled=true
 
 ENTRY main {
   %param = s32[2,<=2,2] parameter(0)

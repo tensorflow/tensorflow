@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -64,7 +65,8 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, se::Platform::Id platform_id,
-    GpuDeviceInfo gpu_device_info, int pointer_size);
+    GpuDeviceInfo gpu_device_info,
+    const BufferValue::SizeFunction& buffer_size_bytes_function);
 
 Status CompileModuleToLlvmIrImpl(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
@@ -72,8 +74,8 @@ Status CompileModuleToLlvmIrImpl(
     const std::string& platform_name, se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
-    int pointer_size, CompileModuleResults* results,
-    se::StreamExecutor* stream_exec = nullptr);
+    const BufferValue::SizeFunction& buffer_size_bytes_function,
+    CompileModuleResults* results, se::StreamExecutor* stream_exec = nullptr);
 
 }  // namespace gpu
 }  // namespace xla

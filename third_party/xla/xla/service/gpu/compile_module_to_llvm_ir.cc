@@ -48,29 +48,22 @@ limitations under the License.
 #include "xla/mlir/backends/gpu2/transforms/passes.h"
 #include "xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "xla/mlir_hlo/transforms/gpu_passes.h"
-#include "xla/service/bitcast_dtypes_expander.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/conditional_thunk.h"
 #include "xla/service/gpu/for_thunk.h"
-#include "xla/service/gpu/fusion_wrapper.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/gpu_convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_executable.h"
-#include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_unnested.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/sequential_thunk.h"
 #include "xla/service/gpu/while_thunk.h"
-#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/service/hlo_pass_pipeline.h"
-#include "xla/service/hlo_rematerialization.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/optimization_barrier_expander.h"
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
@@ -253,12 +246,13 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, const se::Platform::Id platform_id,
-    GpuDeviceInfo gpu_device_info, int pointer_size) {
+    GpuDeviceInfo gpu_device_info,
+    const BufferValue::SizeFunction& buffer_size_bytes_function) {
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
-      platform_id, gpu_device_info, &CanShareBufferHint, pointer_size,
-      &results));
+      platform_id, gpu_device_info, &CanShareBufferHint,
+      buffer_size_bytes_function, &results));
   return std::move(results.llvm_module);
 }
 
@@ -345,68 +339,11 @@ Status CompileModuleToLlvmIrImpl(
     const std::string& platform_name, se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
-    int pointer_size, CompileModuleResults* results,
-    se::StreamExecutor* stream_exec) {
+    const BufferValue::SizeFunction& buffer_size_bytes_function,
+    CompileModuleResults* results, se::StreamExecutor* stream_exec) {
   results->llvm_module = std::make_unique<llvm::Module>("", *llvm_context);
   results->llvm_module->setTargetTriple(target_triple);
   results->llvm_module->setDataLayout(data_layout);
-
-  const int64_t scheduler_mem_limit =
-      GetSchedulerMemoryLimit(hlo_module, gpu_device_info, pointer_size);
-  TF_RETURN_IF_ERROR(
-      ScheduleGpuModule(hlo_module, pointer_size, scheduler_mem_limit));
-  {
-    HloPassPipeline pipeline("post-scheduling-passes");
-
-    HloPredicate is_nop =
-        HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant,
-                         HloOpcode::kBitcast, HloOpcode::kGetTupleElement>;
-    pipeline.AddPass<GpuConvertAsyncCollectivesToSync>(is_nop);
-    pipeline.AddPass<OptimizationBarrierExpander>();
-
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
-
-  {
-    HloPassPipeline pipeline("remat-pipeline");
-
-    auto shape_size_func = [pointer_size](const Shape& shape) {
-      return GetSizeOfShape(shape, pointer_size);
-    };
-    HloCostAnalysis hlo_cost_analysis(shape_size_func);
-    HloRematerialization::RematerializationModeConfig
-        rematerialization_mode_config(/*recompute=*/true, /*compress=*/true,
-                                      /*host_offload=*/false);
-    HloRematerialization::Options options(
-        hlo_cost_analysis, rematerialization_mode_config,
-        // Assume 75% of the total device memory is available for XLA.
-        /*memory_limit_bytes=*/scheduler_mem_limit,
-        /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
-        /*min_remat_size=*/0, /*compact_shape_function=*/nullptr,
-        /*host_memory_offload_config=*/std::nullopt);
-    HloRematerialization::RematerializationSizes sizes;
-    pipeline.AddPass<HloRematerialization>(options, sizes);
-
-    TF_ASSIGN_OR_RETURN(bool changed, pipeline.Run(hlo_module));
-    if (changed) {
-      VLOG(1) << "HloRematerialization saved "
-              << sizes.before_bytes - sizes.after_bytes << " bytes";
-    }
-  }
-
-  {
-    HloPassPipeline pipeline("fusion-wrapper");
-    pipeline.AddPass<FusionWrapper>();
-    // Wrap remaining unfused ops that have no LHLO equivalent in single-op
-    // fusions. This needs to happen after rematerialization, because that will
-    // insert additional copies.
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
-
-  auto buffer_size_bytes_function =
-      [pointer_size](const BufferValue& buffer_value) -> int64_t {
-    return GetSizeOfShape(buffer_value.shape(), pointer_size);
-  };
 
   TF_ASSIGN_OR_RETURN(
       results->buffer_assignment,

@@ -5,7 +5,7 @@
 // CHECK: define [[KERNEL_ANNOTATION]]void
 // CHECK-NOT: define [[KERNEL_ANNOTATION]]void
 
-HloModule KernelReuse
+HloModule KernelReuse, is_scheduled=true
 
 fused_computation {
   param_0.2 = f32[5,5]{1,0} parameter(0)
@@ -48,7 +48,7 @@ ENTRY main {
 // CHECK: define [[KERNEL_ANNOTATION]]void @triton_gemm_dot1(
 // CHECK-NOT: define [[KERNEL_ANNOTATION]]void
 
-HloModule t
+HloModule t, is_scheduled=true
 
 triton_gemm_dot0 {
   parameter_1 = f16[15,19]{1,0} parameter(1)
@@ -69,8 +69,8 @@ ENTRY e {
   p2 = f16[15,19]{1,0} parameter(2)
   p1 = s8[19,17]{1,0} parameter(1)
   p0 = f16[15,19]{1,0} parameter(0)
-  triton_gemm_dot0 = f16[15,17]{1,0} fusion(p1, p0), kind=kCustom, calls=triton_gemm_dot0, backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\"}}"
   triton_gemm_dot1 = f16[15,17]{1,0} fusion(p3, p2), kind=kCustom, calls=triton_gemm_dot1, backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\"}}"
+  triton_gemm_dot0 = f16[15,17]{1,0} fusion(p1, p0), kind=kCustom, calls=triton_gemm_dot0, backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\"}}"
   ROOT tuple = (f16[15,17]{1,0}, f16[15,17]{1,0}) tuple(triton_gemm_dot0, triton_gemm_dot1)
 }
 
@@ -84,7 +84,7 @@ ENTRY e {
 // CHECK: define [[KERNEL_ANNOTATION]]void @fusion_1(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
 // CHECK-NOT: define [[KERNEL_ANNOTATION]]void
 
-HloModule KernelReuse
+HloModule KernelReuse, is_scheduled=true
 
 fused_computation {
   param_0.2 = f32[5,5]{1,0} parameter(0)
@@ -128,7 +128,7 @@ ENTRY main {
 // CHECK: define [[KERNEL_ANNOTATION]]void @fusion_1(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1, ptr noalias align 128 dereferenceable(100) %arg2)
 // CHECK-NOT: define void
 
-HloModule KernelReuse
+HloModule KernelReuse, is_scheduled=true
 
 fused_computation {
   a = f32[5,5]{1,0} parameter(0)
@@ -175,7 +175,7 @@ ENTRY main {
 // CHECK: !invariant.load
 // CHECK-NOT: define [[KERNEL_ANNOTATION]]void
 
-HloModule KernelReuse
+HloModule KernelReuse, is_scheduled=true
 
 fused_computation {
   a = f32[5,5]{1,0} parameter(0)
@@ -197,9 +197,9 @@ ENTRY main {
   custom-call = f32[5,5]{1,0} custom-call(a, a), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
   fusion.2 = f32[5,5]{1,0} fusion(custom-call), kind=kLoop, calls=fused_computation.2
   custom-call.1 = f32[5,5]{1,0} custom-call(fusion.2, fusion.2), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+  fusion = f32[5,5]{1,0} fusion(custom-call.1), kind=kLoop, calls=fused_computation
   fusion.1 = f32[5,5]{1,0} fusion(custom-call.1), kind=kLoop, calls=fused_computation.1
   custom-call.2 = f32[5,5]{1,0} custom-call(fusion.1, fusion.1), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
-  fusion = f32[5,5]{1,0} fusion(custom-call.1), kind=kLoop, calls=fused_computation
   custom-call.3 = f32[5,5]{1,0} custom-call(fusion, fusion), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
   // We don't output custom-call, so fusion.2 can change its input.
   ROOT tuple = (f32[5,5]{1,0}, f32[5,5]{1,0}, f32[5,5]{1,0}) tuple(custom-call.1, custom-call.2, custom-call.3)
