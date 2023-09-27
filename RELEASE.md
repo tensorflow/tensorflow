@@ -97,7 +97,7 @@
     *   Optimized this function for some cases by fusing internal operations.
 
 *   `tf.saved_model.SaveOptions`
-    *   Provided a new `experimental_skip_saver` argument which if specified,
+    *   Provided a new `experimental_skip_saver` argument which, if specified,
         will suppress the addition of `SavedModel`-native save and restore ops
         to the `SavedModel`, for cases where users already build custom
         save/restore ops and checkpoint formats for the model being saved, and

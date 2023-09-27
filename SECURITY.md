@@ -8,12 +8,12 @@ TensorFlow and how to report them.
 This document applies to other repositories in the TensorFlow organization,
 covering security practices for the entirety of the TensorFlow ecosystem.
 
-## TensorFlow models are programs
+## TensorFlow's models are programs
 
 TensorFlow
 [**models**](https://developers.google.com/machine-learning/glossary/#model) (to
 use a term commonly used by machine learning practitioners) are expressed as
-programs that TensorFlow executes. TensorFlow programs are encoded as
+programs that TensorFlow executes. TensorFlow's programs are encoded as
 computation
 [**graphs**](https://developers.google.com/machine-learning/glossary/#graph).
 The model's parameters are often stored separately in **checkpoints**.
@@ -31,7 +31,7 @@ The computation graph may also accept **inputs**. Those inputs are the
 data you supply to TensorFlow to train a model, or to use a model to run
 inference on the data.
 
-**TensorFlow models are programs, and need to be treated as such from a security
+**TensorFlow's models are programs, and need to be treated as such from a security
 perspective.**
 
 ## Execution models of TensorFlow code
@@ -101,7 +101,7 @@ compare model quality for a fixed model architecture), you must carefully audit
 your model, and we recommend you run the TensorFlow process in a sandbox.
 
 Similar considerations should apply if the model uses **custom ops** (C++ code
-written outside of the TensorFlow tree and loaded as plugins).
+written outside the TensorFlow tree and loaded as plugins).
 
 ## Accepting untrusted inputs
 

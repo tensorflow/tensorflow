@@ -14,7 +14,7 @@
 [![TF Official Continuous](https://tensorflow.github.io/build/TF%20Official%20Continuous.svg)](https://tensorflow.github.io/build#TF%20Official%20Continuous)
 [![TF Official Nightly](https://tensorflow.github.io/build/TF%20Official%20Nightly.svg)](https://tensorflow.github.io/build#TF%20Official%20Nightly)
 
-**`Documentation`** |
+ **`Documentation`** |
 ------------------- |
 [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
@@ -114,7 +114,7 @@ apply fixes to bugs or security vulnerabilities:
 
 *   Clone the TensorFlow repo and switch to the corresponding branch for your
     desired TensorFlow version, for example, branch `r2.8` for version 2.8.
-*   Apply (that is, cherry pick) the desired changes and resolve any code
+*   Apply (that is, cherry-pick) the desired changes and resolve any code
     conflicts.
 *   Run TensorFlow tests and ensure they pass.
 *   [Build](https://www.tensorflow.org/install/source) the TensorFlow pip

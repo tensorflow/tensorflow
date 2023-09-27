@@ -24,7 +24,7 @@ exception inside `tf.function`, you will obtain the original exception.
 The exception traceback still contains the entire call stack, including frames
 corresponding to generated code.
 
-AutoGraph tries to re-raise an exception of the same type as the original
+AutoGraph tries to re-raise an exception to the same type as the original
 exception. This is usually possible for subclasses of
 `Exception` that do not define a custom `__init__`. For more complex
 exception types which define a custom constructor, AutoGraph raises a
@@ -144,7 +144,7 @@ refer to symbols used in your code.
 
 ### TensorFlow execution errors
 
-TensorFlow execution errors are displayed normally, but the portions of the
+TensorFlow's execution errors are displayed normally, but the portions of the
 error message which correspond to user code contain references to the original
 code.
 
