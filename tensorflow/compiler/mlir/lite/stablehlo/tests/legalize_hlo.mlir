@@ -737,12 +737,24 @@ func.func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
 }
 
 // CHECK-LABEL:   func @broadcast_greater(
-// CHECK-SAME:                            %[[VAL_0:.*]]: tensor<1xi32>,
+// CHECK-SAME:                            %[[VAL_0:.*]]: tensor<1x1xi32>,
 // CHECK-SAME:                            %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Greater"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
+// CHECK:         }
+func.func @broadcast_greater(%arg0: tensor<1x1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x1xi32>) -> tensor<1x2xi32>
+  %1 = "mhlo.compare"(%0, %arg1) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  func.return %1 : tensor<1x2xi1>
+}
+
+// CHECK-LABEL:   func @broadcast_greater_chlo(
+// CHECK-SAME:                                 %[[VAL_0:.*]]: tensor<1xi32>,
+// CHECK-SAME:                                 %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi1> {
 // CHECK:           %[[VAL_2:.*]] = "tf.Greater"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
-func.func @broadcast_greater(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+func.func @broadcast_greater_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction GT>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
@@ -766,12 +778,24 @@ func.func @greater_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2
 }
 
 // CHECK-LABEL:   func @broadcast_greater_equal(
-// CHECK-SAME:                                  %[[VAL_0:.*]]: tensor<1xi32>,
+// CHECK-SAME:                                  %[[VAL_0:.*]]: tensor<1x1xi32>,
 // CHECK-SAME:                                  %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.GreaterEqual"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
+// CHECK:         }
+func.func @broadcast_greater_equal(%arg0: tensor<1x1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x1xi32>) -> tensor<1x2xi32>
+  %1 = "mhlo.compare"(%0, %arg1) {comparison_direction = #mhlo<comparison_direction GE>} : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  func.return %1 : tensor<1x2xi1>
+}
+
+// CHECK-LABEL:   func @broadcast_greater_equal_chlo(
+// CHECK-SAME:                                       %[[VAL_0:.*]]: tensor<1xi32>,
+// CHECK-SAME:                                       %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi1> {
 // CHECK:           %[[VAL_2:.*]] = "tf.GreaterEqual"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
-func.func @broadcast_greater_equal(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+func.func @broadcast_greater_equal_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction GE>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
@@ -788,12 +812,24 @@ func.func @less(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
 }
 
 // CHECK-LABEL:   func @broadcast_less(
-// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<1xi32>,
+// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<1x1xi32>,
 // CHECK-SAME:                         %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Less"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
+// CHECK:         }
+func.func @broadcast_less(%arg0: tensor<1x1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x1xi32>) -> tensor<1x2xi32>
+  %1 = "mhlo.compare"(%0, %arg1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  func.return %1 : tensor<1x2xi1>
+}
+
+// CHECK-LABEL:   func @broadcast_less_chlo(
+// CHECK-SAME:                              %[[VAL_0:.*]]: tensor<1xi32>,
+// CHECK-SAME:                              %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi1> {
 // CHECK:           %[[VAL_2:.*]] = "tf.Less"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
-func.func @broadcast_less(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+func.func @broadcast_less_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction LT>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
@@ -810,12 +846,24 @@ func.func @less_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1
 }
 
 // CHECK-LABEL:   func @broadcast_less_equal(
-// CHECK-SAME:                               %[[VAL_0:.*]]: tensor<1xi32>,
+// CHECK-SAME:                               %[[VAL_0:.*]]: tensor<1x1xi32>,
 // CHECK-SAME:                               %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.LessEqual"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
+// CHECK:         }
+func.func @broadcast_less_equal(%arg0: tensor<1x1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x1xi32>) -> tensor<1x2xi32>
+  %1 = "mhlo.compare"(%0, %arg1) {comparison_direction = #mhlo<comparison_direction LE>} : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  func.return %1 : tensor<1x2xi1>
+}
+
+// CHECK-LABEL:   func @broadcast_less_equal_chlo(
+// CHECK-SAME:                                    %[[VAL_0:.*]]: tensor<1xi32>,
+// CHECK-SAME:                                    %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi1> {
 // CHECK:           %[[VAL_2:.*]] = "tf.LessEqual"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
-func.func @broadcast_less_equal(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+func.func @broadcast_less_equal_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction LE>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
