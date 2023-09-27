@@ -90,14 +90,25 @@ class GpuExecutableRunOptions {
     return requires_exclusive_lock_on_gpu_;
   }
 
-  // Require writers lock on the GRPU.
+  // Require writers lock on the GPU.
   GpuExecutableRunOptions& set_requires_exclusive_lock_on_gpu() {
     requires_exclusive_lock_on_gpu_ = true;
     return *this;
   }
 
+  bool enable_mock_nccl_collectives() const {
+    return enable_mock_nccl_collectives_;
+  }
+
+  // Enable mocking nccl collective operations on the GPU
+  GpuExecutableRunOptions& set_enable_mock_nccl_collectives() {
+    enable_mock_nccl_collectives_ = true;
+    return *this;
+  }
+
  private:
   bool requires_exclusive_lock_on_gpu_ = false;
+  bool enable_mock_nccl_collectives_ = false;
   std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids_;
   NcclUniqueIdCallback nccl_unique_id_callback_;
 };

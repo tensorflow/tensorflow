@@ -32,8 +32,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/time/time.h"
 #include "xla/client/local_client.h"
@@ -982,7 +984,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     std::optional<std::string> platform_name,
     bool should_stage_host_to_device_transfers,
     PjRtClient::KeyValueGetCallback kv_get,
-    PjRtClient::KeyValuePutCallback kv_put) {
+    PjRtClient::KeyValuePutCallback kv_put, bool enable_mock_nccl) {
   TF_ASSIGN_OR_RETURN(LocalClient * xla_client,
                       GetGpuXlaClient(platform_name, allowed_devices));
   std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states;
@@ -997,7 +999,50 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
 
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   auto gpu_run_options = std::make_unique<gpu::GpuExecutableRunOptions>();
+  if (enable_mock_nccl) {
+    gpu_run_options->set_enable_mock_nccl_collectives();
+  }
   if (num_nodes > 1) {
+    absl::flat_hash_map<std::string, std::string> device_maps;
+    absl::Mutex mu;
+    if (enable_mock_nccl) {
+      kv_get = [&device_maps, &mu, &num_nodes](
+                   const std::string& k,
+                   absl::Duration timeout) -> xla::StatusOr<std::string> {
+        std::string result;
+        {
+          absl::MutexLock lock(&mu);
+          if (device_maps.contains(k)) {
+            result = device_maps[k];
+          } else {
+            int device_id;
+            std::vector<std::string> tokens = absl::StrSplit(k, ':');
+            if (tokens.size() != 2 ||
+                !absl::SimpleAtoi(tokens[1], &device_id)) {
+              device_id = num_nodes - 1;
+            }
+            // Return fake local topology with device_id info back.
+            xla::LocalTopologyProto local;
+            local.set_boot_id("fake_boot_id");
+            local.set_node_id(device_id);
+            xla::DeviceProto* device = local.add_devices();
+            device->set_global_device_id(device_id);
+            device->set_name("fake_device");
+            device->set_vendor("fake_vendor");
+            result = local.SerializeAsString();
+          }
+        }
+        return result;
+      };
+      kv_put = [&device_maps, &mu](const std::string& k,
+                                   const std::string& v) -> xla::Status {
+        {
+          absl::MutexLock lock(&mu);
+          device_maps[k] = v;
+        }
+        return xla::OkStatus();
+      };
+    }
     TF_RET_CHECK(kv_get != nullptr);
     TF_RET_CHECK(kv_put != nullptr);
     TF_RETURN_IF_ERROR(BuildDistributedDevices(
