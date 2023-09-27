@@ -802,7 +802,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // end of the last co-located buffer.  There could be "holes" in the live
   // ranges of each co-located buffers, but in this heuristics we think they are
   // contiguous.
-  virtual BufferIntervalCompare GetTemporalBufferIntervalCompare() const;
+  BufferIntervalCompare GetTemporalBufferIntervalCompare() const;
 
   absl::flat_hash_map<const BufferType*, BufferInterval> buffer_intervals_;
   HeapResult result_;
