@@ -17,7 +17,7 @@ package_group(
     name = "friends",
     includes = ["//xla:internal"],
     packages = [
-        # copybara:uncomment "//learning/infra/mira/...",
+        # copybara:uncomment "//learning/...",
         "//third_party/australis/...",
         "//third_party/iree/...",
         "//third_party/mira/...",
