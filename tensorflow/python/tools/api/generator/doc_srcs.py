@@ -43,7 +43,7 @@ _TENSORFLOW_DOC_SOURCES = {
     'compat':
         DocSource(docstring_module_name='util.compat'),
     'distribute':
-        DocSource(docstring_module_name='distribute.distribute_lib'),
+        DocSource(docstring_module_name='distribute'),
     'distributions': DocSource(
         docstring='Core module for TensorFlow distribution objects and helpers.'
     ),
