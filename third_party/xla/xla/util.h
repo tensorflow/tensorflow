@@ -731,7 +731,7 @@ T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
 // Utility for performing a down_cast<> on a std::unique_ptr<>.
 template <typename Derived, typename Base>
 std::unique_ptr<Derived> unique_ptr_down_cast(std::unique_ptr<Base> ptr) {
-  return absl::WrapUnique(tensorflow::down_cast<Derived*>(ptr.release()));
+  return absl::WrapUnique(tsl::down_cast<Derived*>(ptr.release()));
 }
 
 int64_t Product(absl::Span<const int64_t> xs);

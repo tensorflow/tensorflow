@@ -273,6 +273,7 @@ cc_library(
     deps = [
         ":platform",
         ":types",
+        "@com_google_absl//absl/log:die_if_null",
     ] + tsl_protobuf_deps(),
 )
 

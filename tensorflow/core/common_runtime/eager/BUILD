@@ -51,6 +51,7 @@ tf_cuda_library(
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:abstract_function",
         "//tensorflow/core/platform:errors",
+        "@local_tsl//tsl/platform:casts",
     ],
     alwayslink = 1,
 )

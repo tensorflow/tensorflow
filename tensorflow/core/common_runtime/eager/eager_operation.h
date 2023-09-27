@@ -334,12 +334,12 @@ inline void EagerOperation::UpdateInput(int i, TensorHandle* h) {
 
 inline EagerOperation* OperationFromInterface(
     ImmediateExecutionOperation* operation) {
-  return down_cast<EagerOperation*>(operation);
+  return tsl::down_cast<EagerOperation*>(operation);
 }
 
 inline const EagerOperation* OperationFromInterface(
     const ImmediateExecutionOperation* operation) {
-  return down_cast<const EagerOperation*>(operation);
+  return tsl::down_cast<const EagerOperation*>(operation);
 }
 
 }  // namespace tensorflow

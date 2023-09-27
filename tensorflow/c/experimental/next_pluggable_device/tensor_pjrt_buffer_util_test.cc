@@ -148,7 +148,8 @@ TEST(TensorPjRtBufferUtilTest, SetPjRtCBufferToTensorSuccess) {
   PJRT_Buffer* c_buffer = CreateCBuffer();
 
   TF_EXPECT_OK(SetPjRtCBufferToTensor(
-      c_buffer, down_cast<xla::PjRtCApiClient*>(pjrt_client.get()), &tensor));
+      c_buffer, tsl::down_cast<xla::PjRtCApiClient*>(pjrt_client.get()),
+      &tensor));
 }
 
 TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientNotFound) {

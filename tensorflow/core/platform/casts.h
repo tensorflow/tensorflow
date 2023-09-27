@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_CASTS_H_
 #define TENSORFLOW_CORE_PLATFORM_CASTS_H_
 
+// IWYU pragma: private; include "third_party/tensorflow/tsl/platform/casts.h"
 #include "tsl/platform/casts.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CASTS_H_

@@ -36,32 +36,33 @@ void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn,
   // ... and then handle all nested `Thunks` recursively.
   switch (thunk->kind()) {
     case Thunk::kDynamicSlice:
-      ForAllThunks(fn, tensorflow::down_cast<const DynamicSliceThunk*>(thunk)
-                           ->embedded_thunk());
+      ForAllThunks(
+          fn,
+          tsl::down_cast<const DynamicSliceThunk*>(thunk)->embedded_thunk());
       break;
     case Thunk::kCommandBuffer:
       if (const std::unique_ptr<SequentialThunk>& sequence =
-              tensorflow::down_cast<const CommandBufferThunk*>(thunk)->thunks();
+              tsl::down_cast<const CommandBufferThunk*>(thunk)->thunks();
           sequence != nullptr) {
         ForAllThunks(fn, sequence.get());
       }
       break;
     case Thunk::kConditional:
       for (const std::unique_ptr<SequentialThunk>& branch :
-           tensorflow::down_cast<const ConditionalThunk*>(thunk)
-               ->branch_thunks()) {
+           tsl::down_cast<const ConditionalThunk*>(thunk)->branch_thunks()) {
         ForAllThunks(fn, branch.get());
       }
       break;
     case Thunk::kSequential:
-      ForAllThunks(
-          fn, &tensorflow::down_cast<const SequentialThunk*>(thunk)->thunks());
+      ForAllThunks(fn,
+                   &tsl::down_cast<const SequentialThunk*>(thunk)->thunks());
       break;
     case Thunk::kWhile:
-      ForAllThunks(fn, tensorflow::down_cast<const WhileThunk*>(thunk)
-                           ->condition_thunk_sequence());
-      ForAllThunks(fn, tensorflow::down_cast<const WhileThunk*>(thunk)
-                           ->body_thunk_sequence());
+      ForAllThunks(
+          fn,
+          tsl::down_cast<const WhileThunk*>(thunk)->condition_thunk_sequence());
+      ForAllThunks(
+          fn, tsl::down_cast<const WhileThunk*>(thunk)->body_thunk_sequence());
       break;
     case Thunk::kCholesky:
     case Thunk::kConvolution:

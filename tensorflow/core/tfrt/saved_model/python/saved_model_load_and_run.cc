@@ -102,7 +102,7 @@ std::vector<tensorflow::Tensor> RunConvertor(PyObject* args) {
     // output_handles.emplace_back(EagerTensor_Handle(py_eager_tensor.get()));
     ImmediateExecutionTensorHandle* handle = tensorflow::unwrap(input_handle);
     if (tensorflow::TensorHandle::classof(handle)) {
-      TensorHandle* push = down_cast<TensorHandle*>(handle);
+      TensorHandle* push = tsl::down_cast<TensorHandle*>(handle);
       const tensorflow::Tensor* tensor;
       push->Tensor(&tensor).IgnoreError();
       input_run.push_back(*tensor);

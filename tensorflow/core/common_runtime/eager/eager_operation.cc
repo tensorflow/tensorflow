@@ -110,7 +110,7 @@ absl::Status EagerOperation::SetAttrFunction(const char* attr_name,
   AttrValue attr_value;
   NameAttrList* func = attr_value.mutable_func();
   func->set_name(value->Name());
-  auto* value_operation = down_cast<const EagerOperation*>(value);
+  auto* value_operation = tsl::down_cast<const EagerOperation*>(value);
   value_operation->Attrs().FillAttrValueMap(func->mutable_attr());
   MutableAttrs()->Set(attr_name, attr_value);
   return absl::OkStatus();
@@ -217,7 +217,7 @@ absl::Status EagerOperation::SetAttrFunctionList(
   size_t num_values = values.size();
   std::unique_ptr<NameAttrList[]> funcs(new NameAttrList[num_values]);
   for (int i = 0; i < num_values; i++) {
-    auto* value_operation = down_cast<const EagerOperation*>(values[i]);
+    auto* value_operation = tsl::down_cast<const EagerOperation*>(values[i]);
     funcs[i].set_name(value_operation->Name());
     value_operation->Attrs().FillAttrValueMap(funcs[i].mutable_attr());
   }
@@ -282,7 +282,7 @@ absl::Status EagerOperation::OutputLength(const char* output_name,
 
 absl::Status EagerOperation::AddInput(AbstractTensorHandle* input) {
   ImmediateExecutionTensorHandle* h =
-      down_cast<ImmediateExecutionTensorHandle*>(input);
+      tsl::down_cast<ImmediateExecutionTensorHandle*>(input);
   // TODO(b/175427838): It would be nice to be able to use tensorflow::isa here.
   if (CustomDeviceTensorHandle::classof(h)) {
     custom_device_tensor_handles_count_++;
@@ -300,7 +300,7 @@ absl::Status EagerOperation::AddInputList(
       custom_device_tensor_handles_count_++;
     }
     ImmediateExecutionTensorHandle* h =
-        down_cast<ImmediateExecutionTensorHandle*>(input);
+        tsl::down_cast<ImmediateExecutionTensorHandle*>(input);
     AddTensorHandle(h);
   }
   return InferInputListAttrs(inputs.size());
@@ -510,7 +510,7 @@ string VariantDeviceDebugString(VariantDevice device) {
 const AbstractOpAttrs* EagerOperation::GetOpAttrs() const { return &attrs_; }
 
 void EagerOperation::AddAttrs(const AbstractOpAttrs* op_attrs) {
-  attrs_.CopyAttributes(*(down_cast<const AttrBuilder*>(op_attrs)));
+  attrs_.CopyAttributes(*(tsl::down_cast<const AttrBuilder*>(op_attrs)));
 }
 
 string EagerOperation::DebugString() const {

@@ -16,6 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/framework/types.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/refcount.h"
 #define EIGEN_USE_THREADS
 
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -509,7 +509,7 @@ class WhileOp : public AsyncOpKernel {
         (opts.rets_alloc_attrs.empty() ||
          !opts.rets_alloc_attrs[0].on_host())) {
       // Copy the ret value to host if it's allocated on device.
-      Device* device = down_cast<Device*>(ctx->device());
+      Device* device = tsl::down_cast<Device*>(ctx->device());
       DeviceContext* device_ctx = ctx->op_device_context();
       Tensor host_cond_t = Tensor(cond_t.dtype(), cond_t.shape());
       TF_RETURN_IF_ERROR(device_ctx->CopyDeviceTensorToCPUSync(

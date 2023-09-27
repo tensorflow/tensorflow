@@ -171,7 +171,6 @@ cc_library(
         "//tensorflow/c:conversion_macros",
         "//tensorflow/c:tf_status",
         "//tensorflow/core:framework",
-        "//tensorflow/core/platform:casts",
         "//tensorflow/core/platform:types",
     ],
 )
@@ -887,6 +886,7 @@ tf_cuda_library(
             "//tensorflow/core/common_runtime/eager:tensor_handle",
             "//tensorflow/core/lib/llvm_rtti",
             "@com_google_absl//absl/types:variant",
+            "@local_tsl//tsl/platform:casts",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/casts.h"
 
 using tensorflow::dyn_cast;
 using tensorflow::string;
@@ -371,7 +372,7 @@ class GraphContext : public TracingContext {
           "Unable to cast input to GraphTensor");
     }
     inputs_.push_back(t->output_);
-    *output = tensorflow::down_cast<TracingTensorHandle*>(outputs[0]);
+    *output = tsl::down_cast<TracingTensorHandle*>(outputs[0]);
     return absl::OkStatus();
   }
 

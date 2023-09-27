@@ -665,8 +665,7 @@ absl::Status TPUExecuteOp::DoWork(OpKernelContext* context) {
   // Shapes of the inputs and outputs, in xla::Shape form.
   tpu::TpuCompilationCacheEntry entry = entry_ref->get();
   const tpu::TpuProgramGroup* tpu_program_group =
-      tensorflow::down_cast<const tpu::TpuProgramGroup*>(
-          entry.tpu_program_group());
+      tsl::down_cast<const tpu::TpuProgramGroup*>(entry.tpu_program_group());
   CHECK_NE(tpu_program_group, nullptr);
   const int core_index = entry.core_index();
   const TPUExecutableInfoProto& executable =

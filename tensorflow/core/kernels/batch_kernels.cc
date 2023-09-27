@@ -273,7 +273,7 @@ class BatchResource : public serving::BatchResourceBase {
 
     auto* flib = last_task_context->function_library();
     FunctionLibraryRuntime::Handle fhandle =
-        down_cast<const BatchTask&>(last_task).fhandle;
+        tsl::down_cast<const BatchTask&>(last_task).fhandle;
     flib->Run(opts, fhandle, inputs, combined_outputs,
               [&](const absl::Status& run_status) {
                 done(run_status);

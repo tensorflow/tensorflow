@@ -127,7 +127,7 @@ void EnsureParentAllocationIsAvailableForCopy(CopyAllocation* copy_allocation) {
   parent_allocation.Extend(copy_allocation->copy_done_schedule_before());
   if (parent_allocation.is_copy_allocation()) {
     auto parent_copy_allocation =
-        tensorflow::down_cast<CopyAllocation*>(&parent_allocation);
+        tsl::down_cast<CopyAllocation*>(&parent_allocation);
     parent_copy_allocation->set_copy_done_schedule_before(
         std::min(parent_copy_allocation->copy_done_schedule_before(),
                  copy_allocation->start_time()));
@@ -157,8 +157,7 @@ void ProcessPrefetchesToAlternateMemory(AllocationSequence& allocations,
   for (auto allocation : allocations_in_raw_pointers) {
     if (allocation->is_copy_allocation() && allocation->is_in_alternate_mem() &&
         !allocation->uses().empty()) {
-      CopyAllocation* prefetch =
-          tensorflow::down_cast<CopyAllocation*>(allocation);
+      CopyAllocation* prefetch = tsl::down_cast<CopyAllocation*>(allocation);
       std::vector<HloUse> uses = prefetch->uses();  // Create a copy of uses.
       prefetch->clear_uses();                       // Clear old uses.
       // For every prefetch, update prefetch to serve earliest use just in time.
@@ -195,7 +194,7 @@ absl::flat_hash_map<Allocation*, CopyAllocation*> GetEvictionsMap(
   absl::flat_hash_map<Allocation*, CopyAllocation*> evictions_map;
   for (auto& allocation : allocations) {
     if (allocation->is_copy_allocation() && allocation->is_in_default_mem()) {
-      auto eviction = tensorflow::down_cast<CopyAllocation*>(allocation);
+      auto eviction = tsl::down_cast<CopyAllocation*>(allocation);
       Allocation& parent_allocation = eviction->mutable_prev_allocation();
       if (!parent_allocation.is_copy_allocation()) {
         evictions_map[&parent_allocation] = eviction;

@@ -757,7 +757,6 @@ cc_library(
         ":types_proto_cc",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/strings:strcat",
-        "//tensorflow/core/platform:casts",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:intrusive_ptr",
         "//tensorflow/core/platform:macros",
@@ -767,6 +766,7 @@ cc_library(
         "//tensorflow/core/platform:types",
         "//tensorflow/core/util:managed_stack_trace",
         "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:casts",
     ],
     alwayslink = 1,
 )

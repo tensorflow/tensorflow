@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/status.h"
+#include "tsl/platform/casts.h"
 
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
@@ -125,7 +125,7 @@ class TensorInterface : public AbstractTensorInterface {
 };
 
 inline Tensor& TensorFromInterface(AbstractTensorInterface* tensor) {
-  return down_cast<TensorInterface*>(tensor)->Tensor();
+  return tsl::down_cast<TensorInterface*>(tensor)->Tensor();
 }
 
 AbstractTensorInterface* TensorInterfaceFromTensor(const Tensor& src,

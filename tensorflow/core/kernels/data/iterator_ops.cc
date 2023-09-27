@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -548,7 +549,7 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
 
   *device_mgr =
       std::make_unique<StaticDeviceMgr>(RenamedDevice::NewRenamedDevice(
-          ctx->device()->name(), down_cast<Device*>(ctx->device()),
+          ctx->device()->name(), tsl::down_cast<Device*>(ctx->device()),
           false /* owns_underlying */, false /* isolate_session_state */));
   *flib_def = std::make_unique<FunctionLibraryDefinition>(
       *ctx->function_library()->GetFunctionLibraryDefinition());

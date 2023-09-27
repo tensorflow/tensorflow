@@ -83,8 +83,7 @@ absl::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
   }
 
   const TpuProgramGroup* tpu_program_group =
-      tensorflow::down_cast<const TpuProgramGroup*>(
-          cache_entry.tpu_program_group());
+      tsl::down_cast<const TpuProgramGroup*>(cache_entry.tpu_program_group());
   CHECK_NE(tpu_program_group, nullptr);
   CHECK_GE(tpu_program_group->program_count(), 0);
   CHECK_GE(cache_entry.core_index(), 0);

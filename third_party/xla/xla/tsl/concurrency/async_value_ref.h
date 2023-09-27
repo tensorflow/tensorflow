@@ -845,15 +845,15 @@ template <typename T>
 class CountDownAsyncValueRef {
  public:
   CountDownAsyncValueRef(AsyncValueRef<T> ref, int64_t cnt)
-      : ref_(ref), state_(std::make_shared<State>(cnt)) {
-    DCHECK(ref.IsConstructed()) << "AsyncValue must be in constructed state";
-    DCHECK(ref.IsUnavailable()) << "AsyncValue must be in unavailable state";
+      : state_(std::make_shared<State>(std::move(ref), cnt)) {
+    DCHECK(state_->ref.IsConstructed()) << "AsyncValue must be constructed";
+    DCHECK(state_->ref.IsUnavailable()) << "AsyncValue must be unavailable";
     DCHECK_GT(cnt, 0) << "Count must be positive";
   }
 
   // Drops the count by one and returns true if async value became available.
   bool CountDown(const absl::Status& status = absl::OkStatus()) {
-    DCHECK(ref_.IsUnavailable()) << "AsyncValue must be in unavailable state";
+    DCHECK(state_->ref.IsUnavailable()) << "AsyncValue must be unavailable";
     DCHECK_GT(state_->cnt.load(), 0) << "Count must be positive";
 
     if (ABSL_PREDICT_FALSE(!status.ok())) {
@@ -881,10 +881,10 @@ class CountDownAsyncValueRef {
       bool is_error = state_->is_error.load(std::memory_order_relaxed);
       if (ABSL_PREDICT_FALSE(is_error)) {
         absl::MutexLock lock(&state_->mutex);
-        ref_.SetError(state_->status);
+        state_->ref.SetError(state_->status);
         return true;
       } else {
-        ref_.SetStateConcrete();
+        state_->ref.SetStateConcrete();
         return true;
       }
     }
@@ -894,15 +894,16 @@ class CountDownAsyncValueRef {
 
  private:
   struct State {
-    explicit State(int64_t cnt) : cnt(cnt), is_error(false) {}
+    State(AsyncValueRef<T> ref, int64_t cnt)
+        : ref(std::move(ref)), cnt(cnt), is_error(false) {}
 
+    AsyncValueRef<T> ref;
     std::atomic<int64_t> cnt;
     std::atomic<bool> is_error;
     absl::Mutex mutex;
     absl::Status status ABSL_GUARDED_BY(mutex);
   };
 
-  AsyncValueRef<T> ref_;
   std::shared_ptr<State> state_;
 };
 

@@ -70,7 +70,7 @@ TEST_F(LLVMCompilerTest, HooksTest) {
 
   // Create and run the compiler.
   LLVMCompiler* compiler =
-      tensorflow::down_cast<xla::LLVMCompiler*>(backend().compiler());
+      tsl::down_cast<xla::LLVMCompiler*>(backend().compiler());
   compiler->SetPreOptimizationHook(pre_opt_hook);
   compiler->SetPostOptimizationHook(post_opt_hook);
 

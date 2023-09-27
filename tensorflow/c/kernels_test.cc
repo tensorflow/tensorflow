@@ -283,7 +283,7 @@ TEST(TestKernel, TestRegisterAsyncKernelBuilder) {
     TF_EXPECT_OK(status);
     ASSERT_NE(nullptr, kernel.get());
     auto done = []() { async_kernel_done = true; };
-    down_cast<AsyncOpKernel*>(kernel.get())->ComputeAsync(nullptr, done);
+    tsl::down_cast<AsyncOpKernel*>(kernel.get())->ComputeAsync(nullptr, done);
   }
 
   ASSERT_TRUE(async_kernel_done);

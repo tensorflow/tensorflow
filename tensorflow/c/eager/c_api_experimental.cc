@@ -739,7 +739,7 @@ TFE_TensorHandle* TFE_CreatePackedTensorHandle(TFE_Context* ctx,
       // One of the inputs we're trying to pack is on a custom device. We'll let
       // the first custom device we see handle all of the packing.
       auto* custom_device_handle =
-          tensorflow::down_cast<tensorflow::CustomDeviceTensorHandle*>(
+          tsl::down_cast<tensorflow::CustomDeviceTensorHandle*>(
               unwrapped_handle);
       tensorflow::ImmediateExecutionTensorHandle* result;
       status->status = custom_device_handle->device()->Pack(

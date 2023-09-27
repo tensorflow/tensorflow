@@ -225,7 +225,7 @@ absl::Status RocmCommandBuffer::UpdateMemcpyD2DNode(
 absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateChildNode(
     const Dependencies& dependencies, const CommandBuffer& nested) {
   hipGraph_t child_graph =
-      tensorflow::down_cast<const RocmCommandBuffer&>(nested).graph_;
+      tsl::down_cast<const RocmCommandBuffer&>(nested).graph_;
   VLOG(2) << "Create a new node by cloning the child graph " << child_graph
           << " and add it to " << graph_ << "; deps: " << dependencies.size();
 
@@ -242,7 +242,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateChildNode(
 absl::Status RocmCommandBuffer::UpdateChildNode(GraphNodeHandle node_handle,
                                                 const CommandBuffer& nested) {
   hipGraph_t child_graph =
-      tensorflow::down_cast<const RocmCommandBuffer&>(nested).graph_;
+      tsl::down_cast<const RocmCommandBuffer&>(nested).graph_;
 
   VLOG(2) << "Set child node params " << node_handle << " in graph executable "
           << exec_ << "to params contained in " << child_graph;

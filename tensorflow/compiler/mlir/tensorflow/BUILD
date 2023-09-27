@@ -722,7 +722,6 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:casts",
         "@com_google_absl//absl/strings",
     ],
 )

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 // Required for IS_MOBILE_PLATFORM
 #include "tensorflow/core/platform/platform.h"  // NOLINT
+#include "tsl/platform/casts.h"
 
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/c/experimental/filesystem/modular_filesystem.h"
@@ -153,9 +154,8 @@ void TF_TensorFromProto(const TF_Buffer* from, TF_Tensor* to,
   if (!status->status.ok()) {
     return;
   }
-  status->status =
-      tensorflow::down_cast<tensorflow::TensorInterface*>(to->tensor)
-          ->FromProto(from_tensor_proto);
+  status->status = tsl::down_cast<tensorflow::TensorInterface*>(to->tensor)
+                       ->FromProto(from_tensor_proto);
 }
 // --------------------------------------------------------------------------
 
@@ -373,7 +373,7 @@ static Status TF_TensorToTensorV1(const TF_Tensor* src, Tensor* dst) {
   }
   if (dst->dtype() == tensorflow::DT_RESOURCE) {
     const auto tensor_interface =
-        tensorflow::down_cast<const tensorflow::TensorInterface*>(src->tensor);
+        tsl::down_cast<const tensorflow::TensorInterface*>(src->tensor);
 
     if (dst->dims() != 0) {
       return InvalidArgument(

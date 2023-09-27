@@ -225,6 +225,7 @@ cc_library(
 cc_library(
     name = "casts",
     hdrs = ["casts.h"],
+    deprecation = "This library is deprecated. Use third_party/tensorflow/tsl/platform:casts instead.",
     deps = [
         ":platform",
         "@local_tsl//tsl/platform:casts",

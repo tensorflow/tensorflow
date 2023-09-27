@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
 
@@ -145,11 +144,7 @@ T& CompilationEnvironments::GetMutableEnv() {
   }
 
   // TODO(b/302086111): Remove after XLA has an updated protobuf version.
-#if TSL_IS_IN_OSS
-  return tensorflow::down_cast<T&>(*it->second);
-#else
-  return tsl::protobuf::DownCastToGenerated<T>(*it->second);
-#endif
+  return tsl::DownCastMessage<T>(*it->second);
 }
 
 template <typename T>

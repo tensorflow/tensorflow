@@ -61,11 +61,9 @@ bool IsGpuClient(const PjRtClient& client) {
 bool IsSameTopology(const PjRtTopologyDescription& topology1,
                     const PjRtTopologyDescription& topology2) {
   const StreamExecutorGpuTopologyDescription& gpu_topology1 =
-      tensorflow::down_cast<const StreamExecutorGpuTopologyDescription&>(
-          topology1);
+      tsl::down_cast<const StreamExecutorGpuTopologyDescription&>(topology1);
   const StreamExecutorGpuTopologyDescription& gpu_topology2 =
-      tensorflow::down_cast<const StreamExecutorGpuTopologyDescription&>(
-          topology2);
+      tsl::down_cast<const StreamExecutorGpuTopologyDescription&>(topology2);
   return gpu_topology1 == gpu_topology2;
 }
 

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tsl/platform/casts.h"
 
 extern "C" {
 
@@ -48,8 +49,7 @@ TF_SavedModel* TF_LoadSavedModel(const char* dirname, TFE_Context* ctx,
     std::unique_ptr<tensorflow::TFSavedModelAPI> saved_model;
     status->status = tensorflow::TFSavedModelAPI::Load(
         dirname, absl::nullopt,
-        tensorflow::down_cast<tensorflow::EagerContext*>(
-            tensorflow::unwrap(ctx)),
+        tsl::down_cast<tensorflow::EagerContext*>(tensorflow::unwrap(ctx)),
         &saved_model);
     result = std::move(saved_model);
   }
@@ -78,8 +78,7 @@ TF_SavedModel* TF_LoadSavedModelWithTags(const char* dirname, TFE_Context* ctx,
     std::unique_ptr<tensorflow::TFSavedModelAPI> saved_model;
     status->status = tensorflow::TFSavedModelAPI::Load(
         dirname, tagset,
-        tensorflow::down_cast<tensorflow::EagerContext*>(
-            tensorflow::unwrap(ctx)),
+        tsl::down_cast<tensorflow::EagerContext*>(tensorflow::unwrap(ctx)),
         &saved_model);
     result = std::move(saved_model);
   }

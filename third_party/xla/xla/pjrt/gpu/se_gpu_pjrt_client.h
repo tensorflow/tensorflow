@@ -245,7 +245,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::unique_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options) override {
     return absl::WrapUnique<PjRtLoadedExecutable>(
-        tensorflow::down_cast<PjRtLoadedExecutable*>(executable.release()));
+        tsl::down_cast<PjRtLoadedExecutable*>(executable.release()));
   }
 
   // TODO(b/296466237): Unify `Load` method after (de)serialization and tests on

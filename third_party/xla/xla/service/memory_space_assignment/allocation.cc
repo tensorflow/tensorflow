@@ -992,8 +992,7 @@ std::tuple<int64_t, bool, int64_t> GetAllocationSortTuple(
   int64_t scheduled_on_or_before = allocation->start_time();
   int64_t scheduled_on_or_after = allocation->start_time();
   if (allocation->is_copy_allocation()) {
-    auto copy_allocation =
-        tensorflow::down_cast<CopyAllocation*>(allocation.get());
+    auto copy_allocation = tsl::down_cast<CopyAllocation*>(allocation.get());
     scheduled_on_or_before = copy_allocation->copy_done_schedule_before();
     scheduled_on_or_after = copy_allocation->copy_start_schedule_after();
   }

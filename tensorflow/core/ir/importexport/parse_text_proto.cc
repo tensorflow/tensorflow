@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 using tensorflow::Status;

@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/coding.h"
-#include "tensorflow/core/platform/casts.h"
+#include "tsl/platform/casts.h"
 
 using tensorflow::Status;
 using tensorflow::Tensor;
@@ -153,8 +153,8 @@ TF_DataType TF_TensorType(const TF_Tensor* t) {
 }
 
 void TF_SetShape(TF_Tensor* t, const int64_t* dims, int num_dims) {
-  tensorflow::down_cast<tensorflow::TensorInterface*>(t->tensor)->SetShape(
-      dims, num_dims);
+  tsl::down_cast<tensorflow::TensorInterface*>(t->tensor)->SetShape(dims,
+                                                                    num_dims);
 }
 
 int TF_NumDims(const TF_Tensor* t) { return t->tensor->NumDims(); }
@@ -181,10 +181,9 @@ void TF_TensorBitcastFrom(const TF_Tensor* from, TF_DataType type,
                           int num_new_dims, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   Status cc_status(
-      tensorflow::down_cast<tensorflow::TensorInterface*>(to->tensor)
+      tsl::down_cast<tensorflow::TensorInterface*>(to->tensor)
           ->BitcastFrom(
-              *tensorflow::down_cast<const tensorflow::TensorInterface*>(
-                  from->tensor),
+              *tsl::down_cast<const tensorflow::TensorInterface*>(from->tensor),
               static_cast<tensorflow::DataType>(type), new_dims, num_new_dims));
   tsl::Set_TF_Status_from_Status(status, cc_status);
 }
@@ -340,7 +339,7 @@ TF_Tensor* TF_TensorFromTensorShallow(const tensorflow::Tensor& src,
 }
 
 absl::Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
-  return tensorflow::down_cast<const tensorflow::TensorInterface*>(src->tensor)
+  return tsl::down_cast<const tensorflow::TensorInterface*>(src->tensor)
       ->ToTensor(dst);
 }
 

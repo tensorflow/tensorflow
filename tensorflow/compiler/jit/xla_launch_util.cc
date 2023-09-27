@@ -820,8 +820,7 @@ xla::ExecuteOptions GetPjRtExecuteOptions(
 }
 
 DeviceType GetDeviceType(OpKernelContext* ctx) {
-  auto* device =
-      tensorflow::down_cast<Device*>(ctx->device()->UnderlyingDevice());
+  auto* device = tsl::down_cast<Device*>(ctx->device()->UnderlyingDevice());
   return DeviceType(device->device_type());
 }
 

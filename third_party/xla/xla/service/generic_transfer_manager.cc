@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
@@ -129,7 +130,7 @@ void GenericTransferManager::TransferLiteralFromDevice(
   // declares, via the metadata, that their callback is safe to call from a host
   // callback, we enqueue it and return immediately.
   if ((transfer_metadata != nullptr) &&
-      tensorflow::down_cast<const LiteralFromDeviceMetadata*>(transfer_metadata)
+      tsl::down_cast<const LiteralFromDeviceMetadata*>(transfer_metadata)
           ->callback_is_host_callback_safe) {
     auto status = stream->DoHostCallback([done = std::move(done), stream] {
       done(stream->ok() ? absl::OkStatus()

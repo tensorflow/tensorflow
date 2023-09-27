@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

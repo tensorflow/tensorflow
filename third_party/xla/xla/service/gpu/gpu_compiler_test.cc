@@ -93,8 +93,8 @@ class GpuCompilerTest : public HloTestBase {
     const se::DeviceDescription& gpu_device_info =
         backend().default_stream_executor()->GetDeviceDescription();
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, 4, gpu_device_info).status());
-    return tensorflow::down_cast<GpuCompiler*>(compiler)
-        ->RunPostSchedulingPipelines(module, 4 * 1024 * 1024, gpu_device_info);
+    return tsl::down_cast<GpuCompiler*>(compiler)->RunPostSchedulingPipelines(
+        module, 4 * 1024 * 1024, gpu_device_info);
   }
 
   const stream_executor::GpuComputeCapability& GpuComputeComp() {

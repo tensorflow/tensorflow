@@ -242,6 +242,7 @@ tf_cc_test(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:core",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "@local_tsl//tsl/platform:casts",
     ],
 )
 

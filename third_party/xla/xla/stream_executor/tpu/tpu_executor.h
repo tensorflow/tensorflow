@@ -147,7 +147,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
  private:
   tensorflow::tpu::TpuPlatform& tpu_platform() {
-    return *(tensorflow::down_cast<tensorflow::tpu::TpuPlatform*>(platform_));
+    return *(tsl::down_cast<tensorflow::tpu::TpuPlatform*>(platform_));
   }
 
   tensorflow::tpu::TpuPlatform::StreamMap& stream_map() {

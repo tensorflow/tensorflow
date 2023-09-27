@@ -452,7 +452,7 @@ TEST_F(DeviceCompilerTest, CompileStrictPersistentCacheFailedToPersist) {
   const XlaCompiler::CompilationResult* compilation_result = nullptr;
   xla::LocalExecutable* xla_executable = nullptr;
 
-  auto persistor = down_cast<MockXlaDeviceExecutablePersistor*>(
+  auto persistor = tsl::down_cast<MockXlaDeviceExecutablePersistor*>(
       xla_device_compiler->persistor());
   TF_ASSERT_OK_AND_ASSIGN(auto signature, Signature::Build(fn, args));
   EXPECT_CALL(*persistor,

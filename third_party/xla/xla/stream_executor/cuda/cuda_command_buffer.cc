@@ -391,8 +391,7 @@ absl::Status CudaCommandBuffer::UpdateMemcpyD2DNode(
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateChildNode(
     const Dependencies& dependencies, const CommandBuffer& nested) {
-  CUgraph child_graph =
-      tensorflow::down_cast<const CudaCommandBuffer&>(nested).graph_;
+  CUgraph child_graph = tsl::down_cast<const CudaCommandBuffer&>(nested).graph_;
   VLOG(2) << "Create a new node by cloning the child graph " << child_graph
           << " and add it to " << graph_ << "; deps: " << dependencies.size();
 
@@ -409,8 +408,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateChildNode(
 
 absl::Status CudaCommandBuffer::UpdateChildNode(GraphNodeHandle node_handle,
                                                 const CommandBuffer& nested) {
-  CUgraph child_graph =
-      tensorflow::down_cast<const CudaCommandBuffer&>(nested).graph_;
+  CUgraph child_graph = tsl::down_cast<const CudaCommandBuffer&>(nested).graph_;
   VLOG(2) << "Set child node params " << node_handle << " in graph executable "
           << exec_ << "to params contained in " << child_graph;
 

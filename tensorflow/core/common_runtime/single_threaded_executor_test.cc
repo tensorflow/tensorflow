@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/casts.h"
 
 namespace tensorflow {
 namespace data {
@@ -96,7 +97,7 @@ class ExecutorTest : public ::testing::Test {
           TF_RETURN_IF_ERROR(CreateNonCachedKernel(device_.get(), nullptr,
                                                    props, version, kernel));
           if ((*kernel)->type_string_view() == "Mock") {
-            down_cast<MockOp*>(*kernel)->SetCompute(mock_fn);
+            tsl::down_cast<MockOp*>(*kernel)->SetCompute(mock_fn);
           }
           return absl::OkStatus();
         };

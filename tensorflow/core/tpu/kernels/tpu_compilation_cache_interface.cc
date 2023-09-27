@@ -524,7 +524,7 @@ absl::Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
     // The caller wants its reference to be handed off to a per-step holder that
     // will discard the reference when the step completes.
     RefHolder* cast_ref_holder =
-        tensorflow::down_cast<RefHolder*>(per_step_ref_holder);
+        tsl::down_cast<RefHolder*>(per_step_ref_holder);
     CHECK_NE(cast_ref_holder, nullptr);
     cast_ref_holder->AddRef(entry);
   }

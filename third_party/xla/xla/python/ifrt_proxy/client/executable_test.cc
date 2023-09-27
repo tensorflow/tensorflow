@@ -157,17 +157,15 @@ TEST_F(LoadedExecutableTest, Metadata) {
   ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
                        executable.GetParameterLayouts());
   EXPECT_EQ(parameter_layouts.size(), 2);
-  EXPECT_EQ(
-      tensorflow::down_cast<xla::PjRtXlaLayout*>(parameter_layouts[0].get())
-          ->xla_layout(),
-      xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1));
-  EXPECT_EQ(
-      tensorflow::down_cast<xla::PjRtXlaLayout*>(parameter_layouts[1].get())
-          ->xla_layout(),
-      xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
+  EXPECT_EQ(tsl::down_cast<xla::PjRtXlaLayout*>(parameter_layouts[0].get())
+                ->xla_layout(),
+            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1));
+  EXPECT_EQ(tsl::down_cast<xla::PjRtXlaLayout*>(parameter_layouts[1].get())
+                ->xla_layout(),
+            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
   ASSERT_OK_AND_ASSIGN(auto output_layouts, executable.GetOutputLayouts());
   EXPECT_EQ(output_layouts.size(), 1);
-  EXPECT_EQ(tensorflow::down_cast<xla::PjRtXlaLayout*>(output_layouts[0].get())
+  EXPECT_EQ(tsl::down_cast<xla::PjRtXlaLayout*>(output_layouts[0].get())
                 ->xla_layout(),
             xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
   EXPECT_THAT(executable.GetOutputMemoryKinds(),

@@ -25,10 +25,10 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/xla.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
+#include "tsl/platform/casts.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -294,7 +294,7 @@ Status TpuProgramGroup::CompileAndBuild(
 
   VLOG(1) << "Initialize TpuProgramGroup.";
   TpuProgramGroup* tpu_program_group =
-      tensorflow::down_cast<TpuProgramGroup*>(tpu_program_group_interface);
+      tsl::down_cast<TpuProgramGroup*>(tpu_program_group_interface);
   tpu_program_group->Initialize(
       absl::MakeConstSpan(&xla_tpu_programs[0], count));
   stream_executor::tpu::OpsApiFn()->TpuProgram_FreeArrayFn(xla_tpu_programs);

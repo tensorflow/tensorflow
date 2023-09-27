@@ -237,7 +237,7 @@ class Convolve1D_1x2x5_1x2x2_WithRHSDilation : public ConvolutionTest {
       Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 2});
       auto input = Parameter(&builder, 0, input_shape, "input");
       auto filter = Parameter(&builder, 1, filter_shape, "filter");
-      // Convolution dimensions are bf0_oi0->bo0.
+      // Convolution dimensions are bf0_oi0->bf0.
       ConvGeneralDilated(
           input, filter, /*window_strides=*/{1}, /*padding=*/{{0, 0}},
           /*lhs_dilation=*/{1}, /*rhs_dilation=*/{2},
@@ -275,7 +275,7 @@ XLA_TEST_F(ConvolutionTest,
     Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
-    // Convolution dimensions are bf0_oi0->bo0.
+    // Convolution dimensions are bf0_oi0->bf0.
     ConvGeneralDilated(
         input, filter, /*window_strides=*/{1}, /*padding=*/{{0, 0}},
         /*lhs_dilation=*/{2}, /*rhs_dilation=*/{1},
@@ -306,7 +306,7 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_NoPadding) {
     Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
-    // Convolution dimensions are bf0_oi0->bo0.
+    // Convolution dimensions are bf0_oi0->bf0.
     ConvGeneralDilated(
         input, filter, /*window_strides=*/{1}, /*padding=*/{{2, 2}},
         /*lhs_dilation=*/{2}, /*rhs_dilation=*/{1},
@@ -337,7 +337,7 @@ XLA_TEST_F(ConvolutionTest,
     Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
-    // Convolution dimensions are bf0_oi0->bo0.
+    // Convolution dimensions are bf0_oi0->bf0.
     ConvGeneralDilated(
         input, filter, /*window_strides=*/{1}, /*padding=*/{{1, 1}},
         /*lhs_dilation=*/{2}, /*rhs_dilation=*/{1},
@@ -368,7 +368,7 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_2x1x3_WithLHSDilation) {
     Shape filter_shape = ShapeUtil::MakeShape(F32, {2, 1, 3});
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
-    // Convolution dimensions are bf0_oi0->bo0.
+    // Convolution dimensions are bf0_oi0->bf0.
     ConvGeneralDilated(
         input, filter, /*window_strides=*/{1}, /*padding=*/{{0, 0}},
         /*lhs_dilation=*/{2}, /*rhs_dilation=*/{1},
@@ -400,7 +400,7 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x3_WithLHSDilation) {
     Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 3});
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
-    // Convolution dimensions are bf0_oi0->bo0.
+    // Convolution dimensions are bf0_oi0->bf0.
     ConvGeneralDilated(
         input, filter, /*window_strides=*/{1}, /*padding=*/{{0, 0}},
         /*lhs_dilation=*/{2}, /*rhs_dilation=*/{1},
@@ -432,7 +432,7 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_3x2x5_1x2x3_WithLHSDilation) {
     Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 3});
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
-    // Convolution dimensions are bf0_oi0->bo0.
+    // Convolution dimensions are bf0_oi0->bf0.
     ConvGeneralDilated(
         input, filter, /*window_strides=*/{1}, /*padding=*/{{0, 0}},
         /*lhs_dilation=*/{2}, /*rhs_dilation=*/{1},
@@ -469,7 +469,7 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_3x2x5_2x2x3_WithLHSDilation) {
     Shape filter_shape = ShapeUtil::MakeShape(F32, {2, 2, 3});
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
-    // Convolution dimensions are bf0_oi0->bo0.
+    // Convolution dimensions are bf0_oi0->bf0.
     ConvGeneralDilated(
         input, filter, /*window_strides=*/{1}, /*padding=*/{{0, 0}},
         /*lhs_dilation=*/{2}, /*rhs_dilation=*/{1},
@@ -509,7 +509,7 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation) {
     Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
-    // Convolution dimensions are bf0_oi0->bo0.
+    // Convolution dimensions are bf0_oi0->bf0.
     ConvGeneralDilated(
         input, filter, /*window_strides=*/{1}, /*padding=*/{{0, 0}},
         /*lhs_dilation=*/{2}, /*rhs_dilation=*/{2},
@@ -543,7 +543,7 @@ class Convolve1D_1x2x5_1x2x2_WithPadding : public ConvolutionTest {
       Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 2});
       auto input = Parameter(&builder, 0, input_shape, "input");
       auto filter = Parameter(&builder, 1, filter_shape, "filter");
-      // Convolution dimensions are bf0_oi0->bo0.
+      // Convolution dimensions are bf0_oi0->bf0.
       ConvGeneralDilated(
           input, filter, /*window_strides=*/{1}, /*padding=*/{{2, 2}},
           /*lhs_dilation=*/{1}, /*rhs_dilation=*/{1},

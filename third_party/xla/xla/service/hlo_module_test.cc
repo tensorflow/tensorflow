@@ -51,7 +51,7 @@ namespace xla {
 std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv(
     std::unique_ptr<tsl::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment1> env(
-      tensorflow::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
+      tsl::DownCastMessage<test::TestCompilationEnvironment1>(msg.release()));
   if (!env) {
     env = std::make_unique<test::TestCompilationEnvironment1>();
     env->set_some_flag(100);

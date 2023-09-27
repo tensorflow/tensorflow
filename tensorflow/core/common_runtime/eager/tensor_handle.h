@@ -411,7 +411,7 @@ class TensorHandleInterface : public ImmediateExecutionTensorHandle {
 
 template <typename T>
 inline TensorHandle* TensorHandleFromInterface(T* handle) {
-  return down_cast<TensorHandle*>(handle);
+  return tsl::down_cast<TensorHandle*>(handle);
 }
 
 }  // namespace tensorflow

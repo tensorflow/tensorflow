@@ -2478,7 +2478,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
             /*report_total_fragmentation=*/true));
   }
 
-  return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));
+  return gpu_executable;
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
@@ -2550,7 +2550,7 @@ HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {
 
 absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
     Executable* executable) const {
-  auto* gpu_executable = tensorflow::down_cast<GpuExecutable*>(executable);
+  auto* gpu_executable = tsl::down_cast<GpuExecutable*>(executable);
   if (!gpu_executable) return Internal("GpuExecutable is null");
 
   return GpuThunkAotCompilationResult::FromModule(

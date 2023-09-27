@@ -89,7 +89,7 @@ absl::Status TfHostCallback::Call(void** inputs, void** outputs) {
   // Prepare inputs.
   for (int i = 0; i < operand_type_and_shapes_.size(); ++i) {
     tensorflow::Tensor t = GetTensor(operand_type_and_shapes_[i], inputs[i]);
-    RefCountHandle handle(tensorflow::down_cast<tensorflow::TensorHandle*>(
+    RefCountHandle handle(tsl::down_cast<tensorflow::TensorHandle*>(
         ctx_->CreateLocalHandleFromTFTensor(t, /*d_name=*/nullptr)));
     TF_RETURN_IF_ERROR(op->AddInput(handle.get()));
   }
@@ -105,7 +105,7 @@ absl::Status TfHostCallback::Call(void** inputs, void** outputs) {
   output_handles.reserve(num_outputs);
   for (auto* output_raw_handle : output_raw_handles) {
     output_handles.emplace_back(
-        tensorflow::down_cast<tensorflow::TensorHandle*>(output_raw_handle));
+        tsl::down_cast<tensorflow::TensorHandle*>(output_raw_handle));
   }
 
   // Copy the output tensors.

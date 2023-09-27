@@ -90,7 +90,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
-      tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
+      tsl::down_cast<StreamExecutorGpuClient*>(client.release()));
   Compiler::TargetConfig gpu_target_config = xla::Compiler::TargetConfig(
       se_client->client()->backend().default_stream_executor());
   StreamExecutorGpuCompiler compiler;
@@ -119,7 +119,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
-      tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
+      tsl::down_cast<StreamExecutorGpuClient*>(client.release()));
 #if GOOGLE_CUDA
   auto gpu_compiler = gpu::NVPTXCompiler();
 #elif TENSORFLOW_USE_ROCM
@@ -152,7 +152,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessLoadFromSerializedExecutable) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
-      tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
+      tsl::down_cast<StreamExecutorGpuClient*>(client.release()));
   StreamExecutorGpuCompiler compiler;
   xla::CompileOptions opts;
   opts.target_config = Compiler::TargetConfig(
@@ -189,7 +189,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
-      tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
+      tsl::down_cast<StreamExecutorGpuClient*>(client.release()));
   StreamExecutorGpuCompiler compiler;
   xla::CompileOptions opts;
   opts.target_config = Compiler::TargetConfig(

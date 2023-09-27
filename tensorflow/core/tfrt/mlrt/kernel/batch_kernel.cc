@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel_runner_utils.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
+#include "tsl/platform/casts.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tfrt/concurrency/chain.h"  // from @tf_runtime
@@ -313,7 +314,7 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
 
   std::vector<mlrt::Value> results(batch_function_.output_regs().size());
 
-  const auto& task = down_cast<const MlrtBatchTask&>(last_task);
+  const auto& task = tsl::down_cast<const MlrtBatchTask&>(last_task);
   DCHECK(task.context);
   mlrt::ExecutionContext& caller_context = *task.caller_context;
 

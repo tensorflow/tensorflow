@@ -61,7 +61,7 @@ StatusOr<bool> ShouldConvertFunction(const grappler::GrapplerItem& item) {
     return false;
   }
   const auto& func_item =
-      tensorflow::down_cast<const grappler::GrapplerFunctionItem&>(item);
+      tsl::down_cast<const grappler::GrapplerFunctionItem&>(item);
   const AttrSlice& attr = func_item.func_attr();
   const AttrValue* attr_value = attr.FindByString("_tftrt_convert_function");
   if (attr_value != nullptr) {
@@ -210,7 +210,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   const auto& old_nodes_to_preserve = item.NodesToPreserve();
   nodes_to_preserve.reserve(old_nodes_to_preserve.size());
   for (const auto& n : old_nodes_to_preserve) {
-    auto tokens = str_util::Split(n, ":");
+    std::vector<std::string> tokens = absl::StrSplit(n, ":");
     string s = tokens.at(0);
     for (int i = 1; i < tokens.size() - 1; ++i) {
       StrAppend(&s, ":", tokens.at(i));
@@ -227,7 +227,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
 
   if (item.id != "tf_graph" && do_function_conversion) {
     const grappler::GrapplerFunctionItem& func_item =
-        tensorflow::down_cast<const grappler::GrapplerFunctionItem&>(item);
+        tsl::down_cast<const grappler::GrapplerFunctionItem&>(item);
     TF_RETURN_IF_ERROR(
         UpdateFunctionSpecificConversionParams(params_, func_item.func_attr()));
   }

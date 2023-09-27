@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
+#include "tsl/platform/casts.h"
 #include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
@@ -317,7 +318,8 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   results.resize(bef_func_->result_types().size());
   assert(results.size() > 1);
   assert(bef_func_->result_types().front().GetName() == "!tfrt.chain");
-  auto& exec_ctx = down_cast<const FallbackBatchTask&>(last_task).tfrt_exec_ctx;
+  auto& exec_ctx =
+      tsl::down_cast<const FallbackBatchTask&>(last_task).tfrt_exec_ctx;
 
   auto statusor =
       SetUpRequestContext(host_ctx_, resource_context_, runner_table_,

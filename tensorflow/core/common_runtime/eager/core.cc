@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/placement_utils.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tsl/platform/casts.h"
 
 namespace {
 
@@ -159,7 +160,8 @@ absl::Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
                                      int* num_retvals) {
   for (ImmediateExecutionTensorHandle* handle : inputs_) {
     if (TensorHandle::classof(handle)) {
-      TF_RETURN_IF_ERROR(down_cast<TensorHandle*>(handle)->WaitUnknownDevice());
+      TF_RETURN_IF_ERROR(
+          tsl::down_cast<TensorHandle*>(handle)->WaitUnknownDevice());
     }
   }
 

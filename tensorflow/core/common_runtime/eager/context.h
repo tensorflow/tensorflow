@@ -930,7 +930,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 };
 
 inline EagerContext* ContextFromInterface(ImmediateExecutionContext* context) {
-  return down_cast<EagerContext*>(context);
+  return tsl::down_cast<EagerContext*>(context);
 }
 
 namespace internal {

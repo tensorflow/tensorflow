@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_execute.h"
 #include "tensorflow/core/util/stream_executor_util.h"
+#include "tsl/platform/casts.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -55,7 +56,7 @@ absl::Status FlushProgramMemory(se::Platform* platform, int device_ordinal) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<tpu::TpuNodeContext> node_interfaces,
                       tpu::TpuNodeContext::Create(device_ordinal));
 
-  auto* executor = tensorflow::down_cast<tpu::TpuExecutorInterface*>(
+  auto* executor = tsl::down_cast<tpu::TpuExecutorInterface*>(
       node_interfaces->stream_executor());
   return executor->UnloadAllPrograms();
 }
@@ -214,7 +215,8 @@ absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
 // Perform a compaction to reduce fragmentation.
 absl::Status PerformCompaction(stream_executor::Stream* stream) {
   tsl::profiler::TraceMe trace_me("PerformCompaction", /*level=*/2);
-  auto* ds_executor = down_cast<tpu::TpuExecutorInterface*>(stream->parent());
+  auto* ds_executor =
+      tsl::down_cast<tpu::TpuExecutorInterface*>(stream->parent());
   TF_RETURN_IF_ERROR(ds_executor->EnqueueCompactionOnStreamForHbm(stream));
   // LoadProgram and GetOrCreateConstantHandle are not managed by stream
   // dependencies but they write to shared memory, so we need to block here to

@@ -1676,7 +1676,7 @@ PJRT_Error* PJRT_Buffer_GetMemoryLayout(
       std::unique_ptr<xla::PjRtLayout> pjrt_layout =
           args->buffer->buffer->layout();
       xla::PjRtXlaLayout* pjrt_xla_layout =
-          tensorflow::down_cast<xla::PjRtXlaLayout*>(pjrt_layout.get());
+          tsl::down_cast<xla::PjRtXlaLayout*>(pjrt_layout.get());
       CHECK(pjrt_xla_layout != nullptr) << "Got unexpected layout type";
       const xla::Layout& xla_layout = pjrt_xla_layout->xla_layout();
 

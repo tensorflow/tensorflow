@@ -911,6 +911,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/pjrt/cpu:cpu_client",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
     ],

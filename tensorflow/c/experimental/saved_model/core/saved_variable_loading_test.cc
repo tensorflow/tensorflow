@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
+#include "tsl/platform/casts.h"
 
 namespace tensorflow {
 namespace {
@@ -88,8 +89,9 @@ TEST_P(SavedVariableLoadingTest, LoadSavedVariableWithDevice) {
 
   std::unique_ptr<Variable> var;
   TF_ASSERT_OK(internal::LoadSavedVariable(context(), saved_variable, &var));
-  EXPECT_EQ(down_cast<TensorHandle*>(var->handle())->resource_device()->name(),
-            "/job:localhost/replica:0/task:0/device:CPU:1");
+  EXPECT_EQ(
+      tsl::down_cast<TensorHandle*>(var->handle())->resource_device()->name(),
+      "/job:localhost/replica:0/task:0/device:CPU:1");
 }
 
 // Verify load failure if a non-existing device is specified.

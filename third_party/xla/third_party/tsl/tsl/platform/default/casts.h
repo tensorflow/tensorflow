@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// IWYU pragma: private, include "tsl/platform/casts.h"
+
 #ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_CASTS_H_
 #define TENSORFLOW_TSL_PLATFORM_DEFAULT_CASTS_H_
 
@@ -20,7 +22,7 @@ limitations under the License.
 
 #include <type_traits>
 
-namespace tensorflow {
+namespace tsl {
 
 // An "upcast", i.e. a conversion from a pointer to an object to a pointer to a
 // base subobject, always succeeds if the base is unambiguous and accessible,
@@ -87,10 +89,6 @@ inline To down_cast(From& f) {
   return static_cast<To>(f);
 }
 
-}  // namespace tensorflow
-
-namespace tsl {
-using ::tensorflow::down_cast;
-}
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_CASTS_H_

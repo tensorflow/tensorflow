@@ -49,6 +49,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tsl/platform/casts.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -113,9 +114,9 @@ absl::Status CopyVariable(int output_idx, OpKernelContext* ctx,
   if (t->dtype() == DT_VARIANT) {
     output->flat<Variant>() = t->flat<Variant>();
   } else if (ctx->op_device_context() != nullptr) {
-    // TODO(apassos): remove the down_cast by just returning Device* from
+    // TODO(apassos): remove the tsl::down_cast by just returning Device* from
     // OpKernelContext
-    Device* device = down_cast<Device*>(ctx->device());
+    Device* device = tsl::down_cast<Device*>(ctx->device());
     ctx->op_device_context()->CopyTensorInSameDevice(
         t, device, output, [&n, &status](const absl::Status& s) {
           status = s;

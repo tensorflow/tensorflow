@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tsl/platform/casts.h"
 
 namespace tensorflow {
 
@@ -80,8 +81,7 @@ absl::Status CustomDeviceOpHandler::Execute(
       // here.
       if (tensorflow::CustomDeviceTensorHandle::classof(inputs[i])) {
         tensorflow::CustomDeviceTensorHandle* previous =
-            tensorflow::down_cast<tensorflow::CustomDeviceTensorHandle*>(
-                inputs[i]);
+            tsl::down_cast<tensorflow::CustomDeviceTensorHandle*>(inputs[i]);
         tensorflow::ImmediateExecutionTensorHandle* new_tensor;
         TF_RETURN_IF_ERROR(previous->device()->CopyTensorFromDevice(
             previous, target_device, &new_tensor));
@@ -154,7 +154,7 @@ absl::Status CustomDeviceOpHandler::MaybePinToCustomDevice(
       // here.
       if (CustomDeviceTensorHandle::classof(generic_input)) {
         const CustomDeviceTensorHandle* input =
-            down_cast<const CustomDeviceTensorHandle*>(generic_input);
+            tsl::down_cast<const CustomDeviceTensorHandle*>(generic_input);
         CustomDevice* current = input->device();
         if (first == nullptr) {
           first = current;
@@ -190,7 +190,7 @@ absl::Status CustomDeviceOpHandler::MaybePinToCustomDevice(
       if (generic_input->DataType() == DT_RESOURCE) {
         if (CustomDeviceTensorHandle::classof(generic_input)) {
           const CustomDeviceTensorHandle* input =
-              down_cast<const CustomDeviceTensorHandle*>(generic_input);
+              tsl::down_cast<const CustomDeviceTensorHandle*>(generic_input);
           // There's only one custom device input, and it's a resource input, so
           // we'll force-place the op on to that custom device. As with physical
           // devices, this overrides any explicit placement for the op.

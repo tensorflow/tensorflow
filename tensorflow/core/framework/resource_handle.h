@@ -23,12 +23,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/intrusive_ptr.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
+#include "tsl/platform/casts.h"
 
 namespace tensorflow {
 
@@ -156,7 +156,7 @@ class ResourceHandle {
   template <typename T>
   StatusOr<T*> GetResource() const {
     TF_RETURN_IF_ERROR(ValidateType<T>());
-    return down_cast<T*>(resource_.get());
+    return tsl::down_cast<T*>(resource_.get());
   }
 
   // Returns True if the resource handle is ref-counting.
