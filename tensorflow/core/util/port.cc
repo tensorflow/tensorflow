@@ -149,4 +149,3 @@ bool IsZenDnnEnabled() {
 }
 
 }  // namespace tensorflow
-
