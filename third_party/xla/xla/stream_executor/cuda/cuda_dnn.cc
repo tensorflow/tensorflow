@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_driver.h"
-#include "xla/stream_executor/cuda/cuda_gpu_executor.h"
+#include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/dnn.h"

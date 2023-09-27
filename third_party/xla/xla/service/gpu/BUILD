@@ -290,7 +290,7 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        "//xla/stream_executor/cuda:cuda_gpu_executor_header",
+        "//xla/stream_executor/cuda:cuda_executor_header",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "//xla/stream_executor/rocm:rocm_gpu_executor_header",
