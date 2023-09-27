@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 31
+#define PJRT_API_MINOR 32
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1571,6 +1571,21 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_CopyToDevice_Args, dst_buffer);
 typedef PJRT_Error* PJRT_Buffer_CopyToDevice(
     PJRT_Buffer_CopyToDevice_Args* args);
 
+struct PJRT_Buffer_CopyToMemory_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  PJRT_Memory* dst_memory;
+  PJRT_Buffer* dst_buffer;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_CopyToMemory_Args, dst_buffer);
+
+// Copies the buffer to memory `dst_memory`. Caller is responsible for freeing
+// returned `dst_buffer` with PJRT_Buffer_Destroy. Returns an error if the
+// buffer is already on `dst_memory`.
+typedef PJRT_Error* PJRT_Buffer_CopyToMemory(
+    PJRT_Buffer_CopyToMemory_Args* args);
+
 struct PJRT_Buffer_IsOnCpu_Args {
   size_t struct_size;
   void* priv;
@@ -2033,10 +2048,12 @@ typedef struct {
   // corresponding places after each major version bump.
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_OutputElementTypes);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_OutputDimensions);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToMemory);
 } PJRT_Api;
 
 const size_t PJRT_Api_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Executable_OutputDimensions);
+    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_CopyToMemory);
 
 #undef _PJRT_API_STRUCT_FIELD
 
