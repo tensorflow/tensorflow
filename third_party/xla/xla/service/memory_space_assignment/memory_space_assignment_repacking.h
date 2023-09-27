@@ -22,6 +22,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -60,6 +61,27 @@ class MemorySpaceAssignmentRepacker {
   // Slice data about a sliced allocation.
   struct SlicedAllocationData {
     std::vector<Slice> slices_sorted_by_offset;
+
+    std::vector<int64_t> SizesSortedByOffset() const {
+      std::vector<int64_t> sizes_sorted_by_offset;
+      sizes_sorted_by_offset.reserve(slices_sorted_by_offset.size());
+      absl::c_for_each(slices_sorted_by_offset,
+                       [&sizes_sorted_by_offset](const Slice& slice) {
+                         sizes_sorted_by_offset.push_back(slice.size);
+                       });
+      return sizes_sorted_by_offset;
+    }
+
+    std::vector<int64_t> SortedStartTimes() const {
+      std::vector<int64_t> sorted_start_times;
+      sorted_start_times.reserve(slices_sorted_by_offset.size());
+      absl::c_for_each(slices_sorted_by_offset,
+                       [&sorted_start_times](const Slice& slice) {
+                         sorted_start_times.push_back(slice.start_time);
+                       });
+      absl::c_sort(sorted_start_times);
+      return sorted_start_times;
+    }
 
     std::string ToString() const {
       return absl::StrCat(
@@ -114,7 +136,7 @@ class MemorySpaceAssignmentRepacker {
         repacked_slicing_str = absl::StrCat("; repacked_slice_data: ",
                                             repacked_slice_data->ToString());
       }
-      return absl::StrCat("[", start_time, ", ", end_time, "]: size: ", size,
+      return absl::StrCat("[", start_time, ", ", end_time, "]; size: ", size,
                           "; offset: ", offset,
                           "; initial offset: ", initial_offset,
                           "; # colocations: ", colocations.size(),

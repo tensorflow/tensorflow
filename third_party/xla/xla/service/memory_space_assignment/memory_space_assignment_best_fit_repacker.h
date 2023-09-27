@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_BEST_FIT_REPACKER_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_BEST_FIT_REPACKER_H_
 
+#include <cstdint>
+
+#include "absl/types/span.h"
 #include "xla/service/heap_simulator.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment_repacking.h"
+#include "xla/statusor.h"
 
 namespace xla {
 
@@ -26,17 +30,31 @@ namespace xla {
 class MemorySpaceAssignmentBestFitRepacker
     : public MemorySpaceAssignmentRepacker {
  public:
-  using Type = GlobalDecreasingSizeBestFitHeap<AllocationBlock>::Type;
+  using BufferInterval =
+      GlobalDecreasingSizeBestFitHeap<AllocationBlock>::BufferInterval;
+  using BufferIntervalCompare =
+      GlobalDecreasingSizeBestFitHeap<AllocationBlock>::BufferIntervalCompare;
 
-  explicit MemorySpaceAssignmentBestFitRepacker(
-      int64_t max_size, int64_t alignment,
-      Type type = GlobalDecreasingSizeBestFitHeap<AllocationBlock>::kTemporal)
-      : MemorySpaceAssignmentRepacker(max_size, alignment), type_(type) {}
+  struct BestFitRepackOptions {
+    // Running the validator is potentially expensive.
+    bool validate = false;
+
+    // Specify the comparison function used for determining the order in which
+    // buffers will be allocated, during repacking.
+    BufferIntervalCompare buffer_interval_compare = nullptr;
+  };
+
+  MemorySpaceAssignmentBestFitRepacker(int64_t max_size, int64_t alignment)
+      : MemorySpaceAssignmentRepacker(max_size, alignment),
+        options_(BestFitRepackOptions()) {}
+  MemorySpaceAssignmentBestFitRepacker(int64_t max_size, int64_t alignment,
+                                       BestFitRepackOptions options)
+      : MemorySpaceAssignmentRepacker(max_size, alignment), options_(options) {}
 
   StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) override;
 
  private:
-  Type type_;
+  BestFitRepackOptions options_;
 };
 
 }  // namespace xla
