@@ -22,9 +22,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#ifdef INTEL_MKL
-#include "tensorflow/core/graph/mkl_graph_util.h"
-#endif
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -633,11 +630,6 @@ class RemapperFuseConvWithBias : public RemapperTest {
  public:
   template <int dim, DataType DTYPE>
   void RunTest() {
-    if (DTYPE == DT_BFLOAT16 &&
-        !(IsMKLEnabled() &&
-          mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-      GTEST_SKIP() << "onednn not enabled or bf16 not supported on this CPU";
-    }
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -729,15 +721,13 @@ class RemapperFuseConvWithBias : public RemapperTest {
 TEST_F(RemapperFuseConvWithBias, Conv2D_F32) { RunTest<2, DT_FLOAT>(); }
 TEST_F(RemapperFuseConvWithBias, Conv3D_F32) { RunTest<3, DT_FLOAT>(); }
 TEST_F(RemapperFuseConvWithBias, Conv2D_BF16) {
-  if (!(IsMKLEnabled() &&
-        mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
+  if (!IsMKLEnabled())
     GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
                     "FuseConv2DWithBias with bfloat16.";
-  }
   RunTest<2, DT_BFLOAT16>();
 }
 TEST_F(RemapperFuseConvWithBias, Conv3D_BF16) {
-  if (!(IsMKLEnabled() && mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()))
+  if (!IsMKLEnabled())
     GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
                     "FuseConv3DWithBias with bfloat16.";
   RunTest<3, DT_BFLOAT16>();
@@ -747,11 +737,6 @@ class RemapperFuseConvWithBiasAndActivation : public RemapperTest {
  public:
   template <int dim, DataType DTYPE>
   void RunTest() {
-    if (DTYPE == DT_BFLOAT16 &&
-        !(IsMKLEnabled() &&
-          mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-      GTEST_SKIP() << "onednn not enabled or bf16 not supported on this CPU";
-    }
     using ::tensorflow::ops::Placeholder;
 
     for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
@@ -891,13 +876,13 @@ TEST_F(RemapperFuseConvWithBiasAndActivation, Conv3D_F32) {
   RunTest<3, DT_FLOAT>();
 }
 TEST_F(RemapperFuseConvWithBiasAndActivation, Conv2D_BF16) {
-  if (!(IsMKLEnabled() && mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()))
+  if (!IsMKLEnabled())
     GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
                     "FuseConv2DWithBiasAndActivation with bfloat16.";
   RunTest<2, DT_BFLOAT16>();
 }
 TEST_F(RemapperFuseConvWithBiasAndActivation, Conv3D_BF16) {
-  if (!(IsMKLEnabled() && mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()))
+  if (!IsMKLEnabled())
     GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
                     "FuseConv3DWithBiasAndActivation with bfloat16.";
   RunTest<3, DT_BFLOAT16>();
@@ -907,12 +892,6 @@ class RemapperFuseConvWithSqueezeAndBias : public RemapperTest {
  public:
   template <int dim, DataType DTYPE>
   void RunTest() {
-    if (DTYPE == DT_BFLOAT16 &&
-        !(IsMKLEnabled() &&
-          mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-      GTEST_SKIP() << "onednn not enabled or bf16 not supported on this CPU";
-    }
-
     using ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1021,13 +1000,13 @@ TEST_F(RemapperFuseConvWithSqueezeAndBias, Conv3D_FP32) {
   RunTest<3, DT_FLOAT>();
 }
 TEST_F(RemapperFuseConvWithSqueezeAndBias, Conv2D_BF16) {
-  if (!(IsMKLEnabled() && mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()))
+  if (!IsMKLEnabled())
     GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
                     "FuseConvWithSqueezeAndBias with bfloat16.";
   RunTest<2, DT_BFLOAT16>();
 }
 TEST_F(RemapperFuseConvWithSqueezeAndBias, Conv3D_BF16) {
-  if (!(IsMKLEnabled() && mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()))
+  if (!IsMKLEnabled())
     GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
                     "FuseConvWithSqueezeAndBias with bfloat16.";
   RunTest<3, DT_BFLOAT16>();
@@ -1355,11 +1334,6 @@ class RemapperFuseSoftplusTanhMul : public RemapperTest {
  public:
   template <DataType DTYPE>
   void RunTest() {
-    if (DTYPE == DT_BFLOAT16 &&
-        !(IsMKLEnabled() &&
-          mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-      GTEST_SKIP() << "onednn not enabled or bf16 not supported on this CPU";
-    }
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1426,10 +1400,7 @@ TEST_F(RemapperFuseSoftplusTanhMul, FP32) {
   RunTest<DT_FLOAT>();
 }
 TEST_F(RemapperFuseSoftplusTanhMul, BF16) {
-  if (!(IsMKLEnabled() &&
-        mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-    GTEST_SKIP() << "Test only applicable to MKLDNN on this CPU.";
-  }
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
   RunTest<DT_BFLOAT16>();
 }
 #endif
@@ -1502,12 +1473,6 @@ class FuseMklLayerNormPattern : public RemapperTest {
   template <DataType DTYPE>
   void RunTest() {
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
-    if (DTYPE == DT_BFLOAT16 &&
-        !(IsMKLEnabled() &&
-          mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-      GTEST_SKIP() << "onednn not enabled or bf16 not supported on this CPU";
-    }
-
     using ::tensorflow::ops::Placeholder;
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
@@ -1577,11 +1542,6 @@ class RemapperTensorToHashBucketTest : public RemapperTest {
  public:
   template <DataType DTYPE>
   void RunTest() {
-    if (DTYPE == DT_BFLOAT16 &&
-        !(IsMKLEnabled() &&
-          mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-      GTEST_SKIP() << "onednn not enabled or bf16 not supported on this CPU";
-    }
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1650,11 +1610,6 @@ class RemapperFuseMatMulWithBiasTest : public RemapperTest {
  public:
   template <DataType DTYPE>
   void RunTest() {
-    if (DTYPE == DT_BFLOAT16 &&
-        !(IsMKLEnabled() &&
-          mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-      GTEST_SKIP() << "onednn not enabled or bf16 not supported on this CPU";
-    }
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1832,14 +1787,6 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
     std::vector<string> activations = {"Relu", "Relu6", "Elu", "LeakyRelu"};
 #endif
 
-#if defined(INTEL_MKL)
-    if (DTYPE == DT_BFLOAT16 &&
-        !(IsMKLEnabled() &&
-          mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-      GTEST_SKIP() << "Bfloat16 not supported on this CPU";
-    }
-#endif
-
     for (const string& activation : activations) {
       if (DTYPE == DT_HALF && activation != "Relu") continue;
       tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1957,6 +1904,10 @@ TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F32) {
 }
 
 TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, Bf16) {
+#if !defined(ENABLE_MKL)
+  GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
+                  "FuseMatMulWithBiasAndActivation with bfloat16.";
+#endif
   RunTest<DT_BFLOAT16>();  // NOLINT
 }
 
@@ -2486,10 +2437,6 @@ class RemapperFusePadConv3D : public RemapperTest {
   template <DataType DTYPE>
   void RunTest() {
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
-    if (DTYPE == DT_BFLOAT16 &&
-        !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()) {
-      GTEST_SKIP() << "BF16 not supported";
-    }
     using ::tensorflow::ops::Placeholder;
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
@@ -2556,7 +2503,7 @@ TEST_F(RemapperFusePadConv3D, Conv3D_FP32) {
   RunTest<DT_FLOAT>();
 }
 TEST_F(RemapperFusePadConv3D, Conv3D_BF16) {
-  if (!IsMKLEnabled() && !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+  if (!IsMKLEnabled())
     GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
                     "RemapperFusePadConv3D with bfloat16.";
   RunTest<DT_BFLOAT16>();
@@ -2567,11 +2514,6 @@ class RemapperFusePadWithFusedConv3D : public RemapperTest {
   template <DataType DTYPE>
   void RunTest() {
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
-    if (DTYPE == DT_BFLOAT16 &&
-        !(IsMKLEnabled() &&
-          mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-      GTEST_SKIP() << "onednn not enabled or bf16 not supported on this CPU";
-    }
     using ::tensorflow::ops::Placeholder;
 
     // Empty string denotes no activation.
@@ -2685,7 +2627,7 @@ TEST_F(RemapperFusePadWithFusedConv3D, FusedConv3D_FP32) {
   RunTest<DT_FLOAT>();
 }
 TEST_F(RemapperFusePadWithFusedConv3D, FusedConv3D_BF16) {
-  if (!(IsMKLEnabled() && mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()))
+  if (!IsMKLEnabled())
     GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
                     "RemapperFusePadWithFusedConv3D with bfloat16.";
   RunTest<DT_BFLOAT16>();
@@ -2697,10 +2639,6 @@ class RemapperLeakyReluTest : public GrapplerTest {
   template <DataType DTYPE>
   void RunTest() {
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
-    if (DTYPE == DT_BFLOAT16 &&
-        !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()) {
-      GTEST_SKIP() << "BFLOAT16 not supported on this CPU.";
-    }
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -2765,11 +2703,6 @@ class RemapperFuseFusedConvWithFusedActivation : public RemapperTest {
   template <int dim, DataType DTYPE>
   void RunTest() {
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
-    if (DTYPE == DT_BFLOAT16 &&
-        !(IsMKLEnabled() &&
-          mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-      GTEST_SKIP() << "onednn not enabled or bf16 not supported on this CPU";
-    }
 
     using ::tensorflow::ops::Placeholder;
 

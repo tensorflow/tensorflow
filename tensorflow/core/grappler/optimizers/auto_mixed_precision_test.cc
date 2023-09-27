@@ -31,9 +31,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/graph_view.h"
-#ifdef INTEL_MKL
-#include "tensorflow/core/graph/mkl_graph_util.h"
-#endif
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -1476,11 +1473,6 @@ class AutoMixedPrecisionMklTest : public GrapplerTest {
 TEST_F(AutoMixedPrecisionMklTest, AlreadyBf16) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
       "/job:localhost/replica:0/task:0/device:CPU:0");
-  if (!(IsMKLEnabled() &&
-        mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-    GTEST_SKIP()
-        << "Test only applicable to MKL auto-mixed precision on supported HW.";
-  }
   Output input = ops::Const(s.WithOpName("input"), 1.f, {32, 32});
   Output cst1 = ops::Cast(s.WithOpName("cst1"), input, DT_BFLOAT16);
   Output allow1 = ops::MatMul(s.WithOpName("allow1"), cst1, cst1);
@@ -1518,11 +1510,6 @@ TEST_F(AutoMixedPrecisionMklTest, AlreadyBf16) {
 }
 
 TEST_F(AutoMixedPrecisionMklTest, Simple) {
-  if (!(IsMKLEnabled() &&
-        mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-    GTEST_SKIP()
-        << "Test only applicable to MKL auto-mixed precision on supported HW.";
-  }
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
       "/job:localhost/replica:0/task:0/device:CPU:0");
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
@@ -1573,11 +1560,6 @@ TEST_F(AutoMixedPrecisionMklTest, Simple) {
 }
 
 TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
-  if (!(IsMKLEnabled() &&
-        mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-    GTEST_SKIP()
-        << "Test only applicable to MKL auto-mixed precision on supported HW.";
-  }
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
       "/job:localhost/replica:0/task:0/device:CPU:0");
   tensorflow::Input shape = {32, 32};
@@ -1655,11 +1637,8 @@ TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
 }
 
 TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamAllow) {
-  if (!(IsMKLEnabled() &&
-        mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-    GTEST_SKIP()
-        << "Test only applicable to MKL auto-mixed precision on supported HW.";
-  }
+  if (!IsMKLEnabled())
+    GTEST_SKIP() << "Test only applicable to MKL auto-mixed precision.";
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
       "/job:localhost/replica:0/task:0/device:CPU:0");
   Output input1 = ops::Const(s.WithOpName("input1"), 1.f / 32, {8, 56, 56, 16});
@@ -1701,11 +1680,8 @@ TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamAllow) {
 }
 
 TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamDeny) {
-  if (!(IsMKLEnabled() &&
-        mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())) {
-    GTEST_SKIP()
-        << "Test only applicable to MKL auto-mixed precision on supported HW.";
-  }
+  if (!IsMKLEnabled())
+    GTEST_SKIP() << "Test only applicable to MKL auto-mixed precision.";
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
       "/job:localhost/replica:0/task:0/device:CPU:0");
   Output input1 = ops::Const(s.WithOpName("input1"), 1.f / 32, {8, 56, 56, 16});
