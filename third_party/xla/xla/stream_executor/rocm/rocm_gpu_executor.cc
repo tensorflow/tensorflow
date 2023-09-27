@@ -727,8 +727,10 @@ GpuExecutor::GetStreamImplementation() {
 
 tsl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
 GpuExecutor::GetCommandBufferImplementation() {
-  return std::unique_ptr<internal::CommandBufferInterface>(
-      new GpuCommandBuffer());
+  VLOG(2) << "Create ROCm command buffer (ROCm graph)";
+  GpuGraphHandle graph = nullptr;
+  TF_RETURN_IF_ERROR(GpuDriver::CreateGraph(&graph));
+  return std::make_unique<GpuCommandBuffer>(this, graph);
 }
 
 void* GpuExecutor::GpuContextHack() { return context_; }
