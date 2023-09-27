@@ -273,6 +273,35 @@ class ListOpsTest(parameterized.TestCase):
     self.assertEqual(tf_out.shape, output_tensor.shape)
     self.assertTrue((tf_out == output_tensor).numpy().all())
 
+  @parameterized.named_parameters(
+      ("Unranked", None),
+      ("DynDim", [None]),
+      ("DynMultiDim", [None, 2]),
+      ("AllStatic", [2, 2]),
+  )
+  def test_reserve_element_shape(self, element_shape):
+    @tf.function
+    def reserve_element_shape() -> tf.Tensor:
+      l = list_ops.tensor_list_reserve(
+          element_shape=tf.TensorShape(element_shape),
+          element_dtype=tf.int32,
+          num_elements=10,
+      )
+      return list_ops.tensor_list_element_shape(l, tf.int32)
+
+    interpreter = self._get_interpreter_from_c_func(reserve_element_shape)
+    interpreter.allocate_tensors()
+    interpreter.invoke()
+
+    output_tensor = interpreter.get_tensor(
+        interpreter.get_output_details()[0]["index"]
+    )
+
+    tf_out = reserve_element_shape()
+    self.assertEqual(tf_out.dtype, output_tensor.dtype)
+    self.assertEqual(tf_out.shape, output_tensor.shape)
+    self.assertTrue((tf_out == output_tensor).numpy().all())
+
 
 if __name__ == "__main__":
   googletest.main()

@@ -22,6 +22,9 @@ include "mlir/Dialect/Arith/IR/ArithOps.td"
 def ConstDenseElementsI32ZeroAttr
   : NativeCodeCall<"$_builder.create<TFL::ConstOp>($_loc, DenseElementsAttr::get(RankedTensorType::get({}, $_builder.getI32Type()), {0}))">;
 
+def Size1InputRange : NativeCodeCall<
+  "SmallVector<Value, 1>{$0}">;
+
 def Size2InputRange : NativeCodeCall<
   "SmallVector<Value, 2>{$0, $1}">;
 
@@ -60,3 +63,7 @@ def LegalizeTensorListGetItem : Pat<(TF_TensorListGetItemOp $input, $index, $ele
 def LegalizeTensorListEmpty : Pat<(TF_EmptyTensorListOp:$tf_op $element_shape, $unused_max_elements),
     (TFL_CustomOp (Size2InputRange $element_shape, (ConstDenseElementsI32ZeroAttr)),
     (CreateStringAttr<"\"TensorListReserve\"">), (CustomOptions $tf_op))>;
+
+def LegalizeTensorListElementShape : Pat<(TF_TensorListElementShapeOp $input),
+    (TFL_CustomOp (Size1InputRange $input),
+    (CreateStringAttr<"\"TensorListElementShape\"">), (EmptyCustomOptions))>;
