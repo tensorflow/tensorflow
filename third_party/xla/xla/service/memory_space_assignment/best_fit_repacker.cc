@@ -113,7 +113,7 @@ Step 5: Update AllocationBlocks with the repacking placements
     Callers extract that data to get the repacking locations.
 */
 
-#include "xla/service/memory_space_assignment/memory_space_assignment_best_fit_repacker.h"
+#include "xla/service/memory_space_assignment/best_fit_repacker.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -131,17 +131,19 @@ Step 5: Update AllocationBlocks with the repacking placements
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/service/heap_simulator.h"
+#include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/statusor.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
 namespace {
 
-using AllocationBlock = MemorySpaceAssignmentRepacker::AllocationBlock;
+using AllocationBlock =
+    memory_space_assignment::MemorySpaceAssignmentRepacker::AllocationBlock;
 using Type = GlobalDecreasingSizeBestFitHeap<AllocationBlock>::Type;
-using SlicedAllocationData =
+using SlicedAllocationData = memory_space_assignment::
     MemorySpaceAssignmentRepacker::SlicedAllocationData;
-using Slice = MemorySpaceAssignmentRepacker::Slice;
+using Slice = memory_space_assignment::MemorySpaceAssignmentRepacker::Slice;
 
 bool IsSliced(const AllocationBlock* block) {
   return block->original_slice_data.has_value();
@@ -167,7 +169,8 @@ class BestFitRepacker
     : public GlobalDecreasingSizeBestFitHeap<AllocationBlock> {
  public:
   BestFitRepacker(
-      const MemorySpaceAssignmentBestFitRepacker::BestFitRepackOptions& options,
+      const memory_space_assignment::MemorySpaceAssignmentBestFitRepacker::
+          BestFitRepackOptions& options,
       int64_t max_size, int64_t alignment)
       : GlobalDecreasingSizeBestFitHeap<AllocationBlock>(
             alignment, kCustom,
@@ -608,6 +611,8 @@ class BestFitRepacker
 
 }  // namespace
 
+namespace memory_space_assignment {
+
 StatusOr<bool> MemorySpaceAssignmentBestFitRepacker::Repack(
     absl::Span<AllocationBlock*> allocations) {
   BestFitRepacker best_fit_repacker =
@@ -616,4 +621,5 @@ StatusOr<bool> MemorySpaceAssignmentBestFitRepacker::Repack(
   return best_fit_repacker.Repack();
 }
 
+}  // namespace memory_space_assignment
 }  // namespace xla

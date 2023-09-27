@@ -38,9 +38,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":memory_space_assignment_proto_cc",
-        ":memory_space_assignment_repacking",
-        ":memory_space_assignment_tuning_utils",
-        ":memory_space_assignment_utils",
+        ":repacking",
+        ":tuning_utils",
+        ":utils",
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:status",
@@ -73,7 +73,7 @@ xla_cc_test(
     deps = [
         ":memory_space_assignment",
         ":memory_space_assignment_proto_cc",
-        ":memory_space_assignment_repacking",
+        ":repacking",
         "//xla:shape_util",
         "//xla:status",
         "//xla:util",
@@ -104,8 +104,8 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "memory_space_assignment_repacking",
-    hdrs = ["memory_space_assignment_repacking.h"],
+    name = "repacking",
+    hdrs = ["repacking.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//xla:statusor",
@@ -117,12 +117,12 @@ cc_library(
 )
 
 cc_library(
-    name = "memory_space_assignment_best_fit_repacker",
-    srcs = ["memory_space_assignment_best_fit_repacker.cc"],
-    hdrs = ["memory_space_assignment_best_fit_repacker.h"],
+    name = "best_fit_repacker",
+    srcs = ["best_fit_repacker.cc"],
+    hdrs = ["best_fit_repacker.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":memory_space_assignment_repacking",
+        ":repacking",
         "//xla:comparison_util",
         "//xla:statusor",
         "//xla/service:heap_simulator",
@@ -136,9 +136,9 @@ cc_library(
 )
 
 cc_library(
-    name = "memory_space_assignment_utils",
-    srcs = ["memory_space_assignment_utils.cc"],
-    hdrs = ["memory_space_assignment_utils.h"],
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
@@ -147,22 +147,22 @@ cc_library(
 )
 
 cc_library(
-    name = "memory_space_assignment_tuning_utils",
-    srcs = ["memory_space_assignment_tuning_utils.cc"],
-    hdrs = ["memory_space_assignment_tuning_utils.h"],
+    name = "tuning_utils",
+    srcs = ["tuning_utils.cc"],
+    hdrs = ["tuning_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":memory_space_assignment_utils",
         "//xla/hlo/ir:hlo",
         "//xla/service:heap_simulator",
     ],
 )
 
 xla_cc_test(
-    name = "memory_space_assignment_best_fit_repacker_test",
-    srcs = ["memory_space_assignment_best_fit_repacker_test.cc"],
+    name = "best_fit_repacker_test",
+    srcs = ["best_fit_repacker_test.cc"],
     deps = [
-        ":memory_space_assignment_best_fit_repacker",
+        ":best_fit_repacker",
+        ":repacking",
         "//xla:comparison_util",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_REPACKING_H_
-#define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_REPACKING_H_
+#ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_REPACKING_H_
+#define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_REPACKING_H_
 
 #include <cstdint>
 #include <optional>
@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/types.h"
 
 namespace xla {
+namespace memory_space_assignment {
 
 // An interface to define allocation repacking algorithms.
 class MemorySpaceAssignmentRepacker {
@@ -158,6 +159,7 @@ class MemorySpaceAssignmentRepacker {
   int64_t alignment_;
 };
 
+}  // namespace memory_space_assignment
 }  // namespace xla
 
-#endif  // XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_REPACKING_H_
+#endif  // XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_REPACKING_H_

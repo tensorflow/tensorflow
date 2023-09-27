@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_ordering.h"
-#include "xla/service/memory_space_assignment/memory_space_assignment_repacking.h"
+#include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/tuple_points_to_analysis.h"
 #include "xla/statusor.h"
 
@@ -901,7 +901,7 @@ class ChooseBestHeapAlgorithm : public HeapAlgorithm<BufferType> {
 
 extern template class GlobalDecreasingSizeBestFitHeap<HloValue>;
 extern template class GlobalDecreasingSizeBestFitHeap<
-    MemorySpaceAssignmentRepacker::AllocationBlock>;
+    memory_space_assignment::MemorySpaceAssignmentRepacker::AllocationBlock>;
 extern template class ChooseBestHeapAlgorithm<HloValue>;
 
 }  // namespace xla

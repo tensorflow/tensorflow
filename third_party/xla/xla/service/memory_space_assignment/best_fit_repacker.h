@@ -13,17 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_BEST_FIT_REPACKER_H_
-#define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_BEST_FIT_REPACKER_H_
+#ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_BEST_FIT_REPACKER_H_
+#define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_BEST_FIT_REPACKER_H_
 
 #include <cstdint>
 
 #include "absl/types/span.h"
 #include "xla/service/heap_simulator.h"
-#include "xla/service/memory_space_assignment/memory_space_assignment_repacking.h"
+#include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/statusor.h"
 
 namespace xla {
+namespace memory_space_assignment {
 
 // This is a repacker algorithm that wraps around best fit heap algorithm in
 // heap simulator.
@@ -57,6 +58,7 @@ class MemorySpaceAssignmentBestFitRepacker
   BestFitRepackOptions options_;
 };
 
+}  // namespace memory_space_assignment
 }  // namespace xla
 
-#endif  // XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_BEST_FIT_REPACKER_H_
+#endif  // XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_BEST_FIT_REPACKER_H_

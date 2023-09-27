@@ -13,23 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/memory_space_assignment/memory_space_assignment_best_fit_repacker.h"
+#include "xla/service/memory_space_assignment/best_fit_repacker.h"
 
 #include <cstdint>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/service/memory_space_assignment/repacking.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 
 class MemorySpaceAssignmentBestFitRepackerTest : public ::testing::Test {
  protected:
-  using AllocationBlock = MemorySpaceAssignmentRepacker::AllocationBlock;
-  using SlicedAllocationData =
+  using AllocationBlock =
+      memory_space_assignment::MemorySpaceAssignmentRepacker::AllocationBlock;
+  using SlicedAllocationData = memory_space_assignment::
       MemorySpaceAssignmentRepacker::SlicedAllocationData;
-  using Slice = MemorySpaceAssignmentRepacker::Slice;
+  using Slice = memory_space_assignment::MemorySpaceAssignmentRepacker::Slice;
 
   MemorySpaceAssignmentBestFitRepackerTest() : repacker_(100, 1, options_) {}
 
@@ -50,9 +52,10 @@ class MemorySpaceAssignmentBestFitRepackerTest : public ::testing::Test {
   }
 
   std::list<AllocationBlock> allocation_blocks_;
-  MemorySpaceAssignmentBestFitRepacker::BestFitRepackOptions options_{
-      /*validate=*/true, /*buffer_interval_compare=*/nullptr};
-  MemorySpaceAssignmentBestFitRepacker repacker_;
+  memory_space_assignment::MemorySpaceAssignmentBestFitRepacker::
+      BestFitRepackOptions options_{/*validate=*/true,
+                                    /*buffer_interval_compare=*/nullptr};
+  memory_space_assignment::MemorySpaceAssignmentBestFitRepacker repacker_;
 };
 
 TEST_F(MemorySpaceAssignmentBestFitRepackerTest, Simple) {
@@ -163,11 +166,12 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, RepackedSlicesFit) {
     sort_keys[allocation_blocks[i]] = i;
   }
   options_.buffer_interval_compare = LessThanByKey(
-      [sort_keys](
-          const MemorySpaceAssignmentBestFitRepacker::BufferInterval& x) {
+      [sort_keys](const memory_space_assignment::
+                      MemorySpaceAssignmentBestFitRepacker::BufferInterval& x) {
         return sort_keys.at(x.buffer);
       });
-  repacker_ = MemorySpaceAssignmentBestFitRepacker(100, 1, options_);
+  repacker_ = memory_space_assignment::MemorySpaceAssignmentBestFitRepacker(
+      100, 1, options_);
 
   EXPECT_TRUE(*repacker_.Repack(absl::MakeSpan(allocation_blocks)));
 
@@ -251,11 +255,12 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, SlicedColocationsFit) {
     sort_keys[allocation_blocks[i]] = i;
   }
   options_.buffer_interval_compare = LessThanByKey(
-      [sort_keys](
-          const MemorySpaceAssignmentBestFitRepacker::BufferInterval& x) {
+      [sort_keys](const memory_space_assignment::
+                      MemorySpaceAssignmentBestFitRepacker::BufferInterval& x) {
         return sort_keys.at(x.buffer);
       });
-  repacker_ = MemorySpaceAssignmentBestFitRepacker(100, 1, options_);
+  repacker_ = memory_space_assignment::MemorySpaceAssignmentBestFitRepacker(
+      100, 1, options_);
 
   EXPECT_TRUE(*repacker_.Repack(absl::MakeSpan(allocation_blocks)));
 

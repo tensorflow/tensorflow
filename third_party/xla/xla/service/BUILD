@@ -1745,7 +1745,7 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
-        "//xla/service/memory_space_assignment:memory_space_assignment_repacking",
+        "//xla/service/memory_space_assignment:repacking",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
