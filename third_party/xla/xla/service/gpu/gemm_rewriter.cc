@@ -1846,8 +1846,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                         MatrixIsColumnMajor(instr, gemm_backend_config));
 
     if (std::holds_alternative<se::RocmComputeCapability>(gpu_version_)) {
-      if (!output_is_column_major) return false;
-
       auto rocm_compute_capability_ =
           std::get<se::RocmComputeCapability>(gpu_version_);
 

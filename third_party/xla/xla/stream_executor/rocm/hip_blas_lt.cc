@@ -36,12 +36,15 @@ limitations under the License.
 #define SET_ATTR(setter, handle, attr, value) \
   ToStatus(setter(handle, attr, &value, sizeof(decltype(value))), #setter)
 
-#define GET_ATTR(getter, handle, attr, ValueT)                            \
-  [&]() -> tsl::StatusOr<ValueT> {                                        \
-    ValueT value;                                                         \
-    TF_RETURN_IF_ERROR(ToStatus(                                          \
-        getter(handle, attr, &value, sizeof(ValueT), nullptr), #getter)); \
-    return std::move(value);                                              \
+// hipblasLtMatmulDescGetAttribute does not allow nullptr for the last
+// argument (size_t* sizeWritten)
+#define GET_ATTR(getter, handle, attr, ValueT)                          \
+  [&]() -> tsl::StatusOr<ValueT> {                                      \
+    ValueT value;                                                       \
+    size_t size;                                                        \
+    TF_RETURN_IF_ERROR(ToStatus(                                        \
+        getter(handle, attr, &value, sizeof(ValueT), &size), #getter)); \
+    return std::move(value);                                            \
   }()
 
 namespace stream_executor {
@@ -57,7 +60,7 @@ tsl::Status SetAttr(hipblasLtMatrixLayout_t handle,
 template <typename T>
 tsl::StatusOr<T> GetAttr(hipblasLtMatrixLayout_t handle,
                          hipblasLtMatrixLayoutAttribute_t attr) {
-  return GET_ATTR(hipblasLtMatrixLayoutGetAttribute, handle, attr, T);
+  return GET_ATTR(wrap::hipblasLtMatrixLayoutGetAttribute, handle, attr, T);
 }
 
 template <typename T>
@@ -69,7 +72,7 @@ tsl::Status SetAttr(hipblasLtMatmulDesc_t handle,
 template <typename T>
 tsl::StatusOr<T> GetAttr(hipblasLtMatmulDesc_t handle,
                          hipblasLtMatmulDescAttributes_t attr) {
-  return GET_ATTR(hipblasLtMatmulDescGetAttribute, handle, attr, T);
+  return GET_ATTR(wrap::hipblasLtMatmulDescGetAttribute, handle, attr, T);
 }
 
 template <typename T>
@@ -207,6 +210,21 @@ tsl::StatusOr<std::vector<BlasLt::MatmulAlgorithm>> BlasLt::GetMatmulAlgorithms(
     TF_RET_CHECK(blas_lt_ != nullptr);
 
     gpu::ScopedActivateExecutorContext sac{parent_};
+
+    // Right now, hipBlasLt would require setting the bias pointer (even a dummy
+    // one) before finding the algorithms for
+    // HIPBLASLT_MATMUL_DESC_BIAS_POINTER. Can remove this later once this
+    // restriction is gone.
+    static int dummy_pointer = 0;
+    TF_ASSIGN_OR_RETURN(
+        hipblasLtEpilogue_t epilogue,
+        GetAttr<hipblasLtEpilogue_t>(plan.op_desc.get(),
+                                     HIPBLASLT_MATMUL_DESC_EPILOGUE));
+    if (epilogue == HIPBLASLT_EPILOGUE_BIAS) {
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 HIPBLASLT_MATMUL_DESC_BIAS_POINTER,
+                                 &dummy_pointer));
+    }
 
     int found_algorithm_count = 0;
     auto error = wrap::hipblasLtMatmulAlgoGetHeuristic(
