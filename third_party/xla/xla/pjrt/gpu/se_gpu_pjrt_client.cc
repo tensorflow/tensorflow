@@ -554,9 +554,9 @@ StatusOr<std::unique_ptr<StreamExecutorUnloadedExecutable>> FromProto(
 }  // namespace
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-StreamExecutorGpuClient::LoadSerializedExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options,
-    const LoadOptions& load_options) {
+StreamExecutorGpuClient::LoadSerialized(absl::string_view serialized,
+                                        std::optional<CompileOptions> options,
+                                        const LoadOptions& load_options) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   StreamExecutorUnloadedExecutableProto proto;
   if (serialized.size() > std::numeric_limits<int>::max()) {
@@ -573,8 +573,7 @@ StreamExecutorGpuClient::LoadSerializedExecutable(
   // TODO(b/296466237): Unify the `Load` method.
   return Load(std::move(se_executable));
 #endif
-  return absl::InternalError(
-      "LoadSerializedExecutable only works with cuda or rocm.");
+  return absl::InternalError("LoadSerialized only works with cuda or rocm.");
 }
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(

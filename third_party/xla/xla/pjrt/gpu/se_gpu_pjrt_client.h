@@ -203,9 +203,11 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
       std::unique_ptr<PjRtExecutable> executable);
 
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerializedExecutable(
+  // TODO(b/296466237): Unify `LoadSerializedExecutable` after fixing existing
+  // tests.
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerialized(
       absl::string_view serialized, std::optional<CompileOptions> options,
-      const LoadOptions& load_options) override;
+      const LoadOptions& load_options);
 
  private:
   xla::StreamExecutorGpuTopologyDescription topology_;

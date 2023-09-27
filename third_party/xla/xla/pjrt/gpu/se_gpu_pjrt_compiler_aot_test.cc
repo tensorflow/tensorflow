@@ -188,8 +188,8 @@ TEST(StreamExecutorGpuCompilerTest, SuccessLoadFromSerializedExecutable) {
                           executable->SerializeExecutable());
   TF_ASSERT_OK_AND_ASSIGN(
       auto loaded_executable,
-      se_client->LoadSerializedExecutable(serialized_executable, std::nullopt,
-                                          LoadOptions()));
+      se_client->LoadSerialized(serialized_executable, std::nullopt,
+                                LoadOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
