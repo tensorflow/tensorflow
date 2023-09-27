@@ -129,7 +129,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         ":rocm_kernel",
-        "//xla/stream_executor:event",
+        "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/platform",
     ]),
@@ -217,7 +217,6 @@ cc_library(
         ":rocm_platform_id",
         "@eigen_archive//:eigen3",
         "//xla/stream_executor",
-        "//xla/stream_executor:event",
         "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:scratch_allocator",
@@ -259,7 +258,7 @@ cc_library(
     deps = if_rocm_is_configured([
         ":hipfft_if_static",
         ":rocm_platform_id",
-        "//xla/stream_executor:event",
+        "//xla/stream_executor",
         "//xla/stream_executor:fft",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:scratch_allocator",
