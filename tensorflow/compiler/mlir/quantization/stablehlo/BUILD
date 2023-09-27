@@ -142,6 +142,7 @@ cc_library(
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto_cc",
         "//tensorflow/core/util/quantization:uniform_quant_ops_params",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",

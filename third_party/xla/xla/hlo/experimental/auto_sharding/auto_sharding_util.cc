@@ -1250,7 +1250,11 @@ absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
     return std::vector<int64_t>(tensor_shape_rank, -1);
   }
   // Check the compatibility of tensor_shape_rank and spec
-  CHECK_EQ(tensor_shape_rank, spec.TiledDataRank());
+  if (tensor_shape_rank != spec.TiledDataRank()) {
+    return absl::InvalidArgumentError(
+        "Tensor shape rank should be equal to the tiled data rank of the input "
+        "spec.");
+  }
 
   auto check_mesh =
       [&](const Array<int64_t>& mesh) -> std::optional<std::vector<int64_t>> {

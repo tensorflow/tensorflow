@@ -108,7 +108,6 @@ limitations under the License.
 #include "xla/mlir/runtime/transforms/compilation_pipeline_cpu.h"
 #include "xla/mlir/runtime/transforms/compiler.h"
 #include "xla/mlir/runtime/transforms/jit_compiler.h"
-#include "xla/mlir/tools/mlir_replay/public/compiler_trace_instrumentation.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -433,14 +432,6 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
                  << status.message();
     }
     runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
-
-    if (DumpingEnabledForHloModule(module) &&
-        module.config().debug_options().xla_dump_hlo_snapshots()) {
-      passes->addInstrumentation(
-          std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
-              module.config().debug_options().xla_dump_to(), module.unique_id(),
-              module.name()));
-    }
   };
   opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
       FlattenTuplesAndBufferizeTypeConverter());
@@ -704,7 +695,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   // AOT compiled code runs in single thread.
   if (!is_aot_compile) {
-    pipeline.AddPass<OneDnnRewriter>();
+    // Temporarily disabling oneDNN rewriter because it causes JAX regression.
+    // pipeline.AddPass<OneDnnRewriter>();
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
@@ -1153,13 +1145,6 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
         [](mlir::Pass* pass, mlir::Operation* op) { return true; },
         /*printModuleScope=*/true, /*printAfterOnlyOnChange=*/true,
         /*printAfterOnlyOnFailure=*/false, llvm::errs(), printing_flags);
-  }
-
-  if (DumpingEnabledForHloModule(*module)) {
-    pm.addInstrumentation(
-        std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
-            module->config().debug_options().xla_dump_to(), module->unique_id(),
-            module->name()));
   }
 
   xla::runtime::PassManager xla_pm(&pm);

@@ -122,10 +122,10 @@ TEST_F(HloTraversalTest, TraversePartialFusion) {
               ElementsAre("reduce.1", "mul", "p0.1", "p1.1", "negate"));
 }
 
-TEST_F(HloTraversalTest, FindParameters) {
+TEST_F(HloTraversalTest, FindArguments) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   std::vector<std::string> producers;
-  FindFusionParameters(
+  FindFusionArguments(
       {module->GetComputationWithName("fused_computation")->root_instruction()},
       DefaultFusionBoundaryFn, [&](const HloInstruction& producer) {
         producers.emplace_back(producer.name());
@@ -133,12 +133,12 @@ TEST_F(HloTraversalTest, FindParameters) {
   EXPECT_THAT(producers, ElementsAre("p0", "negate"));
 }
 
-TEST_F(HloTraversalTest, FindParametersAfterFusion) {
-  // Verifies that we correctly find the parameters after fusing the negation.
+TEST_F(HloTraversalTest, FindArgumentsAfterFusion) {
+  // Verifies that we correctly find the arguments after fusing the negation.
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   std::vector<std::string> producers;
   auto* fused_computation = module->GetComputationWithName("fused_computation");
-  FindFusionParameters(
+  FindFusionArguments(
       {fused_computation->root_instruction()},
       [&](const HloInstruction& producer, const HloInstruction& consumer) {
         return &consumer == fused_computation->parameter_instruction(0) ||
@@ -154,7 +154,7 @@ TEST_F(HloTraversalTest, FuseEverything) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   std::vector<std::string> producers;
   auto* fused_computation = module->GetComputationWithName("fused_computation");
-  FindFusionParameters(
+  FindFusionArguments(
       {fused_computation->root_instruction()},
       [&](const HloInstruction& producer, const HloInstruction& consumer) {
         return producer.opcode() == HloOpcode::kParameter &&
@@ -254,7 +254,7 @@ TEST_F(HloTraversalTest, FuseFusionConsumer) {
                                   return TraversalResult::kVisitOperands;
                                 });
   std::vector<std::string> params;
-  FindFusionParameters(roots, boundary, [&](const HloInstruction& param) {
+  FindFusionArguments(roots, boundary, [&](const HloInstruction& param) {
     params.emplace_back(param.name());
   });
 
@@ -277,7 +277,7 @@ TEST_F(HloTraversalTest, FuseFusionProducer) {
                                   return TraversalResult::kVisitOperands;
                                 });
   std::vector<std::string> params;
-  FindFusionParameters({consumer}, boundary, [&](const HloInstruction& param) {
+  FindFusionArguments({consumer}, boundary, [&](const HloInstruction& param) {
     params.emplace_back(param.name());
   });
 
@@ -302,7 +302,7 @@ TEST_F(HloTraversalTest, FuseFusionConsumerAndProducer) {
                                   return TraversalResult::kVisitOperands;
                                 });
   std::vector<std::string> params;
-  FindFusionParameters(roots, boundary, [&](const HloInstruction& param) {
+  FindFusionArguments(roots, boundary, [&](const HloInstruction& param) {
     params.emplace_back(param.name());
   });
 

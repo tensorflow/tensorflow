@@ -84,6 +84,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/refcount.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
@@ -292,8 +293,9 @@ tensorflow::Status GraphExecutionRunOnFunction(
                         process_function_library_runtime, cost_recorder));
 
   int64_t request_id = request_info->tfrt_request_context->id();
-  tensorflow::profiler::TraceMeProducer traceme(
-      // To TraceMeConsumers in RunHandlerThreadPool::WorkerLoop.
+  // The top level traceme root for this request. The thread pool used later
+  // will add TraceMeProducer and TraceMeConsumer to connect async tasks.
+  tsl::profiler::TraceMe traceme(
       [request_id, signature_name, &options, symbol_uids] {
         return tensorflow::profiler::TraceMeEncode(
             "TfrtModelRun",
@@ -304,8 +306,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
                                        options.model_metadata.version())},
              {"tf_symbol_uid", symbol_uids.tf_symbol_uid},
              {"tfrt_symbol_uid", symbol_uids.tfrt_symbol_uid}});
-      },
-      tensorflow::profiler::ContextType::kTfrtExecutor, request_id);
+      });
 
   // Only configure timer when the deadline is set.
   if (run_options.deadline.has_value()) {

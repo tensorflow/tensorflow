@@ -551,10 +551,13 @@ class BufferAssignment {
   BufferAllocation* GetMutableAllocation(BufferAllocation::Index index);
 
   int64_t HloBufferSize(const HloBuffer& buffer) {
+    auto iter = cached_buffer_sizes_.find(buffer.id());
+    if (iter != cached_buffer_sizes_.end()) return iter->second;
     int64_t result = 0;
     for (const HloValue* value : buffer.values()) {
       result = std::max(result, buffer_size_(*value));
     }
+    cached_buffer_sizes_.insert({buffer.id(), result});
     return result;
   }
 
@@ -592,6 +595,8 @@ class BufferAssignment {
   std::unique_ptr<HloLiveRange> hlo_live_range_;
 
   Stats stats_;
+
+  absl::flat_hash_map<HloBuffer::Id, int64_t> cached_buffer_sizes_;
 
   BufferAssignment(const BufferAssignment&) = delete;
   BufferAssignment& operator=(const BufferAssignment&) = delete;

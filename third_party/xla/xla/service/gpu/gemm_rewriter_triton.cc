@@ -73,6 +73,16 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+int GetFusionLevel(const HloInstruction& hlo, const GpuVersion gpu_version) {
+  int level =
+      hlo.GetModule()->config().debug_options().xla_gpu_triton_fusion_level();
+  if (!std::get<se::CudaComputeCapability>(gpu_version)
+           .IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    level = std::min(level, 1);
+  }
+  return level;
+}
+
 bool HasDivisibleSuffixAllowingSplit(const absl::Span<int64_t const> span,
                                      const int64_t divisor) {
   CHECK_GE(divisor, 1);
@@ -554,54 +564,48 @@ FusionDecision FusionContext::RequireSupportedDimOrder(
     const DimensionOrder& order, int64_t& split_dim_major_part) const {
   VLOG(8) << order.ToString();
   const Fragments& tensor_dim_fragments = order.TensorFragmentsOrder();
-  auto non_major_fragment_is_sliced = [&](int fragment, int distance_to_end) {
-    return distance_to_end > 1 && tensor_dim_fragments[fragment].is_sliced();
-  };
   for (const auto& [dim_index, dim_fragments] : order.DimFragmentsOrders()) {
-    int split_counter = -1;
+    CHECK(!dim_fragments.empty());
+    for (int i = 0; i < dim_fragments.size() - 1; ++i) {
+      if (tensor_dim_fragments[dim_fragments[i]].is_sliced()) {
+        return "Sliced non-major-most fragment.";
+      }
+    }
+    int group_counter = 0;
+    int last_seen_group_last_fragment_index = -1;
     auto fragment_it = dim_fragments.cbegin();
-    // TODO(b/300892934): simplify the logic.
     while (true) {
       if (fragment_it == dim_fragments.cend()) {
         break;
       }
-      if (non_major_fragment_is_sliced(*fragment_it,
-                                       dim_fragments.cend() - fragment_it)) {
-        return "Sliced non-major-most fragment.";
-      }
       int64_t grouped_size = tensor_dim_fragments[*fragment_it].full_size();
-      // Gather contiguous fragments.
+      // Gather contiguous fragments: they have consecutive indices.
       while ((fragment_it + 1) != dim_fragments.cend() &&
              *(fragment_it + 1) == *fragment_it + 1) {
         ++fragment_it;
-        if (non_major_fragment_is_sliced(*fragment_it,
-                                         dim_fragments.cend() - fragment_it)) {
-          return "Sliced non-major-most fragment.";
-        }
         grouped_size *= tensor_dim_fragments[*fragment_it].full_size();
       }
-
+      // Ignore 1-sized groups of fragments.
       if (grouped_size == 1) {
         ++fragment_it;
         continue;
       }
 
-      if (fragment_it != dim_fragments.cbegin() &&
-          *fragment_it < *(fragment_it - 1)) {
+      if (last_seen_group_last_fragment_index > *fragment_it) {
         return "Transpose within a dimension.";
       }
 
-      ++split_counter;
-      if (split_counter > 0) {
+      ++group_counter;
+      if (group_counter > 1) {
         if (dim_index == SplittableDimensionIndex() &&
             IsSupportedSplittableDimensionMajorPartSize(grouped_size)) {
-          if (split_counter == 1) {
+          if (group_counter == 2) {
             if (split_dim_major_part != 0 &&
                 split_dim_major_part != grouped_size) {
               return "Conflicting splits of splittable dimension";
             }
             split_dim_major_part = grouped_size;
-          } else if (split_counter > 1) {
+          } else if (group_counter > 2) {
             return "2nd split of a splittable dimension.";
           }
         } else {
@@ -609,6 +613,7 @@ FusionDecision FusionContext::RequireSupportedDimOrder(
         }
       }
 
+      last_seen_group_last_fragment_index = *fragment_it;
       ++fragment_it;
     }
   }
@@ -1082,12 +1087,6 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
         old_to_new_mapping,
     const GpuVersion gpu_version) const {
-  int fusion_level =
-      hlo.GetModule()->config().debug_options().xla_gpu_triton_fusion_level();
-  if (!std::get<se::CudaComputeCapability>(gpu_version)
-           .IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    fusion_level = std::min(fusion_level, 1);
-  }
   if (hlo.opcode() == HloOpcode::kTuple ||
       hlo.opcode() == HloOpcode::kGetTupleElement) {
     return "Unsupported instruction.";
@@ -1108,7 +1107,7 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
     return "Unsupported output data type.";
   }
   if (as_input) {
-    if (fusion_level < 2) {
+    if (GetFusionLevel(hlo, gpu_version) < 2) {
       if (hlo.opcode() == HloOpcode::kConvert) {
         if (FusionDecision decision =
                 RequireTritonFusibleConvert(&hlo, gpu_version);
@@ -1124,7 +1123,7 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
       }
     }
   } else {
-    if (fusion_level < 2) {
+    if (GetFusionLevel(hlo, gpu_version) < 2) {
       return "Skipping fusing outputs at low fusion levels.";
     }
     for (const HloInstruction* operand : hlo.operands()) {
@@ -1374,10 +1373,14 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
   if (dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any()) {
     return FusionDecision{};
   }
+
+  absl::flat_hash_set<HloOpcode> triggers{
+      HloOpcode::kConvert, HloOpcode::kSlice, HloOpcode::kTranspose};
+  if (GetFusionLevel(dot, gpu_version) >= 2) {
+    triggers.insert(HloOpcode::kCopy);
+  }
   for (const auto& iter : old_to_new_mapping) {
-    if (iter.second->opcode() == HloOpcode::kConvert ||
-        iter.second->opcode() == HloOpcode::kSlice ||
-        iter.second->opcode() == HloOpcode::kTranspose) {
+    if (triggers.contains(iter.second->opcode())) {
       return FusionDecision{};
     }
   }

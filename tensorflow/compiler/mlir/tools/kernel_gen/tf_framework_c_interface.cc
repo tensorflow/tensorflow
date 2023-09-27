@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/TargetSelect.h"
+#include "mlir/Dialect/MemRef/Transforms/AllocationOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/ExecutionEngine.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -185,7 +186,10 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   }
 
   // Create the kernel.
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  mlir::memref::registerAllocationOpInterfaceExternalModels(registry);
+  mlir::MLIRContext context(registry);
+
   mlir::OwningOpRef<mlir::ModuleOp> module;
 
   if (item.result_module().empty()) {

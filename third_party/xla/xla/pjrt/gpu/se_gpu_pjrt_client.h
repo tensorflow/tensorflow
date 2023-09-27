@@ -24,9 +24,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/statusor.h"
 
@@ -194,6 +197,15 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
     return absl::WrapUnique<PjRtLoadedExecutable>(
         tensorflow::down_cast<PjRtLoadedExecutable*>(executable.release()));
   }
+
+  // TODO(b/296466237): Unify `Load` method after (de)serialization and tests on
+  // existing use cases are done.
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+      std::unique_ptr<PjRtExecutable> executable);
+
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerializedExecutable(
+      absl::string_view serialized, std::optional<CompileOptions> options,
+      const LoadOptions& load_options) override;
 
  private:
   xla::StreamExecutorGpuTopologyDescription topology_;

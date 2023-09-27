@@ -266,19 +266,19 @@ StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
     heroes.push_back(&FindNonTrivialHero(*root));
   }
 
-  std::vector<const HloInstruction*> fusion_parameter_inputs;
-  FindFusionParameters(hlo_roots, boundary_fn,
-                       [&](const HloInstruction& parameter) {
-                         fusion_parameter_inputs.push_back(&parameter);
-                       });
+  std::vector<const HloInstruction*> fusion_arguments;
+  FindFusionArguments(hlo_roots, boundary_fn,
+                      [&](const HloInstruction& argument) {
+                        fusion_arguments.push_back(&argument);
+                      });
 
   std::optional<TransposeDescription> tiled_transpose_hero =
       FindConsistentTransposeHero(hlo_roots, heroes);
 
-  return HloFusionAnalysis(
-      std::move(backend_config), std::move(hlo_roots), std::move(boundary_fn),
-      std::move(fusion_parameter_inputs), std::move(heroes), device_info,
-      tiled_transpose_hero);
+  return HloFusionAnalysis(std::move(backend_config), std::move(hlo_roots),
+                           std::move(boundary_fn), std::move(fusion_arguments),
+                           std::move(heroes), device_info,
+                           tiled_transpose_hero);
 }
 
 // static
@@ -514,7 +514,7 @@ const Shape& HloFusionAnalysis::GetElementShape() const {
 
 int HloFusionAnalysis::SmallestInputDtypeBits() const {
   int bits = std::numeric_limits<int>::max();
-  for (const HloInstruction* operand : fusion_parameter_inputs_) {
+  for (const HloInstruction* operand : fusion_arguments_) {
     bits = std::min(bits,
                     primitive_util::BitWidth(operand->shape().element_type()));
   }
@@ -698,9 +698,9 @@ bool HloFusionAnalysis::IsUnrollingColumnReductionBeneficial(
         return TraversalResult::kVisitOperands;
       });
 
-  for (auto* param : fusion_parameter_inputs_) {
-    if (!reachable_through_non_elementwise.contains(param) &&
-        ShapeUtil::SameDimensions(input_shape, param->shape())) {
+  for (auto* argument : fusion_arguments_) {
+    if (!reachable_through_non_elementwise.contains(argument) &&
+        ShapeUtil::SameDimensions(input_shape, argument->shape())) {
       ++can_be_vectorized;
     }
   }
@@ -711,8 +711,8 @@ bool HloFusionAnalysis::IsUnrollingColumnReductionBeneficial(
   // unrolled even with such an assumption,  and the accesses to those inputs
   // turn out to be vectorizable, the compiler will still vectorize them.
   int64_t num_elements = ShapeUtil::ElementsIn(input_shape);
-  cannot_be_vectorized += absl::c_count_if(
-      fusion_parameter_inputs_, [&](const HloInstruction* parameter) {
+  cannot_be_vectorized +=
+      absl::c_count_if(fusion_arguments_, [&](const HloInstruction* parameter) {
         return ShapeUtil::ElementsIn(parameter->shape()) > num_elements;
       });
   if (can_be_vectorized < cannot_be_vectorized) {

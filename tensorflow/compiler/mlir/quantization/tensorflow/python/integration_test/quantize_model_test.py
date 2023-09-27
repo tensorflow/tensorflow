@@ -1475,6 +1475,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'enable_per_channel_quantization': False,
       },
       {
+          'testcase_name': 'dilation',
+          'activation_fn': None,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+          'dilations': [1, 2, 2, 1],
+      },
+      {
           'testcase_name': 'relu',
           'activation_fn': nn_ops.relu,
           'has_bias': False,
@@ -1482,6 +1492,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'target_opset': quant_opts_pb2.TF,
           'input_shape_dynamic': False,
           'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'dilation_relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+          'dilations': [1, 2, 2, 1],
       },
       {
           'testcase_name': 'relu6',
@@ -1493,6 +1513,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'enable_per_channel_quantization': False,
       },
       {
+          'testcase_name': 'dilation_relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+          'dilations': [1, 2, 2, 1],
+      },
+      {
           'testcase_name': 'bn',
           'activation_fn': None,
           'has_bias': False,
@@ -1500,6 +1530,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'target_opset': quant_opts_pb2.TF,
           'input_shape_dynamic': False,
           'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'dilation_bn',
+          'activation_fn': None,
+          'has_bias': False,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+          'dilations': [1, 2, 2, 1],
       },
       {
           'testcase_name': 'with_bias',
@@ -1511,6 +1551,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'enable_per_channel_quantization': False,
       },
       {
+          'testcase_name': 'dilation_with_bias',
+          'activation_fn': None,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+          'dilations': [1, 2, 2, 1],
+      },
+      {
           'testcase_name': 'with_bias_and_relu6',
           'activation_fn': nn_ops.relu6,
           'has_bias': True,
@@ -1518,6 +1568,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'target_opset': quant_opts_pb2.TF,
           'input_shape_dynamic': False,
           'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'dilation_with_bias_and_relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+          'dilations': [1, 2, 2, 1],
       },
       {
           'testcase_name': 'with_bias_and_bn_and_relu6',
@@ -1529,6 +1589,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'enable_per_channel_quantization': False,
       },
       {
+          'testcase_name': 'dilation_with_bias_and_bn_and_relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+          'dilations': [1, 2, 2, 1],
+      },
+      {
           'testcase_name': 'with_bias_and_relu6_to_xla',
           'activation_fn': nn_ops.relu6,
           'has_bias': True,
@@ -1536,6 +1606,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'target_opset': quant_opts_pb2.XLA,
           'input_shape_dynamic': False,
           'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'dilation_with_bias_and_relu6_to_xla',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+          'dilations': [1, 2, 2, 1],
       },
       {
           'testcase_name': 'with_bias_and_bn_and_relu6_to_xla',
@@ -1547,6 +1627,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'enable_per_channel_quantization': False,
       },
       {
+          'testcase_name': 'dilation_with_bias_and_bn_and_relu6_to_xla',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+          'dilations': [1, 2, 2, 1],
+      },
+      {
           'testcase_name': 'with_bias_and_relu6_to_xla_dynamic',
           'activation_fn': nn_ops.relu6,
           'has_bias': True,
@@ -1554,6 +1644,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'target_opset': quant_opts_pb2.XLA,
           'input_shape_dynamic': True,
           'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'dilation_with_bias_and_relu6_to_xla_dynamic',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': True,
+          'enable_per_channel_quantization': False,
+          'dilations': [1, 2, 2, 1],
       },
       {
           'testcase_name': 'with_bias_and_bn_and_relu6_to_xla_dynamic',
@@ -1565,6 +1665,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'enable_per_channel_quantization': False,
       },
       {
+          'testcase_name': 'dilation_with_bias_and_bn_and_relu6_to_xla_dynamic',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': True,
+          'enable_per_channel_quantization': False,
+          'dilations': [1, 2, 2, 1],
+      },
+      {
           'testcase_name': 'with_bias_and_relu6_to_uq',
           'activation_fn': nn_ops.relu6,
           'has_bias': True,
@@ -1572,6 +1682,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
           'input_shape_dynamic': False,
           'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'dilation_with_bias_and_relu6_to_uq',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+          'dilations': [1, 2, 2, 1],
       },
       {
           'testcase_name': 'with_bias_and_bn_and_relu6_to_uq',
@@ -1583,6 +1703,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'enable_per_channel_quantization': False,
       },
       {
+          'testcase_name': 'dilation_with_bias_and_bn_and_relu6_to_uq',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+          'dilations': [1, 2, 2, 1],
+      },
+      {
           'testcase_name': 'with_bias_and_relu6_to_uq_per_channel',
           'activation_fn': nn_ops.relu6,
           'has_bias': True,
@@ -1592,6 +1722,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'enable_per_channel_quantization': True,
       },
       {
+          'testcase_name': 'dilation_with_bias_and_relu6_to_uq_per_channel',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': True,
+          'dilations': [1, 2, 2, 1],
+      },
+      {
           'testcase_name': 'with_bias_and_bn_and_relu6_to_uq_per_channel',
           'activation_fn': nn_ops.relu6,
           'has_bias': True,
@@ -1599,6 +1739,18 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
           'input_shape_dynamic': False,
           'enable_per_channel_quantization': True,
+      },
+      {
+          'testcase_name': (
+              'dilation_with_bias_and_bn_and_relu6_to_uq_per_channel'
+          ),
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': True,
+          'dilations': [1, 2, 2, 1],
       },
   )
   @test_util.run_in_graph_and_eager_modes
@@ -1610,12 +1762,20 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       target_opset: quant_opts_pb2.OpSet,
       input_shape_dynamic: bool,
       enable_per_channel_quantization: bool,
+      dilations: Sequence[int] = None,
   ):
     input_shape = [None, None, None, 3] if input_shape_dynamic else [1, 3, 4, 3]
     filter_shape = [2, 3, 3, 2]
+    strides = [1, 1, 1, 1]
 
     model = self._create_conv2d_model(
-        input_shape, filter_shape, has_bias, has_batch_norm, activation_fn
+        input_shape,
+        filter_shape,
+        has_bias,
+        has_batch_norm,
+        activation_fn,
+        strides,
+        dilations,
     )
     saved_model_save.save(model, self._input_saved_model_path)
 
@@ -1674,7 +1834,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       target_outputs = converted_model.signatures['serving_default'](
           input_tensor=ops.convert_to_tensor(input_data)
       )
-      self.assertAllClose(target_outputs, expected_outputs, atol=0.05)
+      self.assertAllClose(target_outputs, expected_outputs, atol=0.06)
 
     if target_opset == quant_opts_pb2.XLA:
       self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))

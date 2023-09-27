@@ -57,7 +57,8 @@ void populateLegalizeSparseOpsToCustomCallPatterns(
     MLIRContext* context, TypeConverter& typeConverter,
     RewritePatternSet* patterns) {
   patterns->add<SparseOpToCustomCallConverter<sparse_tensor::PackOp>,
-                SparseOpToCustomCallConverter<sparse_tensor::UnpackOp>>(
+                SparseOpToCustomCallConverter<sparse_tensor::UnpackOp>,
+                SparseOpToCustomCallConverter<sparse_tensor::ConvertOp>>(
       typeConverter, context);
 }
 

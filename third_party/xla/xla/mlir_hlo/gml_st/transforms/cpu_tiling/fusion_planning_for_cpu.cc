@@ -69,8 +69,8 @@ bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
     auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(consumerOp);
     if (!dstStyleOp) return false;
 
-    if (llvm::any_of(dstStyleOp.getDpsInitOperands(), [&](OpOperand* operand) {
-          return operand->get().getDefiningOp() == producerOp;
+    if (llvm::any_of(dstStyleOp.getDpsInits(), [&](Value operand) {
+          return operand.getDefiningOp() == producerOp;
         }))
       return true;
   }

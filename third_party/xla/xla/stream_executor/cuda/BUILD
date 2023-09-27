@@ -1,6 +1,7 @@
 # Description:
 #   CUDA-platform specific StreamExecutor support code.
 
+load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla:xla.bzl",
     "xla_cc_test",
@@ -59,9 +60,8 @@ cc_library(
             ":cuda_platform_id",
             ":cuda_activation",
             "//xla/stream_executor",  # buildcleaner: keep
-            "//xla/stream_executor:executor_cache",
             "//xla/stream_executor:multi_platform_manager",
-            "//xla/stream_executor:stream_executor_pimpl_header",
+            "//xla/stream_executor:stream_executor_headers",
             "//xla/stream_executor/platform",
         ],
     ) + tf_additional_cuda_platform_deps() + [
@@ -218,7 +218,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cuda_kernel",
-        "//xla/stream_executor:event",
+        "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/platform",
     ]),
@@ -310,7 +310,6 @@ cc_library(
         ":cuda_stream",
         ":cuda_helpers",
         "@local_config_cuda//cuda:cuda_headers",
-        "//xla/stream_executor:event",
         "//xla/stream_executor:fft",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:scratch_allocator",
@@ -357,10 +356,9 @@ cc_library(
         "@local_tsl//tsl/cuda:cudnn_version",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
         "//xla/stream_executor:dnn",
-        "//xla/stream_executor:event",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:scratch_allocator",
-        "//xla/stream_executor:stream_executor_pimpl_header",
+        "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor:temporary_device_memory",
         "//xla/stream_executor/platform",
         "@local_tsl//tsl/platform:errors",
@@ -380,11 +378,24 @@ cc_library(
     deps = if_cuda_is_configured([
         ":cuda_driver",
         "@local_config_cuda//cuda:cuda_headers",
-        "//xla/stream_executor:event",
-        "//xla/stream_executor:stream_executor_pimpl_header",
+        "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/gpu:gpu_kernel_header",
         "//xla/stream_executor/platform",
     ]),
+)
+
+xla_test(
+    name = "cuda_kernel_test",
+    srcs = ["cuda_kernel_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":cuda_kernel",
+        "//xla/stream_executor",
+        "//xla/stream_executor:multi_platform_manager",
+        "//xla/stream_executor:platform",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
 )
 
 # TODO(leary) we likely need to canonicalize/eliminate this.
@@ -457,10 +468,9 @@ cc_library(
         ":cuda_platform_id",
         ":cuda_stream",
         "@com_google_absl//absl/strings",
-        "//xla/stream_executor:event",
         "//xla/stream_executor:plugin_registry",
+        "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor:stream_executor_internal",
-        "//xla/stream_executor:stream_executor_pimpl_header",
         "//xla/stream_executor/gpu:asm_compiler",
         "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_executor_header",
@@ -539,8 +549,6 @@ xla_cc_test(
         ":cuda_gpu_executor",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:event",
-        "//xla/stream_executor:kernel",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "//xla/stream_executor/gpu:redzone_allocator",
         "@local_tsl//tsl/lib/core:status_test_util",

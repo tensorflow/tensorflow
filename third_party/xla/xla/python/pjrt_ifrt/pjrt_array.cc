@@ -21,9 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -346,17 +344,10 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
   // (e.g., ifrt proxy) support memories.
   bool new_sharding_has_memory_kind =
       new_sharding->memory_kind().memory_kind().has_value();
-  // TODO(yueshengys): Remove the check on PjRt C API after `CopyToMemorySpace`
-  // is supported.
-  CHECK_GT(new_sharding->devices().size(), 0);
-  bool using_c_api = absl::StrContains(
-      new_sharding->devices().front()->client()->platform_version(),
-      "PJRT C API");
   for (int i = 0; i < pjrt_buffers_.size(); ++i) {
     bool devices_equal =
         pjrt_buffers_[i]->device() == new_sharding->devices()[i];
-    bool memories_supported =
-        !using_c_api && pjrt_buffers_[i]->memory_space() != nullptr;
+    bool memories_supported = pjrt_buffers_[i]->memory_space() != nullptr;
     bool memory_kind_equal =
         new_sharding_has_memory_kind && memories_supported &&
         pjrt_buffers_[i]->memory_space()->memory_space_kind() ==

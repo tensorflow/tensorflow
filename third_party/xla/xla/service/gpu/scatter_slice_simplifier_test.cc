@@ -15,14 +15,16 @@ limitations under the License.
 
 #include "xla/service/gpu/scatter_slice_simplifier.h"
 
-#include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace {
 
-namespace op = xla::testing::opcode_matchers;
-using ::testing::AllOf;
+namespace m = ::xla::match;
 
 using ScatterSliceSimplifierTest = HloTestBase;
 
@@ -48,9 +50,9 @@ ENTRY main {
   ScatterSliceSimplifier test_pass;
   ASSERT_TRUE(RunHloPass(&test_pass, module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Shape("f32[8]"),
-                    op::Scatter(op::Slice(op::Constant()), op::Parameter(0),
-                                op::Parameter(1))));
+              GmockMatch(m::Scatter(m::Slice(m::Constant()), m::Parameter(0),
+                                    m::Parameter(1))
+                             .WithShape(F32, {8})));
 }
 
 TEST_F(ScatterSliceSimplifierTest, Scatter3D) {
@@ -75,9 +77,9 @@ ENTRY main {
   ScatterSliceSimplifier test_pass;
   ASSERT_TRUE(RunHloPass(&test_pass, module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Shape("f32[4, 4, 4]"),
-                    op::Scatter(op::Slice(op::Constant()), op::Parameter(0),
-                                op::Parameter(1))));
+              GmockMatch(m::Scatter(m::Slice(m::Constant()), m::Parameter(0),
+                                    m::Parameter(1))
+                             .WithShape(F32, {4, 4, 4})));
 }
 
 TEST_F(ScatterSliceSimplifierTest, ScatterMultiOutput) {
@@ -112,12 +114,15 @@ ENTRY main {
   ScatterSliceSimplifier test_pass;
   ASSERT_TRUE(RunHloPass(&test_pass, module.get()).value());
   auto expected_scatter =
-      op::Scatter(op::Slice(op::Constant()), op::Slice(op::Constant()),
-                  op::Parameter(0), op::Parameter(1), op::Parameter(2));
+      m::Scatter(m::Slice(m::Constant()), m::Slice(m::Constant()),
+                 m::Parameter(0), m::Parameter(1), m::Parameter(2));
+
+  Shape expected_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {8}), ShapeUtil::MakeShape(F16, {8})});
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Shape("(f32[8], f16[8])"),
-                    op::Tuple(op::GetTupleElement(expected_scatter),
-                              op::GetTupleElement(expected_scatter))));
+              GmockMatch(m::Tuple(m::GetTupleElement(expected_scatter),
+                                  m::GetTupleElement(expected_scatter))
+                             .WithShapeEqualTo(&expected_shape)));
 }
 
 TEST_F(ScatterSliceSimplifierTest, NotMatching) {
@@ -211,13 +216,16 @@ ENTRY main {
                     .value();
   ScatterSliceSimplifier test_pass;
   ASSERT_TRUE(RunHloPass(&test_pass, module.get()).value());
-  auto expected_scatter = op::Scatter(op::Slice(op::Constant()),
-                                      op::Parameter(0), op::Parameter(1));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Shape("(f32[8], f32[8])"),
-                    op::Tuple(op::Abs(expected_scatter),
-                              op::Maximum(expected_scatter,
-                                          op::Slice(op::Constant())))));
+  auto expected_scatter =
+      m::Scatter(m::Slice(m::Constant()), m::Parameter(0), m::Parameter(1));
+
+  Shape expected_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {8}), ShapeUtil::MakeShape(F32, {8})});
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Abs(expected_scatter),
+                          m::Maximum(expected_scatter, m::Slice(m::Constant())))
+                     .WithShapeEqualTo(&expected_shape)));
 }
 
 TEST_F(ScatterSliceSimplifierTest, IntermediaryChain) {
@@ -244,12 +252,12 @@ ENTRY main {
                     .value();
   ScatterSliceSimplifier test_pass;
   ASSERT_TRUE(RunHloPass(&test_pass, module.get()).value());
-  auto expected_scatter = op::Scatter(op::Slice(op::Constant()),
-                                      op::Parameter(0), op::Parameter(1));
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      AllOf(op::Shape("f32[8]"), op::Add(op::Abs(expected_scatter),
-                                         op::Exp(op::Abs(expected_scatter)))));
+  auto expected_scatter =
+      m::Scatter(m::Slice(m::Constant()), m::Parameter(0), m::Parameter(1));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(m::Abs(expected_scatter),
+                                m::Exp(m::Abs(expected_scatter)))
+                             .WithShape(F32, {8})));
 }
 
 TEST_F(ScatterSliceSimplifierTest, DiamondShape) {
@@ -283,12 +291,12 @@ ENTRY main {
   ScatterSliceSimplifier test_pass;
   ASSERT_TRUE(RunHloPass(&test_pass, module.get()).value());
   auto expected_scatter =
-      op::Scatter(op::Slice(op::Constant()), op::Slice(op::Constant()),
-                  op::Parameter(0), op::Parameter(1), op::Parameter(2));
+      m::Scatter(m::Slice(m::Constant()), m::Slice(m::Constant()),
+                 m::Parameter(0), m::Parameter(1), m::Parameter(2));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Shape("f32[8]"),
-                    op::Add(op::GetTupleElement(expected_scatter),
-                            op::GetTupleElement(expected_scatter))));
+              GmockMatch(m::Add(m::GetTupleElement(expected_scatter),
+                                m::GetTupleElement(expected_scatter))
+                             .WithShape(F32, {8})));
 }
 
 TEST_F(ScatterSliceSimplifierTest, ElementwiseSelect) {
@@ -314,12 +322,12 @@ ENTRY main {
                     .value();
   ScatterSliceSimplifier test_pass;
   ASSERT_TRUE(RunHloPass(&test_pass, module.get()).value());
-  auto expected_scatter = op::Scatter(op::Slice(op::Constant()),
-                                      op::Parameter(0), op::Parameter(1));
+  auto expected_scatter =
+      m::Scatter(m::Slice(m::Constant()), m::Parameter(0), m::Parameter(1));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Shape("f32[8]"),
-                    op::Select(op::Slice(op::Parameter(2)), expected_scatter,
-                               op::Slice(op::Constant()))));
+              GmockMatch(m::Select(m::Slice(m::Parameter(2)), expected_scatter,
+                                   m::Slice(m::Constant()))
+                             .WithShape(F32, {8})));
 }
 
 }  // namespace

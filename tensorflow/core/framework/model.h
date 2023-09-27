@@ -65,7 +65,7 @@ constexpr char kMaxBufferedElements[] = "max_buffered_elements";
 constexpr char kModelInputTimeKey[] = "model_input_time";
 
 // Default share of available RAM that can be used by model's internal buffers.
-constexpr double kRamBudgetShare = 0.9;
+constexpr double kRamBudgetShare = 0.5;
 
 // Weight of the latest processing time used in computing the exponential moving
 // average of processing time per element.

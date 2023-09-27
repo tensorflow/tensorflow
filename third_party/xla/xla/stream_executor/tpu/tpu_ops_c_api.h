@@ -703,6 +703,22 @@ typedef struct TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params {
 TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_DedupDataTupleMaskComputation(
     TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params* params);
 
+typedef struct SparseCore_GetMaxIdsAndUniques_Params {
+  size_t struct_size;
+  void* priv;
+  const char* program_key;
+  const char* table_name;
+  int64_t num_samples_per_sparse_core;
+  int64_t feature_width;
+  // out
+  TF_Status* status;
+  int64_t max_ids_per_partition;
+  int64_t max_unique_ids_per_partition;
+} SparseCore_GetMaxIdsAndUniques_Params;
+
+TFTPU_CAPI_EXPORT void SparseCore_GetMaxIdsAndUniques(
+    SparseCore_GetMaxIdsAndUniques_Params* params);
+
 struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAndBuild);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_XrtCompileAndBuild);
@@ -803,6 +819,8 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(
       TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_DedupDataTupleMaskComputation);
+
+  TFTPU_ADD_FN_IN_STRUCT(SparseCore_GetMaxIdsAndUniques);
 };
 
 }  // extern "C"

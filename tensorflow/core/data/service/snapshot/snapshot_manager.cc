@@ -580,10 +580,7 @@ absl::Status SnapshotManager::GetSnapshotSplit(
       TF_RETURN_IF_ERROR(ResetSource(source, request.source_index()));
     }
 
-    absl::Time start_time = absl::FromUnixMicros(env_->NowMicros());
     TF_RETURN_IF_ERROR(source.split_provider->GetNext(&split, &end_of_splits));
-    LOG(INFO) << "[tf.data SnapshotManager] GetNext took "
-              << absl::FromUnixMicros(env_->NowMicros()) - start_time;
     if (end_of_splits) {
       response.set_end_of_splits(true);
       return absl::OkStatus();
@@ -592,15 +589,12 @@ absl::Status SnapshotManager::GetSnapshotSplit(
     ++stream.num_assigned_splits_per_source[request.source_index()];
     ++num_assigned_splits_;
   }
-  absl::Time start_time = absl::FromUnixMicros(env_->NowMicros());
   std::string split_path = SplitPath(
       path_, request.stream_index(), request.source_index(),
       request.repetition_index(), local_split_index, global_split_index);
   TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
       split_path, {split}, tsl::io::compression::kNone, env_));
   split.AsProtoTensorContent(response.mutable_split());
-  LOG(INFO) << "[tf.data SnapshotManager] Writing split took "
-            << absl::FromUnixMicros(env_->NowMicros()) - start_time;
   return absl::OkStatus();
 }
 

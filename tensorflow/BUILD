@@ -1054,7 +1054,6 @@ package_group(
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
         "//third_party/py/gldm/...",
-        "//third_party/py/keras/...",
         "//third_party/py/tf_keras/...",
         "//third_party/yggdrasil_decision_forests/...",
         "//waymo/ml/cn/...",

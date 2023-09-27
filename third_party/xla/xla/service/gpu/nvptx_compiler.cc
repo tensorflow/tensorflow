@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/call_once.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/convert_mover.h"
+#include "xla/service/dot_dimension_merger.h"
 #include "xla/service/dump.h"
 #include "xla/service/float_normalization.h"
 #include "xla/service/float_support.h"
@@ -244,6 +244,8 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     TF_RETURN_IF_ERROR(mha_fusion_pipeline.Run(hlo_module).status());
   }
 
+  pre_pipeline.AddPass<DotDimensionMerger>();
+
   for (const CublasPaddingRequirement& requirement :
        CublasPaddingRequirements) {
     if (cuda_compute_capability.IsAtLeast(requirement.min_compute_capability)) {
@@ -290,14 +292,19 @@ bool NVPTXCompiler::RequiresCollectiveScheduleLinearizer(
   return false;
 }
 
-Status NVPTXCompiler::AddAutotuningPasses(
+Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
   if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
     pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
   pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+  return OkStatus();
+}
 
+Status NVPTXCompiler::AddTritonGemmAutotuningPasses(
+    HloPassPipeline* pipeline, HloModule* hlo_module,
+    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
   pipeline->AddPass<TritonAutotuner>(autotune_config, thread_pool);
   return OkStatus();
 }

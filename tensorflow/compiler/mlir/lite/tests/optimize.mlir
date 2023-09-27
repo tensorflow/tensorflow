@@ -3718,3 +3718,68 @@ func.func @FuseTransposeAfterBatchMatmul(%arg0: tensor<4x1024xf32>, %arg1: tenso
   func.return %1 : tensor<8x4xf32>
   // CHECK: return %[[RES0]] : tensor<8x4xf32>
 }
+
+// CHECK-LABEL: fuseLogSoftmax
+func.func @fuseLogSoftmax(%arg0: tensor<10x10xf32>) -> tensor<10x10xf32> {
+  %0 = arith.constant dense<1> : tensor<1xi32>
+  %1 = "tfl.reduce_max"(%arg0, %0) {keep_dims = true} : (tensor<10x10xf32>, tensor<1xi32>) -> tensor<10x1xf32>
+  %2 = tfl.sub(%arg0, %1) {fused_activation_function = "NONE"} : (tensor<10x10xf32>, tensor<10x1xf32>) -> tensor<10x10xf32>
+  %3 = "tfl.exp"(%2) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+  %4 = "tfl.sum"(%3, %0) {keep_dims = true} : (tensor<10x10xf32>, tensor<1xi32>) -> tensor<10x1xf32>
+  %5 = "tfl.log"(%4) : (tensor<10x1xf32>) -> tensor<10x1xf32>
+  %6 = tfl.sub(%2, %5) {fused_activation_function = "NONE"} : (tensor<10x10xf32>, tensor<10x1xf32>) -> tensor<10x10xf32>
+  return %6 : tensor<10x10xf32>
+ // CHECK: "tfl.log_softmax"(%arg0) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+}
+
+// CHECK-LABEL: fuseLogSoftmaxAxisNegativeOne
+func.func @fuseLogSoftmaxAxisNegativeOne(%arg0: tensor<10x10xf32>) -> tensor<10x10xf32> {
+  %0 = arith.constant dense<-1> : tensor<1xi32>
+  %1 = "tfl.reduce_max"(%arg0, %0) {keep_dims = true} : (tensor<10x10xf32>, tensor<1xi32>) -> tensor<10x1xf32>
+  %2 = tfl.sub(%arg0, %1) {fused_activation_function = "NONE"} : (tensor<10x10xf32>, tensor<10x1xf32>) -> tensor<10x10xf32>
+  %3 = "tfl.exp"(%2) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+  %4 = "tfl.sum"(%3, %0) {keep_dims = true} : (tensor<10x10xf32>, tensor<1xi32>) -> tensor<10x1xf32>
+  %5 = "tfl.log"(%4) : (tensor<10x1xf32>) -> tensor<10x1xf32>
+  %6 = tfl.sub(%2, %5) {fused_activation_function = "NONE"} : (tensor<10x10xf32>, tensor<10x1xf32>) -> tensor<10x10xf32>
+  return %6 : tensor<10x10xf32>
+ // CHECK: "tfl.log_softmax"(%arg0) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+}
+
+// CHECK-LABEL: fuseLogSoftmaxFusedActivationFunction
+func.func @fuseLogSoftmaxFusedActivationFunction(%arg0: tensor<10x10xf32>) -> tensor<10x10xf32> {
+  %0 = arith.constant dense<1> : tensor<1xi32>
+  %1 = "tfl.reduce_max"(%arg0, %0) {keep_dims = true} : (tensor<10x10xf32>, tensor<1xi32>) -> tensor<10x1xf32>
+  %2 = tfl.sub(%arg0, %1) {fused_activation_function = "RELU"} : (tensor<10x10xf32>, tensor<10x1xf32>) -> tensor<10x10xf32>
+  %3 = "tfl.exp"(%2) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+  %4 = "tfl.sum"(%3, %0) {keep_dims = true} : (tensor<10x10xf32>, tensor<1xi32>) -> tensor<10x1xf32>
+  %5 = "tfl.log"(%4) : (tensor<10x1xf32>) -> tensor<10x1xf32>
+  %6 = tfl.sub(%2, %5) {fused_activation_function = "RELU"} : (tensor<10x10xf32>, tensor<10x1xf32>) -> tensor<10x10xf32>
+  return %6 : tensor<10x10xf32>
+ // CHECK-NOT: "tfl.log_softmax"(%arg0) : (tensor<10x10xf32>) -> tensor<10x10xf32>
+}
+
+// CHECK-LABEL: fuseLogSoftmax1D
+func.func @fuseLogSoftmax1D(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %0 = arith.constant dense<0> : tensor<1xi32>
+  %1 = "tfl.reduce_max"(%arg0, %0) {keep_dims = true} : (tensor<10xf32>, tensor<1xi32>) -> tensor<1xf32>
+  %2 = tfl.sub(%arg0, %1) {fused_activation_function = "NONE"} : (tensor<10xf32>, tensor<1xf32>) -> tensor<10xf32>
+  %3 = "tfl.exp"(%2) : (tensor<10xf32>) -> tensor<10xf32>
+  %4 = "tfl.sum"(%3, %0) {keep_dims = true} : (tensor<10xf32>, tensor<1xi32>) -> tensor<1xf32>
+  %5 = "tfl.log"(%4) : (tensor<1xf32>) -> tensor<1xf32>
+  %6 = tfl.sub(%2, %5) {fused_activation_function = "NONE"} : (tensor<10xf32>, tensor<1xf32>) -> tensor<10xf32>
+  return %6 : tensor<10xf32>
+ // CHECK: "tfl.log_softmax"(%arg0) : (tensor<10xf32>) -> tensor<10xf32>
+}
+
+// CHECK-LABEL: fuseLogSoftmaxNotLastAxis
+func.func @fuseLogSoftmaxNotLastAxis(%arg0: tensor<10x10x10xf32>) -> tensor<10x10x10xf32> {
+  %0 = arith.constant dense<1> : tensor<1xi32>
+  %1 = "tfl.reduce_max"(%arg0, %0) {keep_dims = true} : (tensor<10x10x10xf32>, tensor<1xi32>) -> tensor<10x1x10xf32>
+  %2 = tfl.sub(%arg0, %1) {fused_activation_function = "NONE"} : (tensor<10x10x10xf32>, tensor<10x1x10xf32>) -> tensor<10x10x10xf32>
+  %3 = "tfl.exp"(%2) : (tensor<10x10x10xf32>) -> tensor<10x10x10xf32>
+  %4 = "tfl.sum"(%3, %0) {keep_dims = true} : (tensor<10x10x10xf32>, tensor<1xi32>) -> tensor<10x1x10xf32>
+  %5 = "tfl.log"(%4) : (tensor<10x1x10xf32>) -> tensor<10x1x10xf32>
+  %6 = tfl.sub(%2, %5) {fused_activation_function = "NONE"} : (tensor<10x10x10xf32>, tensor<10x1x10xf32>) -> tensor<10x10x10xf32>
+  return %6 : tensor<10x10x10xf32>
+ // CHECK-NOT: "tfl.log_softmax"(%arg0) : (tensor<10x10x10f32>) -> tensor<10x10x10xf32>
+}

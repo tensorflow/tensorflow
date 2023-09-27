@@ -20,7 +20,7 @@ xla_cc_binary(
         "//xla/mlir/backends/gpu/transforms:passes",
         "//xla/mlir_hlo:lhlo",
         "//xla/mlir_hlo:lhlo_gpu",
-        "//xla/stream_executor:stream_executor_impl",
+        "//xla/stream_executor",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:GPUDialect",

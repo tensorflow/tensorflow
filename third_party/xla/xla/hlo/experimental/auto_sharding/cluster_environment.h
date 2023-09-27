@@ -102,10 +102,20 @@ class ClusterEnvironment {
   // -1 means replicated on that dimension
   std::vector<int64_t> GetTensorDimToMeshDimWrapper(
       const Shape& shape, const HloSharding& spec,
-      bool consider_reverse_device_meshes = false) const {
+      bool consider_reverse_device_meshes = false,
+      bool crash_at_error = true) const {
     int64_t n_dim = NumTileDimensions(spec);
-    std::vector<int64_t> tensor_dim_to_mesh_dim = GetTensorDimToMeshDim(
-        shape.rank(), spec, device_mesh_, consider_reverse_device_meshes);
+    std::vector<int64_t> tensor_dim_to_mesh_dim;
+    if (crash_at_error) {
+      tensor_dim_to_mesh_dim = GetTensorDimToMeshDim(
+          shape.rank(), spec, device_mesh_, consider_reverse_device_meshes);
+    } else {
+      auto tensor_dim_to_mesh_dim_status = GetTensorDimToMeshDimNoCrash(
+          shape.rank(), spec, device_mesh_, consider_reverse_device_meshes);
+      if (tensor_dim_to_mesh_dim_status.ok()) {
+        tensor_dim_to_mesh_dim = tensor_dim_to_mesh_dim_status.value();
+      }
+    }
     AdjustTensorMeshDimMapping(tensor_dim_to_mesh_dim, n_dim);
     return tensor_dim_to_mesh_dim;
   }

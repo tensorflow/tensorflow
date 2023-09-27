@@ -45,7 +45,7 @@
 
 *   `tf.lite`:
 
-    *   `mul_op` supports broadcasting up to 6 dimensions.
+    *   `sub_op` and `mul_op` support broadcasting up to 6 dimensions.
 
     *  The `tflite::SignatureRunner` class, which provides support for named
        parameters and for multiple named computations within a single TF Lite

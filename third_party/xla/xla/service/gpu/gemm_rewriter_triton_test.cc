@@ -100,6 +100,20 @@ ENTRY e {
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
+TEST_F(GemmRewriterTritonTest, UnsupportedTransposeIsNotFused) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f16[1,512,8,1024]{3,1,0,2} parameter(0)
+  c = f16[1,512,8,1024]{3,2,1,0} copy(p0)
+  b = f16[4096,1024]{1,0} bitcast(c)
+  p1 = f16[128,1024]{1,0} parameter(1)
+  ROOT d = f16[4096,128]{1,0} dot(b, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})")
+                    .value();
+  EXPECT_FALSE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+}
+
 TEST_F(GemmRewriterTritonTest, BitcastChain) {
   // This HLO is artificial because unnecessary reshapes get optimized
   // out during compilation. It tests the ability of GemmRewriterTriton

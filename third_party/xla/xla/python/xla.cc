@@ -26,11 +26,13 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/casts.h"
 // clang-format off
 // Must be included first
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/python/py_client.h"
 #include "tsl/python/lib/core/numpy.h"  //NOLINT
@@ -472,8 +474,10 @@ static void Init(py::module_& m) {
     return pjrt_api.ok();
   });
   m.def("load_pjrt_plugin",
-        [](std::string platform_name, std::string library_path) {
-          xla::ThrowIfError(pjrt::LoadPjrtPlugin(platform_name, library_path));
+        [](std::string platform_name, std::string library_path) -> py::capsule {
+          const PJRT_Api* api = xla::ValueOrThrow(
+              pjrt::LoadPjrtPlugin(platform_name, library_path));
+          return py::capsule(absl::bit_cast<void*>(api), "pjrt_c_api");
         });
   m.def("pjrt_plugin_initialized", [](std::string platform_name) -> bool {
     return xla::ValueOrThrow(pjrt::IsPjrtPluginInitialized(platform_name));

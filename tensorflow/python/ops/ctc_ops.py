@@ -16,6 +16,9 @@
 
 import uuid
 
+# TODO(b/280454072) Remove compat and inplace_ops when foward compatibility
+# window expires.
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 
@@ -31,6 +34,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops import inplace_ops
 from tensorflow.python.ops import linalg_ops
@@ -1493,10 +1497,17 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
       new_out = []
     else:
       update_i = i + 1 if inclusive and not reverse else i
-      new_out = [
-          inplace_ops.alias_inplace_update(x, update_i, y)
-          for x, y in zip(out, flat_accum)
-      ]
+      # TODO(b/280454072) Cleanup when foward compatibility window expires.
+      if compat.forward_compatible(2023, 10, 26):
+        new_out = [
+            gen_array_ops.tensor_scatter_update(x, [[update_i]], [y])
+            for x, y in zip(out, flat_accum)
+        ]
+      else:
+        new_out = [
+            inplace_ops.alias_inplace_update(x, update_i, y)
+            for x, y in zip(out, flat_accum)
+        ]
     i = i - 1 if reverse else i + 1
     return [i, num_elems] + new_out + flat_accum
 
@@ -1511,8 +1522,15 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
           [[num_outputs], array_ops.shape(initial_accum)], 0)
       out = inplace_ops.empty(out_shape, dtype=initial_accum.dtype, init=True)
       if inclusive:
-        out = inplace_ops.alias_inplace_add(out, init_i + (1 if reverse else 0),
-                                            initial_accum)
+        # TODO(b/280454072) Cleanup when foward compatibility window expires.
+        if compat.forward_compatible(2023, 10, 26):
+          out = gen_array_ops.tensor_scatter_add(
+              out, [[init_i + (1 if reverse else 0)]], [initial_accum]
+          )
+        else:
+          out = inplace_ops.alias_inplace_add(
+              out, init_i + (1 if reverse else 0), initial_accum
+          )
       outputs.append(out)
   loop_in = [init_i, num_elems] + outputs + flat_initial
   hostmem = [

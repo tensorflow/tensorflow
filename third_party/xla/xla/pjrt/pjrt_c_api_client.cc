@@ -1824,6 +1824,44 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
   }
 }
 
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToMemorySpace(
+    PjRtMemorySpace* dst_memory) {
+  const PJRT_Api* api = pjrt_c_api();
+  // TODO(yueshengys): Remove this after 12/20/2023.
+  if (api->pjrt_api_version.minor_version < 32) {
+    return Unimplemented(
+        "The plugin has PJRT API version 0.32 which does not support "
+        "CopyToMemorySpace");
+  }
+  if (dst_memory->client() == client_) {
+    PJRT_Buffer_CopyToMemory_Args args;
+    args.struct_size = PJRT_Buffer_CopyToMemory_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.buffer = buffer_.get();
+    args.dst_memory =
+        tensorflow::down_cast<PjRtCApiMemorySpace*>(dst_memory)->c_memory();
+    RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Buffer_CopyToMemory(&args), api);
+    return std::unique_ptr<PjRtBuffer>(
+        std::make_unique<PjRtCApiBuffer>(client_, args.dst_buffer));
+  } else {
+    // Copy across PjRtClients by copying through host
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
+    absl::InlinedVector<int64_t, 4> byte_strides(
+        literal->shape().dimensions_size());
+    TF_RETURN_IF_ERROR(
+        ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
+    // Avoid use-after-free on `literal` due to unsequenced move and use.
+    Literal* literal_pointer = literal.get();
+    return dst_memory->client()->BufferFromHostBuffer(
+        literal_pointer->untyped_data(),
+        literal_pointer->shape().element_type(),
+        literal_pointer->shape().dimensions(), byte_strides,
+        PjRtClient::HostBufferSemantics::kZeroCopy,
+        [literal{std::move(literal)}]() { /* frees literal */ }, dst_memory,
+        /*device_layout=*/nullptr);
+  }
+}
+
 bool PjRtCApiBuffer::IsOnCpu() const {
   PJRT_Buffer_IsOnCpu_Args args;
   args.struct_size = PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE;

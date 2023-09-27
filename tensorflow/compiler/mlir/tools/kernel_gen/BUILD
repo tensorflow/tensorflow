@@ -1,19 +1,11 @@
 load(
-    "@local_xla//xla/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
-)
-load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
     "tf_cc_binary",
 )
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_is_configured",
+    "@local_xla//xla/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -23,6 +15,14 @@ load(
     "if_llvm_system_z_available",
     "if_llvm_x86_available",
     "tf_proto_library",
+)
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
 )
 
 package(
@@ -121,6 +121,7 @@ tf_cc_binary(
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:ExecutionEngineUtils",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+        "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ToLLVMIRTranslation",
     ] + if_llvm_aarch32_available([
@@ -173,9 +174,10 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ExecutionEngine",
         "@llvm-project//mlir:ExecutionEngineUtils",
+        "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:mlir_runner_utils",
-        "@local_xla//xla/stream_executor:stream_executor_headers",
+        "@local_xla//xla/stream_executor",
     ],
 )
 
@@ -210,7 +212,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:mlir_runner_utils",
         "@local_tsl//tsl/platform:hash",
-        "@local_xla//xla/stream_executor:stream_executor_headers",
+        "@local_xla//xla/stream_executor",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "@local_xla//xla/stream_executor/cuda:stream_executor_cuda",

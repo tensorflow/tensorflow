@@ -25,16 +25,20 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_gpu_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/service/custom_call_target_registry.h"
 #include "tsl/platform/errors.h"
 
 namespace pjrt {
 namespace gpu_plugin {
+
+#define PJRT_GPU_PLUGIN_PLATFORM_NAME "CUDA"
 
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
@@ -116,10 +120,27 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
       "Topology not supported for GPU compilation.")};
 }
 
-constexpr PJRT_Api pjrt_api =
-    pjrt::CreatePjrtApi(pjrt::gpu_plugin::PJRT_Client_Create,
-                        pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
-                        pjrt::PJRT_Plugin_Initialize_NoOp);
+PJRT_Error* PJRT_Gpu_Register_Custom_Call(
+    PJRT_Gpu_Register_Custom_Call_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Gpu_Register_Custom_Call_Args",
+      PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE, args->struct_size));
+  std::string function_name(args->function_name, args->function_name_size);
+  xla::CustomCallTargetRegistry::Global()->Register(
+      function_name, args->custom_call_function, PJRT_GPU_PLUGIN_PLATFORM_NAME);
+  return nullptr;
+}
+
+PJRT_Gpu_Custom_Call custom_call{
+    /*type=*/PJRT_Structure_Type::PJRT_Structure_Type_Gpu_Custom_Call,
+    /*next=*/nullptr,
+    /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
+};
+
+constexpr PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
+    pjrt::gpu_plugin::PJRT_Client_Create,
+    pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
+    pjrt::PJRT_Plugin_Initialize_NoOp, static_cast<void*>(&custom_call));
 
 const PJRT_Api* GetGpuPjrtApi() { return &pjrt_api; }
 

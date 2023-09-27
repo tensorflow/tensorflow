@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime/support.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/service_executable_run_options.h"
-#include "xla/stream_executor/stream.h"
 
 namespace xla {
 namespace gpu {

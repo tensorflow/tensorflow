@@ -56,6 +56,9 @@ third_party/gpus/rocm/build_defs.bzl.tpl:
 third_party/gpus/rocm/rocm_config.h.tpl:
 third_party/gpus/rocm_configure.bzl:
 third_party/grpc/BUILD:
+third_party/implib_so/BUILD:
+third_party/implib_so/get_symbols.py:
+third_party/implib_so/make_stub.py:
 third_party/llvm_openmp/BUILD:
 third_party/llvm_openmp/cmake_vars.bzl:
 third_party/llvm_openmp/expand_cmake_vars:.py

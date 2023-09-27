@@ -25,6 +25,7 @@ limitations under the License.
 #define TF_CUFFT_VERSION "%{cufft_version}"
 #define TF_CUSPARSE_VERSION "%{cusparse_version}"
 #define TF_CUDNN_VERSION "%{cudnn_version}"
+#define TF_NCCL_VERSION "%{nccl_version}"
 
 #define TF_CUDA_TOOLKIT_PATH "%{cuda_toolkit_path}"
 

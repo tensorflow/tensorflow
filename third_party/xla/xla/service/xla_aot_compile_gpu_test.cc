@@ -31,9 +31,12 @@ namespace xla {
 namespace xla_compile {
 namespace {
 
-TEST(XlaCompileTest, LoadGpuExecutable) {
-  std::string path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
-                                       "xla_aot_compile_test_gpu_executable");
+class XlaAotCompileTest : public ::testing::TestWithParam<absl::string_view> {};
+
+TEST_P(XlaAotCompileTest, LoadGpuExecutable) {
+  std::string path =
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", GetParam()
+                        /*"xla_aot_compile_test_gpu_executable"*/);
   std::string serialized_aot_result;
   TF_ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
@@ -75,6 +78,11 @@ TEST(XlaCompileTest, LoadGpuExecutable) {
   Literal expected = LiteralUtil::CreateR1<double>({1.0f, 3.0f, 6.0f});
   EXPECT_EQ(expected, output);
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    TestingAotFormats, XlaAotCompileTest,
+    testing::Values("xla_aot_compile_test_gpu_executable",
+                    "xla_aot_compile_test_gpu_executable_hlo"));
 
 TEST(XlaCompileTest, LoadGpuExecutableWithConstant) {
   std::string path =

@@ -1951,6 +1951,12 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
     AddNodeAttr("shape", proto, &ndef);
 
     TF_ASSIGN_OR_RETURN(Node * new_node, graph->AddNode(ndef));
+
+    // connect new node to source graph, so it can meet the graph specification
+    for (const Edge* edge : variable->in_edges()) {
+      graph->AddEdge(edge->src(), edge->src_output(), new_node,
+                     edge->dst_input());
+    }
     per_core_vars.push_back(new_node);
   }
 

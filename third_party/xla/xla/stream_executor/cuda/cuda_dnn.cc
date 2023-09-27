@@ -6734,6 +6734,16 @@ class CudnnExecutionPlanRunner<void(Args...)>
       data_ptrs_vec.pop_back();
     }
 
+    if (sizeof...(Args) == 7 || sizeof...(Args) == 11) {
+      // is fused attention fwd and bwd
+      // remove empty buffers from the list
+      data_ptrs_vec.erase(
+          std::remove(data_ptrs_vec.begin(), data_ptrs_vec.end(), nullptr),
+          data_ptrs_vec.end());
+      // ensure the size is equal after removing useless pointers
+      CHECK(data_ptrs_vec.size() == data_uids_vec.size());
+    }
+
     if (should_add_scalars) {
       data_uids_vec.insert(data_uids_vec.end(), scalar_input_uids_.begin(),
                            scalar_input_uids_.end());
