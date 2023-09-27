@@ -2647,10 +2647,10 @@ void SetHloSharding(const HloInstructionSequence& sequence,
   }
 }
 
-void SetHloShardingPostProcessing(
+Status SetHloShardingPostProcessing(
     const HloInstructionSequence& sequence, const StrategyMap& strategy_map,
     const CostGraph& cost_graph, absl::Span<const NodeStrategyIdx> s_val,
-    const ClusterEnvironment& cluster_env,
+    const ClusterEnvironment& cluster_env, bool crash_at_error,
     absl::flat_hash_map<std::string, std::vector<HloSharding>>*
         preserve_shardings) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
@@ -2681,12 +2681,19 @@ void SetHloShardingPostProcessing(
       const auto& lhs_tensor_dim_to_mesh_dim =
           cluster_env.GetTensorDimToMeshDimWrapper(
               lhs->shape(), lhs_sharding,
-              /* consider_reverse_device_meshes */ true);
+              /* consider_reverse_device_meshes */ true,
+              /* crash_at_error */ crash_at_error);
       const auto& rhs_tensor_dim_to_mesh_dim =
           cluster_env.GetTensorDimToMeshDimWrapper(
               rhs->shape(), rhs_sharding,
-              /* consider_reverse_device_meshes */ true);
+              /* consider_reverse_device_meshes */ true,
+              /* crash_at_error */ crash_at_error);
 
+      if (lhs_tensor_dim_to_mesh_dim.size() != lhs->shape().rank() ||
+          rhs_tensor_dim_to_mesh_dim.size() != rhs->shape().rank()) {
+        return absl::InvalidArgumentError(
+            "Cannot generate tensor dim to mesh dim mapping");
+      }
       if (absl::StrContains(stra.name, "allreduce") &&
           lhs_tensor_dim_to_mesh_dim[lhs_con_dims[0]] == -1 &&
           rhs_tensor_dim_to_mesh_dim[rhs_con_dims[0]] == -1) {
@@ -2722,11 +2729,19 @@ void SetHloShardingPostProcessing(
       const auto& lhs_tensor_dim_to_mesh_dim =
           cluster_env.GetTensorDimToMeshDimWrapper(
               lhs->shape(), lhs_sharding,
-              /* consider_reverse_device_meshes */ true);
+              /* consider_reverse_device_meshes */ true,
+              /* crash_at_error */ crash_at_error);
       const auto& rhs_tensor_dim_to_mesh_dim =
           cluster_env.GetTensorDimToMeshDimWrapper(
               rhs->shape(), rhs_sharding,
-              /* consider_reverse_device_meshes */ true);
+              /* consider_reverse_device_meshes */ true,
+              /* crash_at_error */ crash_at_error);
+
+      if (lhs_tensor_dim_to_mesh_dim.size() != lhs->shape().rank() ||
+          rhs_tensor_dim_to_mesh_dim.size() != rhs->shape().rank()) {
+        return absl::InvalidArgumentError(
+            "Cannot generate tensor dim to mesh dim mapping");
+      }
 
       if (absl::StrContains(stra.name, "allreduce") &&
           lhs_tensor_dim_to_mesh_dim[lhs_in_channel_dim] == -1 &&
@@ -2855,6 +2870,7 @@ void SetHloShardingPostProcessing(
       }
     }
   }
+  return absl::OkStatus();
 }
 
 // Print liveness set for debugging.
@@ -4269,8 +4285,13 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     SetHloSharding(sequence, strategy_map, cost_graph, s_val,
                    (mesh_idx == partial_mesh_shapes.size() - 1));
     if (mesh_idx == partial_mesh_shapes.size() - 1) {
-      SetHloShardingPostProcessing(sequence, strategy_map, cost_graph, s_val,
-                                   cluster_env, &preserve_shardings);
+      if (!SetHloShardingPostProcessing(
+               sequence, strategy_map, cost_graph, s_val, cluster_env,
+               /* crash_at_error */ !option_.try_multiple_mesh_shapes,
+               &preserve_shardings)
+               .ok()) {
+        return AutoShardingResult::kModuleUnchanged;
+      }
     } else {
       spmd::RecoverShardingsFromPartialMesh(sequence, preserve_shardings);
     }
@@ -4502,7 +4523,7 @@ StatusOr<bool> AutoSharding::Run(
                 << spmd::ToString(mesh_shapes[min_mesh_shape_index])
                 << " which had the minimal solver objective value of "
                 << min_objective_value;
-
+        chosen_mesh_shape_ = mesh_shapes[min_mesh_shape_index];
         absl::flat_hash_map<HloComputation*, HloComputation*>
             computation_replacements;
         for (size_t i = 0; i < module->computation_count(); ++i) {
