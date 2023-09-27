@@ -105,7 +105,7 @@ flags.DEFINE_string("output_dir", None, "Output directory of analysis results.")
 flags.DEFINE_enum("output_format", "CSV", ["CSV", "JSON"],
                   "Output format of analysis results.")
 
-DEFAUL_TRT_CONVERT_PARAMS = trt.DEFAULT_TRT_CONVERSION_PARAMS
+DEFAULT_TRT_CONVERT_PARAMS = trt.DEFAULT_TRT_CONVERSION_PARAMS
 
 
 # pylint: disable=bad-whitespace
@@ -208,7 +208,7 @@ class SampleRunner(object):
 
     self._run_impl(
         test_name="precision_mode_test",
-        default_trt_converter_params=DEFAUL_TRT_CONVERT_PARAMS,
+        default_trt_converter_params=DEFAULT_TRT_CONVERT_PARAMS,
         trt_converter_params_updater=trt_converter_params_updater)
 
   def run_all_tests(self) -> None:
