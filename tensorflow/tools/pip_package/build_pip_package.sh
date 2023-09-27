@@ -280,8 +280,8 @@ function prepare_src() {
     cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/local_tsl/tsl/ ${TMPDIR}/tensorflow
     cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/local_xla/xla/ ${TMPDIR}/tensorflow/compiler
   else
-    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_tsl/tsl/ ${TMPDIR}/tensorflow
-    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_xla/xla/ ${TMPDIR}/tensorflow/compiler
+    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_tsl/tsl ${TMPDIR}/tensorflow
+    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_xla/xla ${TMPDIR}/tensorflow/compiler
   fi
   # Fix the proto stubs
   if is_macos; then
