@@ -1,7 +1,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
-load("//tensorflow/python:build_defs.bzl", "tf_gen_op_strict_wrapper_private_py")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_xla_deps_py")
+load("//tensorflow/python:build_defs.bzl", "tf_gen_op_strict_wrapper_private_py")
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -3562,15 +3562,18 @@ cuda_py_strict_test(
         ":gradient_checker",
         ":gradient_checker_v2",
         ":gradients",
+        ":math_grad",
         ":math_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
