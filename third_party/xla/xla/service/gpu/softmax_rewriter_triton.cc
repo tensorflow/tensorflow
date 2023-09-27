@@ -166,7 +166,7 @@ bool IsTriviallyFusible(HloInstruction* instr, const GpuVersion& gpu_version,
   }
 
   // Elementwise binary ops are trivially fusible if the operands are the same,
-  // or if exactly one of the operands is a splat constant with a single user.
+  // or if exactly one of the operands is a splat constant.
   if (instr->IsElementwiseBinary()) {
     const HloInstruction* operand_0 = instr->operand(0);
     const HloInstruction* operand_1 = instr->operand(1);
@@ -175,18 +175,6 @@ bool IsTriviallyFusible(HloInstruction* instr, const GpuVersion& gpu_version,
     // if the operand is triton supported.
     if (operand_0 == operand_1) {
       return IsTritonSupportedInstruction(instr, gpu_version);
-    }
-
-    // If either operand is a splat constant with multiple users, we should not
-    // fuse.
-    bool operand_0_is_shared_splat_constant =
-        IsBroadcastOfScalarConstant(*operand_0) && !HasOneUse(operand_0);
-    bool operand_1_is_shared_splat_constant =
-        IsBroadcastOfScalarConstant(*operand_1) && !HasOneUse(operand_1);
-
-    if (operand_0_is_shared_splat_constant ||
-        operand_1_is_shared_splat_constant) {
-      return false;
     }
 
     // For simplicity we only fuse elementwise binary ops with splat operands

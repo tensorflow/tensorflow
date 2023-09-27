@@ -2295,6 +2295,58 @@ ENTRY main {
                             ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
 }
 
+TEST_P(
+    TritonSoftmaxTest,
+    CanFuseAndEmitBinaryElementwiseOperationWhereOneOperandIsASharedSplatProducerIntoDiamond) {  // NOLINT(whitespace/line_length)
+  PrimitiveType data_type = GetParam();
+
+  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
+                               se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
+    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
+  }
+
+  const std::string hlo_text_template = R"(
+HloModule nonfusible_diamond
+max_computation {
+  arg_0.1 = $0[] parameter(0)
+  arg_1.1 = $0[] parameter(1)
+  ROOT max = $0[] maximum(arg_0.1, arg_1.1)
+}
+ENTRY main {
+  param_0 = $0[127,125]{1,0} parameter(0)
+  constant_2 = $0[] constant(0.333333343)
+  broadcast_splat = $0[127,125]{1,0} broadcast(constant_2), dimensions={}
+  param_1 = $0[127,125]{1,0} parameter(1)
+  multiply_splat = $0[127,125]{1,0} multiply(broadcast_splat, param_1)
+  multiply = $0[127,125]{1,0} multiply(param_0, broadcast_splat)
+  constant_neg_inf = $0[] constant(-inf)
+  reduce = $0[127]{0} reduce(multiply, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = $0[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = $0[127,125]{1,0} subtract(param_0, broadcast)
+}
+)";
+  const std::string hlo_text = absl::Substitute(
+      hlo_text_template, primitive_util::LowercasePrimitiveTypeName(data_type));
+
+  const std::string hlo_ref_template = R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = $0[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)";
+  const std::string hlo_ref = absl::Substitute(
+      hlo_ref_template, primitive_util::LowercasePrimitiveTypeName(data_type));
+
+  MatchOptimizedHlo(hlo_text, hlo_ref);
+
+  float tolerance = 0.0;
+  EXPECT_TRUE(RunAndCompare(hlo_text,
+                            ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
+}
+
 INSTANTIATE_TEST_SUITE_P(TritonSoftmaxTestSuite, TritonSoftmaxTest,
                          ::testing::Values(F32, F16, BF16));
 
