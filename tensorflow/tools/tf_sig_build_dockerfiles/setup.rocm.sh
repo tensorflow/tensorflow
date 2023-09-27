@@ -52,7 +52,7 @@ else
     bash "/${CUSTOM_INSTALL}"
 fi
 
-GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS:-"gfx900 gfx906 gfx908 gfx90a gfx1030 gfx1100"}
+GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS:-"gfx900 gfx906 gfx908 gfx90a gfx940 gfx941 gfx942 gfx1030 gfx1100"}
 
 echo $ROCM_VERSION
 echo $ROCM_REPO
