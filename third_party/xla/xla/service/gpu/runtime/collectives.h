@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/runtime/custom_call_registry.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/stream.h"
 
 namespace xla {
 namespace gpu {

@@ -38,9 +38,18 @@ if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "estimator", estimator)
 
-_keras_module = "keras.api._v1.keras"
-keras = _LazyLoader("keras", globals(), _keras_module)
-_module_dir = _module_util.get_parent_dir_for_name(_keras_module)
+_keras_package_name = None
+_keras_version = None
+if _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"):
+  # Users can opt out of Keras 3 with this environment variable.
+  _keras_package_name = "tf_keras.api._v1.keras"
+  _keras_version = "tf_keras"
+else:
+  _keras_package_name = "keras.api._v1.keras"
+  _keras_version = "keras_2"
+
+keras = _LazyLoader("keras", globals(), _keras_package_name)
+_module_dir = _module_util.get_parent_dir_for_name(_keras_package_name)
 if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "keras", keras)
@@ -56,14 +65,14 @@ if hasattr(_current_module, "keras"):
   # actually trying to import it. Have a Try-Catch to make sure it doesn't break
   # when it doing some very initial loading, like tf.compat.v2, etc.
   try:
-    _layer_package = "keras.api._v1.keras.__internal__.legacy.layers"
+    _layer_package = f"{_keras_package_name}.__internal__.legacy.layers"
     layers = _LazyLoader("layers", globals(), _layer_package)
     _module_dir = _module_util.get_parent_dir_for_name(_layer_package)
     if _module_dir:
       _current_module.__path__ = [_module_dir] + _current_module.__path__
     setattr(_current_module, "layers", layers)
 
-    _legacy_rnn_package = "keras.api._v1.keras.__internal__.legacy.rnn_cell"
+    _legacy_rnn_package = f"{_keras_package_name}.__internal__.legacy.rnn_cell"
     _rnn_cell = _LazyLoader("legacy_rnn", globals(), _legacy_rnn_package)
     _module_dir = _module_util.get_parent_dir_for_name(_legacy_rnn_package)
     if _module_dir:
@@ -76,9 +85,19 @@ if hasattr(_current_module, "keras"):
 # pylint: disable=g-import-not-at-top
 if _typing.TYPE_CHECKING:
   from tensorflow_estimator.python.estimator.api._v1 import estimator as estimator
-  from keras.api._v1 import keras
-  from keras.api._v1.keras import losses
-  from keras.api._v1.keras import metrics
-  from keras.api._v1.keras import optimizers
-  from keras.api._v1.keras import initializers
+  try:
+    if _keras_version == "keras_2":
+      from keras.api._v1 import keras
+      from keras.api._v1.keras import losses
+      from keras.api._v1.keras import metrics
+      from keras.api._v1.keras import optimizers
+      from keras.api._v1.keras import initializers
+    elif _keras_version == "tf_keras":
+      from tf_keras.api._v1 import keras
+      from tf_keras.api._v1.keras import losses
+      from tf_keras.api._v1.keras import metrics
+      from tf_keras.api._v1.keras import optimizers
+      from tf_keras.api._v1.keras import initializers
+  except (ImportError, AttributeError):
+    pass
 # pylint: enable=g-import-not-at-top

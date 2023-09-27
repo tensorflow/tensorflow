@@ -44,23 +44,25 @@ def _print_context(num_global_devices: int, num_clients: int, client_id: int,
 
 
 def _make_device_specs(
-    devices: Optional[List[str]] = None,
+    devices: Optional[List[Union[tf_device.DeviceSpec, str]]] = None,
     device_type: Optional[str] = None
 ) -> Tuple[List[tf_device.DeviceSpec], str]:
-  """Makes device specs from local devices names or number of global devices."""
+  """Makes device specs for all local devices or from a provided list."""
 
   if devices is None:
     if device_type is None:
       device_type = 'CPU'
     devices = config.local_devices(device_type)
   else:
-    devices = [tf_device.DeviceSpec.from_string(d) for d in devices]
+    if isinstance(devices[0], str):
+      devices = [tf_device.DeviceSpec.from_string(d) for d in devices]
     if device_type is None:
       device_type = devices[0].device_type
 
     if device_type.upper() != devices[0].device_type.upper():
       raise ValueError(
-          f'Conflicting devices {str(devices)} and device_type {device_type}')
+          f'Conflicting devices {str(devices)} and device_type {device_type}'
+      )
 
   return devices, device_type
 
@@ -69,7 +71,7 @@ def _make_device_specs(
 def create_mesh(
     mesh_dims: Optional[Union[List[Tuple[str, int]], Dict[str, int]]] = None,
     mesh_name: str = '',
-    devices: Optional[List[str]] = None,
+    devices: Optional[List[Union[tf_device.DeviceSpec, str]]] = None,
     device_type: Optional[str] = None,
     use_xla_spmd: bool = layout.USE_XLA_SPMD,
 ) -> layout.Mesh:
@@ -137,7 +139,7 @@ def create_mesh(
 def create_distributed_mesh(
     mesh_dims: Union[List[Tuple[str, int]], Dict[str, int]],
     mesh_name: str = '',
-    local_devices: Optional[List[str]] = None,
+    local_devices: Optional[List[Union[tf_device.DeviceSpec, str]]] = None,
     device_type: Optional[str] = None,
     use_xla_spmd: bool = layout.USE_XLA_SPMD,
 ) -> layout.Mesh:

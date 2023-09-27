@@ -117,7 +117,7 @@ func.func @reduce_wo_init(%arg0: tensor<2xf64>, %arg1: tensor<f64>)
     -> tensor<f64> {
   %0 = gml_st.fusion ins(%arg3 = %arg0: tensor<2xf64>)
                      inits(%arg4 = %arg1: tensor<f64>) {
-    %reduced = linalg.reduce { arith.maxf }
+    %reduced = linalg.reduce { arith.maximumf }
                  ins(%arg3 : tensor<2xf64>)
                  outs(%arg4 : tensor<f64>)
                  dimensions = [0]

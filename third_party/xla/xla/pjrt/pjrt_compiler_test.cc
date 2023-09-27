@@ -20,37 +20,45 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/client/xla_computation.h"
+#include "xla/pjrt/metrics.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/statusor.h"
+#include "tsl/lib/monitoring/cell_reader.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 
+using metrics::kPjrtCompilerCompileComputationMetricName;
+using metrics::kPjrtCompilerCompileModuleMetricName;
+using ::tsl::monitoring::testing::CellReader;
+using ::tsl::testing::StatusIs;
+
 namespace {
+class PjRtTestTopology : public PjRtTopologyDescription {
+ public:
+  PjRtPlatformId platform_id() const override { return 0; }
+  absl::string_view platform_name() const override { return "not_registered"; }
+  absl::string_view platform_version() const override { return "test"; }
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
+      const override {
+    LOG(FATAL) << "Unused";
+  }
+  absl::StatusOr<std::string> Serialize() const override { return "test_topo"; }
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    LOG(FATAL) << "Unused";
+  }
+};
 
 TEST(PjRtCompilerTest, CompilerNotRegistered) {
-  class PjRtTestTopology : public PjRtTopologyDescription {
-   public:
-    PjRtPlatformId platform_id() const override { return 0; }
-    absl::string_view platform_name() const override {
-      return "not_registered";
-    }
-    absl::string_view platform_version() const override { return "test"; }
-    std::vector<std::unique_ptr<const PjRtDeviceDescription>>
-    DeviceDescriptions() const override {
-      LOG(FATAL) << "Unused";
-    }
-    absl::StatusOr<std::string> Serialize() const override {
-      return "test_topo";
-    }
-    const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-        const override {
-      LOG(FATAL) << "Unused";
-    }
-  };
   PjRtTestTopology topology;
 
   CompileOptions options;
@@ -103,6 +111,32 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
   EXPECT_TRUE(tsl::errors::IsUnimplemented(res.status()));
 }
 
+TEST(PjRtCompilerTest, PjrtCompileComputationMetric) {
+  PjRtTestTopology topology;
+  xla::CompileOptions compile_options;
+  XlaComputation xla_computation;
+  CellReader<bool> metric_reader(
+      std::string{kPjrtCompilerCompileComputationMetricName});
+
+  EXPECT_THAT(PjRtCompile(compile_options, xla_computation, topology,
+                          /*client=*/nullptr),
+              StatusIs(tensorflow::error::NOT_FOUND));
+  // Verify that when the compilation is done, the metric value is always false.
+  EXPECT_FALSE(metric_reader.Read());
+}
+
+TEST(PjRtCompilerTest, PjrtCompileModuleMetric) {
+  PjRtTestTopology topology;
+  xla::CompileOptions compile_options;
+  mlir::ModuleOp module;
+  CellReader<bool> metric_reader(
+      std::string{kPjrtCompilerCompileModuleMetricName});
+
+  EXPECT_THAT(PjRtCompile(compile_options, module, topology,
+                          /*client=*/nullptr),
+              StatusIs(tensorflow::error::NOT_FOUND));
+  EXPECT_FALSE(metric_reader.Read());
+}
 }  // namespace
 
 }  // namespace xla

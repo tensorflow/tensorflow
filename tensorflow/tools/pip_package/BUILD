@@ -98,6 +98,7 @@ DYNAMIC_LOADED_KERNELS = [
 COMMON_PIP_DEPS = [
     ":licenses",
     "MANIFEST.in",
+    "THIRD_PARTY_NOTICES.txt",
     "README",
     "setup.py",
     ":included_headers",

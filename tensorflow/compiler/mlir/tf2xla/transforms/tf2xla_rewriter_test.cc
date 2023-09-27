@@ -286,6 +286,19 @@ TEST_F(Tf2XlaRewriterTest, InsertsConstantParameters) {
   TF_ASSERT_OK(LegalizeModule(kModuleWithConstParam));
 }
 
+TEST_F(Tf2XlaRewriterTest, DoesntEnforceCompileTimeConstantCheck) {
+  static constexpr char kModuleWithNonConstParam[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1610 : i32}} {
+    func.func @main(%arg0: tensor<3x3x10xbf16>, %arg1: tensor<3xi32>) -> tensor<1x?x4xbf16> attributes {allow_soft_placement = false, tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1,_arg2", outputs = "_retval0"}} {
+      %cst = "tf.Const"() {value = dense<[1, -1, 4]> : tensor<3xi32>} : () -> tensor<3xi32>
+      %0 = "tf.Slice"(%arg0, %arg1, %cst) {_XlaHasReferenceVars = false, _xla_inferred_shapes = [#tf_type.shape<1x?x4>], device = "/job:localhost/replica:0/task:0/device:TPU:0"} : (tensor<3x3x10xbf16>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x?x4xbf16>
+      return %0 : tensor<1x?x4xbf16>
+    }
+  })";
+
+  TF_ASSERT_OK(LegalizeModule(kModuleWithNonConstParam));
+}
+
 TEST_F(Tf2XlaRewriterTest, ErrorsWithInvalidNumberOfParametersToArgs) {
   XlaBuilder builder("test_builder");
   XlaComputation to_apply;

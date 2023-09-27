@@ -417,3 +417,44 @@ func.func @case_test(%arg0: tensor<i32>, %arg1: tensor<f32>,  %arg2: tensor<f32>
   %0 = "tf.Case"(%arg0, %arg1, %arg2) {_lower_using_switch_merge = true, branches = [@branch0, @branch1], is_stateless = true} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
+
+// -----
+
+// Test await is added for unused futures
+
+// CHECK-LABEL: func @unused_future_arg
+// CHECK-SAME: ({{%.*}}: !tf_mlrt.tensor, [[unused:%.*]]: !mlrt.future)
+func.func @unused_future_arg(%x: tensor<i32>, %unused: !mlrt.future) -> tensor<i32> {
+  // CHECK: mlrt.await_all_control [[unused]]
+  return %x : tensor<i32>
+}
+
+// CHECK-LABEL: func @unused_future
+func.func @unused_future(%x: tensor<i32>) -> tensor<i32> {
+  // CHECK: [[unused:%.*]] = tf_mlrt.async_executeop
+  %unused = "tf.TestAsyncIdentity"(%x) {__op_key = 0: i32, T = i32} : (tensor<i32>) -> tensor<i32>
+  // CHECK: mlrt.await_all_control [[unused]]
+  return %x : tensor<i32>
+}
+
+// -----
+
+// Test for XlaLaunch
+
+func.func private @xla_func_0(%arg0: tensor<1x3xf32>, %arg1: tensor<1x3xf32>) -> tensor<1x3xf32> attributes {tf._XlaMustCompile = true, tf._noinline = true, tf._original_func_name = "should_not_be_used"} {
+  %1 = "tf.AddV2"(%arg0, %arg1) {__op_key = 0: i32} : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<1x3xf32>
+  func.return %1 : tensor<1x3xf32>
+}
+
+// CHECK-LABEL: func @xla_func
+func.func @xla_func(%arg0: tensor<1x3xf32>) -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "input:0", outputs = "output:0"}} {
+  %0 = "tf.VarHandleOp"() {__op_key = 1: i32, device = "/device:CPU:0", container = "", shared_name = "variable"} : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
+  %1 = "tf.ReadVariableOp"(%0) {__op_key = 2: i32, device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
+  // CHECK: tf_mlrt.executeop
+  // CHECK: tf_mlrt.async_executeop{{.*}}op: \22XlaLaunch\22\0A
+  // CHECK: tf_mlrt.await
+  // CHECK: return
+  // CHECK-SAME: !tf_mlrt.tensor
+  %2 = "tf.XlaLaunch"(%arg0, %1) {__op_key = 3: i32, _noinline = true, _xla_compile_device_type = "GPU", device = "/device:GPU:0", function = @xla_func_0, operandSegmentSizes = array<i32: 0, 2, 0>} : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<*xf32>
+  func.return %2 : tensor<*xf32>
+}

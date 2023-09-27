@@ -16,10 +16,10 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 
 #include "absl/strings/str_cat.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 

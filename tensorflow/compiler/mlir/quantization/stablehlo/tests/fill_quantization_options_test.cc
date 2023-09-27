@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.pb.h"
 #include "tsl/platform/protobuf.h"
 
-namespace mlir::stablehlo {
+namespace mlir::quant::stablehlo {
 namespace {
 
 using ::stablehlo::quantization::PresetQuantizationMethod;
@@ -66,7 +66,7 @@ void FillPresetQuantizationOptionsTestHelper(
       ->mutable_preset_quantization_method()
       ->set_preset_method(preset_quantization_options);
   QuantizationOptions filled_quantization_options =
-      FillPresetQuantizationOptions(quantization_options);
+      quant::stablehlo::FillPresetQuantizationOptions(quantization_options);
   for (QuantizationComponentSpec component :
        filled_quantization_options.quantization_method()
            .custom_quantization_method()
@@ -107,4 +107,4 @@ TEST(FillQuantizationOptionsTest, PresetFloat16) {
 }
 
 }  // namespace
-}  // namespace mlir::stablehlo
+}  // namespace mlir::quant::stablehlo

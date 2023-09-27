@@ -14,8 +14,11 @@ cc_library(
     srcs = ["periodic_function.cc"],
     hdrs = ["periodic_function.h"],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/lib/core:notification",
+        "@com_google_absl//absl/functional:any_invocable",
     ],
 )
 

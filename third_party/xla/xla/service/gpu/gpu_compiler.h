@@ -27,9 +27,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/gpu_target_config.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_pass_pipeline.h"
@@ -96,18 +98,6 @@ class GpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
   XlaRuntimeGpuExecutableProto xla_runtime_gpu_executable_;
 };
 
-struct GpuTargetConfig {
-  GpuTargetConfig() = default;
-  explicit GpuTargetConfig(const stream_executor::GpuTargetConfigProto& proto);
-
-  se::GpuTargetConfigProto ToProto() const;
-
-  GpuDeviceInfo gpu_device_info;
-  std::string platform_name;
-  se::dnn::VersionInfo dnn_version_info;
-  std::string device_description_str;
-};
-
 // The GPU compiler generates efficient GPU executables.
 class GpuCompiler : public LLVMCompiler {
  public:
@@ -170,10 +160,6 @@ class GpuCompiler : public LLVMCompiler {
   StatusOr<std::unique_ptr<AotCompilationResult>> Export(
       Executable* executable) const override;
 
-  static std::optional<bool> FusionCanShareBufferHint(
-      const HloInstruction* user, const HloInstruction* operand,
-      const ShapeIndex& user_index);
-
  protected:
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and
@@ -196,11 +182,17 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
-  // Add autotuning passes for convolution, gemm and triton.
-  virtual Status AddAutotuningPasses(HloPassPipeline* pipeline,
-                                     HloModule* hlo_module,
-                                     AutotuneConfig& autotune_config,
-                                     tsl::thread::ThreadPool* thread_pool) {
+  // Add autotuning passes for convolution and gemm (except triton).
+  virtual Status AddConvAndGemmAutotuningPasses(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
+    return OkStatus();
+  }
+
+  // Add autotuning passes for triton gemm.
+  virtual Status AddTritonGemmAutotuningPasses(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
     return OkStatus();
   }
 

@@ -91,6 +91,10 @@ typedef struct {
   // Note: Version 2 supports dilation values not equal to 1.
   int dilation_width_factor;
   int dilation_height_factor;
+
+  // Parameters for CONV_2D version 7 or above.
+  // Used to determine the default value for the quantized bias.
+  TfLiteType quantized_bias_type;
 } TfLiteConvParams;
 
 typedef struct {
@@ -194,6 +198,10 @@ typedef struct {
   // If set to true and the weights are quantized, then non constant inputs
   // are quantized at evaluation time with asymmetric quantization.
   bool asymmetric_quantize_inputs;
+
+  // Parameters for FullyConnected version 10 or above.
+  // Used to determine the default value for the quantized bias.
+  TfLiteType quantized_bias_type;
 } TfLiteFullyConnectedParams;
 
 typedef enum {
@@ -431,6 +439,10 @@ typedef struct {
 
   // Parameters supported by version 4:
   TfLiteFusedActivation activation;
+
+  // Parameters for TransposeConv version 5 or above.
+  // Used to determine the default value for the quantized bias.
+  TfLiteType quantized_bias_type;
 } TfLiteTransposeConvParams;
 
 typedef struct {
@@ -557,6 +569,24 @@ typedef struct {
   bool unique_indices;
   int update_computation_subgraph_index;
 } TfLiteStablehloScatterParams;
+
+typedef enum {
+  kTfLiteRngAlgorithmUnknown = 0,
+  // An algorithm auto-selected by the system according to device type.
+  kTfLiteRngAlgorithmDefault,
+  // The Philox algorithm, as described in paper
+  // ['Parallel Random Numbers: As Easy as 1, 2, 3']
+  // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+  kTfLiteRngAlgorithmPhilox,
+  // The ThreeFry algorithm, as described in paper
+  // ['Parallel Random Numbers: As Easy as 1, 2, 3']
+  // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+  kTfLiteRngAlgorithmThreefry,
+} TfLiteRngAlgorithm;
+
+typedef struct {
+  TfLiteRngAlgorithm algorithm;
+} TfLiteStablehloRngBitGeneratorParams;
 
 #ifdef __cplusplus
 }  // extern "C"

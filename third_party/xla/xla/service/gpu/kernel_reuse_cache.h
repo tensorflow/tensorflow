@@ -34,6 +34,7 @@ class KernelReuseCache {
   struct Entry {
     std::string kernel_name;
     LaunchDimensions launch_dimensions;
+    int64_t shmem_bytes;
   };
 
   // Retrieves the cache entry for the given computation, or generates it using

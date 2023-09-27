@@ -58,10 +58,6 @@ void RemoveUnusedAndUninitializedGlobals(
     llvm::Module* llvm_module,
     const std::vector<GpuExecutable::ConstantInfo>& constants);
 
-std::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
-                                                const HloInstruction*,
-                                                const ShapeIndex&);
-
 // Compile `hlo_module` using XLA GPU and return the LLVM module thus generated.
 // The GpuExecutable (and the Thunks that are part of it) are not returned.
 StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(

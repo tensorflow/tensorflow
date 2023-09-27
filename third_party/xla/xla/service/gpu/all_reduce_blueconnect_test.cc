@@ -20,7 +20,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "tsl/platform/status_matchers.h"
@@ -28,9 +30,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::testing::AllOf;
 using ::tsl::testing::IsOkAndHolds;
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 using AllReduceBlueConnectTest = HloTestBase;
 
@@ -69,15 +70,18 @@ ENTRY %comp {
       {0, 4}, {1, 5}, {2, 6}, {3, 7}};
   // clang-format on
 
-  auto bitcast = AllOf(op::Shape("f32[16]"), op::Bitcast(op::Parameter(0)));
-  auto reduce_scatter = AllOf(op::Shape("f32[4]"), op::ReduceScatter(bitcast),
-                              op::ReplicaGroups(scatter_gather_groups));
-  auto all_reduce = AllOf(op::Shape("f32[4]"), op::AllReduce(reduce_scatter),
-                          op::ReplicaGroups(new_all_reduce_groups));
-  auto all_gather = AllOf(op::Shape("f32[16]"), op::AllGather(all_reduce),
-                          op::ReplicaGroups(scatter_gather_groups));
+  auto bitcast = m::Bitcast(m::Parameter(0)).WithShape(F32, {16});
+  auto reduce_scatter =
+      m::ReduceScatter(bitcast).WithShape(F32, {4}).WithReplicaGroups(
+          scatter_gather_groups);
+  auto all_reduce = m::AllReduce(reduce_scatter)
+                        .WithShape(F32, {4})
+                        .WithReplicaGroups(new_all_reduce_groups);
+  auto all_gather = m::AllGather(all_reduce)
+                        .WithShape(F32, {16})
+                        .WithReplicaGroups(scatter_gather_groups);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Shape("f32[4,4]"), op::Bitcast(all_gather)));
+              GmockMatch(m::Bitcast(all_gather).WithShape(F32, {4, 4})));
 }
 
 TEST_F(AllReduceBlueConnectTest, TwoStage) {
@@ -108,21 +112,26 @@ ENTRY %comp {
   std::vector<std::vector<int64_t>> new_all_reduce_groups = {
       {0, 8}, {4, 12}, {1, 9}, {5, 13}, {2, 10}, {6, 14}, {3, 11}, {7, 15}};
 
-  auto bitcast0 = AllOf(op::Shape("f32[16]"), op::Bitcast(op::Parameter(0)));
-  auto reduce_scatter0 = AllOf(op::Shape("f32[4]"), op::ReduceScatter(bitcast0),
-                               op::ReplicaGroups(outer_scatter_gather_groups));
-  auto bitcast1 = AllOf(op::Shape("f32[4]"), op::Bitcast(reduce_scatter0));
-  auto reduce_scatter1 = AllOf(op::Shape("f32[2]"), op::ReduceScatter(bitcast1),
-                               op::ReplicaGroups(inner_scatter_gather_groups));
-  auto all_reduce = AllOf(op::Shape("f32[2]"), op::AllReduce(reduce_scatter1),
-                          op::ReplicaGroups(new_all_reduce_groups));
-  auto all_gather0 = AllOf(op::Shape("f32[4]"), op::AllGather(all_reduce),
-                           op::ReplicaGroups(inner_scatter_gather_groups));
-  auto bitcast2 = AllOf(op::Shape("f32[4]"), op::Bitcast(all_gather0));
-  auto all_gather1 = AllOf(op::Shape("f32[16]"), op::AllGather(bitcast2),
-                           op::ReplicaGroups(outer_scatter_gather_groups));
+  auto bitcast0 = m::Bitcast(m::Parameter(0)).WithShape(F32, {16});
+  auto reduce_scatter0 =
+      m::ReduceScatter(bitcast0).WithShape(F32, {4}).WithReplicaGroups(
+          outer_scatter_gather_groups);
+  auto bitcast1 = m::Bitcast(reduce_scatter0).WithShape(F32, {4});
+  auto reduce_scatter1 =
+      m::ReduceScatter(bitcast1).WithShape(F32, {2}).WithReplicaGroups(
+          inner_scatter_gather_groups);
+  auto all_reduce = m::AllReduce(reduce_scatter1)
+                        .WithShape(F32, {2})
+                        .WithReplicaGroups(new_all_reduce_groups);
+  auto all_gather0 = m::AllGather(all_reduce)
+                         .WithShape(F32, {4})
+                         .WithReplicaGroups(inner_scatter_gather_groups);
+  auto bitcast2 = m::Bitcast(all_gather0).WithShape(F32, {4});
+  auto all_gather1 =
+      m::AllGather(bitcast2).WithShape(F32, {16}).WithReplicaGroups(
+          outer_scatter_gather_groups);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Shape("f32[4,4]"), op::Bitcast(all_gather1)));
+              GmockMatch(m::Bitcast(all_gather1).WithShape(F32, {4, 4})));
 }
 
 TEST_F(AllReduceBlueConnectTest, TwoOperands) {
@@ -154,25 +163,30 @@ ENTRY %comp {
       {0, 4}, {1, 5}, {2, 6}, {3, 7}};
   // clang-format on
 
-  auto bitcast0 = AllOf(op::Shape("f32[16]"), op::Bitcast(op::Parameter(0)));
-  auto bitcast1 = AllOf(op::Shape("f32[32]"), op::Bitcast(op::Parameter(1)));
-  auto reduce_scatter = AllOf(op::Shape("(f32[4], f32[8])"),
-                              op::ReduceScatter(bitcast0, bitcast1),
-                              op::ReplicaGroups(scatter_gather_groups));
-  auto all_reduce = AllOf(op::Shape("(f32[4], f32[8])"),
-                          op::AllReduce(op::GetTupleElement(reduce_scatter, 0),
-                                        op::GetTupleElement(reduce_scatter, 1)),
-                          op::ReplicaGroups(new_all_reduce_groups));
-  auto all_gather = AllOf(op::Shape("(f32[16], f32[32])"),
-                          op::AllGather(op::GetTupleElement(all_reduce, 0),
-                                        op::GetTupleElement(all_reduce, 1)),
-                          op::ReplicaGroups(scatter_gather_groups));
-  auto bitcast2 = AllOf(op::Shape("f32[4,4]"),
-                        op::Bitcast(op::GetTupleElement(all_gather, 0)));
-  auto bitcast3 = AllOf(op::Shape("f32[4,4,2]"),
-                        op::Bitcast(op::GetTupleElement(all_gather, 1)));
+  auto bitcast0 = m::Bitcast(m::Parameter(0)).WithShape(F32, {16});
+  auto bitcast1 = m::Bitcast(m::Parameter(1)).WithShape(F32, {32});
+
+  Shape expected0 = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {4}), ShapeUtil::MakeShape(F32, {8})});
+  Shape expected1 = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {16}), ShapeUtil::MakeShape(F32, {32})});
+  auto reduce_scatter = m::ReduceScatter(bitcast0, bitcast1)
+                            .WithShapeEqualTo(&expected0)
+                            .WithReplicaGroups(scatter_gather_groups);
+  auto all_reduce = m::AllReduce(m::GetTupleElement(reduce_scatter, 0),
+                                 m::GetTupleElement(reduce_scatter, 1))
+                        .WithShapeEqualTo(&expected0)
+                        .WithReplicaGroups(new_all_reduce_groups);
+  auto all_gather = m::AllGather(m::GetTupleElement(all_reduce, 0),
+                                 m::GetTupleElement(all_reduce, 1))
+                        .WithShapeEqualTo(&expected1)
+                        .WithReplicaGroups(scatter_gather_groups);
+  auto bitcast2 =
+      m::Bitcast(m::GetTupleElement(all_gather, 0)).WithShape(F32, {4, 4});
+  auto bitcast3 =
+      m::Bitcast(m::GetTupleElement(all_gather, 1)).WithShape(F32, {4, 4, 2});
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(bitcast2, bitcast3));
+              GmockMatch(m::Tuple(bitcast2, bitcast3)));
 }
 
 TEST_F(AllReduceBlueConnectTest, DifferentNumLocalDevicesWithinReplicaGroup) {

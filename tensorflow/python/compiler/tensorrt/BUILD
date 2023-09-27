@@ -117,6 +117,8 @@ cuda_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
+        # TODO(b/297490791): Reenable after TensorRT regression has been fixed
+        "no_oss",
         "no_pip",
         "nomac",
     ],

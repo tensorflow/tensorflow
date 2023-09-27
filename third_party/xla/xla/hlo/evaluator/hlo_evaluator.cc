@@ -18,15 +18,18 @@ limitations under the License.
 #include <atomic>
 #include <cmath>
 #include <complex>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <memory>
+#include <numeric>
 #include <optional>
+#include <random>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -34,40 +37,54 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/internal/endian.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/strings/match.h"
+#include "absl/functional/function_ref.h"
+#include "absl/memory/memory.h"
+#include "absl/numeric/bits.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "xla/array2d.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"
+#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/index_util.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/map_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/cpu/runtime_single_threaded_matmul.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/logical_buffer.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/service/tuple_points_to_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
-#include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/bitmap.h"
+#include "tsl/platform/cpu_info.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/float8.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/types.h"
@@ -79,114 +96,52 @@ namespace {
 using primitive_util::NativeTypeOf;
 
 template <typename OperandT>
-StatusOr<Literal> Compare(const Shape& shape, ComparisonDirection direction,
+StatusOr<Literal> Compare(const Shape& shape, Comparison comparison,
                           LiteralSlice lhs_literal, LiteralSlice rhs_literal) {
-  std::function<bool(OperandT, OperandT)> compare_op;
-  switch (direction) {
+  auto populate = [&](auto compare_op) -> StatusOr<Literal> {
+    Literal result(shape);
+    TF_RETURN_IF_ERROR(result.PopulateParallel<bool>(
+        [&](absl::Span<const int64_t> multi_index, int /*thread_id*/) {
+          auto lhs = lhs_literal.Get<OperandT>(multi_index);
+          auto rhs = rhs_literal.Get<OperandT>(multi_index);
+          if constexpr (is_specialized_floating_point_v<OperandT>) {
+            if (comparison.IsTotalOrder()) {
+              return compare_op(ToSignMagnitude(lhs), ToSignMagnitude(rhs));
+            }
+          }
+          return compare_op(lhs, rhs);
+        }));
+    return std::move(result);
+  };
+  switch (comparison.GetDirection()) {
     case ComparisonDirection::kEq:
-      compare_op = [](OperandT lhs_el, OperandT rhs_el) {
-        return lhs_el == rhs_el;
-      };
-      break;
+      return populate([](auto lhs, auto rhs) { return lhs == rhs; });
     case ComparisonDirection::kNe:
-      compare_op = [](OperandT lhs_el, OperandT rhs_el) {
-        return lhs_el != rhs_el;
-      };
-      break;
+      return populate([](auto lhs, auto rhs) { return lhs != rhs; });
     case ComparisonDirection::kGe:
-      compare_op = [](OperandT lhs_el, OperandT rhs_el) {
-        return lhs_el >= rhs_el;
-      };
+      if constexpr (!is_complex_v<OperandT>) {
+        return populate([](auto lhs, auto rhs) { return lhs >= rhs; });
+      }
       break;
     case ComparisonDirection::kGt:
-      compare_op = [](OperandT lhs_el, OperandT rhs_el) {
-        return lhs_el > rhs_el;
-      };
+      if constexpr (!is_complex_v<OperandT>) {
+        return populate([](auto lhs, auto rhs) { return lhs > rhs; });
+      }
       break;
     case ComparisonDirection::kLe:
-      compare_op = [](OperandT lhs_el, OperandT rhs_el) {
-        return lhs_el <= rhs_el;
-      };
+      if constexpr (!is_complex_v<OperandT>) {
+        return populate([](auto lhs, auto rhs) { return lhs <= rhs; });
+      }
       break;
     case ComparisonDirection::kLt:
-      compare_op = [](OperandT lhs_el, OperandT rhs_el) {
-        return lhs_el < rhs_el;
-      };
+      if constexpr (!is_complex_v<OperandT>) {
+        return populate([](auto lhs, auto rhs) { return lhs < rhs; });
+      }
       break;
   }
 
-  Literal result(shape);
-  TF_RETURN_IF_ERROR(
-      result.Populate<bool>([&](absl::Span<const int64_t> multi_index) {
-        return compare_op(lhs_literal.Get<OperandT>(multi_index),
-                          rhs_literal.Get<OperandT>(multi_index));
-      }));
-
-  return std::move(result);
-}
-
-template <>
-StatusOr<Literal> Compare<complex64>(const Shape& shape,
-                                     ComparisonDirection direction,
-                                     LiteralSlice lhs_literal,
-                                     LiteralSlice rhs_literal) {
-  std::function<bool(complex64, complex64)> compare_op;
-  switch (direction) {
-    case ComparisonDirection::kEq:
-      compare_op = [](complex64 lhs_el, complex64 rhs_el) {
-        return lhs_el == rhs_el;
-      };
-      break;
-    case ComparisonDirection::kNe:
-      compare_op = [](complex64 lhs_el, complex64 rhs_el) {
-        return lhs_el != rhs_el;
-      };
-      break;
-    default:
-      LOG(FATAL) << "unhandled direction for conversion to Comparison: "
-                 << ComparisonDirectionToString(direction);
-  }
-
-  Literal result(shape);
-  TF_RETURN_IF_ERROR(
-      result.Populate<bool>([&](absl::Span<const int64_t> multi_index) {
-        return compare_op(lhs_literal.Get<complex64>(multi_index),
-                          rhs_literal.Get<complex64>(multi_index));
-      }));
-
-  return std::move(result);
-}
-
-template <>
-StatusOr<Literal> Compare<complex128>(const Shape& shape,
-                                      ComparisonDirection direction,
-                                      LiteralSlice lhs_literal,
-                                      LiteralSlice rhs_literal) {
-  std::function<bool(complex128, complex128)> compare_op;
-  switch (direction) {
-    case ComparisonDirection::kEq:
-      compare_op = [](complex128 lhs_el, complex128 rhs_el) {
-        return lhs_el == rhs_el;
-      };
-      break;
-    case ComparisonDirection::kNe:
-      compare_op = [](complex128 lhs_el, complex128 rhs_el) {
-        return lhs_el != rhs_el;
-      };
-      break;
-    default:
-      LOG(FATAL) << "unhandled direction for conversion to Comparison: "
-                 << ComparisonDirectionToString(direction);
-  }
-
-  Literal result(shape);
-  TF_RETURN_IF_ERROR(
-      result.Populate<bool>([&](absl::Span<const int64_t> multi_index) {
-        return compare_op(lhs_literal.Get<complex128>(multi_index),
-                          rhs_literal.Get<complex128>(multi_index));
-      }));
-
-  return std::move(result);
+  LOG(FATAL) << "unhandled direction for conversion to Comparison: "
+             << comparison.ToString();
 }
 
 std::optional<bool> GetInstructionStaticValueAsBool(
@@ -1572,30 +1527,32 @@ Status HloEvaluator::HandleComplex(const HloInstruction* complex) {
 
 Status HloEvaluator::HandleCompare(const HloInstruction* compare) {
   ComparisonDirection direction = compare->comparison_direction();
+  ComparisonOrder order = compare->comparison_order();
   auto lhs = compare->operand(0);
   auto rhs = compare->operand(1);
   DCHECK(ShapeUtil::SameDimensions(compare->shape(), rhs->shape()) &&
          ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()));
 
   TF_RET_CHECK(lhs->shape().element_type() == rhs->shape().element_type());
+  auto element_type = lhs->shape().element_type();
+  Comparison comparison(direction, element_type, order);
 
   const Literal& lhs_literal = GetEvaluatedLiteralFor(lhs);
   const Literal& rhs_literal = GetEvaluatedLiteralFor(rhs);
-
   // Note here we switch on the operand's type.
   return primitive_util::PrimitiveTypeSwitch<Status>(
       [&](auto primitive_type_constant) -> Status {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
           TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                              Compare<NativeT>(compare->shape(), direction,
+                              Compare<NativeT>(compare->shape(), comparison,
                                                lhs_literal, rhs_literal));
           return OkStatus();
         }
         LOG(FATAL) << "HandleCompare: unknown primitive type: "
-                   << PrimitiveType_Name(lhs->shape().element_type());
+                   << PrimitiveType_Name(element_type);
       },
-      lhs->shape().element_type());
+      element_type);
 }
 
 Status HloEvaluator::HandleTuple(const HloInstruction* tuple) {
@@ -3969,8 +3926,180 @@ Status HloEvaluator::HandleSort(const HloInstruction* sort) {
       << "Unexpected out-of-bound sort dimension " << sort_dim
       << " accessing increment of size " << increment.size();
   increment[sort_dim] = sort_dim_elements;
-  std::unique_ptr<HloEvaluator> embedded_evaluator =
-      CreateEmbedded(max_loop_iterations_);
+
+  auto comparator = [sort](absl::Span<const Literal> literals_to_sort,
+                           int64_t a, int64_t b,
+                           HloEvaluator* embedded_evaluator) -> StatusOr<bool> {
+    absl::InlinedVector<Literal, 8> literals;
+    literals.reserve(2 * sort->operand_count());
+    for (int64_t i = 0; i < sort->operand_count(); ++i) {
+      literals.push_back(
+          LiteralUtil::GetScalarLiteral(literals_to_sort[i], {a}));
+      literals.push_back(
+          LiteralUtil::GetScalarLiteral(literals_to_sort[i], {b}));
+    }
+    absl::InlinedVector<const Literal*, 8> literal_ptrs;
+    absl::c_transform(literals, std::back_inserter(literal_ptrs),
+                      [](const Literal& literal) { return &literal; });
+
+    TF_ASSIGN_OR_RETURN(
+        auto computed_result,
+        embedded_evaluator->Evaluate(*sort->to_apply(), literal_ptrs));
+    // Clear visit states so that we can use the evaluator again
+    // on the same computation.
+    embedded_evaluator->ResetVisitStates();
+    return computed_result.Get<bool>({});
+  };
+  auto less_than = [&comparator](
+                       absl::Span<const Literal> literals_to_sort, int64_t a,
+                       int64_t b,
+                       HloEvaluator* embedded_evaluator) -> StatusOr<bool> {
+    TF_ASSIGN_OR_RETURN(bool a_is_smaller,
+                        comparator(literals_to_sort, a, b, embedded_evaluator));
+#ifndef NDEBUG
+    // Let's see if the comparator violates strict weak ordering.
+    // N.B. This does not test transitivity.
+    TF_ASSIGN_OR_RETURN(bool b_is_smaller,
+                        comparator(literals_to_sort, b, a, embedded_evaluator));
+    TF_RET_CHECK(!(b_is_smaller && a_is_smaller));
+    TF_ASSIGN_OR_RETURN(bool b_is_reflexive,
+                        comparator(literals_to_sort, b, b, embedded_evaluator));
+    TF_RET_CHECK(!b_is_reflexive);
+    TF_ASSIGN_OR_RETURN(bool a_is_reflexive,
+                        comparator(literals_to_sort, a, a, embedded_evaluator));
+    TF_RET_CHECK(!a_is_reflexive);
+#endif
+    return a_is_smaller;
+  };
+  std::function<Status(absl::Span<const Literal>, absl::Span<int64_t>,
+                       absl::Span<int64_t>, absl::Span<int64_t>,
+                       std::vector<int64_t>&, HloEvaluator*)>
+      merge = [&](absl::Span<const Literal> literals_to_sort,
+                  absl::Span<int64_t> lhs, absl::Span<int64_t> rhs,
+                  absl::Span<int64_t> output, std::vector<int64_t>& tmp,
+                  HloEvaluator* embedded_evaluator) -> Status {
+    tmp.clear();
+    tmp.reserve(output.size());
+    // Keep picking between elements.
+    while (!lhs.empty() && !rhs.empty()) {
+      // If rhs < lhs, pick rhs. Otherwise, pick lhs. This should ensure
+      // stability as lhs comes first in the array.
+      TF_ASSIGN_OR_RETURN(bool rhs_is_smaller,
+                          less_than(literals_to_sort, rhs.front(), lhs.front(),
+                                    embedded_evaluator));
+      if (rhs_is_smaller) {
+        tmp.push_back(rhs.front());
+        rhs.remove_prefix(1);
+      } else {
+        tmp.push_back(lhs.front());
+        lhs.remove_prefix(1);
+      }
+    }
+    // At least one of the two input arrays are now empty, we need to copy
+    // the remaining elements.
+    absl::c_copy(lhs, std::back_inserter(tmp));
+    absl::c_copy(rhs, std::back_inserter(tmp));
+    absl::c_copy(tmp, output.begin());
+    return OkStatus();
+  };
+  auto* env = tsl::Env::Default();
+  const int max_parallelism = tsl::port::MaxParallelism();
+  constexpr size_t kMinElementsPerThread{1024};
+  const size_t useful_parallelism = std::min<size_t>(
+      sort_dim_elements / kMinElementsPerThread, max_parallelism);
+  const size_t work_per_thread = useful_parallelism > 1
+                                     ? sort_dim_elements / useful_parallelism
+                                     : std::numeric_limits<size_t>::max();
+  std::function<Status(absl::Span<const Literal>, absl::Span<int64_t>,
+                       std::vector<int64_t>*, HloEvaluator*)>
+      mergesort = [&merge, &mergesort, &less_than, this, env, work_per_thread](
+                      absl::Span<const Literal> literals_to_sort,
+                      absl::Span<int64_t> to_sort,
+                      std::vector<int64_t>* scratch,
+                      HloEvaluator* embedded_evaluator) -> Status {
+    // Base case: inputs with 0 or 1 elements are already sorted.
+    if (to_sort.size() < 2) {
+      return OkStatus();
+    }
+    size_t halfway = to_sort.size() / 2;
+    auto lhs = to_sort.subspan(/*pos=*/0, halfway);
+    auto rhs = to_sort.subspan(/*pos=*/halfway);
+
+    // Allocate an evaluator if we never got one, we will reuse an
+    // allocator so long as we are not moving it between threads.
+    std::unique_ptr<HloEvaluator> thread_local_embedded_evaluator;
+    if (embedded_evaluator == nullptr) {
+      thread_local_embedded_evaluator = CreateEmbedded(max_loop_iterations_);
+      embedded_evaluator = thread_local_embedded_evaluator.get();
+    }
+
+    constexpr size_t kMinElementsForMergesort{9};
+    if (to_sort.size() >= kMinElementsForMergesort) {
+      std::unique_ptr<std::vector<int64_t>> thread_local_scratch;
+      if (!scratch) {
+        thread_local_scratch = std::make_unique<std::vector<int64_t>>();
+        scratch = thread_local_scratch.get();
+      }
+      // Overlap sorting the LHS with the RHS if we have enough work to
+      // do. The recursive call for to `mergesort(rhs)` will potentially
+      // create more threads.
+      Status lhs_status;
+      if (to_sort.size() >= work_per_thread) {
+        std::unique_ptr<tsl::Thread> thread = absl::WrapUnique(env->StartThread(
+            tsl::ThreadOptions(), "XLA_mergesort",
+            [literals_to_sort, lhs, &mergesort, &lhs_status] {
+              lhs_status = mergesort(literals_to_sort, lhs, nullptr, nullptr);
+            }));
+        TF_RETURN_IF_ERROR(
+            mergesort(literals_to_sort, rhs, scratch, embedded_evaluator));
+        // Here, `thread` will run its destructor ensuring that it is done
+        // sorting `lhs`.
+        thread.reset();
+      } else {
+        TF_RETURN_IF_ERROR(
+            mergesort(literals_to_sort, rhs, scratch, embedded_evaluator));
+        lhs_status =
+            mergesort(literals_to_sort, lhs, scratch, embedded_evaluator);
+      }
+      TF_RETURN_IF_ERROR(lhs_status);
+      TF_RETURN_IF_ERROR(merge(literals_to_sort, lhs, rhs, to_sort, *scratch,
+                               embedded_evaluator));
+    } else {
+      // Do an insertion sort. Values to the left of `i` are sorted.
+      // Any values larger than it in will be moved past `i`. Binary
+      // search in [0, i) looking for the smallest value larger than `i`
+      // which we will call `ub`. By induction, [ub, i) are all larger
+      // than `i`.
+      for (auto i = to_sort.begin(); i != to_sort.end(); ++i) {
+        auto len = i - to_sort.begin();
+        auto ub = to_sort.begin();
+        auto needle = *i;
+        while (len != 0) {
+          auto half_len = len / 2;
+          auto midpoint = ub + half_len;
+          TF_ASSIGN_OR_RETURN(bool is_smaller,
+                              less_than(literals_to_sort, needle, *midpoint,
+                                        embedded_evaluator));
+          if (is_smaller) {
+            // Our needle is smaller than the midpoint, we need to shrink
+            // the range by trimming the rightmost portion of it. We can't
+            // exclude the midpoint value yet.
+            len = half_len;
+          } else {
+            // Our needle is at least as big as the midpoint but we want
+            // something larger, we can exclude the midpoint.
+            ub = midpoint + 1;
+            len -= half_len + 1;
+          }
+        }
+        // Shift values larger than `i` to the right by 1 and insert `i`
+        // in the new gap. Now the sorted range is [0, i].
+        std::rotate(ub, i, i + 1);
+      }
+    }
+    return OkStatus();
+  };
+
   // Iterate through each dimension except 'sort_dim'.
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
       key_shape, zero_base, key_shape.dimensions(), increment,
@@ -3991,42 +4120,9 @@ Status HloEvaluator::HandleSort(const HloInstruction* sort) {
         }
         std::vector<int64_t> indices_to_sort(sort_dim_elements);
         std::iota(indices_to_sort.begin(), indices_to_sort.end(), 0);
-        Status compare_status = OkStatus();
-        auto comparator = [sort, &compare_status,
-                           embedded_evaluator = embedded_evaluator.get(),
-                           &literals_to_sort](int64_t a, int64_t b) {
-          std::vector<Literal> literals;
-          literals.reserve(2 * sort->operand_count());
-          for (int64_t i = 0; i < sort->operand_count(); ++i) {
-            literals.push_back(
-                LiteralUtil::GetScalarLiteral(literals_to_sort[i], {a}));
-            literals.push_back(
-                LiteralUtil::GetScalarLiteral(literals_to_sort[i], {b}));
-          }
-          std::vector<const Literal*> literal_ptrs;
-          absl::c_transform(literals, std::back_inserter(literal_ptrs),
-                            [](const Literal& literal) { return &literal; });
-
-          auto computed_result =
-              embedded_evaluator->Evaluate(*sort->to_apply(), literal_ptrs);
-          // Clear visit states so that we can use the evaluator again
-          // on the same computation.
-          embedded_evaluator->ResetVisitStates();
-          if (!computed_result.ok()) {
-            compare_status = computed_result.status();
-            return false;
-          }
-          return computed_result.value().Get<bool>({});
-        };
-        if (Cast<HloSortInstruction>(sort)->is_stable()) {
-          std::stable_sort(indices_to_sort.begin(), indices_to_sort.end(),
-                           comparator);
-        } else {
-          std::sort(indices_to_sort.begin(), indices_to_sort.end(), comparator);
-        }
-        if (!compare_status.ok()) {
-          return compare_status;
-        }
+        TF_RETURN_IF_ERROR(mergesort(literals_to_sort,
+                                     absl::MakeSpan(indices_to_sort), nullptr,
+                                     nullptr));
         std::vector<int64_t> slice_dimensions(rank, 1);
         slice_dimensions[sort_dim] = sort_dim_elements;
         std::vector<int64_t> start_indices(rank, 0);

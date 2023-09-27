@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/copy_insertion.h"
-#include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/buffer_sharing.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 
@@ -110,7 +110,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(GpuCompiler::FusionCanShareBufferHint,
+  CopyInsertion copy_insertion(FusionCanShareBufferHint,
                                /*use_region_based_live_range_analysis=*/0);
   ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());
   VLOG(2) << module->ToString();
@@ -142,8 +142,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ExpectOptionalTrue(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
 }
 
 TEST_F(FusionCanShareBufferHintTest, BufferCanBeSharedBitcastedShape) {
@@ -166,8 +165,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ExpectOptionalTrue(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
 }
 
 TEST_F(FusionCanShareBufferHintTest,
@@ -191,8 +189,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ExpectOptionalTrue(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
 }
 
 TEST_F(FusionCanShareBufferHintTest, BufferCanBeSharedMultiOutputFusion) {
@@ -217,16 +214,15 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ExpectOptionalTrue(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {0}));
+  ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(0), {0}));
   // The second operand cannot share the buffer with the second fusion output,
   // because the 'neg' op is also used on the path to the first fusion output.
   ExpectOptionalFalse(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(1), {1}));
+      FusionCanShareBufferHint(fusion, fusion->operand(1), {1}));
   // The first operand cannot share the buffer with the second fusion output,
   // because there is no path between them.
   ExpectOptionalFalse(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {1}));
+      FusionCanShareBufferHint(fusion, fusion->operand(0), {1}));
 }
 
 TEST_F(FusionCanShareBufferHintTest,
@@ -250,8 +246,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ExpectOptionalFalse(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
 }
 
 TEST_F(FusionCanShareBufferHintTest, BufferCannotBeSharedShapeBitcastConvert) {
@@ -274,8 +269,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ExpectOptionalFalse(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
 }
 
 TEST_F(FusionCanShareBufferHintTest, BufferCannotBeSharedDueToCopy) {
@@ -297,8 +291,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ExpectOptionalFalse(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
 }
 
 TEST_F(FusionCanShareBufferHintTest, BufferCannotBeSharedDueToTranspose) {
@@ -320,8 +313,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ExpectOptionalFalse(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
 }
 
 TEST_F(FusionCanShareBufferHintTest,
@@ -351,8 +343,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ExpectOptionalFalse(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
 }
 
 TEST_F(FusionCanShareBufferHintTest,
@@ -383,8 +374,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ExpectOptionalTrue(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
 }
 
 TEST_F(FusionCanShareBufferHintTest,
@@ -418,7 +408,7 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {0}));
+      FusionCanShareBufferHint(fusion, fusion->operand(0), {0}));
 }
 
 TEST_F(FusionCanShareBufferHintTest,
@@ -449,8 +439,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ExpectOptionalTrue(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
 }
 
 TEST_F(FusionCanShareBufferHintTest,
@@ -481,8 +470,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ExpectOptionalFalse(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
 }
 
 TEST_F(FusionCanShareBufferHintTest,
@@ -513,8 +501,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ExpectOptionalFalse(
-      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
 }
 
 }  // namespace

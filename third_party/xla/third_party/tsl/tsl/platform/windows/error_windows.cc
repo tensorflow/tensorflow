@@ -16,7 +16,7 @@ limitations under the License.
 #include "tsl/platform/windows/error_windows.h"
 
 #include <Windows.h>
-#include <Winsock2.h>
+#include <winsock2.h>
 
 #include <string>
 

@@ -876,7 +876,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 
 /* static */ int64_t ShapeUtil::ByteSizeOf(const Shape& shape,
                                            int64_t pointer_size) {
-  TF_DCHECK_OK(ValidateShape(shape));
+  TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
   if (shape.element_type() == TUPLE) {
     return ByteSizeOfTupleIndexTable(shape, pointer_size);
   } else if (shape.IsArray()) {
@@ -900,7 +900,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 }
 
 /* static */ int64_t ShapeUtil::ByteSizeOfElements(const Shape& shape) {
-  TF_DCHECK_OK(ValidateShape(shape));
+  TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
   int64_t allocated_element_count;
 
   CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ShortDebugString();

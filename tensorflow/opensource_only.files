@@ -259,6 +259,9 @@ tf_staging/third_party/gpus/rocm/rocm_config.h.tpl:
 tf_staging/third_party/gpus/rocm_configure.bzl:
 tf_staging/third_party/grpc/BUILD:
 tf_staging/third_party/icu/udata.patch:
+tf_staging/third_party/implib_so/BUILD:
+tf_staging/third_party/implib_so/get_symbols.py:
+tf_staging/third_party/implib_so/make_stub.py:
 tf_staging/third_party/linenoise.BUILD:
 tf_staging/third_party/llvm_openmp/BUILD:
 tf_staging/third_party/llvm_openmp/cmake_vars.bzl:

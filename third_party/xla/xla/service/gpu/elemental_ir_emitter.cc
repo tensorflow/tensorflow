@@ -326,6 +326,12 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexAbs(
                             {prim_type, prim_type}, prim_type);
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCbrt(PrimitiveType prim_type,
+                                                       llvm::Value* value) {
+  return EmitDeviceMathCall(TargetDeviceFunctionID::kCbrt, {value}, {prim_type},
+                            prim_type);
+}
+
 llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
   llvm::Value* block_id = IntCast(
       EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b()),

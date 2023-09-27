@@ -101,9 +101,8 @@ struct CustomCallOpInterface
       // TODO(springerm): Create alloc_tensor ops during TensorCopyInsertion.
       AnalysisState analysisState(options);
       FailureOr<Value> tensorAlloc =
-          bufferization::allocateTensorForShapedValue(
-              rewriter, op->getLoc(), result,
-              analysisState.isTensorYielded(result), options);
+          bufferization::allocateTensorForShapedValue(rewriter, op->getLoc(),
+                                                      result, options);
       if (failed(tensorAlloc)) return failure();
       auto memrefType =
           MemRefType::get(tensorType.getShape(), tensorType.getElementType());
@@ -248,9 +247,8 @@ struct DynamicReshapeOpInterface
       // TODO(springerm): Create alloc_tensor ops during TensorCopyInsertion.
       AnalysisState analysisState(options);
       FailureOr<Value> tensorAlloc =
-          bufferization::allocateTensorForShapedValue(
-              rewriter, op->getLoc(), *operandBuffer,
-              analysisState.isTensorYielded(reshapeOp.getResult()), options);
+          bufferization::allocateTensorForShapedValue(rewriter, op->getLoc(),
+                                                      *operandBuffer, options);
       if (failed(tensorAlloc)) return failure();
       auto memrefType =
           MemRefType::get(bufferType.getShape(), bufferType.getElementType());

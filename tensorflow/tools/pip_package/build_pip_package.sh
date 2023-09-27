@@ -210,6 +210,23 @@ function prepare_src() {
     cp -L \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
       "${TMPDIR}"
+    # Check if it is a tpu build
+    if [[ ${TPU_BUILD} == "1" ]]; then
+      # Check if libtpu.so exists
+      if [[ -f "./tensorflow/lib/libtpu.so" ]]; then
+        if [[ ! -L "${RUNFILES}/tensorflow/lib/libtpu.so" ]]; then
+          mkdir "$(real_path ${RUNFILES}/tensorflow/lib)"
+          ln -s $(real_path ./tensorflow/lib/libtpu.so) $(real_path ${RUNFILES}/tensorflow/lib/libtpu.so)
+          echo "Created symlink: $(real_path ./tensorflow/lib/libtpu.so) -> \
+            $(real_path ${RUNFILES}/tensorflow/lib/libtpu.so)"
+        else
+          echo "Symlink already exists: ${RUNFILES}/tensorflow/lib/libtpu.so"
+        fi
+      else
+        echo "Libtpu.so is not found in $(real_path ./tensorflow/lib/)"
+        exit 1
+      fi
+    fi
     cp -LR \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
@@ -235,20 +252,6 @@ function prepare_src() {
     copy_xla_aot_runtime_sources \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow \
       "${XLA_AOT_RUNTIME_SOURCES}"
-    # Move vendored files into proper locations
-    # This is required because TSL/XLA don't publish their own wheels
-    cp -r bazel-bin/external/local_tsl/tsl/ ${TMPDIR}/tensorflow/tsl
-    cp -r bazel-bin/external/local_xla/xla/ ${TMPDIR}/tensorflow/compiler/xla
-    # Fix the proto stubs
-    if is_macos; then
-      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from tsl\./from tensorflow.tsl./' {} \;
-      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from local_xla\.xla/from tensorflow.compiler.xla/' {} \;
-      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from xla/from tensorflow.compiler.xla/' {} \;
-    else
-      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from tsl\./from tensorflow.tsl./' {} \;
-      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from local_xla\.xla/from tensorflow.compiler.xla/' {} \;
-      find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from xla/from tensorflow.compiler.xla/' {} \;
-    fi
     # Copy MKL libs over so they can be loaded at runtime
     so_lib_dir=$(ls $RUNFILES | grep solib)
     if is_macos; then
@@ -268,9 +271,33 @@ function prepare_src() {
     fi
   fi
 
+  # Move vendored files into proper locations
+  # This is required because TSL/XLA don't publish their own wheels
+  # We copy from bazel-bin/tensorflow instead of bazel-bin/internal to copy
+  # headers from TSL/XLA into tensorflow so that InstallHeaders can move
+  # them back into tensorflow/include
+  if is_windows; then
+    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/local_tsl/tsl/ ${TMPDIR}/tensorflow
+    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/local_xla/xla/ ${TMPDIR}/tensorflow/compiler
+  else
+    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_tsl/tsl/ ${TMPDIR}/tensorflow
+    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_xla/xla/ ${TMPDIR}/tensorflow/compiler
+  fi
+  # Fix the proto stubs
+  if is_macos; then
+    find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from tsl\./from tensorflow.tsl./' {} \;
+    find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from local_xla\.xla/from tensorflow.compiler.xla/' {} \;
+    find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i '' 's/from xla/from tensorflow.compiler.xla/' {} \;
+  else
+    find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from tsl\./from tensorflow.tsl./' {} \;
+    find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from local_xla\.xla/from tensorflow.compiler.xla/' {} \;
+    find ${TMPDIR}/tensorflow/ -name "*.py" -type f -exec sed -i'' 's/from xla/from tensorflow.compiler.xla/' {} \;
+  fi
+
   mkdir -p ${TMPDIR}/third_party
   cp -R $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
   cp -LR $RUNFILES/../local_config_cuda/cuda/_virtual_includes/cuda_headers_virtual/third_party/gpus ${TMPDIR}/third_party
+  cp $RUNFILES/tensorflow/tools/pip_package/THIRD_PARTY_NOTICES.txt "${TMPDIR}/tensorflow"
 
   reorganize_includes "${TMPDIR}"
 

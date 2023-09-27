@@ -74,27 +74,27 @@ Status FusedMHAThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase scratch_buffer =
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
-  se::DeviceMemoryBase mask_buffer;
+  std::optional<se::DeviceMemoryBase> mask_buffer;
   if (mask_buffer_.allocation() != nullptr) {
     mask_buffer = buffer_allocations.GetDeviceAddress(mask_buffer_);
   }
-  se::DeviceMemoryBase bias_buffer;
+  std::optional<se::DeviceMemoryBase> bias_buffer;
   if (bias_buffer_.allocation() != nullptr) {
     bias_buffer = buffer_allocations.GetDeviceAddress(bias_buffer_);
   }
 
-  se::DeviceMemoryBase activation_buffer;
+  std::optional<se::DeviceMemoryBase> activation_buffer;
   if (activation_buffer_.allocation() != nullptr) {
     activation_buffer = buffer_allocations.GetDeviceAddress(activation_buffer_);
   }
 
   RunFusedMHAOptions opts;
   opts.runner_cache = &GetOrCreateRunner(params.stream);
-
   TF_RETURN_IF_ERROR(RunGpuFMHA(config_, lhs_bmm1_buffer, rhs_bmm1_buffer,
                                 rhs_bmm2_buffer, output_buffer, scratch_buffer,
                                 mask_buffer, bias_buffer, activation_buffer,
                                 params.stream, opts));
+
   if (!params.stream->ok()) {
     return InternalError("FusedMHAThunk::ExecuteOnStream failed.");
   }
@@ -172,12 +172,12 @@ Status FusedMHABackwardThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase d_S_buffer =
       buffer_allocations.GetDeviceAddress(d_s_buffer_);
 
-  se::DeviceMemoryBase mask_buffer;
+  std::optional<se::DeviceMemoryBase> mask_buffer;
   if (mask_buffer_.allocation() != nullptr) {
     mask_buffer = buffer_allocations.GetDeviceAddress(mask_buffer_);
   }
 
-  se::DeviceMemoryBase d_bias_buffer;
+  std::optional<se::DeviceMemoryBase> d_bias_buffer;
   if (d_bias_buffer_.allocation() != nullptr) {
     d_bias_buffer = buffer_allocations.GetDeviceAddress(d_bias_buffer_);
   }

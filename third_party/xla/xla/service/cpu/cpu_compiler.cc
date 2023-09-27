@@ -698,7 +698,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   // AOT compiled code runs in single thread.
   if (!is_aot_compile) {
-    pipeline.AddPass<OneDnnRewriter>();
+    // Temporarily disabling oneDNN rewriter because it causes JAX regression.
+    // pipeline.AddPass<OneDnnRewriter>();
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
@@ -960,18 +961,18 @@ llvm::TargetOptions CompilerTargetOptions(
   return target_options;
 }
 
-llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
+llvm::CodeGenOptLevel CodeGenOptLevel(const HloModuleConfig& module_config) {
   VLOG(2) << "backend_optimization_level: "
           << module_config.debug_options().xla_backend_optimization_level();
   switch (module_config.debug_options().xla_backend_optimization_level()) {
     case 1:
-      return llvm::CodeGenOpt::Less;
+      return llvm::CodeGenOptLevel::Less;
     case 2:
-      return llvm::CodeGenOpt::Default;
+      return llvm::CodeGenOptLevel::Default;
     case 3:
-      return llvm::CodeGenOpt::Aggressive;
+      return llvm::CodeGenOptLevel::Aggressive;
     default:
-      return llvm::CodeGenOpt::None;
+      return llvm::CodeGenOptLevel::None;
   }
 }
 
@@ -1681,7 +1682,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       pie_level = llvm::PIELevel::Large;
       break;
   }
-  llvm::CodeGenOpt::Level opt_level = CodeGenOptLevel(modules[0]->config());
+  llvm::CodeGenOptLevel opt_level = CodeGenOptLevel(modules[0]->config());
   std::unique_ptr<llvm::TargetMachine> target_machine =
       absl::WrapUnique(target->createTargetMachine(
           triple.getTriple(), options.cpu_name(), options.features(),
@@ -1846,7 +1847,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     }
 
     CompilerFunctor compiler_functor(
-        target_machine.get(), opt_level,
+        target_machine.get(), static_cast<int>(opt_level),
         options::OptimizeForSizeRequested(module->config()),
         module->config().debug_options().xla_llvm_disable_expensive_passes(),
         options::SlpVectorizerDisabled(module->config()),

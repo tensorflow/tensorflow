@@ -36,9 +36,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
-namespace mlir {
-namespace stablehlo {
+namespace mlir::quant::stablehlo {
 namespace {
+
+using quant::tensorflow::IsTFQintType;
+using quant::tensorflow::IsTFUniformQuantizedOp;
 
 #define GEN_PASS_DEF_VERIFYQUANTLEGALIZATION
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
@@ -87,5 +89,4 @@ CreateVerifyQuantLegalizationPass() {
   return std::make_unique<VerifyQuantLegalization>();
 }
 
-}  // namespace stablehlo
-}  // namespace mlir
+}  // namespace mlir::quant::stablehlo

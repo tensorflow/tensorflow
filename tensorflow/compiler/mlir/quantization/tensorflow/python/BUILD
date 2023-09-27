@@ -1,13 +1,13 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "if_static",
-)
-load(
     "//tensorflow:tensorflow.default.bzl",
     "get_compatible_with_portable",
     "tf_py_strict_test",
     "tf_python_pybind_extension",
+)
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
 )
 
 package(
@@ -75,6 +75,7 @@ cc_library(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

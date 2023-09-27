@@ -1103,14 +1103,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cuda",
-    visibility = ["//visibility:public"],
-    deps = [
-        "@local_config_cuda//cuda:cudart_static",
-    ],
-)
-
-cc_library(
     name = "dso_loader",
     hdrs = ["dso_loader.h"],
     visibility = ["//visibility:public"],

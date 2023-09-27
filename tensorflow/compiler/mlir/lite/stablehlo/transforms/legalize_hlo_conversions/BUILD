@@ -18,9 +18,11 @@ cc_library(
         "util.h",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_a_m_inc_gen",
+        "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -39,6 +41,24 @@ cc_library(
     deps = [
         ":util",
         "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
+    name = "pad",
+    srcs = [
+        "pad.cc",
+    ],
+    hdrs = [
+        "pad.h",
+    ],
+    deps = [
+        ":util",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

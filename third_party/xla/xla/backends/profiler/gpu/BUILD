@@ -1,4 +1,8 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
+load(
+    "//xla:xla.bzl",
+    "xla_cc_test",
+)
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "@local_tsl//tsl:tsl.bzl",
@@ -14,18 +18,10 @@ load(
     "tf_cuda_tests_tags",
 )
 load(
-    "//xla/stream_executor:build_defs.bzl",
-    "tf_additional_cupti_deps",
-)
-load("@local_tsl//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
-load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load(
-    "//xla:xla.bzl",
-    "xla_cc_test",
-)
+load("@local_tsl//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -74,7 +70,7 @@ tsl_gpu_library(
     deps = [
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:types",
-    ] + tf_additional_cupti_deps(),
+    ] + if_cuda(["@local_tsl//tsl/cuda:cupti"]),
 )
 
 tsl_gpu_library(
@@ -169,7 +165,7 @@ tsl_gpu_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cupti_interface",
-    ] + tf_additional_cupti_deps(),
+    ] + if_cuda(["@local_tsl//tsl/cuda:cupti"]),
 )
 
 tsl_gpu_library(
@@ -287,7 +283,7 @@ tsl_gpu_library(
         "@local_tsl//tsl/profiler/utils:xplane_builder",
         "@local_tsl//tsl/profiler/utils:xplane_schema",
         "@local_tsl//tsl/profiler/utils:xplane_utils",
-    ] + tf_additional_cupti_deps(),
+    ] + if_cuda(["@local_tsl//tsl/cuda:cupti"]),
 )
 
 cc_library(

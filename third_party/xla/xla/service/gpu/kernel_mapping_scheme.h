@@ -168,7 +168,7 @@ class TilingScheme {
 
 class ReductionCodegenInfo {
  public:
-  using IndexGroups = std::vector<std::vector<HloInstruction*>>;
+  using IndexGroups = std::vector<std::vector<const HloInstruction*>>;
 
   explicit ReductionCodegenInfo(TilingScheme mapping_scheme,
                                 int num_partial_results, bool is_row_reduction,
@@ -180,7 +180,7 @@ class ReductionCodegenInfo {
         is_race_free_(is_race_free),
         index_groups_(std::move(index_groups)),
         first_reduce_(first_reduce) {
-    if (num_partial_results > 1) {
+    if (!is_row_reduction && num_partial_results > 1) {
       CHECK_EQ(num_partial_results,
                mapping_scheme.GetTileSizeFor(TilingScheme::DimX));
     }

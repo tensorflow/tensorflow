@@ -28,10 +28,10 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/types.h"
 
 namespace stream_executor {
 
+class Stream;
 class DeviceMemoryAllocator;
 
 // Owning pointer for memory on a device.

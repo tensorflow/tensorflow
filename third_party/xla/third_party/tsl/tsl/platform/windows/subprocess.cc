@@ -95,9 +95,9 @@ DWORD WINAPI OutputThreadFunction(LPVOID param) {
 
 SubProcess::SubProcess(int nfds)
     : running_(false),
+      win_pi_(nullptr),
       exec_path_(nullptr),
-      exec_argv_(nullptr),
-      win_pi_(nullptr) {
+      exec_argv_(nullptr) {
   // The input 'nfds' parameter is currently ignored and the internal constant
   // 'kNFds' is used to support the 3 channels (stdin, stdout, stderr).
   for (int i = 0; i < kNFds; i++) {
@@ -110,9 +110,11 @@ SubProcess::~SubProcess() {
   mutex_lock procLock(proc_mu_);
   mutex_lock dataLock(data_mu_);
   if (win_pi_) {
-    CloseHandle(reinterpret_cast<PROCESS_INFORMATION*>(win_pi_)->hProcess);
-    CloseHandle(reinterpret_cast<PROCESS_INFORMATION*>(win_pi_)->hThread);
-    delete win_pi_;
+    auto* pi = reinterpret_cast<PROCESS_INFORMATION*>(win_pi_);
+    CloseHandle(pi->hProcess);
+    CloseHandle(pi->hThread);
+    delete pi;
+    win_pi_ = nullptr;
   }
   running_ = false;
   FreeArgs();
@@ -364,9 +366,11 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
   // Lock data_mu_ but not proc_mu_ while communicating with the child process
   // in order for Kill() to be able to terminate the child from another thread.
   data_mu_.lock();
-  if (!IsProcessFinished(
-          reinterpret_cast<PROCESS_INFORMATION*>(win_pi_)->hProcess) ||
-      (parent_pipe_[CHAN_STDOUT] != nullptr) ||
+  proc_mu_.lock();
+  bool process_finished = IsProcessFinished(
+      reinterpret_cast<PROCESS_INFORMATION*>(win_pi_)->hProcess);
+  proc_mu_.unlock();
+  if (!process_finished || (parent_pipe_[CHAN_STDOUT] != nullptr) ||
       (parent_pipe_[CHAN_STDERR] != nullptr)) {
     if (parent_pipe_[CHAN_STDIN] != nullptr) {
       if (stdin_input) {
@@ -422,6 +426,7 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
     if (wait_result != WAIT_OBJECT_0) {
       LOG(ERROR) << "Waiting on the io threads failed! result: " << wait_result
                  << std::endl;
+      data_mu_.unlock();
       return -1;
     }
 

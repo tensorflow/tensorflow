@@ -300,6 +300,7 @@ _TENSOR_CONTENT_TYPES = frozenset(
         dtypes.uint64,
         dtypes.float8_e5m2,
         dtypes.float8_e4m3fn,
+        dtypes.bfloat16
         # int4/uint4 intentionally not listed, since their binary representation
         # is implementation-dependent.
     ]

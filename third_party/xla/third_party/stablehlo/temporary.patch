@@ -980,6 +980,87 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +}  // namespace mlir
 +
 +#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
+diff --ruN a/stablehlo/stablehlo/reference/Process.cpp b/stablehlo/stablehlo/reference/Process.cpp
+--- stablehlo/stablehlo/reference/Process.cpp
++++ stablehlo/stablehlo/reference/Process.cpp
+@@ -44,7 +44,7 @@
+ 
+ void Process::outfeed(ArrayRef<Tensor> inputs) { grid_->outfeed(inputs); }
+ 
+-const std::shared_ptr<RendezvousResult> Process::rendezvous(
++std::shared_ptr<RendezvousResult const> Process::rendezvous(
+     ProcessGroup processGroup, ChannelId channelId, const Tensor &operand) {
+   return grid_->rendezvous(processGroup, channelId, getId(), operand);
+ }
+diff --ruN a/stablehlo/stablehlo/reference/Process.h b/stablehlo/stablehlo/reference/Process.h
+--- stablehlo/stablehlo/reference/Process.h
++++ stablehlo/stablehlo/reference/Process.h
+@@ -54,7 +54,7 @@
+   void outfeed(ArrayRef<Tensor> inputs);
+ 
+   /// See `ProcessGrid::rendezvous`.
+-  const std::shared_ptr<RendezvousResult> rendezvous(ProcessGroup processGroup,
++  std::shared_ptr<RendezvousResult const> rendezvous(ProcessGroup processGroup,
+                                                      ChannelId channelId,
+                                                      const Tensor &operand);
+ 
+diff --ruN a/stablehlo/stablehlo/reference/ProcessGrid.cpp b/stablehlo/stablehlo/reference/ProcessGrid.cpp
+--- stablehlo/stablehlo/reference/ProcessGrid.cpp
++++ stablehlo/stablehlo/reference/ProcessGrid.cpp
+@@ -66,13 +66,13 @@
+   result_[processId] = tensor;
+ }
+ 
+-Tensor RendezvousResult::lookup(ProcessId processId) {
++Tensor RendezvousResult::lookup(ProcessId processId) const {
+   auto it = result_.find(processId);
+   if (it != result_.end()) return it->second;
+   return {};
+ }
+ 
+-SmallVector<Tensor> RendezvousResult::getSortedTensors() {
++SmallVector<Tensor> RendezvousResult::getSortedTensors() const {
+   return llvm::to_vector(
+       llvm::map_range(result_, [](const auto &pair) { return pair.second; }));
+ }
+@@ -162,7 +162,7 @@
+ 
+ void ProcessGrid::outfeed(ArrayRef<Tensor> inputs) { outfeed_.push(inputs); }
+ 
+-const std::shared_ptr<RendezvousResult> ProcessGrid::rendezvous(
++std::shared_ptr<RendezvousResult const> ProcessGrid::rendezvous(
+     ProcessGroup processGroup, ChannelId channelId, ProcessId processId,
+     const Tensor &operand) {
+   std::pair<ProcessGroup, ChannelId> channelKey(processGroup, channelId);
+diff --ruN a/stablehlo/stablehlo/reference/ProcessGrid.h b/stablehlo/stablehlo/reference/ProcessGrid.h
+--- stablehlo/stablehlo/reference/ProcessGrid.h
++++ stablehlo/stablehlo/reference/ProcessGrid.h
+@@ -75,14 +75,14 @@
+   /// Iterates through the (ProcessId, Tensor) map entires and returns a vector
+   /// of Tensors sorted by ProcessId--(replicaId, partitionId) pair--in
+   /// lexicographical order.
+-  SmallVector<Tensor> getSortedTensors();
++  SmallVector<Tensor> getSortedTensors() const;
+ 
+   /// Inserts `tensor` into the map using the key `processId`.
+   void insert(ProcessId processId, Tensor tensor);
+ 
+   /// Iterates through the map and returns the value associated with the key
+   /// `processId`. If key is not found, return an empty `Tensor`.
+-  Tensor lookup(ProcessId processId);
++  Tensor lookup(ProcessId processId) const;
+ 
+  private:
+   /// Internal map representation of the result of `ProcessGrid::rendezvous`.
+@@ -134,7 +134,7 @@
+   /// tensors are accumulated in `RendezvousResult` whose shard pointer is
+   /// returned to all callers once the barrier has been reached by all StableHLO
+   /// processes.
+-  const std::shared_ptr<RendezvousResult> rendezvous(ProcessGroup processGroup,
++  std::shared_ptr<RendezvousResult const> rendezvous(ProcessGroup processGroup,
+                                                      ChannelId channelId,
+                                                      ProcessId processId,
+                                                      const Tensor &operand);
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 --- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir

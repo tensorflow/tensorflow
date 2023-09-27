@@ -1096,7 +1096,7 @@ foreach ReduceOp = [TFL_ReduceAnyOp, TFL_ReduceAllOp,
                     TFL_ReduceMinOp, TFL_ReduceMaxOp,
                     TFL_MeanOp, TFL_SumOp, TFL_ReduceProdOp] in {
   def EliminateNoOpReductionOp#ReduceOp : Pat<
-    (ReduceOp:$output $input, $index, $keep_dims),
+    (ReduceOp:$output $input, (Arith_ConstantOp $index), $keep_dims),
     (replaceWithValue $input),
     [(IsTailOfShape $input, $output),
      (IsTailOfShape $output, $input)]>;

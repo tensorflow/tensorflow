@@ -26,6 +26,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/statusor.h"
+#include "ortools/linear_solver/linear_solver.h"
+
+using MPSolver = operations_research::MPSolver;
+using MPVariable = operations_research::MPVariable;
 
 namespace xla {
 namespace spmd {
@@ -43,11 +47,13 @@ struct AutoShardingSolverRequest {
   std::vector<std::vector<double>> m;
   std::vector<std::vector<double>> p;
   std::vector<std::vector<double>> r;
+  std::vector<std::vector<double>> t;
   std::vector<std::pair<NodeIdx, NodeIdx>> a;
   std::vector<std::vector<double>> v;
   std::vector<std::string> instruction_names;
   std::optional<int64_t> solver_timeout_in_seconds;
   std::optional<double> overbudget_coeff;
+  std::optional<double> makespan_coeff;
   std::optional<double> max_departures;
   bool crash_at_infinity_costs_check = false;
   bool compute_iis = true;
@@ -84,6 +90,7 @@ struct CostComponents {
   double computation_cost = 0.0;
   double resharding_cost = 0.0;
   double overbudget_cost = 0.0;
+  double makespan_cost = 0.0;
 
   double cost() const;
 
@@ -103,6 +110,9 @@ struct AutoShardingEvaluation {
   // How many instructions departed from the "default" sharding strategy.
   double total_departures = 0.0;
 
+  // The (raw) total makespan, i.e. not scaled by the makespan coefficient.
+  double total_makespan = 0.0;
+
   bool operator==(const AutoShardingEvaluation& other) const;
 };
 
@@ -115,6 +125,15 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
 std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
                                      const AutoShardingSolverResult& result,
                                      const AutoShardingSolverResult& subopt);
+
+// Creates and returns a variable for makespan.
+MPVariable* CreateMakespanVar(const AutoShardingSolverRequest& request,
+                              const std::vector<std::vector<MPVariable*>>& e,
+                              MPSolver& solver);
+
+double EvaluateMakespan(const AutoShardingSolverRequest& request,
+                        const AutoShardingSolverResult& result,
+                        AutoShardingEvaluation& evaluation);
 
 }  // namespace spmd
 }  // namespace xla

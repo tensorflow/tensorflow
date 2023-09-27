@@ -57,8 +57,10 @@ StatusOr<bool> RunOptimizer(
   pass.AddPass<CollectivePipeliner>(config);
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                             /*allow_mixed_precision=*/false);
-  pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
-  return pass.Run(module);
+  TF_ASSIGN_OR_RETURN(const bool modified, pass.Run(module));
+  HloPassPipeline pass_dce("dce");
+  pass_dce.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
+  return modified;
 }
 
 TEST_F(CollectivePipelinerExecutionTest, TransformIncrementIndexByOne) {
@@ -72,16 +74,17 @@ add {
 }
 
 while_cond {
-  param = (s32[], bf16[3,8,128]) parameter(0)
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
   gte = s32[] get-tuple-element(param), index=0
   constant.1 = s32[] constant(3)
   ROOT cmp = pred[] compare(gte, constant.1), direction=LT
 }
 
 while_body {
-  param = (s32[], bf16[3,8,128]) parameter(0)
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
   get-tuple-element.394 = s32[] get-tuple-element(param), index=0
   get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
   constant.2557 = s32[] constant(1)
   add.230 = s32[] add(get-tuple-element.394, constant.2557)
   constant.2559 = s32[] constant(3)
@@ -93,25 +96,25 @@ while_body {
   constant.2562 = s32[] constant(2)
   add.232 = s32[] add(subtract.139, constant.2562)
   select.1348 = s32[] select(compare.747, add.232, add.231)
-  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.395, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
   mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
   ar.1 = bf16[1,8,128] negate(mul)
   dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, ar.1, select.1348, constant.2561, constant.2561)
-  ROOT tuple = (s32[], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
 }
 
 ENTRY entry {
   c0 = s32[] constant(0)
   p0 = bf16[3,8,128] parameter(0)
-  tuple = (s32[], bf16[3,8,128]) tuple(c0, p0)
-  while = (s32[], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
   ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
 }
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0).value());
-  EXPECT_TRUE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
+  EXPECT_FALSE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -192,59 +195,56 @@ ENTRY %entry (p0: bf16[3,8,128]) -> bf16[3,8,128] {
 TEST_F(CollectivePipelinerExecutionTest,
        TransformIncrementIndexByOneNotFirstIdx) {
   constexpr absl::string_view hlo_string = R"(
- HloModule module
+HloModule module
 
- add {
-   lhs = bf16[] parameter(0)
-   rhs = bf16[] parameter(1)
-   ROOT add = bf16[] add(lhs, rhs)
- }
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
 
- while_cond {
-   param = (s32[], bf16[8,3,128]) parameter(0)
-   gte = s32[] get-tuple-element(param), index=0
-   constant.1 = s32[] constant(3)
-   ROOT cmp = pred[] compare(gte, constant.1), direction=LT
- }
+while_cond {
+  param = (s32[], bf16[8,3,128], bf16[8,3,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
 
- while_body {
-   param = (s32[], bf16[8,3,128]) parameter(0)
-   get-tuple-element.394 = s32[] get-tuple-element(param), index=0
-   get-tuple-element.395 = bf16[8,3,128] get-tuple-element(param), index=1
-   constant.2557 = s32[] constant(1)
-   add.230 = s32[] add(get-tuple-element.394, constant.2557)
-   constant.2559 = s32[] constant(3)
-   subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
-   constant.2560 = s32[] constant(-1)
-   add.231 = s32[] add(subtract.139, constant.2560)
-   constant.2561 = s32[] constant(0)
-   compare.747 = pred[] compare(add.231, constant.2561), direction=LT
-   constant.2562 = s32[] constant(2)
-   add.232 = s32[] add(subtract.139, constant.2562)
-   select.1348 = s32[] select(compare.747, add.232, add.231)
-   dynamic-slice.99 = bf16[8,1,128] dynamic-slice(get-tuple-element.395,
-   constant.2561, select.1348, constant.2561), dynamic_slice_sizes={8,1,128}
-   mul = bf16[8,1,128] multiply(dynamic-slice.99, dynamic-slice.99)
-   ar.1 = bf16[8,1,128] negate(mul)
-   dynamic-update-slice.35 = bf16[8,3,128]
-   dynamic-update-slice(get-tuple-element.395, ar.1, constant.2561,
-   select.1348, constant.2561) ROOT tuple = (s32[], bf16[8,3,128])
-   tuple(add.230, dynamic-update-slice.35)
- }
+while_body {
+  param = (s32[], bf16[8,3,128], bf16[8,3,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[8,3,128] get-tuple-element(param), index=1
+  get-tuple-element.5 = bf16[8,3,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[8,1,128] dynamic-slice(get-tuple-element.5, constant.2561, select.1348, constant.2561), dynamic_slice_sizes={8,1,128}
+  mul = bf16[8,1,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[8,1,128] negate(mul)
+  dynamic-update-slice.35 = bf16[8,3,128] dynamic-update-slice(get-tuple-element.395, ar.1, constant.2561, select.1348, constant.2561)
+  ROOT tuple = (s32[], bf16[8,3,128], bf16[8,3,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
+}
 
- ENTRY entry {
-   c0 = s32[] constant(0)
-   p0 = bf16[8,3,128] parameter(0)
-   tuple = (s32[], bf16[8,3,128]) tuple(c0, p0)
-   while = (s32[], bf16[8,3,128]) while(tuple), condition=while_cond,
-   body=while_body ROOT gte1 = bf16[8,3,128] get-tuple-element(while),
-   index=1
- }
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[8,3,128] parameter(0)
+  tuple = (s32[], bf16[8,3,128], bf16[8,3,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[8,3,128], bf16[8,3,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[8,3,128] get-tuple-element(while), index=1
+}
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0).value());
-  EXPECT_TRUE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
+  EXPECT_FALSE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -253,59 +253,56 @@ TEST_F(CollectivePipelinerExecutionTest,
 
 TEST_F(CollectivePipelinerExecutionTest, TransformIncrementByTwo) {
   constexpr absl::string_view hlo_string = R"(
- HloModule module
+HloModule module
 
- add {
-   lhs = bf16[] parameter(0)
-   rhs = bf16[] parameter(1)
-   ROOT add = bf16[] add(lhs, rhs)
- }
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
 
- while_cond {
-   param = (s32[], bf16[3,8,128]) parameter(0)
-   gte = s32[] get-tuple-element(param), index=0
-   constant.1 = s32[] constant(3)
-   ROOT cmp = pred[] compare(gte, constant.1), direction=LT
- }
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
 
- while_body {
-   param = (s32[], bf16[3,8,128]) parameter(0)
-   get-tuple-element.394 = s32[] get-tuple-element(param), index=0
-   get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
-   constant.2557 = s32[] constant(2)
-   add.230 = s32[] add(get-tuple-element.394, constant.2557)
-   constant.2559 = s32[] constant(3)
-   subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
-   constant.2560 = s32[] constant(-1)
-   add.231 = s32[] add(subtract.139, constant.2560)
-   constant.2561 = s32[] constant(0)
-   compare.747 = pred[] compare(add.231, constant.2561), direction=LT
-   constant.2562 = s32[] constant(2)
-   add.232 = s32[] add(subtract.139, constant.2562)
-   select.1348 = s32[] select(compare.747, add.232, add.231)
-   dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.395,
-   select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
-   mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
-   ar.1 = bf16[1,8,128] negate(mul)
-   dynamic-update-slice.35 = bf16[3,8,128]
-   dynamic-update-slice(get-tuple-element.395, ar.1, select.1348,
-   constant.2561, constant.2561) ROOT tuple = (s32[], bf16[3,8,128])
-   tuple(add.230, dynamic-update-slice.35)
- }
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(2)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] negate(mul)
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, ar.1, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
+}
 
- ENTRY entry {
-   c0 = s32[] constant(0)
-   p0 = bf16[3,8,128] parameter(0)
-   tuple = (s32[], bf16[3,8,128]) tuple(c0, p0)
-   while = (s32[], bf16[3,8,128]) while(tuple), condition=while_cond,
-   body=while_body ROOT gte1 = bf16[3,8,128] get-tuple-element(while),
-   index=1
- }
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0).value());
-  EXPECT_TRUE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
+  EXPECT_FALSE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -314,59 +311,56 @@ TEST_F(CollectivePipelinerExecutionTest, TransformIncrementByTwo) {
 
 TEST_F(CollectivePipelinerExecutionTest, NoTransformCantProveIndexDoesntWrap) {
   constexpr absl::string_view hlo_string = R"(
- HloModule module
+HloModule module
 
- add {
-   lhs = bf16[] parameter(0)
-   rhs = bf16[] parameter(1)
-   ROOT add = bf16[] add(lhs, rhs)
- }
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
 
- while_cond {
-   param = (s32[], bf16[3,8,128]) parameter(0)
-   gte = s32[] get-tuple-element(param), index=0
-   constant.1 = s32[] constant(4)
-   ROOT cmp = pred[] compare(gte, constant.1), direction=LT
- }
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(4)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
 
- while_body {
-   param = (s32[], bf16[3,8,128]) parameter(0)
-   get-tuple-element.394 = s32[] get-tuple-element(param), index=0
-   get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
-   constant.2557 = s32[] constant(1)
-   add.230 = s32[] add(get-tuple-element.394, constant.2557)
-   constant.2559 = s32[] constant(3)
-   subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
-   constant.2560 = s32[] constant(-1)
-   add.231 = s32[] add(subtract.139, constant.2560)
-   constant.2561 = s32[] constant(0)
-   compare.747 = pred[] compare(add.231, constant.2561), direction=LT
-   constant.2562 = s32[] constant(2)
-   add.232 = s32[] add(subtract.139, constant.2562)
-   select.1348 = s32[] select(compare.747, add.232, add.231)
-   dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.395,
-   select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
-   mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
-   ar.1 = bf16[1,8,128] negate(mul)
-   dynamic-update-slice.35 = bf16[3,8,128]
-   dynamic-update-slice(get-tuple-element.395, ar.1, select.1348,
-   constant.2561, constant.2561) ROOT tuple = (s32[], bf16[3,8,128])
-   tuple(add.230, dynamic-update-slice.35)
- }
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] negate(mul)
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, ar.1, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
+}
 
- ENTRY entry {
-   c0 = s32[] constant(-1)
-   p0 = bf16[3,8,128] parameter(0)
-   tuple = (s32[], bf16[3,8,128]) tuple(c0, p0)
-   while = (s32[], bf16[3,8,128]) while(tuple), condition=while_cond,
-   body=while_body ROOT gte1 = bf16[3,8,128] get-tuple-element(while),
-   index=1
- }
+ENTRY entry {
+  c0 = s32[] constant(-1)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
-  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0).value());
-  EXPECT_TRUE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
+  EXPECT_FALSE(RunOptimizer(module.get(), /*last_run=*/true, 0).value());
+  EXPECT_FALSE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -385,16 +379,17 @@ TEST_F(CollectivePipelinerExecutionTest,
  }
 
  while_cond {
-   param = (s32[], bf16[3,8,128]) parameter(0)
+   param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
    gte = s32[] get-tuple-element(param), index=0
    constant.1 = s32[] constant(0)
    ROOT cmp = pred[] compare(gte, constant.1), direction=LT
  }
 
  while_body {
-   param = (s32[], bf16[3,8,128]) parameter(0)
+   param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
    get-tuple-element.394 = s32[] get-tuple-element(param), index=0
    get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+   get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
    constant.2557 = s32[] constant(1)
    add.230 = s32[] add(get-tuple-element.394, constant.2557)
    constant.2559 = s32[] constant(3)
@@ -406,21 +401,21 @@ TEST_F(CollectivePipelinerExecutionTest,
    constant.2562 = s32[] constant(2)
    add.232 = s32[] add(subtract.139, constant.2562)
    select.1348 = s32[] select(compare.747, add.232, add.231)
-   dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.395,
+   dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5,
    select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
    mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
    ar.1 = bf16[1,8,128] negate(mul)
    dynamic-update-slice.35 = bf16[3,8,128]
    dynamic-update-slice(get-tuple-element.395, ar.1, select.1348,
-   constant.2561, constant.2561) ROOT tuple = (s32[], bf16[3,8,128])
-   tuple(add.230, dynamic-update-slice.35)
+   constant.2561, constant.2561) ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128])
+   tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
  }
 
  ENTRY entry {
    c0 = s32[] constant(-3)
    p0 = bf16[3,8,128] parameter(0)
-   tuple = (s32[], bf16[3,8,128]) tuple(c0, p0)
-   while = (s32[], bf16[3,8,128]) while(tuple), condition=while_cond,
+   tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+   while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond,
    body=while_body ROOT gte1 = bf16[3,8,128] get-tuple-element(while),
    index=1
  }
@@ -428,7 +423,7 @@ TEST_F(CollectivePipelinerExecutionTest,
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0).value());
-  EXPECT_TRUE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
+  EXPECT_FALSE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -493,8 +488,8 @@ TEST_F(CollectivePipelinerExecutionTest, EscapedInputNoTransform) {
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
-  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0).value());
-  EXPECT_TRUE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
+  EXPECT_FALSE(RunOptimizer(module.get(), /*last_run=*/true, 0).value());
+  EXPECT_FALSE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -512,16 +507,17 @@ TEST_F(CollectivePipelinerExecutionTest, TransformWithAg) {
  }
 
  while_cond {
-   param = (s32[], bf16[3,8,128]) parameter(0)
+   param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
    gte = s32[] get-tuple-element(param), index=0
    constant.1 = s32[] constant(0)
    ROOT cmp = pred[] compare(gte, constant.1), direction=LT
  }
 
  while_body {
-   param = (s32[], bf16[3,8,128]) parameter(0)
+   param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
    get-tuple-element.394 = s32[] get-tuple-element(param), index=0
    get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+   get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
    constant.2557 = s32[] constant(1)
    add.230 = s32[] add(get-tuple-element.394, constant.2557)
    constant.2559 = s32[] constant(3)
@@ -533,7 +529,7 @@ TEST_F(CollectivePipelinerExecutionTest, TransformWithAg) {
    constant.2562 = s32[] constant(2)
    add.232 = s32[] add(subtract.139, constant.2562)
    select.1348 = s32[] select(compare.747, add.232, add.231)
-   dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.395,
+   dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5,
    select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
    mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
    rs.1 = bf16[1,8,128] negate(mul)
@@ -541,23 +537,24 @@ TEST_F(CollectivePipelinerExecutionTest, TransformWithAg) {
    dynamic-update-slice.35 =
    bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, ag.1,
    select.1348, constant.2561, constant.2561) ROOT tuple = (s32[],
-   bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35)
+   bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
  }
 
  ENTRY entry {
    c0 = s32[] constant(-3)
    p0 = bf16[3,8,128] parameter(0)
    cc = bf16[] constant(0)
-   tuple = (s32[], bf16[3,8,128]) tuple(c0, p0)
-   while = (s32[], bf16[3,8,128]) while(tuple), condition=while_cond,
-   body=while_body ROOT gte1 = bf16[3,8,128] get-tuple-element(while),
+   tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+   while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond,
+   body=while_body
+   ROOT gte1 = bf16[3,8,128] get-tuple-element(while),
    index=1
  }
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0).value());
-  EXPECT_TRUE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
+  EXPECT_FALSE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -575,16 +572,17 @@ add {
 }
 
 while_cond {
-  param = (s32[], bf16[3,9,128]) parameter(0)
+  param = (s32[], bf16[3,9,128], bf16[3,9,128]) parameter(0)
   gte = s32[] get-tuple-element(param), index=0
   constant.1 = s32[] constant(0)
   ROOT cmp = pred[] compare(gte, constant.1), direction=LT
 }
 
 while_body {
-  param = (s32[], bf16[3,9,128]) parameter(0)
+  param = (s32[], bf16[3,9,128], bf16[3,9,128]) parameter(0)
   get-tuple-element.394 = s32[] get-tuple-element(param), index=0
   get-tuple-element.395 = bf16[3,9,128] get-tuple-element(param), index=1
+  get-tuple-element.5 = bf16[3,9,128] get-tuple-element(param), index=2
   constant.2557 = s32[] constant(1)
   add.230 = s32[] add(get-tuple-element.394, constant.2557)
   constant.2559 = s32[] constant(3)
@@ -596,7 +594,7 @@ while_body {
   constant.2562 = s32[] constant(2)
   add.232 = s32[] add(subtract.139, constant.2562)
   select.1348 = s32[] select(compare.747, add.232, add.231)
-  dynamic-slice.99 = bf16[1,9,128] dynamic-slice(get-tuple-element.395, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,9,128}
+  dynamic-slice.99 = bf16[1,9,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,9,128}
   mul = bf16[1,9,128] multiply(dynamic-slice.99, dynamic-slice.99)
   cpd = bf16[] constant(0)
   %pd = bf16[1,16,128] pad(mul, cpd), padding=0_0x0_7x0_0
@@ -604,22 +602,22 @@ while_body {
   ag.1 = bf16[1,16,128] negate(rs.1)
   slc = bf16[1,9,128] slice(ag.1), slice={[0:1], [0:9], [0:128]}
   dynamic-update-slice.35 = bf16[3,9,128] dynamic-update-slice(get-tuple-element.395, slc, select.1348, constant.2561, constant.2561)
-  ROOT tuple = (s32[], bf16[3,9,128]) tuple(add.230, dynamic-update-slice.35)
+  ROOT tuple = (s32[], bf16[3,9,128], bf16[3,9,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
 }
 
 ENTRY entry {
   c0 = s32[] constant(-3)
   p0 = bf16[3,9,128] parameter(0)
   cc = bf16[] constant(0)
-  tuple = (s32[], bf16[3,9,128]) tuple(c0, p0)
-  while = (s32[], bf16[3,9,128]) while(tuple), condition=while_cond, body=while_body
+  tuple = (s32[], bf16[3,9,128], bf16[3,9,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,9,128], bf16[3,9,128]) while(tuple), condition=while_cond, body=while_body
   ROOT gte1 = bf16[3,9,128] get-tuple-element(while), index=1
 }
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0).value());
-  EXPECT_TRUE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
+  EXPECT_FALSE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -637,20 +635,21 @@ TEST_F(CollectivePipelinerExecutionTest, TransformWithAgInsertCustomCall) {
  }
 
  while_cond {
-   param = (s32[], bf16[3,8,128]) parameter(0)
+   param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
    gte = s32[] get-tuple-element(param), index=0
    constant.1 = s32[] constant(0)
    ROOT cmp = pred[] compare(gte, constant.1), direction=LT
  }
 
  while_body {
-   param = (s32[], bf16[3,8,128]) parameter(0)
+   param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
    get-tuple-element.394 = s32[] get-tuple-element(param), index=0
    get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+   get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
    constant.2557 = s32[] constant(1)
    constant.2561 = s32[] constant(0)
    add.230 = s32[] add(get-tuple-element.394, constant.2557)
-   dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.395,
+   dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5,
    get-tuple-element.394, constant.2561, constant.2561),
    dynamic_slice_sizes={1,8,128} mul = bf16[1,8,128]
    multiply(dynamic-slice.99, dynamic-slice.99) rs.1 = bf16[1,8,128]
@@ -658,16 +657,16 @@ TEST_F(CollectivePipelinerExecutionTest, TransformWithAgInsertCustomCall) {
    ag.1 = bf16[1,8,128] negate(rs.1)
    dynamic-update-slice.35 = bf16[3,8,128]
    dynamic-update-slice(get-tuple-element.395, ag.1, get-tuple-element.394,
-   constant.2561, constant.2561) ROOT tuple = (s32[], bf16[3,8,128])
-   tuple(add.230, dynamic-update-slice.35)
+   constant.2561, constant.2561) ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128])
+   tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
  }
 
  ENTRY entry {
    c0 = s32[] constant(-8)
    p0 = bf16[3,8,128] parameter(0)
    cc = bf16[] constant(0)
-   tuple = (s32[], bf16[3,8,128]) tuple(c0, p0)
-   while = (s32[], bf16[3,8,128]) while(tuple), condition=while_cond,
+   tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+   while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond,
    body=while_body ROOT gte1 = bf16[3,8,128] get-tuple-element(while),
    index=1
  }
@@ -675,7 +674,7 @@ TEST_F(CollectivePipelinerExecutionTest, TransformWithAgInsertCustomCall) {
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0).value());
-  EXPECT_TRUE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
+  EXPECT_FALSE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -744,7 +743,7 @@ ENTRY entry {
                            HloPredicateIsOp<HloOpcode::kConcatenate>,
                            CollectivePipeliner::PipeliningDirection::kBackward)
                   .value());
-  EXPECT_TRUE(RunOptimizer(module2.get(), /*last_run=*/true, 0).value());
+  EXPECT_FALSE(RunOptimizer(module2.get(), /*last_run=*/true, 0).value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -755,17 +754,24 @@ TEST_F(CollectivePipelinerExecutionTest, MultiUsesElementwise) {
   constexpr absl::string_view hlo_string = R"(
 HloModule module
 
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
 while_cond {
-  param = (s32[], bf16[3,8,128]) parameter(0)
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
   gte = s32[] get-tuple-element(param), index=0
   constant.1 = s32[] constant(3)
   ROOT cmp = pred[] compare(gte, constant.1), direction=LT
 }
 
 while_body {
-  param = (s32[], bf16[3,8,128]) parameter(0)
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
   get-tuple-element.394 = s32[] get-tuple-element(param), index=0
   get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
   constant.2557 = s32[] constant(1)
   add.230 = s32[] add(get-tuple-element.394, constant.2557)
   constant.2559 = s32[] constant(3)
@@ -777,7 +783,7 @@ while_body {
   constant.2562 = s32[] constant(2)
   add.232 = s32[] add(subtract.139, constant.2562)
   select.1348 = s32[] select(compare.747, add.232, add.231)
-  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.395, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
   mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
   c2 = bf16[] constant(2.0)
   bc = bf16[1,8,128] broadcast(c2)
@@ -786,14 +792,14 @@ while_body {
   mul3 = bf16[1,8,128] multiply(mul2, ar.1)
   mul4 = bf16[1,8,128] multiply(mul3, mul)
   dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, mul4, select.1348, constant.2561, constant.2561)
-  ROOT tuple = (s32[], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
 }
 
 ENTRY entry {
   c0 = s32[] constant(0)
   p0 = bf16[3,8,128] parameter(0)
-  tuple = (s32[], bf16[3,8,128]) tuple(c0, p0)
-  while = (s32[], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
   ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
 }
 )";
@@ -816,17 +822,24 @@ TEST_F(CollectivePipelinerExecutionTest, ElementWiseUser) {
   constexpr absl::string_view hlo_string = R"(
 HloModule module
 
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
 while_cond {
-  param = (s32[], bf16[3,8,128]) parameter(0)
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
   gte = s32[] get-tuple-element(param), index=0
   constant.1 = s32[] constant(3)
   ROOT cmp = pred[] compare(gte, constant.1), direction=LT
 }
 
 while_body {
-  param = (s32[], bf16[3,8,128]) parameter(0)
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
   get-tuple-element.394 = s32[] get-tuple-element(param), index=0
   get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
   constant.2557 = s32[] constant(1)
   add.230 = s32[] add(get-tuple-element.394, constant.2557)
   constant.2559 = s32[] constant(3)
@@ -838,19 +851,19 @@ while_body {
   constant.2562 = s32[] constant(2)
   add.232 = s32[] add(subtract.139, constant.2562)
   select.1348 = s32[] select(compare.747, add.232, add.231)
-  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.395, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
   mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
   ar.1 = bf16[1,8,128] negate(mul)
   mul2 = bf16[1,8,128] multiply(ar.1, mul)
   dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, mul2, select.1348, constant.2561, constant.2561)
-  ROOT tuple = (s32[], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
 }
 
 ENTRY entry {
   c0 = s32[] constant(0)
   p0 = bf16[3,8,128] parameter(0)
-  tuple = (s32[], bf16[3,8,128]) tuple(c0, p0)
-  while = (s32[], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
   ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
 }
 )";
@@ -861,6 +874,73 @@ ENTRY entry {
       RunOptimizer(module.get(), /*last_run=*/true, 0,
                    /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
                    CollectivePipeliner::PipeliningDirection::kForward,
+                   /*pipeline_use_tree=*/true)
+          .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  XLA_VLOG_LINES(1, module2->ToString());
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
+                                      ErrorSpec{0.1, 0.1}));
+}
+
+TEST_F(CollectivePipelinerExecutionTest,
+       TransformIncrementIndexByOneNotFirstIdxSink) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.35 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.35, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] negate(mul)
+  %c = bf16[] constant(5.0)
+  %b = bf16[1,8,128] broadcast(c), dimensions={}
+  %a = bf16[1,8,128] add(ar.1, b)
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, a, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.35)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
+  auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
+
+  EXPECT_TRUE(
+      RunOptimizer(module.get(), /*last_run=*/true, 0,
+                   /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
+                   CollectivePipeliner::PipeliningDirection::kForwardSink,
                    /*pipeline_use_tree=*/true)
           .value());
   XLA_VLOG_LINES(1, module->ToString());

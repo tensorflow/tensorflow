@@ -53,6 +53,12 @@ tf_<library>_header_dir: ...
 tf_<library>_library_dir: ...
 """
 
+# You can use the following command to regenerate the base64 version of this
+# script:
+# cat third_party/tensorflow/third_party/gpus/find_cuda_config.oss.py |
+#   pigz -z | base64 -w0 >
+#   third_party/tensorflow/third_party/gpus/find_cuda_config.py.gz.base64.oss
+
 import io
 import os
 import glob
@@ -528,7 +534,7 @@ def _find_tensorrt_config(base_paths, required_version):
   library_path = _find_library(base_paths, "nvinfer", tensorrt_version)
 
   return {
-      "tensorrt_version": tensorrt_version,
+      "tensorrt_version": header_version,
       "tensorrt_include_dir": os.path.dirname(header_path),
       "tensorrt_library_dir": os.path.dirname(library_path),
   }

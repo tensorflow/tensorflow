@@ -362,7 +362,7 @@ void WhileOp::getSuccessorRegions(RegionBranchPoint point,
   regions.push_back(RegionSuccessor());
 }
 
-Region& WhileOp::getLoopBody() { return getBody(); }
+SmallVector<Region*> WhileOp::getLoopRegions() { return {&getBody()}; }
 
 // suppress warning.
 

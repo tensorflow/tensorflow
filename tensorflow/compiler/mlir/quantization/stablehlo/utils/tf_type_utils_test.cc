@@ -39,44 +39,43 @@ limitations under the License.
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tsl/framework/numeric_types.h"
 
-namespace mlir {
-namespace stablehlo {
+namespace mlir::quant::tensorflow {
 namespace {
 
 std::string GetQint8Tensor() {
-  tensorflow::Tensor tensor(tensorflow::DT_QINT8, {2, 2});
+  ::tensorflow::Tensor tensor(::tensorflow::DT_QINT8, {2, 2});
   tensor.matrix<tsl::qint8>()(0, 0) = tsl::qint8(1);
   tensor.matrix<tsl::qint8>()(0, 1) = tsl::qint8(2);
   tensor.matrix<tsl::qint8>()(1, 0) = tsl::qint8(3);
   tensor.matrix<tsl::qint8>()(1, 1) = tsl::qint8(4);
 
-  tensorflow::TensorProto tensor_proto;
+  ::tensorflow::TensorProto tensor_proto;
   tensor.AsProtoTensorContent(&tensor_proto);
-  return tensorflow::mangling_util::MangleTensor(tensor_proto);
+  return ::tensorflow::mangling_util::MangleTensor(tensor_proto);
 }
 
 std::string GetQint16Tensor() {
-  tensorflow::Tensor tensor(tensorflow::DT_QINT16, {2, 2});
+  ::tensorflow::Tensor tensor(::tensorflow::DT_QINT16, {2, 2});
   tensor.matrix<tsl::qint16>()(0, 0) = tsl::qint16(1);
   tensor.matrix<tsl::qint16>()(0, 1) = tsl::qint16(2);
   tensor.matrix<tsl::qint16>()(1, 0) = tsl::qint16(3);
   tensor.matrix<tsl::qint16>()(1, 1) = tsl::qint16(4);
 
-  tensorflow::TensorProto tensor_proto;
+  ::tensorflow::TensorProto tensor_proto;
   tensor.AsProtoTensorContent(&tensor_proto);
-  return tensorflow::mangling_util::MangleTensor(tensor_proto);
+  return ::tensorflow::mangling_util::MangleTensor(tensor_proto);
 }
 
 std::string GetQint32Tensor() {
-  tensorflow::Tensor tensor(tensorflow::DT_QINT32, {2, 2});
+  ::tensorflow::Tensor tensor(::tensorflow::DT_QINT32, {2, 2});
   tensor.matrix<tsl::qint32>()(0, 0) = tsl::qint32(1);
   tensor.matrix<tsl::qint32>()(0, 1) = tsl::qint32(2);
   tensor.matrix<tsl::qint32>()(1, 0) = tsl::qint32(3);
   tensor.matrix<tsl::qint32>()(1, 1) = tsl::qint32(4);
 
-  tensorflow::TensorProto tensor_proto;
+  ::tensorflow::TensorProto tensor_proto;
   tensor.AsProtoTensorContent(&tensor_proto);
-  return tensorflow::mangling_util::MangleTensor(tensor_proto);
+  return ::tensorflow::mangling_util::MangleTensor(tensor_proto);
 }
 
 std::unique_ptr<MLIRContext> CreateContext() {
@@ -221,5 +220,4 @@ TEST(GetIntTypeFromTFQintTest, GetIntTypeFromTFQint) {
 }
 
 }  // namespace
-}  // namespace stablehlo
-}  // namespace mlir
+}  // namespace mlir::quant::tensorflow

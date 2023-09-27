@@ -115,10 +115,24 @@ LogicalResult GetConstantSplatValue(Value value, SplatValueType& splat_value) {
 template <int SupportedSpatialDims>
 struct ConvertNdConvOp {
   bool IsSupportedConvOp(mhlo::ConvolutionOp conv_op) const {
-    if (!conv_op.getLhs().getType().cast<ShapedType>().hasStaticShape() ||
-        !conv_op.getRhs().getType().cast<ShapedType>().hasStaticShape() ||
-        !conv_op.getType().cast<ShapedType>().hasStaticShape())
+    if (!conv_op.getRhs().getType().cast<ShapedType>().hasStaticShape()) {
       return false;
+    }
+    if (!conv_op.getLhs().getType().cast<ShapedType>().hasStaticShape() &&
+        !conv_op.getType().cast<ShapedType>().hasStaticShape()) {
+      auto dnums = conv_op.getDimensionNumbers();
+      auto lhs_type = conv_op.getLhs().getType().cast<ShapedType>();
+      auto out_type = conv_op.getType().cast<ShapedType>();
+      int64_t input_batch_dim = dnums.getInputBatchDimension();
+      int64_t out_batch_dim = dnums.getOutputBatchDimension();
+      for (size_t i = 0; i < lhs_type.getRank(); ++i) {
+        // is this upcast of size_t or downcast
+        if ((i != input_batch_dim && lhs_type.isDynamicDim(i)) ||
+            (i != out_batch_dim && out_type.isDynamicDim(i))) {
+          return false;
+        }
+      }
+    }
 
     // All ones in "lhs_dilation" means this "mhlo.conv" op should be
     // converted to "tf.Conv2D" or "tf.DepthwiseConv2dNativeOp".
@@ -405,13 +419,19 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
 
     mhlo::ConvDimensionNumbersAttr dnums = conv_op.getDimensionNumbers();
     const int input_feature_dimension = dnums.getInputFeatureDimension();
+    const int kernel_input_feature_dimension =
+        dnums.getKernelInputFeatureDimension();
     const int input_channels =
         conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
             input_feature_dimension);
+    const int kernel_input_channels =
+        conv_op.getRhs().getType().cast<ShapedType>().getDimSize(
+            kernel_input_feature_dimension);
     int feature_group_count = conv_op.getFeatureGroupCount();
 
-    if (feature_group_count != 1 && feature_group_count != input_channels) {
-      // Group convolution is not supported yet.
+    // check if group count is valid
+    if (feature_group_count != input_channels / kernel_input_channels ||
+        input_channels % kernel_input_channels != 0) {
       return failure();
     }
 
@@ -2600,7 +2620,8 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
     }
 
     DenseFPElementsAttr divisor;
-    if (matchPattern(div_op.getRhs(), m_Constant(&divisor))) {
+    auto div_rhs = recursivelyWalkUp<mhlo::BroadcastInDimOp>(div_op.getRhs());
+    if (matchPattern(div_rhs, m_Constant(&divisor))) {
       // If the divisor is a constant then check that it matches with the number
       // of elements inside the window what is required for a VALID AvgPool.
       if (!divisor.isSplat()) return failure();
@@ -2621,7 +2642,9 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
           window_strides, "VALID", data_format, rewriter);
     }
 
-    Value actual_divisor = recursivelyWalkUpDivisor(div_op.getRhs());
+    Value actual_divisor =
+        recursivelyWalkUp<mhlo::BroadcastInDimOp, mhlo::ReshapeOp>(
+            div_op.getRhs());
     auto rw_rhs =
         dyn_cast_or_null<mhlo::ReduceWindowOp>(actual_divisor.getDefiningOp());
     if (rw_rhs && rw_rhs.getNumResults() == 1) {
@@ -2632,8 +2655,10 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       // Check that the RHS is a reduce_window over a constant 1 operand with 0
       // as the init value.
       DenseFPElementsAttr rhs_operand;
+      auto rw_rhs_operand =
+          recursivelyWalkUp<mhlo::BroadcastInDimOp>(rw_rhs.getInputs()[0]);
       if (!isFloatZero(rw_rhs.getInitValues()[0]) ||
-          !matchPattern(rw_rhs.getInputs()[0], m_Constant(&rhs_operand)) ||
+          !matchPattern(rw_rhs_operand, m_Constant(&rhs_operand)) ||
           !rhs_operand.isSplat() ||
           !rhs_operand.getSplatValue<APFloat>().isExactlyValue(1.0))
         return failure();
@@ -2685,16 +2710,16 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
     return failure();
   }
 
-  // Walks up the divisor and ignore all precedding reshape/broadcast op.
-  // Returns the first producer op which is neither reshape nor broadcast.
-  Value recursivelyWalkUpDivisor(Value divisor) const {
-    while (llvm::isa_and_nonnull<mhlo::BroadcastInDimOp, mhlo::ReshapeOp>(
-        divisor.getDefiningOp())) {
-      Operation* producer = divisor.getDefiningOp();
-      divisor = producer->getOperand(/*idx=*/0);
+  // Walks up the op and ignore all precedding ops of type Tys.
+  // Returns the first producer op whose type is not in Tys.
+  template <typename... Tys>
+  Value recursivelyWalkUp(Value op) const {
+    while (llvm::isa_and_nonnull<Tys...>(op.getDefiningOp())) {
+      Operation* producer = op.getDefiningOp();
+      op = producer->getOperand(/*idx=*/0);
     }
 
-    return divisor;
+    return op;
   }
 };
 
@@ -3312,24 +3337,76 @@ class ConvertIfOp : public OpConversionPattern<mhlo::IfOp> {
 };
 
 // Converts mhlo.pad to tf.PadV2
+// TODO: b/301438955 - This is redundant with the MHLO -> TFLite
+// legalization and covers less usecases. We need to check with DarwiNN that
+// this can be removed without breaking their workflow.
 Value ConvertPadOp(PatternRewriter& rewriter, Operation* old_op) {
   auto pad_op = cast<mhlo::PadOp>(old_op);
   mlir::Location loc = pad_op.getLoc();
 
-  llvm::SmallVector<APInt, 8> padding;
-  for (auto p : llvm::zip(pad_op.getEdgePaddingLow().getValues<APInt>(),
+  // Calculates non-negative padding amount and slice begins/sizes.
+  llvm::SmallVector<int64_t, 8> padding;
+  llvm::SmallVector<int64_t, 8> pad_output_shape;
+
+  bool has_negative_padding_amount = false;
+  llvm::SmallVector<int64_t, 8> slice_begins;
+  llvm::SmallVector<int64_t, 8> slice_sizes;
+
+  for (auto p : llvm::zip(pad_op.getOperand().getType().getShape(),
+                          pad_op.getEdgePaddingLow().getValues<APInt>(),
                           pad_op.getEdgePaddingHigh().getValues<APInt>())) {
-    padding.push_back(std::get<0>(p));
-    padding.push_back(std::get<1>(p));
+    const int64_t input_dim_size = std::get<0>(p);
+    int64_t pad_output_dim_size = input_dim_size;
+
+    const int64_t pad_low = std::get<1>(p).getSExtValue();
+    if (pad_low < 0) {
+      has_negative_padding_amount = true;
+      padding.push_back(0);
+    } else {
+      padding.push_back(pad_low);
+      pad_output_dim_size += pad_low;
+    }
+
+    const int64_t pad_high = std::get<2>(p).getSExtValue();
+    if (pad_high < 0) {
+      has_negative_padding_amount = true;
+      padding.push_back(0);
+    } else {
+      padding.push_back(pad_high);
+      pad_output_dim_size += pad_high;
+    }
+
+    pad_output_shape.push_back(pad_output_dim_size);
+
+    slice_begins.push_back(pad_low < 0 ? -pad_low : 0);
+    slice_sizes.push_back(input_dim_size + pad_low + pad_high);
   }
-  auto attr_type = RankedTensorType::get({pad_op.getEdgePaddingLow().size(), 2},
-                                         rewriter.getI64Type());
-  auto padding_attr = DenseIntElementsAttr::get(attr_type, padding);
-  auto padding_op =
-      rewriter.create<arith::ConstantOp>(loc, attr_type, padding_attr);
-  return rewriter.create<TF::PadV2Op>(loc, pad_op.getType(),
-                                      pad_op.getOperand(), padding_op,
-                                      pad_op.getPaddingValue());
+
+  // Convert to PadV2.
+  auto padding_attr_type = RankedTensorType::get(
+      {pad_op.getEdgePaddingLow().size(), 2}, rewriter.getI64Type());
+  auto padding_attr = DenseIntElementsAttr::get(padding_attr_type, padding);
+  auto padding_amount_const_op =
+      rewriter.create<arith::ConstantOp>(loc, padding_attr_type, padding_attr);
+  auto new_pad_op = rewriter.create<TF::PadV2Op>(
+      loc, pad_op.getType().clone(pad_output_shape), pad_op.getOperand(),
+      padding_amount_const_op, pad_op.getPaddingValue());
+  if (!has_negative_padding_amount) {
+    return new_pad_op;
+  }
+
+  // Convert negative padding amount into slice.
+  auto slice_attr_type = RankedTensorType::get(
+      {pad_op.getEdgePaddingLow().size()}, rewriter.getI64Type());
+  auto slice_begins_const_op = rewriter.create<arith::ConstantOp>(
+      loc, slice_attr_type,
+      DenseIntElementsAttr::get(slice_attr_type, slice_begins));
+  auto slice_sizes_const_op = rewriter.create<arith::ConstantOp>(
+      loc, slice_attr_type,
+      DenseIntElementsAttr::get(slice_attr_type, slice_sizes));
+  return rewriter.create<TF::SliceOp>(loc, pad_op.getType(), new_pad_op,
+                                      slice_begins_const_op,
+                                      slice_sizes_const_op);
 }
 
 class ConvertPopulationCountOp

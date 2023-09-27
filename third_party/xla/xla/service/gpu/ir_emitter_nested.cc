@@ -449,11 +449,11 @@ bool MaybeEmitDirectAtomicOperation(llvm::IRBuilder<>* builder,
             // Evaluated against Waymo's benchmarks, adding the check achieves
             // better overall performance.
             ksl.If("need_update", old_less_than, [&]() {
-              llvm::Value* is_not_negative = builder->CreateFCmpUGE(
-                  no_negative_nan_source,
-                  llvm::ConstantFP::get(no_negative_nan_source->getType(), 0));
               llvm::Value* source_float_as_int = builder->CreateBitCast(
                   no_negative_nan_source, builder->getInt32Ty());
+              llvm::Value* is_not_negative = builder->CreateICmpSGE(
+                  source_float_as_int,
+                  llvm::ConstantInt::get(builder->getInt32Ty(), 0));
               ksl.If(
                   "not_negative", is_not_negative,
                   [&]() {

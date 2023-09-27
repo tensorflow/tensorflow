@@ -1,24 +1,24 @@
+load("//xla:pytype.default.bzl", "pytype_strict_library")
 load("//xla:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("@local_tsl//tsl/platform:build_config.bzl", "pyx_library", "tf_proto_library")
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//xla:xla.bzl",
     "xla_cc_test",
     "xla_py_test_deps",
 )
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "@local_tsl//tsl:tsl.bzl",
     "if_cuda_or_rocm",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_tsl//tsl:tsl.default.bzl", "tsl_pybind_extension")
-load("//xla:pytype.default.bzl", "pytype_strict_library")
+load("@local_tsl//tsl/platform:build_config.bzl", "pyx_library", "tf_proto_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -762,6 +762,7 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:all_passes",
         "//xla/pjrt:mlir_to_hlo",
+        "//xla/service/llvm_ir:llvm_util",
         "//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "@local_tsl//tsl/platform:errors",
         "@llvm-project//llvm:Support",
@@ -1029,6 +1030,8 @@ tsl_pybind_extension(
 cc_library(
     name = "xla_extension_library",
     srcs = [
+        "logging.cc",
+        "logging.h",
         "xla.cc",
     ],
     hdrs = [
@@ -1068,6 +1071,7 @@ cc_library(
         ":weakref_lru_cache",
         ":xla_compiler",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/log:initialize",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -1079,7 +1083,6 @@ cc_library(
         "//xla:statusor",
         "//xla:types",
         "//xla:util",
-        "//xla/pjrt:interpreter_device",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_api",
         "//xla/pjrt:pjrt_c_api_client",
@@ -1093,6 +1096,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/pjrt_ifrt",
         "@local_tsl//tsl/distributed_runtime/preemption:preemption_sync_manager",
+        "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform/cloud:gcs_file_system",
         "@local_tsl//tsl/python/lib/core:numpy",

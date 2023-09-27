@@ -95,8 +95,6 @@ typedef struct TF_RendezvousThunk {
   TF_RendezvousStartAbort_Function start_abort_func;
 } TF_RendezvousThunk;
 
-typedef struct OpaqueTransferManagerImpl OpaqueTransferManagerImpl;
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif

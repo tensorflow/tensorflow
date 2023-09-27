@@ -62,4 +62,10 @@ tsl::StatusOr<Stream *> TfAllocatorAdapter::GetStream(int device_ordinal) {
   return stream_;
 }
 
+tsl::StatusOr<tsl::Allocator *> TfAllocatorAdapter::GetAllocator(
+    int device_ordinal) {
+  CHECK_EQ(stream_->parent()->device_ordinal(), device_ordinal);
+  return wrapped_;
+}
+
 }  // namespace stream_executor

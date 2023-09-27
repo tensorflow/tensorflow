@@ -1,7 +1,7 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_combine_cc_tests", "tflite_copts", "tflite_self_contained_libs_test_suite")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pybind_extension")
+load("//tensorflow/lite:build_def.bzl", "tflite_combine_cc_tests", "tflite_copts", "tflite_self_contained_libs_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
@@ -495,6 +495,30 @@ cc_library(
 )
 
 cc_library(
+    name = "rng_util",
+    srcs = [
+        "rng_util.cc",
+    ],
+    hdrs = [
+        "rng_util.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+)
+
+cc_test(
+    name = "rng_util_test",
+    size = "small",
+    srcs = ["rng_util_test.cc"],
+    tags = ["tflite_smoke_test"],
+    deps = [
+        ":rng_util",
+        ":test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "kernel_util",
     srcs = [
         "kernel_util.cc",
@@ -713,6 +737,7 @@ BUILTIN_KERNEL_SRCS = [
     "while.cc",
     "zeros_like.cc",
     "rfft2d.cc",
+    "rng_bit_generator.cc",
 ]
 
 VARIABLE_KERNEL_SRCS = [
@@ -726,6 +751,7 @@ BUILTIN_KERNEL_DEPS = [
     ":cpu_backend_gemm",
     ":cpu_backend_threadpool",
     ":kernel_util",
+    ":rng_util",
     ":lstm_eval",
     ":lstm_shared",
     ":op_macros",
@@ -762,7 +788,7 @@ BUILTIN_KERNEL_DEPS = [
 }) + select({
     "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
     "//conditions:default": [
-        "@XNNPACK//:xnnpack_for_tflite",
+        "@XNNPACK",
     ],
 }) + select({
     # This select must match the similar select in `copts`
@@ -1155,8 +1181,9 @@ cc_test(
 
 cc_test(
     name = "sub_test",
-    size = "small",
+    size = "medium",
     srcs = ["sub_test.cc"],
+    shard_count = 10,
     tags = ["tflite_nnapi"],
     deps = [
         ":test_main",
@@ -3122,6 +3149,18 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "rng_bit_generator_test",
+    size = "small",
+    srcs = ["rng_bit_generator_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
     ],
 )
 

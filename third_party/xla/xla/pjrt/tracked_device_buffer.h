@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream.h"
 
 namespace xla {
 

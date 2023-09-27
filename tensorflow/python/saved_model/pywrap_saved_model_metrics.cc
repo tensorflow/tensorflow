@@ -19,7 +19,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "pybind11/attr.h"  // from @pybind11
+#include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/cc/saved_model/metrics.h"
@@ -31,10 +35,30 @@ namespace python {
 
 namespace py = pybind11;
 
+class MetricException : public std::exception {
+ public:
+  explicit MetricException(const char* m) : message_{m} {}
+  const char* what() const noexcept override { return message_.c_str(); }
+
+ private:
+  std::string message_ = "";
+};
+
 void DefineMetricsModule(py::module main_module) {
   auto m = main_module.def_submodule("metrics");
 
   m.doc() = "Python bindings for TensorFlow SavedModel and Checkpoint Metrics.";
+
+  static py::exception<MetricException> fp_ex(m, "MetricException");
+  py::register_exception_translator([](std::exception_ptr p) {
+    try {
+      if (p) {
+        std::rethrow_exception(p);
+      }
+    } catch (const MetricException& e) {
+      fp_ex(e.what());
+    }
+  });
 
   m.def(
       "IncrementWrite",
@@ -170,8 +194,13 @@ void DefineMetricsModule(py::module main_module) {
   m.def(
       "SetReadPathAndSingleprint",
       [](const char* path, const char* singleprint) {
+        auto path_and_singleprint =
+            metrics::MakeSavedModelPathAndSingleprint(path, singleprint);
+        if (!path_and_singleprint.ok()) {
+          throw MetricException(path_and_singleprint.status().message().data());
+        }
         metrics::SavedModelReadPathAndSingleprint().Set(
-            metrics::MakeSavedModelPathAndSingleprint(path, singleprint));
+            path_and_singleprint.value());
       },
       py::kw_only(), py::arg("path"), py::arg("singleprint"),
       py::doc(
@@ -181,8 +210,17 @@ void DefineMetricsModule(py::module main_module) {
   m.def(
       "GetReadPathAndSingleprint",
       []() {
-        return metrics::ParseSavedModelPathAndSingleprint(
-            metrics::SavedModelReadPathAndSingleprint().value());
+        std::string path_and_singleprint =
+            metrics::SavedModelReadPathAndSingleprint().value();
+        if (path_and_singleprint.empty())
+          return std::pair<std::string, std::string>();
+        auto parsed_path_and_singleprint =
+            metrics::ParseSavedModelPathAndSingleprint(path_and_singleprint);
+        if (!parsed_path_and_singleprint.ok()) {
+          throw MetricException(
+              parsed_path_and_singleprint.status().message().data());
+        }
+        return parsed_path_and_singleprint.value();
       },
       py::doc(
           "Get tuple of `path` and `singleprint` values of "
@@ -191,8 +229,13 @@ void DefineMetricsModule(py::module main_module) {
   m.def(
       "SetWritePathAndSingleprint",
       [](const char* path, const char* singleprint) {
+        auto path_and_singleprint =
+            metrics::MakeSavedModelPathAndSingleprint(path, singleprint);
+        if (!path_and_singleprint.ok()) {
+          throw MetricException(path_and_singleprint.status().message().data());
+        }
         metrics::SavedModelWritePathAndSingleprint().Set(
-            metrics::MakeSavedModelPathAndSingleprint(path, singleprint));
+            path_and_singleprint.value());
       },
       py::kw_only(), py::arg("path"), py::arg("singleprint"),
       py::doc("Set the "
@@ -202,12 +245,49 @@ void DefineMetricsModule(py::module main_module) {
   m.def(
       "GetWritePathAndSingleprint",
       []() {
-        return metrics::ParseSavedModelPathAndSingleprint(
-            metrics::SavedModelWritePathAndSingleprint().value());
+        std::string path_and_singleprint =
+            metrics::SavedModelWritePathAndSingleprint().value();
+        if (path_and_singleprint.empty())
+          return std::pair<std::string, std::string>();
+        auto parsed_path_and_singleprint =
+            metrics::ParseSavedModelPathAndSingleprint(path_and_singleprint);
+        if (!parsed_path_and_singleprint.ok()) {
+          throw MetricException(
+              parsed_path_and_singleprint.status().message().data());
+        }
+        return parsed_path_and_singleprint.value();
       },
       py::doc(
           "Get tuple of `path` and `singleprint` values of "
           "'/tensorflow/core/saved_model/write/path_and_singleprint' gauge."));
+
+  m.attr("kFingerprintFound") = metrics::kFingerprintFound;
+  m.attr("kFingerprintNotFound") = metrics::kFingerprintNotFound;
+  m.attr("kFingerprintError") = metrics::kFingerprintError;
+
+  m.def(
+      "GetFoundFingerprintOnLoad",
+      []() { return metrics::SavedModelFoundFingerprintOnLoad().value(); },
+      py::doc(
+          "Get value of "
+          "'/tensorflow/core/saved_model/found_fingerprint_on_load' gauge."));
+
+  m.def(
+      "SetFoundFingerprintOnLoad",
+      [](std::string found_status) {
+        if (found_status == metrics::kFingerprintFound ||
+            found_status == metrics::kFingerprintNotFound ||
+            found_status == metrics::kFingerprintError) {
+          metrics::SavedModelFoundFingerprintOnLoad().Set(found_status);
+        } else {
+          metrics::SavedModelFoundFingerprintOnLoad().Set("");
+        }
+      },
+      py::kw_only(), py::arg("found_status"),
+      py::doc("Set value of "
+              "'/tensorflow/core/saved_model/found_fingerprint_on_load' gauge "
+              "with 'found_status' if status is one of { \"FOUND\", "
+              "\"NOT_FOUND\", \"ERROR\" }."));
 
   m.def(
       "AddCheckpointReadDuration",

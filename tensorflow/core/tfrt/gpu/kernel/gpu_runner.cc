@@ -189,8 +189,10 @@ PopulateResultsFromPjRtExecutableOutputs(
       TF_RETURN_IF_ERROR(tensor_shape.AddDimWithStatus(dims[i]));
     }
 
-    Tensor output_tensor = MakeTensorFromPjRtStreamExecutorBuffer(
-        dtype, tensor_shape, std::move(executable_outputs[i]));
+    TF_ASSIGN_OR_RETURN(
+        Tensor output_tensor,
+        MakeTensorFromPjRtBuffer(dtype, tensor_shape,
+                                 std::move(executable_outputs[i])));
     auto result = tfrt::MakeAvailableAsyncValueRef<tfrt_stub::FallbackTensor>(
         output_tensor);
     fallback_tensor_results.emplace_back(std::move(result));

@@ -90,6 +90,7 @@ message OptionOverrideProto {
     string string_field = 1;
     bool bool_field = 2;
     int64 int_field = 3;
+    double double_field = 4;
   }
 }
 

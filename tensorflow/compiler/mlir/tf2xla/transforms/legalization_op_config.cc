@@ -116,8 +116,7 @@ const llvm::DenseSet<mlir::TypeID>& MlirAlwaysOps() {
       // XlaOpKernel
       // legalization in TF2XLA fallback. By legalization with MLIR, we can fix
       // the bug. b/195583695 describes the motivation of this change.
-      // See b/245615401 how to reproduce the bug regarding tf.SliceOp
-      TypeID::get<TF::SliceOp>(),
+      // See b/216355804 how to reproduce the bug regarding tf.RandomUniform Op
 
       // Conditional ops
       TypeID::get<TF::IfRegionOp>(),
@@ -291,6 +290,7 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
             TypeID::get<TF::SeluOp>(),
             TypeID::get<TF::SigmoidGradOp>(),
             TypeID::get<TF::SinOp>(),
+            TypeID::get<TF::SliceOp>(),
             TypeID::get<TF::SoftplusGradOp>(),
             TypeID::get<TF::SoftsignGradOp>(),
             TypeID::get<TF::SoftsignOp>(),

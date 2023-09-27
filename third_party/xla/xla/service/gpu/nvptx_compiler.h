@@ -53,9 +53,15 @@ class NVPTXCompiler : public GpuCompiler {
   bool RequiresCollectiveScheduleLinearizer(
       const HloModule* module, se::StreamExecutor* stream_exec) override;
 
-  Status AddAutotuningPasses(HloPassPipeline* pipeline, HloModule* hlo_module,
-                             AutotuneConfig& autotune_config,
-                             tsl::thread::ThreadPool* thread_pool) override;
+  Status AddConvAndGemmAutotuningPasses(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      AutotuneConfig& autotune_config,
+      tsl::thread::ThreadPool* thread_pool) override;
+
+  Status AddTritonGemmAutotuningPasses(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      AutotuneConfig& autotune_config,
+      tsl::thread::ThreadPool* thread_pool) override;
 
   Status LoadAutotuneResultsFromFile(
       const DebugOptions& debug_options) override;

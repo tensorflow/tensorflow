@@ -80,6 +80,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
@@ -100,6 +101,7 @@ limitations under the License.
 #include "xla/pjrt/metrics.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/utils.h"
@@ -1550,7 +1552,6 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
                           dst_device, dst_local_device, transfer_stream,
                           /*is_uninitialized_create=*/false, client_));
 
-
   ScopedHold dst_device_buffer(py_buffer->GetBufferWithUsageHold());
   CHECK(dst_device_buffer.ok());
 
@@ -2150,15 +2151,15 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
     tsl::thread::ThreadPool* thread_pool) {
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
-    return [device_ordinal](
-               int64_t channel_id, se::Stream*, const Shape&,
-               const se::DeviceMemoryBase&,
-               const absl::flat_hash_map<std::string, std::string>&) {
-      return InvalidArgument(
-          "Failed to send a buffer to the channel_id=%d, there was no send "
-          "callbacks registered for the device_ordinal=%d",
-          channel_id, device_ordinal);
-    };
+    return
+        [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
+                         const se::DeviceMemoryBase&,
+                         const absl::flat_hash_map<std::string, std::string>&) {
+          return InvalidArgument(
+              "Failed to send a buffer to the channel_id=%d, there was no send "
+              "callbacks registered for the device_ordinal=%d",
+              channel_id, device_ordinal);
+        };
   }
 
   // SendCallbacks registered for a device ordinal. Can be empty.
@@ -2305,15 +2306,15 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
     int device_ordinal, const ExecuteOptions& options) {
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
-    return [device_ordinal](
-               int64_t channel_id, se::Stream*, const Shape&,
-               se::DeviceMemoryBase*,
-               const absl::flat_hash_map<std::string, std::string>&) {
-      return InvalidArgument(
-          "Failed to receive a buffer from the channel_id=%d, there was no "
-          "recv callbacks registered for the device_ordinal=%d",
-          channel_id, device_ordinal);
-    };
+    return
+        [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
+                         se::DeviceMemoryBase*,
+                         const absl::flat_hash_map<std::string, std::string>&) {
+          return InvalidArgument(
+              "Failed to receive a buffer from the channel_id=%d, there was no "
+              "recv callbacks registered for the device_ordinal=%d",
+              channel_id, device_ordinal);
+        };
   }
 
   // RecvCallbacks registered for a device ordinal. Can be empty.
@@ -2700,8 +2701,8 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
           fn();
         }
       });
-  ReportExecutableEnqueueTime(tsl::Env::Default()->NowMicros() -
-                              start_time_usecs);
+  metrics::ReportExecutableEnqueueTime(tsl::Env::Default()->NowMicros() -
+                                       start_time_usecs);
   return Result({/*future=*/std::move(future), /*buffers=*/std::move(outputs)});
 }
 

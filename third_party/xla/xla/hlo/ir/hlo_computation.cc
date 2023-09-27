@@ -1525,4 +1525,12 @@ HloInstruction* HloComputation::GetInstructionWithName(absl::string_view name) {
 bool HloComputation::IsEntryComputation() const {
   return parent()->entry_computation() == this;
 }
+
+bool HloComputation::CanExpandIntoSingleInstruction() const {
+  return absl::c_all_of(
+      instructions(), [root = root_instruction()](const HloInstruction* instr) {
+        return root == instr || instr->opcode() == HloOpcode::kParameter;
+      });
+}
+
 }  // namespace xla

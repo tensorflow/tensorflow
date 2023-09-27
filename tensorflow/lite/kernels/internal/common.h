@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #ifndef ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
@@ -60,8 +61,7 @@ bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
   const size_t num_input2_dims = input2_shape.DimensionsCount();
   const int32_t* input1_dims = input1_shape.DimsData();
   const int32_t* input2_dims = input2_shape.DimsData();
-  const size_t num_common_dims =
-      (num_input1_dims < num_input2_dims) ? num_input1_dims : num_input2_dims;
+  const size_t num_common_dims = std::min(num_input1_dims, num_input2_dims);
   for (size_t i = 1; i <= num_common_dims; i++) {
     const size_t input1_dim = input1_dims[num_input1_dims - i];
     const size_t input2_dim = input2_dims[num_input2_dims - i];

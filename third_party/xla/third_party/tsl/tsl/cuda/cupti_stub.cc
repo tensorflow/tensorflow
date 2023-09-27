@@ -35,35 +35,38 @@ void* GetDsoHandle() {
 #endif
 }
 
-template <typename T>
-T LoadSymbol(const char* symbol_name) {
+void* LoadSymbol(const char* symbol_name) {
   void* symbol = nullptr;
   if (auto handle = GetDsoHandle()) {
     tsl::Env::Default()
         ->GetSymbolFromLibrary(handle, symbol_name, &symbol)
         .IgnoreError();
   }
-  return reinterpret_cast<T>(symbol);
+  return symbol;
 }
 
-CUptiResult GetSymbolNotFoundError() { return CUPTI_ERROR_UNKNOWN; }
+const char* kSymbols[] = {
+#include "tsl/cuda/cupti.inc"
+};
+
+constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char*);
+
 }  // namespace
 
-// For now we only need one stub implementation. We will need to generate
-// a new file when CUPTI breaks backwards compatibility (has not been the case
-// for quite a while) or if we want to use functionality introduced in a new
-// version.
-//
-// Calling a function that is not yet available in the loaded CUPTI version will
-// return CUPTI_ERROR_UNKNOWN.
-#if CUDA_VERSION < 10010
-#include "tsl/cuda/cupti_10_0.inc"
-#elif CUDA_VERSION < 10020
-#include "tsl/cuda/cupti_10_1.inc"
-#elif CUDA_VERSION < 11000
-#include "tsl/cuda/cupti_10_2.inc"
-#elif CUDA_VERSION < 12000
-#include "tsl/cuda/cupti_11_0.inc"
-#else
-#include "tsl/cuda/cupti_12_0.inc"
-#endif
+extern "C" {
+
+static CUptiResult GetSymbolNotFoundError() { return CUPTI_ERROR_UNKNOWN; }
+
+extern void* _cupti_tramp_table[];
+
+void _cupti_tramp_resolve(int i) {
+  CHECK_LE(0, i);
+  CHECK_LT(i, kNumSymbols);
+  void* p = LoadSymbol(kSymbols[i]);
+  if (!p) {
+    p = reinterpret_cast<void*>(&GetSymbolNotFoundError);
+  }
+  _cupti_tramp_table[i] = p;
+}
+
+}  // extern "C"

@@ -2240,6 +2240,18 @@ Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
   return OkStatus();
 }
 
+// Checks that the asynchronous computation only has a root and parameter
+// instructions.
+Status VerifyAsyncComputation(const HloComputation* async_computation) {
+  if (!async_computation->CanExpandIntoSingleInstruction()) {
+    return FailedPrecondition(
+        "Asynchronous computation %s expected to contain only the root and "
+        "parameter instructions.",
+        async_computation->name());
+  }
+  return OkStatus();
+}
+
 // Checks that AllReduce instructions in the module are either all layout
 // constrained or all unconstrained.
 Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
@@ -2318,8 +2330,18 @@ Status VerifyChannels(const HloModule& module) {
     auto sendrecv = DynCast<HloSendRecvInstruction>(first);
     if (sendrecv) {
       absl::flat_hash_set<HloOpcode> opcodes;
+      bool maybe_send_recv_pipeline = false;
       for (const HloInstruction* instr : instructions) {
-        opcodes.insert(instr->opcode());
+        if (opcodes.insert(instr->opcode()).second == false) {
+          // A channel is used by multiple instructions with the same opcode.
+          // This is only allows for pipelining Send and Recv, assuming such
+          // instructions have non-empty frontend attributes.
+          if (DynCast<HloSendInstruction>(instr) ||
+              DynCast<HloRecvInstruction>(instr)) {
+            maybe_send_recv_pipeline =
+                (!instr->frontend_attributes().map().empty());
+          }
+        }
         auto cast = DynCast<HloSendRecvInstruction>(instr);
         TF_RET_CHECK(cast != nullptr)
             << "channel " << pair.first
@@ -2330,9 +2352,11 @@ Status VerifyChannels(const HloModule& module) {
             << "channel " << pair.first
             << " is used for multiple host send/recv instructions";
       } else {
-        TF_RET_CHECK(instructions.size() == opcodes.size())
-            << "channel " << pair.first
-            << " is used for multiple send/recv instructions";
+        if (!maybe_send_recv_pipeline) {
+          TF_RET_CHECK(instructions.size() == opcodes.size())
+              << "channel " << pair.first
+              << " is used for multiple send/recv instructions";
+        }
       }
     } else {
       for (const HloInstruction* instr : instructions) {
@@ -2788,6 +2812,8 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         instruction->opcode() != HloOpcode::kReshape &&
         instruction->opcode() != HloOpcode::kDynamicSlice &&
         instruction->opcode() != HloOpcode::kBitcastConvert &&
+        instruction->opcode() != HloOpcode::kSlice &&
+        instruction->opcode() != HloOpcode::kBroadcast &&
         !(instruction->opcode() == HloOpcode::kCall &&
           instruction->metadata().op_type() == "XlaCallModule") &&
         absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
@@ -2835,6 +2861,9 @@ StatusOr<bool> HloVerifier::Run(
     for (auto* computation : module->computations(execution_threads)) {
       TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
       TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
+      if (computation->IsAsyncComputation()) {
+        TF_RETURN_IF_ERROR(VerifyAsyncComputation(computation));
+      }
     }
 
     TF_RETURN_IF_ERROR(shape_verifier->VerifyEntryComputationLayout(*module));
@@ -2854,6 +2883,7 @@ StatusOr<bool> HloVerifier::Run(
           }
         }));
 
+    TF_RETURN_IF_ERROR(module->buffer_donor_config().Verify(*module));
     TF_RETURN_IF_ERROR(VerifyLayoutConstrainedAllReduce(*module));
     return false;
   }();

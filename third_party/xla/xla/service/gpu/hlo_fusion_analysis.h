@@ -50,13 +50,16 @@ class HloFusionAnalysis {
 
   static StatusOr<HloFusionAnalysis> Create(
       FusionBackendConfig backend_config,
-      std::vector<HloInstruction*> hlo_roots, FusionBoundaryFn boundary_fn,
-      const GpuDeviceInfo* device_info);
+      std::vector<const HloInstruction*> hlo_roots,
+      FusionBoundaryFn boundary_fn, const GpuDeviceInfo* device_info);
   static StatusOr<HloFusionAnalysis> Create(const HloFusionInstruction* fusion,
                                             const GpuDeviceInfo* device_info);
 
-  const std::vector<HloInstruction*>& fusion_roots() const {
+  const std::vector<const HloInstruction*>& fusion_roots() const {
     return fusion_roots_;
+  }
+  const FusionBoundaryFn& fusion_boundary() const {
+    return fusion_boundary_fn_;
   }
 
   // Determines the fusion type for the emitter.
@@ -83,7 +86,7 @@ class HloFusionAnalysis {
 
  private:
   HloFusionAnalysis(FusionBackendConfig fusion_backend_config,
-                    std::vector<HloInstruction*> fusion_roots,
+                    std::vector<const HloInstruction*> fusion_roots,
                     FusionBoundaryFn fusion_boundary_fn,
                     std::vector<const HloInstruction*> fusion_parameters,
                     std::vector<const HloInstruction*> fusion_heroes,
@@ -100,7 +103,8 @@ class HloFusionAnalysis {
   const Shape& GetElementShape() const;
   int SmallestInputDtypeBits() const;
   int64_t MaxBeneficialColumnReductionUnrollBasedOnBlockSize() const;
-  std::vector<std::vector<HloInstruction*>> GroupDisjointReductions() const;
+  std::vector<std::vector<const HloInstruction*>> GroupDisjointReductions()
+      const;
   bool IsUnrollingColumnReductionBeneficial(const Shape& input_shape,
                                             int64_t num_kept_minor,
                                             bool reduction_is_race_free) const;
@@ -115,7 +119,7 @@ class HloFusionAnalysis {
   bool HasConsistentTransposeHeros() const;
 
   FusionBackendConfig fusion_backend_config_;
-  std::vector<HloInstruction*> fusion_roots_;
+  std::vector<const HloInstruction*> fusion_roots_;
   FusionBoundaryFn fusion_boundary_fn_;
   // The HLO instructions that are inputs into the fusion. These instructions
   // are /outside/ the fusion.

@@ -1,11 +1,11 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow/compiler/mlir/tf2xla/api/v0:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:__subpackages__",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:__subpackages__",
     ],
 )
 
@@ -70,7 +70,7 @@ tf_cc_test(
     srcs = ["mlir_pass_instrumentation_test.cc"],
     deps = [
         ":mlir_pass_instrumentation",
-        "//tensorflow/compiler/mlir/tf2xla/api/v0:compile_mlir_util_no_tf_dialect_passes",
+        "//tensorflow/compiler/mlir/tf2xla/api/v1:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/core:test",
         "@com_google_googletest//:gtest_main",
     ],
@@ -113,7 +113,7 @@ cc_library(
     deps = [
         ":compilation_timer",
         ":legalize_tf_mlir",
-        "//tensorflow/compiler/mlir/tf2xla/api/v0:compile_tf_graph",
+        "//tensorflow/compiler/mlir/tf2xla/api/v1:compile_tf_graph",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/tf2xla:xla_tpu_backend_registration",

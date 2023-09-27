@@ -53,11 +53,11 @@ build --@local_config_cuda//:enable_cuda
 build --@local_config_cuda//:cuda_compiler=clang
 build --repo_env TF_NEED_CUDA=1
 build --config cuda_clang
-build --action_env=TF_CUDA_VERSION="11"
-build --action_env=TF_CUDNN_VERSION="8"
-build --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.8"
+build --action_env=TF_CUDA_VERSION="12"
+build --action_env=TF_CUDNN_VERSION="2"
+build --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-12.2"
 build --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
-build --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-16/bin/clang"
+build --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-17/bin/clang"
 build --action_env=TF_CUDA_CLANG="1"
 build --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
 build --crosstool_top="@sigbuild-r2.14-clang_config_cuda//crosstool:toolchain"
@@ -71,7 +71,7 @@ build --repo_env TF_NEED_TENSORRT=1
 # See https://developer.nvidia.com/cuda-gpus#compute
 # TODO(angerson, perfinion): What does sm_ vs compute_ mean?
 # TODO(angerson, perfinion): How can users select a good value for this?
-build --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_35,sm_50,sm_60,sm_70,sm_75,compute_80"
+build --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_50,sm_60,sm_70,sm_75,compute_80"
 
 # Test-related settings below this point.
 test --build_tests_only --keep_going --test_output=errors --verbose_failures=true

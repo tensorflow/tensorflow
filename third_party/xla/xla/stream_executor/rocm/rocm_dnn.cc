@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_diagnostics.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
@@ -46,6 +45,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/hash.h"
+#include "tsl/platform/logging.h"
 #include "tsl/util/determinism.h"
 #include "tsl/util/env_var.h"
 #include "rocm/rocm_config.h"
@@ -79,8 +79,6 @@ using dnn::NormalizeDescriptor;
 using dnn::PoolingDescriptor;
 
 namespace gpu {
-
-PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kMIOpenPlugin);
 
 string ToString(miopenStatus_t status) {
   switch (status) {
@@ -5373,12 +5371,12 @@ bool UseNhwcLayoutForRocm() {
 
 void initialize_miopen() {
   auto miopenAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
-      rocm::kROCmPlatformId, PluginKind::kDnn, gpu::kMIOpenPlugin);
+      rocm::kROCmPlatformId, PluginKind::kDnn);
 
   if (!miopenAlreadyRegistered) {
     tsl::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
-            rocm::kROCmPlatformId, gpu::kMIOpenPlugin, "MIOpen",
+            rocm::kROCmPlatformId, "MIOpen",
             [](internal::StreamExecutorInterface* parent) -> dnn::DnnSupport* {
               gpu::GpuExecutor* rocm_executor =
                   dynamic_cast<gpu::GpuExecutor*>(parent);
@@ -5401,9 +5399,6 @@ void initialize_miopen() {
     if (!status.ok()) {
       LOG(ERROR) << "Unable to register MIOpen factory: " << status.message();
     }
-
-    PluginRegistry::Instance()->SetDefaultFactory(
-        rocm::kROCmPlatformId, PluginKind::kDnn, gpu::kMIOpenPlugin);
   }
 }
 

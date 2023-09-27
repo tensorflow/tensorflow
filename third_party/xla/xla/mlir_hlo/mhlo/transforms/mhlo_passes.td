@@ -26,9 +26,13 @@ def ChloLegalizeToHloPass : Pass<"chlo-legalize-to-hlo", "func::FuncOp"> {
   ];
 }
 
-def ChloLegalizeToLinalgPass : Pass<"sparse-chlo-legalize-to-linalg", "func::FuncOp"> {
-  let summary = "Legalize from sparse ops in CHLO dialect to Linalg dialect.";
-  let constructor = "createLegalizeSparseChloToLinalgPass()";
+def LegalizeSparseOpsPass : Pass<"legalize-sparse-ops", "func::FuncOp"> {
+  let summary = "Legalize from sparse ops before convert MLIR to XLA computation.";
+  let constructor = "createLegalizeSparseOperationsPass()";
+  let options = [
+    Option<"legalize_to_custom_calls_", "legalize-to-custom-calls", "bool",
+           /*default=*/"true", "Whether legalize the sparse operations to custom_calls to be able to translate sparse operations to XLA computations">,
+  ];
 }
 
 def HloCanonicalizeScatterPass : Pass<"hlo-canonicalize-scatter", "func::FuncOp"> {
@@ -54,11 +58,6 @@ def HloCanonicalizeDotPass : Pass<"hlo-canonicalize-dot", "func::FuncOp"> {
   let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
 }
 
-def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
-  let summary = "Legalize from HLO dialect to LHLO dialect.";
-  let constructor = "createLegalizeToLhloPass()";
-}
-
 def HloLegalizeToMemrefPass :Pass<"hlo-legalize-to-memref", "ModuleOp"> {
   let summary = "Legalize from HLO dialect to memref dialect.";
   let constructor = "createLegalizeToMemrefPass()";
@@ -75,6 +74,12 @@ def HloLegalizeSortPass : Pass<"hlo-legalize-sort", "func::FuncOp"> {
   let dependentDialects = ["arith::ArithDialect",
                            "bufferization::BufferizationDialect",
                            "scf::SCFDialect", "tensor::TensorDialect"];
+}
+
+def LegalizeBroadcastToBroadcastInDimPass : Pass<"mhlo-legalize-broadcast-to-broadcast-in-dim", "func::FuncOp"> {
+  let summary = "Legalizes broadcast ops to broadcast_in_dim ops.";
+  let constructor = "createLegalizeBroadcastToBroadcastInDimPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
 }
 
 def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "func::FuncOp"> {

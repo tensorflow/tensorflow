@@ -165,6 +165,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:bincount_ops",
         "//tensorflow/python/ops:sparse_ops",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )

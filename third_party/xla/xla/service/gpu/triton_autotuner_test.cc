@@ -21,10 +21,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/autotuner_util.h"
@@ -39,8 +45,13 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/cpu_info.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -222,12 +233,20 @@ class TritonAutotunerTestWithMorePreciseReduction : public TritonAutotunerTest {
 };
 
 TEST_F(TritonAutotunerTest, VoltaUsesNoMoreThanTwoStages) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  ROOT r = f32[1024,1024] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                                                  .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::VOLTA, /*minor=*/0};
   const std::vector<AutotuneResult::TritonGemmKey> configs =
       GetPossibleMatmulAutotuneConfigs(
-          *HloInstruction::CreateParameter(
-              0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
   EXPECT_FALSE(std::any_of(configs.begin(), configs.end(),
                            [](const AutotuneResult::TritonGemmKey& key) {
@@ -236,12 +255,20 @@ TEST_F(TritonAutotunerTest, VoltaUsesNoMoreThanTwoStages) {
 }
 
 TEST_F(TritonAutotunerTest, AmpereUsesMoreThanTwoStages) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  ROOT r = f32[1024,1024] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                                                  .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
   const std::vector<AutotuneResult::TritonGemmKey> configs =
       GetPossibleMatmulAutotuneConfigs(
-          *HloInstruction::CreateParameter(
-              0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
   EXPECT_TRUE(std::any_of(configs.begin(), configs.end(),
                           [](const AutotuneResult::TritonGemmKey& key) {
@@ -250,12 +277,20 @@ TEST_F(TritonAutotunerTest, AmpereUsesMoreThanTwoStages) {
 }
 
 TEST_F(TritonAutotunerTest, SmallOutputCanUseLargeSplitK) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  ROOT r = f32[1024,1024] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                                                  .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
   const std::vector<AutotuneResult::TritonGemmKey> configs =
       GetPossibleMatmulAutotuneConfigs(
-          *HloInstruction::CreateParameter(
-              0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
   EXPECT_TRUE(std::any_of(configs.begin(), configs.end(),
                           [](const AutotuneResult::TritonGemmKey& key) {
@@ -264,12 +299,20 @@ TEST_F(TritonAutotunerTest, SmallOutputCanUseLargeSplitK) {
 }
 
 TEST_F(TritonAutotunerTest, LargeOutputDoesNotUseLargeSplitK) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[20480,20480] parameter(0)
+  p1 = f32[20480,20480] parameter(1)
+  ROOT r = f32[20480,20480] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                                                  .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
   const std::vector<AutotuneResult::TritonGemmKey> configs =
       GetPossibleMatmulAutotuneConfigs(
-          *HloInstruction::CreateParameter(
-              0, ShapeUtil::MakeShape(F32, {20480, 20480}), ""),
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
   EXPECT_FALSE(std::any_of(configs.begin(), configs.end(),
                            [](const AutotuneResult::TritonGemmKey& key) {
@@ -507,12 +550,20 @@ class TritonAutotunerDisableSplitK : public TritonAutotunerTest {
 };
 
 TEST_F(TritonAutotunerDisableSplitK, SplitKIsDisabled) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  ROOT r = f32[1024,1024] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                                                  .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
   const std::vector<AutotuneResult::TritonGemmKey> configs =
       GetPossibleMatmulAutotuneConfigs(
-          *HloInstruction::CreateParameter(
-              0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
   EXPECT_TRUE(std::all_of(configs.begin(), configs.end(),
                           [](const AutotuneResult::TritonGemmKey& key) {

@@ -21,12 +21,11 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <string>
 
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/plugin.h"
-#include "xla/stream_executor/trace_listener.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -58,9 +57,6 @@ struct StreamExecutorConfig {
 
   // The ordinal of the device to be managed by the returned StreamExecutor.
   int ordinal;
-
-  // The PluginConfig for the returned StreamExecutor.
-  PluginConfig plugin_config;
 
   // The DeviceOptions for the returned StreamExecutor.
   DeviceOptions device_options;

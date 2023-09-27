@@ -284,7 +284,7 @@ InterpreterValue extract(InterpreterState& state, vector::ExtractOp extract,
                          const InterpreterValue& vector) {
   auto result = vector;
   auto& resultView = result.view();
-  for (int64_t offset : extract.getPosition()) {
+  for (int64_t offset : extract.getStaticPosition()) {
     state.checkSuccess(resultView.slice(0, offset), "index out of bounds");
   }
   return resultView.rank() == 0 ? result.extractElement({}) : result;
@@ -374,7 +374,7 @@ InterpreterValue insert(InterpreterState& state, vector::InsertOp insert,
   auto result = dst.clone();
   auto resultSlice = result;
   auto& resultSliceView = resultSlice.view();
-  for (int64_t offset : insert.getPosition()) {
+  for (int64_t offset : insert.getStaticPosition()) {
     state.checkSuccess(resultSliceView.slice(0, offset), "index out of bounds");
   }
   resultSlice.fill([&](auto indices) { return src.extractElement(indices); });

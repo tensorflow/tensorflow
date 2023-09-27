@@ -374,7 +374,7 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
       // TODO(b/281980675): ensure that code generation also works well for FP8
       // and BF16. This fails for the moment due to these data types requiring
       // float normalization.
-      if (element_ty != F16 && element_ty != F32) {
+      if (element_ty != F16 && element_ty != F32 && element_ty != BF16) {
         continue;
       }
 
@@ -500,6 +500,10 @@ StatusOr<bool> SoftmaxRewriterTriton::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<DiamondChainDescriptor> diamond_chains =
       FindAllFusibleDiamondChains(*module, execution_threads);
+
+  if (diamond_chains.empty()) {
+    return false;
+  }
 
   // The diamond chains must be emitted in reverse order, to make sure that
   // producer instructions are emitted correctly when the root of

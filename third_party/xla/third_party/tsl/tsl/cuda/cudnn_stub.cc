@@ -33,35 +33,40 @@ void* GetDsoHandle() {
 #endif
 }
 
-template <typename T>
-T LoadSymbol(const char* symbol_name) {
+void* LoadSymbol(const char* symbol_name) {
   void* symbol = nullptr;
   if (auto handle = GetDsoHandle()) {
     tsl::Env::Default()
         ->GetSymbolFromLibrary(handle, symbol_name, &symbol)
         .IgnoreError();
   }
-  return reinterpret_cast<T>(symbol);
+  return symbol;
 }
 
-cudnnStatus_t GetSymbolNotFoundError() { return CUDNN_STATUS_INTERNAL_ERROR; }
+const char* kSymbols[] = {
+#include "tsl/cuda/cudnn.inc"
+};
+
+constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char*);
+
 }  // namespace
 
-#if CUDNN_MAJOR < 6
-#error cuDNN version earlier than 6 is not supported.
-#elif CUDNN_MAJOR < 7
-#include "tsl/cuda/cudnn_6_0.inc"
-#elif CUDNN_MAJOR == 7 && CUDNN_MINOR < 1
-#include "tsl/cuda/cudnn_7_0.inc"
-// 2 instead of 3: see https://github.com/tensorflow/tensorflow/issues/32350
-#elif CUDNN_MAJOR == 7 && CUDNN_MINOR < 2
-#include "tsl/cuda/cudnn_7_1.inc"
-#elif CUDNN_MAJOR == 7 && CUDNN_MINOR < 4
-#include "tsl/cuda/cudnn_7_3.inc"
-#elif CUDNN_MAJOR == 7 && CUDNN_MINOR < 6
-#include "tsl/cuda/cudnn_7_4.inc"
-#elif CUDNN_MAJOR == 7
-#include "tsl/cuda/cudnn_7_6.inc"
-#else
-#include "tsl/cuda/cudnn_8_0.inc"
-#endif
+extern "C" {
+
+static cudnnStatus_t GetSymbolNotFoundError() {
+  return CUDNN_STATUS_INTERNAL_ERROR;
+}
+
+extern void* _cudnn_tramp_table[];
+
+void _cudnn_tramp_resolve(int i) {
+  CHECK_LE(0, i);
+  CHECK_LT(i, kNumSymbols);
+  void* p = LoadSymbol(kSymbols[i]);
+  if (!p) {
+    p = reinterpret_cast<void*>(&GetSymbolNotFoundError);
+  }
+  _cudnn_tramp_table[i] = p;
+}
+
+}  // extern "C"

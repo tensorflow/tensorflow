@@ -83,14 +83,13 @@ class GpuExecutor : public internal::StreamExecutorInterface {
  public:
   // sub_platform indicates the subplatform used in this executor; it must
   // be a CUDA type.
-  explicit GpuExecutor(const PluginConfig& plugin_config)
+  GpuExecutor()
       : device_(0),
         context_(nullptr),
         device_ordinal_(0),
         cc_major_(0),
         cc_minor_(0),
-        version_(0),
-        plugin_config_(plugin_config) {}
+        version_(0) {}
 
   // See the corresponding StreamExecutor methods for method comments on the
   // following overrides.
@@ -255,6 +254,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
 
+  tsl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
+  GetCommandBufferImplementation() override;
+
   void* GpuContextHack() override;
 
   GpuContext* gpu_context();
@@ -371,9 +373,6 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   // GPU ISA version for device_.
   int version_;
-
-  // The plugin configuration associated with this instance.
-  PluginConfig plugin_config_;
 
   // Type erased XLA specific state attached to GpuExecutor.
   Object xla_state_;

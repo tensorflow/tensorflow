@@ -54,8 +54,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> createChloLegalizeToHloPass(
     bool legalizeBroadcasts = true, bool expandCompositions = true);
 
 // Lowers from sparse ops in CHLO dialect to Linalg dialect.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeSparseChloToLinalgPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeSparseOperationsPass(
+    bool legalizeToCustomCalls = true);
 
 // Canonicalize reduction ops to be suitable for codegen.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -155,6 +155,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createRankSpecializationToSCFPass(
 
 std::unique_ptr<OperationPass<func::FuncOp>> createOptimizeMhloPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerComplexPass();
+
+std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeBroadcastToBroadcastInDimPass();
 std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeCreateTokenToAfterAllPass();

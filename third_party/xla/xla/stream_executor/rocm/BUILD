@@ -115,6 +115,7 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_activation_header",
         "//xla/stream_executor/gpu:gpu_event",
         "//xla/stream_executor/gpu:gpu_kernel_header",
+        "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_stream",
         "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/platform",

@@ -159,19 +159,19 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
 
   // The selection of codegen optimization level is copied from function
   // GetCodeGenOptLevel in //third_party/llvm/llvm/tools/opt/opt.cpp.
-  llvm::CodeGenOpt::Level codegen_opt_level;
+  llvm::CodeGenOptLevel codegen_opt_level;
   switch (debug_options.xla_backend_optimization_level()) {
     case 1:
-      codegen_opt_level = llvm::CodeGenOpt::Less;
+      codegen_opt_level = llvm::CodeGenOptLevel::Less;
       break;
     case 2:
-      codegen_opt_level = llvm::CodeGenOpt::Default;
+      codegen_opt_level = llvm::CodeGenOptLevel::Default;
       break;
     case 3:
-      codegen_opt_level = llvm::CodeGenOpt::Aggressive;
+      codegen_opt_level = llvm::CodeGenOptLevel::Aggressive;
       break;
     default:
-      codegen_opt_level = llvm::CodeGenOpt::None;
+      codegen_opt_level = llvm::CodeGenOptLevel::None;
   }
   return absl::WrapUnique(target->createTargetMachine(
       triple.str(), llvm_ir::AsStringRef(cpu_name),
@@ -191,7 +191,7 @@ std::string EmitModuleToPTX(llvm::Module* module,
   pm.add(new llvm::TargetLibraryInfoWrapperPass(
       llvm::Triple(module->getTargetTriple())));
   target_machine->addPassesToEmitFile(pm, pstream, nullptr,
-                                      llvm::CGFT_AssemblyFile);
+                                      llvm::CodeGenFileType::AssemblyFile);
   pm.run(*module);
   return ptx;
 }
@@ -754,7 +754,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
       new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::OF_Text));
   module->setDataLayout(target_machine->createDataLayout());
   target_machine->addPassesToEmitFile(pm, *isabin_fs, nullptr,
-                                      llvm::CGFT_ObjectFile);
+                                      llvm::CodeGenFileType::ObjectFile);
   pm.run(*module);
   isabin_fs->flush();
 

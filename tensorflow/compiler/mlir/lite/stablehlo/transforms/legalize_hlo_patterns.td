@@ -304,12 +304,14 @@ def : Pat<(MHLO_DotGeneralOp:$old_value
                $dot_dimension_numbers, $precision_config),
           (ConvertDotGeneralOp $old_value)>;
 
+
 def IsZero : Constraint<CPred<
   "$0.isSplat() && $0.getSplatValue<APInt>() == 0">>;
 def ConvertPadOp : NativeCodeCall<
   "ConvertPadOp($_builder, $0.getDefiningOp())">;
-def : Pat<(MHLO_PadOp:$old_value $input, $pad_value, $pad_low, $pad_high,
-               $pad_interior),
+def : Pat<(MHLO_PadOp:$old_value
+               StaticShapeTensorOf<[TF_ElementType]>:$input,
+               $pad_value, $pad_low, $pad_high, $pad_interior),
           (ConvertPadOp $old_value),
           [(IsZero $pad_interior)]>;
 

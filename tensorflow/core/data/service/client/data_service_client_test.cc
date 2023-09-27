@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
@@ -90,6 +89,10 @@ class TestDataServiceContext : public DataServiceContext {
               (override));
 
   double GetTargetProcessingTimeNsec() const override { return 1.0e6; }
+  int64_t UpdateMaxOutstandingRequests(int64_t max_outstanding_requests,
+                                       int64_t new_size) override {
+    return new_size;
+  }
 };
 
 std::unique_ptr<TestDataServiceContext> GetTestDataServiceContext() {
