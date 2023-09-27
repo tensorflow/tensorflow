@@ -1472,10 +1472,12 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":array_ops_gen",
         ":array_ops_stack",
         ":ctc_ops_gen",
         ":custom_gradient",
         ":functional_ops",
+        # TODO(b/280454072) Remove inplace_ops and compat when foward compatibility window expires.
         ":inplace_ops",
         ":linalg_ops",
         ":map_fn",
@@ -1483,6 +1485,7 @@ py_strict_library(
         ":nn_grad",
         ":nn_ops",
         ":sparse_ops",
+        "//tensorflow/python/compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
