@@ -285,7 +285,6 @@ xla_cc_test(
         "config-cuda-only",
         "gpu",
         "no_oss",
-        "no_tap",
         "requires-gpu-nvidia",
     ],
     deps = [
