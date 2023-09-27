@@ -217,6 +217,7 @@ cc_library(
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -253,9 +254,12 @@ cc_library(
     hdrs = ["command_buffer.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":stream_executor_headers",
         ":stream_executor_internal",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

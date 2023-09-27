@@ -15,24 +15,44 @@ limitations under the License.
 
 #include "xla/stream_executor/command_buffer.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
 /*static*/ tsl::StatusOr<CommandBuffer> CommandBuffer::Create(
     StreamExecutor* executor) {
-  // TODO(ezhulenev): Construct command buffer from platform-specific command
-  // buffer implementation. It requires cleaning up build files first.
-  std::unique_ptr<internal::CommandBufferInterface> command_buffer = nullptr;
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<internal::CommandBufferInterface> command_buffer,
+      executor->implementation()->GetCommandBufferImplementation());
   return tsl::StatusOr<CommandBuffer>(std::move(command_buffer));
 }
 
 CommandBuffer::CommandBuffer(
     std::unique_ptr<internal::CommandBufferInterface> implementation)
     : implementation_(std::move(implementation)) {}
+
+tsl::Status CommandBuffer::Launch(const ThreadDim& threads,
+                                  const BlockDim& blocks,
+                                  const KernelBase& kernel,
+                                  const KernelArgsArrayBase& args) {
+  return implementation_->Launch(threads, blocks, kernel, args);
+}
+
+tsl::Status CommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
+                                                const DeviceMemoryBase& src,
+                                                uint64_t size) {
+  return implementation_->MemcpyDeviceToDevice(dst, src, size);
+}
+
+tsl::Status CommandBuffer::Finalize() { return implementation_->Finalize(); }
 
 }  // namespace stream_executor

@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/trace_listener.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -129,6 +130,11 @@ class KernelInterface {
 // can execute concurrently, and it's up to the caller to insert barriers to
 // guarantee correctness. Consider adding finer grained synchronization
 // mechanism between different commands.
+//
+// TODO(ezhulenev): Currently command buffers do no support updates, and once
+// finalized can be executed as recorded. We need to support cheap command
+// buffer updates that in GPU backend will be mapped to CUDA/HIP graph node
+// updates.
 class CommandBufferInterface {
  public:
   CommandBufferInterface() = default;
@@ -143,6 +149,10 @@ class CommandBufferInterface {
   virtual tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                            const DeviceMemoryBase& src,
                                            uint64_t size) = 0;
+
+  // Finalizes command buffer and makes it executable. Once command buffer is
+  // finalized no commands can be added to it.
+  virtual tsl::Status Finalize() = 0;
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(CommandBufferInterface);

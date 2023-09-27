@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 
@@ -65,8 +66,9 @@ GpuCommandBuffer::GpuCommandBuffer(GpuExecutor* parent, GpuGraphHandle graph)
 
 GpuCommandBuffer::~GpuCommandBuffer() {
   if (exec_ != nullptr) {
-    VLOG(5) << "Destroy GPU command buffer graph exec. "
-            << "Remaining alive instances: " << NotifyExecDestroyed();
+    VLOG(5) << "Destroy GPU command buffer executable graph "
+            << "(remaining alive executable graphs: " << NotifyExecDestroyed()
+            << ")";
     auto st = GpuDriver::DestroyGraphExec(exec_);
     CHECK(st.ok()) << "Failed to destroy GPU graph exec: " << st.message();
   }
@@ -105,6 +107,20 @@ tsl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
   TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemcpyD2DNode(
       parent_->gpu_context(), &node, graph_, {}, AsDevicePtr(*dst),
       AsDevicePtr(src), size));
+
+  return tsl::OkStatus();
+}
+
+tsl::Status GpuCommandBuffer::Finalize() {
+  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
+
+  GpuDriver::GraphInstantiateFlags flags;
+  TF_RETURN_IF_ERROR(GpuDriver::GraphInstantiate(&exec_, graph_, flags));
+  uint64_t end_nanos = tsl::Env::Default()->NowNanos();
+
+  VLOG(5) << "Instantiated executable graph #" << NotifyExecCreated() << " in "
+          << (end_nanos - start_nanos) / 1000
+          << " μs (alive executable graphs: " << AliveExecs() << ")";
 
   return tsl::OkStatus();
 }

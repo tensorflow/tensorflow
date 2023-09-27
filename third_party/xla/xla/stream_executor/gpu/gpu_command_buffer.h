@@ -43,6 +43,8 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                                    const DeviceMemoryBase& src,
                                    uint64_t size) override;
 
+  tsl::Status Finalize() override;
+
   // We track the total number of allocated and alive executable graphs in the
   // process to track the command buffers resource usage. Executable graph
   // allocates resources on a GPU devices (rule of thumb is ~8kb per node), so

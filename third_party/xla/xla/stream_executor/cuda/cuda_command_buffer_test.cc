@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <vector>
 
 #include <gtest/gtest.h>
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_test_kernels.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/multi_platform_manager.h"
@@ -27,7 +27,7 @@ limitations under the License.
 
 namespace stream_executor::cuda {
 
-TEST(CudaKernelTest, Add) {
+TEST(CudaCommandBufferTest, LaunchSingleKernel) {
   using AddI32Kernel = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
                                    DeviceMemory<int32_t>>;
 
@@ -56,15 +56,12 @@ TEST(CudaKernelTest, Add) {
   stream.ThenMemset32(&b, 2, byte_length);
   stream.ThenMemZero(&c, byte_length);
 
-  // Launch kernel.
-  ASSERT_TRUE(stream.ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c).ok());
+  // Create a command buffer with a single kernel launch.
+  auto cmd_buffer = CommandBuffer::Create(executor).value();
+  ASSERT_TRUE(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), a, b, c).ok());
+  ASSERT_TRUE(cmd_buffer.Finalize().ok());
 
-  // Copy data back to host.
-  std::vector<int32_t> dst(4, 42);
-  stream.ThenMemcpy(dst.data(), c, byte_length);
-
-  std::vector<int32_t> expected = {3, 3, 3, 3};
-  ASSERT_EQ(dst, expected);
+  // TODO(ezhulenev): Execute command buffer and check results.
 }
 
 }  // namespace stream_executor::cuda
