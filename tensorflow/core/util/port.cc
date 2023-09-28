@@ -64,7 +64,7 @@ bool GpuSupportsHalfMatMulAndConv() {
 
 // Returns whether oneDNN should be enabled or disabled by default.
 //   - Linux: Enabled by default for CPUs with neural network features.
-//   - Windows: Enabled by default on x86 CPUs
+//   - Windows: Disabled by default.
 inline bool DefaultOneDnnPolicy() {
 #if !defined(INTEL_MKL)
   return false;
@@ -149,3 +149,4 @@ bool IsZenDnnEnabled() {
 }
 
 }  // namespace tensorflow
+
