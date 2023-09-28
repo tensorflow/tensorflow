@@ -15,7 +15,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/dcn_slack_analysis_combiner.h"
 
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
-#include "tensorflow/tsl/profiler/utils/math_utils.h"
+#include "tsl/profiler/utils/math_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -34,11 +34,22 @@ void DcnSlackAnalysisCombiner::Combine(const DcnSlackAnalysis& slack_analysis) {
                                          occurrences);
     summary.set_stall_duration_us(summary.stall_duration_us() +
                                   slack.stall_duration_us() * occurrences);
+    summary.set_send_done_duration_us(summary.send_done_duration_us() +
+                                      slack.send_done_duration_us() *
+                                          occurrences);
+    summary.set_recv_done_duration_us(summary.recv_done_duration_us() +
+                                      slack.recv_done_duration_us() *
+                                          occurrences);
+    summary.set_send_duration_us(summary.send_duration_us() +
+                                 slack.send_duration_us() * occurrences);
+    summary.set_recv_duration_us(summary.recv_duration_us() +
+                                 slack.recv_duration_us() * occurrences);
     summary.set_occurrences(summary.occurrences() + slack.occurrences());
     summary.set_bytes_transmitted_over_network(
         slack.bytes_transmitted_over_network());
     summary.set_recv_op_name(slack.recv_op_name());
     summary.set_send_op_name(slack.send_op_name());
+    summary.set_transfer_type(slack.transfer_type());
   }
 }
 
@@ -49,11 +60,20 @@ DcnSlackAnalysis DcnSlackAnalysisCombiner::Finalize() {
     slack->set_rendezvous(rendezvous);
     slack->set_recv_op_name(summary.recv_op_name());
     slack->set_send_op_name(summary.send_op_name());
+    slack->set_transfer_type(summary.transfer_type());
     slack->set_slack_us(SafeDivide(summary.slack_us(), summary.occurrences()));
     slack->set_observed_duration_us(
         SafeDivide(summary.observed_duration_us(), summary.occurrences()));
     slack->set_stall_duration_us(
         SafeDivide(summary.stall_duration_us(), summary.occurrences()));
+    slack->set_send_done_duration_us(
+        SafeDivide(summary.send_done_duration_us(), summary.occurrences()));
+    slack->set_recv_done_duration_us(
+        SafeDivide(summary.recv_done_duration_us(), summary.occurrences()));
+    slack->set_send_duration_us(
+        SafeDivide(summary.send_duration_us(), summary.occurrences()));
+    slack->set_recv_duration_us(
+        SafeDivide(summary.recv_duration_us(), summary.occurrences()));
     slack->set_occurrences(summary.occurrences());
     slack->set_bytes_transmitted_over_network(
         summary.bytes_transmitted_over_network());

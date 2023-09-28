@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/use_cudnn.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tsl/platform/errors.h"
 #ifdef INTEL_MKL
 #include "tensorflow/core/util/mkl_heuristics.h"
 #endif  // INTEL_MKL
@@ -1898,13 +1898,180 @@ bool FindSigmoidAndMul(RemapperContext* ctx, int node_index,
   return found_op_type_match;
 }
 
+// Find a group of ops that make up an instance/layer normalization pattern
+// for fusion
+bool IsCommonNormPattern(RemapperContext* ctx, int node_index,
+                         std::map<string, int>* matched_nodes_map,
+                         std::set<int>* remove_node_indices) {
+  using utils::MatchingDirection;
+  using utils::NodeStatus;
+  // clang-format off
+  utils::OpTypePattern subgraph_pattern =
+  {"Rsqrt", "rsqrt", NodeStatus::kRemove,
+    {
+      {"AddV2|Add", "add", NodeStatus::kRemove,
+        {
+          {"Mean", "mean0", NodeStatus::kRemove,
+            {
+              {"SquaredDifference", "squareddiff", NodeStatus::kRemove,
+                {
+                  {"*", "input", NodeStatus::kRemain},
+                  {"Mean", "mean1", NodeStatus::kRemove,
+                    {
+                      {"*", "input", NodeStatus::kRemain},
+                      {"Const", "r_indices1", NodeStatus::kRemain}
+                    }
+                  } // end mean1
+                }
+              }, // end squareddiff
+              {"Const", "r_indices0", NodeStatus::kRemain}
+            }
+          }, // end mean0
+          {"Const", "epsilon", NodeStatus::kRemain}
+        }
+      } // end add
+    }
+  };
+  // The following pattern will be searched in the graph with additional
+  // contraints. Here * means any type of op.
+  //              Subgraph for fusion
+  //              -------------------
+  //   *(input)
+  //    |    | \____________
+  //    |    |              \
+  //    |    |             Mean1                                      FusedOp
+  //    |    |            /    \                                      -------
+  //    |    |           /      \                           *(input)  Const  Const
+  //    |    |          /        \                              \    (gamma) (beta)
+  //    |    |         /          \                              \     |     /
+  //    |    |        /           |                _MklFusedInstanceNorm/_MklLayerNorm
+  //    |    |       /            |
+  //    \   SquaredDiff  Const    |
+  //     \      \      /          |
+  //      \      \    /           |
+  //       \     Mean0  Const     |
+  //        \      \    /         |
+  //         \  AddV2|Add         |
+  //          \       \    Const  |
+  //           \    Rsqrt (gamma) |
+  //            \        \ /      |
+  //             \       Mul1     |
+  //              \      |   \    |
+  //               \     |    \   |
+  //                \    |     \  |
+  //                 \   | Const\ |
+  //                  \  | (beta)Mul2
+  //                   \ |    |  /
+  //                   Mul0   Sub
+  //                      \   /
+  //                  AddV2|Add(output)
+  utils::OpTypePattern common_norm_pattern =
+    {"AddV2|Add", "output", NodeStatus::kReplace,
+      {
+        {"Mul", "mul0", NodeStatus::kRemove,
+          {
+            {"*", "input", NodeStatus::kRemain},
+            {"Mul", "mul1", NodeStatus::kRemove,
+              {
+                subgraph_pattern,
+                {"Const", "gamma", NodeStatus::kRemain}
+              }
+            } // end mul1
+          }
+        }, // end mul0
+        {"Sub", "sub0", NodeStatus::kRemove,
+          {
+            {"Const", "beta", NodeStatus::kRemain},
+            {"Mul", "mul2", NodeStatus::kRemove,
+              {
+                {"Mul", "mul1", NodeStatus::kRemove},
+                {"Mean", "mean1", NodeStatus::kRemove}
+              }
+            }, // end mul2
+          }
+        } // end sub
+      }
+    };
+  // clang-format on
+  // A slight variation of the common layernorm pattern
+  // clang-format off
+  //        Subgraph for fusion
+  //        -------------------
+  //             *(input)
+  //            /  |      \
+  //           /   | Const \
+  //          /    | /      \
+  //          |   Mean1     |                                    FusedOp
+  //          |   / \       |                                    -------
+  //          |  /   \      |                            *(input)  Const   Const
+  //          Sub     \     |                                \    (gamma)  (beta)
+  //          |     SquaredDiff  Const                        \     |     /
+  //          |          \      /                              _MklLayerNorm
+  //          |           \    /
+  //          |            Mean0  Const
+  //          |              \   /
+  //          |               AddV2
+  //          |                 |
+  //          \               Rsqrt
+  //           \______     _____/
+  //                  \   /
+  //        Const      Mul1
+  //       (gamma)    /
+  //             \   /     Const
+  //             Mul0      (beta)
+  //                \      /
+  //               AddV2(output)
+  utils::OpTypePattern common_norm_pattern_1 =
+    {"AddV2|Add", "output", NodeStatus::kReplace,
+      {
+        {"Mul", "mul0", NodeStatus::kRemove,
+          {
+            {"Mul", "mul1", NodeStatus::kRemove,
+              {
+                {"Sub", "sub0", NodeStatus::kRemove,
+                  {
+                    {"*", "input", NodeStatus::kRemain},
+                    {"Mean", "mean1", NodeStatus::kRemove,
+                      {
+                        {"*", "input", NodeStatus::kRemain},
+                        {"Const", "r_indices1", NodeStatus::kRemain}
+                      }
+                    }
+                  }
+                },
+                subgraph_pattern
+              }
+            },
+            {"*", "gamma", NodeStatus::kRemain}
+          }
+        },
+        {"*", "beta", NodeStatus::kRemain},
+      }
+    };
+  // clang-format on
+  // TODO(intel-tf) : Use * for gamma and beta instead of Const
+  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+      &(ctx->graph_view));
+  matched_nodes_map->clear();
+  remove_node_indices->clear();
+  bool found_op_type_match =
+      graph_matcher.GetMatchedNodes(common_norm_pattern, {},
+                                    ctx->graph_view.GetNode(node_index),
+                                    matched_nodes_map, remove_node_indices) ||
+      graph_matcher.GetMatchedNodes(common_norm_pattern_1, {},
+                                    ctx->graph_view.GetNode(node_index),
+                                    matched_nodes_map, remove_node_indices);
+  return found_op_type_match;
+}
+
 // Keras LayerNormalization api uses multiple TensorFlow ops. Current fusion
 // pattern is only for the case, when LayerNormalization uses FusedBatcNormV3.
 // We further restrict it to only 2D or 3D tensor inputs to keras
 // LayerNormalization api.
 bool FindMklLayerNorm(RemapperContext* ctx, int node_index,
                       std::map<string, int>* matched_nodes_map,
-                      std::set<int>* remove_node_indices, float* epsilon) {
+                      std::set<int>* remove_node_indices,
+                      std::vector<string>* input_node_names, float* epsilon) {
   if (!IsMKLEnabled()) return false;
 
   // The following pattern will be searched in the graph with additional
@@ -1984,47 +2151,120 @@ bool FindMklLayerNorm(RemapperContext* ctx, int node_index,
       graph_matcher.GetMatchedNodes(layer_norm_pattern, ctx->nodes_to_preserve,
                                     ctx->graph_view.GetNode(node_index),
                                     matched_nodes_map, remove_node_indices);
+  // If Keras api based layer-norm is not found, check if custom layer-norm is
+  // present in the graph
+  if (!found_op_type_match) {
+    matched_nodes_map->clear();
+    remove_node_indices->clear();
+    found_op_type_match = IsCommonNormPattern(
+        ctx, node_index, matched_nodes_map, remove_node_indices);
+  }
 
   // Additional check for LayerNorm
   if (found_op_type_match) {
-    // LayerNorm uses FusedBatchNorm in training mode.
-    NodeDef* fused_batch_norm_node =
-        ctx->graph_view.GetNode(matched_nodes_map->at("fused_batch_norm"))
-            ->node();
-    if (fused_batch_norm_node->attr().count("epsilon")) {
-      *epsilon = fused_batch_norm_node->attr().at("epsilon").f();
-    } else {
-      *epsilon = 0.001;  // default value.
-    }
-    bool is_training = false;
-    if (!TryGetNodeAttr(*fused_batch_norm_node, kIsTraining, &is_training) ||
-        !is_training)
-      return false;
-
-    if (!NodeIsOnCpu(fused_batch_norm_node)) return false;
-
-    // FusedBatchNorm node should have mean/variance as empty constant
-    NodeDef* empty_const_node =
-        ctx->graph_view.GetNode(matched_nodes_map->at("empty"))->node();
-    Tensor const_tensor;
-    if (empty_const_node != nullptr && empty_const_node->op() == "Const" &&
-        const_tensor.FromProto(empty_const_node->attr().at("value").tensor())) {
-      if (const_tensor.NumElements() != 0) return false;
-    } else {
-      return false;
-    }
-
-    // TODO(intel-tf): Relax the restriction of 2D/3D tensor once kernel
-    // supports that.
     if (!ctx->inferred_graph_properties) {
       Status s = ctx->graph_properties.InferStatically(
           /*assume_valid_feeds=*/true,
           /*aggressive_shape_inference=*/false,
           /*include_input_tensor_values=*/true,
-          /*include_output_tensor_values=*/false);
+          /*include_output_tensor_values=*/true);
       if (!s.ok()) return false;
       ctx->inferred_graph_properties = true;
     }
+    *epsilon = 0.001;  // default value
+    // Keras layer-norm uses FusedBatchNorm in training mode. Check the
+    // FusedBatchNorm conforms to layer-norm semantics.
+    if (matched_nodes_map->count("fused_batch_norm")) {
+      // LayerNorm uses FusedBatchNorm in training mode.
+      NodeDef* fused_batch_norm_node =
+          ctx->graph_view.GetNode(matched_nodes_map->at("fused_batch_norm"))
+              ->node();
+      if (fused_batch_norm_node->attr().count("epsilon")) {
+        *epsilon = fused_batch_norm_node->attr().at("epsilon").f();
+      }
+      bool is_training = false;
+      if (!TryGetNodeAttr(*fused_batch_norm_node, kIsTraining, &is_training) ||
+          !is_training)
+        return false;
+
+      // FusedBatchNorm node should have mean/variance as empty constant
+      NodeDef* empty_const_node =
+          ctx->graph_view.GetNode(matched_nodes_map->at("empty"))->node();
+      Tensor const_tensor;
+      if (empty_const_node != nullptr && empty_const_node->op() == "Const" &&
+          const_tensor.FromProto(
+              empty_const_node->attr().at("value").tensor())) {
+        if (const_tensor.NumElements() != 0) return false;
+      } else {
+        return false;
+      }
+      auto* pre_reshape_node =
+          ctx->graph_view.GetNode(matched_nodes_map->at("pre_reshape"))->node();
+      auto* scale_node =
+          ctx->graph_view.GetNode(matched_nodes_map->at("gamma"))->node();
+      auto* beta_node =
+          ctx->graph_view.GetNode(matched_nodes_map->at("beta"))->node();
+      input_node_names->clear();
+      input_node_names->resize(3);
+      input_node_names->at(0) = pre_reshape_node->input(0);
+      input_node_names->at(1) = scale_node->name();
+      input_node_names->at(2) = beta_node->name();
+
+    } else {
+      // Make sure the custom pattern conforms to layer-norm semantics by
+      // checking the reduction axis
+      NodeDef* mean1_node =
+          ctx->graph_view.GetNode(matched_nodes_map->at("mean1"))->node();
+      bool keep_dims = false;
+      if (!mean1_node ||
+          !TryGetNodeAttr(*mean1_node, "keep_dims", &keep_dims) || !keep_dims)
+        return false;
+      // Get the reduction axes for mean node to check if the
+      // mean computation complies with layer normalization
+      // i.e the axis count should be 1 and the reduction axis
+      // should be the last axis
+      NodeDef* mean_axis_node =
+          ctx->graph_view.GetNode(matched_nodes_map->at("r_indices1"))->node();
+      if (!mean_axis_node) {
+        VLOG(1) << "Unable to find reduction axis node";
+        return false;
+      }
+      Tensor mean_axis_tensor;
+      if (!mean_axis_tensor.FromProto(
+              mean_axis_node->attr().at("value").tensor())) {
+        return false;
+      }
+      DataType dtype = mean_axis_tensor.dtype();
+      if (dtype != DT_INT32 && dtype != DT_INT64) return false;
+
+      int expected_axis_count = 1;
+      if (mean_axis_tensor.NumElements() != expected_axis_count) return false;
+
+      NodeDef* input_node =
+          ctx->graph_view.GetNode(matched_nodes_map->at("input"))->node();
+      auto input_node_props =
+          ctx->graph_properties.GetOutputProperties(input_node->name());
+      int rank = Rank(input_node_props[0].shape());
+      if (dtype == DT_INT32) {
+        if (static_cast<int32>(rank - 1) != mean_axis_tensor.flat<int32>()(0))
+          return false;
+      } else {
+        if (static_cast<int64>(rank - 1) != mean_axis_tensor.flat<int64>()(0))
+          return false;
+      }
+      auto* gamma_node =
+          ctx->graph_view.GetNode(matched_nodes_map->at("gamma"))->node();
+      auto* beta_node =
+          ctx->graph_view.GetNode(matched_nodes_map->at("beta"))->node();
+      input_node_names->clear();
+      input_node_names->resize(3);
+      input_node_names->at(0) = mean1_node->input(0);
+      input_node_names->at(1) = gamma_node->name();
+      input_node_names->at(2) = beta_node->name();
+    }
+
+    // TODO(intel-tf): Relax the restriction of 2D/3D tensor once kernel
+    // supports that.
     NodeDef* input_node_def =
         ctx->graph_view.GetNode(matched_nodes_map->at("input"))->node();
     auto input_props =
@@ -2583,109 +2823,12 @@ bool IsInstanceNormReduction(const TensorShapeProto& input_shape,
 bool FindInstanceNorm(RemapperContext* ctx, int node_index,
                       std::map<string, int>* matched_nodes_map,
                       std::set<int>* remove_node_indices) {
-  // The following pattern will be searched in the graph with additional
-  // contraints. Here * means any type of op.
-  // clang-format off
-  //              Subgraph for fusion
-  //              -------------------
-  //   *(input)
-  //    |    | \____________
-  //    |    |              \
-  //    |    |             Mean1                                      FusedOp
-  //    |    |            /    \                                      -------
-  //    |    |           /      \                           *(input)  Const  Const
-  //    |    |          /        \                              \    (gamma) (beta)
-  //    |    |         /          \                              \     |     /
-  //    |    |        /           |                           _MklFusedInstanceNorm
-  //    |    |       /            |
-  //    \   SquaredDiff  Const    |
-  //     \      \      /          |
-  //      \      \    /           |
-  //       \     Mean0  Const     |
-  //        \      \    /         |
-  //         \     AddV2          |
-  //          \       \           |
-  //           \    Rsqrt  Const  |
-  //            \        \ /      |
-  //             \       Mul1     |
-  //              \      |   \    |
-  //               \     |    \   |
-  //                \    |     \  |
-  //                 \   |      \ |
-  //                  \  | Const Mul2
-  //                   \ |    |  /
-  //                   Mul0   Sub
-  //                      \   /
-  //                      AddV2(output)
-  // clang-format on
-  using utils::MatchingDirection;
-  using utils::NodeStatus;
-  // clang-format off
-  utils::OpTypePattern instance_norm_pattern =
-    {"AddV2", "output", NodeStatus::kReplace,
-      {
-        {"Mul", "mul0", NodeStatus::kRemove,
-          {
-            {"*", "input", NodeStatus::kRemain},
-            {"Mul", "mul1", NodeStatus::kRemove,
-              {
-                {"Rsqrt", "rsqrt", NodeStatus::kRemove,
-                  {
-                    {"AddV2", "add", NodeStatus::kRemove,
-                      {
-                        {"Mean", "mean0", NodeStatus::kRemove,
-                          {
-                            {"SquaredDifference", "squareddiff", NodeStatus::kRemove,
-                              {
-                                {"*", "input", NodeStatus::kRemain},
-                                {"Mean", "mean1", NodeStatus::kRemove,
-                                  {
-                                    {"*", "input", NodeStatus::kRemain},
-                                    {"Const", "r_indices1", NodeStatus::kRemain}
-                                  }
-                                } // end mean1
-                              }
-                            }, // end squareddiff
-                            {"Const", "r_indices0", NodeStatus::kRemain}
-                          }
-                        }, // end mean0
-                        {"Const", "epsilon", NodeStatus::kRemain}
-                      }
-                    } // end add
-                  }
-                }, // end rsqrt
-                //TODO(intel-tf): Support non-constant
-                {"Const", "gamma", NodeStatus::kRemain}
-              }
-            } // end mul1
-          }
-        }, // end mul0
-        {"Sub", "sub0", NodeStatus::kRemove,
-          {
-            //TODO(intel-tf): Support non-constant
-            {"Const", "beta", NodeStatus::kRemain},
-            {"Mul", "mul2", NodeStatus::kRemove,
-              {
-                {"Mul", "mul1", NodeStatus::kRemove},
-                {"Mean", "mean1", NodeStatus::kRemove}
-              }
-            }, // end mul2
-          }
-        } // end sub
-      }
-    };
-  // clang-format on
-  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
-      &(ctx->graph_view));
-  matched_nodes_map->clear();
-  remove_node_indices->clear();
-
-  if (!graph_matcher.GetMatchedNodes(instance_norm_pattern, {},
-                                     ctx->graph_view.GetNode(node_index),
-                                     matched_nodes_map, remove_node_indices)) {
+  if (!IsCommonNormPattern(ctx, node_index, matched_nodes_map,
+                           remove_node_indices)) {
     return false;
   }
 
+  // Additional checks for InstanceNorm
   if (!ctx->inferred_graph_properties) {
     Status s = ctx->graph_properties.InferStatically(
         /*assume_valid_feeds=*/true,
@@ -3492,13 +3635,10 @@ Status AddFusedMatMulBiasAddAndGelu(
 Status AddMklLayerNorm(RemapperContext* ctx,
                        const std::map<string, int>& matched_nodes_map,
                        const std::set<int>& remove_node_indices,
+                       const std::vector<string>& input_node_names,
                        std::vector<bool>* invalidated_nodes,
                        std::vector<bool>* nodes_to_delete,
                        const float epsilon) {
-  auto* pre_reshape_node =
-      ctx->graph_view.GetNode(matched_nodes_map.at("pre_reshape"))->node();
-  auto* scale_node =
-      ctx->graph_view.GetNode(matched_nodes_map.at("gamma"))->node();
   auto* output_node =
       ctx->graph_view.GetNode(matched_nodes_map.at("output"))->node();
 
@@ -3506,9 +3646,7 @@ Status AddMklLayerNorm(RemapperContext* ctx,
   fused_node.set_name(output_node->name());
   fused_node.set_op("_MklLayerNorm");
   fused_node.set_device(output_node->device());
-  fused_node.add_input(pre_reshape_node->input(0));
-  fused_node.add_input(scale_node->name());
-  fused_node.add_input(output_node->input(0));
+  for (const auto& name : input_node_names) fused_node.add_input(name);
   auto* attr = fused_node.mutable_attr();
   auto& src_attr = output_node->attr();
   (*attr)["T"] = src_attr.at("T");
@@ -4642,12 +4780,13 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       // Remap smaller ops from layernorm python api into _MklLayerNorm
       matched_nodes_map.clear();
       remove_node_indices.clear();
+      input_node_names.clear();
       float epsilon = 0.001;
       if (FindMklLayerNorm(&ctx, i, &matched_nodes_map, &remove_node_indices,
-                           &epsilon)) {
-        TF_RETURN_IF_ERROR(
-            AddMklLayerNorm(&ctx, matched_nodes_map, remove_node_indices,
-                            &invalidated_nodes, &nodes_to_delete, epsilon));
+                           &input_node_names, &epsilon)) {
+        TF_RETURN_IF_ERROR(AddMklLayerNorm(
+            &ctx, matched_nodes_map, remove_node_indices, input_node_names,
+            &invalidated_nodes, &nodes_to_delete, epsilon));
         continue;
       }
 

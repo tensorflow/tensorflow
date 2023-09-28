@@ -22,7 +22,7 @@ limitations under the License.
 
 #include <sstream>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
@@ -389,7 +389,7 @@ __global__ __launch_bounds__(1024) void ColumnReduceKernel(
     //  -         =
     //            =
     const int numRowsThisBlock =
-        min(blockDim.y, num_rows - blockIdx.y * blockDim.y);
+        min(static_cast<int>(blockDim.y), num_rows - blockIdx.y * blockDim.y);
 
     for (int row = 1; row < numRowsThisBlock; ++row) {
       value_type t = partial_sums[threadIdx.x * (TF_RED_WARPSIZE + 1) + row];

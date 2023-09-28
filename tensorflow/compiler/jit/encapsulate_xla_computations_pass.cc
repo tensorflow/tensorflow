@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_node_util.h"

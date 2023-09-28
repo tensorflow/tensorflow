@@ -214,7 +214,7 @@ using delegate options:
 ```c++
 TfLiteXNNPackDelegateOptions xnnpack_options =
     TfLiteXNNPackDelegateOptionsDefault();
-xnnpack_options.handle_variable_ops = true;
+xnnpack_options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS;
 ```
 
 When XNNPACK handles resource variables,
@@ -745,7 +745,40 @@ operators:
     `SIGMOID`, and `SQUARE`.
 
 Pre-trained [Fast Sparse ConvNets models](https://github.com/google-research/google-research/tree/master/fastconvnets)
-provide examples that satisfy these constrains.
+provide examples that satisfy these constraints.
+
+### Transient Indirection Buffer
+
+Some of XNNPACK operators, such as `CONV_2D`, use indirection buffers to supply
+locations of input for the operators. Indirection buffers are created for each
+operator instance, and are persistent by default. It causes XNNPACK to use
+substantial amount of memory, especially when the input is in high resolution.
+
+To reduce the memory footprint of indirection buffers, either build the delegate
+with `--define tflite_with_xnnpack_transient_indirection_buffer=true` option, or
+add `TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER` flag to the
+`TfLiteXNNPackDelegateOptions.flags` bitmask passed into the
+`TfLiteXNNPackDelegateCreate` call:
+
+```c
+TfLiteXNNPackDelegateOptions xnnpack_options =
+    TfLiteXNNPackDelegateOptionsDefault();
+...
+xnnpack_options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER;
+TfLiteDelegate* xnnpack_delegate =
+    TfLiteXNNPackDelegateCreate(&xnnpack_options);
+```
+
+XNNPACK will now use the temporary memory in the workspace for indirection
+buffers. However, instead of initializing the indirection buffers once during
+the initialization of the operators, the indirection buffers will be initialized
+during every inference run.
+
+Below is the list of currently supported operators:
+
+* `CONV_2D`
+* `DEPTHWISE_CONV_2D`
+* `RESIZE_BILINEAR`
 
 ### Other limitations
 

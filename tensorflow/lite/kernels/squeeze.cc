@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
 #include <string.h>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -45,7 +46,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Determines number of dimensions of output tensor after squeeze.
   const TfLiteIntArray* input_dims = op_context.input->dims;
-  const int* squeeze_dims = op_context.params->squeeze_dims;
+  const int32_t* squeeze_dims = op_context.params->squeeze_dims;
   TF_LITE_ENSURE(context, input_num_dims <= 8);
   bool should_squeeze[8] = {false};
   int num_squeezed_dims = 0;
@@ -58,8 +59,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   } else {
     for (int idx = 0; idx < num_squeeze_dims; ++idx) {
-      int current = squeeze_dims[idx] < 0 ? squeeze_dims[idx] + input_num_dims
-                                          : squeeze_dims[idx];
+      int32_t current = squeeze_dims[idx] < 0
+                            ? squeeze_dims[idx] + input_num_dims
+                            : squeeze_dims[idx];
       TF_LITE_ENSURE(context, current >= 0 && current < input_num_dims &&
                                   input_dims->data[current] == 1);
       if (!should_squeeze[current]) ++num_squeezed_dims;

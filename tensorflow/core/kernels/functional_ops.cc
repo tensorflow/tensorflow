@@ -16,10 +16,10 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/tsl/platform/refcount.h"
+#include "tsl/platform/refcount.h"
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"

@@ -19,8 +19,8 @@ limitations under the License.
 #include <iostream>
 #include <vector>
 
-#include "tensorflow/compiler/xla/cpu_function_runtime.h"
-#include "tensorflow/compiler/xla/runtime/aot_ffi_execution_context.h"
+#include "xla/cpu_function_runtime.h"
+#include "xla/runtime/aot_ffi_execution_context.h"
 
 namespace tensorflow {
 

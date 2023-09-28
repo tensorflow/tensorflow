@@ -21,7 +21,7 @@ limitations under the License.
 #include "dnnl.hpp"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/status.h"
 
 using dnnl::memory;
 

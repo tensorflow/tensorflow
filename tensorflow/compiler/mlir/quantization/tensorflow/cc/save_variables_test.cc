@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace quantization {

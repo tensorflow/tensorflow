@@ -59,7 +59,7 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM

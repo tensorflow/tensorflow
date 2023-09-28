@@ -44,9 +44,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_split.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/stream_executor/device_id_utils.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
@@ -68,25 +68,25 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/tsl/framework/allocator.h"
-#include "tensorflow/tsl/framework/device_id.h"
-#include "tensorflow/tsl/framework/device_id_utils.h"
+#include "tsl/framework/allocator.h"
+#include "tsl/framework/device_id.h"
+#include "tsl/framework/device_id_utils.h"
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
 #ifdef TF_GPU_USE_PJRT
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/xla/pjrt/gpu/gpu_helpers.h"
-#include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
-#include "tensorflow/compiler/xla/stream_executor/device_host_allocator.h"
+#include "xla/pjrt/gpu/gpu_helpers.h"
+#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/stream_executor/device_host_allocator.h"
 #endif  // TF_GPU_USE_PJRT
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
@@ -1227,7 +1227,30 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
     allocated_memory = total_memory * per_process_gpu_memory_fraction;
   }
 
+  const auto maybe_update_allocated_memory = [&](int64_t reserved_mb) {
+    // Convert MBytes to Bytes.
+    int64_t allowable_reserved_memory = reserved_mb * 1024 * 1024;
+    // overrides per_process_gpu_memory_fraction.
+    if (allowable_reserved_memory <= available_memory) {
+      allocated_memory = available_memory - allowable_reserved_memory;
+      VLOG(1) << "Setting the GPU reserved bytes to "
+              << strings::HumanReadableNumBytes(allocated_memory) << " MBytes";
+    } else {
+      LOG(WARNING) << "The requested reserved device memory "
+                   << strings::HumanReadableNumBytes(allowable_reserved_memory)
+                   << " is larger than the available memory of "
+                   << strings::HumanReadableNumBytes(available_memory)
+                   << ". The request is ignored.";
+    }
+  };
+  // Override the excluded memory if gpu_system_memory_size_in_mb is set.
+  if (gpu_options.experimental().gpu_system_memory_size_in_mb() > 0) {
+    maybe_update_allocated_memory(
+        gpu_options.experimental().gpu_system_memory_size_in_mb());
+  }
   // Override the excluded memory when TF_DEVICE_MIN_SYS_MEMORY_IN_MB is set.
+  // TF_DEVICE_MIN_SYS_MEMORY_IN_MB takes precedence over
+  // gpu_system_memory_size_in_mb when both are set.
   const char* force_device_reserved_bytes =
       std::getenv("TF_DEVICE_MIN_SYS_MEMORY_IN_MB");
   if (force_device_reserved_bytes != nullptr &&
@@ -1239,23 +1262,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
                    << force_device_reserved_bytes
                    << " is invalid. The request will be ignored.";
     } else {
-      // Convert MBytes to Bytes.
-      int64_t allowable_reserved_memory = reserved_mb * 1024 * 1024;
-      // TF_DEVICE_MIN_SYS_MEMORY_IN_MB overrides
-      // per_process_gpu_memory_fraction.
-      if (allowable_reserved_memory <= available_memory) {
-        allocated_memory = available_memory - allowable_reserved_memory;
-        VLOG(1) << "Setting the GPU reserved bytes to "
-                << strings::HumanReadableNumBytes(allocated_memory)
-                << " MBytes";
-      } else {
-        LOG(WARNING) << "The requested reserved device memory "
-                     << strings::HumanReadableNumBytes(
-                            allowable_reserved_memory)
-                     << " is larger than the available memory of "
-                     << strings::HumanReadableNumBytes(available_memory)
-                     << ". The request is ignored.";
-      }
+      maybe_update_allocated_memory(reserved_mb);
     }
   }
   *memory_limit = allocated_memory;
@@ -1595,9 +1602,22 @@ Status BaseGPUDeviceFactory::CreateDevices(
       TF_RETURN_IF_ERROR(
           SingleVirtualDeviceMemoryLimit(gpu_options, platform_device_id,
                                          &single_virtual_device_memory_limit));
-      tf_device_specs.emplace_back(
-          platform_device_id, single_virtual_device_memory_limit,
-          /*index=*/tf_device_specs.size(), /*device_ordinal=*/0);
+      const int num_virtual_devices =
+          gpu_options.experimental().num_virtual_devices_per_gpu();
+      if (num_virtual_devices > 1) {
+        // The available memory is split equally among all virtual devices.
+        const int64_t memory_limit_per_virtual_device =
+            single_virtual_device_memory_limit / num_virtual_devices;
+        for (int j = 0; j < num_virtual_devices; ++j) {
+          tf_device_specs.emplace_back(
+              platform_device_id, memory_limit_per_virtual_device,
+              /*index=*/tf_device_specs.size(), /*device_ordinal=*/0);
+        }
+      } else {
+        tf_device_specs.emplace_back(
+            platform_device_id, single_virtual_device_memory_limit,
+            /*index=*/tf_device_specs.size(), /*device_ordinal=*/0);
+      }
     } else {
       const GPUOptions::Experimental::VirtualDevices& virtual_devices_for_gpu =
           virtual_devices.Get(i);
@@ -1626,7 +1646,8 @@ Status BaseGPUDeviceFactory::CreateDevices(
                 return false;
               }
               DCHECK_EQ(a.device_ordinal, b.device_ordinal);
-              DCHECK_NE(a.index, b.index);  // index is unique.
+              DCHECK(std::addressof(a) == std::addressof(b) ||
+                     a.index != b.index);  // index is unique.
               if (a.index < b.index) {
                 return true;
               }

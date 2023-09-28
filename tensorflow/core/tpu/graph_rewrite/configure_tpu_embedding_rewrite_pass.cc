@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/graph/graph.h"

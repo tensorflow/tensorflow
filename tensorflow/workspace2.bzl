@@ -23,6 +23,7 @@ load("//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("//third_party/absl:workspace.bzl", absl = "repo")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
+load("//third_party/ducc:workspace.bzl", ducc = "repo")
 load("//third_party/eigen3:workspace.bzl", eigen3 = "repo")
 load("//third_party/farmhash:workspace.bzl", farmhash = "repo")
 load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
@@ -30,6 +31,7 @@ load("//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
 load("//third_party/hexagon:workspace.bzl", hexagon_nn = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
+load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "repo")
@@ -49,7 +51,6 @@ load("//third_party/triton:workspace.bzl", triton = "repo")
 
 # Import external repository rules.
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
-load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("//tensorflow/tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("//tensorflow/tools/toolchains/remote:configure.bzl", "remote_execution_configure")
@@ -62,6 +63,7 @@ def _initialize_third_party():
     absl()
     bazel_skylib_workspace()
     benchmark()
+    ducc()
     dlpack()
     eigen3()
     farmhash()
@@ -71,6 +73,7 @@ def _initialize_third_party():
     highwayhash()
     hwloc()
     icu()
+    implib_so()
     jpeg()
     kissfft()
     libprotobuf_mutator()
@@ -141,13 +144,15 @@ def _tf_repositories():
     # b) get the sha256 hash of the commit by running:
     #    curl -L <url> | sha256sum
     # and update the sha256 with the result.
+    # c) TF's automation will then upload the mirrored archive. For more information as well as
+    # how to manually upload a mirror if necessary, see go/tf_mirror_md.
 
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "c979b62e8b77af60dfd7567f22ade20d5a9d4d0888f8a2d60d155fc0d31b22ab",
-        strip_prefix = "XNNPACK-b9d4073a6913891ce9cbd8965c8d506075d2a45a",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/b9d4073a6913891ce9cbd8965c8d506075d2a45a.zip"),
+        sha256 = "f9c5e1cf1bcc7920985df92322b95e537f284914339c0836e91c352f51345182",
+        strip_prefix = "XNNPACK-bbbaa7352a3ea729987d3e654d37be93e8009691",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/bbbaa7352a3ea729987d3e654d37be93e8009691.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -160,16 +165,16 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "f53ff856754a62cfc133aafb50a72d751d720e9eac095bf1d1a5433d5addd41f",
-        strip_prefix = "pthreadpool-82e33475389df5e43d72c064d20546ef26db1594",
-        urls = tf_mirror_urls("https://github.com/Maratyszcza/pthreadpool/archive/82e33475389df5e43d72c064d20546ef26db1594.zip"),
+        sha256 = "a4cf06de57bfdf8d7b537c61f1c3071bce74e57524fe053e0bbd2332feca7f95",
+        strip_prefix = "pthreadpool-4fe0e1e183925bf8cfa6aae24237e724a96479b8",
+        urls = tf_mirror_urls("https://github.com/Maratyszcza/pthreadpool/archive/4fe0e1e183925bf8cfa6aae24237e724a96479b8.zip"),
     )
 
     tf_http_archive(
         name = "cpuinfo",
-        strip_prefix = "cpuinfo-87d8234510367db49a65535021af5e1838a65ac2",
-        sha256 = "609fc42c47482c1fc125dccac65e843f640e792540162581c4b7eb6ff81c826a",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/87d8234510367db49a65535021af5e1838a65ac2.zip"),
+        strip_prefix = "cpuinfo-959002f82d7962a473d8bf301845f2af720e0aa4",
+        sha256 = "a0f53ccfb477c57753c595df02bf79ed67bf092fd9a5c61ec5b8992b81bc1e65",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/959002f82d7962a473d8bf301845f2af720e0aa4.zip"),
     )
 
     tf_http_archive(
@@ -192,9 +197,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "onednn",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "8b1db9cc5799ae39c2a567eb836962de0346d79fbc3d8e6f7090a3d9f8729129",
-        strip_prefix = "oneDNN-3.2",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.2.tar.gz"),
+        sha256 = "2f76b407ef8893cca71340f88cd800019a1f14f8ac1bbdbb89a84be1370b52e3",
+        strip_prefix = "oneDNN-3.2.1",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.2.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -202,18 +207,14 @@ def _tf_repositories():
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
         patch_file = [
             "//third_party/mkl_dnn:onednn_acl_threadcap.patch",
-            "//third_party/mkl_dnn:onednn_acl_remove_winograd.patch",
-            "//third_party/mkl_dnn:onednn_acl_fixed_format_kernels.patch",
-            "//third_party/mkl_dnn:onednn_acl_depthwise_convolution.patch",
-            "//third_party/mkl_dnn:onednn_acl_threadpool_scheduler.patch",
-            "//third_party/mkl_dnn:onednn_acl_reorder_padded.patch",
-            "//third_party/mkl_dnn:onednn_acl_reorder_update.patch",
             "//third_party/mkl_dnn:onednn_acl_reorder.patch",
             "//third_party/mkl_dnn:onednn_acl_thread_local_scheduler.patch",
+            "//third_party/mkl_dnn:onednn_acl_fp32_bf16_reorder.patch",
+            "//third_party/mkl_dnn:onednn_acl_bf16_capability_detection_for_ubuntu20.04.patch",
         ],
-        sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
-        strip_prefix = "oneDNN-2.7.3",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.7.3.tar.gz"),
+        sha256 = "2f76b407ef8893cca71340f88cd800019a1f14f8ac1bbdbb89a84be1370b52e3",
+        strip_prefix = "oneDNN-3.2.1",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.2.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -321,10 +322,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "org_sqlite",
         build_file = "//third_party:sqlite.BUILD",
-        sha256 = "49112cc7328392aa4e3e5dae0b2f6736d0153430143d21f69327788ff4efe734",
-        strip_prefix = "sqlite-amalgamation-3400100",
+        sha256 = "bb5849ae4d7129c09d20596379a0b3f7b1ac59cf9998eba5ef283ea9b6c000a5",
+        strip_prefix = "sqlite-amalgamation-3430000",
         system_build_file = "//third_party/systemlibs:sqlite.BUILD",
-        urls = tf_mirror_urls("https://www.sqlite.org/2022/sqlite-amalgamation-3400100.zip"),
+        urls = tf_mirror_urls("https://www.sqlite.org/2023/sqlite-amalgamation-3430000.zip"),
     )
 
     tf_http_archive(
@@ -347,85 +348,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "astor_archive",
-        build_file = "//third_party:astor.BUILD",
-        sha256 = "95c30d87a6c2cf89aa628b87398466840f0ad8652f88eb173125a6df8533fb8d",
-        strip_prefix = "astor-0.7.1",
-        system_build_file = "//third_party/systemlibs:astor.BUILD",
-        urls = tf_mirror_urls("https://pypi.python.org/packages/source/a/astor/astor-0.7.1.tar.gz"),
-    )
-
-    tf_http_archive(
-        name = "astunparse_archive",
-        build_file = "//third_party:astunparse.BUILD",
-        sha256 = "5ad93a8456f0d084c3456d059fd9a92cce667963232cbf763eac3bc5b7940872",
-        strip_prefix = "astunparse-1.6.3/lib",
-        system_build_file = "//third_party/systemlibs:astunparse.BUILD",
-        urls = tf_mirror_urls("https://files.pythonhosted.org/packages/f3/af/4182184d3c338792894f34a62672919db7ca008c89abee9b564dd34d8029/astunparse-1.6.3.tar.gz"),
-    )
-
-    filegroup_external(
-        name = "astunparse_license",
-        licenses = ["notice"],  # PSFL
-        sha256_urls = {
-            "92fc0e4f4fa9460558eedf3412b988d433a2dcbb3a9c45402a145a4fab8a6ac6": tf_mirror_urls("https://raw.githubusercontent.com/simonpercivall/astunparse/v1.6.2/LICENSE"),
-        },
-    )
-
-    tf_http_archive(
-        name = "functools32_archive",
-        build_file = "//third_party:functools32.BUILD",
-        sha256 = "f6253dfbe0538ad2e387bd8fdfd9293c925d63553f5813c4e587745416501e6d",
-        strip_prefix = "functools32-3.2.3-2",
-        system_build_file = "//third_party/systemlibs:functools32.BUILD",
-        urls = tf_mirror_urls("https://pypi.python.org/packages/c5/60/6ac26ad05857c601308d8fb9e87fa36d0ebf889423f47c3502ef034365db/functools32-3.2.3-2.tar.gz"),
-    )
-
-    tf_http_archive(
-        name = "gast_archive",
-        build_file = "//third_party:gast.BUILD",
-        sha256 = "40feb7b8b8434785585ab224d1568b857edb18297e5a3047f1ba012bc83b42c1",
-        strip_prefix = "gast-0.4.0",
-        system_build_file = "//third_party/systemlibs:gast.BUILD",
-        urls = tf_mirror_urls("https://files.pythonhosted.org/packages/83/4a/07c7e59cef23fb147454663c3271c21da68ba2ab141427c20548ae5a8a4d/gast-0.4.0.tar.gz"),
-    )
-
-    tf_http_archive(
-        name = "termcolor_archive",
-        build_file = "//third_party:termcolor.BUILD",
-        sha256 = "1d6d69ce66211143803fbc56652b41d73b4a400a2891d7bf7a1cdf4c02de613b",
-        strip_prefix = "termcolor-1.1.0",
-        system_build_file = "//third_party/systemlibs:termcolor.BUILD",
-        urls = tf_mirror_urls("https://pypi.python.org/packages/8a/48/a76be51647d0eb9f10e2a4511bf3ffb8cc1e6b14e9e4fab46173aa79f981/termcolor-1.1.0.tar.gz"),
-    )
-
-    tf_http_archive(
-        name = "typing_extensions_archive",
-        build_file = "//third_party:typing_extensions.BUILD",
-        sha256 = "f1c24655a0da0d1b67f07e17a5e6b2a105894e6824b92096378bb3668ef02376",
-        strip_prefix = "typing_extensions-4.2.0/src",
-        system_build_file = "//third_party/systemlibs:typing_extensions.BUILD",
-        urls = tf_mirror_urls("https://pypi.python.org/packages/source/t/typing_extensions/typing_extensions-4.2.0.tar.gz"),
-    )
-
-    filegroup_external(
-        name = "typing_extensions_license",
-        licenses = ["notice"],  # PSFL
-        sha256_urls = {
-            "ff17ce94e102024deb68773eb1cc74ca76da4e658f373531f0ac22d68a6bb1ad": tf_mirror_urls("https://raw.githubusercontent.com/python/typing/master/typing_extensions/LICENSE"),
-        },
-    )
-
-    tf_http_archive(
-        name = "opt_einsum_archive",
-        build_file = "//third_party:opt_einsum.BUILD",
-        sha256 = "d3d464b4da7ef09e444c30e4003a27def37f85ff10ff2671e5f7d7813adac35b",
-        strip_prefix = "opt_einsum-2.3.2",
-        system_build_file = "//third_party/systemlibs:opt_einsum.BUILD",
-        urls = tf_mirror_urls("https://pypi.python.org/packages/f6/d6/44792ec668bcda7d91913c75237314e688f70415ab2acd7172c845f0b24f/opt_einsum-2.3.2.tar.gz"),
-    )
-
-    tf_http_archive(
         name = "absl_py",
         sha256 = "a7c51b2a0aa6357a9cbb2d9437e8cd787200531867dc02565218930b6a32166e",
         strip_prefix = "abseil-py-1.0.0",
@@ -437,32 +359,6 @@ def _tf_repositories():
             "//third_party/systemlibs:absl_py.absl.logging.BUILD": "absl/logging/BUILD",
         },
         urls = tf_mirror_urls("https://github.com/abseil/abseil-py/archive/refs/tags/v1.0.0.tar.gz"),
-    )
-
-    tf_http_archive(
-        name = "dill_archive",
-        build_file = "//third_party:dill.BUILD",
-        system_build_file = "//third_party/systemlibs:dill.BUILD",
-        urls = tf_mirror_urls("https://github.com/uqfoundation/dill/releases/download/dill-0.3.6/dill-0.3.6.zip"),
-        sha256 = "2159ca9e7568ff47dc7be2e35a6edf18014351da95ad1b59c0930a14dcf37be7",
-        strip_prefix = "dill-0.3.6",
-    )
-
-    tf_http_archive(
-        name = "tblib_archive",
-        build_file = "//third_party:tblib.BUILD",
-        system_build_file = "//third_party/systemlibs:tblib.BUILD",
-        urls = tf_mirror_urls("https://files.pythonhosted.org/packages/d3/41/901ef2e81d7b1e834b9870d416cb09479e175a2be1c4aa1a9dcd0a555293/tblib-1.7.0.tar.gz"),
-        sha256 = "059bd77306ea7b419d4f76016aef6d7027cc8a0785579b5aad198803435f882c",
-        strip_prefix = "tblib-1.7.0",
-    )
-
-    filegroup_external(
-        name = "org_python_license",
-        licenses = ["notice"],  # Python 2.0
-        sha256_urls = {
-            "e76cacdf0bdd265ff074ccca03671c33126f597f39d0ed97bc3e5673d9170cf6": tf_mirror_urls("https://docs.python.org/2.7/_sources/license.rst.txt"),
-        },
     )
 
     tf_http_archive(
@@ -511,10 +407,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "2e5a9b8fcdc095bdd2f079561f369de71c5eb3b80f00a702fbe9a8b8d9897891",
-        strip_prefix = "curl-8.1.2",
+        sha256 = "f98bdb06c0f52bdd19e63c4a77b5eb19b243bcbbd0f5b002b9f3cba7295a3a42",
+        strip_prefix = "curl-8.2.1",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-8.1.2.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-8.2.1.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
@@ -814,6 +710,13 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/bazelbuild/rules_android/archive/v0.1.1.zip"),
     )
 
+    tf_http_archive(
+        name = "rules_android_ndk",
+        sha256 = "b29409496439cdcdb50a8e161c4953ca78a548e16d3ee729a1b5cd719ffdacbf",
+        strip_prefix = "rules_android_ndk-81ec8b79dc50ee97e336a25724fdbb28e33b8d41",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_android_ndk/archive/81ec8b79dc50ee97e336a25724fdbb28e33b8d41.zip"),
+    )
+
     # Apple and Swift rules.
     # https://github.com/bazelbuild/rules_apple/releases
     tf_http_archive(
@@ -874,15 +777,6 @@ def _tf_repositories():
         sha256 = "c7ab64b1ccf9a678694a89035a8c865a693e4e872803778f91f0965c2f281d78",
         strip_prefix = "pybind11_protobuf-80f3440cd8fee124e077e2e47a8a17b78b451363",
         patch_file = ["//third_party/pybind11_protobuf:remove_license.patch"],
-    )
-
-    tf_http_archive(
-        name = "wrapt",
-        build_file = "//third_party:wrapt.BUILD",
-        sha256 = "866211ed43c2639a2452cd017bd38589e83687b1d843817c96b99d2d9d32e8d7",
-        strip_prefix = "wrapt-1.14.1/src/wrapt",
-        system_build_file = "//third_party/systemlibs:wrapt.BUILD",
-        urls = tf_mirror_urls("https://github.com/GrahamDumpleton/wrapt/archive/1.14.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -988,6 +882,13 @@ def _tf_repositories():
         sha256 = "b6c537b53356a3af3ca3e621457751fa9a6ba96daf3aebb3526ae0f610863532",
         strip_prefix = "zstd-1.4.5/lib",
         urls = tf_mirror_urls("https://github.com/facebook/zstd/archive/v1.4.5.zip"),  # 2020-05-22
+    )
+
+    tf_http_archive(
+        name = "com_google_highway",
+        sha256 = "2eb48f87c099a95123dc13a9f243bd3b74d67fe1d887942903d09a211593da97",
+        strip_prefix = "highway-1.0.7",
+        urls = tf_mirror_urls("https://github.com/google/highway/archive/refs/tags/1.0.7.zip"),
     )
 
     # used for adding androidx.annotation dependencies in tflite android jni.

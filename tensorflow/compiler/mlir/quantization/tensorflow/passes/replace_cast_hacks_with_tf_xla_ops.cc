@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_to_xla_attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace mlir::quant {
 namespace {

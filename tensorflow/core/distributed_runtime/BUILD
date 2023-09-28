@@ -172,10 +172,10 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/activity_watcher",
         "//tensorflow/core/protobuf:worker_proto_cc",
-        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
-        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
-        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
-        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service",
+        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
+        "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 
@@ -273,7 +273,7 @@ cc_library(
     hdrs = ["call_options.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "//tensorflow/tsl/distributed_runtime:call_options",
+        "@local_tsl//tsl/distributed_runtime:call_options",
     ],
 )
 
@@ -392,7 +392,7 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/protobuf:master_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
-        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
+        "@local_tsl//tsl/protobuf:rpc_options_proto_cc",
     ],
 )
 
@@ -492,7 +492,7 @@ cc_library(
         ":worker_cache",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
-        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
+        "@local_tsl//tsl/protobuf:rpc_options_proto_cc",
     ],
 )
 

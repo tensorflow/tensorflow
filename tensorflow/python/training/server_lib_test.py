@@ -35,7 +35,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import input as input_ops
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import server_lib
-from tensorflow.tsl.protobuf import rpc_options_pb2
+from tsl.protobuf import rpc_options_pb2
 
 
 class GrpcServerTest(test.TestCase):

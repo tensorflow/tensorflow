@@ -23,8 +23,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_allocator.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/util/reffed_status_callback.h"
 
 ABSL_FLAG(bool, next_pluggable_device_use_pjrt_allocator, true,
           "Use PjRtAllocator in next pluggable device.");
@@ -119,21 +121,98 @@ Status NextPluggableDevice::MakeTensorFromProto(
     Tensor* tensor) {
   Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
-    return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                   tensor_proto.DebugString());
+    return Status(absl::StatusCode::kInvalidArgument,
+                  absl::StrCat("Cannot parse tensor from proto: ",
+                               tensor_proto.DebugString()));
   }
 
   Status status;
   if (alloc_attrs.on_host()) {
     *tensor = parsed;
-  } else {
+    VLOG(2) << "Allocated tensor at " << DMAHelper::base(tensor);
+    return status;
+  }
+
+  if (parsed.dtype() != DT_VARIANT) {
     Allocator* allocator = GetAllocator(alloc_attrs);
     Tensor copy(allocator, parsed.dtype(), parsed.shape());
     TF_RETURN_IF_ERROR(
         device_context_->CopyCPUTensorToDeviceSync(&parsed, this, &copy));
     *tensor = copy;
+    VLOG(2) << "Allocated tensor at " << DMAHelper::base(tensor);
+    return status;
   }
-  VLOG(2) << "Allocated tensor at " << DMAHelper::base(tensor);
+  const Variant* from = parsed.flat<Variant>().data();
+  Tensor copy(cpu_allocator(), DT_VARIANT, parsed.shape());
+  Variant* copy_variant = copy.flat<Variant>().data();
+
+  std::list<Notification> notifications;
+  auto copier = [this, &alloc_attrs, &notifications, &status](
+                    const Tensor& from, Tensor* to) {
+    // Copier isn't run in a multithreaded environment, so we don't
+    // have to worry about the notifications list being modified in parallel.
+    notifications.emplace_back();
+    Notification& n = *notifications.rbegin();
+
+    StatusCallback done = [&n, &status](const Status& s) {
+      if (status.ok()) {
+        status.Update(s);
+      }
+      n.Notify();
+    };
+    if (!DMAHelper::CanUseDMA(&from)) {
+      Status err =
+          Status(absl::StatusCode::kInternal,
+                 absl::StrCat("NextPluggableDevice copy from non-DMA ",
+                              DataTypeString(from.dtype()), " tensor"));
+      done(err);
+      return err;
+    }
+
+    auto* copy_dst =
+        new Tensor(GetAllocator(alloc_attrs), from.dtype(), from.shape());
+
+    // If the tensor is not initialized, we likely ran out of memory.
+    if (!copy_dst->IsInitialized()) {
+      delete copy_dst;
+      Status err = Status(absl::StatusCode::kResourceExhausted,
+                          absl::StrCat("OOM when allocating tensor of shape ",
+                                       from.shape().DebugString(), " and type ",
+                                       DataTypeString(from.dtype())));
+      done(err);
+      return err;
+    }
+
+    auto wrapped_done = [to, copy_dst,
+                         done = std::move(done)](const Status& s) {
+      if (s.ok()) {
+        *to = std::move(*copy_dst);
+      }
+      delete copy_dst;
+      done(s);
+    };
+
+    device_context_->CopyCPUTensorToDevice(&from, this, copy_dst,
+                                           std::move(wrapped_done),
+                                           true /*sync_dst_compute*/);
+    return OkStatus();
+  };
+
+  Status s;
+  for (int64_t ix = 0; ix < parsed.NumElements(); ++ix) {
+    s = VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE, from[ix],
+                          &copy_variant[ix], copier);
+    if (!s.ok()) {
+      break;
+    }
+  }
+  for (auto& n : notifications) {
+    n.WaitForNotification();
+  }
+  if (!s.ok()) {
+    return s;
+  }
+  *tensor = std::move(copy);
   return status;
 }
 

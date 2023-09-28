@@ -22,7 +22,7 @@ load(
     "tf_proto_library",
 )
 load(
-    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "cuda_rpath_flags",
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
@@ -76,7 +76,7 @@ cc_library(
     deps = if_tensorrt([
         "@local_config_tensorrt//:tensorrt_headers",
         "//tensorflow/core:lib",
-        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "@local_xla//xla/stream_executor/platform:dso_loader",
     ]),
 )
 
@@ -107,11 +107,11 @@ tf_cuda_cc_test(
     deps = [
         ":trt_logging",
         ":utils",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:stream_executor",
+        "@local_xla//xla/stream_executor/gpu:gpu_init",
     ] + if_tensorrt([
         ":tensorrt_lib",
     ]) + select({
@@ -368,11 +368,11 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:ops_testutil",
-        "//third_party/eigen3",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
     ] + if_tensorrt([
         "@local_config_cuda//cuda:cuda_headers",
     ]),
@@ -1005,7 +1005,7 @@ tf_cuda_library(
         ":common_utils",
         ":tensorrt_lib",
         ":op_converter_registry",
-        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "@local_xla//xla/stream_executor/platform:dso_loader",
     ]),
 )
 
@@ -1055,14 +1055,16 @@ pybind_extension(
         "@snappy//:__subpackages__",
         "//:__subpackages__",
         "@zlib//:__subpackages__",
+        "@local_tsl//tsl:__subpackages__",
+        "@local_xla//xla:__subpackages__",
     ],
     deps = [
         ":common_utils",
         ":py_utils",
-        "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
+        "@local_xla//xla/stream_executor",
         "@pybind11",
     ],
 )

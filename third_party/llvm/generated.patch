@@ -1,1 +1,48 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp b/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp
+--- a/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp
+@@ -5889,9 +5889,15 @@
+     for (const unsigned E = G.size();
+          BestIdx < E && (G[BestIdx].second == TargetLowering::C_Other ||
+                          G[BestIdx].second == TargetLowering::C_Immediate);
+-         ++BestIdx)
++         ++BestIdx) {
+       if (lowerImmediateIfPossible(G[BestIdx], Op, DAG, *this))
+         break;
++      // If we're out of constraints, just pick the first one.
++      if (BestIdx + 1 == E) {
++        BestIdx = 0;
++        break;
++      }
++    }
+ 
+     OpInfo.ConstraintCode = G[BestIdx].first;
+     OpInfo.ConstraintType = G[BestIdx].second;
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/inline-asm-bad-constraint-n.ll b/llvm/test/CodeGen/X86/inline-asm-bad-constraint-n.ll
+--- a/llvm/test/CodeGen/X86/inline-asm-bad-constraint-n.ll
++++ b/llvm/test/CodeGen/X86/inline-asm-bad-constraint-n.ll
+@@ -8,3 +8,9 @@
+   call void asm sideeffect "foo $0", "n"(ptr %a) nounwind
+   ret void
+ }
++
++; CHECK: error: invalid operand for inline asm constraint 'i'
++define void @bar(i32 %v) {
++  call void asm "", "in"(i32 %v)
++  ret void
++}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/inline-asm-n-constraint.ll b/llvm/test/CodeGen/X86/inline-asm-n-constraint.ll
+--- a/llvm/test/CodeGen/X86/inline-asm-n-constraint.ll
++++ b/llvm/test/CodeGen/X86/inline-asm-n-constraint.ll
+@@ -8,6 +8,10 @@
+ ; CHECK:      #APP
+ ; CHECK-NEXT: foo    $42
+ ; CHECK-NEXT: #NO_APP
++  call void asm "# $0", "in"(i32 1392848979)
++; CHECK-NEXT: #APP
++; CHECK-NEXT: # $1392848979
++; CHECK-NEXT: #NO_APP
+   ret void
+ ; CHECK-NEXT: retq
+ }

@@ -65,13 +65,13 @@ TEST(TestTFGRegionOps, TestIfLikeRegionOpSuccessorRegions) {
   // Test region -> parent
   SmallVector<RegionSuccessor> regions;
   for (unsigned index = 0; index <= 1; ++index, regions.clear()) {
-    op.getSuccessorRegions(index, regions);
+    op.getSuccessorRegions(op->getRegion(index), regions);
     ASSERT_EQ(regions.size(), 1u);
     EXPECT_TRUE(regions.front().isParent());
   }
 
   // Test parent -> regions
-  op.getSuccessorRegions(/*index=*/std::nullopt, regions);
+  op.getSuccessorRegions(RegionBranchPoint::parent(), regions);
   EXPECT_EQ(regions.size(), 2u);
   regions.clear();
 
@@ -106,13 +106,13 @@ TEST(TestTFGRegionOps, TestCaseLikeRegionOpSuccessorRegions) {
   SmallVector<RegionSuccessor> regions;
   for (unsigned index = 0; index < op.getNumRegions();
        ++index, regions.clear()) {
-    op.getSuccessorRegions(index, regions);
+    op.getSuccessorRegions(op->getRegion(index), regions);
     ASSERT_EQ(regions.size(), 1u);
     EXPECT_TRUE(regions.front().isParent());
   }
 
   // Test parent -> region
-  op.getSuccessorRegions(/*index=*/std::nullopt, regions);
+  op.getSuccessorRegions(RegionBranchPoint::parent(), regions);
   EXPECT_EQ(regions.size(), 2u);
   regions.clear();
 
@@ -148,19 +148,19 @@ TEST(TestTFGRegionOps, TestWhileLikeRegionOpSuccessorRegions) {
 
   // Test parent -> cond
   SmallVector<RegionSuccessor> regions;
-  op.getSuccessorRegions(/*index=*/std::nullopt, regions);
+  op.getSuccessorRegions(RegionBranchPoint::parent(), regions);
   ASSERT_EQ(regions.size(), 1u);
   EXPECT_EQ(regions.front().getSuccessor(), &op.getCondRegion());
   regions.clear();
 
   // Test cond -> parent or body
-  op.getSuccessorRegions(/*index=*/0, regions);
+  op.getSuccessorRegions(op.getRegion(0), regions);
   ASSERT_EQ(regions.size(), 2u);
   EXPECT_TRUE(regions.front().isParent() ^ regions.back().isParent());
   regions.clear();
 
   // Test body -> cond
-  op.getSuccessorRegions(/*index=*/1, regions);
+  op.getSuccessorRegions(op.getRegion(1), regions);
   ASSERT_EQ(regions.size(), 1u);
   EXPECT_EQ(regions.front().getSuccessor(), &op.getCondRegion());
   regions.clear();
@@ -186,12 +186,12 @@ TEST(TestTFGRegionOps, TestForLikeRegionOpSuccessorRegions) {
 
   // Test parent -> body
   SmallVector<RegionSuccessor> regions;
-  op.getSuccessorRegions(/*index=*/std::nullopt, regions);
+  op.getSuccessorRegions(RegionBranchPoint::parent(), regions);
   EXPECT_EQ(regions.size(), 1u);
   regions.clear();
 
   // Test body -> body or parent
-  op.getSuccessorRegions(/*index=*/0, regions);
+  op.getSuccessorRegions(op.getRegion(), regions);
   ASSERT_EQ(regions.size(), 2u);
   EXPECT_TRUE(regions.front().isParent() ^ regions.back().isParent());
 }

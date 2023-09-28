@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace mlrt {
 namespace {

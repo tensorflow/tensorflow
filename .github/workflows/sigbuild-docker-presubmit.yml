@@ -23,6 +23,9 @@ on:
       - 'tensorflow/tools/tf_sig_build_dockerfiles/**'
       - '!tensorflow/tools/tf_sig_build_dockerfiles/README.md'
 
+permissions:
+  contents: read
+
 jobs:
   docker:
     if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
@@ -30,7 +33,15 @@ jobs:
     strategy:
       matrix:
         python-version: [python3.9, python3.10, python3.11]
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
+      - name: Delete unnecessary tools folder
+        run: |
+          df -h
+          rm -rf /opt/hostedtoolcache
+          df -h
       -
         name: Checkout
         uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v3.2.0

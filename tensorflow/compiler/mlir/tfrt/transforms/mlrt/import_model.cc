@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/attribute/attribute.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace mlrt_compiler {

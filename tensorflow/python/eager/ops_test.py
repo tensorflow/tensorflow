@@ -32,7 +32,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
@@ -364,12 +363,6 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                           allowed_dtypes, dtypes.int32)
     self.assertEqual(t, dtypes.string)
     self.assertEqual(r[0].dtype, dtypes.string)
-
-  def testFlattenLayer(self):
-    flatten_layer = core.Flatten()
-    x = constant_op.constant([[[-10, -20], [-30, -40]], [[10, 20], [30, 40]]])
-    y = flatten_layer(x)
-    self.assertAllEqual([[-10, -20, -30, -40], [10, 20, 30, 40]], y)
 
   def testIdentity(self):
     self.assertAllEqual(2, array_ops.identity(2))

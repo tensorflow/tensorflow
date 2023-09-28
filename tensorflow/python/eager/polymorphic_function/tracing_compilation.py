@@ -178,7 +178,6 @@ def trace_function(args=None, kwargs=None, tracing_options=None):
     concrete_function = _maybe_define_function(
         args, kwargs, tracing_options
     )
-    _set_arg_keywords(concrete_function)
 
   if not tracing_options.bind_graph_to_function:
     concrete_function._garbage_collector.release()  # pylint: disable=protected-access
@@ -305,6 +304,9 @@ def _create_concrete_function(
         placeholder_context
     )
 
+  disable_acd = tracing_options.attributes and tracing_options.attributes.get(
+      attributes_lib.DISABLE_ACD, False
+  )
   traced_func_graph = func_graph_module.func_graph_from_py_func(
       tracing_options.name,
       tracing_options.python_function,
@@ -312,6 +314,7 @@ def _create_concrete_function(
       placeholder_bound_args.kwargs,
       None,
       func_graph=func_graph,
+      add_control_dependencies=not disable_acd,
       arg_names=function_type_utils.to_arg_names(function_type),
       create_placeholders=False,
   )
@@ -344,7 +347,7 @@ def _create_concrete_function(
       # ConcreteFunction.
       shared_func_graph=False,
   )
-
+  _set_arg_keywords(concrete_function)
   transform.call_concrete_function_callbacks(concrete_function)
 
   return concrete_function

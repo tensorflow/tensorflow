@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/graph_rewrite/incomplete_nodedef_builder.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 

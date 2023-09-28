@@ -39,8 +39,8 @@ mkdir tensorflow
 ${TAR} -xzf ${TARFILE} -Ctensorflow
 
 # Compile the test .c file. Assumes with_framework_lib=True.
-${CC} ${CFILE} -Itensorflow/include -Ltensorflow/lib\
-  -ltensorflow_framework -ltensorflow -oa.out
+${CC} ${CFILE} -Itensorflow/include -Itensorflow/include/external/local_tsl\
+  -Ltensorflow/lib -ltensorflow_framework -ltensorflow -oa.out
 
 # Execute it, with the shared library available.
 # DYLD_LIBRARY_PATH is used on OS X, LD_LIBRARY_PATH on Linux.

@@ -100,3 +100,22 @@ func.func @notAllOpsSupportedNotLegalized(%arg0: tensor<!tf_type.variant<tensor<
   // CHECK-MSG: Tried legalizing to tfl custom tensorlist ops, but not all can be supported.
   func.return %1 : tensor<i32>
 }
+
+// -----
+
+// CHECK-LABEL: listEmptyToListReserve
+func.func @listEmptyToListReserve(%arg0: tensor<?xi32>, %arg1: tensor<i32>) -> tensor<!tf_type.variant<tensor<*xi64>>> {
+  %0 = "tf.EmptyTensorList"(%arg0, %arg1) : (tensor<?xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*xi64>>>
+  // CHECK: %cst = arith.constant dense<0> : tensor<i32>
+  // CHECK: %0 = "tfl.custom"(%arg0, %cst) {custom_code = "TensorListReserve", custom_option = #tfl<const_bytes : "0x04">} : (tensor<?xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*xi64>>>
+  func.return %0 : tensor<!tf_type.variant<tensor<*xi64>>>
+}
+
+// -----
+
+// CHECK-LABEL: listElementShape
+func.func @listElementShape(%arg0: tensor<!tf_type.variant<tensor<*xi32>>>) -> tensor<*xi32> {
+  %0 = "tf.TensorListElementShape"(%arg0) : (tensor<!tf_type.variant<tensor<*xi32>>>) -> tensor<*xi32>
+  // CHECK: %0 = "tfl.custom"(%arg0) {custom_code = "TensorListElementShape", custom_option = #tfl<const_bytes : "0x">} : (tensor<!tf_type.variant<tensor<*xi32>>>) -> tensor<*xi32>
+  func.return %0 : tensor<*xi32>
+}

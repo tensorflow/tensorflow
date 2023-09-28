@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_ELU_OP_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_ELU_OP_H_
 
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/xla_builder.h"
 
 namespace xla {
 XlaOp Elu(XlaOp x);

@@ -237,8 +237,9 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
 
     SetBuiltinOp(BuiltinOperator_FULLY_CONNECTED,
                  BuiltinOptions_FullyConnectedOptions,
-                 CreateFullyConnectedOptions(builder_, activation_func,
-                                             weights_format, keep_num_dims)
+                 CreateFullyConnectedOptions(
+                     builder_, activation_func, weights_format, keep_num_dims,
+                     /*asymmetric_quantize_inputs=*/true, bias_type)
                      .Union());
     resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED, registration);
@@ -794,6 +795,38 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestPerChannelQuantizedInt8) {
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(23, 24, 25, 57, 58, 59));
+}
+
+TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16NoBias) {
+  const float scale = 128.0 / 65536;
+  QuantizedFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches*/ 2,
+      /*input=*/{TensorType_INT16, {2, 10}, 0, 0, scale, 0},
+      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0},
+      /*bias_type=*/TensorType_INT64,
+      /*keep_num_dims=*/false, /*bool bias_tensor_optional=*/true,
+      /*ActivationFunctionType activation_func=*/ActivationFunctionType_RELU,
+      /*FullyConnectedOptionsWeightsFormat weights_format=*/
+      FullyConnectedOptionsWeightsFormat_DEFAULT);
+
+  // input_product_scale < output_scale was not true.
+  m.SetWeights<int8_t>({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+
+  m.SetInput<int16_t>({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({23, 23, 23, 57, 57, 57})));
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAre(11776, 11776, 11776, 29184, 29184, 29184));
 }
 
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias32) {

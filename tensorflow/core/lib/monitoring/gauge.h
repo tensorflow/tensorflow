@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
-#include "tensorflow/tsl/lib/monitoring/gauge.h"
+#include "tsl/lib/monitoring/gauge.h"
 // NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {
 namespace monitoring {

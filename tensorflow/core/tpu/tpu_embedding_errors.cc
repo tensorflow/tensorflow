@@ -17,7 +17,11 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/cord.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 
 namespace tensorflow::tpu {
 

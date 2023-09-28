@@ -25,11 +25,11 @@ limitations under the License.
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
-#include "tensorflow/tsl/platform/test.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace {

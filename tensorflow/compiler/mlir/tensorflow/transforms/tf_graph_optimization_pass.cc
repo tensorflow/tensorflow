@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 #define DEBUG_TYPE "run-tf-graph-optimization"
 

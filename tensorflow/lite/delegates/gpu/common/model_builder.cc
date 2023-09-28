@@ -170,7 +170,13 @@ absl::Status ParseInputsWithConstTensorImpl(
       } else {
         Tensor<HWC, DataTypeT> tensor;
         RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
-        *tensor_or_scalar = std::move(tensor);
+        // If case of degenerate 3d tensor, which represents a single value, we
+        // convert is to scalar.
+        if (tensor.data.size() == 1) {
+          *tensor_or_scalar = static_cast<T>(tensor.data[0]);
+        } else {
+          *tensor_or_scalar = std::move(tensor);
+        }
       }
     }
   }

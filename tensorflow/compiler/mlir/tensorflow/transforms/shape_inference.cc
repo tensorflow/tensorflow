@@ -48,7 +48,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -60,6 +59,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -76,12 +76,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
-#include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/service/shape_inference.h"
+#include "xla/shape.h"
+#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/window_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/ir/types/dialect.h"

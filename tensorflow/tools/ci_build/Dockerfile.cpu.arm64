@@ -1,4 +1,4 @@
-FROM linaro/tensorflow-arm64-build:2.14-multipython
+FROM linaro/tensorflow-arm64-build:2.15-multipython
 
 ARG py_major_minor_version='3.10'
 
@@ -16,6 +16,8 @@ ARG tf_project_name='tf_ci_cpu' # PyPI project name passed by CD GitHub workflow
 
 ENV IS_NIGHTLY=${is_nightly}
 ENV TF_PROJECT_NAME=${tf_project_name}
+
+RUN ln -s /usr/lib/llvm-17/bin/clang /usr/local/bin/clang
 
 # Set up the master bazelrc configuration file.
 COPY install/.bazelrc /etc/bazel.bazelrc

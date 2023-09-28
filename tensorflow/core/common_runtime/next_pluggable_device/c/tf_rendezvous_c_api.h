@@ -49,7 +49,7 @@ typedef struct TF_RendezvousParsedKey {
 typedef struct TF_RendezvousSend_Params {
   const TF_RendezvousParsedKey* key;
   const TF_RendezvousArgsStruct* args;
-  const TF_Tensor* tensor;
+  TF_Tensor* tensor;
   bool is_dead;
 
   TF_Status* status;  // out
@@ -57,16 +57,12 @@ typedef struct TF_RendezvousSend_Params {
 
 typedef void (*TF_RendezvousSend_Function)(void*, TF_RendezvousSend_Params*);
 
-typedef struct TF_RendezvousSenderImpl {
-  void* context;
-  TF_RendezvousSend_Function send_func;
-} TF_RendezvousSenderImpl;
-
 typedef struct TF_RendezvousDoneCallback_Params {
   void* context;
   const TF_Status* status;
-  const TF_RendezvousArgsStruct* sender_args;
-  const TF_RendezvousArgsStruct* recver_args;
+  // TODO: Pass args through.
+  // const TF_RendezvousArgsStruct* sender_args;
+  // const TF_RendezvousArgsStruct* recver_args;
   const TF_Tensor* tensor;
   bool is_dead;
 } TF_RendezvousDoneCallback_Params;
@@ -89,24 +85,14 @@ typedef struct TF_RendezvousAsyncRecv_Params {
 typedef void (*TF_RendezvousAsyncRecv_Function)(void*,
                                                 TF_RendezvousAsyncRecv_Params*);
 
-typedef struct TF_RendezvousAsyncRecverImpl {
-  void* context;
-  TF_RendezvousAsyncRecv_Function async_recv_func;
-} TF_RendezvousAsyncRecverImpl;
-
 typedef void (*TF_RendezvousStartAbort_Function)(void* context,
                                                  const TF_Status*);
 
-typedef struct TF_RendezvousStartAbortImpl {
-  void* context;
-  TF_RendezvousStartAbort_Function start_abort_func;
-} TF_RendezvousStartAbortImpl;
-
 typedef struct TF_RendezvousThunk {
-  void* context;  // not owned
-  TF_RendezvousSenderImpl send;
-  TF_RendezvousAsyncRecverImpl async_recv;
-  TF_RendezvousStartAbortImpl start_abort;
+  void* rendezvous;
+  TF_RendezvousSend_Function send_func;
+  TF_RendezvousAsyncRecv_Function async_recv_func;
+  TF_RendezvousStartAbort_Function start_abort_func;
 } TF_RendezvousThunk;
 
 #ifdef __cplusplus

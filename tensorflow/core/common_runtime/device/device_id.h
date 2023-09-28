@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/gtl/int_type.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/framework/device_id.h"
+#include "tsl/framework/device_id.h"
 
 namespace tensorflow {
 

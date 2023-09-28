@@ -27,9 +27,9 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {

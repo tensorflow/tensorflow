@@ -36,9 +36,10 @@ from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import ref_variable  # pylint: disable=unused-import
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import string_ops
@@ -1084,10 +1085,14 @@ def pad_to_bounding_box_internal(image, offset_height, offset_width,
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
-    offset_height: Number of rows of zeros to add on top.
-    offset_width: Number of columns of zeros to add on the left.
-    target_height: Height of output image.
-    target_width: Width of output image.
+    offset_height: Number of rows of zeros to add on top.Must be 0-D `Tensor` of
+      dtype int32 or int64. Can also a python integer.
+    offset_width: Number of columns of zeros to add on the left.Must be 0-D
+      `Tensor` of dtype int32 or int64. Can also a python integer.
+    target_height: Height of output image.Must be 0-D `Tensor` of dtype int32 or
+      int64. Can also a python integer.
+    target_width: Width of output image.Must be 0-D `Tensor` of dtype int32 or
+      int64. Can also a python integer.
     check_dims: If True, assert that dimensions are non-negative and in range.
       In multi-GPU distributed settings, assertions can cause program slowdown.
       Setting this parameter to `False` avoids this, resulting in faster speed
@@ -1189,11 +1194,13 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     image: 4-D `Tensor` of shape `[batch, height, width, channels]` or 3-D
       `Tensor` of shape `[height, width, channels]`.
     offset_height: Vertical coordinate of the top-left corner of the bounding
-      box in `image`.
+      box in `image`. Must be 0-D int32 `Tensor` or python integer.
     offset_width: Horizontal coordinate of the top-left corner of the bounding
-      box in `image`.
-    target_height: Height of the bounding box.
-    target_width: Width of the bounding box.
+      box in `image`. Must be 0-D int32 `Tensor` or python integer.
+    target_height: Height of the bounding box. Must be 0-D int32 `Tensor` or
+      python integer.
+    target_width: Width of the bounding box. Must be 0-D int32 `Tensor` or
+      python integer.
 
   Returns:
     If `image` was 4-D, a 4-D `Tensor` of shape
@@ -4349,7 +4356,8 @@ def _ssim_per_channel(img1,
   def reducer(x):
     shape = array_ops.shape(x)
     x = array_ops.reshape(x, shape=array_ops.concat([[-1], shape[-3:]], 0))
-    y = nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1], padding='VALID')
+    y = nn_impl.depthwise_conv2d(
+        x, kernel, strides=[1, 1, 1, 1], padding='VALID')
     return array_ops.reshape(
         y, array_ops.concat([shape[:-3], array_ops.shape(y)[1:]], 0))
 
@@ -4727,7 +4735,7 @@ def sobel_edges(image):
 
   # Output tensor has shape [batch_size, h, w, d * num_kernels].
   strides = [1, 1, 1, 1]
-  output = nn.depthwise_conv2d(padded, kernels_tf, strides, 'VALID')
+  output = nn_impl.depthwise_conv2d(padded, kernels_tf, strides, 'VALID')
 
   # Reshape to [batch_size, h, w, d, num_kernels].
   shape = array_ops.concat([image_shape, [num_kernels]], 0)

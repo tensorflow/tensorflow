@@ -23,7 +23,7 @@ limitations under the License.
 // improve compilation times.
 #include <algorithm>
 
-#include "third_party/eigen3/Eigen/SVD"
+#include "Eigen/SVD"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"

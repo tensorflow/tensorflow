@@ -18,20 +18,19 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/side_effect_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/sharding_builder.h"
+#include "xla/client/xla_builder.h"
+#include "xla/primitive_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -55,8 +54,9 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/macros.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 
@@ -190,9 +190,6 @@ class HostComputeOp : public XlaOpKernel {
           channel_name;
       (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
           xla::kXlaHostTransferTfRendezvousHandlerName;
-      (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
-          xla::primitive_util::LowercasePrimitiveTypeName(
-              xla_shape.element_type());
       b->SetFrontendAttributes(attrs);
       xla::ChannelHandle channel;
       OP_REQUIRES_OK(
@@ -252,9 +249,6 @@ class HostComputeOp : public XlaOpKernel {
           channel_name;
       (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
           xla::kXlaHostTransferTfRendezvousHandlerName;
-      (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
-          xla::primitive_util::LowercasePrimitiveTypeName(
-              xla_output_shapes->at(i).element_type());
       b->SetFrontendAttributes(attrs);
       xla::ChannelHandle channel;
       OP_REQUIRES_OK(
@@ -464,9 +458,6 @@ class SendToHostOp : public XlaOpKernel {
     (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] = key_;
     (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
         xla::kXlaHostTransferTfRendezvousHandlerName;
-    (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
-        xla::primitive_util::LowercasePrimitiveTypeName(
-            xla_shape.element_type());
     b->SetFrontendAttributes(attrs);
     xla::ChannelHandle channel;
     OP_REQUIRES_OK(ctx, compiler->GetDeviceToHostChannelHandle(key_, &channel));
@@ -522,9 +513,6 @@ class RecvFromHostOp : public XlaOpKernel {
     (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] = key_;
     (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
         xla::kXlaHostTransferTfRendezvousHandlerName;
-    (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
-        xla::primitive_util::LowercasePrimitiveTypeName(
-            xla_shape.element_type());
     b->SetFrontendAttributes(attrs);
     xla::ChannelHandle channel;
     OP_REQUIRES_OK(ctx, compiler->GetHostToDeviceChannelHandle(key_, &channel));

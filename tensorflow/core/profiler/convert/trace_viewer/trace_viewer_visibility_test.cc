@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
-#include "tensorflow/tsl/profiler/utils/timespan.h"
+#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {

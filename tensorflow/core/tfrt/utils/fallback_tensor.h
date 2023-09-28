@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -85,6 +85,7 @@ class FallbackTensor {
   const TensorBuffer* buffer() const {
     return tensorflow::DMAHelper::buffer(&tensor());
   }
+  TensorBuffer* buffer() { return tensorflow::DMAHelper::buffer(&tensor()); }
 
   bool is_immutable() const { return is_immutable_; }
 

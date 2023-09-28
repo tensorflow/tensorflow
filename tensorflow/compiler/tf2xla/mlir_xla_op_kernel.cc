@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/xla_compile_util.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"

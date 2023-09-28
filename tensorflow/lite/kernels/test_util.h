@@ -55,7 +55,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 #include "tensorflow/lite/util.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tsl/platform/logging.h"
 
 namespace tflite {
 
@@ -600,6 +600,9 @@ class SingleOpModel {
   // Define the operator in this model.
   void SetBuiltinOp(BuiltinOperator type, BuiltinOptions builtin_options_type,
                     flatbuffers::Offset<void> builtin_options);
+  void SetBuiltinOp(BuiltinOperator type,
+                    BuiltinOptions2 builtin_options_2_type,
+                    flatbuffers::Offset<void> builtin_options_2);
   void SetCustomOp(const string& name,
                    const std::vector<uint8_t>& custom_option,
                    const std::function<TfLiteRegistration*()>& registration);
@@ -641,6 +644,12 @@ class SingleOpModel {
   // Populates the tensor given its index.
   template <typename T>
   void PopulateTensor(int index, const std::vector<T>& data) {
+    PopulateTensorImpl<T>(index, /*offset=*/0, data);
+  }
+
+  // Populates the tensor given its index.
+  template <typename T>
+  void PopulateTensor(int index, absl::Span<const T> data) {
     PopulateTensorImpl<T>(index, /*offset=*/0, data);
   }
 
@@ -880,6 +889,27 @@ class SingleOpModel {
     interpreter_->AddSubgraphs(subgraphs_to_add, first_new_subgraph_index);
   }
 
+  // Partially populates the tensor, starting at the given offset.
+  void PopulateTensor4bit(int index, int offset, const int8_t* begin,
+                          const int8_t* end) {
+    auto data = absl::Span<const int8_t>(begin, end - begin);
+    TfLiteTensor* tensor_ptr = interpreter_->tensor(index);
+    uint8_t* v = nullptr;
+    if (tensor_ptr) {
+      v = reinterpret_cast<uint8_t*>(tensor_ptr->data.data);
+    }
+
+    if (!v) {
+      auto* t = interpreter_->tensor(index);
+      CHECK(t) << "No tensor with index " << index << ".";
+      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
+      LOG(FATAL) << "Unknown tensor error.";
+    }
+    absl::c_copy(data, v + offset);
+    PackInt4ValuesDenselyInPlace(v, ElementCount(*tensor_ptr->dims));
+    tensor_ptr->bytes = ((ElementCount(*tensor_ptr->dims) + 1) / 2);
+  }
+
  private:
   // Populates the tensor starting at offset using given data.
   template <typename T, typename Container>
@@ -917,26 +947,6 @@ class SingleOpModel {
       result *= dims.data[i];
     }
     return result;
-  }
-
-  // Partially populates the tensor, starting at the given offset.
-  void PopulateTensor4bit(int index, int offset, int8_t* begin, int8_t* end) {
-    auto data = absl::Span<int8_t>(begin, end - begin);
-    TfLiteTensor* tensor_ptr = interpreter_->tensor(index);
-    uint8_t* v = nullptr;
-    if (tensor_ptr) {
-      v = reinterpret_cast<uint8_t*>(tensor_ptr->data.data);
-    }
-
-    if (!v) {
-      auto* t = interpreter_->tensor(index);
-      CHECK(t) << "No tensor with index " << index << ".";
-      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      LOG(FATAL) << "Unknown tensor error.";
-    }
-    absl::c_copy(data, v + offset);
-    PackInt4ValuesDenselyInPlace(v, ElementCount(*tensor_ptr->dims));
-    tensor_ptr->bytes = ((ElementCount(*tensor_ptr->dims) + 1) / 2);
   }
 
   int AddTensorPerChannelQuant(const TensorData& t) {
@@ -1103,6 +1113,7 @@ TensorType GetTensorType() {
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
   if (std::is_same<T, uint32_t>::value) return TensorType_UINT32;
   if (std::is_same<T, int64_t>::value) return TensorType_INT64;
+  if (std::is_same<T, uint64_t>::value) return TensorType_UINT64;
   if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
   if (std::is_same<T, string>::value) return TensorType_STRING;
   if (std::is_same<T, bool>::value) return TensorType_BOOL;

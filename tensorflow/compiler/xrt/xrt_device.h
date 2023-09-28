@@ -22,8 +22,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/client/local_client.h"
+#include "xla/stream_executor/tf_allocator_adapter.h"
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"

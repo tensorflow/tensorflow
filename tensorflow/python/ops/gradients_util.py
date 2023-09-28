@@ -65,8 +65,13 @@ def _MarkReachedOps(from_ops, reached_ops, func_graphs):
           queue.extend(_Consumers(output, func_graphs))
 
 
-def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops, func_graphs,
-                  xs_set):
+def _PendingCount(
+    to_ops: list[ops.Operation],
+    from_ops: list[ops.Operation],
+    colocate_gradients_with_ops,
+    func_graphs,
+    xs_set,
+):
   """Initialize the pending count for ops between two lists of Operations.
 
   'pending_count[op]' indicates the number of backprop inputs
@@ -244,7 +249,7 @@ def _DefaultGradYs(grad_ys,
   return new_grad_ys
 
 
-def _VerifyGeneratedGradients(grads, op):
+def _VerifyGeneratedGradients(grads, op: ops.Operation):
   """Verify that gradients are valid in number and type.
 
   Args:
@@ -261,11 +266,18 @@ def _VerifyGeneratedGradients(grads, op):
     return
 
   if len(grads) != len(op.inputs):
-    raise ValueError(f"Num gradients {len(grads)} generated for op "
-                     f"{op.node_def} do not match num inputs {len(op.inputs)}")
+    raise ValueError(
+        f"Num gradients {len(grads)} generated for op "
+        f"{op.node_def} do not match num inputs {len(op.inputs)}"
+    )
 
 
-def _StopOps(from_ops, stop_gradient_ops, pending_count, xs_set):
+def _StopOps(
+    from_ops: list[ops.Operation],
+    stop_gradient_ops: list[ops.Operation],
+    pending_count,
+    xs_set,
+):
   """The set of ops that terminate the gradient computation.
 
   This computes the frontier of the forward graph *before* which backprop
@@ -300,7 +312,11 @@ def _StopOps(from_ops, stop_gradient_ops, pending_count, xs_set):
 
 
 @contextlib.contextmanager
-def _maybe_colocate_with(op, gradient_uid, colocate_gradients_with_ops):  # pylint: disable=invalid-name
+def _maybe_colocate_with(  # pylint: disable=invalid-name
+    op: ops.Operation,
+    gradient_uid,
+    colocate_gradients_with_ops,
+):
   """Context to colocate with `op` if `colocate_gradients_with_ops`."""
   if colocate_gradients_with_ops:
     with ops._colocate_with_for_gradient(op, gradient_uid):  # pylint: disable=protected-access
@@ -309,11 +325,11 @@ def _maybe_colocate_with(op, gradient_uid, colocate_gradients_with_ops):  # pyli
     yield
 
 
-def _IsPartitionedCall(op):
+def _IsPartitionedCall(op: ops.Operation):
   return op.type == "PartitionedCall" or op.type == "StatefulPartitionedCall"
 
 
-def _SymGrad(op, out_grads):
+def _SymGrad(op: ops.Operation, out_grads):
   """Backprop through a function call node op given its outputs' gradients."""
   f_in = [x for x in op.inputs] + out_grads
   f_types = [default_gradient.get_zeros_dtype(x) for x in op.inputs]
@@ -328,7 +344,7 @@ def _SymGrad(op, out_grads):
   return in_grads
 
 
-def _MaybeCompile(scope, op, func, grad_fn):
+def _MaybeCompile(scope, op: ops.Operation, func, grad_fn):
   """Compile the calculation in grad_fn if op was marked as compiled."""
   scope = scope.rstrip("/").replace("/", "_")
   if func is not None:
@@ -365,7 +381,11 @@ def _MaybeCompile(scope, op, func, grad_fn):
     return grad_fn()
 
 
-def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs_set):
+def _RaiseNoGradWrtInitialLoopValError(
+    op: ops.Operation,
+    from_ops: list[ops.Operation],
+    xs_set,
+):
   """Raises an error if we backprop through a loop var."""
   # Find the nearest 'to_op' reachable from 'op' to provide a more helpful error
   # message.
@@ -418,7 +438,7 @@ def _MaybeCaptured(t):
   return t
 
 
-def _NonEagerInputs(op, xs_set):
+def _NonEagerInputs(op: ops.Operation, xs_set):
   """Returns the inputs of op, crossing closure boundaries where necessary.
 
   Does not return any captured EagerTensors, i.e., the number of tensors
@@ -437,7 +457,7 @@ def _NonEagerInputs(op, xs_set):
 
 # TODO(skyewm): plumbing xs through everywhere is ugly, consider making
 # _GradientsHelper a class with xs as a member variable.
-def _Inputs(op, xs_set):
+def _Inputs(op: ops.Operation, xs_set):
   """Returns the inputs of op, crossing closure boundaries where necessary.
 
   Args:
@@ -760,7 +780,7 @@ def _GradientsHelper(ys,
   return [_GetGrad(grads, x, unconnected_gradients) for x in xs]
 
 
-def _HasAnyNotNoneGrads(grads, op):
+def _HasAnyNotNoneGrads(grads, op: ops.Operation):
   """Return true iff op has real gradient."""
   out_grads = _GetGrads(grads, op)
   for out_grad in out_grads:
@@ -772,12 +792,13 @@ def _HasAnyNotNoneGrads(grads, op):
   return False
 
 
-def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state,
-                                  xs_set):
+def _UpdatePendingAndEnqueueReady(
+    grads, op: ops.Operation, queue, pending_count, loop_state, xs_set
+):
   """Update pending count for the inputs of op and enqueue ready ops."""
   for x in _NonEagerInputs(op, xs_set):
     pending_count[x.op] -= 1
-    ready = (pending_count[x.op] == 0)
+    ready = pending_count[x.op] == 0
     if loop_state and not ready:
       ready = pending_count[x.op] > 0 and control_flow_util.IsLoopSwitch(x.op)
     if ready:
@@ -857,7 +878,7 @@ def _GetGrad(grads, t, unconnected_gradients):
   return t_grad
 
 
-def _GetGrads(grads, op):
+def _GetGrads(grads, op: ops.Operation):
   """Gets all gradients for op."""
   if op in grads:
     return grads[op]
@@ -873,7 +894,7 @@ def _AccumulatorShape(inputs):
   return shape
 
 
-def _LogOpGradients(op, out_grads, in_grads):
+def _LogOpGradients(op: ops.Operation, out_grads, in_grads):
   """Log the in and out grads of an op."""
   logging.vlog(1, "Gradient for '" + op.name + "'")
 

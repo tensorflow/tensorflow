@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
 

@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -51,6 +52,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -1055,58 +1060,32 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
 // Log the current set of layouts to a file marked by the hash of the input
 // module and the stage.
 void LogLayoutsAndOps(const int stage, const int steps,
-                      const uint64_t module_hash,
                       const llvm::DenseMap<mlir::Value, Layout>& merged_layouts,
                       mlir::ModuleOp& module) {
   if (module->hasAttr(kDoNotLog) || ((ClientId() != 0) && !LogOnAllTasks()))
     return;
 
-  std::string prefix = tensorflow::GetDumpDirFromEnvVar();
-  if (prefix.empty()) return;
+  std::string tag = absl::StrFormat("stage_%04d_", stage);
 
-  auto* env = tensorflow::Env::Default();
-  auto status = env->RecursivelyCreateDir(prefix);
-  if (!status.ok()) {
-    LOG(WARNING) << "cannot create directory '" << prefix
-                 << "': " << status.message();
-    return;
-  }
-
-  absl::StrAppend(&prefix, "/layout_propagation_v2_module_", module_hash,
-                  "_stage_", stage, "_");
   if (steps >= 0) {
-    absl::StrAppend(&prefix, steps, "_");
+    absl::StrAppend(&tag, absl::StrFormat("%04d", steps));
   } else {
-    absl::StrAppend(&prefix, "end_");
-  }
-  if (!tensorflow::Env::Default()->CreateUniqueFileName(&prefix, ".mlir")) {
-    LOG(WARNING) << "cannot create unique filename, won't dump MLIR module.";
-    return;
+    absl::StrAppend(&tag, "end");
   }
 
-  std::unique_ptr<WritableFile> file_writer;
-  status = env->NewWritableFile(prefix, &file_writer);
-  if (!status.ok()) {
-    LOG(WARNING) << "cannot open file '" << prefix << "': " << status.message();
-    return;
-  }
+  std::string operation_name = GetOperationName(module);
+  std::string prefix = DEBUG_DATA_DUMPER()->GetDumpFilename(
+      "layout_propagation", kDebugGroupDTensorLayout,
+      absl::StrCat(tag, "_", operation_name));
 
-  // Print the module to a string before writing to the file.
-  std::string txt_module;
-  {
-    llvm::raw_string_ostream os(txt_module);
-    LayoutPrinter printer(os, merged_layouts);
+  std::string filepath;
+  std::unique_ptr<llvm::raw_ostream> os;
+  // CreatefileForDumping automatically adds the .mlir suffix.
+  if (tensorflow::CreateFileForDumping(prefix, &os, &filepath).ok()) {
+    LayoutPrinter printer(*os, merged_layouts);
     module.print(printer);
+    LOG(INFO) << "Dumped MLIR module to " << filepath;
   }
-
-  status = file_writer->Append(txt_module);
-  if (!status.ok()) {
-    LOG(WARNING) << "error writing to file '" << prefix
-                 << "': " << status.message();
-    return;
-  }
-  (void)file_writer->Close();
-  LOG(INFO) << "Dumped MLIR module to " << prefix;
 }
 
 // Inserts/changes DTensorLayout op after IfRegion op and results of then/else
@@ -1379,7 +1358,7 @@ Status RunOneIteration(
     llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     llvm::DenseMap<mlir::Value, std::vector<mlir::OpOperand*>>& consumers,
     llvm::DenseMap<mlir::Value, Layout>& merged_layouts, mlir::ModuleOp& module,
-    const uint64_t module_hash, int stage, int* steps) {
+    int stage, int* steps) {
   if (is_updated.empty()) return OkStatus();
   // Merge any possibly updated layouts.
   if (mlir::failed(
@@ -1393,8 +1372,9 @@ Status RunOneIteration(
   GetOperationsNeedingUpdate(is_updated, consumers, operations_needing_update);
   is_updated.clear();
 
-  if (VLOG_IS_ON(2)) {
-    LogLayoutsAndOps(stage, *steps, module_hash, merged_layouts, module);
+  if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(
+                           "layout_propagation", kDebugGroupDTensorLayout)) {
+    LogLayoutsAndOps(stage, *steps, merged_layouts, module);
   }
 
   for (auto* op : operations_needing_update) {
@@ -1501,7 +1481,6 @@ struct DLayoutPropagationPassV2
             producer_request, is_updated, is_locked)))
       return signalPassFailure();
 
-    const auto module_hash = OpHash(module);
     int stage = 0;
 
     llvm::DenseMap<mlir::Value, Layout> merged_layouts;
@@ -1512,10 +1491,9 @@ struct DLayoutPropagationPassV2
       int steps = 0;
       // Step 1. Run the layout propagation v2 until convergence or max steps.
       while (!is_updated.empty() && steps < LayoutPropagationMaxSteps()) {
-        Status status =
-            RunOneIteration(is_locked, is_updated, producer_request,
-                            consumer_requests, producers, consumers,
-                            merged_layouts, module, module_hash, stage, &steps);
+        Status status = RunOneIteration(is_locked, is_updated, producer_request,
+                                        consumer_requests, producers, consumers,
+                                        merged_layouts, module, stage, &steps);
         if (!status.ok()) {
           module.emitOpError() << "Failure running iteration.";
           return signalPassFailure();
@@ -1537,7 +1515,7 @@ struct DLayoutPropagationPassV2
       while (changed.size() > previous_change_size) {
         if (!RunOneIteration(is_locked, is_updated, producer_request,
                              consumer_requests, producers, consumers,
-                             merged_layouts, module, module_hash, stage, &steps)
+                             merged_layouts, module, stage, &steps)
                  .ok()) {
           module.emitOpError() << "Failure running iteration.";
           return signalPassFailure();
@@ -1598,8 +1576,9 @@ struct DLayoutPropagationPassV2
             CopyLayoutsForSkippedOps(module, tf_dialect, merged_layouts)))
       return signalPassFailure();
 
-    if (VLOG_IS_ON(2)) {
-      LogLayoutsAndOps(stage, -1, module_hash, merged_layouts, module);
+    if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(
+                             "layout_propagation", kDebugGroupDTensorLayout)) {
+      LogLayoutsAndOps(stage, -1, merged_layouts, module);
     }
 
     if (!AllOpResultsHaveLayouts(&module, tf_dialect, merged_layouts))

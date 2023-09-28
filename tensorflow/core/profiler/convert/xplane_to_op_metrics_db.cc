@@ -41,10 +41,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
-#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/tsl/profiler/utils/timespan.h"
-#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tsl/profiler/utils/tf_op_utils.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tsl/profiler/utils/timespan.h"
+#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {

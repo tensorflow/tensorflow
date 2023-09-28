@@ -47,8 +47,8 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/path.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
 
 namespace tensorflow {
 

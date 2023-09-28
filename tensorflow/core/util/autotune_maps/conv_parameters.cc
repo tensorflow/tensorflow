@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
-#include "tensorflow/tsl/lib/strings/proto_serialization.h"
+#include "tsl/lib/strings/proto_serialization.h"
 
 namespace tensorflow {
 

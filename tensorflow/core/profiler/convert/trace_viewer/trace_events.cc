@@ -36,13 +36,13 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_viewer_visibility.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
-#include "tensorflow/tsl/lib/io/table.h"
-#include "tensorflow/tsl/lib/io/table_builder.h"
-#include "tensorflow/tsl/lib/io/table_options.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/profiler/utils/timespan.h"
+#include "tsl/lib/io/table.h"
+#include "tsl/lib/io/table_builder.h"
+#include "tsl/lib/io/table_options.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {

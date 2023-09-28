@@ -172,6 +172,7 @@ def _variable_handle_from_shape_and_dtype(shape,
       shape=shape,
       dtype=dtype,
       shared_name=shared_name,
+      debug_name=name,
       name=name,
       container=container)
   if initial_value is None:
@@ -2738,12 +2739,12 @@ class VariableSpec(tensor_module.DenseSpec):
         attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
     return variable
 
-  def _to_tensors(self, value):
+  def to_tensors(self, value):
     assert isinstance(value, BaseResourceVariable)
     variable_accessed(value)
     return [value.handle]
 
-  def _cast(self, value, _):
+  def cast(self, value, _):
     assert isinstance(value, BaseResourceVariable)
     return value
 

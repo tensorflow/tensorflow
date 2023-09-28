@@ -107,20 +107,6 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
   return true;
 }
 
-// Checks whether the producer of `value` is TFL_DequantizeOp. This function
-// iteratively finds the defining op if the direct defining op is TFL_SplitOp.
-bool NotFromDequant(Value value) {
-  auto dequant_op = value.getDefiningOp<DequantizeOp>();
-  if (dequant_op) {
-    return false;
-  }
-  auto split_op = value.getDefiningOp<SplitOp>();
-  if (!split_op) {
-    return true;
-  }
-  return !split_op.getValue().getDefiningOp<DequantizeOp>();
-}
-
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
@@ -153,38 +139,6 @@ bool BroadcastDimsProductEqual(Value input, Value output,
   }
 
   return (agg_value == output_shape[agg_start_idx]);
-}
-
-// Return true if the permutation value only swaps the last two dimensions
-bool AreLastTwoDimsTransposed(Value permutation) {
-  if (!permutation) return false;
-  DenseElementsAttr perm_values_attr;
-
-  if (!matchPattern(permutation, m_Constant(&perm_values_attr))) return false;
-  auto perm_values = perm_values_attr.getValues<APInt>();
-  size_t idx = 0;
-  for (; idx < perm_values_attr.size() - 2; ++idx) {
-    if (perm_values[idx].getSExtValue() != idx) return false;
-  }
-
-  return (perm_values[idx].getSExtValue() == perm_values_attr.size() - 1) &&
-         (perm_values[idx + 1].getSExtValue() == idx);
-}
-
-// Gets the new type after transposing the last 2 dimensions.
-Type TransposeLastTwoDims(Type type) {
-  auto shaped_type = type.dyn_cast<ShapedType>();
-  if (!shaped_type.hasStaticShape() || shaped_type.getRank() < 2) {
-    return nullptr;
-  }
-  int rank = shaped_type.getRank();
-  if (rank < 2) {
-    return nullptr;
-  }
-  SmallVector<int64_t> new_shape(shaped_type.getShape().begin(),
-                                 shaped_type.getShape().end());
-  std::swap(new_shape[rank - 1], new_shape[rank - 2]);
-  return shaped_type.clone(new_shape);
 }
 
 // Returns whether the given type `a` is broadcast-compatible with `b`.
@@ -1838,8 +1792,7 @@ struct RemoveReshapeBeforeFullyConnected
     if (!reshape_input_ty.hasStaticShape() || input_ty.getRank() == 0 ||
         reshape_input_ty.getRank() == 0 ||
         input_ty.getDimSize(input_ty.getRank() - 1) !=
-            reshape_input_ty.getDimSize(reshape_input_ty.getRank() - 1) ||
-        input_ty.getRank() < reshape_input_ty.getRank()) {
+            reshape_input_ty.getDimSize(reshape_input_ty.getRank() - 1)) {
       return failure();
     }
 
@@ -2250,6 +2203,88 @@ struct FuseTransposeReshapeIntoBatchMatmul
   }
 };
 
+struct FuseLogSoftmax : public OpRewritePattern<TFL::SubOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(TFL::SubOp sub_op,
+                                PatternRewriter &rewriter) const override {
+    if (sub_op.getFusedActivationFunction() != "NONE") {
+      return failure();
+    }
+    auto log_op = dyn_cast_or_null<TFL::LogOp>(sub_op.getRhs().getDefiningOp());
+    if (!log_op || !log_op->hasOneUse()) {
+      return failure();
+    }
+    auto sum_op = dyn_cast_or_null<TFL::SumOp>(log_op.getX().getDefiningOp());
+    if (!sum_op || !sum_op.getKeepDims() ||
+        !isSupportedAxis(
+            sum_op.getAxes(),
+            sum_op.getOperand(0).getType().cast<ShapedType>().getRank())) {
+      return failure();
+    }
+    if (!sum_op->hasOneUse()) {
+      return failure();
+    }
+    auto exp_op =
+        dyn_cast_or_null<TFL::ExpOp>(sum_op.getInput().getDefiningOp());
+    if (!exp_op || !exp_op->hasOneUse()) {
+      return failure();
+    }
+
+    auto parent_sub_op =
+        dyn_cast_or_null<TFL::SubOp>(sub_op.getLhs().getDefiningOp());
+    if (!parent_sub_op || parent_sub_op != dyn_cast_or_null<TFL::SubOp>(
+                                               exp_op.getX().getDefiningOp())) {
+      return failure();
+    }
+    if (std::distance(parent_sub_op->getUses().begin(),
+                      parent_sub_op->getUses().end()) != 2) {
+      return failure();
+    }
+
+    auto reduce_max_op = dyn_cast_or_null<TFL::ReduceMaxOp>(
+        parent_sub_op.getRhs().getDefiningOp());
+    if (!reduce_max_op || !reduce_max_op->hasOneUse() ||
+        !reduce_max_op.getKeepDims() ||
+        !isSupportedAxis(reduce_max_op.getAxes(), reduce_max_op.getOperand(0)
+                                                      .getType()
+                                                      .cast<ShapedType>()
+                                                      .getRank())) {
+      return failure();
+    }
+
+    if (reduce_max_op.getInput() != parent_sub_op.getLhs()) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<TFL::LogSoftmaxOp>(sub_op, sub_op.getType(),
+                                                   parent_sub_op.getLhs());
+    return success();
+  }
+
+  // The TFL_LogSoftmaxOp implementation only works on the last axis, so we
+  // check that both TFL_ReduceMaxOP and TFL_SumOp use the last axis
+  bool isSupportedAxis(mlir::Value value, int64_t rank) const {
+    auto const_op =
+        dyn_cast_or_null<mlir::arith::ConstantOp>(value.getDefiningOp());
+    if (!const_op) {
+      return false;
+    }
+    auto axes = dyn_cast<DenseIntElementsAttr>(const_op.getValueAttr());
+    if (!axes || axes.getNumElements() != 1) {
+      return false;
+    }
+    auto axes_elem_ty = axes.getType().getElementType();
+    if (!axes_elem_ty.isInteger(32) && !axes_elem_ty.isInteger(64)) {
+      return false;
+    }
+    const int64_t axis = (*axes.begin()).getSExtValue();
+    if (axis != rank - 1 && axis != -1) {
+      return false;
+    }
+    return true;
+  }
+};
+
 // Adds canonicalization patterns to the list of patterns.
 void AddCanonicalizationPatterns(MLIRContext *context,
                                  RewritePatternSet *patterns) {
@@ -2291,10 +2326,11 @@ void OptimizePass::runOnOperation() {
   RewritePatternSet phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
   phase_2_patterns.add<
-      ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
-      ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
-      FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
-      FuseFullyConnectedAndMul, FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
+      FuseLogSoftmax, ScalarizeSplatConstantForAdd,
+      ScalarizeSplatConstantForSub, ScalarizeSplatConstantForMul,
+      ScalarizeSplatConstantForDiv, FuseFullyConnectedAndAdd,
+      FuseAddAndFullyConnected, FuseFullyConnectedAndMul,
+      FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
       FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
       FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
       FuseBinaryOpToFollowingConv2D, FuseBinaryOpToFollowingDepthwiseConv2D,

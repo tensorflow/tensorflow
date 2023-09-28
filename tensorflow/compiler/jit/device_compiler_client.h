@@ -21,7 +21,7 @@ limitations under the License.
 #include <variant>
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "xla/client/executable_build_options.h"
 
 namespace tensorflow {
 

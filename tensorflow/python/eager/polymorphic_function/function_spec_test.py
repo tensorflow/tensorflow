@@ -528,12 +528,19 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
     )
     self.assertEqual(
         spec.signature_summary(True),
-        'FunctionType(parameters=[Parameter(name=x, kind=POSITIONAL_OR_KEYWORD,'
-        ' optional=True, type_constraint=TensorSpec(shape=<unknown>,'
-        ' dtype=tf.float32, name=None)), Parameter(name=y,'
-        ' kind=POSITIONAL_OR_KEYWORD, optional=True,'
-        ' type_constraint=TensorSpec(shape=<unknown>, dtype=tf.float32,'
-        " name=None))], captures=OrderedDict()), defaults: {'x': 2, 'y': 3}",
+        'Input Parameters:\n'
+        + '  x (POSITIONAL_OR_KEYWORD):'
+        ' TensorSpec(shape=<unknown>, dtype=tf.float32, name=None)\n'
+        + '  y'
+        ' (POSITIONAL_OR_KEYWORD): TensorSpec(shape=<unknown>,'
+        ' dtype=tf.float32, name=None)\n'
+        + 'Output Type:\n'
+        + '  None\n'
+        + 'Captures:\n'
+        + '  None\n'
+        + 'Defaults:\n'
+        + '  x: 2\n'
+        + '  y: 3',
     )
 
 

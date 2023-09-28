@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/env.h"
+#include "tsl/platform/env.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 
 namespace tensorflow {

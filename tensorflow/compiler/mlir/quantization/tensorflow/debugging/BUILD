@@ -1,5 +1,9 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "get_compatible_with_portable",
+    "tf_kernel_library",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -15,9 +19,6 @@ cc_library(
     hdrs = ["mlir_dump.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -25,6 +26,9 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -34,14 +38,30 @@ tf_cc_test(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":mlir_dump",
-        "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+tf_kernel_library(
+    name = "dump_tensor_op",
+    srcs = ["dump_tensor_op.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
     ],
 )

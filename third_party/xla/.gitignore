@@ -1,0 +1,23 @@
+# Copyright 2023 The OpenXLA Authors
+#
+
+
+# Ignore the bazel directories when this directory is used as a local repository.
+bazel-*
+bazel-bin
+bazel-out
+bazel-testlogs
+
+
+# Emacs autosaves
+*~
+\#*\#
+
+# Visual Studio files
+.vs/
+.vscode/
+*.sdf
+*.opensdf
+*.VC.opendb
+*.suo
+*.user

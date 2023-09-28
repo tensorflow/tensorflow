@@ -318,7 +318,7 @@ class LinearOperatorDerivedClassTest(test.TestCase, metaclass=abc.ABCMeta):
 
 
 def _test_slicing(use_placeholder, shapes_info, dtype):
-  def test_slicing(self):
+  def test_slicing(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -342,7 +342,7 @@ def _test_slicing(use_placeholder, shapes_info, dtype):
 
 
 def _test_to_dense(use_placeholder, shapes_info, dtype):
-  def test_to_dense(self):
+  def test_to_dense(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -356,7 +356,7 @@ def _test_to_dense(use_placeholder, shapes_info, dtype):
 
 
 def _test_det(use_placeholder, shapes_info, dtype):
-  def test_det(self):
+  def test_det(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -371,7 +371,7 @@ def _test_det(use_placeholder, shapes_info, dtype):
 
 
 def _test_log_abs_det(use_placeholder, shapes_info, dtype):
-  def test_log_abs_det(self):
+  def test_log_abs_det(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -390,7 +390,8 @@ def _test_log_abs_det(use_placeholder, shapes_info, dtype):
 @test_util.run_without_tensor_float_32("Use FP32 in matmul")
 def _test_operator_matmul_with_same_type(use_placeholder, shapes_info, dtype):
   """op_a.matmul(op_b), in the case where the same type is returned."""
-  def test_operator_matmul_with_same_type(self):
+  def test_operator_matmul_with_same_type(
+      self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator_a, mat_a = self.operator_and_matrix(
@@ -409,7 +410,8 @@ def _test_operator_matmul_with_same_type(use_placeholder, shapes_info, dtype):
 
 def _test_operator_solve_with_same_type(use_placeholder, shapes_info, dtype):
   """op_a.solve(op_b), in the case where the same type is returned."""
-  def test_operator_solve_with_same_type(self):
+  def test_operator_solve_with_same_type(
+      self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator_a, mat_a = self.operator_and_matrix(
@@ -427,7 +429,7 @@ def _test_operator_solve_with_same_type(use_placeholder, shapes_info, dtype):
 
 
 def _test_matmul_base(
-    self,
+    self: "LinearOperatorDerivedClassTest",
     use_placeholder,
     shapes_info,
     dtype,
@@ -507,7 +509,7 @@ def _test_matmul(
     adjoint,
     adjoint_arg,
     blockwise_arg):
-  def test_matmul(self):
+  def test_matmul(self: "LinearOperatorDerivedClassTest"):
     _test_matmul_base(
         self,
         use_placeholder,
@@ -528,7 +530,7 @@ def _test_matmul_with_broadcast(
     adjoint,
     adjoint_arg,
     blockwise_arg):
-  def test_matmul_with_broadcast(self):
+  def test_matmul_with_broadcast(self: "LinearOperatorDerivedClassTest"):
     _test_matmul_base(
         self,
         use_placeholder,
@@ -542,7 +544,7 @@ def _test_matmul_with_broadcast(
 
 
 def _test_adjoint(use_placeholder, shapes_info, dtype):
-  def test_adjoint(self):
+  def test_adjoint(self: "LinearOperatorDerivedClassTest"):
     with self.test_session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -558,7 +560,7 @@ def _test_adjoint(use_placeholder, shapes_info, dtype):
 
 
 def _test_cholesky(use_placeholder, shapes_info, dtype):
-  def test_cholesky(self):
+  def test_cholesky(self: "LinearOperatorDerivedClassTest"):
     with self.test_session(graph=ops.Graph()) as sess:
       # This test fails to pass for float32 type by a small margin if we use
       # random_seed.DEFAULT_GRAPH_SEED.  The correct fix would be relaxing the
@@ -577,7 +579,7 @@ def _test_cholesky(use_placeholder, shapes_info, dtype):
 
 
 def _test_eigvalsh(use_placeholder, shapes_info, dtype):
-  def test_eigvalsh(self):
+  def test_eigvalsh(self: "LinearOperatorDerivedClassTest"):
     with self.test_session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -607,7 +609,7 @@ def _test_eigvalsh(use_placeholder, shapes_info, dtype):
 
 
 def _test_cond(use_placeholder, shapes_info, dtype):
-  def test_cond(self):
+  def test_cond(self: "LinearOperatorDerivedClassTest"):
     with self.test_session(graph=ops.Graph()) as sess:
       # svd does not work with zero dimensional matrices, so we'll
       # skip
@@ -653,7 +655,7 @@ def _test_cond(use_placeholder, shapes_info, dtype):
 
 
 def _test_solve_base(
-    self,
+    self: "LinearOperatorDerivedClassTest",
     use_placeholder,
     shapes_info,
     dtype,
@@ -728,7 +730,7 @@ def _test_solve_base(
 
 def _test_solve(
     use_placeholder, shapes_info, dtype, adjoint, adjoint_arg, blockwise_arg):
-  def test_solve(self):
+  def test_solve(self: "LinearOperatorDerivedClassTest"):
     _test_solve_base(
         self,
         use_placeholder,
@@ -743,7 +745,7 @@ def _test_solve(
 
 def _test_solve_with_broadcast(
     use_placeholder, shapes_info, dtype, adjoint, adjoint_arg, blockwise_arg):
-  def test_solve_with_broadcast(self):
+  def test_solve_with_broadcast(self: "LinearOperatorDerivedClassTest"):
     _test_solve_base(
         self,
         use_placeholder,
@@ -757,7 +759,7 @@ def _test_solve_with_broadcast(
 
 
 def _test_inverse(use_placeholder, shapes_info, dtype):
-  def test_inverse(self):
+  def test_inverse(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -769,7 +771,7 @@ def _test_inverse(use_placeholder, shapes_info, dtype):
 
 
 def _test_trace(use_placeholder, shapes_info, dtype):
-  def test_trace(self):
+  def test_trace(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -784,7 +786,7 @@ def _test_trace(use_placeholder, shapes_info, dtype):
 
 
 def _test_add_to_tensor(use_placeholder, shapes_info, dtype):
-  def test_add_to_tensor(self):
+  def test_add_to_tensor(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -801,7 +803,7 @@ def _test_add_to_tensor(use_placeholder, shapes_info, dtype):
 
 
 def _test_diag_part(use_placeholder, shapes_info, dtype):
-  def test_diag_part(self):
+  def test_diag_part(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -822,7 +824,7 @@ def _test_diag_part(use_placeholder, shapes_info, dtype):
 
 @test_util.run_without_tensor_float_32("Use FP32 in matmul")
 def _test_composite_tensor(use_placeholder, shapes_info, dtype):
-  def test_composite_tensor(self):
+  def test_composite_tensor(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -863,7 +865,7 @@ def _test_composite_tensor(use_placeholder, shapes_info, dtype):
 
 @test_util.run_without_tensor_float_32("Use FP32 in matmul")
 def _test_saved_model(use_placeholder, shapes_info, dtype):
-  def test_saved_model(self):
+  def test_saved_model(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -901,7 +903,7 @@ def _test_saved_model(use_placeholder, shapes_info, dtype):
 
 
 def _test_composite_tensor_gradient(use_placeholder, shapes_info, dtype):
-  def test_composite_tensor_gradient(self):
+  def test_composite_tensor_gradient(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, _ = self.operator_and_matrix(

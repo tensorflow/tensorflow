@@ -11,8 +11,10 @@ load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additiona
 visibility = [
     "//tensorflow:__subpackages__",
     "//tensorflow/dtensor:dtensor-internal",
-    "//learning/brain/python/platform:__subpackages__",
-    "//learning/brain/contrib/eager/numlib/benchmarks/kumamon:__subpackages__",
+    # copybara:uncomment "//learning/brain/python/platform:__subpackages__",
+    # copybara:uncomment "//learning/brain/contrib/eager/numlib/benchmarks/kumamon:__subpackages__",
+    # copybara:uncomment "//learning/brain/mobile/lite/tooling/model_analyzer:__subpackages__",
+    # copybara:uncomment "//tensorflow_serving/model_servers:__subpackages__",
 ]
 
 package(
@@ -188,10 +190,15 @@ tf_python_pybind_extension(
     srcs = ["stacktrace_handler_wrapper.cc"],
     hdrs = [
         "//tensorflow/core/platform:stacktrace_handler_hdrs",
-        "//tensorflow/tsl/platform:stacktrace_handler_hdrs",
+        "@local_tsl//tsl/platform:stacktrace_handler_hdrs",
+    ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_stacktrace_handler.pyi",
     ],
     deps = [
         "//third_party/python_runtime:headers",
+        "@local_tsl//tsl/platform:stacktrace_handler_hdrs_lib",
         "@pybind11",
     ],
 )
@@ -199,6 +206,10 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_cpu_feature_guard",
     srcs = ["cpu_feature_guard_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_cpu_feature_guard.pyi",
+    ],
     deps = [
         "//tensorflow/core/platform:cpu_feature_guard_hdr",  # Only depend on header to avoid ODR issues.
         "//third_party/python_runtime:headers",

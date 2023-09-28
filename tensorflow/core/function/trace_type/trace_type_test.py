@@ -15,6 +15,7 @@
 """Tests and benchmarks for the trace_type module."""
 
 import collections
+import dataclasses
 import timeit
 import weakref
 
@@ -22,12 +23,14 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.function import trace_type
+from tensorflow.core.function.trace_type import custom_nest_trace_type
 from tensorflow.core.function.trace_type import default_types
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -60,6 +63,23 @@ class TestAttrsClass:
 
 class DummyGenericClass:
   """Helps test memory leaks for GenericType."""
+
+
+@dataclasses.dataclass
+class MaskedTensor:
+  mask: bool
+  value: tensor_lib.Tensor
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value,)
+    return metadata, components
+
+  @classmethod
+  def __tf_unflatten__(cls, metadata, leaves):
+    mask = metadata[0]
+    value = leaves[0]
+    return MaskedTensor(mask=mask, value=value)
 
 
 class TraceTypeBuilderTest(test.TestCase, parameterized.TestCase):
@@ -262,10 +282,10 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
   def testLiteral(self):
     trace_float = default_types.Literal(1.5)
     ctx = trace_type.InternalCastContext()
-    value = trace_float._cast(1.5, ctx)
+    value = trace_float.cast(1.5, ctx)
     self.assertEqual(value, 1.5)
     with self.assertRaises(ValueError):
-      _ = trace_float._cast(1, ctx)
+      _ = trace_float.cast(1, ctx)
 
   @parameterized.parameters(list, tuple)
   def testTupleAndList(self, container_type):
@@ -277,7 +297,7 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
     bar = (1, 2)
     bar = container_type(bar)
     ctx = trace_type.InternalCastContext()
-    value = trace_foo._cast(bar, ctx)
+    value = trace_foo.cast(bar, ctx)
 
     self.assertIsInstance(value, container_type)
     self.assertLen(value, len(bar))
@@ -298,7 +318,7 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
     bar = type_b(bar)
     ctx = trace_type.InternalCastContext()
     with self.assertRaises(AssertionError):
-      _ = trace_foo._cast(bar, ctx)
+      _ = trace_foo.cast(bar, ctx)
 
   def testNamedTuple(self):
     Foo = collections.namedtuple('Foo', ['x', 'y'])
@@ -308,7 +328,7 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
     trace_foo = trace_type.from_value(foo)
     bar = Foo(1, 2)
     ctx = trace_type.InternalCastContext()
-    value = trace_foo._cast(bar, ctx)
+    value = trace_foo.cast(bar, ctx)
 
     self.assertIsInstance(value, Foo)
     self.assertLen(value, len(bar))
@@ -323,7 +343,7 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
     trace_foo = trace_type.from_value(foo)
     bar = TestAttrsClass(1, 2)
     ctx = trace_type.InternalCastContext()
-    value = trace_foo._cast(bar, ctx)
+    value = trace_foo.cast(bar, ctx)
 
     self.assertIsInstance(value, TestAttrsClass)
     self.assertEqual(value.a.dtype, dtypes.float32)
@@ -335,7 +355,7 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
     trace_foo = trace_type.from_value(foo)
     bar = {'x': 1, 'y': 2}
     ctx = trace_type.InternalCastContext()
-    value = trace_foo._cast(bar, ctx)
+    value = trace_foo.cast(bar, ctx)
 
     self.assertIsInstance(value, dict)
     self.assertSequenceEqual(
@@ -358,6 +378,31 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
     ref = weakref.ref(obj)
     with self.assertRaisesRegex(TypeError, 'weakref input .* not supported'):
       trace_type.from_value(ref)
+
+  def testCustomNestCast(self):
+    mt = MaskedTensor(
+        mask=False, value=constant_op.constant([1.0], dtype=dtypes.float32)
+    )
+    mt2 = MaskedTensor(mask=False, value=[2])
+    ctx = trace_type.InternalCastContext()
+
+    trace_mt = trace_type.from_value(mt)
+    self.assertIsInstance(trace_mt, custom_nest_trace_type.CustomNestTraceType)
+
+    mt2_casted = trace_mt.cast(mt2, ctx)
+    self.assertIsInstance(mt2_casted, MaskedTensor)
+    self.assertEqual(mt2_casted.mask, mt2.mask)
+    self.assertEqual(mt2_casted.value.dtype, mt.value.dtype)
+    self.assertAllEqual(mt2_casted.value.shape, mt.value.shape)
+    self.assertAllEqual(mt2_casted.value, mt2.value)
+
+  def testCustomNestFailCastWithWrongMetadata(self):
+    mt = MaskedTensor(mask=False, value=constant_op.constant([1.0]))
+    mt2 = MaskedTensor(mask=True, value=constant_op.constant([1.0]))
+    ctx = trace_type.InternalCastContext()
+    trace_mt = trace_type.from_value(mt)
+    with self.assertRaisesRegex(ValueError, 'Metadata mismatch'):
+      trace_mt.cast(mt2, ctx)
 
 
 class SignatureToTraceTypeTest(test.TestCase):

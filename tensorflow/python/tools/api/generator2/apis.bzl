@@ -3,10 +3,10 @@
 load(":patterns.bzl", "compile_patterns")
 
 APIS = {
-    "keras": {
+    "tf_keras": {
         "decorator": "tensorflow.python.util.tf_export.keras_export",
         "target_patterns": compile_patterns([
-            "//third_party/py/keras/...",
+            "//third_party/py/tf_keras/...",
         ]),
     },
     "tensorflow": {
@@ -26,6 +26,7 @@ APIS = {
             "//tensorflow/lite/python/...",
             "//tensorflow/python:modules_with_exports",
             "//tensorflow/lite/tools/optimize/debugging/python:all",
+            "//tensorflow/compiler/mlir/quantization/tensorflow/python:all",
         ]),
     },
     "tensorflow_estimator": {
