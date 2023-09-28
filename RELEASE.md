@@ -75,6 +75,9 @@
        *    `TfLiteSignatureRunnerInvoke`
        *    `TfLiteSignatureRunnerResizeInputTensor`
 
+    * New C API function `TfLiteExtensionApisVersion` added to
+      `tensorflow/lite/c/c_api.h`.
+
 * Android NDK r25 is supported.
 
 ### Bug Fixes and Other Changes
