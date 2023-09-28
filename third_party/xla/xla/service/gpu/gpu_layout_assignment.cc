@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_layout_assignment.h"
 
+#include <cstddef>
+#include <initializer_list>
 #include <memory>
 #include <tuple>
 #include <utility>
@@ -33,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/status_macros.h"
 #include "xla/window_util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
@@ -310,8 +313,13 @@ Status GpuLayoutAssignment::AddBackendConstraints(
                           GetNonContractingDims(rhs_shape, rhs_batch_dims,
                                                 rhs_contracting_dims));
 
-      // For unbatched S8xS8->S32 matrix multiplication enforce a TN layout,
-      // which will allow the NVidia GPUs to use TensorCores.
+      const DebugOptions& debug_options =
+          instruction->GetModule()->config().debug_options();
+
+      bool is_bf16_to_bf16 =
+          (output_shape.element_type() == PrimitiveType::BF16 &&
+           lhs_shape.element_type() == PrimitiveType::BF16 &&
+           rhs_shape.element_type() == PrimitiveType::BF16);
       bool is_s8_to_s32 = (output_shape.element_type() == PrimitiveType::S32 &&
                            lhs_shape.element_type() == PrimitiveType::S8 &&
                            rhs_shape.element_type() == PrimitiveType::S8 &&
@@ -319,13 +327,17 @@ Status GpuLayoutAssignment::AddBackendConstraints(
                            lhs_shape.dimensions_size() == 2 &&
                            rhs_shape.dimensions_size() == 2);
 
-      if (is_s8_to_s32) {
-        TF_RETURN_IF_ERROR(SetOperandBatchRowsColsLayout(
-            instruction, 0, lhs_batch_dims, lhs_non_contracting_dims,
-            lhs_contracting_dims));
-        TF_RETURN_IF_ERROR(SetOperandBatchRowsColsLayout(
-            instruction, 1, rhs_batch_dims, rhs_non_contracting_dims,
-            rhs_contracting_dims));
+      if (is_s8_to_s32 ||
+          (is_bf16_to_bf16 &&
+           debug_options.xla_gpu_ensure_minor_dot_contraction_dims())) {
+        TF_RETURN_IF_ERROR(SetOperandMajorToMinorLayout(
+            instruction, /*operand=*/0,
+            /*dim_groups=*/
+            {lhs_batch_dims, lhs_non_contracting_dims, lhs_contracting_dims}));
+        TF_RETURN_IF_ERROR(SetOperandMajorToMinorLayout(
+            instruction, /*operand=*/1,
+            /*dim_groups=*/
+            {rhs_batch_dims, rhs_non_contracting_dims, rhs_contracting_dims}));
         TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
       } else {
         if (!lhs_batch_dims.empty() || lhs_contracting_dims.size() > 1 ||
@@ -457,20 +469,21 @@ Status GpuLayoutAssignment::SetDotOperandLayout(
     return SetOperandLayout(shape, instruction, operand);
 
   // Otherwise, fallback to forcing (batch, rows, cols) layout.
-  return SetOperandBatchRowsColsLayout(instruction, operand, batch_dims,
-                                       row_dims, col_dims);
+  return SetOperandMajorToMinorLayout(
+      instruction, operand,
+      /*dim_groups=*/{batch_dims, row_dims, col_dims});
 }
 
-Status GpuLayoutAssignment::SetOperandBatchRowsColsLayout(
+Status GpuLayoutAssignment::SetOperandMajorToMinorLayout(
     const HloInstruction* instruction, int64_t operand,
-    absl::Span<const int64_t> batch_dims, absl::Span<const int64_t> row_dims,
-    absl::Span<const int64_t> col_dims) {
+    std::initializer_list<absl::Span<const int64_t>> dim_groups) {
+  size_t size = 0;
+  for (auto group : dim_groups) size += group.size();
   std::vector<int64_t> major_to_minor;
-  major_to_minor.reserve(batch_dims.size() + row_dims.size() + col_dims.size());
-  major_to_minor.insert(major_to_minor.end(), batch_dims.begin(),
-                        batch_dims.end());
-  major_to_minor.insert(major_to_minor.end(), row_dims.begin(), row_dims.end());
-  major_to_minor.insert(major_to_minor.end(), col_dims.begin(), col_dims.end());
+  major_to_minor.reserve(size);
+  for (const auto& group : dim_groups) {
+    major_to_minor.insert(major_to_minor.end(), group.begin(), group.end());
+  }
 
   Shape shape = instruction->operand(operand)->shape();
   *shape.mutable_layout() =

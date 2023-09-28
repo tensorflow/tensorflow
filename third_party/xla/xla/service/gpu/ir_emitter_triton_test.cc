@@ -2656,6 +2656,121 @@ ENTRY e {
                                       /*run_hlo_passes=*/false));
 }
 
+class TritonGemmContractionDims : public TritonGemmTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_ensure_minor_dot_contraction_dims(true);
+    debug_options.set_xla_gpu_triton_gemm_any(true);
+
+    return debug_options;
+  }
+};
+
+TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_0) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  parameter.0 = bf16[16,40]{1,0} parameter(0)
+  parameter.1 = bf16[40,32]{1,0} parameter(1)
+  ROOT dot.31472 = bf16[16,32]{1,0} dot(parameter.0, parameter.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->fused_instructions_computation()
+                  ->root_instruction(),
+              GmockMatch(m::Dot(m::Op().WithShape(BF16, {16, 40}, {1, 0}),
+                                m::Op().WithShape(BF16, {40, 32}, {0, 1}))
+                             .WithShape(BF16, {16, 32}, {1, 0})));
+}
+
+TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_2_1_2) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  parameter_0 = bf16[32,4,36]{2,1,0} parameter(0)
+  parameter_1 = bf16[40,4,36]{2,1,0} parameter(1)
+  ROOT dot.16450 = bf16[4,32,40]{2,1,0} dot(parameter_0, parameter_1), lhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_batch_dims={1}, rhs_contracting_dims={2}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->fused_instructions_computation()
+                  ->root_instruction(),
+              GmockMatch(m::Dot(m::Op().WithShape(BF16, {32, 4, 36}, {2, 0, 1}),
+                                m::Op().WithShape(BF16, {40, 4, 36}, {2, 0, 1}))
+                             .WithShape(BF16, {4, 32, 40}, {2, 1, 0})));
+}
+
+TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_2_0_1) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  parameter_1 = bf16[16,16,48]{2,1,0} parameter(1)
+  parameter_2 = bf16[16,48,32]{2,1,0} parameter(0)
+  ROOT dot.16125 = bf16[16,16,32]{2,1,0} dot(parameter_1, parameter_2), lhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+
+  EXPECT_THAT(
+      module->entry_computation()
+          ->root_instruction()
+          ->fused_instructions_computation()
+          ->root_instruction(),
+      GmockMatch(m::Dot(m::Op().WithShape(BF16, {16, 16, 48}, {2, 0, 1}),
+                        m::Op().WithShape(BF16, {16, 48, 32}, {1, 2, 0}))
+                     .WithShape(BF16, {16, 16, 32}, {2, 1, 0})));
+}
+
+TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_1) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  parameter_0 = bf16[16,32]{1,0} parameter(0)
+  parameter_1 = bf16[40,32]{0,1} parameter(1)
+  ROOT dot.15148 = bf16[16,40]{1,0} dot(parameter_0, parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->fused_instructions_computation()
+                  ->root_instruction(),
+              GmockMatch(m::Dot(m::Op().WithShape(BF16, {16, 32}, {1, 0}),
+                                m::Op().WithShape(BF16, {40, 32}, {1, 0}))
+                             .WithShape(BF16, {16, 40}, {1, 0})));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

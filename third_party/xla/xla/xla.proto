@@ -623,7 +623,11 @@ message DebugOptions {
   // Enable double buffering for loops.
   bool xla_gpu_enable_while_loop_double_buffering = 248;
 
-  // Next id: 249
+  // Change the layout of the second triton dot operand to be column major.
+  // Only works for (bf16 x bf16) -> bf16.
+  bool xla_gpu_ensure_minor_dot_contraction_dims = 249;
+
+  // Next id: 250
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
