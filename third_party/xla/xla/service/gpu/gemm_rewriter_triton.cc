@@ -73,16 +73,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-int GetFusionLevel(const HloInstruction& hlo, const GpuVersion gpu_version) {
-  int level =
-      hlo.GetModule()->config().debug_options().xla_gpu_triton_fusion_level();
-  if (!std::get<se::CudaComputeCapability>(gpu_version)
-           .IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    level = std::min(level, 1);
-  }
-  return level;
-}
-
 bool HasDivisibleSuffixAllowingSplit(const absl::Span<int64_t const> span,
                                      const int64_t divisor) {
   CHECK_GE(divisor, 1);
@@ -1087,6 +1077,12 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
         old_to_new_mapping,
     const GpuVersion gpu_version) const {
+  int fusion_level =
+      hlo.GetModule()->config().debug_options().xla_gpu_triton_fusion_level();
+  if (!std::get<se::CudaComputeCapability>(gpu_version)
+           .IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    fusion_level = std::min(fusion_level, 1);
+  }
   if (hlo.opcode() == HloOpcode::kTuple ||
       hlo.opcode() == HloOpcode::kGetTupleElement) {
     return "Unsupported instruction.";
@@ -1107,7 +1103,7 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
     return "Unsupported output data type.";
   }
   if (as_input) {
-    if (GetFusionLevel(hlo, gpu_version) < 2) {
+    if (fusion_level < 2) {
       if (hlo.opcode() == HloOpcode::kConvert) {
         if (FusionDecision decision =
                 RequireTritonFusibleConvert(&hlo, gpu_version);
@@ -1123,7 +1119,7 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
       }
     }
   } else {
-    if (GetFusionLevel(hlo, gpu_version) < 2) {
+    if (fusion_level < 2) {
       return "Skipping fusing outputs at low fusion levels.";
     }
     for (const HloInstruction* operand : hlo.operands()) {
@@ -1373,14 +1369,10 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
   if (dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any()) {
     return FusionDecision{};
   }
-
-  absl::flat_hash_set<HloOpcode> triggers{
-      HloOpcode::kConvert, HloOpcode::kSlice, HloOpcode::kTranspose};
-  if (GetFusionLevel(dot, gpu_version) >= 2) {
-    triggers.insert(HloOpcode::kCopy);
-  }
   for (const auto& iter : old_to_new_mapping) {
-    if (triggers.contains(iter.second->opcode())) {
+    if (iter.second->opcode() == HloOpcode::kConvert ||
+        iter.second->opcode() == HloOpcode::kSlice ||
+        iter.second->opcode() == HloOpcode::kTranspose) {
       return FusionDecision{};
     }
   }

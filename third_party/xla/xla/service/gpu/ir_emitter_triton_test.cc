@@ -1225,28 +1225,6 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-3, /*arel=*/2e-3}));
 }
 
-TEST_F(TritonGemmLevel2Test, FuseTransposeWithoutMixedTypes) {
-  const std::string kHloText = R"(
-ENTRY e {
-  p1 = f16[150,32,60]{2,1,0} parameter(1)
-  p0 = f16[75,2,26,60]{3,2,1,0} parameter(0)
-  t = f16[75,2,60,26]{3,2,1,0} transpose(p0), dimensions={0,1,3,2}
-  r = f16[150,60,26]{2,1,0} reshape(t)
-  ROOT tmp_4 = f16[150,32,26]{2,1,0} dot(p1, r),
-    lhs_batch_dims={0}, lhs_contracting_dims={2},
-    rhs_batch_dims={0}, rhs_contracting_dims={1}
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
-                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
-
 TEST_F(TritonGemmTest, SineOutputIsNotFused) {
   const std::string kHloText = R"(
 HloModule m
