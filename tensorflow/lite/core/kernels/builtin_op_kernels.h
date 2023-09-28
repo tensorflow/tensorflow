@@ -322,6 +322,7 @@ Register_STABLEHLO_TRANSPOSE();  // WARNING: not implemented, using this
 
 TfLiteRegistration* Register_DILATE();
 
+TfLiteRegistration* Register_REDUCE_WINDOW();
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite
