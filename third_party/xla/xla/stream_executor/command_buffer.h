@@ -74,6 +74,10 @@ class CommandBuffer {
                      const ThreadDim& threads, const BlockDim& blocks,
                      Args... args);
 
+  const internal::CommandBufferInterface* implementation() const {
+    return implementation_.get();
+  }
+
  private:
   std::unique_ptr<internal::CommandBufferInterface> implementation_;
 

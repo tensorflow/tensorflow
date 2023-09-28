@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/platform.h"
@@ -116,6 +117,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                      const BlockDim& block_dims, const KernelBase& k,
                      const KernelArgsArrayBase& args) override;
+
+  tsl::Status Submit(Stream* stream,
+                     const CommandBuffer& command_buffer) override;
 
   // (supported on CUDA only)
   int CalculateOccupancy(const DeviceDescription& device_description,

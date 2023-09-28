@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "xla/stream_executor/allocator_stats.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_options.h"
@@ -247,6 +248,11 @@ class StreamExecutorInterface {
   virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                              const BlockDim& block_dims, const KernelBase& k,
                              const KernelArgsArrayBase& args) {
+    return absl::UnimplementedError("Not Implemented");
+  }
+
+  virtual tsl::Status Submit(Stream* stream,
+                             const CommandBuffer& command_buffer) {
     return absl::UnimplementedError("Not Implemented");
   }
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <type_traits>
 
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
@@ -45,6 +46,8 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
 
   tsl::Status Finalize() override;
 
+  GpuGraphExecHandle executable() const { return exec_; }
+
   // We track the total number of allocated and alive executable graphs in the
   // process to track the command buffers resource usage. Executable graph
   // allocates resources on a GPU devices (rule of thumb is ~8kb per node), so
@@ -57,6 +60,11 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // thousands of command buffers alive at the same time.
   static int64_t AllocatedExecs();
   static int64_t AliveExecs();
+
+  static const GpuCommandBuffer* Cast(const CommandBuffer* command_buffer) {
+    return static_cast<const GpuCommandBuffer*>(
+        command_buffer->implementation());
+  }
 
  private:
   static_assert(std::is_pointer_v<GpuGraphHandle>,

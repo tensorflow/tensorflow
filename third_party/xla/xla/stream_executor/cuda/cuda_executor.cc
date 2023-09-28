@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 // LOG(ERROR) uses a const named ERROR, so a macro with the same name is
@@ -427,6 +429,14 @@ tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                  thread_dims.y, thread_dims.z,
                                  args.number_of_shared_bytes(), custream,
                                  kernel_params, nullptr /* = extra */);
+}
+
+tsl::Status GpuExecutor::Submit(Stream* stream,
+                                const CommandBuffer& command_buffer) {
+  auto exec = GpuCommandBuffer::Cast(&command_buffer)->executable();
+  VLOG(3) << "Launch command buffer execuable graph " << exec
+          << " on a stream: " << stream->DebugStreamPointers();
+  return GpuDriver::GraphLaunch(exec, AsGpuStreamValue(stream));
 }
 
 // This is a non-essential operation; if there's a failure, proceed without

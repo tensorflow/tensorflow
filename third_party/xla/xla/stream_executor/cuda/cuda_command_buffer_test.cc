@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "xla/stream_executor/command_buffer.h"
@@ -61,7 +62,14 @@ TEST(CudaCommandBufferTest, LaunchSingleKernel) {
   ASSERT_TRUE(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), a, b, c).ok());
   ASSERT_TRUE(cmd_buffer.Finalize().ok());
 
-  // TODO(ezhulenev): Execute command buffer and check results.
+  ASSERT_TRUE(executor->Submit(&stream, cmd_buffer).ok());
+
+  // Copy data back to host.
+  std::vector<int32_t> dst(4, 42);
+  stream.ThenMemcpy(dst.data(), c, byte_length);
+
+  std::vector<int32_t> expected = {3, 3, 3, 3};
+  ASSERT_EQ(dst, expected);
 }
 
 }  // namespace stream_executor::cuda
