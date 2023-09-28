@@ -83,10 +83,15 @@ function copy_xla_aot_runtime_sources() {
     if [ ! -z "$candidate_file" ]; then
       file=$candidate_file
     fi
-    dn=$(dirname $file)
+
+    # For XLA/TSL, we need to remove the prefix "../local_{xla|tsl}/".
+    dst_file=$file
+    dst_file=${dst_file#"../local_xla/"}
+    dst_file=${dst_file#"../local_tsl/"}
+
     if test -f "$file"; then
-      mkdir -p "${dst_dir}/${dn}"
-      cp $file "${dst_dir}/${file}"
+      mkdir -p "${dst_dir}/$(dirname $dst_file)"
+      cp $file "${dst_dir}/${dst_file}"
     else
       echo "Missing xla source file: ${file}" 1>&2
     fi
