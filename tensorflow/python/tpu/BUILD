@@ -608,7 +608,6 @@ pytype_strict_library(
     name = "tpu_strategy_util",
     srcs = ["tpu_strategy_util.py"],
     visibility = [
-        "//learning/brain:__subpackages__",
         "//tensorflow:__subpackages__",
         "//third_party/py/tensorflow_numerics/extensions:__pkg__",
     ],
