@@ -387,7 +387,7 @@ auto BcastConstScalarNear(double value) {
         // Not a very robust floating-point comparison, but good enough for our
         // purposes.
         std::optional<double> actual =
-            static_cast<const HloConstantInstruction *>(instr)
+            tensorflow::down_cast<const HloConstantInstruction *>(instr)
                 ->literal()
                 .GetAsDouble({});
         if (!actual.has_value()) return false;

@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -157,19 +158,20 @@ void ForAllThunks(const std::function<void(Thunk*)>& fn,
                   ThunkSequence* thunk_sequence) {
   for (std::unique_ptr<Thunk>& thunk : *thunk_sequence) {
     if (thunk->kind() == Thunk::kConditional) {
-      auto* cond_thunk = static_cast<ConditionalThunk*>(thunk.get());
+      auto* cond_thunk = tensorflow::down_cast<ConditionalThunk*>(thunk.get());
       for (const std::unique_ptr<SequentialThunk>& branch_thunks :
            cond_thunk->branch_thunks()) {
         ForAllThunks(fn, &branch_thunks->thunks());
       }
     } else if (thunk->kind() == Thunk::kFor) {
-      auto* for_thunk = static_cast<ForThunk*>(thunk.get());
+      auto* for_thunk = tensorflow::down_cast<ForThunk*>(thunk.get());
       ForAllThunks(fn, &for_thunk->body_thunk_sequence()->thunks());
     } else if (thunk->kind() == Thunk::kSequential) {
-      auto* sequential_thunk = static_cast<SequentialThunk*>(thunk.get());
+      auto* sequential_thunk =
+          tensorflow::down_cast<SequentialThunk*>(thunk.get());
       ForAllThunks(fn, &sequential_thunk->thunks());
     } else if (thunk->kind() == Thunk::kWhile) {
-      auto* while_thunk = static_cast<WhileThunk*>(thunk.get());
+      auto* while_thunk = tensorflow::down_cast<WhileThunk*>(thunk.get());
       ForAllThunks(fn, &while_thunk->condition_thunk_sequence()->thunks());
       ForAllThunks(fn, &while_thunk->body_thunk_sequence()->thunks());
     } else {
