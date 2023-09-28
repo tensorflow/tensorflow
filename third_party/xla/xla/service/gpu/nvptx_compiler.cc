@@ -122,7 +122,7 @@ class ConvBfloat16Support : public FloatSupport {
 }  // namespace
 
 Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
-    HloModule* hlo_module, GpuVersion gpu_version,
+    HloModule* hlo_module, se::GpuComputeCapability gpu_version,
     se::dnn::VersionInfo dnn_version,
     se::DeviceMemoryAllocator* device_allocator) {
   auto cuda_compute_capability =
@@ -469,14 +469,11 @@ HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() {
   return &CanShareBufferHint;
 }
 
-GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
-  return stream_exec->GetDeviceDescription().cuda_compute_capability();
-}
-
 StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
-                                   GpuVersion gpu_version, bool relocatable,
+                                   se::GpuComputeCapability gpu_version,
+                                   bool relocatable,
                                    const HloModule* debug_module,
                                    const CompileOptions& options) {
   std::unique_ptr<llvm::Module> loaded_module =

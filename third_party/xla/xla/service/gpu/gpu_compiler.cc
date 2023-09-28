@@ -114,7 +114,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "xla/service/gpu/gpu_scatter_expander.h"
 #include "xla/service/gpu/gpu_shape_verifier.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/gpu/hlo_fusion_stats.h"
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -694,7 +693,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
   // Run target-specific HLO optimization passes for convolution
   // canonicalization.
-  GpuVersion gpu_version = gpu_target_config.gpu_device_info.compute_capability;
+  se::GpuComputeCapability gpu_version =
+      gpu_target_config.gpu_device_info.compute_capability;
   se::dnn::VersionInfo dnn_version = gpu_target_config.dnn_version_info;
   if (stream_exec != nullptr) {
     gpu_version = GetGpuVersion(stream_exec);
@@ -896,10 +896,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     tsl::thread::ThreadPool* thread_pool) {
   // Constants:
   const DebugOptions& debug_options = hlo_module->config().debug_options();
-  const GpuVersion gpu_version =
+  const se::GpuComputeCapability gpu_version =
       gpu_target_config.gpu_device_info.compute_capability;
-  const se::CudaComputeCapability* const cuda_cc =
-      std::get_if<se::CudaComputeCapability>(&gpu_version);
   const AlgebraicSimplifierOptions simplifier_options = [&] {
     AlgebraicSimplifierOptions opts;
     opts.set_supports_non_canonical_dots(false);
@@ -956,6 +954,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
     // Rewrite GEMMs into custom calls.
+    se::GpuComputeCapability gpu_version =
+        gpu_target_config.gpu_device_info.compute_capability;
+    const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
     if (debug_options.xla_gpu_enable_triton_gemm() && cuda_cc != nullptr &&
         cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) {
       pipeline.AddPass<GemmRewriterTriton>(gpu_version);
@@ -1196,7 +1197,7 @@ static void NullDiagnosticHandler(const llvm::DiagnosticInfo& diag_info,
 StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                                    std::unique_ptr<llvm::Module> llvm_module,
-                                   GpuVersion gpu_version,
+                                   se::GpuComputeCapability gpu_version,
                                    se::StreamExecutor* stream_exec,
                                    const CompileOptions& options,
                                    const HloModule* debug_module) {
@@ -1791,6 +1792,11 @@ Status GpuCompiler::RunPostSchedulingPipelines(
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
   return OkStatus();
+}
+
+se::GpuComputeCapability GpuCompiler::GetGpuVersion(
+    se::StreamExecutor* stream_exec) {
+  return stream_exec->GetDeviceDescription().gpu_compute_capability();
 }
 
 }  // namespace gpu

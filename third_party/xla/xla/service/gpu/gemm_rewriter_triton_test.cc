@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
@@ -73,7 +72,7 @@ class GemmRewriterTritonTest : public HloTestBase {
       : HloTestBase(/*verifier_layout_sensitive=*/true,
                     /*allow_mixed_precision_in_hlo_verifier=*/false) {}
 
-  GpuVersion gpu_version_{
+  se::GpuComputeCapability gpu_version_{
       se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
 };
 

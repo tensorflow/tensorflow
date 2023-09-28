@@ -32,13 +32,13 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -54,7 +54,7 @@ bool HasDefaultLayout(const Shape& shape) {
 }
 
 bool IsTritonSupportedInstruction(const HloInstruction* instr,
-                                  const GpuVersion& gpu_version) {
+                                  const se::GpuComputeCapability& gpu_version) {
   if (!instr->shape().IsArray()) {
     return false;
   }
@@ -90,10 +90,10 @@ bool IsTritonSupportedInstruction(const HloInstruction* instr,
 // set to it. The definition of "trivial" operations is as given in
 // 'IsTriviallyFusible'.
 bool TrivialEdge(HloInstruction** producer, HloInstruction* consumer,
-                 HloOpcode opcode, const GpuVersion& gpu_version);
+                 HloOpcode opcode, const se::GpuComputeCapability& gpu_version);
 
 bool BitcastIsTilingNoop(HloInstruction* bitcast,
-                         const GpuVersion& gpu_version) {
+                         const se::GpuComputeCapability& gpu_version) {
   CHECK_EQ(bitcast->opcode(), HloOpcode::kBitcast);
 
   if (ShapeUtil::IsEffectiveScalar(bitcast->shape())) {
@@ -144,7 +144,8 @@ HloInstruction* ChooseOperandForFusionProcessing(HloInstruction* instr) {
   return instr->mutable_operand(0);
 }
 
-bool IsTriviallyFusible(HloInstruction* instr, const GpuVersion& gpu_version,
+bool IsTriviallyFusible(HloInstruction* instr,
+                        const se::GpuComputeCapability& gpu_version,
                         int num_allowed_users = 1) {
   // Checks whether an op is trivially fusible. An op is said to be trivially
   // fusible if it does not increase the amount of memory read/written by the
@@ -189,7 +190,8 @@ bool IsTriviallyFusible(HloInstruction* instr, const GpuVersion& gpu_version,
 }
 
 bool TrivialEdge(HloInstruction** producer, HloInstruction* consumer,
-                 HloOpcode opcode, const GpuVersion& gpu_version) {
+                 HloOpcode opcode,
+                 const se::GpuComputeCapability& gpu_version) {
   while (consumer->opcode() != opcode) {
     if (IsTriviallyFusible(consumer, gpu_version)) {
       consumer = ChooseOperandForFusionProcessing(consumer);
@@ -202,9 +204,9 @@ bool TrivialEdge(HloInstruction** producer, HloInstruction* consumer,
   return true;
 }
 
-bool IsTriviallyConnectedProducerOf(HloInstruction* producer,
-                                    HloInstruction* consumer,
-                                    const GpuVersion& gpu_version) {
+bool IsTriviallyConnectedProducerOf(
+    HloInstruction* producer, HloInstruction* consumer,
+    const se::GpuComputeCapability& gpu_version) {
   if (producer == consumer) {
     return true;
   }
@@ -227,7 +229,7 @@ bool IsTriviallyConnectedProducerOf(HloInstruction* producer,
 }
 
 bool IsTritonSupportedComputation(const HloComputation* computation,
-                                  const GpuVersion& gpu_version) {
+                                  const se::GpuComputeCapability& gpu_version) {
   for (const HloInstruction* instr : computation->instructions()) {
     if (!IsTritonSupportedInstruction(instr, gpu_version)) {
       return false;
@@ -237,7 +239,7 @@ bool IsTritonSupportedComputation(const HloComputation* computation,
 }
 
 std::optional<HloInstruction*> MatchesTritonCompatibleClosedReductionDiamond(
-    HloInstruction* instr, const GpuVersion& gpu_version) {
+    HloInstruction* instr, const se::GpuComputeCapability& gpu_version) {
   // Return the producer of the following pattern:
   //
   // producer
@@ -318,7 +320,8 @@ std::optional<HloInstruction*> MatchesTritonCompatibleClosedReductionDiamond(
 //      that instruction is used more than once, and/or is not trivially
 //      fusible.
 HloInstruction* FindFirstNonFusibleDiamondProducer(
-    HloInstruction* diamond_producer, const GpuVersion& gpu_version) {
+    HloInstruction* diamond_producer,
+    const se::GpuComputeCapability& gpu_version) {
   if (IsTriviallyFusible(diamond_producer, gpu_version,
                          /*num_allowed_users=*/2)) {
     diamond_producer = ChooseOperandForFusionProcessing(diamond_producer);

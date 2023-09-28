@@ -107,12 +107,11 @@ static bool HasFp8(const HloModule& hlo_module) {
 }
 
 // Lowers MLIR module to the XLA Gpu runtime custom calls.
-static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
-                                   llvm::StringRef entry_function_name,
-                                   llvm::ArrayRef<int64_t> buffer_sizes,
-                                   ThunkSequence* thunk_sequence,
-                                   const DebugOptions& debug_options,
-                                   GpuVersion compute_capability) {
+static Status LowerToXlaGpuRuntime(
+    mlir::ModuleOp module, llvm::StringRef entry_function_name,
+    llvm::ArrayRef<int64_t> buffer_sizes, ThunkSequence* thunk_sequence,
+    const DebugOptions& debug_options,
+    se::GpuComputeCapability compute_capability) {
   if (!module) {
     return InternalError("No MLIR module to lower.");
   }
@@ -194,7 +193,8 @@ StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, const HloModuleConfig& module_config,
     std::unique_ptr<ThunkSequence> thunk_sequence,
-    const HloModule* hlo_module_for_dump, GpuVersion compute_capability) {
+    const HloModule* hlo_module_for_dump,
+    se::GpuComputeCapability compute_capability) {
   // Forward collective (NCCL) attributes for use by the lowering pipeline.
   ForwardCollectiveAttrs(mlir_module, entry_function_name, module_config);
 

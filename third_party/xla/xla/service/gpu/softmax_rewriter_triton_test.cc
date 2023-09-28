@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/errors.h"
 
@@ -39,8 +39,8 @@ namespace m = ::xla::match;
 // Wrapper around SoftmaxRewriterTriton(gpu_version).Run(module) that finds
 // and fuses as many diamond chains as possible without invoking any kind of
 // cost analysis.
-StatusOr<bool> SoftmaxRewriterTritonMatchAndRewrite(GpuVersion gpu_version,
-                                                    HloModule* module) {
+StatusOr<bool> SoftmaxRewriterTritonMatchAndRewrite(
+    se::GpuComputeCapability gpu_version, HloModule* module) {
   CHECK_NE(module, nullptr);
   SoftmaxRewriterTriton softmax_rewriter_triton(gpu_version);
   std::vector<DiamondChainDescriptor> diamond_chains =
@@ -61,12 +61,12 @@ class SoftmaxRewriterTritonTest
       public ::testing::WithParamInterface<PrimitiveType> {
  public:
   void SetUp() override {
-    gpu_version_ = GpuVersion{
+    gpu_version_ = se::GpuComputeCapability{
         se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
   }
 
  protected:
-  GpuVersion gpu_version_;
+  se::GpuComputeCapability gpu_version_;
 };
 
 TEST_P(SoftmaxRewriterTritonTest, CanFuseExactSoftmax) {

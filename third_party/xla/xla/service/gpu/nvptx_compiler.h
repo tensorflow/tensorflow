@@ -40,7 +40,7 @@ class NVPTXCompiler : public GpuCompiler {
   NVPTXCompiler();
 
   Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, GpuVersion gpu_version,
+      HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) override;
 
@@ -71,12 +71,10 @@ class NVPTXCompiler : public GpuCompiler {
 
   HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() override;
 
-  GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
-
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      GpuVersion gpu_version, bool relocatable, const HloModule* debug_module,
-      const CompileOptions& options) override;
+      se::GpuComputeCapability gpu_version, bool relocatable,
+      const HloModule* debug_module, const CompileOptions& options) override;
 
  private:
   StatusOr<bool> CanUseLinkModules(
