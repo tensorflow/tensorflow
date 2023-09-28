@@ -556,9 +556,9 @@ StatusOr<std::unique_ptr<StreamExecutorUnloadedExecutable>> FromProto(
 }  // namespace
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-StreamExecutorGpuClient::LoadSerialized(absl::string_view serialized,
-                                        std::optional<CompileOptions> options,
-                                        const LoadOptions& load_options) {
+StreamExecutorGpuClient::LoadSerializedExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options,
+    const LoadOptions& load_options) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   StreamExecutorUnloadedExecutableProto proto;
   if (serialized.size() > std::numeric_limits<int>::max()) {
@@ -572,8 +572,7 @@ StreamExecutorGpuClient::LoadSerialized(absl::string_view serialized,
         "failed");
   }
   TF_ASSIGN_OR_RETURN(auto se_executable, FromProto(proto));
-  // TODO(b/296466237): Unify the `Load` method.
-  return Load(std::move(se_executable));
+  return Load(std::move(se_executable), LoadOptions());
 #endif
   return absl::InternalError("LoadSerialized only works with cuda or rocm.");
 }
@@ -594,7 +593,8 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> StreamExecutorGpuClient::Load(
-    std::unique_ptr<PjRtExecutable> executable) {
+    std::unique_ptr<PjRtExecutable> executable,
+    const LoadOptions& load_options) {
   auto se_executable =
       absl::WrapUnique(tensorflow::down_cast<StreamExecutorUnloadedExecutable*>(
           executable.release()));
@@ -604,22 +604,23 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> StreamExecutorGpuClient::Load(
   TF_ASSIGN_OR_RETURN(ExecutableExtras extras,
                       GetExecutableExtras(&compile_options));
 
-  TF_ASSIGN_OR_RETURN(
-      auto se_executor,
-      client()->backend().stream_executor(
-          compile_options.executable_build_options.device_ordinal()));
+  se::StreamExecutor* se_executor =
+      client()->backend().default_stream_executor();
+  if (se_executor == nullptr) {
+    return absl::FailedPreconditionError("Default stream executor is null.");
+  }
 
   // Load Executable from AOT compilation result.
   std::vector<std::unique_ptr<LocalExecutable>> local_executables;
   local_executables.reserve(se_executable->aot_executables().size());
   for (std::unique_ptr<xla::AotCompilationResult>& aot_executable :
        se_executable->aot_executables()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                        aot_executable->LoadExecutable(
-                            client()->backend().compiler(), se_executor));
-    local_executables.push_back(std::make_unique<LocalExecutable>(
-        std::move(executable), client()->local_service()->mutable_backend(),
-        compile_options.executable_build_options));
+    TF_ASSIGN_OR_RETURN(std::string serialized,
+                        aot_executable->SerializeAsString());
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<LocalExecutable> local_executable,
+        client()->Load(serialized, compile_options.executable_build_options));
+    local_executables.push_back(std::move(local_executable));
   }
   bool parameter_is_tupled_arguments =
       compile_options.parameter_is_tupled_arguments;
