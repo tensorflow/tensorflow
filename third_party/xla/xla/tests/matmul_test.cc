@@ -30,11 +30,7 @@ class MatmulTestWithCublas : public HloTestBase,
  public:
   DebugOptions GetDebugOptionsForTest() override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
-#if TENSORFLOW_USE_ROCM
-    debug_options.set_xla_gpu_enable_cublaslt(false);
-#else
     debug_options.set_xla_gpu_enable_cublaslt(use_cublas_lt_);
-#endif
     return debug_options;
   }
 

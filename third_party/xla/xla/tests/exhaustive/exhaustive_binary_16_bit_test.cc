@@ -131,15 +131,7 @@ BINARY_TEST_16BIT(DISABLED_ON_GPU(DISABLED_ON_CPU(Pow)), {
     memcpy(&f, &val_16, 2);
     return std::isnan(f);
   };
-  EvaluateOp fn = [](float x, float y) { return std::pow(x, y); };
-  if (platform_ == "ROCM") {
-    fn = [](float x, float y) {
-      if (x == 1.0f || y==0.0f)
-        return 1.0f;
-      return std::pow(x, y);
-    };
-  }
-  Run(AddEmptyBroadcastDimension(Pow), fn);
+  Run(AddEmptyBroadcastDimension(Pow), std::pow);
 })
 
 // TODO(bixia): Atan2 fails with bfloat16 on CPU.
