@@ -56,9 +56,9 @@ tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int device_ordinal,
 //
 // 'options' is used to query for the CUDA location in case it is
 // customized in a passed flag, and for controlling ptxas optimizations.
-tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
-                                                  const char* ptx_contents,
-                                                  GpuAsmOpts options);
+tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
+    int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
+    bool cancel_if_reg_spill = false);
 
 // Same as CompileGpuAsm, but caches the result, and returns unowned view of
 // the compiled binary.

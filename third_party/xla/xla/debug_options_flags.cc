@@ -195,6 +195,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_cublas_fallback(true);
   opts.set_xla_gpu_enable_while_loop_double_buffering(false);
   opts.set_xla_gpu_ensure_minor_dot_contraction_dims(false);
+  opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(true);
 
   return opts;
 }
@@ -1288,6 +1289,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_ensure_minor_dot_contraction_dims(),
       "Ensure that the contracting dimensions for matmul operands are the most "
       "minor by changing layouts accordingly"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_filter_kernels_spilling_registers_on_autotuning",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_filter_kernels_spilling_registers_on_autotuning),
+      debug_options->xla_gpu_filter_kernels_spilling_registers_on_autotuning(),
+      "Filter out kernels that spill registers during autotuning"));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

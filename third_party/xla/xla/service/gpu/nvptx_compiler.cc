@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
@@ -508,16 +509,19 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
   }
 
-  std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
+  StatusOr<std::vector<uint8_t>> maybe_cubin = CompileGpuAsmOrGetCachedResult(
       ptx, std::get<se::CudaComputeCapability>(gpu_version), module_config,
       (debug_module != nullptr ? debug_module->name() : "(unknown)"),
       relocatable, options);
 
-  return std::pair<std::string, std::vector<uint8_t>>(std::move(ptx),
-                                                      std::move(cubin));
+  if (maybe_cubin.status().code() == absl::StatusCode::kCancelled) {
+    return maybe_cubin.status();
+  }
+  return std::pair<std::string, std::vector<uint8_t>>(
+      std::move(ptx), std::move(maybe_cubin.value()));
 }
 
-std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
+StatusOr<std::vector<uint8_t>> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     const std::string& ptx, se::CudaComputeCapability cc,
     const HloModuleConfig& hlo_module_config, absl::string_view module_name,
     bool relocatable, const CompileOptions& options) {
@@ -561,8 +565,13 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
         }
         uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
-        StatusOr<std::vector<uint8_t>> maybe_cubin = se::CompileGpuAsm(
-            cc.major, cc.minor, cache_ptx->c_str(), ptxas_config);
+        bool cancel_if_reg_spill =
+            hlo_module_config.debug_options()
+                .xla_gpu_filter_kernels_spilling_registers_on_autotuning() &&
+            options.is_autotuning_compilation;
+        StatusOr<std::vector<uint8_t>> maybe_cubin =
+            se::CompileGpuAsm(cc.major, cc.minor, cache_ptx->c_str(),
+                              ptxas_config, cancel_if_reg_spill);
 
         if (maybe_cubin.ok()) {
           uint64_t end_usecs = tsl::Env::Default()->NowMicros();
@@ -599,6 +608,14 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                 "driver version. Custom ptxas location can be specified "
                 "using $PATH.",
                 hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
+          } else if (maybe_cubin.status().code() ==
+                     absl::StatusCode::kCancelled) {
+            // Register spilling has occurred during autotuning, this config
+            // should not be tried further.
+            CHECK(options.is_autotuning_compilation);
+            cache_value->compilation_done = true;
+            cache_value->compilation_done_cv.SignalAll();
+            return maybe_cubin;
           } else if (maybe_cubin.status().code() !=
                      absl::StatusCode::kUnimplemented) {
             // If unimplemented is returned, we fallback to the driver.

@@ -101,8 +101,8 @@ class NVPTXCompiler : public GpuCompiler {
       const std::string& preferred_cuda_dir);
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
-  // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
-  std::vector<uint8_t> CompileGpuAsmOrGetCachedResult(
+  // compiled cubin if compilation succeeded.
+  StatusOr<std::vector<uint8_t>> CompileGpuAsmOrGetCachedResult(
       const std::string& ptx, se::CudaComputeCapability cc,
       const HloModuleConfig& hlo_module_config, absl::string_view module_name,
       bool relocatable, const CompileOptions& options);

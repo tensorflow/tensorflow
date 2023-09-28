@@ -336,6 +336,7 @@ cc_library(
         "@local_tsl//tsl/platform:cuda_libdevice_path",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/platform",
+        "//xla:util",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",

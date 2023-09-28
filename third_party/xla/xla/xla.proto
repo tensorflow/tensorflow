@@ -627,7 +627,10 @@ message DebugOptions {
   // Only works for (bf16 x bf16) -> bf16.
   bool xla_gpu_ensure_minor_dot_contraction_dims = 249;
 
-  // Next id: 250
+  // Filter out kernels that spill registers during autotuning.
+  bool xla_gpu_filter_kernels_spilling_registers_on_autotuning = 250;
+
+  // Next id: 251
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
