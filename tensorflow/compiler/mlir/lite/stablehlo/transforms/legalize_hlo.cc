@@ -772,8 +772,29 @@ class ConvertNonTrivialConvOp
                                   rewriter.getI32Type()),
             input_shape));
     // Mirror the filter in the spatial dimensions.
-    auto filter = rewriter.create<mhlo::ReverseOp>(
-        conv_op.getLoc(), conv_op.getRhs(),
+    mlir::Value reverse_filter_in = conv_op.getRhs();
+    // If the kernel is with format [0,1,i,o] we transpose it to [0,1,o,i]
+    // as the TF->TFL pass anticipates this and the kernel format information
+    // will be lost once we legalize to TF
+    if (isKernelFormatHWIO(dnums)) {
+      SmallVector<int64_t, 4> permutation;
+      for (int64_t dim : dnums.getInputSpatialDimensions()) {
+        permutation.push_back(dim - 1);
+      }
+      permutation.push_back(dnums.getKernelOutputFeatureDimension());
+      permutation.push_back(dnums.getKernelInputFeatureDimension());
+
+      auto filter_transposed = rewriter.create<mhlo::TransposeOp>(
+          conv_op.getLoc(), conv_op.getRhs(),
+          DenseIntElementsAttr::get(
+              RankedTensorType::get({static_cast<int64_t>(permutation.size())},
+                                    rewriter.getI64Type()),
+              permutation));
+      reverse_filter_in = filter_transposed;
+    }
+    mhlo::ReverseOp filter;
+    filter = rewriter.create<mhlo::ReverseOp>(
+        conv_op.getLoc(), reverse_filter_in,
         rewriter.getI64TensorAttr(dnums.getKernelSpatialDimensions()));
     rewriter.replaceOpWithNewOp<TF::Conv2DBackpropInputOp>(
         conv_op, conv_op.getType(), input_sizes, filter, conv_op.getLhs(),
@@ -801,6 +822,18 @@ class ConvertNonTrivialConvOp
     }
 
     return true;
+  }
+
+  bool isKernelFormatHWIO(mhlo::ConvDimensionNumbersAttr dnums) const {
+    int64_t num_spatial_dims = dnums.getKernelSpatialDimensions().size();
+    return dnums.getKernelInputFeatureDimension() == num_spatial_dims &&
+           dnums.getKernelOutputFeatureDimension() == num_spatial_dims + 1;
+  }
+
+  bool isKernelFormatHWOI(mhlo::ConvDimensionNumbersAttr dnums) const {
+    int64_t num_spatial_dims = dnums.getKernelSpatialDimensions().size();
+    return dnums.getKernelInputFeatureDimension() == num_spatial_dims + 1 &&
+           dnums.getKernelOutputFeatureDimension() == num_spatial_dims;
   }
 
   LogicalResult IsSupportedConvOp(mhlo::ConvolutionOp conv_op,
@@ -868,15 +901,14 @@ class ConvertNonTrivialConvOp
     }
 
     // Checks kernel dimensions.
-    if (dnums.getKernelInputFeatureDimension() != num_spatial_dims + 1 ||
-        dnums.getKernelOutputFeatureDimension() != num_spatial_dims)
-      return rewriter.notifyMatchFailure(conv_op,
-                                         "requires kernel format [0, 1, o, i]");
+    if (!isKernelFormatHWIO(dnums) && !isKernelFormatHWOI(dnums))
+      return rewriter.notifyMatchFailure(
+          conv_op, "requires kernel format [0, 1, o, i] or [0, 1, i, o]");
     auto kernel_spatial_dimensions = dnums.getKernelSpatialDimensions();
     for (auto p : llvm::enumerate(kernel_spatial_dimensions)) {
       if (p.value() != p.index())
         return rewriter.notifyMatchFailure(
-            conv_op, "requires kernel format [0, 1, o, i]");
+            conv_op, "requires kernel format [0, 1, o, i] or [0, 1, i, o]");
     }
 
     return success();
