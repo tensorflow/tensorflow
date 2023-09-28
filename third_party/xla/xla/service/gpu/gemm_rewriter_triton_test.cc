@@ -1724,6 +1724,40 @@ ENTRY e {
             TritonFusionAnalysis::kMaxParameterPerScope * 2);
 }
 
+TEST_F(GemmRewriterTritonLevel2Test,
+       OperationsAddingMoreParametersGetMultipleTries) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  p0 = f32[2,2] parameter(0)
+  c0 = f32[] constant(12345)
+  b0 = f32[2,2] broadcast(c0), dimensions={}
+  m0 = f32[2,2] multiply(p0, b0)
+  c1 = f32[] constant(34567)
+  b1 = f32[2,2] broadcast(c1), dimensions={}
+  a0 = f32[2,2] add(m0, b1)
+  b3 = f32[2,2,2] broadcast(a0), dimensions={0,1}
+  p2 = f32[2,2,2] parameter(2)
+  m2 = f32[2,2,2] multiply(p2, b3)
+  p1 = f32[2]{0} parameter(1)
+  c2 = f32[] constant(5678)
+  b2 = f32[2] broadcast(c2), dimensions={}
+  a1 = f32[2]{0} add(p1, b2)
+  b4 = f32[2,2,2] broadcast(a1), dimensions={2}
+  m1 = f32[2,2,2] multiply(m2, b4)
+  b = f32[4,2] bitcast(m1)
+  p3 = f16[2,2] parameter(3)
+  p3c = f32[2,2] convert(p3)
+  ROOT r = f32[4,2] dot(b, p3c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
+                                    m::Parameter(), m::Parameter()))));
+}
+
 TEST_F(GemmRewriterTritonLevel2Test, FusionLevelIsLimitedOnVolta) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(

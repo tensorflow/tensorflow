@@ -1238,14 +1238,21 @@ void FusionContext::TryToFuseWithInputsRecursively(
   absl::flat_hash_set<const HloInstruction*> enqueued;
   std::queue<HloInstruction*> to_visit;
   to_visit.push(&root);
-  while (!to_visit.empty()) {
+  int num_requeued = 0;
+  while (to_visit.size() > num_requeued) {
     HloInstruction* hlo = to_visit.front();
     to_visit.pop();
-    // Limit the total number of fusion parameters.
+    // Watch the total number of fusion parameters.
     if (inputs.size() >= TritonFusionAnalysis::kMaxParameterPerScope &&
         NumAddedParameters(*hlo) > 0) {
+      // Re-queue: the number of parameters may go down when other instructions
+      // are processed.
+      to_visit.push(hlo);
+      // Prevent infinite loops.
+      ++num_requeued;
       continue;
     }
+    num_requeued = 0;
     const DimOrderUpdatesOrError result = AnalyzeForFusion(
         *hlo, /*as_input=*/true, old_to_new_mapping, gpu_version);
     if (!std::holds_alternative<DimOrderUpdates>(result) ||
