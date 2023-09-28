@@ -102,6 +102,7 @@ std::vector<py::object> PyClient::LiveBuffers() {
 
 std::vector<std::shared_ptr<PyLoadedExecutable>> PyClient::LiveExecutables() {
   CHECK(PyGILState_Check());
+  GlobalPyRefManager()->CollectGarbage();
   std::vector<std::shared_ptr<PyLoadedExecutable>> executables;
   for (PyLoadedExecutable* exec = executables_; exec; exec = exec->next_) {
     if (!exec->is_deleted()) {
