@@ -104,7 +104,7 @@ class DataFrame:
 
 def extract_test_info(
     test_results: model_handler.TestResultCollection) -> DataFrame:
-  """Extracts the test infomation."""
+  """Extracts the test information."""
   column_names = list(
       itertools.chain(model_handler.ModelConfig._fields,
                       ["enable_gpu", "trt_model"],
