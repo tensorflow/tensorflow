@@ -222,7 +222,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"

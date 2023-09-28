@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/runtime/executable.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/gpu_graph.h"
