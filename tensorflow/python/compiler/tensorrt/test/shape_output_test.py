@@ -237,7 +237,7 @@ class ShapeValueMaskTest(trt_test.TfTrtIntegrationTestBase):
 class InputProfile(trt_test.TfTrtIntegrationTestBase):
   """The shape profiles has to fit values of shape tensors, but for regular
 
-  tensors the values do not matter. Here we test shape profile managment with
+  tensors the values do not matter. Here we test shape profile management with
   an INT32 input tensor that is not a shape tensor. The extra inputs with
   dim=10 would trigger an error if we mistakenly treat it as shape tensors.
   """
