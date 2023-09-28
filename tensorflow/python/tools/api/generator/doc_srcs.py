@@ -89,8 +89,14 @@ _TENSORFLOW_DOC_SOURCES = {
         DocSource(docstring_module_name='ops.sparse_ops'),
     'strings':
         DocSource(docstring_module_name='ops.string_ops'),
-    'summary':
-        DocSource(docstring_module_name='summary.summary'),
+    'summary': DocSource(
+        docstring=(
+            'Operations for writing summary data, for use in analysis and'
+            ' visualization. See the [Summaries and'
+            ' TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard)'
+            ' guide.'
+        )
+    ),
     'sysconfig':
         DocSource(docstring='System configuration library.'),
     'test':
