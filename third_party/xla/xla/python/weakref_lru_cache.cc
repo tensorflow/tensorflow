@@ -23,10 +23,8 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/synchronization/notification.h"
-#include "absl/types/span.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/pjrt/lru_cache.h"
-#include "xla/python/python_ref_manager.h"
 
 namespace jax {
 namespace {
@@ -96,10 +94,6 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     pybind11::object result;
     absl::Notification completed;
     std::thread::id thread_id = std::this_thread::get_id();
-
-    ~CacheEntry() {
-      xla::GlobalPyRefManager()->AddGarbage(absl::MakeSpan(&result, 1));
-    }
   };
 
   struct CacheInfo {
