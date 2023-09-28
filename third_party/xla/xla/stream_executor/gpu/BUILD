@@ -375,7 +375,6 @@ cc_library(
         "@local_tsl//tsl/framework:allocator",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream_executor_headers",
         "@local_tsl//tsl/platform:status",
     ]),

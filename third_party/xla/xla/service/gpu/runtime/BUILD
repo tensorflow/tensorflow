@@ -526,7 +526,7 @@ cc_library(
         "//xla/runtime:state",
         "//xla/service:executable",
         "//xla/service/gpu:matmul_utils",
-        "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor",
         "//xla/stream_executor/cuda:cublas_lt_header",
         "@local_tsl//tsl/platform:status",
     ] + if_rocm_is_configured([
