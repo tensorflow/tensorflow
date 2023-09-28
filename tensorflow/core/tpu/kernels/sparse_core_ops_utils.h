@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -44,7 +45,23 @@ std::function<float(float)> GetCombinerScaleContributionFunction(
 std::function<float(float)> GetCombinerScaleTransformFunction(
     absl::string_view combiner);
 
+// Stacks tables, so long as table have the same 'group' index. We assume that
+// all tables with a given group index have the same width. Returns a list of
+// list of table names, in alphabetical order.
+std::vector<std::vector<std::string>> GetTableStacks(
+    const std::vector<int64_t>& table_height,
+    const std::vector<int64_t>& table_width,
+    const std::vector<int64_t>& table_num_samples,
+    const std::vector<int64_t>& table_group,
+    const std::vector<std::string>& table_names, int64_t num_tpu_chips);
+
 int GetMinibatchMaxDivisionLevel();
+
+bool GetDisableTableStacking();
+
+int64_t GetXlaSparseCoreStackingMemLimit();
+
+int64_t GetXlaSparseCoreStackingTableShardLimit();
 
 }  // namespace tensorflow
 

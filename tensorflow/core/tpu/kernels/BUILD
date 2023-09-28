@@ -1381,16 +1381,26 @@ cc_library(
     name = "sparse_core_ops_utils",
     srcs = ["sparse_core_ops_utils.cc"],
     hdrs = ["sparse_core_ops_utils.h"],
+    visibility = ["//visibility:public"],
     deps = [
+        ":sparse_core_xla_flags_defaults",
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "sparse_core_xla_flags_defaults",
+    hdrs = ["sparse_core_xla_flags_defaults.h"],
+    visibility = ["//visibility:public"],
 )
 
 tf_cc_test(
