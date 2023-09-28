@@ -82,6 +82,13 @@ limitations under the License.
 #include "tsl/platform/threadpool.h"
 #include "tsl/util/proto/proto_utils.h"
 
+// Log levels used in this file:
+// VLOG(1): Overview
+// VLOG(2): Autotuning progress
+// VLOG(3): Autotuning progress - more frequent
+// VLOG(4): Print all fusions
+// VLOG(5): Profiling information for every tiling
+
 namespace xla {
 namespace gpu {
 
@@ -119,7 +126,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
-    VLOG(2) << "Processing " << hlo->ToString();
+    VLOG(4) << "Processing " << hlo->ToString();
     if (!backend_config.has_triton_gemm_config()) {
       TF_ASSIGN_OR_RETURN(
           AutotuneResult autotune_result,
@@ -132,7 +139,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
                 }
                 return InternalError("Expect autotune result cache hit.");
               }));
-      VLOG(2) << "Result: " << autotune_result.ShortDebugString();
+      VLOG(4) << "Result: " << autotune_result.ShortDebugString();
 
       if (autotune_result.has_triton()) {
         *backend_config.mutable_triton_gemm_config() = autotune_result.triton();
@@ -328,7 +335,7 @@ std::vector<AutotuneResult::TritonGemmKey> GetFixedMatmulAutotuneConfigs(
   return configs;
 }
 
-int GetLogEveryN() { return VLOG_IS_ON(2) ? 100 : 1000; }
+int GetLogEveryN() { return VLOG_IS_ON(3) ? 100 : 1000; }
 
 StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     const AutotuneResult::TritonGemmKey& key,
@@ -616,7 +623,6 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
     }
     cublas_duration = output.duration;
   }
-  VLOG(3) << "Running with cuBLAS took: " << cublas_duration;
 
   const int log_every_n = GetLogEveryN();
   int64_t executable_count =
@@ -626,7 +632,7 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
   VLOG(2) << "Running " << executable_count << " configs for " << fusion->name()
           << ".";
   for (const ExecutableCandidate& candidate : executable_set.candidates) {
-    VLOG(3) << "Trying triton tiling: " << candidate.config.ShortDebugString();
+    VLOG(5) << "Trying triton tiling: " << candidate.config.ShortDebugString();
 
     AutotuneResult res;
     *res.mutable_triton() = candidate.config;
@@ -641,11 +647,11 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
     }
 
     if (!profiling_output) {
-      VLOG(3) << "Skipping this tiling.";
+      VLOG(5) << "Skipping this tiling.";
       continue;
     }
 
-    VLOG(3) << "Running the kernel took: " << profiling_output->duration;
+    VLOG(5) << "Running the kernel took: " << profiling_output->duration;
     if (profiling_output->duration >= absl::Seconds(1)) {
       LOG(WARNING) << "Slow kernel for " << fusion->name()
                    << " took: " << profiling_output->duration
@@ -694,8 +700,10 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
   if (debug_opts.xla_gpu_cublas_fallback()) {
     const absl::Duration best_triton_duration =
         tsl::proto_utils::FromDurationProto(best_triton.run_time());
+    VLOG(2) << fusion->name() << ": time with cuBLAS: " << cublas_duration
+            << ", best time with Triton: " << best_triton_duration;
     if (cublas_duration < best_triton_duration) {
-      VLOG(1) << "Falling back to cuBLAS for " << fusion->name();
+      VLOG(2) << "Falling back to cuBLAS for " << fusion->name();
 
       AutotuneResult cublas;
       *cublas.mutable_run_time() =
