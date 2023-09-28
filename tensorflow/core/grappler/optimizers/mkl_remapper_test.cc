@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/remapper.h"
@@ -758,12 +759,20 @@ TEST_F(FusedMatMulBiasAddAndGeluTest, Float32GeluExact) {
   RunTest<DT_FLOAT, false>();
 }
 TEST_F(FusedMatMulBiasAddAndGeluTest, BFloat16GeluExact) {
+  if (!mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FusedMatMulBiasAddAndGelu with bfloat16.";
   RunTest<DT_BFLOAT16, false>();
 }
 TEST_F(FusedMatMulBiasAddAndGeluTest, Float32GeluExact2) {
   RunTest<DT_FLOAT, true>();
 }
 TEST_F(FusedMatMulBiasAddAndGeluTest, BFloat16GeluExact2) {
+  if (!mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FusedMatMulBiasAddAndGelu with bfloat16.";
   RunTest<DT_BFLOAT16, true>();
 }
 
@@ -771,6 +780,11 @@ class MklFusedBatchMatMul : public MklRemapperTest {
  public:
   template <typename T>
   void VerifyFused(bool adjx, bool adjy) {
+    if (DataTypeToEnum<T>::v() == DT_BFLOAT16 &&
+        !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+      GTEST_SKIP()
+          << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+             "MklFusedBatchMatMul with bfloat16.";
     using ::tensorflow::ops::Placeholder;
     using normal_generator = Eigen::internal::NormalRandomGenerator<T>;
 
@@ -862,6 +876,11 @@ class MklFusedBatchMatMul : public MklRemapperTest {
 
   template <typename T>
   void VerifyPreceedingScalarMul(bool adjx, bool adjy) {
+    if (DataTypeToEnum<T>::v() == DT_BFLOAT16 &&
+        !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+      GTEST_SKIP()
+          << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+             "MklFusedBatchMatMul with bfloat16.";
     using ::tensorflow::ops::Placeholder;
     using normal_generator = Eigen::internal::NormalRandomGenerator<T>;
 
@@ -1055,7 +1074,13 @@ class MklRemapperSwishTest : public GrapplerTest {
 };
 
 TEST_F(MklRemapperSwishTest, F32) { RunTest<DT_FLOAT>(); }
-TEST_F(MklRemapperSwishTest, BF16) { RunTest<DT_BFLOAT16>(); }
+TEST_F(MklRemapperSwishTest, BF16) {
+  if (!mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "MklRemapperSwish with bfloat16.";
+  RunTest<DT_BFLOAT16>();
+}
 
 class MklRemapperConv2dBiasAddSwishTest : public GrapplerTest {
  protected:
@@ -1135,7 +1160,13 @@ class MklRemapperConv2dBiasAddSwishTest : public GrapplerTest {
 };
 
 TEST_F(MklRemapperConv2dBiasAddSwishTest, F32) { RunTest<DT_FLOAT>(); }
-TEST_F(MklRemapperConv2dBiasAddSwishTest, BF16) { RunTest<DT_BFLOAT16>(); }
+TEST_F(MklRemapperConv2dBiasAddSwishTest, BF16) {
+  if (!mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "MklRemapperConv2dBiasAddSwish with bfloat16.";
+  RunTest<DT_BFLOAT16>();
+}
 
 class MklRemapperConv2dFusedBatchNormSwishTest : public GrapplerTest {
  protected:

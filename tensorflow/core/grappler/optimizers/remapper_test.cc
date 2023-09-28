@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
@@ -721,15 +722,17 @@ class RemapperFuseConvWithBias : public RemapperTest {
 TEST_F(RemapperFuseConvWithBias, Conv2D_F32) { RunTest<2, DT_FLOAT>(); }
 TEST_F(RemapperFuseConvWithBias, Conv3D_F32) { RunTest<3, DT_FLOAT>(); }
 TEST_F(RemapperFuseConvWithBias, Conv2D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "FuseConv2DWithBias with bfloat16.";
+  if (!IsMKLEnabled() || !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FuseConv2DWithBias with bfloat16.";
   RunTest<2, DT_BFLOAT16>();
 }
 TEST_F(RemapperFuseConvWithBias, Conv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "FuseConv3DWithBias with bfloat16.";
+  if (!IsMKLEnabled() || !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FuseConv3DWithBias with bfloat16.";
   RunTest<3, DT_BFLOAT16>();
 }
 
@@ -876,15 +879,17 @@ TEST_F(RemapperFuseConvWithBiasAndActivation, Conv3D_F32) {
   RunTest<3, DT_FLOAT>();
 }
 TEST_F(RemapperFuseConvWithBiasAndActivation, Conv2D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "FuseConv2DWithBiasAndActivation with bfloat16.";
+  if (!IsMKLEnabled() || !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FuseConv2DWithBiasAndActivation with bfloat16.";
   RunTest<2, DT_BFLOAT16>();
 }
 TEST_F(RemapperFuseConvWithBiasAndActivation, Conv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "FuseConv3DWithBiasAndActivation with bfloat16.";
+  if (!IsMKLEnabled() || !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FuseConv3DWithBiasAndActivation with bfloat16.";
   RunTest<3, DT_BFLOAT16>();
 }
 
@@ -1000,15 +1005,17 @@ TEST_F(RemapperFuseConvWithSqueezeAndBias, Conv3D_FP32) {
   RunTest<3, DT_FLOAT>();
 }
 TEST_F(RemapperFuseConvWithSqueezeAndBias, Conv2D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "FuseConvWithSqueezeAndBias with bfloat16.";
+  if (!IsMKLEnabled() || !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FuseConvWithSqueezeAndBias with bfloat16.";
   RunTest<2, DT_BFLOAT16>();
 }
 TEST_F(RemapperFuseConvWithSqueezeAndBias, Conv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "FuseConvWithSqueezeAndBias with bfloat16.";
+  if (!IsMKLEnabled() || !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FuseConvWithSqueezeAndBias with bfloat16.";
   RunTest<3, DT_BFLOAT16>();
 }
 
@@ -1400,7 +1407,8 @@ TEST_F(RemapperFuseSoftplusTanhMul, FP32) {
   RunTest<DT_FLOAT>();
 }
 TEST_F(RemapperFuseSoftplusTanhMul, BF16) {
-  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+  if (!IsMKLEnabled() || !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP() << "Test only applicable to oneDNN.";
   RunTest<DT_BFLOAT16>();
 }
 #endif
@@ -1695,8 +1703,10 @@ TEST_F(RemapperFuseMatMulWithBiasTest, F32) { RunTest<DT_FLOAT>(); }
 
 TEST_F(RemapperFuseMatMulWithBiasTest, Bf16) {
 #if !defined(ENABLE_MKL)
-  GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                  "FuseMatMulWithBias with bfloat16.";
+  if (!mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FuseMatMulWithBias with bfloat16.";
 #endif
   RunTest<DT_BFLOAT16>();  // NOLINT
 }
@@ -1905,8 +1915,10 @@ TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F32) {
 
 TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, Bf16) {
 #if !defined(ENABLE_MKL)
-  GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                  "FuseMatMulWithBiasAndActivation with bfloat16.";
+  if (!mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FuseMatMulWithBiasAndActivation with bfloat16.";
 #endif
   RunTest<DT_BFLOAT16>();  // NOLINT
 }
@@ -2503,9 +2515,10 @@ TEST_F(RemapperFusePadConv3D, Conv3D_FP32) {
   RunTest<DT_FLOAT>();
 }
 TEST_F(RemapperFusePadConv3D, Conv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "RemapperFusePadConv3D with bfloat16.";
+  if (!IsMKLEnabled() || !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "RemapperFusePadConv3D with bfloat16.";
   RunTest<DT_BFLOAT16>();
 }
 
@@ -2627,9 +2640,10 @@ TEST_F(RemapperFusePadWithFusedConv3D, FusedConv3D_FP32) {
   RunTest<DT_FLOAT>();
 }
 TEST_F(RemapperFusePadWithFusedConv3D, FusedConv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "RemapperFusePadWithFusedConv3D with bfloat16.";
+  if (!IsMKLEnabled() || !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "RemapperFusePadWithFusedConv3D with bfloat16.";
   RunTest<DT_BFLOAT16>();
 }
 #endif
@@ -2696,7 +2710,13 @@ class RemapperLeakyReluTest : public GrapplerTest {
 };
 
 TEST_F(RemapperLeakyReluTest, F32) { RunTest<DT_FLOAT>(); }
-TEST_F(RemapperLeakyReluTest, BF16) { RunTest<DT_BFLOAT16>(); }
+TEST_F(RemapperLeakyReluTest, BF16) {
+  if (!IsMKLEnabled() || !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "RemapperLeakyRelu with bfloat16.";
+  RunTest<DT_BFLOAT16>();
+}
 
 class RemapperFuseFusedConvWithFusedActivation : public RemapperTest {
  public:
@@ -2841,12 +2861,20 @@ TEST_F(RemapperFuseFusedConvWithFusedActivation, Conv2D_F32) {
   RunTest<2, DT_FLOAT>();
 }
 TEST_F(RemapperFuseFusedConvWithFusedActivation, Conv2D_BF16) {
+  if (!IsMKLEnabled() || !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "RemapperFuseFusedConvWithFusedActivation with bfloat16.";
   RunTest<2, DT_BFLOAT16>();
 }
 TEST_F(RemapperFuseFusedConvWithFusedActivation, Conv3D_F32) {
   RunTest<3, DT_FLOAT>();
 }
 TEST_F(RemapperFuseFusedConvWithFusedActivation, Conv3D_BF16) {
+  if (!IsMKLEnabled() || !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "RemapperFuseFusedConvWithFusedActivation with bfloat16.";
   RunTest<3, DT_BFLOAT16>();
 }
 

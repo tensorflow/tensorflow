@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -340,7 +341,9 @@ bool IsCpuCompatibleDataType(const NodeDef* contraction,
     return (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
             IsConv3D(*contraction) || IsAnyBatchMatMul(*contraction) ||
             is_supported_matmul) &&
-           (dtype == DT_FLOAT || dtype == DT_BFLOAT16);
+           (dtype == DT_FLOAT ||
+            (dtype == DT_BFLOAT16 &&
+             mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()));
   }
   if (IsConv2D(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_DOUBLE;
@@ -4650,6 +4653,17 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
 
     if (IsMKLEnabled()) {
+      // Check if BF16 datatype is supported by oneDNN on this CPU,
+      // skipping fusions if it is not supported.
+      const auto* node_view = ctx.graph_view.GetNode(i);
+      const auto* node_def = node_view->node();
+      const string& type_attr = "T";
+      DataType dtype = GetDataTypeFromAttr(*node_def, type_attr);
+      if (dtype == DT_BFLOAT16 &&
+          !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()) {
+        continue;
+      }
+
       // Remap Conv2D+BiasAdd+Add+relu into the _FusedConv2D.
       // or Remap Conv3D+BiasAdd+Add+relu into _FusedConv3D
       if (FindContractionWithBiasAndAddActivation(
