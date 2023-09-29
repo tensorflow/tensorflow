@@ -1702,12 +1702,10 @@ TEST_F(RemapperFuseMatMulWithBiasTest, F16) {
 TEST_F(RemapperFuseMatMulWithBiasTest, F32) { RunTest<DT_FLOAT>(); }
 
 TEST_F(RemapperFuseMatMulWithBiasTest, Bf16) {
-#if !defined(ENABLE_MKL)
-  if (!mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+  if (!IsMKLEnabled() || !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
     GTEST_SKIP()
         << "Intel oneDNN with bfloat16 support is not enabled, skipping "
            "FuseMatMulWithBias with bfloat16.";
-#endif
   RunTest<DT_BFLOAT16>();  // NOLINT
 }
 
@@ -1914,12 +1912,10 @@ TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F32) {
 }
 
 TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, Bf16) {
-#if !defined(ENABLE_MKL)
-  if (!mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
+  if (!IsMKLEnabled() || !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU())
     GTEST_SKIP()
         << "Intel oneDNN with bfloat16 support is not enabled, skipping "
            "FuseMatMulWithBiasAndActivation with bfloat16.";
-#endif
   RunTest<DT_BFLOAT16>();  // NOLINT
 }
 
