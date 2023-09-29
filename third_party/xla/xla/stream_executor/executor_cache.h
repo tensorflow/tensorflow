@@ -17,28 +17,37 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_EXECUTOR_CACHE_H_
 
 #include <functional>
-#include <map>
+#include <memory>
+#include <utility>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
-#include "tsl/platform/status.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
+
+// Forward declare.
+class StreamExecutor;
 
 // Utility class to allow Platform objects to manage cached StreamExecutors.
 // Thread-safe.
 class ExecutorCache {
  public:
-  ExecutorCache() {}
+  using ExecutorFactory =
+      std::function<tsl::StatusOr<std::unique_ptr<StreamExecutor>>()>;
+
+  ExecutorCache();
+  ~ExecutorCache();
 
   // Looks up 'config' in the cache. Returns a pointer to the existing executor,
   // if already present, or creates it using 'factory', if it does not.
   // Factories may be executed concurrently for different device ordinals.
-  typedef tsl::StatusOr<std::unique_ptr<StreamExecutor>> ExecutorFactory();
-  tsl::StatusOr<StreamExecutor*> GetOrCreate(
-      const StreamExecutorConfig& config,
-      const std::function<ExecutorFactory>& factory);
+  tsl::StatusOr<StreamExecutor*> GetOrCreate(const StreamExecutorConfig& config,
+                                             const ExecutorFactory& factory);
 
   // Returns a pointer to the described executor (if one with a matching config
   // has been created), or a NOT_FOUND status.
@@ -70,7 +79,7 @@ class ExecutorCache {
   // We key off of ordinal (instead of just looking up all fields in the
   // StreamExecutorConfig) for a slight improvement in lookup time.
   absl::Mutex mutex_;
-  std::map<int, Entry> cache_ ABSL_GUARDED_BY(mutex_);
+  absl::node_hash_map<int, Entry> cache_ ABSL_GUARDED_BY(mutex_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(ExecutorCache);
 };

@@ -19,42 +19,40 @@ option cc_enable_arenas = true;
 // Various techniques for model quantization are defined within this message
 // along with a field that specifies a method to be used for a particular
 // quantization request.
-// NEXT ID: 4
+// NEXT ID: 5
 message QuantizationMethod {
-  // Quantization methods that are supported as a stable API.
-  // NEXT ID: 1
-  enum Method {
+  // Preset quantization specification.
+  // NEXT ID: 5
+  enum PresetMethod {
     // This should never be used. Using this will generally result in an error.
     METHOD_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
-  }
 
-  // Experimental quantization methods.
-  // These methods are either not implemented or provided with an unstable
-  // behavior.
-  // NEXT ID: 4
-  enum ExperimentalMethod {
-    // This should never be used. Using this will generally result in an error.
-    EXPERIMENTAL_METHOD_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
+    // No quantization. The model can still get benefits from other
+    // optimizations in the pipeline.
+    METHOD_NO_QUANTIZE = 1;
 
     // Static range quantization. Quantized tensor values' ranges are statically
-    // determined.
-    STATIC_RANGE = 1;
+    // determined. The activation and weight are quantized to INT8 while bias is
+    // quantized to INT32.
+    METHOD_STATIC_RANGE_INT8 = 2;
 
     // Dynamic range quantization. Quantized tensor values' ranges are
     // determined in the graph executions. The weights are quantized during
     // conversion.
-    DYNAMIC_RANGE = 2;
+    METHOD_DYNAMIC_RANGE_INT8 = 3;
 
     // Weight-only quantization. Only weights are quantized during conversion.
-    WEIGHT_ONLY = 3;
+    METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8 = 4;
   }
 
-  // Quantization method is one of exprimental or non-experimental.
-  oneof method_oneof {
-    Method method = 1;
-    ExperimentalMethod experimental_method = 2;
-  }
+  // Preset quantization specification.
+  PresetMethod preset_method = 4;
+
+  // Define quantization specification for each component. Note that, if set,
+  // this field will override the `preset_method`.
   repeated QuantizationComponentSpec quantization_component_specs = 3;
+
+  reserved 1 to 2;
 }
 
 // Component spec for quantization.
@@ -86,34 +84,32 @@ message QuantizationComponentSpec {
   TensorType tensor_type = 2;
 }
 
-// Unit (either nodes or ops at this moment) wise quantization method for
-// mixed bit precision quantization. It contains the name of the unit,
-// the granularity of the unit, and the quantization method for each unit.
-// NEXT ID: 5
+// Unit-wise (op type and node name at this moment) quantization spec. It
+// contains the scope of the unit, and the quantization method for each unit.
+// NEXT ID: 7
 message UnitWiseQuantizationSpec {
   // Quantization unit granularity.
-  // NEXT ID: 3
-  enum UnitType {
-    // This should never be used. Using this will generally result in an error.
-    UNIT_UNSPECIFIED = 0;
-    UNIT_NODE = 1;
-    UNIT_OP = 2;
+  // NEXT ID: 4
+  message QuantizationUnit {
+    // Type of the op, ex: Conv2D, MatMul, Einsum... The node_name field can
+    // be omitted if it is intended to match all nodes with this type.
+    string op_type = 1;
+    // Name of the node. This field accepts re2 regex format. If the node name
+    // has enough granularity, the op_type field can be omitted.
+    string node_name = 2;
+    // The function scope. If set, only ops and nodes under specified functions
+    // are matched. Note that, Uniqueness of node name isn't guaranteed across
+    // functions. But within each function, uniqueness is guaranteed. If users
+    // do not need to guarantee the uniqueness, func_name can be omitted. This
+    // field accepts re2 regex format.
+    string func_name = 3;
   }
-
-  // Available quantization unit. Currently node-wise and op-wise are
-  // available quantization units.
-  UnitType unit_type = 1;
-  // Uniqueness isn't guaranteed across SavedModels but within each function
-  // def's level, uniqueness is guaranteed. Updated
-  // the configuration interfaces to reflect such circumstances.
-  // If users do not need to guarantee uniqueness func_name can be omitted.
-  string func_name = 2;
-  string unit_name = 3;
+  repeated QuantizationUnit unit = 5;
 
   // Quantization option information for the current unit.
-  // TODO(b/241322587): Support specifying quantization method for each unit of
-  // TF GraphDef.
-  repeated QuantizationComponentSpec quantization_component_spec = 4;
+  QuantizationMethod quantization_method = 6;
+
+  reserved 1 to 4;
 }
 
 // List of supported opsets to deploy the quantized model.
@@ -131,15 +127,6 @@ enum OpSet {
   // Uses the StableHLO Quantizer. StableHLO Quantizer will be available as
   // an option in the TF Quantizer in StableHLO Quantizer v1.
   STABLEHLO = 4;
-}
-
-// Configurations for variable freezing during quantization passes.
-// NEXT ID: 2
-message FreezeAllVariables {
-  // Setting this to true freezes all variables to constants during
-  // quantization. Setting this to `false` is an experimental feature and does
-  // not have stability guarantees.
-  bool enabled = 1;
 }
 
 // Defines various calibration options.
@@ -249,7 +236,7 @@ message DebuggerOptions {
 // 2) A set of supported operations.
 // 3) Unit wise quantization precision.
 // 4) Target hardware name.
-// NEXT ID: 17
+// NEXT ID: 18
 message QuantizationOptions {
   // The default quantization configuration for the model. If the below
   // unit-wise configuration does not exist, we use this quantization
@@ -273,10 +260,11 @@ message QuantizationOptions {
 
   OpSet op_set = 2;  // If not specified, it defaults to `XLA`.
 
-  // Quantization spec for each unit. Units can become either nodes or ops, and
-  // the mixture of those different units are allowed. If there are conflicts or
-  // ambiguity in this unit-wise precision, our quantizer will raise an error.
-  repeated UnitWiseQuantizationSpec unit_wise_quantization_spec = 3;
+  // Quantization spec for each unit. This quantization spec will override the
+  // `quantization_method` for matching nodes and ops. If there are conflicts
+  // or ambiguity in this unit-wise precision, our quantizer will raise an
+  // error.
+  repeated UnitWiseQuantizationSpec unit_wise_quantization_specs = 17;
 
   // (TF1 SavedModel only) Collection of tags identifying the MetaGraphDef
   // within the SavedModel to analyze. If not specified, ["serve"] is used.
@@ -299,7 +287,7 @@ message QuantizationOptions {
   // Setting this to `false` is an experimental feature and quantization may
   // fail. To quantize models larger than 2 GiB, this should be set to `false`.
   // If not set, it defaults to `true`.
-  FreezeAllVariables freeze_all_variables = 9;
+  optional bool freeze_all_variables = 9;
 
   // Enables chnanel-wise quantizaiton. By default, channel-wise quantization is
   // not applied regardless of the op support. Currently, it is supported for
@@ -331,4 +319,6 @@ message QuantizationOptions {
 
   // Configuration related to quantization debugger.
   DebuggerOptions debugger_options = 16;
+
+  reserved 3;
 }

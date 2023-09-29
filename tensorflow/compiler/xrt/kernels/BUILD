@@ -97,7 +97,7 @@ cc_library(
         "@local_xla//xla/service:computation_placer",
         "@local_xla//xla/service:dump",
         "@local_xla//xla/service:hlo_proto_cc",
-        "@local_xla//xla/stream_executor:stream_executor_headers",
+        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor/tpu:tpu_api",
     ],
     alwayslink = 1,
@@ -140,7 +140,7 @@ cc_library(
         "@local_xla//xla/service:compiler",
         "@local_xla//xla/service:computation_placer",
         "@local_xla//xla/service/gpu:gpu_executable_run_options",
-        "@local_xla//xla/stream_executor:stream_executor_headers",
+        "@local_xla//xla/stream_executor",
     ],
     alwayslink = 1,
 )

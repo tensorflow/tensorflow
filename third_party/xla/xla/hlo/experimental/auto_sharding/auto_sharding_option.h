@@ -175,6 +175,11 @@ struct AutoShardingOption {
   // sharding.
   int64_t small_tensor_byte_size = 0;
 
+  // In order to obtain default sharding strategies for instructions to limit
+  // departures from the defaults, use sharding propagation instead of assuming
+  // a simple replicated default.
+  bool use_sharding_propagation_for_default_shardings = true;
+
   std::string ToString() {
     std::vector<std::string> lines;
     lines.push_back(absl::StrCat("preserve_shardings: ", preserve_shardings));

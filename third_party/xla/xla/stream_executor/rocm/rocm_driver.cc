@@ -31,11 +31,11 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/stacktrace.h"
 #include "tsl/platform/static_threadlocal.h"
@@ -425,11 +425,11 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   return context->context();
 }
 
-/* static */ tsl::Status GpuDriver::FuncGetAttribute(hipFuncAttribute attribute,
-                                                     hipFunction_t func,
-                                                     int* attribute_value) {
-  RETURN_IF_ROCM_ERROR(hipFuncSetAttribute(func, attribute, *attribute_value),
-                       "Failed to query kernel attribute: ", attribute);
+/* static */ tsl::Status GpuDriver::FuncGetAttribute(
+    hipFunction_attribute attribute, hipFunction_t func, int* attribute_value) {
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipFuncGetAttribute(attribute_value, attribute, func),
+      "Failed to query kernel attribute: ", attribute);
   return tsl::OkStatus();
 }
 
@@ -863,6 +863,18 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
     LOG(ERROR) << "failed to unload module " << module
                << "; leaking: " << ToString(res);
   }
+}
+
+/* static */ tsl::StatusOr<hipDevice_t> GpuDriver::DeviceFromContext(
+    GpuContext* context) {
+  ScopedActivateContext activated{context};
+  hipDevice_t device = -1;
+  hipError_t result = hipCtxGetDevice(&device);
+  if (result == hipSuccess) return device;
+
+  return tsl::Status(
+      absl::StatusCode::kInternal,
+      absl::StrCat("failed to get device for context: ", ToString(result)));
 }
 
 /* static */ bool GpuDriver::CreateStream(GpuContext* context,
@@ -1676,30 +1688,46 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 
 /* static */ bool GpuDriver::CanEnablePeerAccess(GpuContext* from,
                                                  GpuContext* to) {
-  if (from->device_ordinal() == to->device_ordinal()) {
-    return true;  // A device can always access its own memory.
-  }
+  // A context can always access its own memory.
+  if (from == to) return true;
 
-  int can_access_peer = -1;
-  hipError_t res = wrap::hipDeviceCanAccessPeer(
-      &can_access_peer, from->device_ordinal(), to->device_ordinal());
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to detect peer access capability: " << ToString(res);
+  auto from_device = DeviceFromContext(from);
+  if (!from_device.ok()) {
+    LOG(ERROR) << "failed to resolve 'from' peer access context to a device: "
+               << from_device.status();
     return false;
   }
 
+  auto to_device = DeviceFromContext(to);
+  if (!to_device.ok()) {
+    LOG(ERROR) << "failed to resolve 'to' peer access context to a device: "
+               << to_device.status();
+    return false;
+  }
+  return CanEnablePeerAccess(from_device.value(), to_device.value());
+}
+
+/* static */ bool GpuDriver::CanEnablePeerAccess(GpuDeviceHandle from,
+                                                 GpuDeviceHandle to) {
+  int can_access_peer = -1;
+  hipError_t result = hipDeviceCanAccessPeer(&can_access_peer, from, to);
+  if (result != hipSuccess) {
+    LOG(ERROR) << "failed to detect peer access capability: "
+               << ToString(result);
+    return false;
+  }
   return can_access_peer;
 }
 
 /* static */ tsl::Status GpuDriver::EnablePeerAccess(GpuContext* from,
                                                      GpuContext* to) {
-  if (from->device_ordinal() == to->device_ordinal()) {
+  if (from == to) {
     return tsl::OkStatus();  // A device can always access its own memory.
   }
 
   ScopedActivateContext activated{from};
   hipError_t result =
-      wrap::hipDeviceEnablePeerAccess(to->device_ordinal(), 0 /* = flags */);
+      wrap::hipCtxEnablePeerAccess(to->context(), 0 /* = flags */);
   if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
     return tsl::Status{
         absl::StatusCode::kInternal,

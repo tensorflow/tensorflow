@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -96,7 +97,7 @@ struct CompileOptions {
 
   // Key-value string pairs, parsed in order to set miscellaneous options,
   // overriding if appropriate.
-  using OptionOverride = std::variant<std::string, bool, int64_t>;
+  using OptionOverride = std::variant<std::string, bool, int64_t, double>;
   std::vector<std::pair<std::string, OptionOverride>> env_option_overrides;
 
   // Used to indicate the precision configuration.
@@ -111,6 +112,16 @@ struct CompileOptions {
 
   Status ApplyOptionFromString(const tsl::protobuf::FieldDescriptor* field,
                                const std::string& value);
+
+  static StatusOr<
+      std::vector<std::pair<std::string, CompileOptions::OptionOverride>>>
+  LoadEnvOptionOverrides(
+      const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
+          env_option_overrides);
+
+  void SerializeEnvOptionOverrides(
+      google::protobuf::Map<std::string, xla::OptionOverrideProto>*
+          output_env_option_overrides) const;
 
   // Serialize the CompileOptions into a CompileOptionsProto.
   StatusOr<CompileOptionsProto> ToProto() const;

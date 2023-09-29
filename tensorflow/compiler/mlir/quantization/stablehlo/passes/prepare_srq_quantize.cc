@@ -34,10 +34,10 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 // The prepare-srq-quantize Pass.
 //===----------------------------------------------------------------------===//
-namespace mlir {
-namespace stablehlo {
 
+namespace mlir::quant::stablehlo {
 namespace {
+
 #define GEN_PASS_DEF_PREPARESRQQUANTIZEPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
 
@@ -114,5 +114,4 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass(
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass() {
   return std::make_unique<PrepareSrqQuantizePass>();
 }
-}  // namespace stablehlo
-}  // namespace mlir
+}  // namespace mlir::quant::stablehlo

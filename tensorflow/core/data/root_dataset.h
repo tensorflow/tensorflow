@@ -15,11 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_ROOT_DATASET_H_
 #define TENSORFLOW_CORE_DATA_ROOT_DATASET_H_
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/refcount.h"
 
@@ -33,10 +34,19 @@ class RootDataset : public DatasetBase {
   struct Params {
     bool autotune = true;
     model::AutotuneAlgorithm autotune_algorithm;
-    int64_t autotune_cpu_budget = 0;
-    int64_t autotune_ram_budget = 0;
+    std::function<int64_t()> autotune_cpu_budget_func;
+    std::function<int64_t()> autotune_free_memory_func;
+    int64_t autotune_ram_budget_from_options;
     int64_t max_intra_op_parallelism = 1;
     int64_t private_threadpool_size = 0;
+
+    int64_t ComputeInitialAutotuneRamBudget() const {
+      if (autotune_ram_budget_from_options > 0) {
+        return autotune_ram_budget_from_options;
+      } else {
+        return autotune_free_memory_func();
+      }
+    }
   };
 
   static Status FromOptions(const DatasetBase* input, DatasetBase** output);

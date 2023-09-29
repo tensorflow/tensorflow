@@ -28,11 +28,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -53,7 +53,7 @@ std::vector<HloOpcode> TritonSupportedBinaryElementwise(PrimitiveType);
 std::vector<HloOpcode> TritonSupportedTernaryElementwise(PrimitiveType);
 
 // Data types that are supported by the Triton emitters.
-bool IsTritonSupportedDataType(PrimitiveType, GpuVersion);
+bool IsTritonSupportedDataType(PrimitiveType, se::GpuComputeCapability);
 
 // Checks elementwise operation against all supported by Triton GEMM codegen.
 bool IsTritonSupportedElementwise(HloOpcode, PrimitiveType);
@@ -66,10 +66,11 @@ Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
 
 // Filters GEMMs which can be handled using Triton.
 FusionDecision CanTritonHandleGEMM(const HloInstruction&,
-                                   GpuVersion gpu_version);
+                                   se::GpuComputeCapability gpu_version);
 
 // Filters GEMMs which are better to handle using Triton.
-bool ShouldTritonHandleGEMM(HloInstruction&, GpuVersion gpu_version);
+bool ShouldTritonHandleGEMM(HloInstruction&,
+                            se::GpuComputeCapability gpu_version);
 
 class TensorIterationSpec {
  public:
@@ -77,10 +78,14 @@ class TensorIterationSpec {
   struct IterationSpecFragment {
     int64_t stride;
     int64_t count;
+    int64_t slice_start;
+    int64_t slice_limit;
     // Logical subfragments when this iteration is composed
-    // of several HLO dimensions. Product of subfragments equals `count`.
+    // of several HLO dimensions.
     std::vector<int64_t> subfragments;
 
+    bool is_sliced() const { return count != slice_limit - slice_start; }
+    bool operator!=(const IterationSpecFragment& other) const;
     std::string ToString() const;
   };
   // Description of complex iteration over a sequence of several strides.
@@ -158,7 +163,7 @@ class TritonFusionAnalysis {
 // that target Triton-based matmul emitter.
 class GemmRewriterTriton : public HloModulePass {
  public:
-  explicit GemmRewriterTriton(GpuVersion gpu_version)
+  explicit GemmRewriterTriton(se::GpuComputeCapability gpu_version)
       : gpu_version_(gpu_version) {}
   absl::string_view name() const override { return "triton-gemm-rewriter"; }
 
@@ -168,7 +173,7 @@ class GemmRewriterTriton : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  GpuVersion gpu_version_;
+  se::GpuComputeCapability gpu_version_;
 };
 
 }  // namespace gpu

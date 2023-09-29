@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logger.h"
@@ -400,8 +400,8 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
         AutotuneRuntimeArguments runtime_arguments,
         AutotuneRuntimeArguments::FromInstruction(instr, allocator, stream_exec,
                                                   &input_output_allocator));
-    result_or = PickBestAlgorithmNoCacheCuda(instr, allocator, stream, key,
-                                             runtime_arguments);
+    result_or =
+        PickBestAlgorithmNoCacheCuda(instr, stream, key, runtime_arguments);
 #endif
   }
 
@@ -484,8 +484,7 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
 // crash_on_checking_failure is set; and returning a DISQUALIFIED AutotuneResult
 // simply skips the engine/algorithm while recording a reason for skipping it.
 StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
-    se::DeviceMemoryAllocator* allocator, se::Stream* stream,
-    GenericConvRunner* const runner,
+    se::Stream* stream, GenericConvRunner* const runner,
     std::optional<ReferenceResult>* reference_result,
     absl::Span<const AlgorithmDesc> disabled_algos,
     std::optional<AutotuneCacheKey> instruction_info,
@@ -740,8 +739,8 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
 }
 
 StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
-    const HloCustomCallInstruction* instr, se::DeviceMemoryAllocator* allocator,
-    se::Stream* stream, std::optional<AutotuneCacheKey> instruction_info,
+    const HloCustomCallInstruction* instr, se::Stream* stream,
+    std::optional<AutotuneCacheKey> instruction_info,
     const AutotuneRuntimeArguments& runtime_arguments) {
   se::StreamExecutor* stream_exec = config_.GetExecutor();
 
@@ -798,7 +797,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   for (auto& runner_cache : runners) {
     TF_ASSIGN_OR_RETURN(
         auto result, AutotuneOneConvRunner(
-                         allocator, stream, &runner_cache, &reference_result,
+                         stream, &runner_cache, &reference_result,
                          disabled_algos, instruction_info, runtime_arguments));
     profile_results.emplace_back(std::move(result));
   }
@@ -821,9 +820,9 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     for (auto& runner_cache : fallback_runners) {
       TF_ASSIGN_OR_RETURN(
           auto result,
-          AutotuneOneConvRunner(allocator, stream, &runner_cache,
-                                &reference_result, disabled_algos,
-                                instruction_info, runtime_arguments));
+          AutotuneOneConvRunner(stream, &runner_cache, &reference_result,
+                                disabled_algos, instruction_info,
+                                runtime_arguments));
       profile_results.emplace_back(std::move(result));
     }
   }
@@ -889,7 +888,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
   HloModuleConfig hlo_module_config;
   hlo_module_config.set_debug_options(debug_options);
   se::Stream* stream = run_options->stream();
-  se::DeviceMemoryAllocator* allocator = run_options->allocator();
   TF_ASSIGN_OR_RETURN(
       se::RedzoneAllocator input_output_allocator,
       AutotunerUtil::CreateRedzoneAllocator(config, debug_options, stream));
@@ -900,7 +898,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
        std::nullopt};
 
   return PickBestAlgorithmNoCacheCuda(
-      /*instr=*/nullptr, allocator, stream,
+      /*instr=*/nullptr, stream,
       /*instruction_info=*/std::nullopt, autotune_runtime_arguments);
 #else
   return InternalError("CUDA is not enabled");

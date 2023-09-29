@@ -31,10 +31,10 @@ func.func @uniform_quantize_and_dequantize_type_exensions(%arg0: tensor<?x?xf32,
 // -----
 
 // CHECK-LABEL: func @uniform_quantize_and_dequantize_sparse_tensor_encoding
-func.func @uniform_quantize_and_dequantize_sparse_tensor_encoding(%arg0: tensor<?xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> () {
+func.func @uniform_quantize_and_dequantize_sparse_tensor_encoding(%arg0: tensor<?xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> () {
   // CHECK-NOT: chlo
-  %0 = mhlo.uniform_quantize %arg0 : (tensor<?xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<?x!quant.uniform<i8:f32, 1.000000e+00:3>, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>
-  %1 = mhlo.uniform_dequantize %0 : (tensor<?x!quant.uniform<i8:f32, 1.000000e+00:3>, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<?xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<?x!quant.uniform<i8:f32, 1.000000e+00:3>, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>
+  %1 = mhlo.uniform_dequantize %0 : (tensor<?x!quant.uniform<i8:f32, 1.000000e+00:3>, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<?xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>
   return
 }
 
@@ -134,4 +134,67 @@ func.func @uniform_quantize_dot_hybrid(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?
   %0 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
   %1 = "mhlo.dot" (%arg0, %0): (tensor<?x?xf32>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
   return
+}
+
+// -----
+
+// CHECK-LABEL: func @mhlo_constant_uniform_quantized
+func.func @mhlo_constant_uniform_quantized() -> tensor<1xf32> {
+  // CHECK-NOT: chlo
+  %0 = mhlo.constant() {value = dense<9> : tensor<1xi8>} : () -> tensor<1x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  %1 = mhlo.uniform_dequantize %0 : (tensor<1x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<1xf32>
+  return %1 : tensor<1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @mhlo_constant_int
+func.func @mhlo_constant_int() -> tensor<i32> {
+  // CHECK: mhlo.constant dense<-128> : tensor<i32>
+  %0 = mhlo.constant() {value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_broadcast_dequantize
+func.func @uniform_quantize_broadcast_dequantize(%arg0: tensor<1x2xf32>) -> tensor<2x3x1xf32> {
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<1x2xf32>) -> tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+
+  // CHECK-NOT: chlo
+  %1 = "mhlo.broadcast_in_dim"(%0) {
+    broadcast_dimensions = dense<[2, 0]> : tensor<2xi64>
+    } : (tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>) -> tensor<2x3x1x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  %2 = mhlo.uniform_dequantize %1 : (tensor<2x3x1x!quant.uniform<i8:f32, 2.000000e+00:3>>) -> tensor<2x3x1xf32>
+  return %2 : tensor<2x3x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_max_dequantize
+func.func @uniform_quantize_max_dequantize(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32> {
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<1x2xf32>) -> tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+
+  // CHECK-NOT: chlo
+  %1 = "mhlo.maximum"(%0, %0) : (
+    tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
+    tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  ) -> tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  %2 = mhlo.uniform_dequantize %1 : (tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>) -> tensor<1x2xf32>
+  return %2 : tensor<1x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_min_dequantize
+func.func @uniform_quantize_min_dequantize(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32> {
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<1x2xf32>) -> tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+
+  // CHECK-NOT: chlo
+  %1 = "mhlo.minimum"(%0, %0) : (
+    tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>,
+    tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  ) -> tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  %2 = mhlo.uniform_dequantize %1 : (tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>) -> tensor<1x2xf32>
+  return %2 : tensor<1x2xf32>
 }

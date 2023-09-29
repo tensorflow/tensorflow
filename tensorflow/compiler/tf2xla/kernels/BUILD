@@ -1,16 +1,16 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_additional_all_protos",
-    "tf_proto_library",
-)
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
     "tf_cc_test",
     "tf_cuda_library",
 )
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_all_protos",
+    "tf_proto_library",
+)
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 
 package(
@@ -216,7 +216,7 @@ tf_cuda_library(
         "@local_xla//xla/service:custom_call_status",
         "@local_xla//xla/service:custom_call_target_registry",
         "@local_xla//xla/service:hlo_proto_cc",
-        "@local_xla//xla/stream_executor:stream_executor_headers",
+        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor/gpu:gpu_executor_header",
         "@local_xla//xla/stream_executor/gpu:gpu_stream_header",
         "@local_xla//xla/stream_executor/gpu:gpu_types_header",
@@ -397,20 +397,30 @@ tf_kernel_library(
     deps = [
         ":if_while_utils",
         ":tensor_list_utils",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:literal",
+        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla:shape_tree",
+        "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
+        "@local_xla//xla/client",
         "@local_xla//xla/client:xla_builder",
         "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/client/lib:tuple",
     ],
 )
 
@@ -3722,6 +3732,7 @@ tf_kernel_library(
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",

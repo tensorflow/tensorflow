@@ -1,23 +1,8 @@
-#TFCI_UPLOAD_LIB_URI="gs://tensorflow-release-packages/$RELEASE_VERSION/$KOKORO_GIT_COMMIT_tensorflow"
-#TFCI_UPLOAD_WHL_GCS_URI="gs://tensorflow-release-packages/$RELEASE_VERSION/$KOKORO_GIT_COMMIT_tensorflow"
-TFCI_BAZEL_BAZELRC_ARGS=(--bazelrc ./ci/official/bazelrcs/cpu.bazelrc)
-TFCI_BAZEL_COMMON_ARGS=(--config sigbuild_remote_cache_push --config resultstore --repo_env=TF_PYTHON_VERSION=3.9)
+source ci/official/envs/ci_default
+source ci/official/envs/ci_nightly_uploads
+TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=linux_cpu
+TFCI_BAZEL_COMMON_ARGS=(--config release_cpu_linux --config tf_public_cache_push --config resultstore --repo_env=TF_PYTHON_VERSION=3.9)
 TFCI_BUILD_PIP_PACKAGE_ARGS=(--cpu --nightly_flag)
-TFCI_DOCKER_ARGS=()
-TFCI_DOCKER_ENABLE=1
 TFCI_DOCKER_IMAGE=tensorflow/build:latest-python3.9
-TFCI_DOCKER_PULL_ENABLE=1
-TFCI_INDEX_HTML_ENABLE=1
-TFCI_LIB_SUFFIX="-cpu-linux-x86_64"
+TFCI_DOCKER_REBUILD_ARGS=(--build-arg PYTHON_VERSION=3.9 --target=devel tools/tf_sig_build_dockerfiles)
 TFCI_NIGHTLY_UPDATE_VERSION_ENABLE=1
-TFCI_NVIDIA_SMI_ENABLE=
-TFCI_OUTPUT_DIR=build_output
-TFCI_UPLOAD_LIB_ENABLE=
-TFCI_UPLOAD_LIB_LATEST_ENABLE=
-TFCI_UPLOAD_LIB_LATEST_URI="gs://libtensorflow-nightly/latest"
-TFCI_UPLOAD_LIB_URI="gs://libtensorflow-nightly/$(date -I)"
-TFCI_UPLOAD_WHL_GCS_ENABLE=
-TFCI_UPLOAD_WHL_GCS_URI=
-TFCI_UPLOAD_WHL_PYPI_ARGS=( --config-file "$KOKORO_KEYSTORE_DIR/73361_tensorflow_pypirc_using_global_api_token" --repository testpypi )
-TFCI_UPLOAD_WHL_PYPI_ENABLE=
-TFCI_WHL_BAZEL_TEST_ENABLE=1

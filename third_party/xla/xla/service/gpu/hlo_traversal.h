@@ -41,25 +41,36 @@ using FusionBoundaryFn = std::function<bool(const HloInstruction& producer,
 bool DefaultFusionBoundaryFn(const HloInstruction& producer,
                              const HloInstruction& consumer);
 
+// Creates a fusion boundary function for fusing the given producer and
+// consumer. `fused_consumer` must be a consumer of `fused_producer`.
+FusionBoundaryFn MakeProducerConsumerFusion(
+    const HloInstruction& fused_producer, const HloInstruction& fused_consumer);
+
 // Visit the HLO nodes starting from `roots` in BFS order (consumers before
 // producers). Each node will be visited exactly once. The graph is not
 // traversed along edges for which `boundary` returns true.
 void HloBfsConsumersFirstTraversal(
     absl::Span<const HloInstruction* const> roots,
-    const std::function<bool(const HloInstruction& producer,
-                             const HloInstruction& consumer)>& boundary,
+    const FusionBoundaryFn& boundary,
     const std::function<TraversalResult(const HloInstruction& node)>& visit);
 
 // Visit the HLO nodes starting from `roots`, returning true if the return value
-// of `visit` for any of the ones is true.
-bool HloAnyOf(
+// of `visit` for any of nodes is true. Uses the same order as
+// `HloBfsConsumersFirstTraversal`.
+bool HloAnyOf(absl::Span<const HloInstruction* const> roots,
+              const FusionBoundaryFn& boundary,
+              const std::function<bool(const HloInstruction& node)>& visit);
+
+// Visit the HLO nodes stating from `roots`, returning the first
+// node for which `visit` returns true, or `nullptr` if no node matches. Uses
+// the same order as `HloBfsConsumersFirstTraversal`.
+const HloInstruction* HloFindIf(
     absl::Span<const HloInstruction* const> roots,
-    const std::function<bool(const HloInstruction& producer,
-                             const HloInstruction& consumer)>& boundary,
+    const FusionBoundaryFn& boundary,
     const std::function<bool(const HloInstruction& node)>& visit);
 
 // Visit the producers of all parameters that are needed by the fusion.
-void FindFusionParameters(
+void FindFusionArguments(
     absl::Span<const HloInstruction* const> roots,
     const FusionBoundaryFn& boundary,
     const std::function<void(const HloInstruction& producer)>& visit);

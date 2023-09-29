@@ -238,7 +238,7 @@ struct OneShotBufferizePass
 
   void runOnOperation() override {
     bufferization::OneShotBufferizationOptions opts;
-    opts.allowReturnAllocs = true;
+    opts.allowReturnAllocsFromLoops = true;
     opts.bufferizeFunctionBoundaries = true;
     opts.functionArgTypeConverterFn =
         [=](TensorType tensorType, Attribute memorySpace, func::FuncOp funcOp,
@@ -253,7 +253,6 @@ struct OneShotBufferizePass
               tensorType, memorySpace);
         };
     opts.inferFunctionResultLayout = false;
-    opts.createDeallocs = false;
     opts.bufferAlignment = 64;
 
     ModuleOp module = getOperation();

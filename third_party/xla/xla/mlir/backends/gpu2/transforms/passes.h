@@ -16,17 +16,9 @@ limitations under the License.
 #ifndef XLA_MLIR_BACKENDS_GPU2_TRANSFORMS_PASSES_H_
 #define XLA_MLIR_BACKENDS_GPU2_TRANSFORMS_PASSES_H_
 
-#include <cstdint>
-
 namespace xla::gpu {
 
 class ThunkSequence;  // forward declare
-
-// We have two options for lowering executing compiled device kernels:
-// (1) Use IREEs HAL, export all device kernels as executable source, and
-//     dispatch them using `iree_input.dispatch` (later lowered to Flow)
-// (2) Use XLA:GPU StreamExecutor APIs to load and dispatch device kernels
-enum class RuntimeBackend { kHAL, kStreamExecutor };
 
 struct Gpu2PipelineOpts {};
 
@@ -44,7 +36,6 @@ class OpPassManager;
 
 namespace xla::gpu {
 inline void populateGpu2RuntimePasses(mlir::OpPassManager&, ThunkSequence*,
-                                      RuntimeBackend backend,
                                       const Gpu2PipelineOpts& opts) {}
 inline void registerGpu2Pases() {}
 }  // namespace xla::gpu
@@ -66,7 +57,6 @@ namespace xla::gpu {
 // custom calls implementing library integration).
 void populateGpu2RuntimePasses(mlir::OpPassManager& pm,
                                ThunkSequence* thunk_sequence,
-                               RuntimeBackend backend,
                                const Gpu2PipelineOpts& opts);
 
 //===----------------------------------------------------------------------===//
@@ -74,9 +64,7 @@ void populateGpu2RuntimePasses(mlir::OpPassManager& pm,
 //===----------------------------------------------------------------------===//
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp> >
-createConvertToGpu2RuntimePass(
-    ThunkSequence* thunk_sequence = nullptr,
-    std::optional<RuntimeBackend> backend = std::nullopt);
+createConvertToGpu2RuntimePass(ThunkSequence* thunk_sequence = nullptr);
 
 //===----------------------------------------------------------------------===//
 // XLA:GPU passes registration

@@ -2397,6 +2397,8 @@ tf_kernel_library(
         ":conv_ops_gpu_hdrs",
     ]) + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
+    ]) + if_rocm([
+        "//tensorflow/core/platform:stream_executor",
     ]),
 )
 
@@ -4076,7 +4078,7 @@ tf_kernel_library(
         "@local_xla//xla/stream_executor/cuda:cudnn_plugin",
         "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
         "@local_xla//xla/stream_executor:tf_allocator_adapter",
-        "@local_xla//xla/stream_executor:stream_executor_headers",
+        "@local_xla//xla/stream_executor",
         "//tensorflow/core/platform:stream_executor",
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
@@ -6273,10 +6275,12 @@ filegroup(
         "cast_op_impl_half.cc",
         "cast_op_impl_int16.cc",
         "cast_op_impl_int32.cc",
+        "cast_op_impl_int4.cc",
         "cast_op_impl_int64.cc",
         "cast_op_impl_int8.cc",
         "cast_op_impl_uint16.cc",
         "cast_op_impl_uint32.cc",
+        "cast_op_impl_uint4.cc",
         "cast_op_impl_uint64.cc",
         "cast_op_impl_uint8.cc",
         "concat_lib.h",

@@ -14,7 +14,7 @@ func.func @partial_softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
   // CHECK-SAME:      shared_outs(%[[INIT_0_:.*]] = %[[INIT_0]])
   // CHECK:         %[[MATERIALIZE:.*]] = tensor.extract_slice %[[ARG0]][%[[ARG1]], 0] [8, 128] [1, 1]
   // CHECK:         %[[MATERIALIZE_0:.*]] = tensor.extract_slice %[[FILL]][%[[ARG1]]] [8] [1]
-  // CHECK:         %[[REDUCE:.*]] = linalg.reduce { arith.maxf }
+  // CHECK:         %[[REDUCE:.*]] = linalg.reduce { arith.maximumf }
   // CHECK-SAME:        ins(%[[MATERIALIZE]] : tensor<8x128xf32>)
   // CHECK-SAME:        outs(%[[MATERIALIZE_0]] : tensor<8xf32>)
   // CHECK-SAME:        dimensions = [1]
@@ -32,7 +32,7 @@ func.func @partial_softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
   %cst = arith.constant 0xFF800000 : f32
   %0 = tensor.empty() : tensor<64xf32>
   %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<64xf32>) -> tensor<64xf32>
-  %2 = linalg.reduce { arith.maxf }
+  %2 = linalg.reduce { arith.maximumf }
          ins(%arg0 : tensor<64x128xf32>)
          outs(%1 : tensor<64xf32>)
          dimensions = [1]
@@ -59,7 +59,7 @@ func.func @partial_softmax_fusion(%arg0: tensor<64x128xf32>, %arg1: index)
   // CHECK-DAG:   %[[INIT_0:.*]] = tensor.empty() : tensor<64x128xf32>
   // CHECK-DAG:   %[[MATERIALIZE:.*]] = tensor.extract_slice %[[ARG0]][%[[ARG1]], 0] [8, 128] [1, 1]
   // CHECK-DAG:   %[[MATERIALIZE_0:.*]] = tensor.extract_slice %[[FILL]][%[[ARG1]]] [8] [1]
-  // CHECK:       %[[REDUCE:.*]] = linalg.reduce { arith.maxf }
+  // CHECK:       %[[REDUCE:.*]] = linalg.reduce { arith.maximumf }
   // CHECK-SAME:      ins(%[[MATERIALIZE]] : tensor<8x128xf32>)
   // CHECK-SAME:      outs(%[[MATERIALIZE_0]] : tensor<8xf32>)
   // CHECK-SAME:      dimensions = [1]
@@ -75,7 +75,7 @@ func.func @partial_softmax_fusion(%arg0: tensor<64x128xf32>, %arg1: index)
   %cst = arith.constant 0xFF800000 : f32
   %0 = tensor.empty() : tensor<64xf32>
   %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<64xf32>) -> tensor<64xf32>
-  %2 = linalg.reduce { arith.maxf }
+  %2 = linalg.reduce { arith.maximumf }
          ins(%arg0 : tensor<64x128xf32>)
          outs(%1 : tensor<64xf32>)
          dimensions = [1]
@@ -108,7 +108,7 @@ func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
   // CHECK-SAME:      shared_outs(%[[INIT_0_:.*]] = %[[INIT_0]])
   // CHECK:         %[[MATERIALIZE:.*]] = tensor.extract_slice %[[ARG0]][%[[ARG1]], 0] [8, 128] [1, 1]
   // CHECK:         %[[MATERIALIZE_0:.*]] = tensor.extract_slice %[[FILL]][%[[ARG1]]] [8] [1]
-  // CHECK:         %[[REDUCE:.*]] = linalg.reduce { arith.maxf }
+  // CHECK:         %[[REDUCE:.*]] = linalg.reduce { arith.maximumf }
   // CHECK-SAME:        ins(%[[MATERIALIZE]] : tensor<8x128xf32>)
   // CHECK-SAME:        outs(%[[MATERIALIZE_0]] : tensor<8xf32>)
   // CHECK-SAME:        dimensions = [1]
@@ -142,7 +142,7 @@ func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
   %cst_0 = arith.constant 0xFF800000 : f32
   %0 = tensor.empty() : tensor<64xf32>
   %1 = linalg.fill ins(%cst_0 : f32) outs(%0 : tensor<64xf32>) -> tensor<64xf32>
-  %2 = linalg.reduce { arith.maxf }
+  %2 = linalg.reduce { arith.maximumf }
          ins(%arg0 : tensor<64x128xf32>)
          outs(%1 : tensor<64xf32>) dimensions = [1]
   %3 = tensor.empty() : tensor<64x128xf32>

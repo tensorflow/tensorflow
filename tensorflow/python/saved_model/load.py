@@ -679,14 +679,26 @@ class Loader(object):
       # to be able to load the "optimizer" object (OptimizerV2), which has
       # special logic around adding slot variables with `add_slot` in this file.
       try:
-        import keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+        import tf_keras  # pylint: disable=g-import-not-at-top,unused-import
+        try:
+          import tf_keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+        except ImportError:
+          try:
+            import tf_keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
+          except ImportError as e:
+            raise ImportError(
+                "Error when importing Keras. Unable to load SavedModel that "
+                "contains an optimizer without the Keras module.") from e
       except ImportError:
         try:
-          import keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
-        except ImportError as e:
-          raise ImportError(
-              "Error when importing Keras. Unable to load SavedModel that "
-              "contains an optimizer without the Keras module.") from e
+          import keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+        except ImportError:
+          try:
+            import keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
+          except ImportError as e:
+            raise ImportError(
+                "Error when importing Keras. Unable to load SavedModel that "
+                "contains an optimizer without the Keras module.") from e
     looked_up = revived_types.deserialize(proto)
     if looked_up is None:
       return self._recreate_base_user_object(proto, node_id)
@@ -1068,19 +1080,28 @@ def load_partial(export_dir, filters, tags=None, options=None):
   try:
     fingerprint = fingerprinting.read_fingerprint(export_dir)
   except FileNotFoundError:
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintNotFound)
     logging.info(
         "Fingerprint not found. Saved model loading will continue.")
     singleprint = ""
   except RuntimeError:
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintError)
     logging.exception(
-        "Fingerprint was found, but there was an error when reading the proto.")
+        "Fingerprint was found, but there was an error when reading the proto. "
+        "Saved model loading will continue.")
     singleprint = ""
   else:
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintFound)
     metrics.SetReadFingerprint(
         fingerprint=fingerprinting_utils.to_proto(
             fingerprint).SerializeToString())
     singleprint = fingerprint.singleprint()
-  metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
+
+  try:
+    metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
+  except metrics.MetricException:
+    logging.info("path_and_singleprint metric could not be logged. "
+                 "Saved model loading will continue.")
 
   if filters and loader is not None:
     return {node_id: loader.get(node_id) for node_id in filters}

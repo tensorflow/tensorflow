@@ -1,7 +1,7 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
+load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -740,9 +740,9 @@ cc_library(
         "mhlo/transforms/group_reduction_dimensions/group_reduction_dimensions.cc",
         "mhlo/transforms/hlo_legalize_shape_ops_to_standard/hlo_legalize_shape_ops_to_standard.cc",
         "mhlo/transforms/hlo_legalize_to_arithmetic/hlo_legalize_to_arithmetic.cc",
-        "mhlo/transforms/hlo_legalize_to_lhlo/hlo_legalize_to_lhlo.cc",
         "mhlo/transforms/hlo_legalize_to_memref/hlo_legalize_to_memref.cc",
         "mhlo/transforms/hlo_legalize_to_stablehlo/hlo_legalize_to_stablehlo_pass.cc",
+        "mhlo/transforms/legalize_broadcast_to_broadcast_in_dim/legalize_broadcast_to_broadcast_in_dim.cc",
         "mhlo/transforms/legalize_control_flow/legalize_control_flow.cc",
         "mhlo/transforms/legalize_create_token_to_after_all/legalize_create_token_to_after_all.cc",
         "mhlo/transforms/legalize_cross_replica_sum_to_all_reduce/legalize_cross_replica_sum_to_all_reduce.cc",
@@ -753,6 +753,8 @@ cc_library(
         "mhlo/transforms/legalize_mhlo_to_thlo/legalize_mhlo_to_thlo.cc",
         "mhlo/transforms/legalize_shape_computations/legalize_shape_computations.cc",
         "mhlo/transforms/legalize_sort/legalize_sort.cc",
+        "mhlo/transforms/legalize_sparse_ops/legalize_sparse_ops.cc",
+        "mhlo/transforms/legalize_sparse_ops/sparse_ops_to_custom_calls.cc",
         "mhlo/transforms/legalize_to_linalg/legalize_to_linalg.cc",
         "mhlo/transforms/legalize_to_standard/generated_legalize_to_standard.inc",
         "mhlo/transforms/legalize_to_standard/legalize_to_standard.cc",
@@ -779,7 +781,6 @@ cc_library(
         "mhlo/transforms/shape_reification/shape_reification_pass.cc",
         "mhlo/transforms/shape_simplification/shape_simplification.cc",
         "mhlo/transforms/sink_constants_to_control_flow/sink_constants_to_control_flow.cc",
-        "mhlo/transforms/sparse_chlo_legalize_to_linalg/sparse_chlo_legalize_to_linalg.cc",
         "mhlo/transforms/sparse_rewriting/sparse_rewriting.cc",
         "mhlo/transforms/stablehlo_legalize_to_hlo/stablehlo_legalize_to_hlo_pass.cc",
         "mhlo/transforms/symbolic_shape_optimization/symbolic_shape_optimization.cc",
@@ -2021,121 +2022,4 @@ cc_binary(
     linkshared = True,
     linkstatic = False,
     deps = ["@llvm-project//mlir:mlir_c_runner_utils"],
-)
-
-cc_library(
-    name = "mlir_interpreter_dialects",
-    srcs = glob(
-        [
-            "tools/mlir_interpreter/dialects/*.cc",
-        ],
-        exclude = ["tools/mlir_interpreter/dialects/util.cc"],
-    ),
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":deallocation",
-        ":gml_st",
-        ":mlir_hlo",
-        ":mlir_interpreter_dialect_utils",
-        ":mlir_interpreter_framework",
-        ":thlo",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AffineDialect",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:BufferizationDialect",
-        "@llvm-project//mlir:ComplexDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgDialect",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:VectorDialect",
-        "@llvm-project//mlir:ViewLikeInterface",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "mlir_interpreter_dialect_utils",
-    srcs = [
-        "tools/mlir_interpreter/dialects/util.cc",
-    ],
-    hdrs = [
-        "tools/mlir_interpreter/dialects/comparators.h",
-        "tools/mlir_interpreter/dialects/cwise_math.h",
-        "tools/mlir_interpreter/dialects/util.h",
-    ],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":mlir_interpreter_framework",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:ViewLikeInterface",
-    ],
-)
-
-cc_library(
-    name = "mlir_interpreter_framework",
-    srcs = [
-        "tools/mlir_interpreter/framework/interpreter.cc",
-        "tools/mlir_interpreter/framework/interpreter_value.cc",
-        "tools/mlir_interpreter/framework/registration.cc",
-        "tools/mlir_interpreter/framework/tensor_or_memref.cc",
-    ],
-    hdrs = [
-        "tools/mlir_interpreter/framework/interpreter.h",
-        "tools/mlir_interpreter/framework/interpreter_value.h",
-        "tools/mlir_interpreter/framework/interpreter_value_util.h",
-        "tools/mlir_interpreter/framework/registration.h",
-        "tools/mlir_interpreter/framework/tensor_or_memref.h",
-    ],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:DialectUtils",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-build_test(
-    name = "mlir-interpreter-runner_build_test",
-    targets = [
-        ":mlir-interpreter-runner",
-    ],
-)
-
-cc_binary(
-    name = "mlir-interpreter-runner",
-    srcs = ["tools/mlir_interpreter/mlir-interpreter-runner.cc"],
-    deps = [
-        ":deallocation",
-        ":gml_st",
-        ":hlo_dialect_registration",
-        ":lhlo",
-        ":lhlo_gpu",
-        ":mhlo_passes",
-        ":mlir_interpreter_dialects",
-        ":mlir_interpreter_framework",
-        ":thlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MlirReduceLib",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-    ],
 )

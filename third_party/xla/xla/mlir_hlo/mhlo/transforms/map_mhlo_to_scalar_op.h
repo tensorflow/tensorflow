@@ -606,7 +606,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::MaxOp>(Location loc,
   Type complexTy = lhs.getType();
 
   if (!complexTy.isa<ComplexType>())
-    return MapMhloOpToScalarOpImpl<IsFloatType, arith::MaxFOp,
+    return MapMhloOpToScalarOpImpl<IsFloatType, arith::MaximumFOp,
                                    IsSignedIntegerType, arith::MaxSIOp,
                                    IsUnsignedIntegerType, arith::MaxUIOp>{}(
         loc, resultTypes, argTypes, adaptor.getOperands(), b);
@@ -632,7 +632,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::MinOp>(Location loc,
   Type complexTy = lhs.getType();
 
   if (!complexTy.isa<ComplexType>())
-    return MapMhloOpToScalarOpImpl<IsFloatType, arith::MinFOp,
+    return MapMhloOpToScalarOpImpl<IsFloatType, arith::MinimumFOp,
                                    IsSignedIntegerType, arith::MinSIOp,
                                    IsUnsignedIntegerType, arith::MinUIOp>{}(
         loc, resultTypes, argTypes, adaptor.getOperands(), b);

@@ -42,9 +42,9 @@
 // CHECK:       custom_call.in_bounds-true:                       ; preds = %[[VAL_11]]
 // CHECK:         %[[VAL_34:.*]] = mul nuw nsw i32 %[[VAL_22]], 1
 // CHECK:         %[[VAL_35:.*]] = add nuw nsw i32 0, %[[VAL_34]]
-// CHECK:         %[[VAL_36:.*]] = mul nuw nsw i32 %[[VAL_25]], 2
+// CHECK:         %[[VAL_36:.*]] = mul nuw nsw i32 %[[VAL_24]], 2
 // CHECK:         %[[VAL_37:.*]] = add nuw nsw i32 %[[VAL_35]], %[[VAL_36]]
-// CHECK:         %[[VAL_38:.*]] = mul nuw nsw i32 %[[VAL_24]], 4
+// CHECK:         %[[VAL_38:.*]] = mul nuw nsw i32 %[[VAL_25]], 4
 // CHECK:         %[[VAL_39:.*]] = add nuw nsw i32 %[[VAL_37]], %[[VAL_38]]
 // CHECK:         %[[VAL_40:.*]] = icmp ult i32 %[[VAL_39]], %[[VAL_15]]
 // CHECK:         br i1 %[[VAL_40]], label %[[VAL_41:.*]], label %[[VAL_29]]
@@ -65,7 +65,7 @@
 // CHECK:         br label %[[VAL_29]]
 
 
-HloModule SliceToDynamic
+HloModule SliceToDynamic, is_scheduled=true
 
 ENTRY main {
   %param = s32[2,2,2]{2,0,1} parameter(0)

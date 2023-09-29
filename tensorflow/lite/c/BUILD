@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/lite:build_def.bzl",
     "tflite_cc_library_with_c_headers_test",
@@ -8,7 +9,6 @@ load(
     "tflite_linkopts_no_undefined",
     "tflite_self_contained_libs_test_suite",
 )
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "c_api_opaque_internal_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite_with_c_headers_test")
 
@@ -113,16 +113,7 @@ cc_library_with_tflite_with_c_headers_test(
     tflite_deps = [
         ":c_api",
     ],
-    deps = [
-        ":c_api_opaque_internal",
-        ":common_internal",
-        "//tensorflow/lite/core:subgraph",
-        "//tensorflow/lite/core/c:c_api",
-        "//tensorflow/lite/core/c:c_api_experimental",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:kernel_util",
-    ],
+    deps = ["//tensorflow/lite/core/c:c_api_experimental"],
 )
 
 # Same as ":c_api_experimental", but without linking in the default CreateOpResolver implementation.

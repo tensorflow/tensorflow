@@ -122,8 +122,8 @@ AutotunerCompileUtil::ProfileExecutable(
 }
 
 StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
-    GenerateModuleFn extractor, bool force_disable_gpu_runtime) {
-  StatusOr<std::unique_ptr<HloModule>> new_hlo_module = extractor();
+    GenerateModuleFn extractor) {
+  StatusOr<std::unique_ptr<HloModule>> new_hlo_module = extractor(opts_);
   if (new_hlo_module.status().GetPayload(kUncompilableFusion).has_value()) {
     // Incompatible value of split-k is an expected failure.
     return std::unique_ptr<Executable>();
@@ -131,24 +131,23 @@ StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
     return new_hlo_module.status();
   }
 
-  if (force_disable_gpu_runtime) {
-    DebugOptions opts = opts_;
-    opts.set_xla_gpu_enable_xla_runtime_executable(false);
-    (*new_hlo_module)->config().set_debug_options(opts);
-  } else {
-    (*new_hlo_module)->config().set_debug_options(opts_);
-  }
-
   StatusOr<std::unique_ptr<Executable>> out = compiler_->RunBackend(
       std::move(*new_hlo_module), &stream_executor_,
       Compiler::CompileOptions{&allocator_, /*thread_pool=*/nullptr,
                                /*layout_canonicalization_callback=*/{},
                                /*is_autotuning_compilation=*/true});
-  if (out.status().code() == absl::StatusCode::kResourceExhausted) {
+  if (out.status().code() == absl::StatusCode::kResourceExhausted ||
+      out.status().code() == absl::StatusCode::kCancelled) {
     // Being out of shared memory budget is an expected failure.
+    // Cancelling upon register spilling is also an expected failure.
     return std::unique_ptr<Executable>();
   }
   return out;
+}
+
+StatusOr<std::unique_ptr<HloModule>> AutotunerCompileUtil::ExtractModule(
+    GenerateModuleFn extractor) {
+  return extractor(opts_);
 }
 
 /*static*/ StatusOr<std::optional<AutotunerCompileUtil>>

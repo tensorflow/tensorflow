@@ -83,6 +83,8 @@ TF_CALL_NUMBER_TYPES(DEFINE_FILL_GPU);
 TF_CALL_bool(DEFINE_FILL_GPU);
 TF_CALL_float8_e5m2(DEFINE_FILL_GPU);
 TF_CALL_float8_e4m3fn(DEFINE_FILL_GPU);
+TF_CALL_int4(DEFINE_FILL_GPU);
+TF_CALL_uint4(DEFINE_FILL_GPU);
 #undef DEFINE_FILL_GPU
 
 // Partial specialization of SetZeroFunctor<Device=GPUDevice, T>.

@@ -42,6 +42,9 @@ from tensorflow.python.compiler.mlir import mlir
 # Data
 from tensorflow.python import data
 
+# Distributions
+from tensorflow.python.ops import distributions
+
 # TensorFlow Debugger (tfdbg).
 from tensorflow.python.debug.lib import check_numerics_callback
 from tensorflow.python.debug.lib import dumping_callback

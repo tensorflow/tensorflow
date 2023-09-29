@@ -468,6 +468,8 @@ enum BuiltinOperator : int32 {
   STABLEHLO_GATHER = 201, // WARNING: No runtime support
   STABLEHLO_TRANSPOSE = 202, // WARNING: No runtime support
   DILATE = 203,
+  STABLEHLO_RNG_BIT_GENERATOR = 204,
+  REDUCE_WINDOW = 205,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -623,6 +625,8 @@ union BuiltinOptions2{
   StablehloGatherOptions,
   StablehloTransposeOptions,
   DilateOptions,
+  StablehloRngBitGeneratorOptions,
+  ReduceWindowOptions,
 }
 
 table StablehloGatherOptions{
@@ -767,6 +771,23 @@ table StablehloScatterOptions {
   update_computation_subgraph_index: int;
 }
 
+enum RngAlgorithm : byte {
+  // An algorithm auto-selected by the system according to device type.
+  DEFAULT = 0,
+  // The Philox algorithm, as described in paper
+  // ['Parallel Random Numbers: As Easy as 1, 2, 3']
+  // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+  PHILOX = 1,
+  // The ThreeFry algorithm, as described in paper
+  // ['Parallel Random Numbers: As Easy as 1, 2, 3']
+  // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+  THREEFRY = 2,
+}
+
+table StablehloRngBitGeneratorOptions {
+  algorithm:RngAlgorithm;
+}
+
 // LINT.IfChange
 enum Padding : byte { SAME, VALID }
 // LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td)
@@ -789,6 +810,9 @@ table Conv2DOptions {
   fused_activation_function:ActivationFunctionType;
   dilation_w_factor:int = 1;
   dilation_h_factor:int = 1;
+  // Parameters for Conv2D version 8 or above.
+  // When set, quantized_bias_type defines the dtype for both bias and accumulator.
+  quantized_bias_type: TensorType;
 }
 
 // Options for both Conv3D and Conv3DTranspose.
@@ -896,6 +920,10 @@ table FullyConnectedOptions {
   // If set to true, then weights-only op will use asymmetric quantization for
   // inputs.
   asymmetric_quantize_inputs: bool;
+
+  // Parameters for FullyConnected version 11 or above.
+  // When set, quantized_bias_type defines the dtype for both bias and accumulator.
+  quantized_bias_type: TensorType;
 }
 
 table SoftmaxOptions {
@@ -1155,6 +1183,11 @@ table TransposeConvOptions {
 
   // Parameters supported by version 4:
   fused_activation_function:ActivationFunctionType = NONE;
+
+  // Parameters for TransposeConv version 5 or above.
+  // If set, use this for bias and accumulator.
+  // When set, quantized_bias_type defines the dtype for both bias and accumulator.
+  quantized_bias_type: TensorType;
 }
 
 table ExpandDimsOptions {
@@ -1413,6 +1446,20 @@ table RightShiftOptions {
 }
 
 table DilateOptions {
+}
+
+enum ReduceWindowFunction : int {
+  UNSUPPORTED,
+  ADD,
+  MUL,
+  MINIMUM,
+  MAXIMUM,
+  ALL,
+  ANY,
+}
+
+table ReduceWindowOptions{
+  reduce_function: ReduceWindowFunction;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

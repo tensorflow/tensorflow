@@ -328,6 +328,7 @@ TokKind HloLexer::LexIdentifier() {
   KEYWORD(last_tile_dim_replicate);
   KEYWORD(shard_as);
   KEYWORD(shard_like);
+  KEYWORD(unknown);
 
 #undef KEYWORD
 
@@ -612,6 +613,8 @@ std::string TokKindToString(TokKind kind) {
       return "kw_shard_as";
     case TokKind::kw_shard_like:
       return "kw_shard_like";
+    case TokKind::kw_unknown:
+      return "kw_unknown";
     case TokKind::kw_inf:
       return "kw_inf";
     case TokKind::kNegInf:

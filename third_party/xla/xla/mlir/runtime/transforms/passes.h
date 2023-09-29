@@ -48,6 +48,9 @@ CreateExportRuntimeFunctionsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateConvertCustomCallsPass();
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateAddInitializationsPass();
+
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateConvertAssertsPass();
 
 //===-----------------------------------------------------------------------===/

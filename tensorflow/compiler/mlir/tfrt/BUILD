@@ -1,12 +1,12 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-)
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
 
 # Note: keep the following lines separate due to the way copybara works
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 
 # TF to TFRT kernels conversion.
 package(
@@ -361,6 +361,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:bridge",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_asset_sinking_pass",
         "//tensorflow/core:framework",
@@ -529,11 +530,10 @@ tf_cc_binary(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Support",
         "@local_xla//xla/mlir_hlo:lhlo",
         "@local_xla//xla/mlir_hlo:lhlo_gpu",
         "@tf_runtime//:init_tfrt_dialects",
-        "@tf_runtime//backends/gpu:gpu_opdefs",
-        "@tf_runtime//backends/gpu:gpu_passes",
     ],
 )
 

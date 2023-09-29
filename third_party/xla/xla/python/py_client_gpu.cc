@@ -25,6 +25,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #endif
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "xla/primitive_util.h"
 #include "xla/python/callback.h"
 #include "xla/python/exceptions.h"
 

@@ -135,6 +135,7 @@ struct OpData {
   bool ledger_initialized;
   // Used for 4bit hybrid
   std::unique_ptr<optimized_4bit::OpData4Bit> op_data_4bit = nullptr;
+  TfLiteType quantized_bias_type = kTfLiteNoType;
 };
 
 constexpr int kInputTensor = 0;
@@ -464,6 +465,15 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
   if (input->type == kTfLiteInt16 && output->type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+
+    // Check quantized_bias_type is either kTfLiteInt64 or kTfLiteInt32.
+    if (params->quantized_bias_type != kTfLiteFloat32) {
+      TF_LITE_ENSURE(context, params->quantized_bias_type == kTfLiteInt32 ||
+                                  params->quantized_bias_type == kTfLiteInt64);
+      TF_LITE_ENSURE(context, (bias == nullptr) ||
+                                  bias->type == params->quantized_bias_type);
+      data->quantized_bias_type = params->quantized_bias_type;
+    }
   }
 
   // If we have to perform on-the-fly quantization (with quantized weights and
@@ -1097,17 +1107,18 @@ void FullyConnectedInt16(const OpData* data, const TfLiteTensor* input,
   op_params.output_shift = data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
-  if (bias && bias->type == kTfLiteInt64) {
+
+  if (data->quantized_bias_type == kTfLiteInt32) {
     reference_integer_ops::FullyConnected(
         op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
         GetTensorShape(filter), GetTensorData<int8_t>(filter),
-        GetTensorShape(bias), GetTensorData<int64_t>(bias),
+        GetTensorShape(bias), GetTensorData<int32_t>(bias),
         GetTensorShape(output), GetTensorData<int16_t>(output));
   } else {
     reference_integer_ops::FullyConnected(
         op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
         GetTensorShape(filter), GetTensorData<int8_t>(filter),
-        GetTensorShape(bias), GetTensorData<int32_t>(bias),
+        GetTensorShape(bias), GetTensorData<int64_t>(bias),
         GetTensorShape(output), GetTensorData<int16_t>(output));
   }
 }
@@ -1161,13 +1172,14 @@ void FullyConnectedPerChannelInt16(const OpData* data,
   op_params.output_offset = output->params.zero_point;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
-  if (bias && bias->type == kTfLiteInt64) {
+
+  if (data->quantized_bias_type == kTfLiteInt32) {
     reference_integer_ops::FullyConnectedPerChannel(
         op_params, data->per_channel_output_multiplier.data(),
         data->per_channel_output_shift.data(), GetTensorShape(input),
         GetTensorData<int16_t>(input), GetTensorShape(filter),
         GetTensorData<int8_t>(filter), GetTensorShape(bias),
-        GetTensorData<int64_t>(bias), GetTensorShape(output),
+        GetTensorData<int32_t>(bias), GetTensorShape(output),
         GetTensorData<int16_t>(output));
   } else {
     reference_integer_ops::FullyConnectedPerChannel(
@@ -1175,7 +1187,7 @@ void FullyConnectedPerChannelInt16(const OpData* data,
         data->per_channel_output_shift.data(), GetTensorShape(input),
         GetTensorData<int16_t>(input), GetTensorShape(filter),
         GetTensorData<int8_t>(filter), GetTensorShape(bias),
-        GetTensorData<int32_t>(bias), GetTensorShape(output),
+        GetTensorData<int64_t>(bias), GetTensorShape(output),
         GetTensorData<int16_t>(output));
   }
 }

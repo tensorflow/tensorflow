@@ -42,6 +42,9 @@ bool IsSupportedConstantExpression(const HloInstruction* instruction) {
 StatusOr<bool> DuplicateConstantExpressionPerUser(HloComputation* computation,
                                                   HloInstruction* to_clone,
                                                   HloInstruction* user) {
+  if (to_clone->user_count() == 1) {
+    return false;
+  }
   absl::InlinedVector<std::pair<const HloInstruction*, int>, 8> worklist(
       1, std::make_pair(to_clone, 0));
   absl::InlinedVector<const HloInstruction*, 8> to_clone_vec;
@@ -153,7 +156,7 @@ StatusOr<bool> HloConstantSplitter::Run(
 
     // Perform duplication of the constants/constant expressions.
     for (HloInstruction* instruction : constants_list) {
-      if (instruction->user_count() == 0) {
+      if (instruction->user_count() <= 1) {
         continue;
       }
       absl::InlinedVector<HloInstruction*, 8> users;
@@ -161,7 +164,7 @@ StatusOr<bool> HloConstantSplitter::Run(
       // Consider for splitting only leaf expressions (not constants in the
       // middle of a constant expression). Also only split for non-constant
       // users for expressions.
-      for (int i = 1; i < instruction->user_count(); ++i) {
+      for (int i = 0; i < instruction->user_count(); ++i) {
         if (instruction->opcode() == HloOpcode::kConstant ||
             !constants_set.contains(instruction->users()[i])) {
           users.push_back(instruction->users()[i]);

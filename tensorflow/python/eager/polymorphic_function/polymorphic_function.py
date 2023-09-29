@@ -448,13 +448,14 @@ class OptionalXlaContext:
       self.xla_context.Exit()
 
 
-# TODO(mdan): Consider expose this type for instance type checking.
 @tf_export("__internal__.function.Function", v1=[])
-class Function(core.GenericFunction, trackable.Trackable):
-  """A `tf.types.experimental.GenericFunction` created by `tf.function`.
+class Function(core.PolymorphicFunction, trackable.Trackable):
+  """A `tf.types.experimental.PolymorphicFunction` created by `tf.function`.
 
   Currently, individual methods/attributes under this class are not guaranteed
   by the TF API contract, and are subject to future changes.
+
+  (Previously also known as `tf.types.experimental.GenericFunction`)
   """
 
   def __init__(self,
@@ -802,7 +803,7 @@ class Function(core.GenericFunction, trackable.Trackable):
 
   @traceback_utils.filter_traceback
   def __call__(self, *args, **kwds):
-    # Implements GenericFunction.__call__.
+    # Implements PolymorphicFunction.__call__.
     if self._run_functions_eagerly:
       with trace.Trace(self._name, tf_function_call="eager"):
         return self._python_function(*args, **kwds)
@@ -954,7 +955,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     )
 
   def experimental_get_compiler_ir(self, *args, **kwargs):
-    # Implements GenericFunction.experimental_get_compiler_ir
+    # Implements PolymorphicFunction.experimental_get_compiler_ir
     context.ensure_initialized()
     if not self._jit_compile:
       raise ValueError("Compiler IR can only be returned for functions marked "
@@ -1222,7 +1223,7 @@ class Function(core.GenericFunction, trackable.Trackable):
       return concrete
 
   def get_concrete_function(self, *args, **kwargs):
-    # Implements GenericFunction.get_concrete_function.
+    # Implements PolymorphicFunction.get_concrete_function.
     concrete = self._get_concrete_function_garbage_collected(*args, **kwargs)
     concrete._garbage_collector.release()  # pylint: disable=protected-access
     return concrete
@@ -1295,10 +1296,10 @@ def function(
     experimental_relax_shapes=None,
     experimental_compile=None,
     experimental_follow_type_hints=None  # pylint: disable=unused-argument
-) -> core.GenericFunction:
+) -> core.PolymorphicFunction:
   """Compiles a function into a callable TensorFlow graph.
 
-  `tf.function` constructs a `tf.types.experimental.GenericFunction` that
+  `tf.function` constructs a `tf.types.experimental.PolymorphicFunction` that
   executes a TensorFlow graph (`tf.Graph`) created by trace-compiling the
   TensorFlow operations in `func`. More information on the topic can be found
   in [Introduction to Graphs and tf.function]
@@ -1320,7 +1321,7 @@ def function(
 
   The trace-compilation allows non-TensorFlow operations to execute, but under
   special conditions. In general, only TensorFlow operations are guaranteed to
-  run and create fresh results whenever the `GenericFunction` is called.
+  run and create fresh results whenever the `PolymorphicFunction` is called.
 
   ## Features
 
@@ -1385,7 +1386,7 @@ def function(
 
   ## `tf.function` creates polymorphic callables
 
-  Internally, `tf.types.experimental.GenericFunction` may contain multiple
+  Internally, `tf.types.experimental.PolymorphicFunction` may contain multiple
   `tf.types.experimental.ConcreteFunction`s, each specialized to arguments with
   different data types or shapes, since TensorFlow can perform more
   optimizations on graphs of specific shapes, dtypes and values of constant
@@ -1395,11 +1396,11 @@ def function(
   For more information, see the
   [tf.function guide](https://www.tensorflow.org/guide/function#rules_of_tracing)
 
-  Executing a `GenericFunction` will select and execute the appropriate
+  Executing a `PolymorphicFunction` will select and execute the appropriate
   `ConcreteFunction` based on the argument types and values.
 
   To obtain an individual `ConcreteFunction`, use the
-  `GenericFunction.get_concrete_function` method. It can be called with the
+  `PolymorphicFunction.get_concrete_function` method. It can be called with the
   same arguments as `func` and returns a
   `tf.types.experimental.ConcreteFunction`. `ConcreteFunction`s are backed by a
   single `tf.Graph`:
@@ -1410,14 +1411,14 @@ def function(
   >>> isinstance(f.get_concrete_function(1).graph, tf.Graph)
   True
 
-  `ConcreteFunction`s can be executed just like `GenericFunction`s, but their
+  `ConcreteFunction`s can be executed just like `PolymorphicFunction`s, but their
   input is resticted to the types to which they're specialized.
 
   ## Retracing
 
-  `ConcreteFunctions` are built (traced) on the fly, as the `GenericFunction` is
+  `ConcreteFunctions` are built (traced) on the fly, as the `PolymorphicFunction` is
   called with new TensorFlow types or shapes, or with new Python values as
-  arguments. When `GenericFunction` builds a new trace, it is said that `func`
+  arguments. When `PolymorphicFunction` builds a new trace, it is said that `func`
   is retraced. Retracing is a frequent performance concern for `tf.function` as
   it can be considerably slower than executing a graph that's already been
   traced. It is ideal to minimize the amount of retracing in your code.
@@ -1443,7 +1444,7 @@ def function(
 
   ## Input signatures
 
-  For Tensor arguments, `GenericFunction`creates a new `ConcreteFunction` for
+  For Tensor arguments, `PolymorphicFunction`creates a new `ConcreteFunction` for
   every unique set of input shapes and datatypes. The example below creates two
   separate `ConcreteFunction`s, each specialized to a different shape:
 
@@ -1459,7 +1460,7 @@ def function(
   this process. The input signature specifies the shape and type of each
   Tensor argument to the function using a `tf.TensorSpec` object. More general
   shapes can be used. This ensures only one `ConcreteFunction` is created, and
-  restricts the `GenericFunction` to the specified shapes and types. It is
+  restricts the `PolymorphicFunction` to the specified shapes and types. It is
   an effective way to limit retracing when Tensors have dynamic shapes.
 
   >>> @tf.function(
@@ -1602,9 +1603,9 @@ def function(
       reduce_retracing instead.
 
   Returns:
-     If `func` is not None, returns a `tf.types.experimental.GenericFunction`.
+     If `func` is not None, returns a `tf.types.experimental.PolymorphicFunction`.
      If `func` is None, returns a decorator that, when invoked with a single
-     `func` argument, returns a `tf.types.experimental.GenericFunction`.
+     `func` argument, returns a `tf.types.experimental.PolymorphicFunction`.
 
   Raises:
      `ValueError` when attempting to use `jit_compile=True`, but XLA support is
@@ -1705,7 +1706,8 @@ def class_method_to_instance_method(original_function, instance):
       autograph=original_function._autograph,
       input_signature=original_function.input_signature,
       reduce_retracing=original_function._reduce_retracing,
-      jit_compile=original_function._jit_compile)
+      jit_compile=original_function._jit_compile,
+      experimental_attributes=original_function._attributes)
   # pylint: enable=protected-access
 
   # We wrap the bound method with tf_decorator so inspection works correctly

@@ -1,3 +1,5 @@
+MAYBE_ANDROID_NDK_STARLARK_RULES
+
 """Set up configurable Android SDK and NDK dependencies."""
 
 def android_workspace():

@@ -24,9 +24,9 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/kernel_cache_config.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_internal.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 namespace gpu {

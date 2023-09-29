@@ -63,6 +63,8 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
 
   tsl::StatusOr<Stream *> GetStream(int device_ordinal) override;
 
+  tsl::StatusOr<tsl::Allocator *> GetAllocator(int device_ordinal);
+
  private:
   tsl::Allocator *wrapped_;
   Stream *stream_;
@@ -136,6 +138,10 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
 
   tsl::StatusOr<Stream *> GetStream(int device_ordinal) override {
     return per_device_allocators_[device_ordinal]->GetStream(device_ordinal);
+  }
+
+  tsl::StatusOr<tsl::Allocator *> GetAllocator(int device_ordinal) {
+    return per_device_allocators_[device_ordinal]->GetAllocator(device_ordinal);
   }
 
  private:

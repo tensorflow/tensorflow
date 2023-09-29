@@ -388,11 +388,12 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
       return CreateAlternativeWorkerClientWithGrpcFallback(*transfer_server,
                                                            task_info);
     }
-    LOG(INFO)
-        << "Failed to find transfer server for default data transfer protocol '"
-        << default_protocol << "' for worker '" << task_info.worker_address()
-        << "'; falling back to grpc. Original error: "
-        << transfer_server.status();
+    LOG(INFO) << "Failed to find transfer server for default data transfer "
+                 "protocol '"
+              << default_protocol << "' for worker '"
+              << task_info.worker_address()
+              << "'; falling back to grpc. Original error: "
+              << transfer_server.status();
     metrics::RecordTFDataServiceDataTransferProtocolFallback(
         default_protocol, error::Code::NOT_FOUND,
         "Failed to find transfer server for default protocol");
@@ -560,10 +561,14 @@ void DataServiceClient::UpdateBufferSize() TF_LOCKS_EXCLUDED(mu_) {
     // `tasks_` includes the local tasks, so we subtract one from the
     // configured local task buffer size.
     mutex_lock l(mu_);
-    int64_t max_outstanding_requests = tasks_.size();
+    int64_t max_outstanding_requests = ctx_->UpdateMaxOutstandingRequests(
+        max_outstanding_requests_, tasks_.size());
     if (max_outstanding_requests > max_outstanding_requests_) {
       worker_thread_cv_.notify_all();
     }
+    VLOG(3) << "Updated `max_outstanding_requests` from "
+            << max_outstanding_requests_ << " to " << max_outstanding_requests
+            << " with " << tasks_.size() << " tasks.";
     max_outstanding_requests_ = max_outstanding_requests;
   }
 }

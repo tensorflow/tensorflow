@@ -1,7 +1,7 @@
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 # copybara:uncomment_end(google-only)
 package(
@@ -74,6 +74,7 @@ cc_library(
         "mlprogram.h",
     ],
     deps = [
+        ":bridge",
         ":tensorflow_passes",
         ":tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
@@ -143,6 +144,7 @@ cc_library(
         "rewrite_util.h",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/core:framework",
         "@llvm-project//mlir:IR",
     ],
@@ -438,7 +440,6 @@ cc_library(
         "annotate_parameter_replication.cc",
         "batchmatmul_to_einsum.cc",
         "breakup-islands.cc",
-        "bridge.cc",
         "canonicalize_compile_and_replicate_attributes.cc",
         "check_control_dependencies.cc",
         "cluster_formation.cc",
@@ -554,7 +555,6 @@ cc_library(
         "xla_validate_inputs.cc",
     ],
     hdrs = [
-        "bridge.h",
         "cluster_ops_by_policy.h",
         "collection_ops_util.h",
         "einsum.h",
@@ -576,6 +576,7 @@ cc_library(
         ":tf_data_optimization",
         ":tf_device_pass_inc_gen",
         ":tf_pass_inc_gen",
+        ":tf_savedmodel_pass_inc_gen",
         ":tfe_legalize_tfg",
         ":unroll_batch_matmul_pass",
         ":verify_no_outside_compilation_markers_pass",
@@ -617,6 +618,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:xla_call_module_attrs",
         "//tensorflow/compiler/mlir/tensorflow:xla_rewrite_util",
         "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
+        "//tensorflow/compiler/mlir/tf2xla/internal/inference:inference_metrics_pass",
         "//tensorflow/compiler/mlir/tf2xla/transforms:legalization_op_config",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf_with_tf2xla",
@@ -663,6 +665,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/platform:error_logging",
         "@local_xla//xla:window_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla:xla_proto_cc",
@@ -687,6 +690,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tf2xla/internal:clustering_bridge_passes",
+        "//tensorflow/compiler/mlir/tf2xla/internal/inference:inference_metrics_pass",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/platform:error_payloads",
@@ -696,6 +701,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/platform:error_logging",
     ],
 )
 
@@ -787,6 +793,7 @@ cc_library(
         "bridge_pass.cc",
     ],
     deps = [
+        ":bridge",
         ":tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "@llvm-project//mlir:Pass",

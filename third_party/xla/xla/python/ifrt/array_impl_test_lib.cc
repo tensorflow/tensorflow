@@ -488,7 +488,7 @@ TEST(ArrayImplTest, ReshardToDifferentDevice) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto reshared_array,
-      array->Reshard(sharding, ArrayCopySemantics::kAlwaysCopy));
+      array->Reshard(new_sharding, ArrayCopySemantics::kAlwaysCopy));
 
   std::vector<float> out_data(6);
   auto future = reshared_array->CopyToHostBuffer(

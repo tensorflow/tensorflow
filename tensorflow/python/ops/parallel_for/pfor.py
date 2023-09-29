@@ -512,6 +512,7 @@ class WhileOp:
     op = inp.op
     output = False
     if op.type in [
+        "OnesLike",
         "Shape",
         "Rank",
         "ShapeN",
@@ -2548,10 +2549,17 @@ def _convert_transpose(pfor_input: _PforInput, _, op_func):
 
 
 @RegisterPFor("ZerosLike")
-def _convert_zeroslike(pfor_input: _PforInput):
+def _convert_zeros_like(pfor_input: _PforInput):
   t = pfor_input.stacked_input(0)
   shape = array_ops.shape(t)[1:]
   return wrap(array_ops.zeros(shape, dtype=t.dtype), False)
+
+
+@RegisterPFor("OnesLike")
+def _convert_ones_like(pfor_input: _PforInput):
+  t = pfor_input.stacked_input(0)
+  shape = array_ops.shape(t)[1:]
+  return wrap(array_ops.ones(shape, dtype=t.dtype), False)
 
 
 @RegisterPFor("Gather")
@@ -2966,7 +2974,9 @@ def _convert_unsortedsegmentsum(pfor_input: _PforInput, _, op_func):
   segment_offset = num_segments * math_ops.range(n, dtype=dtype)
   segment_offset = array_ops.reshape(segment_offset,
                                      array_ops.concat([[n], ones], axis=0))
-  segment_ids += segment_offset
+  segment_ids = array_ops.where(
+      segment_ids >= 0, segment_ids + segment_offset, segment_ids
+  )
   num_segments = math_ops.cast(num_segments, dtypes.int64) * math_ops.cast(
       n, dtypes.int64)
   output = op_func(data, segment_ids, num_segments)

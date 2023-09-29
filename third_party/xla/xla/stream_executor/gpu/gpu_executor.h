@@ -34,12 +34,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -83,14 +84,13 @@ class GpuExecutor : public internal::StreamExecutorInterface {
  public:
   // sub_platform indicates the subplatform used in this executor; it must
   // be a CUDA type.
-  explicit GpuExecutor(const PluginConfig& plugin_config)
+  GpuExecutor()
       : device_(0),
         context_(nullptr),
         device_ordinal_(0),
         cc_major_(0),
         cc_minor_(0),
-        version_(0),
-        plugin_config_(plugin_config) {}
+        version_(0) {}
 
   // See the corresponding StreamExecutor methods for method comments on the
   // following overrides.
@@ -117,6 +117,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                      const BlockDim& block_dims, const KernelBase& k,
                      const KernelArgsArrayBase& args) override;
+
+  tsl::Status Submit(Stream* stream,
+                     const CommandBuffer& command_buffer) override;
 
   // (supported on CUDA only)
   int CalculateOccupancy(const DeviceDescription& device_description,
@@ -255,6 +258,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
 
+  tsl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
+  GetCommandBufferImplementation() override;
+
   void* GpuContextHack() override;
 
   GpuContext* gpu_context();
@@ -371,9 +377,6 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   // GPU ISA version for device_.
   int version_;
-
-  // The plugin configuration associated with this instance.
-  PluginConfig plugin_config_;
 
   // Type erased XLA specific state attached to GpuExecutor.
   Object xla_state_;

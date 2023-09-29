@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_frontend_attributes.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -368,6 +369,10 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
                });
     printer->Append("}");
   }
+  if (!frontend_attributes_.map().empty()) {
+    AppendCat(printer, ", frontend_attributes=",
+              FrontendAttributesToString(frontend_attributes_));
+  }
   printer->Append("\n\n");
   const auto& computations = options.canonicalize_computations()
                                  ? MakeComputationSorted()
@@ -375,7 +380,8 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
   for (const HloComputation* computation : computations) {
     // Don't print async computations when the sytax sugar is enabled since that
     // is redundant information.
-    if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation()) {
+    if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation() &&
+        computation->CanExpandIntoSingleInstruction()) {
       continue;
     }
     if (computation == entry_computation()) {
@@ -438,6 +444,8 @@ HloModuleProto HloModule::ToProto() const {
   if (has_spmd_output_sharding()) {
     *proto.mutable_spmd_output_sharding() = spmd_output_sharding().ToProto();
   }
+
+  *proto.mutable_frontend_attributes() = frontend_attributes_;
 
   if (has_spmd_parameters_shardings()) {
     for (const auto& parameter_sharding : spmd_parameters_shardings()) {
@@ -603,6 +611,10 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
 
   module->set_is_dynamic(proto.is_dynamic());
+
+  if (proto.has_frontend_attributes()) {
+    module->set_frontend_attributes(proto.frontend_attributes());
+  }
 
   if (proto.has_spmd_output_sharding()) {
     TF_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
@@ -1020,11 +1032,14 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
       std::make_unique<CompilationEnvironments>(*comp_envs_));
 
   HloCloneContext context(module.get(), suffix);
-  auto cloned_computation = entry_computation_->Clone(suffix, &context);
-  module->AddEntryComputation(std::move(cloned_computation));
+  if (entry_computation_) {
+    auto cloned_computation = entry_computation_->Clone(suffix, &context);
+    module->AddEntryComputation(std::move(cloned_computation));
+  }
   module->input_output_alias_config() = input_output_alias_config();
   module->buffer_donor_config() = buffer_donor_config();
   module->set_is_dynamic(is_dynamic());
+  module->set_frontend_attributes(frontend_attributes());
   if (has_schedule() && schedule().Verify().ok()) {
     HloSchedule clone_schedule(module.get());
     for (HloComputation* computation : computations()) {

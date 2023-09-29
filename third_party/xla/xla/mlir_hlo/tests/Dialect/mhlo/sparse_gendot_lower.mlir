@@ -2,9 +2,9 @@
 // RUN: --verify-diagnostics \
 // RUN: --mhlo-test-lower-general-dot --canonicalize | FileCheck %s
 
-#SV  = #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>
-#CSR = #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>
-#COO = #sparse_tensor.encoding<{ lvlTypes = [ "compressed_nu", "singleton_nu", "singleton" ] }>
+#SV  = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
+#CSR = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : compressed, d1 : compressed) }>
+#COO = #sparse_tensor.encoding<{ map = (d0, d1, d2) -> (d0 : compressed(nonunique), d1 : singleton(nonunique), d2 : singleton) }>
 
 //
 // Vector-vector gendot.
@@ -78,7 +78,7 @@ func.func @sparse_matmat_1s(%arg0: tensor<16x32xf64, #CSR>,
 // CHECK-LABEL: func.func @sparse_matmat_as(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<16x32xf64, #sparse_tensor.encoding<{{{.*}}}>>,
 // CHECK-SAME:    %[[ARG1:.*]]: tensor<32x64xf64, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<16x64xf64, #sparse_tensor.encoding<{{{.*}}}>> {
-// CHECK:         %[[DOT:.*]] = "mhlo.dot"(%[[ARG0]], %[[ARG1]]) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<16x32xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>, tensor<32x64xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>) -> tensor<16x64xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>
+// CHECK:         %[[DOT:.*]] = "mhlo.dot"(%[[ARG0]], %[[ARG1]]) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<16x32xf64, #sparse_tensor.encoding<{{{.*}}}>>, tensor<32x64xf64, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<16x64xf64, #sparse_tensor.encoding<{{{.*}}}>>
 // CHECK:         return %[[DOT]] : tensor<16x64xf64, #sparse_tensor.encoding<{{{.*}}}>>
 // CHECK:       }
 //

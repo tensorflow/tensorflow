@@ -277,11 +277,6 @@ LogicalResult Tf2XlaRewriter::PrepareKernelInputs(
     tensorflow::XlaExpression expr = GetExprForOperand(operand, op_, idx);
     tensorflow::XlaExpression::Kind kind = expr.kind();
     if (kind == tensorflow::XlaExpression::Kind::kInvalid) return failure();
-    if (required_consts.count(idx) &&
-        kind != tensorflow::XlaExpression::Kind::kConstant) {
-      return op_->emitRemark()
-             << "lowering requires operand #" << idx << " to be a constant";
-    }
     expressions.push_back(expr);
 
     if (!tensorflow::DataTypeCanUseMemcpy(expr.dtype())) {

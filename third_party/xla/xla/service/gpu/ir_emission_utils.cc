@@ -444,14 +444,14 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
       "StaticMemRefCastOp(ViewOp(arg)) or arg");
 }
 
-std::vector<HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
-    const std::vector<HloInstruction*>& roots) {
+std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
+    const std::vector<const HloInstruction*>& roots) {
   // Same as GetOutputDefiningDynamicUpdateSliceOps but on a HLO fusion
   // computation instead of a LMHLO FusionOp.
-  std::vector<HloInstruction*> dus_ops;
-  for (HloInstruction* root : roots) {
+  std::vector<const HloInstruction*> dus_ops;
+  for (const HloInstruction* root : roots) {
     while (root->opcode() == HloOpcode::kBitcast) {
-      root = root->mutable_operand(0);
+      root = root->operand(0);
     }
 
     if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {

@@ -1219,6 +1219,33 @@ TEST_F(HloVerifierTest, AsyncUpdateWrongType) {
           "async-update expects the shape of operand and output to match"));
 }
 
+TEST_F(HloVerifierTest, AsyncOpComputationNotTrivial) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  async_computation {
+    p = f32[2,3] parameter(0)
+    copy = f32[2,3] copy(p)
+    ROOT custom-call = f32[3,2] custom-call(copy), custom_call_target="foo"
+  }
+
+  ENTRY AsyncStartAndAsyncDone {
+    p0 = f32[2,3] parameter(0)
+    async-start = ((f32[2,3]), f32[3,2], u32[]) async-start(p0), calls=async_computation
+    ROOT async-done = f32[3,2] async-done(async-start), calls=async_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr(
+          "expected to contain only the root and parameter instructions"));
+}
+
 TEST_F(HloVerifierTestLayoutSensitive, AsyncDoneWrongGroupId) {
   const char* const hlo_string = R"(
   HloModule Module

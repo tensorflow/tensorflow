@@ -877,11 +877,11 @@ LogicalResult FindForwardPassOps(OpBuilder& builder,
     TF::TPUReplicatedInputOp private_input = input.clone();
     builder.insert(private_input);
     forward_pass_ops.insert(private_input);
-    for (OpOperand& next_use : input.getOutput().getUses()) {
-      if (!forward_pass_ops.contains(next_use.getOwner())) continue;
-      next_use.getOwner()->setOperand(next_use.getOperandNumber(),
-                                      private_input.getOutput());
-    }
+
+    input.getOutput().replaceUsesWithIf(
+        private_input.getOutput(), [&](OpOperand& use) {
+          return forward_pass_ops.contains(use.getOwner());
+        });
   }
 
   VLOG(3) << "Cloned " << cloned_inputs << " TPUReplicatedInputOps";
@@ -992,11 +992,10 @@ LogicalResult FindBackwardPassOps(
     TF::TPUReplicatedInputOp private_input = input.clone();
     builder.insert(private_input);
     backward_pass_ops.insert(private_input);
-    for (OpOperand& next_use : input.getOutput().getUses()) {
-      if (!backward_pass_ops.contains(next_use.getOwner())) continue;
-      next_use.getOwner()->setOperand(next_use.getOperandNumber(),
-                                      private_input.getOutput());
-    }
+    input.getOutput().replaceUsesWithIf(
+        private_input.getOutput(), [&](OpOperand& use) {
+          return backward_pass_ops.contains(use.getOwner());
+        });
   }
 
   VLOG(2) << " cloned " << to_clone.size() << " and inserted "
@@ -1033,9 +1032,9 @@ LogicalResult FindBackwardPassOps(
     TF::TPUReplicatedInputOp input = builder.create<TF::TPUReplicatedInputOp>(
         loc, value.getType(), output.getResults());
     input->setAttr(kDevice, builder.getStringAttr(""));
-    for (OpOperand& use : value.getUses())
-      if (backward_pass_ops.contains(use.getOwner()))
-        use.getOwner()->setOperand(use.getOperandNumber(), input.getOutput());
+    value.replaceUsesWithIf(input.getOutput(), [&](OpOperand& use) {
+      return backward_pass_ops.contains(use.getOwner());
+    });
     backward_pass_ops.insert(input);
   }
 

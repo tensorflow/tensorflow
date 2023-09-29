@@ -144,6 +144,12 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }
+      field {
+        name: "gpu_system_memory_size_in_mb"
+        number: 16
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
       nested_type {
         name: "VirtualDevices"
         field {

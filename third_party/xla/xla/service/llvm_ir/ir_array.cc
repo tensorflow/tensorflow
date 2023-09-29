@@ -442,14 +442,15 @@ llvm::Value* IrArray::Index::Linearize(absl::Span<const int64_t> dimensions,
   CHECK_EQ(size(), dimensions.size());
   llvm::Value* logical_linear_index = GetConstantWithIndexType(0);
   int64_t multiplier = 1;
-  for (ssize_t i = size() - 1; i >= 0; --i) {
-    llvm::Value* addend =
-        builder->CreateMul((*this)[i], GetConstantWithIndexType(multiplier), "",
-                           /*HasNUW=*/true, /*HasNSW=*/true);
+  for (ssize_t i = 0; i < size(); ++i) {
+    int64_t dimension = layout_.minor_to_major(i);
+    llvm::Value* addend = builder->CreateMul(
+        (*this)[dimension], GetConstantWithIndexType(multiplier), "",
+        /*HasNUW=*/true, /*HasNSW=*/true);
     addend = builder->CreateZExtOrTrunc(addend, index_type_);
     logical_linear_index = builder->CreateAdd(logical_linear_index, addend, "",
                                               /*HasNUW=*/true, /*HasNSW=*/true);
-    multiplier *= dimensions[i];
+    multiplier *= dimensions[dimension];
   }
   return logical_linear_index;
 }
@@ -462,14 +463,15 @@ llvm::Value* IrArray::Index::Linearize(
   CHECK_EQ(size(), dynamic_dims.size());
   llvm::Value* logical_linear_index = GetConstantWithIndexType(0);
   llvm::Value* multiplier = GetConstantWithIndexType(1);
-  for (ssize_t i = size() - 1; i >= 0; --i) {
-    llvm::Value* addend = builder->CreateMul((*this)[i], multiplier, "",
+  for (ssize_t i = 0; i < size(); ++i) {
+    int64_t dimension = layout_.minor_to_major(i);
+    llvm::Value* addend = builder->CreateMul((*this)[dimension], multiplier, "",
                                              /*HasNUW=*/true, /*HasNSW=*/true);
     addend = builder->CreateZExtOrTrunc(addend, index_type_);
     logical_linear_index = builder->CreateAdd(logical_linear_index, addend, "",
                                               /*HasNUW=*/true, /*HasNSW=*/true);
-    if (i) {
-      multiplier = builder->CreateMul(multiplier, dynamic_dims[i],
+    if (i < size() - 1) {
+      multiplier = builder->CreateMul(multiplier, dynamic_dims[dimension],
                                       /*Name=*/"multiplier");
     }
   }

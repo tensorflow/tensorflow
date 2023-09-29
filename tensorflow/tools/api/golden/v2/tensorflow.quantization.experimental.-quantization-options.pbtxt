@@ -17,8 +17,8 @@ tf_proto {
       type_name: ".tensorflow.quantization.OpSet"
     }
     field {
-      name: "unit_wise_quantization_spec"
-      number: 3
+      name: "unit_wise_quantization_specs"
+      number: 17
       label: LABEL_REPEATED
       type: TYPE_MESSAGE
       type_name: ".tensorflow.quantization.UnitWiseQuantizationSpec"
@@ -52,8 +52,9 @@ tf_proto {
       name: "freeze_all_variables"
       number: 9
       label: LABEL_OPTIONAL
-      type: TYPE_MESSAGE
-      type_name: ".tensorflow.quantization.FreezeAllVariables"
+      type: TYPE_BOOL
+      oneof_index: 0
+      proto3_optional: true
     }
     field {
       name: "enable_per_channel_quantization"
@@ -117,6 +118,13 @@ tf_proto {
       options {
         map_entry: true
       }
+    }
+    oneof_decl {
+      name: "_freeze_all_variables"
+    }
+    reserved_range {
+      start: 3
+      end: 4
     }
   }
 }

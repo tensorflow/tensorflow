@@ -14,8 +14,6 @@
 # ==============================================================================
 """Implements the graph generation for computation of gradients."""
 
-from tensorflow.python.debug.lib import debug_gradients  # pylint: disable=unused-import
-from tensorflow.python.debug.lib import dumping_callback  # pylint: disable=unused-import
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
@@ -30,7 +28,6 @@ from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import manip_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import optional_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import random_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import rnn_grad  # pylint: disable=unused-import

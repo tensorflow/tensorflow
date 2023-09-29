@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/python/py_buffer.h"
 #include "xla/python/py_executable.h"
 #include "xla/python/py_host_callback.h"
+#include "xla/python/py_values.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/traceback.h"
 #include "xla/python/transfer_guard_lib.h"
@@ -193,40 +194,6 @@ Status PyClient::Defragment() {
     // TODO(skyewm): delete executables?
   }
   return OkStatus();
-}
-
-StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
-PyClient::GetDefaultDeviceAssignment(int num_replicas, int num_partitions) {
-  TF_ASSIGN_OR_RETURN(
-      DeviceAssignment device_assignment,
-      ifrt_client_->GetDefaultDeviceAssignment(num_replicas, num_partitions));
-  std::vector<std::vector<ClientAndPtr<PjRtDevice>>> result;
-  result.resize(num_replicas);
-  for (int r = 0; r < num_replicas; ++r) {
-    result[r].resize(num_partitions);
-    for (int p = 0; p < num_partitions; ++p) {
-      int device_id = device_assignment(r, p);
-      TF_ASSIGN_OR_RETURN(PjRtDevice * device,
-                          ifrt_client_->LookupDevice(device_id));
-      result[r][p] = WrapWithClient(shared_from_this(), device);
-    }
-  }
-  return result;
-}
-
-StatusOr<std::vector<ClientAndPtr<PjRtDevice>>>
-PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
-  TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
-                      ifrt_client_->GetDefaultDeviceAssignment(
-                          num_replicas, /*num_partitions=*/1));
-  std::vector<ClientAndPtr<PjRtDevice>> result;
-  for (int i = 0; i < num_replicas; ++i) {
-    int device_id = device_assignment(i, 0);
-    TF_ASSIGN_OR_RETURN(PjRtDevice * device,
-                        ifrt_client_->LookupDevice(device_id));
-    result.push_back(WrapWithClient(shared_from_this(), device));
-  }
-  return result;
 }
 
 StatusOr<py::object> PyClient::BufferFromPyval(

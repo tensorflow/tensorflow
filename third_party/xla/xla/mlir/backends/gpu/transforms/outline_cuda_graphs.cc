@@ -386,7 +386,7 @@ static LogicalResult Outline(unsigned ordinal,
   for (auto op : seq) {
     mlir::Operation* captured_op = op.first;
     if (isa<lmhlo_gpu::GEMMOp>(captured_op)) {
-      func->setAttr(b.getStringAttr("xla.requires_blas"),
+      func->setAttr(b.getStringAttr(runtime::kRequiresBlasAttrName),
                     BoolAttr::get(ctx, true));
       break;
     }

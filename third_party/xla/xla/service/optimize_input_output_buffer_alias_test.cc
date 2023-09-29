@@ -42,6 +42,11 @@ class OptimizeInputOutputBufferAliasTest : public HloTestBase {
     r2f32_ = ShapeUtil::MakeShape(F32, {4, 5});
     r3f32_ = ShapeUtil::MakeShape(F32, {4, 5, 6});
     r4f32_ = ShapeUtil::MakeShape(F32, {4, 5, 6, 7});
+    d1f32_ = ShapeUtil::MakeShape(F32, {256}, /*dynamic_dimensions=*/{true});
+    d2f32_ = ShapeUtil::MakeShape(F32, {128, 128},
+                                  /*dynamic_dimensions=*/{false, true});
+    // Static shape with same size as dynamic shape `d1f32_`.
+    d3f32_ = ShapeUtil::MakeShape(F32, {512});
   }
   void CreatePassAndBufferDonorConfig(
       bool registered_donor_buffer_only = false) {
@@ -81,6 +86,10 @@ class OptimizeInputOutputBufferAliasTest : public HloTestBase {
   Shape r2f32_;
   Shape r3f32_;
   Shape r4f32_;
+  // Used for dynamic shape aliasing check.
+  Shape d1f32_;
+  Shape d2f32_;
+  Shape d3f32_;
 };
 
 // All shapes are different, so no aliasing is available.
@@ -193,6 +202,48 @@ TEST_F(OptimizeInputOutputBufferAliasTest, BufferDonorOnly) {
   EXPECT_FALSE(buffer_donor_config_.ParameterIsBufferDonor(0, {0}));
   EXPECT_EQ(alias_config_.GetAliasedOutput(0, {0}), ShapeIndex{1});
   EXPECT_FALSE(alias_config_.GetAliasedOutput(0, {1}));
+}
+
+// No aliasing on dynamic shapes with tuple.
+TEST_F(OptimizeInputOutputBufferAliasTest, DynamicShapeWithTuple) {
+  CreatePassAndBufferDonorConfig(false);
+  std::vector<Shape> input = {ShapeUtil::MakeTupleShape({d1f32_, d2f32_})};
+  Shape output = ShapeUtil::MakeTupleShape({d1f32_, d2f32_});
+  bool changed = BuildAliasConfig(input, output);
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(AliasCount(), 0);
+}
+
+// No aliasing on dynamic shapes with no input output tuple.
+TEST_F(OptimizeInputOutputBufferAliasTest, DynamicShapeNoTuple) {
+  CreatePassAndBufferDonorConfig(false);
+  std::vector<Shape> input = {d1f32_, d2f32_};
+  Shape output = d1f32_;
+  bool changed = BuildAliasConfig(input, output);
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(AliasCount(), 0);
+}
+
+// No aliasing from static input shape to dynamic output shapes even size is
+// same.
+TEST_F(OptimizeInputOutputBufferAliasTest, DynamicShapeBufferOutput) {
+  CreatePassAndBufferDonorConfig(false);
+  std::vector<Shape> input = {d1f32_, d2f32_};
+  Shape output = d3f32_;
+  bool changed = BuildAliasConfig(input, output);
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(AliasCount(), 0);
+}
+
+// No aliasing from dynamic input shape to static output shapes even size is
+// same.
+TEST_F(OptimizeInputOutputBufferAliasTest, DynamicShapeBufferInput) {
+  CreatePassAndBufferDonorConfig(false);
+  std::vector<Shape> input = {d3f32_};
+  Shape output = d1f32_;
+  bool changed = BuildAliasConfig(input, output);
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(AliasCount(), 0);
 }
 
 }  // namespace xla

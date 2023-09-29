@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_test", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -62,6 +62,7 @@ cc_library(
     name = "work_queue_interface",
     srcs = ["work_queue_interface.cc"],
     hdrs = ["work_queue_interface.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:threadpool_interface",
@@ -110,6 +111,7 @@ cc_library(
     hdrs = ["stream.h"],
     deps = [
         ":channel",
+        ":step_id",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_proto_cc",
@@ -138,6 +140,16 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "step_id",
+    srcs = ["step_id.cc"],
+    hdrs = ["step_id.h"],
+    deps = [
+        "//tensorflow/core/tfrt/kernels:stream_ops_util_constants",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

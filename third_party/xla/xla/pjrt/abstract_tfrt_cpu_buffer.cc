@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/abstract_tfrt_cpu_buffer.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -24,31 +25,48 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/cpu_function_runtime.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/cpu_event.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_xfeed.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/traceme.h"
 #include "tfrt/concurrency/async_value.h"  // from @tf_runtime
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/support/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace {
@@ -730,6 +748,156 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
   return std::make_unique<TrackedTfrtCpuDeviceBuffer>(
       /*is_tuple=*/false, std::move(buffers), std::move(definition_events),
       std::move(on_delete_callback));
+}
+
+AbstractAsyncHostToHostMemoryTransferManager::
+    AbstractAsyncHostToHostMemoryTransferManager(
+        absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4> avs,
+        absl::InlinedVector<std::unique_ptr<AbstractTfrtCpuBuffer>, 4> buffers,
+        absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4> device_buffers,
+        absl::InlinedVector<size_t, 4> buffer_sizes,
+        absl::InlinedVector<int64_t, 4> buffer_transfers_in_flight,
+        absl::InlinedVector<bool, 4> last_transfer_finished,
+        AsyncWorkRunner* async_work_runner)
+    : transfers_in_flight_(0),
+      avs_(std::move(avs)),
+      buffer_transfers_in_flight_(std::move(buffer_transfers_in_flight)),
+      last_transfer_finished_(std::move(last_transfer_finished)),
+      buffers_(std::move(buffers)),
+      device_buffers_(std::move(device_buffers)),
+      buffer_sizes_(std::move(buffer_sizes)),
+      async_work_runner_(async_work_runner) {}
+
+AbstractAsyncHostToHostMemoryTransferManager::
+    ~AbstractAsyncHostToHostMemoryTransferManager() {
+  // Wait for in-flight transfers to finish.
+  absl::Condition transfers_finished(
+      +[](int* t) { return *t == 0; }, &transfers_in_flight_);
+  LOG(INFO) << "Waiting for in-flight transfers to finish.";
+  absl::MutexLock l(&mu_);
+  mu_.Await(transfers_finished);
+  for (auto& avref : avs_) {
+    auto av = avref;
+    if (av && av->IsUnavailable()) {
+      av->SetError(absl::InternalError(
+          "Async transfer object was deleted before transfers completed."));
+    }
+  }
+  LOG(INFO) << "In-flight transfers finished.";
+}
+
+size_t AbstractAsyncHostToHostMemoryTransferManager::buffer_size(
+    int buffer_index) const {
+  CHECK_GE(buffer_index, 0);
+  CHECK_LT(buffer_index, buffer_sizes_.size());
+  return buffer_sizes_[buffer_index];
+}
+
+std::unique_ptr<PjRtBuffer>
+AbstractAsyncHostToHostMemoryTransferManager::RetrieveBuffer(int buffer_index) {
+  absl::MutexLock l(&mu_);
+  CHECK_GE(buffer_index, 0);
+  CHECK_LT(buffer_index, buffers_.size());
+  return std::move(buffers_[buffer_index]);
+}
+
+Status AbstractAsyncHostToHostMemoryTransferManager::TransferLiteralToBuffer(
+    int buffer_index, const LiteralSlice& literal,
+    absl::AnyInvocable<void() &&> on_done) {
+  return TransferRawDataToSubBuffer(buffer_index, literal.untyped_data(),
+                                    /*offset=*/0, literal.size_bytes(),
+                                    /*is_last_transfer=*/true,
+                                    std::move(on_done));
+}
+
+Status AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToBuffer(
+    int buffer_index, absl::string_view data,
+    absl::AnyInvocable<void() &&> on_done) {
+  return TransferRawDataToSubBuffer(
+      buffer_index, data.data(), /*offset=*/0, data.size(),
+      /*is_last_transfer=*/true, std::move(on_done));
+}
+
+Status AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToSubBuffer(
+    int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
+    bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) {
+  {
+    // We release the lock when out of scope because
+    // `async_work_runner_->Schedule` might sometimes run the closure in this
+    // thread!
+    absl::MutexLock l(&mu_);
+
+    CHECK_GE(buffer_index, 0);
+    CHECK_LT(buffer_index, buffers_.size());
+    CHECK_LE(transfer_size + offset, buffer_sizes_[buffer_index]);
+    CHECK(!last_transfer_finished_[buffer_index]);
+    ++buffer_transfers_in_flight_[buffer_index];
+    ++transfers_in_flight_;
+  }
+
+  CHECK(async_work_runner_ != nullptr);
+  async_work_runner_->Schedule([this, data, offset, transfer_size,
+                                is_last_transfer, on_done = std::move(on_done),
+                                buffer_index]() mutable -> void {
+    tsl::RCReference<tsl::AsyncValue> event;
+    {
+      absl::MutexLock l(&mu_);
+      const auto& b = device_buffers_[buffer_index]->Buffers()[0];
+      std::memcpy(reinterpret_cast<char*>(b->data()) + offset, data,
+                  transfer_size);
+      if (is_last_transfer) {
+        last_transfer_finished_[buffer_index] = true;
+      }
+      --buffer_transfers_in_flight_[buffer_index];
+      --transfers_in_flight_;
+      if (buffer_transfers_in_flight_[buffer_index] == 0 &&
+          last_transfer_finished_[buffer_index]) {
+        std::swap(event, avs_[buffer_index]);
+      }
+    }
+    // Call on_done outside the lock because it may call
+    // ~AbstractAsyncHostToHostMemoryTransferManager.
+    std::move(on_done)();
+    if (event) {
+      event->SetStateConcrete();
+    }
+  });
+  return OkStatus();
+}
+
+void AbstractAsyncHostToHostMemoryTransferManager::SetBufferError(
+    int buffer_index, Status error) {
+  absl::MutexLock l(&mu_);
+  avs_[buffer_index]->SetError(error);
+}
+
+/*static*/ Status
+AbstractAsyncHostToHostMemoryTransferManager::PopulateAsyncTransferManagerData(
+    absl::Span<const std::unique_ptr<AbstractTfrtCpuBuffer>> buffers,
+    absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4>& device_buffers,
+    absl::InlinedVector<size_t, 4>& buffer_sizes,
+    absl::InlinedVector<int64_t, 4>& buffer_transfers_in_flight,
+    absl::InlinedVector<bool, 4>& last_transfer_finished) {
+  buffer_transfers_in_flight.resize(buffers.size(), 0);
+  last_transfer_finished.resize(buffers.size(), false);
+
+  device_buffers.reserve(buffers.size());
+  for (const auto& buffer : buffers) {
+    // We can make the usage event available right away because the buffer's
+    // definition event will be made available after the usage has completed.
+    auto usage_event = tfrt::MakeAvailableAsyncValueRef<CpuEvent>();
+    auto* device_buffer = buffer->AcquireUsage(std::move(usage_event));
+    CHECK(device_buffer);
+    device_buffers.push_back(device_buffer);
+  }
+
+  buffer_sizes.reserve(buffers.size());
+  for (const auto& buffer : buffers) {
+    TF_ASSIGN_OR_RETURN(auto buffer_size, buffer->GetOnDeviceSizeInBytes());
+    buffer_sizes.push_back(buffer_size);
+  }
+
+  return OkStatus();
 }
 
 }  // namespace xla

@@ -3,6 +3,11 @@
 # and later restore them.
 
 # Placeholder: load py_proto_library
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cuda_library",
+    "tf_cuda_only_cc_test",
+)
 
 # TODO(ruochengw): Currently only supports contrib's fused_conv2d_bias_activation_op.
 # We plan to add more ops and move fused_conv2d_bias_activation_op back into core library.
@@ -13,11 +18,6 @@ load(
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
-)
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cuda_library",
-    "tf_cuda_only_cc_test",
 )
 
 package(
@@ -136,9 +136,9 @@ tf_cuda_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stream_executor",
         "@local_xla//xla:status_macros",
+        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:dnn_proto_cc",
         "@local_xla//xla/stream_executor:lazy_op_runner",
-        "@local_xla//xla/stream_executor:stream_executor_headers",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
     ],
 )

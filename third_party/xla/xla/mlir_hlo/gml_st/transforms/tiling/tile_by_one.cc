@@ -67,8 +67,9 @@ struct TileByOnePattern : public OpRewritePattern<OpTy> {
 
     // Tile.
     scf::SCFTilingOptions opts;
-    opts.setTileSizes(
-        SmallVector<int64_t>(iface.getLoopIteratorTypes().size(), 1));
+    opts.setTileSizes(SmallVector<OpFoldResult>(
+        iface.getLoopIteratorTypes().size(),
+        getAsIndexOpFoldResult(rewriter.getContext(), 1)));
     FailureOr<scf::SCFTilingResult> tilingResult =
         tileUsingSCFForOp(rewriter, iface, opts);
     if (failed(tilingResult))

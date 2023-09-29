@@ -19,14 +19,20 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "xla/service/compiler.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/path.h"
@@ -43,6 +49,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system_helper.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
@@ -64,9 +71,9 @@ void UpdateCompileOptions(AotOptions& options) {
 
 AotOptions::AotOptions() : graph_execution_options(nullptr) {}
 
-Status AotCompileSavedModel(absl::string_view input_model_dir,
-                            AotOptions aot_options,
-                            absl::string_view output_model_dir) {
+Status AotCompileSavedModelAndSaveResult(absl::string_view input_model_dir,
+                                         AotOptions aot_options,
+                                         absl::string_view output_model_dir) {
   // Create aot_packages directory.
   Env* env = Env::Default();
   const bool new_directory = !output_model_dir.empty();
@@ -109,6 +116,42 @@ Status AotCompileSavedModel(absl::string_view input_model_dir,
     aot_options.tags = {"serve", "gpu"};
   }
 
+  TF_ASSIGN_OR_RETURN(AotResult result,
+                      AotCompileSavedModel(input_model_dir, aot_options));
+
+  const std::string warmup_requests_path = io::JoinPath(
+      input_model_dir, "assets.extra", "tf_serving_warmup_requests");
+  TF_RETURN_IF_ERROR(env->FileExists(warmup_requests_path));
+
+  const std::string saved_model_pb_path =
+      io::JoinPath(input_model_dir, kSavedModelFilenamePb);
+  const std::string saved_model_pbtxt_path =
+      io::JoinPath(input_model_dir, kSavedModelFilenamePbTxt);
+  bool pb_found = env->FileExists(saved_model_pb_path).ok();
+  bool pbtxt_found = env->FileExists(saved_model_pbtxt_path).ok();
+  if (!pb_found && !pbtxt_found) {
+    return absl::NotFoundError(absl::StrCat(
+        "saved_model not found in input directory: ", input_model_dir));
+  }
+
+  // Serialize BEF buffer to a file under aot_packages
+  const std::string serialized_bef_path =
+      io::JoinPath(aot_directory, kBefBufferFilenameMLIRBEF);
+  TF_RETURN_IF_ERROR(SerializeBEF(result.bef, serialized_bef_path));
+
+  if (pb_found) {
+    const std::string output_file_directory =
+        io::JoinPath(std::string(output_model_dir), kSavedModelFilenamePb);
+    return env->CopyFile(saved_model_pb_path, output_file_directory);
+  } else {
+    const std::string output_file_directory =
+        io::JoinPath(std::string(output_model_dir), kSavedModelFilenamePbTxt);
+    return env->CopyFile(saved_model_pbtxt_path, output_file_directory);
+  }
+}
+
+StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
+                                         AotOptions aot_options) {
   TF_ASSIGN_OR_RETURN(tensorflow::MetaGraphDef meta_graph_def,
                       ReadSavedModel(input_model_dir, aot_options.tags));
 
@@ -160,43 +203,27 @@ Status AotCompileSavedModel(absl::string_view input_model_dir,
   }
 
   tfrt::BefBuffer bef;
+  std::vector<std::string> xla_function_names;
   RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
       aot_options.graph_execution_options->compile_options, mlir_module.get(),
-      &bef, model_context, fallback_state.get()));
+      &bef, model_context, fallback_state.get(), &xla_function_names));
   if (bef.empty()) {
-    LOG(DFATAL) << "BefBuffer is empty.";
     return absl::InternalError("BefBuffer is empty.");
   }
 
-  const std::string warmup_requests_path = io::JoinPath(
-      input_model_dir, "assets.extra", "tf_serving_warmup_requests");
-  TF_RETURN_IF_ERROR(env->FileExists(warmup_requests_path));
-
-  const std::string saved_model_pb_path =
-      io::JoinPath(input_model_dir, kSavedModelFilenamePb);
-  const std::string saved_model_pbtxt_path =
-      io::JoinPath(input_model_dir, kSavedModelFilenamePbTxt);
-  bool pb_found = env->FileExists(saved_model_pb_path).ok();
-  bool pbtxt_found = env->FileExists(saved_model_pbtxt_path).ok();
-  if (!pb_found && !pbtxt_found) {
-    return absl::NotFoundError(absl::StrCat(
-        "saved_model not found in input directory: ", input_model_dir));
+  const FunctionLibraryDefinition& flib_def = fallback_state->func_lib_def();
+  std::vector<FunctionDef> xla_functions;
+  xla_functions.reserve(xla_function_names.size());
+  for (const std::string& name : xla_function_names) {
+    const FunctionDef* xla_func_def = flib_def.Find(name);
+    if (xla_func_def == nullptr) {
+      return absl::NotFoundError(
+          absl::StrCat("XLA function ", name, " not found in library."));
+    }
+    xla_functions.push_back(*xla_func_def);
   }
 
-  // Serialize BEF buffer to a file under aot_packages
-  const std::string serialized_bef_path =
-      io::JoinPath(aot_directory, kBefBufferFilenameMLIRBEF);
-  TF_RETURN_IF_ERROR(SerializeBEF(bef, serialized_bef_path));
-
-  if (pb_found) {
-    const std::string output_file_directory =
-        io::JoinPath(std::string(output_model_dir), kSavedModelFilenamePb);
-    return env->CopyFile(saved_model_pb_path, output_file_directory);
-  } else {
-    const std::string output_file_directory =
-        io::JoinPath(std::string(output_model_dir), kSavedModelFilenamePbTxt);
-    return env->CopyFile(saved_model_pbtxt_path, output_file_directory);
-  }
+  return AotResult{std::move(bef), std::move(xla_functions)};
 }
 
 // TODO(b/294095043): Create a function (ex Status

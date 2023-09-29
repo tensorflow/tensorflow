@@ -8,7 +8,6 @@ exports_files(["LICENSE.txt"])
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "cuda_library",
-    "if_cuda_clang",
 )
 load(
     "@local_config_nccl//:build_defs.bzl",
@@ -88,6 +87,29 @@ cc_library(
 )
 
 cc_library(
+    name = "nccl_via_stub",
+    hdrs = ["src/nccl.h"],
+    include_prefix = "third_party/nccl",
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/cuda:nccl_stub",
+    ],
+)
+
+cc_library(
+    name = "nccl_headers",
+    hdrs = ["src/nccl.h"],
+    include_prefix = "third_party/nccl",
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cc_library(
     name = "nccl",
     srcs = glob(
         include = [
@@ -124,19 +146,56 @@ cc_library(
     ],
 )
 
-cc_library(
+alias(
     name = "enqueue",
+    actual = select({
+        "@local_config_cuda//cuda:using_clang": ":enqueue_clang",
+        "@local_config_cuda//cuda:using_nvcc": ":enqueue_nvcc",
+    }),
+)
+
+# Kernels and their names have special treatment in CUDA compilation.
+# Specifically, the host-side kernel launch stub (host-side representation of
+# the kernel) ends up having the name which does not match the actual kernel
+# name. In order to correctly refer to the kernel the referring code must be
+# compiled as CUDA.
+cuda_library(
+    name = "enqueue_clang",
     srcs = [
         "src/enqueue.cc",
     ],
     hdrs = ["src/nccl.h"],
-    copts = if_cuda_clang([
-        "-x",
-        "cuda",
-    ]),
+    copts = [
+        "--cuda-host-only",
+    ],
     include_prefix = "third_party/nccl",
     linkopts = ["-lrt"],
     strip_include_prefix = "src",
+    target_compatible_with = select({
+        "@local_config_cuda//cuda:using_clang": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":device",
+        ":include_hdrs",
+        ":src_hdrs",
+    ],
+)
+
+cc_library(
+    name = "enqueue_nvcc",
+    srcs = [
+        "src/enqueue.cc",
+    ],
+    hdrs = ["src/nccl.h"],
+    include_prefix = "third_party/nccl",
+    linkopts = ["-lrt"],
+    strip_include_prefix = "src",
+    target_compatible_with = select({
+        "@local_config_cuda//cuda:using_nvcc": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":device",

@@ -59,10 +59,11 @@ def xla_cc_binary(deps = None, copts = tsl_copts(), **kwargs):
         "//xla:xla_proto_cc_impl",
         "//xla:xla_data_proto_cc_impl",
         "//xla/service:hlo_proto_cc_impl",
-        "//xla/service:memory_space_assignment_proto_cc_impl",
+        "//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl",
         "//xla/service/gpu:backend_configs_cc_impl",
         "//xla/service/gpu:hlo_op_profile_proto_cc_impl",
         "//xla/stream_executor:dnn_proto_cc_impl",
+        "//xla/stream_executor:stream_executor_impl",
         "@local_tsl//tsl/platform:env_impl",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
         "@local_tsl//tsl/profiler/utils:time_utils_impl",
@@ -91,12 +92,12 @@ def xla_cc_test(
                        clean_dep("//xla:xla_proto_cc_impl"),
                        clean_dep("//xla:xla_data_proto_cc_impl"),
                        clean_dep("//xla/service:hlo_proto_cc_impl"),
-                       clean_dep("//xla/service:memory_space_assignment_proto_cc_impl"),
+                       clean_dep("//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl"),
                        clean_dep("//xla/service/gpu:backend_configs_cc_impl"),
                        clean_dep("//xla/service/gpu:hlo_op_profile_proto_cc_impl"),
                        clean_dep("//xla/stream_executor:dnn_proto_cc_impl"),
-                       clean_dep("//xla/stream_executor:stream_executor_impl"),
                        clean_dep("//xla/stream_executor:device_id_utils"),
+                       clean_dep("//xla/stream_executor:stream_executor_impl"),
                        clean_dep("//xla/stream_executor/gpu:gpu_cudamallocasync_allocator"),
                        clean_dep("//xla/stream_executor/gpu:gpu_init_impl"),
                        clean_dep("@local_tsl//tsl/profiler/utils:time_utils_impl"),
@@ -128,6 +129,9 @@ def xla_cc_test(
 
 def auto_sharding_deps():
     return ["//xla/hlo/experimental/auto_sharding:auto_sharding_impl"]
+
+def auto_sharding_solver_deps():
+    return ["//xla/hlo/experimental/auto_sharding:auto_sharding_solver_impl"]
 
 register_extension_info(
     extension = xla_cc_test,

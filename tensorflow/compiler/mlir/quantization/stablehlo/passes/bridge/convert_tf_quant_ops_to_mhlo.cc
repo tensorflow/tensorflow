@@ -58,10 +58,12 @@ limitations under the License.
 #include "tensorflow/core/util/quantization/uniform_quant_ops_attr.pb.h"
 #include "tensorflow/core/util/quantization/uniform_quant_ops_params.h"
 
-// TODO: b/289560952 - Move to mlir::quant::stablehlo namespace.
-namespace mlir {
-namespace stablehlo {
+namespace mlir::quant::stablehlo {
 namespace {
+
+using quant::tensorflow::GetDenseAttrFromTensorProtoAttr;
+using quant::tensorflow::GetIntTypeFromTFQint;
+using quant::tensorflow::IsTFQintType;
 
 #define GEN_PASS_DEF_CONVERTTFQUANTOPSTOMHLO
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
@@ -134,7 +136,7 @@ FailureOr<Value> CreateConstantOrConvertOp(Operation *op, Value operand,
 }
 
 xla::ConvolutionDimensionNumbers ConvertConvolutionDimensionNumbers(
-    const tensorflow::UniformQuantizedConvolutionDimensionNumbersAttr
+    const ::tensorflow::UniformQuantizedConvolutionDimensionNumbersAttr
         &dnums_input) {
   xla::ConvolutionDimensionNumbers dnums;
   dnums.set_input_batch_dimension(dnums_input.input_batch_dimension());
@@ -203,11 +205,11 @@ FailureOr<ElementsAttr> ConvertPaddingAttr(
       const int64_t stride =
           op.getWindowStridesAttr()[i].template cast<IntegerAttr>().getInt();
       const int64_t lhs_size_dilated =
-          tensorflow::UniformQuantizedConvolutionParams::DilatedSize(
+          ::tensorflow::UniformQuantizedConvolutionParams::DilatedSize(
               lhs_shape.getDimSize(dnums.input_spatial_dimensions(i)),
               op.getLhsDilationAttr()[i].template cast<IntegerAttr>().getInt());
       const int64_t rhs_size_dilated =
-          tensorflow::UniformQuantizedConvolutionParams::DilatedSize(
+          ::tensorflow::UniformQuantizedConvolutionParams::DilatedSize(
               rhs_shape.getDimSize(dnums.kernel_spatial_dimensions(i)),
               op.getRhsDilationAttr()[i].template cast<IntegerAttr>().getInt());
 
@@ -234,7 +236,7 @@ FailureOr<SmallVector<NamedAttribute>> ConvertToMhloConvolutionOpAttrs(
     UniformQuantizedConvolutionOp op, PatternRewriter &rewriter) {
   // TODO(b/261005147): Update the lowering logic after migration to mhlo
   // ConvolutionDimensionNumbers.
-  tensorflow::UniformQuantizedConvolutionDimensionNumbersAttr dnums_input;
+  ::tensorflow::UniformQuantizedConvolutionDimensionNumbersAttr dnums_input;
   if (!dnums_input.ParseFromString(std::string(op.getDimensionNumbers()))) {
     return op->emitError("Parse dimension_numbers failed.");
   }
@@ -762,5 +764,4 @@ CreateConvertTFQuantOpsToMHLOPass() {
   return std::make_unique<ConvertTFQuantOpsToMHLO>();
 }
 
-}  // namespace stablehlo
-}  // namespace mlir
+}  // namespace mlir::quant::stablehlo

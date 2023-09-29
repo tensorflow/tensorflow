@@ -91,6 +91,56 @@ func.func @random_uniform_with_seeds(%arg0: tensor<4xi32>) -> tensor<32x12x12x64
   func.return %0 : tensor<32x12x12x64xf32>
 }
 
+// CHECK-LABEL: slice_variable_start
+func.func @slice_variable_start(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
+  // CHECK: %[[SLICED_START1:.*]] = "mhlo.slice"(%arg1)
+  // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
+  // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} : (tensor<2xi64>) -> tensor<1xi64>
+  // CHECK: %[[RESHAPED_START1:.*]] = mhlo.reshape %[[SLICED_START1]] : (tensor<1xi64>) -> tensor<i64>
+  // CHECK: %[[SLICED_START2:.*]] = "mhlo.slice"(%arg1)
+  // CHECK-DAG-SAME: {limit_indices = dense<2> : tensor<1xi64>,
+  // CHECK-DAG-SAME: start_indices = dense<1> : tensor<1xi64>,
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} : (tensor<2xi64>) -> tensor<1xi64>
+  // CHECK: %[[RESHAPED_START2:.*]] = mhlo.reshape %[[SLICED_START2]] : (tensor<1xi64>) -> tensor<i64>
+  // CHECK: %[[RESULT:.*]] = "mhlo.dynamic_slice"(%arg0, %[[RESHAPED_START1]], %[[RESHAPED_START2]]) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
+  // CHECK: return %[[RESULT]] : tensor<1x4xi32>
+  %sizes = "tf.Const"() {value = dense<[1, 4]> : tensor<2xi64>} : () -> (tensor<2xi64>)
+  %0 = "tf.Slice"(%arg0, %arg1, %sizes) : (tensor<3x4xi32>, tensor<2xi64>, tensor<2xi64>) -> tensor<1x4xi32>
+  func.return %0 : tensor<1x4xi32>
+}
+
+// CHECK-LABEL: slice_variable_start_negsize
+func.func @slice_variable_start_negsize(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi32>) -> tensor<1x4xi32> {
+  // CHECK: %0 = mhlo.constant dense<[1, -1]> : tensor<2xi32>
+  // CHECK-NEXT: %1 = mhlo.constant dense<[1, -1]> : tensor<2xi32>
+  // CHECK-NEXT: %2 = "mhlo.slice"(%1) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
+  // CHECK-NEXT: %3 = mhlo.reshape %2 : (tensor<1xi32>) -> tensor<i32>
+  // CHECK-NEXT: %4 = mhlo.constant dense<[1, -1]> : tensor<2xi32>
+  // CHECK-NEXT: %5 = "mhlo.slice"(%4) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
+  // CHECK-NEXT: %6 = mhlo.reshape %5 : (tensor<1xi32>) -> tensor<i32>
+  // CHECK-NEXT: %7 = mhlo.constant dense<3> : tensor<i32>
+  // CHECK-NEXT: %8 = "mhlo.set_dimension_size"(%arg0, %7) {dimension = 0 : i64} : (tensor<3x4xi32>, tensor<i32>) -> tensor<3x4xi32>
+  // CHECK-NEXT: %9 = mhlo.constant dense<4> : tensor<i32>
+  // CHECK-NEXT: %10 = "mhlo.set_dimension_size"(%8, %9) {dimension = 1 : i64} : (tensor<3x4xi32>, tensor<i32>) -> tensor<3x4xi32>
+  // CHECK-NEXT: %11 = mhlo.constant dense<0> : tensor<i32>
+  // CHECK-NEXT: %12 = "mhlo.pad"(%10, %11) {edge_padding_high = dense<[3, 4]> : tensor<2xi64>, edge_padding_low = dense<0> : tensor<2xi64>, interior_padding = dense<0> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i32>) -> tensor<6x8xi32>
+  // CHECK-NEXT: %13 = "mhlo.slice"(%arg1) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
+  // CHECK-NEXT: %14 = mhlo.reshape %13 : (tensor<1xi32>) -> tensor<i32>
+  // CHECK-NEXT: %15 = "mhlo.slice"(%arg1) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
+  // CHECK-NEXT: %16 = mhlo.reshape %15 : (tensor<1xi32>) -> tensor<i32>
+  // CHECK-NEXT: %17 = "mhlo.dynamic_slice"(%12, %14, %16) {slice_sizes = dense<[3, 4]> : tensor<2xi64>} : (tensor<6x8xi32>, tensor<i32>, tensor<i32>) -> tensor<3x4xi32>
+  // CHECK-NEXT: %18 = "mhlo.slice"(%17) {limit_indices = dense<[1, 4]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x4xi32>
+  // CHECK-NEXT: %19 = mhlo.constant dense<4> : tensor<i32>
+  // CHECK-NEXT: %20 = mhlo.subtract %19, %16 : tensor<i32>
+  // CHECK-NEXT: %21 = "mhlo.set_dimension_size"(%18, %20) {dimension = 1 : i64} : (tensor<1x4xi32>, tensor<i32>) -> tensor<1x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>
+  // CHECK-NEXT: %cast = tensor.cast %21 : tensor<1x?xi32, #mhlo.type_extensions<bounds = [?, 4]>> to tensor<1x4xi32>
+  // CHECK-NEXT: return %cast : tensor<1x4xi32>
+  %sizes = "tf.Const"() {value = dense<[1, -1]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %0 = "tf.Slice"(%arg0, %arg1, %sizes) : (tensor<3x4xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x4xi32>
+  func.return %0 : tensor<1x4xi32>
+}
+
 //===----------------------------------------------------------------------===//
 // StridedSlice op legalizations.
 //===----------------------------------------------------------------------===//

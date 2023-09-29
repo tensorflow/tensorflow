@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_frontend_attributes.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/pattern_matcher.h"
@@ -3625,6 +3627,13 @@ TEST_F(HloParserTest, ParseShardLike) {
             original);
 }
 
+TEST_F(HloParserTest, ParseUnknownSharding) {
+  const std::string original = "{unknown}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  EXPECT_EQ(HloSharding::Unknown().ToString(), original);
+}
+
 TEST_F(HloParserTest, ParseFrontendAttributes) {
   const std::string original =
       R"({attr_a="test_a",attr_b="b",attr_c="s64",attr_d="a/b"})";
@@ -4465,6 +4474,25 @@ ENTRY TestComputation {
   EXPECT_TRUE(result.value()->config().alias_passthrough_params());
 }
 
+TEST_F(HloParserTest, CheckFrontendAttributes) {
+  const char* const hlo_string = R"(
+HloModule TestModule, frontend_attributes={attr_name="attr_value"}
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.value()->frontend_attributes().map().size(), 1);
+  EXPECT_EQ(result.value()->frontend_attributes().map().begin()->first,
+            "attr_name");
+  EXPECT_EQ(result.value()->frontend_attributes().map().begin()->second,
+            "attr_value");
+}
+
 TEST_F(HloParserTest, CheckAllowSpmdShardingPropagationToOutput) {
   const char* const hlo_string = R"(
 HloModule TestModule, allow_spmd_sharding_propagation_to_output=true
@@ -4673,6 +4701,40 @@ comp2 {
   EXPECT_EQ(
       module->entry_computation()->ComputeProgramShape().result().layout(),
       Layout({1, 0, 2, 3}));
+}
+
+// Note that nontrivial async op is not legal semantics and should be rejected
+// by HloVerifier, but illegal modules should still be inspectable during
+// debugging.
+TEST_F(HloParserTest, NontrivialAsyncOpRoundTrip) {
+  const std::string original = R"(
+HloModule module
+
+%async_wrapped {
+  %async_param.1 = s32[1024]{0} parameter(0)
+  %copy = s32[1024]{0} copy(s32[1024]{0} %async_param.1)
+  %async_param.2 = s32[256]{0} parameter(1)
+  %async_param.3 = s32[] parameter(2)
+  ROOT %dus = s32[1024]{0} dynamic-update-slice(s32[1024]{0} %copy, s32[256]{0} %async_param.2, s32[] %async_param.3)
+}
+
+ENTRY %main {
+  %input.5 = s32[] parameter(1)
+  %broadcast = s32[1024]{0} broadcast(s32[] %input.5), dimensions={}
+  %input.0 = s32[256]{0} parameter(0)
+  %async-start = ((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) async-start(%broadcast, %input.0, %input.5), async_group_id=0, calls=%async_wrapped
+  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) %async-start), async_group_id=0, calls=%async_wrapped
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(original));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_module,
+      ParseAndReturnUnverifiedModule(module->ToString(
+          HloPrintOptions().set_syntax_sugar_async_ops(true))));
+  auto fp_options = HloPrintOptions::Fingerprint();
+  EXPECT_EQ(roundtrip_module->ToString(fp_options),
+            module->ToString(fp_options));
 }
 
 TEST_F(HloParserTest, LexesAsJsonDict) {

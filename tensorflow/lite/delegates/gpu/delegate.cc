@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/lite/core/async/c/task.h"
 #include "tensorflow/lite/core/async/interop/c/attribute_map.h"
 #include "tensorflow/lite/core/async/interop/c/constants.h"
+#include "tensorflow/lite/core/async/interop/c/types.h"
 #endif
 
 #include "tensorflow/lite/core/c/common.h"
@@ -56,6 +57,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/serialization.h"
 
 #if defined(__ANDROID__)
+#include "tensorflow/lite/delegates/gpu/async_buffers.h"
+#include "tensorflow/lite/delegates/gpu/gl/android_sync.h"
+#include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
 #include "tensorflow/lite/delegates/utils/async_type_helpers.h"
 #include "tensorflow/lite/delegates/utils/ret_macros.h"
 #include "tensorflow/lite/delegates/utils/sync_fence.h"
@@ -313,7 +317,8 @@ ObjectDef DelegateKernelCore::GetObjectDef(int index,
   ObjectDef default_object_def;
   default_object_def.data_type = data_type;
   default_object_def.data_layout = DataLayout::BHWC;
-  default_object_def.object_type = ObjectType::CPU_MEMORY;
+  default_object_def.object_type =
+      delegate_->async() ? ObjectType::OPENGL_SSBO : ObjectType::CPU_MEMORY;
   default_object_def.user_provided = true;
   return default_object_def;
 }
@@ -396,11 +401,6 @@ absl::Status DelegateKernelCore::Setup(
                                         delegate_->serialization()));
     backend_opencl = true;
   } else if (experimental_flags & TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY) {
-    if (delegate_->async()) {
-      // TODO(b/245966018): Add support for this. Probably straightforward, as
-      // Xeno API hides most of the CL/GL distinction.
-      return absl::UnimplementedError("async API does not support OpenGL");
-    }
     RETURN_IF_ERROR(InitializeOpenGlApi(&graph, &builder));
   } else {
     // By default, we try CL first & fall back to GL if that fails.
@@ -410,11 +410,6 @@ absl::Status DelegateKernelCore::Setup(
     if (!status.ok()) {
       TF_LITE_KERNEL_LOG(context, std::string(status.message()).c_str());
       TF_LITE_KERNEL_LOG(context, "Falling back to OpenGL");
-      if (delegate_->async()) {
-        // TODO(b/245966018): Add support for this. Probably straightforward, as
-        // Xeno API hides most of the CL/GL distinction.
-        return absl::UnimplementedError("async API does not support OpenGL");
-      }
 
       // Graph needs to be re-created because it is moved above.
       GraphFloat32 graph2;
@@ -526,12 +521,6 @@ absl::Status DelegateKernelCore::InitializeOpenClApi(
 absl::Status DelegateKernelCore::InitializeOpenGlApi(
     GraphFloat32* graph, std::unique_ptr<InferenceBuilder>* builder) {
 #ifndef CL_DELEGATE_NO_GL
-  if (delegate_->async()) {
-    // TODO(b/245966018): Add support for this. Probably straightforward, as
-    // Xeno API hides most of the CL/GL distinction.
-    return absl::UnimplementedError("async API does not support OpenGL");
-  }
-
   gl::InferenceEnvironmentOptions env_options;
   gl::InferenceEnvironmentProperties properties;
   RETURN_IF_ERROR(
@@ -818,15 +807,19 @@ class DelegateAsyncKernel : public BackendAsyncKernelInterface {
 
   mutable absl::Mutex mutex_;
 
-  absl::flat_hash_map<TfLiteBufferHandle, UniquePtrAHardwareBuffer>
-      buffer_by_handle_ ABSL_GUARDED_BY(mutex_);
   absl::flat_hash_map<int, SyncType> sync_type_by_tensor_index_
       ABSL_GUARDED_BY(mutex_);
   std::vector<SyncType> input_sync_types_ ABSL_GUARDED_BY(mutex_);
-  std::vector<SyncType> output_sync_types_ ABSL_GUARDED_BY(mutex_);
 
   // Whether 'Prepare' is called or not.
   bool prepared_ ABSL_GUARDED_BY(mutex_) = false;
+
+  // Create mutex for thread-safe data transfer from GPU prepare -> GPU eval
+  mutable absl::Mutex eval_mutex_;
+
+  absl::flat_hash_map<TfLiteBufferHandle, UniquePtrAHardwareBuffer>
+      buffer_by_handle_ ABSL_GUARDED_BY(eval_mutex_);
+  std::vector<SyncType> output_sync_types_ ABSL_GUARDED_BY(eval_mutex_);
 };
 
 absl::Status DelegateAsyncKernel::Init(TfLiteContext* context,
@@ -1014,6 +1007,7 @@ TfLiteStatus DelegateAsyncKernel::PrepareImpl(TfLiteContext* context,
   TFLITE_RET_CHECK_STATUS(!prepared_, "Prepare must be called at most once");
 
   input_sync_types_.resize(node->inputs->size, SyncType::kNoSyncObj);
+  absl::MutexLock eval_lock(&eval_mutex_);
   output_sync_types_.resize(node->outputs->size, SyncType::kNoSyncObj);
   for (size_t i = 0; i < node->inputs->size; ++i) {
     auto it = sync_type_by_tensor_index_.find(node->inputs->data[i]);
@@ -1100,7 +1094,7 @@ TfLiteStatus DelegateAsyncKernel::RegisterBufferImpl(
       "AHardwareBuffer size");
 
   // Register the buffer.
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock eval_lock(&eval_mutex_);
   auto [it, did_something] =
       buffer_by_handle_.try_emplace(handle, std::move(uptr_ahwb));
   TFLITE_RET_CHECK_STATUS(did_something,
@@ -1120,7 +1114,7 @@ TfLiteStatus DelegateAsyncKernel::UnregisterBuffer(
 
 TfLiteStatus DelegateAsyncKernel::UnregisterBufferImpl(
     TfLiteContext* context, TfLiteBufferHandle handle) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock eval_lock(&eval_mutex_);
   auto it = buffer_by_handle_.find(handle);
   TFLITE_RET_CHECK_STATUS(it != buffer_by_handle_.end(),
                           "UnregisterBuffer called with unknown handle");
@@ -1154,181 +1148,76 @@ TfLiteStatus DelegateAsyncKernel::EvalImpl(TfLiteContext* context,
   TFLITE_RET_CHECK_STATUS(TFLITE_AHWB_AVAILABLE(),
                           "calling tflite::gpu::DelegateAsyncKernel::Eval on "
                           "device without AHardwareBuffer support");
-
-  // Utility class to assist in locking and unlocking buffers.  Allows us to
-  // automatically unlock buffers when we leave the scope of the class instance
-  // (e.g., early exit from EvalImpl()).
-  class LockedAHWBs {
-   public:
-    enum class Usage { READ, WRITE };
-
-    explicit LockedAHWBs(Usage usage)
-        : usage_(usage == Usage::READ
-                     ? AHARDWAREBUFFER_USAGE_CPU_READ_RARELY
-                     : AHARDWAREBUFFER_USAGE_CPU_WRITE_RARELY) {}
-    ~LockedAHWBs() { unlock(); }
-
-    // See AHardwareBuffer_lock() but also tracks the lock so that we can unlock
-    // later. If we successfully lock a buffer, and then try again without
-    // unlocking, we'll return the same outVirtualAddress and not try to re-lock
-    // the buffer.
-    int lock(AHardwareBuffer* _Nonnull buffer,
-             void* _Nullable* _Nonnull outVirtualAddress) {
-      if (auto it = buffers_to_addresses_.find(buffer);
-          it != buffers_to_addresses_.end()) {
-        *outVirtualAddress = it->second;
-        return 0;
-      }
-
-      int lock_error = [buffer, outVirtualAddress, this] {
-        if (__builtin_available(android 26, *)) {
-          return AHardwareBuffer_lock(buffer, this->usage_, -1 /* fence */,
-                                      nullptr /* rect */, outVirtualAddress);
-        } else {
-          return EINVAL;
-        }
-      }();
-      if (!lock_error) {
-        auto [it, inserted] =
-            buffers_to_addresses_.insert({buffer, *outVirtualAddress});
-        if (inserted == false) {
-          TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "LockedAHWBs::lock inconsistency");
-          return -EINVAL;
-        }
-      }
-      return lock_error;
+  auto FenceFd = [](TfLiteSynchronization* sync) {
+    if (sync == nullptr) {
+      return -1;
     }
-
-    // Performs AHardwareBuffer_unlock() on all buffers we have locked.
-    // Attempts to unlock all buffers, even if unlock of one or more bufers
-    // fails. Returns the error from the first failure. After this call, we are
-    // no longer tracking any buffers for unlocking.
-    int unlock() {
-      int fn_error = 0;
-
-      for (auto [buffer, address] : buffers_to_addresses_) {
-        if (int unlock_error = [buffer = buffer] {
-              if (__builtin_available(android 26, *)) {
-                return AHardwareBuffer_unlock(buffer, nullptr /* fence */);
-              } else {
-                return EINVAL;
-              }
-            }()) {
-          if (!fn_error) {
-            fn_error = unlock_error;
-          }
-        }
-      }
-
-      buffers_to_addresses_.clear();
-      if (fn_error) {
-        TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "LockedAHWBs::unlock error %d",
-                        fn_error);
-      }
-      return fn_error;
-    }
-
-   private:
-    const int
-        usage_;  // Marked const because this is frozen at construction time and
-                 // because we want the class instance to be non copyable.
-    absl::flat_hash_map<AHardwareBuffer*, void*> buffers_to_addresses_;
-  };
-
-  absl::MutexLock lock(&mutex_);
-  TFLITE_RET_CHECK_STATUS(prepared_, "Eval must be called after Prepare");
-
-  // TODO(b/245966018): Need to call GetRequiredTemporaries? Today the data
-  // lives on TfLiteNode -- is that what we want?
-  TFLITE_RET_CHECK_STATUS(core_.quant_conversion_map().empty(),
-                          "Quantized kernels are not supported");
-
-  // The code below needs to do work corresponding to DelegateKernel::Invoke:
-
-  // Wait on input sync objects.
-  //   Get unique input sync fences.
-  absl::flat_hash_set<int> unique_input_sync_fds_set;
-  for (size_t i = 0; i < node->inputs->size; ++i) {
-    if (input_sync_types_[i] == SyncType::kNoSyncObj) continue;
-    TfLiteSynchronization* sync =
-        TfLiteExecutionTaskGetSyncByIndex(task, node->inputs->data[i]);
-    if (sync == nullptr) continue;
     void* sync_obj = TfLiteSynchronizationGetPtr(sync);
-    if (sync_obj == nullptr) continue;
-    int sync_fence_fd = *(reinterpret_cast<int*>(sync_obj));
-    if (sync_fence_fd == -1) continue;
-    unique_input_sync_fds_set.insert(sync_fence_fd);
+    if (sync_obj == nullptr) {
+      return -1;
+    }
+    return *(reinterpret_cast<int*>(sync_obj));
+  };
+  absl::flat_hash_set<int> unique_input_sync_fds_set;
+  for (int i = 0; i < core_.runner()->inputs().size(); i++) {
+    int fd =
+        FenceFd(TfLiteExecutionTaskGetSyncByIndex(task, node->inputs->data[i]));
+    if (fd == -1) continue;
+    unique_input_sync_fds_set.insert(fd);
   }
+
   //  Wait for all input sync fences to be signalled.
-  std::vector<int> unique_input_sync_fds_vec;
-  unique_input_sync_fds_vec.reserve(unique_input_sync_fds_set.size());
-  for (auto fd : unique_input_sync_fds_set) {
-    unique_input_sync_fds_vec.push_back(fd);
+  std::vector<int> unique_input_cpu_sync_fds_vec;
+  unique_input_cpu_sync_fds_vec.reserve(unique_input_sync_fds_set.size());
+  for (int fd : unique_input_sync_fds_set) {
+    // Check if we can wait on GPU, else wait on CPU
+    if (gl::WaitFdGpu(fd)) continue;
+    unique_input_cpu_sync_fds_vec.push_back(fd);
   }
-  const auto waitfor = WaitForAllFds(unique_input_sync_fds_vec);
+  const auto waitfor = WaitForAllFds(unique_input_cpu_sync_fds_vec);
   TFLITE_RET_CHECK_STATUS(waitfor.has_value(), "wait for input fds");
 
-  // Iterate over inputs or outputs, and for each one do AHardwareBuffer_lock()
-  // and InferenceRunner::Set*Object(). Compare to
-  // DelegateKernel::SetInputsAndOutputs().
-  auto SetInputsOrOutputs =
-      [this, task](LockedAHWBs* locks,
-                   const std::vector<int64_t>& in_or_out_indices,
-                   absl::Status (InferenceRunner::*set_object)(
-                       int index, TensorObject object))
-          ABSL_SHARED_LOCKS_REQUIRED(mutex_) -> TfLiteStatus {
-    for (int i = 0; i < in_or_out_indices.size(); ++i) {
-      int context_tensor_index = in_or_out_indices[i];
-      TfLiteBufferHandle handle =
-          TfLiteExecutionTaskGetBufferByIndex(task, context_tensor_index);
-      TFLITE_RET_CHECK_STATUS(handle >= 0, "bad handle");
-      const UniquePtrAHardwareBuffer& uptr_ahwb = buffer_by_handle_.at(handle);
-      void* virtualAddress = nullptr;
-      TFLITE_RET_CHECK_STATUS(
-          0 == locks->lock(uptr_ahwb.get(), &virtualAddress), "lock() failed");
-      TFLITE_RETURN_IF_ABSL_ERROR((core_.runner().get()->*set_object)(
-          i,
-          MakeCpuMemory(absl::MakeSpan(reinterpret_cast<char*>(virtualAddress),
-                                       Describe(uptr_ahwb).width))));
-    }
-    return kTfLiteOk;
-  };
+  // Needed for cl inference. For gl it re-uses the existing context.
+  std::unique_ptr<gl::EglEnvironment> env;
+  TFLITE_RETURN_IF_ABSL_ERROR(gl::EglEnvironment::NewEglEnvironment(&env));
+  for (int i = 0; i < core_.runner()->inputs().size(); i++) {
+    TensorObjectDef tensor_def = core_.runner()->inputs()[i];
+    TfLiteBufferHandle handle =
+        TfLiteExecutionTaskGetBufferByIndex(task, core_.input_indices()[i]);
+    TFLITE_RET_CHECK_STATUS(handle >= 0, "bad handle");
 
-  LockedAHWBs read_locks(LockedAHWBs::Usage::READ);
-  TFLITE_RETURN_IF_ERROR(SetInputsOrOutputs(&read_locks, core_.input_indices(),
-                                            &InferenceRunner::SetInputObject));
-
-  // TODO(b/245966018): Dequantize inputs, if needed (see
-  // core_.quant_conversion_map())
-
-  LockedAHWBs write_locks(LockedAHWBs::Usage::WRITE);
-  TFLITE_RETURN_IF_ERROR(SetInputsOrOutputs(
-      &write_locks, core_.output_indices(), &InferenceRunner::SetOutputObject));
-
-  TFLITE_RETURN_IF_ABSL_ERROR(core_.runner()->Run());
-
-  int unlock_status = read_locks.unlock();
-
-  // TODO(b/245966018): Quantize outputs, if needed (see
-  // core_.quant_conversion_map())
-
-  if (int write_unlock_status = write_locks.unlock()) {
-    if (!unlock_status) {
-      unlock_status = write_unlock_status;
-    }
+    absl::MutexLock eval_lock(&eval_mutex_);
+    AHardwareBuffer* ahwb = buffer_by_handle_.at(handle).get();
+    AsyncBuffer async_buffer = AsyncBuffer(tensor_def, ahwb);
+    OpenGlBuffer buffer;
+    TFLITE_RETURN_IF_ABSL_ERROR(async_buffer.GetOpenGlBuffer(buffer.id));
+    TFLITE_RETURN_IF_ABSL_ERROR(
+        core_.runner()->SetInputObject(i, std::move(buffer)));
   }
-
-  // Signal sync objects by indicating that inference has completed and there
-  // are no output sync fences.
+  for (int i = 0; i < core_.runner()->outputs().size(); i++) {
+    TensorObjectDef tensor_def = core_.runner()->outputs()[i];
+    TfLiteBufferHandle handle =
+        TfLiteExecutionTaskGetBufferByIndex(task, core_.output_indices()[i]);
+    TFLITE_RET_CHECK_STATUS(handle >= 0, "bad handle");
+    absl::MutexLock eval_lock(&eval_mutex_);
+    AHardwareBuffer* ahwb = buffer_by_handle_.at(handle).get();
+    AsyncBuffer async_buffer = AsyncBuffer(tensor_def, ahwb);
+    OpenGlBuffer buffer;
+    TFLITE_RETURN_IF_ABSL_ERROR(async_buffer.GetOpenGlBuffer(buffer.id));
+    TFLITE_RETURN_IF_ABSL_ERROR(
+        core_.runner()->SetOutputObject(i, std::move(buffer)));
+  }
+  TFLITE_RETURN_IF_ABSL_ERROR(core_.runner()->Run());
+  // Add sync objects
   for (size_t i = 0; i < node->outputs->size; ++i) {
+    absl::MutexLock eval_lock(&eval_mutex_);
     if (output_sync_types_[i] == SyncType::kNoSyncObj) continue;
     TfLiteSynchronization* sync =
         TfLiteExecutionTaskGetSyncByIndex(task, node->outputs->data[i]);
     if (sync == nullptr) continue;
-    TfLiteSynchronizationSetPtr(sync, new int{-1});
+    TfLiteSynchronizationSetPtr(sync, new int{gl::CreateFdGpu()});
+    TfLiteExecutionTaskSetSyncByIndex(task, node->outputs->data[i], sync);
   }
-
-  TFLITE_RET_CHECK_STATUS(unlock_status == 0, "unlock() failed");
   return kTfLiteOk;
 }
 
@@ -1498,7 +1387,9 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       context, "GpuDelegate::DelegatePrepare",
       telemetry::TelemetrySource::TFLITE_GPU, delegate_setting);
 
-  SetTfLiteProfiler(context->profiler);
+  if (delegate->flags & kTfLiteDelegateFlagsPerOperatorProfiling) {
+    SetTfLiteProfiler(context->profiler);
+  }
   return status;
 }
 

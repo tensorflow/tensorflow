@@ -1444,8 +1444,17 @@ std::string HloDotDumper::GetInstructionNodeExtraInfo(
 }
 
 void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
+  constexpr int kMaxEdgesBetweenTwoNodes = 64;
+
   auto add_edge = [&](const HloInstruction* from, const HloInstruction* to,
                       int64_t operand_num, bool control_edge = false) {
+    // Do not insert >64 edges between two same nodes. Some graphs have a very
+    // large number of edges between same nodes (e.g. passing parameters
+    // through).
+    if (edge_ids_.count({from, to}) > kMaxEdgesBetweenTwoNodes) {
+      return;
+    }
+
     from = GetNodeForEdge(from);
 
     if (!filter_.Show(from) || from->opcode() == HloOpcode::kConstant ||

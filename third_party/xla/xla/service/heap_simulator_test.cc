@@ -29,8 +29,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
+#include "xla/service/async_op_canonicalizer.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_ordering.h"
+#include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/tuple_points_to_analysis.h"
 #include "xla/status_macros.h"
@@ -940,6 +943,53 @@ TEST_F(HeapSimulatorTest, WholeModule) {
   });
 }
 
+TEST_F(HeapSimulatorTest, AsyncCallImplicitSharding) {
+  std::string hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  called_computation {
+    param0 = f32[4] parameter(0)
+    constant = f32[1] constant(1)
+    dynamic-update-slice = f32[4] dynamic-update-slice(param0, constant, constant)
+    ROOT negate = f32[4] negate(dynamic-update-slice)
+  }
+
+  ENTRY entry {
+    p0 = f32[8] parameter(0)
+    call-start = ((f32[8]), f32[8], s32[]) call-start(p0), async_execution_thread="foo", to_apply=called_computation
+    ROOT call-done = f32[8] call-done(call-start), async_execution_thread="foo", to_apply=called_computation
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  AsyncOpCanonicalizer canonicalizer;
+  TF_ASSERT_OK(canonicalizer.Run(module.get()).status());
+  HloDCE dce;
+  TF_ASSERT_OK(dce.Run(module.get()).status());
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                          HloAliasAnalysis::Run(module.get()));
+  auto size_fn = [](const BufferValue& buffer) -> int64_t {
+    const Shape& shape = buffer.shape();
+    if (!shape.IsArray()) {
+      return 0;
+    }
+    return ShapeUtil::ByteSizeOf(shape);
+  };
+  auto algorithm = std::make_unique<GlobalDecreasingSizeBestFitHeap<HloValue>>(
+      /*alignment=*/1);
+
+  HeapSimulator::Result<HloValue> result =
+      HeapSimulator::Run(std::move(algorithm), *module, module->schedule(),
+                         *alias_analysis, size_fn)
+          .value();
+  for (const auto& [value, chunk] : result.heap_results[0].chunk_map) {
+    if (value->instruction()->name() == "dynamic-update-slice") {
+      EXPECT_EQ(chunk.size, 32);
+    }
+  }
+}
+
 // Base class for heap algorithm tests.
 class HeapAlgorithmTestBase : public ::testing::Test {
  protected:
@@ -1017,42 +1067,7 @@ TEST_F(NoFragmentationStatsHeapTest, Mixed) {
   EXPECT_EQ(40, heap.Finish().heap_size);
 }
 
-class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {
- protected:
-  class InheritedGlobalDecreasingSizeBestFitHeap
-      : public GlobalDecreasingSizeBestFitHeap<HloValue> {
-   public:
-    InheritedGlobalDecreasingSizeBestFitHeap()
-        : GlobalDecreasingSizeBestFitHeap(/*alignment=*/1) {}
-
-    // Finds a chunk candidate and returns the offset and the new heap size.
-    std::pair<int64_t, int64_t> FindChunkCandidate(
-        const HloValue* buffer, int64_t size, int64_t start, int64_t end,
-        int64_t preferred_offset = -1) {
-      buffer_interval_.buffer = buffer;
-      buffer_interval_.size = size;
-      buffer_interval_.start = start;
-      buffer_interval_.end = end;
-      chunk_candidate_ = GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
-          buffer_interval_, preferred_offset);
-      EXPECT_EQ(chunk_candidate_.size, size);
-      return {chunk_candidate_.offset,
-              result_.UpdatedHeapSize(chunk_candidate_)};
-    }
-
-    // Commits the previously found chunk candidate.
-    void CommitChunk() {
-      GlobalDecreasingSizeBestFitHeap::CommitChunk(buffer_interval_,
-                                                   chunk_candidate_);
-    }
-
-   private:
-    BufferInterval buffer_interval_;
-    Chunk chunk_candidate_;
-  };
-
-  InheritedGlobalDecreasingSizeBestFitHeap heap_;
-};
+class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {};
 
 TEST_F(GlobalDecreasingSizeBestFitHeapTest, Empty) {
   GlobalDecreasingSizeBestFitHeap<HloValue> heap(/*alignment=*/1);
@@ -1353,7 +1368,107 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedDifferentSize2) {
   EXPECT_EQ(0, result.chunk_map.at(buffer_c_).offset);
 }
 
-TEST_F(GlobalDecreasingSizeBestFitHeapTest, ChunkCandidate) {
+class FindGlobalDecreasingSizeBestFitTest : public HeapAlgorithmTestBase {
+ protected:
+  class InheritedGlobalDecreasingSizeBestFitHeap
+      : public GlobalDecreasingSizeBestFitHeap<HloValue> {
+   public:
+    InheritedGlobalDecreasingSizeBestFitHeap()
+        : GlobalDecreasingSizeBestFitHeap(/*alignment=*/1) {}
+
+    // Makes a BufferInterval from the input specifications, find a chunk
+    // candidate for it, with the preferred_offset if > -1, and commit that
+    // chunk. Returns the offset and the new heap size.
+    std::pair<int64_t, int64_t> MakeFindAndCommit(
+        const HloValue* buffer, int64_t size, int64_t start, int64_t end,
+        int64_t preferred_offset = -1) {
+      // Make the BufferInterval.
+      MakeBufferInterval(buffer, size, start, end);
+      BufferInterval* buffer_interval = &GetBufferInterval(buffer);
+
+      // Find a chunk candidate.
+      Chunk chunk_candidate =
+          FindChunkCandidate(*buffer_interval, preferred_offset);
+      EXPECT_EQ(chunk_candidate.size, size);
+      std::pair<int64_t, int64_t> result = std::make_pair(
+          chunk_candidate.offset, result_.UpdatedHeapSize(chunk_candidate));
+
+      // Commit the chunk.
+      CommitChunk(*buffer_interval, chunk_candidate);
+
+      return result;
+    }
+
+    // Creates a BufferInterval from the inputs and adds it to
+    // buffer_intervals_.
+    void MakeBufferInterval(const HloValue* buffer, int64_t size, int64_t start,
+                            int64_t end) {
+      BufferInterval* buffer_interval = &buffer_intervals_[buffer];
+      buffer_interval->buffer = buffer;
+      buffer_interval->size = size;
+      buffer_interval->start = start;
+      buffer_interval->end = end;
+    }
+
+    // Adds a colocation to buffer_intervals_[buffer] for colocation.
+    void AddColocationToBuffer(const HloValue* buffer,
+                               const HloValue* colocation) {
+      CHECK(buffer_intervals_.contains(buffer));
+      buffer_intervals_[buffer].colocations.push_back(colocation);
+    }
+
+    // Returns buffer_intervals_[buffer]. The returned reference is invalidated
+    // if any elements are added or removed from buffer_intervals_, e.g., if
+    // MakeBufferInterval() is called.
+    BufferInterval& GetBufferInterval(const HloValue* buffer) {
+      CHECK(buffer_intervals_.contains(buffer));
+      return buffer_intervals_[buffer];
+    }
+
+    // Expose protected function.
+    std::vector<Chunk> FindChunkCandidates(
+        const SlicedBufferInterval& sliced_buffer_interval,
+        int64_t preferred_offset = -1) const {
+      return GlobalDecreasingSizeBestFitHeap<HloValue>::FindChunkCandidates(
+          sliced_buffer_interval, preferred_offset);
+    }
+
+    // Expose protected function.
+    void CommitChunk(const BufferInterval& buffer_interval, Chunk chunk) {
+      GlobalDecreasingSizeBestFitHeap<HloValue>::CommitChunk(buffer_interval,
+                                                             chunk);
+    }
+
+    // Typically, only one chunk is allowed to be assigned to each buffer in
+    // HeapSimulator. That limitation is insufficient for slices. However, MSA
+    // is the only code that generates slices, and it gets around that
+    // limitation by making this method a no-op. For testing, we'll allow
+    // multiple chunks to be assigned to a buffer (as would be allowed in MSA).
+    void AddToChunkMap(const HloValue* buffer, Chunk chunk) override {
+      committed_[buffer].push_back(chunk);
+    }
+
+    const absl::flat_hash_map<const HloValue*, std::vector<Chunk>>& committed()
+        const {
+      return committed_;
+    }
+
+    int64_t heap_size() const { return result_.heap_size; }
+
+   private:
+    absl::flat_hash_map<const HloValue*, std::vector<Chunk>> committed_;
+  };
+
+  using BufferInterval =
+      InheritedGlobalDecreasingSizeBestFitHeap::BufferInterval;
+  using SlicedBufferInterval =
+      InheritedGlobalDecreasingSizeBestFitHeap::SlicedBufferInterval;
+  using Chunk = InheritedGlobalDecreasingSizeBestFitHeap::Chunk;
+
+  InheritedGlobalDecreasingSizeBestFitHeap heap_;
+};
+
+TEST_F(FindGlobalDecreasingSizeBestFitTest, ChunkCandidate) {
   // space
   //   ^
   // 35|
@@ -1381,25 +1496,203 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ChunkCandidate) {
   //   -----------------------------------------> time
   //    0  1  2  3  4  5  6  7  8  9 10 11 12 13
   using pair = std::pair<int64_t, int64_t>;
-  EXPECT_EQ(pair(5, 10), heap_.FindChunkCandidate(buffer_a_, 5, 6, 10, 5));
-  heap_.CommitChunk();  // offset: 5, size: 5, start: 6, end: 10
+
+  // offset: 5, size: 5, start: 6, end: 10
   // Preferred offset 5 is returned.
-  EXPECT_EQ(pair(0, 10), heap_.FindChunkCandidate(buffer_b_, 10, 3, 5));
-  heap_.CommitChunk();  // offset: 0, size: 10, start: 3, end: 5
-  EXPECT_EQ(pair(10, 15), heap_.FindChunkCandidate(buffer_c_, 5, 2, 8));
-  heap_.CommitChunk();  // offset: 10, size: 5, start: 2, end: 8
-  EXPECT_EQ(pair(0, 15), heap_.FindChunkCandidate(buffer_d_, 5, 0, 2, 10));
-  heap_.CommitChunk();  // offset: 0, size: 5, start: 0, end: 2
+  EXPECT_EQ(pair(5, 10), heap_.MakeFindAndCommit(buffer_a_, 5, 6, 10, 5));
+
+  // offset: 0, size: 10, start: 3, end: 5
+  EXPECT_EQ(pair(0, 10), heap_.MakeFindAndCommit(buffer_b_, 10, 3, 5));
+
+  // offset: 10, size: 5, start: 2, end: 8
+  EXPECT_EQ(pair(10, 15), heap_.MakeFindAndCommit(buffer_c_, 5, 2, 8));
+
+  // offset: 0, size: 5, start: 0, end: 2
   // Preferred offset 10 could not be given because it is occupied.
-  EXPECT_EQ(pair(10, 20), heap_.FindChunkCandidate(buffer_e_, 10, 11, 13, 10));
-  heap_.CommitChunk();  // offset: 10, size: 10, start: 11, end: 13
+  EXPECT_EQ(pair(0, 15), heap_.MakeFindAndCommit(buffer_d_, 5, 0, 2, 10));
+
+  // offset: 10, size: 10, start: 11, end: 13
   // Preferred offset 10 is returned.
-  EXPECT_EQ(pair(20, 25), heap_.FindChunkCandidate(buffer_f_, 5, 3, 5, 20));
-  heap_.CommitChunk();  // offset: 20, size: 5, start: 3, end: 5
+  EXPECT_EQ(pair(10, 20), heap_.MakeFindAndCommit(buffer_e_, 10, 11, 13, 10));
+
+  // offset: 20, size: 5, start: 3, end: 5
   // Preferred offset 20 is returned.
-  EXPECT_EQ(pair(25, 35), heap_.FindChunkCandidate(buffer_g_, 10, 4, 8, 15));
-  heap_.CommitChunk();  // offset: 25, size: 10, start: 4, end: 8
+  EXPECT_EQ(pair(20, 25), heap_.MakeFindAndCommit(buffer_f_, 5, 3, 5, 20));
+
+  // offset: 25, size: 10, start: 4, end: 8
   // Preferred offset 15 could not be given because it is occupied.
+  EXPECT_EQ(pair(25, 35), heap_.MakeFindAndCommit(buffer_g_, 10, 4, 8, 15));
+}
+
+TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
+  //  space
+  //    ^
+  //    |
+  // 30 -                             +----+
+  //    |                             |    |
+  //    -         +---------+    +---+|  E |
+  //    |         |         |    |   ||    |
+  // 20 -         |         |    | F |+----+
+  //    |         |    C    |    |   ||    |
+  //    -         |         |    +---++    |
+  //    |         |         |    |     B   |
+  // 10 -    +----+----+----+    +---------+
+  //    |    |         |
+  //    -    |    A    |         +---------+
+  //    |    |         |         |    D    |
+  //    +----|----|----|----|----|----|----|----> time
+  //              10        20        30
+
+  // Place and commit A.
+  {  // Force sliced buffers to go out of scope before they are invalidated by
+     // calls to MakeBufferInterval.
+    heap_.MakeBufferInterval(buffer_a_, 10, 5, 15);
+    auto sliced_buffer_a = SlicedBufferInterval::CreateMutableInterval(
+        heap_.GetBufferInterval(buffer_a_));
+    auto chunks = heap_.FindChunkCandidates(sliced_buffer_a);
+    EXPECT_THAT(chunks, ::testing::ElementsAre(Chunk::FromOffsetSize(0, 10)));
+    heap_.CommitChunk(sliced_buffer_a.full_buffer_interval(),
+                      Chunk::FromOffsetSize(0, 10));
+    EXPECT_THAT(
+        heap_.committed(),
+        ::testing::UnorderedElementsAre(::testing::Pair(
+            buffer_a_, ::testing::ElementsAre(Chunk::FromOffsetSize(0, 10)))));
+    EXPECT_EQ(heap_.heap_size(), 10);
+  }
+
+  // Colocate B and C.
+  {  // Force sliced buffers to go out of scope before they are invalidated by
+     // calls to MakeBufferInterval.
+    heap_.MakeBufferInterval(buffer_b_, 10, 25, 35);
+    heap_.MakeBufferInterval(buffer_c_, 15, 10, 20);
+    // Note, HeapSimulator uses GetTransitiveColocations(), so we can colocate
+    // b with c, without doing the reverse.
+    heap_.AddColocationToBuffer(buffer_b_, buffer_c_);
+    auto sliced_buffer_b = SlicedBufferInterval::CreateMutableInterval(
+        heap_.GetBufferInterval(buffer_b_));
+    auto sliced_buffer_c = SlicedBufferInterval::CreateMutableInterval(
+        heap_.GetBufferInterval(buffer_c_));
+
+    // // Slice B.
+    sliced_buffer_b.Slice({5, 5});
+    sliced_buffer_b.UpdateSliceStartTimes({25, 30});
+
+    // Place and commit B (and C transitively via colocation). B should be
+    // placed at an offset that accommodates C; however, it should not have the
+    // size of C.
+    auto chunks = heap_.FindChunkCandidates(sliced_buffer_b);
+    EXPECT_THAT(chunks, ::testing::ElementsAre(Chunk::FromOffsetSize(10, 5),
+                                               Chunk::FromOffsetSize(15, 5)));
+    // In today's code, MSA would massage the SlicedBufferInterval and returned
+    // chunks before calling CommitChunks. We hard-code simulations of those
+    // changes here.
+    //
+    // We turn:
+    //      +----+          +----+
+    //      |    |          |    |
+    // +----+----+  => +----+    |
+    // |         |     |    |    |
+    // +---------+     +----+----+
+    heap_.CommitChunk(BufferInterval{buffer_b_, 5, 25, 30, /*colocations=*/{},
+                                     /*need_allocation=*/true},
+                      Chunk::FromOffsetSize(10, 5));
+    heap_.CommitChunk(
+        BufferInterval{buffer_b_, 10, 30, 35, /*colocations=*/{buffer_c_},
+                       /*need_allocation=*/true},
+        Chunk::FromOffsetSize(10, 10));
+    EXPECT_THAT(
+        heap_.committed(),
+        ::testing::UnorderedElementsAre(
+            ::testing::Pair(buffer_a_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(0, 10))),
+            ::testing::Pair(buffer_b_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(10, 5),
+                                           Chunk::FromOffsetSize(10, 10))),
+            ::testing::Pair(buffer_c_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(10, 15)))));
+    EXPECT_EQ(heap_.heap_size(), 25);
+  }
+
+  // Place and commit D.
+  {  // Force sliced buffers to go out of scope before they are invalidated by
+     // calls to MakeBufferInterval.
+    heap_.MakeBufferInterval(buffer_d_, 5, 25, 35);
+    auto sliced_buffer_d = SlicedBufferInterval::CreateMutableInterval(
+        heap_.GetBufferInterval(buffer_d_));
+    auto chunks = heap_.FindChunkCandidates(sliced_buffer_d);
+    EXPECT_THAT(chunks, ::testing::ElementsAre(Chunk::FromOffsetSize(0, 5)));
+    heap_.CommitChunk(sliced_buffer_d.full_buffer_interval(),
+                      Chunk::FromOffsetSize(0, 5));
+    EXPECT_THAT(
+        heap_.committed(),
+        ::testing::UnorderedElementsAre(
+            ::testing::Pair(buffer_a_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(0, 10))),
+            ::testing::Pair(buffer_b_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(10, 5),
+                                           Chunk::FromOffsetSize(10, 10))),
+            ::testing::Pair(buffer_c_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(10, 15))),
+            ::testing::Pair(buffer_d_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(0, 5)))));
+    EXPECT_EQ(heap_.heap_size(), 25);
+  }
+
+  // Place and commit E. It should fit just on top of B.
+  {  // Force sliced buffers to go out of scope before they are invalidated by
+     // calls to MakeBufferInterval.
+    heap_.MakeBufferInterval(buffer_e_, 10, 30, 35);
+    auto sliced_buffer_e = SlicedBufferInterval::CreateMutableInterval(
+        heap_.GetBufferInterval(buffer_e_));
+    auto chunks = heap_.FindChunkCandidates(sliced_buffer_e);
+    EXPECT_THAT(chunks, ::testing::ElementsAre(Chunk::FromOffsetSize(20, 10)));
+    heap_.CommitChunk(sliced_buffer_e.full_buffer_interval(),
+                      Chunk::FromOffsetSize(20, 10));
+    EXPECT_THAT(
+        heap_.committed(),
+        ::testing::UnorderedElementsAre(
+            ::testing::Pair(buffer_a_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(0, 10))),
+            ::testing::Pair(buffer_b_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(10, 5),
+                                           Chunk::FromOffsetSize(10, 10))),
+            ::testing::Pair(buffer_c_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(10, 15))),
+            ::testing::Pair(
+                buffer_d_, ::testing::ElementsAre(Chunk::FromOffsetSize(0, 5))),
+            ::testing::Pair(buffer_e_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(20, 10)))));
+    EXPECT_EQ(heap_.heap_size(), 30);
+  }
+
+  // Place and commit F. It should fit on top of B's first slice.
+  {  // Force sliced buffers to go out of scope before they are invalidated by
+     // calls to MakeBufferInterval.
+    heap_.MakeBufferInterval(buffer_f_, 10, 25, 29);
+    auto sliced_buffer_f = SlicedBufferInterval::CreateMutableInterval(
+        heap_.GetBufferInterval(buffer_f_));
+    auto chunks = heap_.FindChunkCandidates(sliced_buffer_f);
+    EXPECT_THAT(chunks, ::testing::ElementsAre(Chunk::FromOffsetSize(15, 10)));
+    heap_.CommitChunk(sliced_buffer_f.full_buffer_interval(),
+                      Chunk::FromOffsetSize(15, 10));
+    EXPECT_THAT(
+        heap_.committed(),
+        ::testing::UnorderedElementsAre(
+            ::testing::Pair(buffer_a_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(0, 10))),
+            ::testing::Pair(buffer_b_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(10, 5),
+                                           Chunk::FromOffsetSize(10, 10))),
+            ::testing::Pair(buffer_c_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(10, 15))),
+            ::testing::Pair(
+                buffer_d_, ::testing::ElementsAre(Chunk::FromOffsetSize(0, 5))),
+            ::testing::Pair(buffer_e_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(20, 10))),
+            ::testing::Pair(buffer_f_, ::testing::ElementsAre(
+                                           Chunk::FromOffsetSize(15, 10)))));
+    EXPECT_EQ(heap_.heap_size(), 30);
+  }
 }
 
 class ConstrainedGlobalDecreasingSizeBestFitHeapTest
@@ -2662,6 +2955,280 @@ t0 |xxxxx000        xxxx      xxxxxxxxxxxxxx   xxxxxxxxxxxxxxxxxxxxxxxxxxxx
               ::testing::ElementsAre(Chunk::FromOffsetSize(5, 3),
                                      Chunk::FromOffsetSize(8, 3),
                                      Chunk::FromOffsetSize(11, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, LeftHoleNotAllowedToStartAtFirstOffset) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx                              xxxxx 000111222xxxxx          x
+t1 |xxxxx  xxx                              xxxxx 000111xxxxxxxx          x
+t0 |xxxxx  xxx                              xxxxx 000xxxxxxxxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {45, 49},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {45, 52},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {45, 55},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      /*is_offset_allowed=*/[](int64_t offset) { return offset != 45; });
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(46, 3), Chunk::FromOffsetSize(49, 3),
+                  Chunk::FromOffsetSize(52, 3), Chunk::FromOffsetSize(55, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, LeftHoleAllowedToIncludeNoStartOffset) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx                              xxxxx000111222xxxxxx          x
+t1 |xxxxx  xxx                              xxxxx000111xxxxxxxxx          x
+t0 |xxxxx  xxx                              xxxxx000xxxxxxxxxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {45, 48},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {45, 51},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {45, 54},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      // We're not allowed to start at offset 46, but we can include it.
+      /*is_offset_allowed=*/[](int64_t offset) { return offset != 46; });
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(45, 3), Chunk::FromOffsetSize(48, 3),
+                  Chunk::FromOffsetSize(51, 3), Chunk::FromOffsetSize(54, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, RightHoleNotAllowedToStartAtFirstOffset) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx                              xxxxx 000111222xxxxx          x
+t1 |xxxxx  xxx                              xxxxxxxx 111222xxxxx          x
+t0 |xxxxx  xxx                              xxxxxxxxxxx 222xxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {51, 55},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {48, 55},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {45, 55},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      /*is_offset_allowed=*/[](int64_t offset) { return offset != 45; });
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(52, 3), Chunk::FromOffsetSize(49, 3),
+                  Chunk::FromOffsetSize(46, 3), Chunk::FromOffsetSize(55, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, RightHoleNotAllowedOffsetsFindsNewHole) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx                              xxxxx         xxxxxx000111222 x
+t1 |xxxxx  xxx                              xxxxxxxx      xxxxxx000111    x
+t0 |xxxxx  xxx                              xxxxxxxxxxx   xxxxxx000       x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {51, 54},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {48, 54},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {45, 54},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      /*is_offset_allowed=*/[](int64_t offset) { return offset != 45; });
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(60, 3), Chunk::FromOffsetSize(63, 3),
+                  Chunk::FromOffsetSize(66, 3), Chunk::FromOffsetSize(69, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, FindForOffset) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx                              xxxxx          xxxxx          x
+t1 |xxxxx  xxx                              xxxxx       xxxxxxxx          x
+t0 |xxxxx  xxx                              xxxxx    xxxxxxxxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {45, 49},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {45, 52},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {45, 55},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      /*is_offset_allowed=*/[](int64_t offset) { return offset != 45; });
+
+  EXPECT_THAT(finder.FindForOffset(10),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(10, 3), Chunk::FromOffsetSize(13, 3),
+                  Chunk::FromOffsetSize(16, 3), Chunk::FromOffsetSize(19, 0)));
+  EXPECT_THAT(finder.FindForOffset(20),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(20, 3), Chunk::FromOffsetSize(23, 3),
+                  Chunk::FromOffsetSize(26, 3), Chunk::FromOffsetSize(29, 0)));
+  EXPECT_THAT(finder.FindForOffset(45),
+              /* Disallowed */
+              ::testing::IsEmpty());
+  EXPECT_THAT(finder.FindForOffset(46),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(46, 3), Chunk::FromOffsetSize(49, 3),
+                  Chunk::FromOffsetSize(52, 3), Chunk::FromOffsetSize(55, 0)));
+  EXPECT_THAT(finder.FindForOffset(59),
+              /* No space */
+              ::testing::IsEmpty());
+  EXPECT_THAT(finder.FindForOffset(61),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(61, 3), Chunk::FromOffsetSize(64, 3),
+                  Chunk::FromOffsetSize(67, 3), Chunk::FromOffsetSize(70, 0)));
 }
 
 }  // namespace

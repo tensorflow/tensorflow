@@ -86,24 +86,6 @@ IREE::Input::ExecutableSourceOp createXlaExecutableSource(ModuleOp module) {
 
 //===----------------------------------------------------------------------===//
 
-static std::string toString(RuntimeBackend backend) {
-  switch (backend) {
-    case RuntimeBackend::kHAL:
-      return "hal";
-    case RuntimeBackend::kStreamExecutor:
-      return "streamexecutor";
-  }
-}
-
-static FailureOr<RuntimeBackend> parseRuntimeBackend(std::string_view str) {
-  if (str == "hal") {
-    return RuntimeBackend::kHAL;
-  } else if (str == "streamexecutor") {
-    return RuntimeBackend::kStreamExecutor;
-  }
-  return failure();
-}
-
 // Adds `xla_gpu.execution_context` argument to all functions in the module.
 static void addExecutionContextArgument(ModuleOp module) {
   MLIRContext *ctx = module.getContext();
@@ -119,23 +101,11 @@ static void addExecutionContextArgument(ModuleOp module) {
 class ConvertToXlaGpuRuntimePass
     : public ::impl::ConvertToXlaGpuRuntimeBase<ConvertToXlaGpuRuntimePass> {
  public:
-  ConvertToXlaGpuRuntimePass(ThunkSequence *thunk_sequence,
-                             std::optional<RuntimeBackend> backend)
-      : thunk_sequence_(thunk_sequence) {
-    if (backend.has_value()) {
-      this->backend = toString(*backend);
-    }
-  }
+  explicit ConvertToXlaGpuRuntimePass(ThunkSequence *thunk_sequence)
+      : thunk_sequence_(thunk_sequence) {}
 
   void runOnOperation() override {
     auto *ctx = &getContext();
-
-    // Lower compiled operations to HAL or SE runtime.
-    auto compiled_ops_backend = parseRuntimeBackend(backend);
-    if (failed(compiled_ops_backend)) {
-      getOperation().emitError() << "unsupported backend: " << backend;
-      return signalPassFailure();
-    }
 
     // Add execution context argument to all functions in the module.
     addExecutionContextArgument(getOperation());
@@ -165,28 +135,19 @@ class ConvertToXlaGpuRuntimePass
     // XLA:GPU API declarations for the custom module.
     XlaGpuApi api;
 
-    // XLA:GPU graphs help tracking dependencies between graph nodes.
-    XlaGpuGraphs graphs;
+    auto executable_source = createXlaExecutableSource(getOperation());
 
     RewritePatternSet patterns(&getContext());
     populateAnyFunctionOpInterfaceTypeConversionPattern(patterns, converter);
 
-    switch (*compiled_ops_backend) {
-      case RuntimeBackend::kHAL: {
-        auto executable_source = createXlaExecutableSource(getOperation());
-        populateCompiledOpsConversionPatterns(
-            patterns, converter, executable_source, thunk_sequence_, *state);
-        populateWhileOpConversionPatterns(patterns, converter, *state);
-        populateCaseOpConversionPatterns(patterns, converter, *state);
-      } break;
+    // Lower LMHLO control flow operations to structured control flow.
+    populateWhileOpConversionPatterns(patterns, converter, *state);
+    populateCaseOpConversionPatterns(patterns, converter, *state);
 
-      case RuntimeBackend::kStreamExecutor: {
-        populateCompiledOpsConversionPatterns(
-            patterns, converter, thunk_sequence_, *state, api, graphs);
-        populateWhileOpConversionPatterns(patterns, converter, *state, api);
-      } break;
-    }
-
+    // Lower LMHLO operation to corresponding XLA runtime operations and API
+    // calls (e.g. cuBLAS lowered to XLA:GPU custom module calls).
+    populateCompiledOpsConversionPatterns(
+        patterns, converter, executable_source, thunk_sequence_, *state);
     populateLibraryOpsConversionPatterns(patterns, converter, *state, api);
     populateMemrefConversionPatterns(patterns, converter, *state);
 
@@ -198,10 +159,6 @@ class ConvertToXlaGpuRuntimePass
     target.addLegalDialect<IREE::Input::IREEInputDialect, arith::ArithDialect,
                            func::FuncDialect, tensor::TensorDialect,
                            scf::SCFDialect>();
-
-    // Convert graph regions to explicit graph construction and dispatch.
-    target.addIllegalOp<GraphRegionOp>();
-    target.addLegalOp<GraphDispatchOp>();
 
     target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
       return converter.isSignatureLegal(op.getFunctionType()) &&
@@ -221,8 +178,8 @@ class ConvertToXlaGpuRuntimePass
 };
 
 std::unique_ptr<OperationPass<ModuleOp>> createConvertToGpu2RuntimePass(
-    ThunkSequence *thunk_sequence, std::optional<RuntimeBackend> backend) {
-  return std::make_unique<ConvertToXlaGpuRuntimePass>(thunk_sequence, backend);
+    ThunkSequence *thunk_sequence) {
+  return std::make_unique<ConvertToXlaGpuRuntimePass>(thunk_sequence);
 }
 
 }  // namespace xla::gpu

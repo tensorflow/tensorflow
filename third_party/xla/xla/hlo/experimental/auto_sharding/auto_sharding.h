@@ -69,7 +69,9 @@ class AutoShardingImplementation {
   StatusOr<AutoShardingResult> RunAutoSharding(
       HloModule* module,
       const absl::flat_hash_set<std::string>& replicated_small_tensors,
-      const absl::flat_hash_set<absl::string_view>& execution_threads);
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      const absl::flat_hash_map<std::string, const HloInstruction*>&
+          sharding_propagation_solution = {});
 
   // Removes SPMD annotations (if there are) to test AutoSharding on manually
   // annotated graphs.
@@ -210,13 +212,17 @@ HloSharding GetReduceScatterOutput(const HloInstruction* ins,
                                    const ClusterEnvironment& cluster_env);
 
 // The high-level "recipe" for solving an Auto Sharding problem.
-AutoShardingSolverResult Solve(const HloLiveRange& hlo_live_range,
-                               const LivenessSet& liveness_set,
-                               const StrategyMap& strategy_map,
-                               const LeafStrategies& leaf_strategies,
-                               const CostGraph& cost_graph,
-                               const AliasSet& alias_set,
-                               const AutoShardingOption& option);
+AutoShardingSolverResult Solve(
+    const HloLiveRange& hlo_live_range, const LivenessSet& liveness_set,
+    const StrategyMap& strategy_map, const LeafStrategies& leaf_strategies,
+    const CostGraph& cost_graph, const AliasSet& alias_set,
+    const AutoShardingOption& option,
+    const absl::flat_hash_map<std::string, const HloInstruction*>&
+        sharding_propagation_solution = {});
+
+// Populates temporal distance values.
+void PopulateTemporalValues(const CostGraph& cost_graph,
+                            AutoShardingSolverRequest& request);
 
 }  // namespace spmd
 }  // namespace xla

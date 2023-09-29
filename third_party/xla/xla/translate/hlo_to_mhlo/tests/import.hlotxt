@@ -1757,13 +1757,13 @@ add {
 }
 
 // CHECK-LABEL : func private @sparse
-// CHECK: tensor<10x10xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ], posWidth = 32, crdWidth = 32 }>>) -> tensor<10x10xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ], posWidth = 32, crdWidth = 32 }>>
+// CHECK: tensor<10x10xf32, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<10x10xf32, #sparse_tensor.encoding<{{{.*}}}>>
 %sparse {
   ROOT root = f32[10,10]{1,0:D(D,C)} parameter(0)
 }
 
 // CHECK-LABEL : func private @sparse_nu_no
-// CHECK: tensor<3x4x5xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed_nu", "singleton_nu_no", "singleton_no" ], posWidth = 32, crdWidth = 32 }>>) -> tensor<3x4x5xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed_nu", "singleton_nu_no", "singleton_no" ], posWidth = 32, crdWidth = 32 }>>
+// CHECK: tensor<3x4x5xf32, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<3x4x5xf32, #sparse_tensor.encoding<{{{.*}}}>>
 %sparse_nu_no {
   ROOT root = f32[3,4,5]{2,1,0:D(C+,S+~,S~)} parameter(0)
 }

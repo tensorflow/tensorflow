@@ -422,7 +422,7 @@ func.func @multiple_users_linalg_fill(%arg0: tensor<2xf64>)
   %cst = arith.constant 0x7FF0000000000000 : f64
   %0 = tensor.empty() : tensor<f64>
   %1 = linalg.fill ins(%cst : f64) outs(%0 : tensor<f64>) -> tensor<f64>
-  %reduced = linalg.reduce { arith.minf }
+  %reduced = linalg.reduce { arith.minimumf }
                ins(%arg0 : tensor<2xf64>)
                outs(%1 : tensor<f64>)
                dimensions = [0]

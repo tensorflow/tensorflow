@@ -641,42 +641,19 @@ def _cudart_static_linkopt(cpu_value):
     """Returns additional platform-specific linkopts for cudart."""
     return "" if cpu_value == "Darwin" else "\"-lrt\","
 
-def _exec_find_cuda_config(repository_ctx, script_path, cuda_libraries):
-    python_bin = get_python_bin(repository_ctx)
-
-    # If used with remote execution then repository_ctx.execute() can't
-    # access files from the source tree. A trick is to read the contents
-    # of the file in Starlark and embed them as part of the command. In
-    # this case the trick is not sufficient as the find_cuda_config.py
-    # script has more than 8192 characters. 8192 is the command length
-    # limit of cmd.exe on Windows. Thus we additionally need to compress
-    # the contents locally and decompress them as part of the execute().
-    compressed_contents = repository_ctx.read(script_path)
-    decompress_and_execute_cmd = (
-        "from zlib import decompress;" +
-        "from base64 import b64decode;" +
-        "from os import system;" +
-        "script = decompress(b64decode('%s'));" % compressed_contents +
-        "f = open('script.py', 'wb');" +
-        "f.write(script);" +
-        "f.close();" +
-        "system('\"%s\" script.py %s');" % (python_bin, " ".join(cuda_libraries))
-    )
-
-    return execute(repository_ctx, [python_bin, "-c", decompress_and_execute_cmd])
-
 # TODO(csigg): Only call once instead of from here, tensorrt_configure.bzl,
 # and nccl_configure.bzl.
-def find_cuda_config(repository_ctx, script_path, cuda_libraries):
+def find_cuda_config(repository_ctx, cuda_libraries):
     """Returns CUDA config dictionary from running find_cuda_config.py"""
-    exec_result = _exec_find_cuda_config(repository_ctx, script_path, cuda_libraries)
+    python_bin = get_python_bin(repository_ctx)
+    exec_result = execute(repository_ctx, [python_bin, repository_ctx.attr._find_cuda_config] + cuda_libraries)
     if exec_result.return_code:
         auto_configure_fail("Failed to run find_cuda_config.py: %s" % err_out(exec_result))
 
     # Parse the dict from stdout.
     return dict([tuple(x.split(": ")) for x in exec_result.stdout.splitlines()])
 
-def _get_cuda_config(repository_ctx, find_cuda_config_script):
+def _get_cuda_config(repository_ctx):
     """Detects and returns information about the CUDA installation on the system.
 
       Args:
@@ -692,7 +669,7 @@ def _get_cuda_config(repository_ctx, find_cuda_config_script):
           compute_capabilities: A list of the system's CUDA compute capabilities.
           cpu_value: The name of the host operating system.
       """
-    config = find_cuda_config(repository_ctx, find_cuda_config_script, ["cuda", "cudnn"])
+    config = find_cuda_config(repository_ctx, ["cuda", "cudnn"])
     cpu_value = get_cpu_value(repository_ctx)
     toolkit_path = config["cuda_toolkit_path"]
 
@@ -1008,9 +985,8 @@ def _create_local_cuda_repository(repository_ctx):
         "cuda:cuda_config.py",
     ]}
     tpl_paths["cuda:BUILD"] = _tpl_path(repository_ctx, "cuda:BUILD.windows" if is_windows(repository_ctx) else "cuda:BUILD")
-    find_cuda_config_script = repository_ctx.path(Label("@local_tsl//third_party/gpus:find_cuda_config.py.gz.base64"))
 
-    cuda_config = _get_cuda_config(repository_ctx, find_cuda_config_script)
+    cuda_config = _get_cuda_config(repository_ctx)
 
     cuda_include_path = cuda_config.config["cuda_include_dir"]
     cublas_include_path = cuda_config.config["cublas_include_dir"]
@@ -1484,12 +1460,20 @@ remote_cuda_configure = repository_rule(
     remotable = True,
     attrs = {
         "environ": attr.string_dict(),
+        "_find_cuda_config": attr.label(
+            default = Label("@local_tsl//third_party/gpus:find_cuda_config.py"),
+        ),
     },
 )
 
 cuda_configure = repository_rule(
     implementation = _cuda_autoconf_impl,
     environ = _ENVIRONS + [_TF_CUDA_CONFIG_REPO],
+    attrs = {
+        "_find_cuda_config": attr.label(
+            default = Label("@local_tsl//third_party/gpus:find_cuda_config.py"),
+        ),
+    },
 )
 """Detects and configures the local CUDA toolchain.
 

@@ -183,9 +183,13 @@ class ConcreteFunction(Callable, metaclass=abc.ABCMeta):
     """Returns the original `AtomicFunction` owned by this ConcreteFunction."""
 
 
-# TODO(mdan): Name just `types.Function`, for historic continuity?
-@tf_export("types.experimental.GenericFunction", v1=[])
-class GenericFunction(Callable, metaclass=abc.ABCMeta):
+# TODO(fmuham): Remove the export as GenericFunction in future release.
+@tf_export(
+    "types.experimental.PolymorphicFunction",
+    "types.experimental.GenericFunction",  # Deprecated
+    v1=[],
+)
+class PolymorphicFunction(Callable, metaclass=abc.ABCMeta):
   """Base class for polymorphic graph functions.
 
   Graph functions are Python callable objects that dispatch calls to a

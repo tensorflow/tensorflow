@@ -385,11 +385,19 @@ absl::Status CheckSelectV2GpuDelegateCompatibility(const OpSignature& op_sig) {
        op_sig.inputs.at(1).dims[0] > 1)) {
     return error;
   }
+  if (op_sig.inputs.at(1).is_const && op_sig.inputs.at(1).dims.size() == 2) {
+    return absl::InvalidArgumentError(
+        "2-D if tensor only supported if constant.");
+  }
   if (!op_sig.inputs.at(2).dims.empty() &&
       (op_sig.inputs.at(2).dims != output_dims) &&
       (op_sig.inputs.at(2).dims.size() > 1 ||
        op_sig.inputs.at(2).dims[0] > 1)) {
     return error;
+  }
+  if (op_sig.inputs.at(2).is_const && op_sig.inputs.at(2).dims.size() == 2) {
+    return absl::InvalidArgumentError(
+        "2-D else tensor only supported if constant.");
   }
   return absl::OkStatus();
 }

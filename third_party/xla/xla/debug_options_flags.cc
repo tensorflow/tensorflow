@@ -92,9 +92,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // flag.
   opts.set_xla_gpu_enable_cublaslt(false);
 
-  // TODO(b/258036887): Enable gpu_graph_level=2. Currently blocked by CUDA 12
-  // integration.
-  opts.set_xla_gpu_graph_level(1);
+  // TODO(b/258036887): Enable gpu_graph_level=3.
+  opts.set_xla_gpu_graph_level(2);
   opts.set_xla_gpu_graph_num_runs_to_instantiate(-1);
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
   opts.set_xla_gpu_graph_min_graph_size(5);
@@ -151,6 +150,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_pipelined_all_reduce(false);
   opts.set_xla_gpu_enable_pipelined_all_gather(false);
   opts.set_xla_gpu_enable_pipelined_reduce_scatter(false);
+  opts.set_xla_gpu_enable_pipelined_p2p(false);
 
   opts.set_xla_gpu_collective_permute_decomposer_threshold(
       std::numeric_limits<int64_t>::max());
@@ -192,6 +192,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_single_wave_autotuning(true);
   opts.set_xla_gpu_enable_reduction_epilogue_fusion(true);
   opts.set_xla_gpu_enable_nccl_clique_optimization(false);
+  opts.set_xla_gpu_cublas_fallback(true);
+  opts.set_xla_gpu_enable_while_loop_double_buffering(false);
+  opts.set_xla_gpu_ensure_minor_dot_contraction_dims(false);
+  opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(true);
+
   return opts;
 }
 
@@ -1127,6 +1132,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_enable_pipelined_reduce_scatter(),
                 "Enable pipelinling of reduce-scatter instructions."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_pipelined_p2p",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_p2p),
+      debug_options->xla_gpu_enable_pipelined_p2p(),
+      "Enable pipelinling of P2P instructions."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_collective_permute_decomposer_threshold",
       int64_setter_for(
           &DebugOptions::set_xla_gpu_collective_permute_decomposer_threshold),
@@ -1260,6 +1270,32 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                     &DebugOptions::set_xla_gpu_enable_nccl_clique_optimization),
                 debug_options->xla_gpu_enable_nccl_clique_optimization(),
                 "Allow early return when acquiring NCCL cliques"));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_cublas_fallback",
+                bool_setter_for(&DebugOptions::set_xla_gpu_cublas_fallback),
+                debug_options->xla_gpu_cublas_fallback(),
+                "Allow Triton GEMM autotuning to fall back to cuBLAS when that "
+                "is faster."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_while_loop_double_buffering",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_while_loop_double_buffering),
+      debug_options->xla_gpu_enable_while_loop_double_buffering(),
+      "Enable double buffering for while loop"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_ensure_minor_dot_contraction_dims",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_ensure_minor_dot_contraction_dims),
+      debug_options->xla_gpu_ensure_minor_dot_contraction_dims(),
+      "Ensure that the contracting dimensions for matmul operands are the most "
+      "minor by changing layouts accordingly"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_filter_kernels_spilling_registers_on_autotuning",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_filter_kernels_spilling_registers_on_autotuning),
+      debug_options->xla_gpu_filter_kernels_spilling_registers_on_autotuning(),
+      "Filter out kernels that spill registers during autotuning"));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

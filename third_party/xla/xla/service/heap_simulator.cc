@@ -24,6 +24,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <tuple>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -41,7 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
-#include "xla/service/memory_space_assignment_repacking.h"
+#include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/status.h"
 #include "xla/util.h"
 
@@ -257,6 +259,17 @@ Status HeapSimulator::RunComputation(
 
   VLOG(1) << "Program time" << hlo_live_range->schedule_end_time();
 
+  // Populate buffer sizes with the maximum size of the constituent HloValues.
+  for (const HloBuffer& buffer : alias_analysis.buffers()) {
+    int64_t size = 0;
+    for (const HloValue* value : buffer.values()) {
+      size = std::max(size, size_fn_(*value));
+    }
+    for (const HloValue* value : buffer.values()) {
+      buffer_sizes_[value] = size;
+    }
+  }
+
   // Go through each step in the program and replay each buffer define and free
   // events.
   for (int64_t i = 0; i < hlo_live_range->schedule_end_time() + 1; ++i) {
@@ -406,7 +419,7 @@ void HeapSimulator::Alloc(const HloValue* buffer,
       << "Alloc called on freed buffer: " << *buffer;
 
   allocated_buffers_.insert(buffer);
-  const int64_t size = size_fn_(*buffer);
+  const int64_t size = GetBufferSize(buffer);
   algorithm_->Alloc(buffer, size);
   no_fragmentation_stats_->Alloc(buffer, size);
   FillDebugTrace(HeapSimulatorTrace::Event::ALLOC, buffer, instruction,
@@ -419,7 +432,7 @@ void HeapSimulator::Alloc(const HloValue* buffer,
 // causes Free to be called on the underlying algorithm.
 void HeapSimulator::Free(const HloValue* buffer,
                          const HloInstruction* instruction) {
-  const int64_t size = size_fn_(*buffer);
+  const int64_t size = GetBufferSize(buffer);
   algorithm_->Free(buffer, size);
   no_fragmentation_stats_->Free(buffer, size);
   FillDebugTrace(HeapSimulatorTrace::Event::FREE, buffer, instruction, nullptr);
@@ -432,10 +445,16 @@ void HeapSimulator::Free(const HloValue* buffer,
 // SharedGroup.
 void HeapSimulator::ShareBuffer(const HloValue* buffer, const HloValue* shared,
                                 const HloInstruction* instruction) {
-  algorithm_->ShareWith(buffer, shared, size_fn_(*shared));
-  no_fragmentation_stats_->ShareWith(buffer, shared, size_fn_(*shared));
+  algorithm_->ShareWith(buffer, shared, GetBufferSize(shared));
+  no_fragmentation_stats_->ShareWith(buffer, shared, GetBufferSize(shared));
   FillDebugTrace(HeapSimulatorTrace::Event::SHARE_WITH, buffer, instruction,
                  shared);
+}
+
+int64_t HeapSimulator::GetBufferSize(const HloValue* buffer) const {
+  auto it = buffer_sizes_.find(buffer);
+  CHECK(it != buffer_sizes_.end());
+  return it->second;
 }
 
 HeapSimulator::Result<HloValue> HeapSimulator::Finish() {
@@ -591,7 +610,7 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Alloc(
 
   auto emplace_result = buffer_intervals_.emplace(
       buffer, BufferInterval{buffer, size, current_time_, -1, {}, true});
-  DCHECK(emplace_result.second);
+  CHECK(emplace_result.second);
   ++current_time_;
 }
 
@@ -603,11 +622,11 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::ShareWith(
     result_.chunk_map.emplace(buffer, Chunk::FromOffsetSize(0, 0));
     return;
   }
-  DCHECK_NE(buffer_intervals_.count(share_with), 0);
+  CHECK_NE(buffer_intervals_.count(share_with), 0);
   buffer_intervals_[share_with].colocations.push_back(buffer);
   auto emplace_result = buffer_intervals_.emplace(
       buffer, BufferInterval{buffer, size, current_time_, -1, {}, false});
-  DCHECK(emplace_result.second);
+  CHECK(emplace_result.second);
   ++current_time_;
 }
 
@@ -638,9 +657,9 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Free(const BufferType* buffer,
     return;
   }
   BufferInterval& buffer_interval = FindOrDie(buffer_intervals_, buffer);
-  DCHECK_EQ(buffer_interval.buffer, buffer);
-  DCHECK_EQ(buffer_interval.size, size);
-  DCHECK_EQ(buffer_interval.end, -1);
+  CHECK_EQ(buffer_interval.buffer, buffer);
+  CHECK_EQ(buffer_interval.size, size);
+  CHECK_EQ(buffer_interval.end, -1);
   if (buffer_interval.end != -1) {
     return;
   }
@@ -738,7 +757,7 @@ bool BufferIntervalTree::Remove(int64_t start, int64_t end,
     //      /
     //    left
     if (root_ == to_delete) {
-      // Deleting root is simply reseting root;
+      // Deleting root is simply resetting root;
       root_ = to_delete->left;
       return true;
     }
@@ -1120,14 +1139,16 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
     SlicedAllocationFinder(
         absl::Span<const FreeChunks> free_chunks_per_slice_time,
         std::vector<int64_t> sorted_slice_sizes, int64_t max_colocation_size,
-        int64_t preferred_offset, int64_t alignment)
+        int64_t preferred_offset, int64_t alignment,
+        absl::AnyInvocable<bool(int64_t) const> is_offset_allowed)
     : sorted_slice_sizes_(std::move(sorted_slice_sizes)),
       slice_size_sum_(std::accumulate(sorted_slice_sizes_.begin(),
                                       sorted_slice_sizes_.end(),
                                       static_cast<int64_t>(0))),
       max_colocation_size_(max_colocation_size),
       preferred_offset_(preferred_offset),
-      alignment_(alignment) {
+      alignment_(alignment),
+      is_offset_allowed_(std::move(is_offset_allowed)) {
   CHECK_EQ(sorted_slice_sizes_.size(), free_chunks_per_slice_time.size())
       << "We expect a data structure explaining the free chunks at each slice "
          "time.";
@@ -1295,19 +1316,12 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
     const {
   // Check if we can place the fully allocated buffer at the preferred offset
   if (preferred_offset_ >= 0) {
-    VLOG(3) << "SlicedAllocationFinder::Find() searching preferred offset "
-            << preferred_offset_;
-    auto it = free_chunks_.lower_bound(preferred_offset_);
-    if (it != free_chunks_.end()) {
-      const FreeChunkRoot* root = &it->second;
-      ChunksSortedBySliceTime chunks =
-          FindInRoot(*root, /*only_try_preferred_offset=*/true);
-      if (!chunks.empty()) {
-        VLOG(1) << "SlicedAllocationFinder found chunks: "
-                << "{ " << absl::StrJoin(chunks, ", ", absl::StreamFormatter())
-                << " }";
-        return chunks;
-      }
+    ChunksSortedBySliceTime chunks = FindForOffset(preferred_offset_);
+    if (!chunks.empty()) {
+      VLOG(1) << "SlicedAllocationFinder found chunks: "
+              << "{ " << absl::StrJoin(chunks, ", ", absl::StreamFormatter())
+              << " }";
+      return chunks;
     }
   }
 
@@ -1336,8 +1350,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
   for (const FreeChunkRoot* root = heap_next(); root != nullptr;
        root = heap_next()) {
     VLOG(3) << "SlicedAllocationFinder::Find() searching " << root->ToString();
-    ChunksSortedBySliceTime chunks =
-        FindInRoot(*root, /*only_try_preferred_offset=*/false);
+    ChunksSortedBySliceTime chunks = FindInRoot(*root);
     if (!chunks.empty()) {
       VLOG(1) << "SlicedAllocationFinder found chunks: "
               << "{ " << absl::StrJoin(chunks, ", ", absl::StreamFormatter())
@@ -1349,6 +1362,28 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
   LOG(ERROR) << "We did not find a place for our sliced allocation. This "
                 "should not happen because MSA operates on an infinitely "
                 "sized heap.";
+  return {};
+}
+
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedAllocationFinder::ChunksSortedBySliceTime
+GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedAllocationFinder::FindForOffset(int64_t offset) const {
+  VLOG(3) << "SlicedAllocationFinder::FindForOffset() searching offset "
+          << offset;
+  auto it = free_chunks_.lower_bound(offset);
+  if (it != free_chunks_.end()) {
+    const FreeChunkRoot* root = &it->second;
+    ChunksSortedBySliceTime chunks = FindInRoot(*root, offset);
+    if (!chunks.empty()) {
+      VLOG(3) << "SlicedAllocationFinder found chunks at " << offset << ": "
+              << "{ " << absl::StrJoin(chunks, ", ", absl::StreamFormatter())
+              << " }";
+      return chunks;
+    }
+  }
+
   return {};
 }
 
@@ -1387,6 +1422,11 @@ Status GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
         "%s", absl::StrCat("Not enough space to fit enitre allocation [",
                            offset, ", ", offset + max_colocation_size_,
                            ") in free chunk root ", root.chunk.ToString()));
+  }
+  if (!is_offset_allowed_(offset)) {
+    return FailedPrecondition(
+        "%s", absl::StrCat("We are not permitted to place an allocation at ",
+                           "offset ", offset, "."));
   }
 
   auto piece_fwd_it = root.pieces.lower_bound(offset);
@@ -1453,7 +1493,7 @@ Status GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
 
 namespace {
 
-// An iterator for iterating through permuations of slice times.
+// An iterator for iterating through permutations of slice times.
 class SliceTimePermutationIterator {
  public:
   explicit SliceTimePermutationIterator(int64_t latest_slice_time)
@@ -1497,13 +1537,14 @@ template <typename BufferType>
 typename GlobalDecreasingSizeBestFitHeap<
     BufferType>::SlicedAllocationFinder::ChunksSortedBySliceTime
 GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::FindInRoot(
-    const FreeChunkRoot& root, bool only_try_preferred_offset) const {
+    const FreeChunkRoot& root,
+    std::optional<int64_t> only_try_this_offset) const {
   int64_t first_offset = root.chunk.offset;
   int64_t last_end = root.chunk.chunk_end();
-  if (only_try_preferred_offset) {
-    first_offset = preferred_offset_;
-    last_end = preferred_offset_ + max_colocation_size_;
-    if (preferred_offset_ % alignment_ != 0) {
+  if (only_try_this_offset.has_value()) {
+    first_offset = *only_try_this_offset;
+    last_end = *only_try_this_offset + max_colocation_size_;
+    if (*only_try_this_offset % alignment_ != 0) {
       return {};
     }
   } else if (first_offset % alignment_ != 0) {
@@ -1674,49 +1715,74 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
   VLOG(1) << "Finding chunks for sliced buffer interval: "
           << sliced_buffer_interval.ToString();
 
-  // Find the max size of interval across its colocations and use this value
-  // to determine whether the buffer will fit in the heap.
   int64_t max_colocation_size =
-      sliced_buffer_interval.full_buffer_interval().size;
-  for (const BufferType* colocation : GetTransitiveColocations(
-           sliced_buffer_interval.full_buffer_interval())) {
+      GetMaxColocationSize(sliced_buffer_interval.full_buffer_interval());
+  auto chunks =
+      CreateSlicedAllocationFinder(sliced_buffer_interval, max_colocation_size,
+                                   preferred_offset)
+          .Find();
+  return PostProcessFindChunkCandidatesResult(sliced_buffer_interval,
+                                              std::move(chunks));
+}
+
+template <typename BufferType>
+int64_t GlobalDecreasingSizeBestFitHeap<BufferType>::GetMaxColocationSize(
+    const BufferInterval& buffer_interval) const {
+  int64_t max_colocation_size = buffer_interval.size;
+  for (const BufferType* colocation :
+       GetTransitiveColocations(buffer_interval)) {
     max_colocation_size =
         std::max(max_colocation_size, buffer_intervals_.at(colocation).size);
   }
 
+  return max_colocation_size;
+}
+
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder
+GlobalDecreasingSizeBestFitHeap<BufferType>::CreateSlicedAllocationFinder(
+    const SlicedBufferInterval& sliced_interval, int64_t max_colocation_size,
+    int64_t preferred_offset,
+    absl::AnyInvocable<bool(int64_t) const> is_offset_allowed) const {
   // Build up a list of free chunks for each slice time.
   std::vector<FreeChunks> free_chunks_per_slice_time;
-  free_chunks_per_slice_time.reserve(sliced_buffer_interval.num_slices());
-  for (int slice_time = 0; slice_time < sliced_buffer_interval.num_slices() - 1;
+  free_chunks_per_slice_time.reserve(sliced_interval.num_slices());
+  for (int slice_time = 0; slice_time < sliced_interval.num_slices() - 1;
        ++slice_time) {
     // We don't need to account for colocation until the last slice time, in
     // which we've allocated all the slices. So we set max_colocation_size to
     // -1.
-    free_chunks_per_slice_time.push_back(MakeFreeChunks(
-        sliced_buffer_interval.IntervalForMakeFreeChunks(slice_time),
-        /*max_colocation_size=*/-1));
+    free_chunks_per_slice_time.push_back(
+        MakeFreeChunks(sliced_interval.IntervalForMakeFreeChunks(slice_time),
+                       /*max_colocation_size=*/-1));
   }
   // We account for colocation size in the last slice time, where we've
   // allocated all the slices.
-  free_chunks_per_slice_time.push_back(
-      MakeFreeChunks(sliced_buffer_interval.IntervalForMakeFreeChunks(
-                         sliced_buffer_interval.num_slices() - 1),
-                     max_colocation_size));
+  free_chunks_per_slice_time.push_back(MakeFreeChunks(
+      sliced_interval.IntervalForMakeFreeChunks(sliced_interval.num_slices() -
+                                                1),
+      max_colocation_size));
 
-  auto chunks =
-      SlicedAllocationFinder(free_chunks_per_slice_time,
-                             sliced_buffer_interval.SliceSizesSortedByOffset(),
-                             max_colocation_size, preferred_offset, alignment_)
-          .Find();
+  return SlicedAllocationFinder(free_chunks_per_slice_time,
+                                sliced_interval.SliceSizesSortedByOffset(),
+                                max_colocation_size, preferred_offset,
+                                alignment_, std::move(is_offset_allowed));
+}
+
+template <typename BufferType>
+std::vector<typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk>
+GlobalDecreasingSizeBestFitHeap<BufferType>::
+    PostProcessFindChunkCandidatesResult(
+        const SlicedBufferInterval& sliced_interval,
+        std::vector<Chunk> chunks) const {
   if (chunks.empty()) {
     return {};
   }
-  CHECK_EQ(chunks.size(), sliced_buffer_interval.num_slices() + 1);
-  // The extra chunk is for colocations, so merge the last two chunks.
-  Chunk last = chunks.back();
+  CHECK_EQ(chunks.size(), sliced_interval.num_slices() + 1);
+  // The extra chunk is to ensure that colocations of larger sizes can fit.
+  // However, we don't need that extra space for the buffer for which we found
+  // chunks.
   chunks.pop_back();
-  chunks.back() = Chunk::FromOffsetSize(chunks.back().offset,
-                                        chunks.back().size + last.size);
 
   return chunks;
 }
@@ -1726,13 +1792,8 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunk(
     const GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval&
         buffer_interval,
     GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk chunk) {
-  // Update the maximum heap size according to the one determined by the chunk
-  // candidate. In case of colocations of different sizes, the chunk size
-  // returned is the maximum of all colocations, so use this value to update the
-  // heap size.
+  CHECK_EQ(chunk.size, buffer_interval.size);
   result_.heap_size = result_.UpdatedHeapSize(chunk);
-  // Now, update the chunk size to the actual size of the buffer interval.
-  chunk.size = buffer_interval.size;
   interval_tree_.Add(buffer_interval.start, buffer_interval.end, chunk);
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
     auto colocation_interval = buffer_intervals_[colocation];
@@ -1740,9 +1801,10 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunk(
     // of the colocated interval in case the colocations are of different sizes.
     Chunk colocation_chunk =
         Chunk::FromOffsetSize(chunk.offset, colocation_interval.size);
-    AddToChunkMap(colocation, colocation_chunk);
+    result_.heap_size = result_.UpdatedHeapSize(colocation_chunk);
     interval_tree_.Add(colocation_interval.start, colocation_interval.end,
                        colocation_chunk);
+    AddToChunkMap(colocation, colocation_chunk);
   }
 
   AddToChunkMap(buffer_interval.buffer, chunk);
@@ -1828,7 +1890,7 @@ ChooseBestHeapAlgorithm<BufferType>::Finish() {
 
 template class GlobalDecreasingSizeBestFitHeap<HloValue>;
 template class GlobalDecreasingSizeBestFitHeap<
-    MemorySpaceAssignmentRepacker::AllocationBlock>;
+    memory_space_assignment::MemorySpaceAssignmentRepacker::AllocationBlock>;
 template class ChooseBestHeapAlgorithm<HloValue>;
 
 }  // namespace xla

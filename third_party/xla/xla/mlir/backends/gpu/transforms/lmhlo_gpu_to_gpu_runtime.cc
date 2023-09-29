@@ -27,6 +27,8 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -35,6 +37,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "xla/mlir/backends/gpu/transforms/uid_generator.h"
+#include "xla/mlir/runtime/ir/rt_dialect.h"
 #include "xla/mlir/runtime/utils/custom_calls.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/stream_executor/blas.h"
@@ -85,6 +88,16 @@ class GemmOpLowering : public OpRewritePattern<GEMMOp> {
 
   LogicalResult matchAndRewrite(GEMMOp op,
                                 PatternRewriter& rewriter) const override {
+    {
+      // Set requires_blas attribute to true. The runtime pass will add cuBLAS
+      // initialization custom call to the entry function if the attribute is
+      // set to true.
+      auto module = op.getOperation()->getParentOfType<ModuleOp>();
+      ImplicitLocOpBuilder b(module.getLoc(), rewriter);
+      module->setAttr(b.getStringAttr(runtime::kRequiresBlasAttrName),
+                      BoolAttr::get(b.getContext(), true));
+    }
+
     // Get or create a custom call function declaration.
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     func::FuncOp callee = custom_calls_.GetOrCreate(b, kCustomCallTarget, op);
@@ -527,8 +540,6 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
 };
 
 using mlir::lmhlo_gpu::fusedMHAOp;
-using mlir::lmhlo_gpu::fusedMHAWithScaledBiasOp;
-using mlir::lmhlo_gpu::fusedMHAWithScaledMaskOp;
 
 template <typename FusedDotAttentionForward>
 class FusedAttentionForwardLowering
@@ -716,20 +727,7 @@ class FusedAttentionForwardOpLowering
   using FusedAttentionForwardLowering::FusedAttentionForwardLowering;
 };
 
-class FusedAttentionScaledMaskForwardOpLowering
-    : public FusedAttentionForwardLowering<fusedMHAWithScaledMaskOp> {
- public:
-  using FusedAttentionForwardLowering::FusedAttentionForwardLowering;
-};
-
-class FusedAttentionScaledBiasForwardOpLowering
-    : public FusedAttentionForwardLowering<fusedMHAWithScaledBiasOp> {
- public:
-  using FusedAttentionForwardLowering::FusedAttentionForwardLowering;
-};
-
 using mlir::lmhlo_gpu::fusedMHABackwardOp;
-using mlir::lmhlo_gpu::fusedMHAWithMaskBackwardOp;
 
 template <typename FusedDotAttentionBackward>
 class FusedAttentionBackwardLowering
@@ -747,10 +745,6 @@ class FusedAttentionBackwardLowering
 
   LogicalResult matchAndRewrite(FusedDotAttentionBackward op,
                                 PatternRewriter& rewriter) const override {
-    // if (auto bwd_op =
-    // dyn_cast<fusedMHAWithMaskBackwardOp>(op.getOperation())) {
-    //   return op.emitOpError("fusedMHAWithMaskBackwardOp not supported yet.");
-    // }
     // Get the custom call target.
     std::string fused_attention = kCustomCallTarget;
     auto num_operands = op.getNumOperands();
@@ -861,12 +855,6 @@ class FusedAttentionBackwardOpLowering
   using FusedAttentionBackwardLowering::FusedAttentionBackwardLowering;
 };
 
-class FusedAttentionScaledMaskBackwardOpLowering
-    : public FusedAttentionBackwardLowering<fusedMHAWithMaskBackwardOp> {
- public:
-  using FusedAttentionBackwardLowering::FusedAttentionBackwardLowering;
-};
-
 //===----------------------------------------------------------------------===//
 
 void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
@@ -901,16 +889,13 @@ void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
   // Each unique fused_attention operation in the module will get assigned a
   // uid.
   UidGenerator fused_attention_uid;
-  patterns.insert<FusedAttentionForwardOpLowering,
-                  FusedAttentionScaledMaskForwardOpLowering,
-                  FusedAttentionScaledBiasForwardOpLowering>(
-      ctx, fused_attention_uid, custom_calls);
+  patterns.insert<FusedAttentionForwardOpLowering>(ctx, fused_attention_uid,
+                                                   custom_calls);
 
   // Each unique fused_attention_backward operation in the module will get
   // assigned a uid.
   UidGenerator fused_attention_backward_uid;
-  patterns.insert<FusedAttentionBackwardOpLowering,
-                  FusedAttentionScaledMaskBackwardOpLowering>(
+  patterns.insert<FusedAttentionBackwardOpLowering>(
       ctx, fused_attention_backward_uid, custom_calls);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))

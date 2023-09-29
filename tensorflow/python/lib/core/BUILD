@@ -18,7 +18,6 @@ visibility = [
     "//third_party/py/tf_agents:__subpackages__",  # For benchmarks.
     "//third_party/py/tf_slim:__subpackages__",
     "//third_party/py/tensorflow_docs:__subpackages__",
-    "//third_party/py/keras:__subpackages__",
 ]
 
 package(
@@ -37,6 +36,7 @@ cc_library(
     deps = [
         ":py_util",
         "//tensorflow/c:c_api_no_xla",
+        "//tensorflow/c:tf_datatype_hdrs",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@local_tsl//tsl/python/lib/core:ml_dtypes_lib",

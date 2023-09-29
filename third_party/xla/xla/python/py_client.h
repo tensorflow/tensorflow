@@ -170,13 +170,6 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // TODO(zhangqiaorjc): Remove when we have transparent defragmentation.
   Status Defragment();
 
-  StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
-  GetDefaultDeviceAssignment(int num_replicas, int num_partitions);
-
-  // TODO(skye): delete after all callers can handle 2D output
-  StatusOr<std::vector<ClientAndPtr<PjRtDevice>>> GetDefaultDeviceAssignment1D(
-      int num_replicas);
-
   StatusOr<std::vector<std::pair<pybind11::bytes, pybind11::object>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device);

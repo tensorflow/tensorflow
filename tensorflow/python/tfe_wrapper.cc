@@ -17,6 +17,7 @@ limitations under the License.
 
 // Must be included first
 // clang-format off
+#include "pybind11/attr.h"  // from @pybind11
 #include "tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
@@ -690,6 +691,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
   py::class_<TF_DeviceList> TF_DeviceList_class(m, "TF_DeviceList");
   py::class_<TF_Function> TF_Function_class(m, "TF_Function");
+  py::class_<TF_Buffer> TF_Buffer_class(m, "TF_Buffer", py::module_local());
 
   m.def("TFE_Py_RegisterExceptionClass", [](const py::handle& e) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterExceptionClass(e.ptr()));
@@ -906,6 +908,21 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
                             buf.get()->data, buf.get()->length, status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
+  m.def("TFE_ContextSetServerDefWithTimeoutAndRetries",
+        [](py::handle& ctx, int keep_alive_secs, py::bytes proto, int timeout,
+           int retries) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          tensorflow::Safe_TF_BufferPtr buf = tensorflow::make_safe(
+              tensorflow::ProtoStringToTFBuffer(proto.ptr()));
+          Py_BEGIN_ALLOW_THREADS;
+          TFE_ContextSetServerDefWithTimeoutAndRetries(
+              tensorflow::InputTFE_Context(ctx), keep_alive_secs,
+              buf.get()->data, buf.get()->length, timeout, retries,
+              status.get());
+          Py_END_ALLOW_THREADS;
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        });
   m.def("TFE_ContextUpdateServerDef", [](py::handle& ctx, int keep_alive_secs,
                                          py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =

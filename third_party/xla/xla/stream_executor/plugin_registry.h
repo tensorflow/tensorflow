@@ -40,7 +40,7 @@ class StreamExecutorInterface;
 //
 // At runtime, a StreamExecutor object will query the singleton registry to
 // retrieve the plugin kind that StreamExecutor was configured with (refer to
-// the StreamExecutor and PluginConfig declarations).
+// the StreamExecutor declarations).
 //
 // Plugin libraries are best registered using REGISTER_MODULE_INITIALIZER,
 // but can be registered at any time. When registering a DSO-backed plugin, it
@@ -59,84 +59,44 @@ class PluginRegistry {
   // Returns a non-successful status if the factory has already been registered
   // with that platform (but execution should be otherwise unaffected).
   template <typename FactoryT>
-  tsl::Status RegisterFactory(Platform::Id platform_id, PluginId plugin_id,
-                              const std::string& name, FactoryT factory);
+  tsl::Status RegisterFactory(Platform::Id platform_id, const std::string& name,
+                              FactoryT factory);
 
-  // Registers the specified factory as usable by _all_ platform types.
-  // Reports errors just as RegisterFactory.
-  template <typename FactoryT>
-  tsl::Status RegisterFactoryForAllPlatforms(PluginId plugin_id,
-                                             const std::string& name,
-                                             FactoryT factory);
-
-  // Potentially sets the plugin identified by plugin_id to be the default
-  // for the specified platform and plugin kind. If this routine is called
-  // multiple types for the same PluginKind, the PluginId given in the last call
-  // will be used.
-  bool SetDefaultFactory(Platform::Id platform_id, PluginKind plugin_kind,
-                         PluginId plugin_id);
-
-  // Return true if the factory/id has been registered for the
+  // Return true if the factory/kind has been registered for the
   // specified platform and plugin kind and false otherwise.
-  bool HasFactory(Platform::Id platform_id, PluginKind plugin_kind,
-                  PluginId plugin) const;
+  bool HasFactory(Platform::Id platform_id, PluginKind plugin_kind) const;
 
   // Retrieves the factory registered for the specified kind,
   // or a tsl::Status on error.
   template <typename FactoryT>
-  tsl::StatusOr<FactoryT> GetFactory(Platform::Id platform_id,
-                                     PluginId plugin_id);
+  tsl::StatusOr<FactoryT> GetFactory(Platform::Id platform_id);
 
  private:
   // Containers for the sets of registered factories, by plugin kind.
-  struct PluginFactories {
-    std::map<PluginId, BlasFactory> blas;
-    std::map<PluginId, DnnFactory> dnn;
-    std::map<PluginId, FftFactory> fft;
-  };
-
-  // Simple structure to hold the currently configured default plugins (for a
-  // particular Platform).
-  struct DefaultFactories {
-    DefaultFactories();
-    PluginId blas, dnn, fft;
+  struct Factories {
+    std::optional<BlasFactory> blas;
+    std::optional<DnnFactory> dnn;
+    std::optional<FftFactory> fft;
   };
 
   PluginRegistry();
 
   // Actually performs the work of registration.
   template <typename FactoryT>
-  tsl::Status RegisterFactoryInternal(PluginId plugin_id,
-                                      const std::string& plugin_name,
+  tsl::Status RegisterFactoryInternal(const std::string& plugin_name,
                                       FactoryT factory,
-                                      std::map<PluginId, FactoryT>* factories);
-
-  // Actually performs the work of factory retrieval.
-  template <typename FactoryT>
-  tsl::StatusOr<FactoryT> GetFactoryInternal(
-      PluginId plugin_id, const std::map<PluginId, FactoryT>& factories,
-      const std::map<PluginId, FactoryT>& generic_factories) const;
+                                      std::optional<FactoryT>* factories);
 
   // Returns true if the specified plugin has been registered with the specified
   // platform factories. Unlike the other overload of this method, this does
   // not implicitly examine the default factory lists.
-  bool HasFactory(const PluginFactories& factories, PluginKind plugin_kind,
-                  PluginId plugin) const;
+  bool HasFactory(const Factories& factories, PluginKind plugin_kind) const;
 
   // The singleton itself.
   static PluginRegistry* instance_;
 
   // The set of registered factories, keyed by platform ID.
-  std::map<Platform::Id, PluginFactories> factories_;
-
-  // Plugins supported for all platform kinds.
-  PluginFactories generic_factories_;
-
-  // The sets of default factories, keyed by platform ID.
-  std::map<Platform::Id, DefaultFactories> default_factories_;
-
-  // Lookup table for plugin names.
-  std::map<PluginId, std::string> plugin_names_;
+  std::map<Platform::Id, Factories> factories_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(PluginRegistry);
 };
@@ -145,11 +105,11 @@ class PluginRegistry {
 #define DECLARE_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE)                         \
   template <>                                                                \
   tsl::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>( \
-      Platform::Id platform_id, PluginId plugin_id, const std::string& name, \
+      Platform::Id platform_id, const std::string& name,                     \
       PluginRegistry::FACTORY_TYPE factory);                                 \
   template <>                                                                \
   tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
-      Platform::Id platform_id, PluginId plugin_id)
+      Platform::Id platform_id)
 
 DECLARE_PLUGIN_SPECIALIZATIONS(BlasFactory);
 DECLARE_PLUGIN_SPECIALIZATIONS(DnnFactory);

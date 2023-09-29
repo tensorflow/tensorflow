@@ -2,8 +2,10 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
@@ -19,6 +21,11 @@ load(
     "tsl_async_value_deps",
 )
 load(
+    "//tensorflow:tensorflow.default.bzl",
+    "ADDITIONAL_API_INDEXABLE_SETTINGS",
+    "tf_cc_shared_library",
+)
+load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
 )
@@ -32,13 +39,6 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load(
-    "//tensorflow:tensorflow.default.bzl",
-    "ADDITIONAL_API_INDEXABLE_SETTINGS",
-    "tf_cc_shared_library",
-)
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # copybara:uncomment_begin
 # load("//devtools/copybara/rules:copybara.bzl", "copybara_config_test")
@@ -46,9 +46,9 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 # copybara:uncomment_end
 
 # copybara:comment_begin(oss-only)
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
-    "gen_api_init_files",
     "get_compat_files",
     "get_nested_compat_files",
 )
@@ -60,6 +60,7 @@ load(
     "//tensorflow/python/tools/api/generator:api_init_files_v1.bzl",
     "TENSORFLOW_API_INIT_FILES_V1",
 )
+load("//tensorflow/python/tools/api/generator2:generate_api.bzl", "generate_apis")
 # copybara:comment_end
 
 PACKAGE_STATIC_DEPS = [
@@ -242,9 +243,9 @@ config_setting(
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = if_oss(
         {"crosstool_top": "//external:android/crosstool"},
@@ -255,9 +256,9 @@ config_setting(
 
 config_setting(
     name = "android_x86",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -270,9 +271,9 @@ config_setting(
 
 config_setting(
     name = "android_x86_64",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -285,9 +286,9 @@ config_setting(
 
 config_setting(
     name = "android_armeabi",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -301,21 +302,21 @@ config_setting(
 # copybara:uncomment_begin(google-only)
 # config_setting(
 #     name = "chromiumos_x86_64",
-#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     constraint_values = ["//third_party/bazel_platforms/os:chromiumos"],
 #     values = {"cpu": "k8"},
 #     visibility = ["//visibility:public"],
 # )
 #
 # config_setting(
 #     name = "chromiumos_arm64",
-#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     constraint_values = ["//third_party/bazel_platforms/os:chromiumos"],
 #     values = {"cpu": "arm"},
 #     visibility = ["//visibility:public"],
 # )
 #
 # config_setting(
 #     name = "chromiumos_armv7",
-#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     constraint_values = ["//third_party/bazel_platforms/os:chromiumos"],
 #     values = {"cpu": "armeabi-v7a"},
 #     visibility = ["//visibility:public"],
 # )
@@ -323,9 +324,9 @@ config_setting(
 
 config_setting(
     name = "emscripten",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "emscripten"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/cpu:wasm32"],
+        [],
     ),
     values = if_oss(
         {"crosstool_top": "//external:android/emscripten"},
@@ -345,9 +346,9 @@ config_setting(
 
 config_setting(
     name = "android_arm",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -360,9 +361,9 @@ config_setting(
 
 config_setting(
     name = "android_arm64",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "android"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:android"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -391,13 +392,13 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(jakeharmon): Remove in favor of TSL version
+# TODO(jakeharmon8): Remove in favor of TSL version
 config_setting(
     name = "windows",
     # Internal builds query the target OS.
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "windows"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:windows"],
+        [],
     ),
     # OSS builds query the CPU type.
     values = if_oss(
@@ -419,9 +420,9 @@ config_setting(
 # Google builds.
 config_setting(
     name = "macos_x86_64_default",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:macos"],
+        [],
     ),
     values = {
         "apple_platform_type": "macos",
@@ -431,9 +432,9 @@ config_setting(
 
 config_setting(
     name = "macos_x86_64_crosscompile",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:macos"],
+        [],
     ),
     values = {
         "apple_platform_type": "macos",
@@ -452,9 +453,9 @@ selects.config_setting_group(
 
 config_setting(
     name = "macos_arm64",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:macos"],
+        [],
     ),
     values = {
         "apple_platform_type": "macos",
@@ -463,7 +464,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(jakeharmon): Remove in favor of TSL version
+# TODO(jakeharmon8): Remove in favor of TSL version
 selects.config_setting_group(
     name = "macos",
     match_any = [
@@ -475,9 +476,9 @@ selects.config_setting_group(
 
 config_setting(
     name = "ios",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:ios"],
+        [],
     ),
     values = if_oss(
         {"apple_platform_type": "ios"},
@@ -486,12 +487,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(jakeharmon): Remove in favor of TSL version
+# TODO(jakeharmon8): Remove in favor of TSL version
 config_setting(
     name = "fuchsia",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "fuchsia"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:fuchsia"],
+        [],
     ),
     values = if_oss(
         # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
@@ -503,9 +504,9 @@ config_setting(
 
 config_setting(
     name = "fuchsia_x86_64",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "fuchsia"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:fuchsia"],
+        [],
     ),
     values = {
         "cpu": "x86_64",
@@ -515,9 +516,9 @@ config_setting(
 
 config_setting(
     name = "ios_x86_64",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "apple"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:ios"],
+        [],
     ),
     values = dict(
         if_oss(
@@ -530,9 +531,9 @@ config_setting(
 
 config_setting(
     name = "chromiumos",
-    flag_values = if_google(
-        {"//tools/cpp:cc_target_os": "chromiumos"},
-        {},
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:chromiumos"],
+        [],
     ),
     values = if_oss(
         {"crosstool_top": "//external:android/chromiumos"},
@@ -895,7 +896,7 @@ selects.config_setting_group(
     match_any = [
         ":android",
         ":chromiumos",
-        # TODO(jakeharmon): Move all platform configs to TSL with fuchsia (non-blocking)
+        # TODO(jakeharmon8): Move all platform configs to TSL with fuchsia (non-blocking)
         ":fuchsia",
         ":emscripten",
         ":ios",
@@ -1053,7 +1054,6 @@ package_group(
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
         "//third_party/py/gldm/...",
-        "//third_party/py/keras/...",
         "//third_party/py/tf_keras/...",
         "//third_party/yggdrasil_decision_forests/...",
         "//waymo/ml/cn/...",
@@ -1116,7 +1116,7 @@ bzl_library(
     deps = [":tensorflow_bzl"],
 )
 
-# TODO(jakeharmon): Remove these in favor of tsl:grpc
+# TODO(jakeharmon8): Remove these in favor of tsl:grpc
 # copybara:comment_begin(oss-only)
 cc_library(
     name = "grpc",
@@ -1623,17 +1623,13 @@ genrule(
 )
 
 # copybara:comment_begin(oss-only)
-genrule(
+copy_file(
     name = "root_init_gen",
-    srcs = select({
-        "api_version_2": [":tf_python_api_gen_v2"],
-        "//conditions:default": [":tf_python_api_gen_v1"],
+    src = select({
+        "api_version_2": "_api/v2/v2.py",
+        "//conditions:default": "_api/v1/v1.py",
     }),
-    outs = ["__init__.py"],
-    cmd = select({
-        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS) && sed -i'.original' 's:from . import:from ._api.v2 import:g' $(OUTS)",
-        "//conditions:default": "cp $(@D)/_api/v1/v1.py $(OUTS) && sed -i'.original' 's:from . import:from ._api.v1 import:g' $(OUTS)",
-    }),
+    out = "__init__.py",
 )
 
 genrule(
@@ -1646,13 +1642,8 @@ genrule(
     cmd = "cp $(SRCS) $(OUTS)",
 )
 
-gen_api_init_files(
+generate_apis(
     name = "tf_python_api_gen_v1",
-    srcs = [
-        "api_template_v1.__init__.py",
-        "compat_template.__init__.py",
-        "compat_template_v1.__init__.py",
-    ],
     api_version = 1,
     compat_api_versions = [
         1,
@@ -1665,17 +1656,13 @@ gen_api_init_files(
     output_dir = "_api/v1/",
     output_files = TENSORFLOW_API_INIT_FILES_V1,
     output_package = "tensorflow._api.v1",
+    packages_to_ignore = ["tensorflow.python.framework.test_ops"],
     root_file_name = "v1.py",
-    root_init_template = "$(location api_template_v1.__init__.py)",
+    root_init_template = "api_template_v1.__init__.py",
 )
 
-gen_api_init_files(
+generate_apis(
     name = "tf_python_api_gen_v2",
-    srcs = [
-        "api_template.__init__.py",
-        "compat_template.__init__.py",
-        "compat_template_v1.__init__.py",
-    ],
     api_packages_file_name = "api_packages.txt",
     api_version = 2,
     compat_api_versions = [
@@ -1689,8 +1676,9 @@ gen_api_init_files(
     output_dir = "_api/v2/",
     output_files = TENSORFLOW_API_INIT_FILES_V2,
     output_package = "tensorflow._api.v2",
+    packages_to_ignore = ["tensorflow.python.framework.test_ops"],
     root_file_name = "v2.py",
-    root_init_template = "$(location api_template.__init__.py)",
+    root_init_template = "api_template.__init__.py",
     visibility = ["//visibility:public"],
 )
 
@@ -1698,12 +1686,7 @@ py_library(
     name = "tensorflow_py",
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = select(
-        {
-            "api_version_2": [],
-            "//conditions:default": [],
-        },
-    ) + [
+    deps = [
         ":tensorflow_py_no_contrib",
         "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:lite",

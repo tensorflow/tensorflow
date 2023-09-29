@@ -24,17 +24,15 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 namespace gpu {
-
-PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocFftPlugin);
 
 namespace wrap {
 
@@ -535,8 +533,7 @@ bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
     if (allocator) {
       auto allocated = allocator->AllocateBytes(input.size());
       if (allocated.ok()) {
-        if (stream->ThenMemcpy(&allocated.value(), input, input.size())
-                .ok()) {
+        if (stream->ThenMemcpy(&allocated.value(), input, input.size()).ok()) {
           input_maybe_copy = DeviceMemory<InputT>(allocated.value());
         } else {
           LOG(ERROR) << "failed to copy input buffer for rocFFT.";
@@ -615,12 +612,12 @@ STREAM_EXECUTOR_ROCM_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 
 void initialize_rocfft() {
   auto rocFftAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
-      rocm::kROCmPlatformId, PluginKind::kFft, gpu::kRocFftPlugin);
+      rocm::kROCmPlatformId, PluginKind::kFft);
 
   if (!rocFftAlreadyRegistered) {
     tsl::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
-            rocm::kROCmPlatformId, gpu::kRocFftPlugin, "rocFFT",
+            rocm::kROCmPlatformId, "rocFFT",
             [](internal::StreamExecutorInterface *parent) -> fft::FftSupport * {
               gpu::GpuExecutor *rocm_executor =
                   dynamic_cast<gpu::GpuExecutor *>(parent);
@@ -636,9 +633,6 @@ void initialize_rocfft() {
     if (!status.ok()) {
       LOG(ERROR) << "Unable to register rocFFT factory: " << status.message();
     }
-
-    PluginRegistry::Instance()->SetDefaultFactory(
-        rocm::kROCmPlatformId, PluginKind::kFft, gpu::kRocFftPlugin);
   }
 }
 

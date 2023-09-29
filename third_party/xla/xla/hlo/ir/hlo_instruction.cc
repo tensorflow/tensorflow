@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
+#include "xla/hlo/ir/hlo_frontend_attributes.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
@@ -3225,7 +3226,9 @@ void HloInstruction::PrintWithCanonicalNameMap(
   }
 
   // Print opcode, operand(s).
-  if (options.syntax_sugar_async_ops() && HloOpcodeIsAsync(opcode())) {
+  if (options.syntax_sugar_async_ops() && HloOpcodeIsAsync(opcode()) &&
+      (!called_computations_.empty() &&
+       called_computations_[0]->CanExpandIntoSingleInstruction())) {
     absl::string_view suffix = [&]() {
       switch (opcode()) {
         case HloOpcode::kAsyncStart:
@@ -3423,7 +3426,9 @@ void HloInstruction::PrintExtraAttributes(
         });
       }
     } else if (HloOpcodeIsAsync(opcode())) {
-      if (!options.syntax_sugar_async_ops()) {
+      if (!options.syntax_sugar_async_ops() ||
+          (!called_computations().empty() &&
+           !called_computations_[0]->CanExpandIntoSingleInstruction())) {
         printer.Next([this, &options](Printer* printer) {
           printer->Append("calls=");
           PrintNameInternal(printer, async_wrapped_computation()->name(),
@@ -4308,21 +4313,6 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
   return InvalidArgument("Unknown fusion kind: %s", kind_name);
 }
 
-std::string FrontendAttributesToString(
-    const FrontendAttributes& frontend_attributes) {
-  std::vector<std::pair<std::string, std::string>> sorted_attributes(
-      frontend_attributes.map().begin(), frontend_attributes.map().end());
-  absl::c_sort(sorted_attributes);
-  // Frontend attribute is a comma-separated list of attribute="value" pairs,
-  // e.g., frontend_attributes={name="value_a",type="int32_t"}.
-  const auto formatter = [](std::string* out,
-                            const std::pair<std::string, std::string>& item) {
-    absl::StrAppend(out, item.first, "=\"", item.second, "\"");
-  };
-  return absl::StrFormat("{%s}",
-                         absl::StrJoin(sorted_attributes, ",", formatter));
-}
-
 std::string StatisticsVizToString(const StatisticsViz& statistics_viz) {
   // Statistics is either empty, or always starts with the index of the
   // statistic that is rendered on the graph, followed by the statistics that
@@ -5117,9 +5107,7 @@ const DomainMetadata& HloInstruction::user_side_metadata() const {
 }
 
 bool HloInstruction::IsAsynchronous() const {
-  return opcode() == HloOpcode::kAsyncStart ||
-         opcode() == HloOpcode::kAsyncUpdate ||
-         opcode() == HloOpcode::kAsyncDone;
+  return HloOpcodeIsAsync(opcode());
 }
 
 HloComputation* HloInstruction::async_wrapped_computation() const {

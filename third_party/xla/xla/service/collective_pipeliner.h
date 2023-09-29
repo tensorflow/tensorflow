@@ -59,6 +59,7 @@ class CollectivePipeliner : public HloModulePass {
   enum PipeliningDirection {
     kBackward,
     kForward,
+    kForwardSink,
   };
   struct Config {
     int64_t level_to_operate_on = 0;
@@ -76,15 +77,31 @@ class CollectivePipeliner : public HloModulePass {
     HloPredicate should_process;
   };
   static const char* const kInsertedByPreviousStep;
+  static const char* const kSunkByPreviousStep;
   explicit CollectivePipeliner(const Config& config) : config_(config) {}
   CollectivePipeliner(CollectivePipeliner&& other) = default;
   CollectivePipeliner& operator=(CollectivePipeliner&& other) = default;
+  absl::string_view GetPipelineDirectionString(PipeliningDirection direction) {
+    switch (direction) {
+      case PipeliningDirection::kForward: {
+        return "forward";
+      }
+      case PipeliningDirection::kBackward: {
+        return "backward";
+      }
+      case PipeliningDirection::kForwardSink: {
+        return "forwardsink";
+      }
+    }
+  }
 
   absl::string_view name() const override {
     if (config_.pipelining_direction == kForward) {
       return "collective-pipeliner-forward";
-    } else {
+    } else if (config_.pipelining_direction == kBackward) {
       return "collective-pipeliner-backward";
+    } else {
+      return "collective-pipeliner-forwardsink";
     }
   }
 

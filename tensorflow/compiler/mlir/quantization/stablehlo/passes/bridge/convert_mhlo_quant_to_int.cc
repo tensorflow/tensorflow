@@ -21,17 +21,23 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -44,8 +50,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/rewriters.h"
 
-namespace mlir {
-namespace stablehlo {
+namespace mlir::quant::stablehlo {
 namespace {
 
 #define GEN_PASS_DEF_CONVERTMHLOQUANTTOINT
@@ -81,7 +86,7 @@ LogicalResult RequantizeWithoutClamping(
       input_quantized_type.getScale() / result_quantized_type.getScale();
   int32_t effective_quantized_fraction;
   int32_t effective_shift;
-  if (failed(stablehlo::QuantizeMultiplier(
+  if (failed(quant::stablehlo::QuantizeMultiplier(
           effective_scale, effective_quantized_fraction, effective_shift))) {
     op->emitError("Invalid effective quantization scale.");
     return failure();
@@ -590,6 +595,344 @@ LogicalResult matchAndRewriteDotLikeOp(OpType &op, OpAdaptorType &adaptor,
   return success();
 }
 
+Value CreateZeroPointPartialOffset(OpBuilder &builder, Location loc,
+                                   Value tensor, const int64_t other_tensor_zp,
+                                   ArrayRef<int64_t> contracting_dims) {
+  // This function calculates part of the zero-point-offset by using
+  // mhlo::Reduce to sum over the contracting dims of the tensor, and then
+  // multiply by zp of the other tensor.
+  auto output_element_type = builder.getI32Type();
+
+  // Calculate the output tensor shape. This is input tensor dims minus
+  // contracting dims.
+  auto ranked_tensor = tensor.getType().dyn_cast<RankedTensorType>();
+  llvm::SmallVector<int64_t> output_dims;
+  for (int64_t i = 0; i < ranked_tensor.getRank(); ++i) {
+    if (absl::c_count(contracting_dims, i) == 0) {
+      output_dims.push_back(ranked_tensor.getDimSize(i));
+    }
+  }
+
+  // Convert input tensor to output type since mhlo::Reduce only supports same
+  // element type for input/output.
+  tensor = builder.create<mhlo::ConvertOp>(
+      loc, tensor.getType().dyn_cast<TensorType>().clone(output_element_type),
+      tensor);
+  auto reducer_tensor_type = RankedTensorType::get({}, output_element_type);
+
+  // Initial value for reduced tensor. This is set 0.
+  Value init_values = builder.create<mhlo::ConstantOp>(
+      loc, DenseIntElementsAttr::get(reducer_tensor_type, {0}));
+  mhlo::ReduceOp reduce = builder.create<mhlo::ReduceOp>(
+      loc, RankedTensorType::get(output_dims, output_element_type), tensor,
+      init_values, builder.getI64TensorAttr(contracting_dims));
+  // Define reducer function to compute sum.
+  Region &region = reduce.getBody();
+  Block &block = region.emplaceBlock();
+  block.addArgument(reducer_tensor_type, loc);
+  block.addArgument(reducer_tensor_type, loc);
+  auto *firstArgument = block.args_begin();
+  auto secondArgument = block.args_rbegin();
+  {
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(&block);
+    Value sum =
+        builder.create<mhlo::AddOp>(loc, *firstArgument, *secondArgument);
+    builder.create<mhlo::ReturnOp>(loc, sum);
+  }
+  Value zp = builder.create<mhlo::ConstantOp>(
+      loc, builder.getI32IntegerAttr(other_tensor_zp));
+  Value mul_op = builder.create<chlo::BroadcastMulOp>(loc, reduce.getResult(0),
+                                                      zp, nullptr);
+  return mul_op;
+}
+
+Value GetDimValue(OpBuilder &builder, Location loc, Value tensor,
+                  mlir::ShapedType tensor_shape, int64_t idx) {
+  if (tensor_shape.isDynamicDim(idx)) {
+    // Get dynamic dim using GetDimensionSizeOp and convert result from <i32> to
+    // <1xi64>.
+    Value dynamic_dim = builder.create<mhlo::GetDimensionSizeOp>(
+        loc, tensor, builder.getI64IntegerAttr(idx));
+    dynamic_dim = builder.create<mhlo::ConvertOp>(
+        loc, RankedTensorType::get(ArrayRef<int64_t>{}, builder.getI64Type()),
+        dynamic_dim);
+    return builder.create<mhlo::ReshapeOp>(
+        loc, RankedTensorType::get({1}, builder.getI64Type()), dynamic_dim);
+  } else {
+    return builder.create<mhlo::ConstantOp>(
+        loc, DenseIntElementsAttr::get(
+                 RankedTensorType::get({1}, builder.getI64Type()),
+                 {tensor_shape.getDimSize(idx)}));
+  }
+}
+
+Value CalculateDynamicOutputDims(OpBuilder &builder, Location loc, Value lhs,
+                                 Value rhs,
+                                 mhlo::DotDimensionNumbersAttr dims) {
+  mlir::ShapedType lhs_shape = lhs.getType().cast<mlir::ShapedType>();
+  mlir::ShapedType rhs_shape = rhs.getType().cast<mlir::ShapedType>();
+  // Calculate each output dim and concatenate into a 1D tensor.
+  llvm::SmallVector<Value> output_dims;
+  for (int64_t i = 0; i < lhs_shape.getRank(); ++i) {
+    if (absl::c_count(dims.getLhsBatchingDimensions(), i) != 0) {
+      output_dims.push_back(GetDimValue(builder, loc, lhs, lhs_shape, i));
+    }
+  }
+  for (int64_t i = 0; i < lhs_shape.getRank(); ++i) {
+    if (absl::c_count(dims.getLhsContractingDimensions(), i) == 0 &&
+        absl::c_count(dims.getLhsBatchingDimensions(), i) == 0) {
+      output_dims.push_back(GetDimValue(builder, loc, lhs, lhs_shape, i));
+    }
+  }
+  for (int64_t i = 0; i < rhs_shape.getRank(); ++i) {
+    if (absl::c_count(dims.getRhsContractingDimensions(), i) == 0 &&
+        absl::c_count(dims.getRhsBatchingDimensions(), i) == 0) {
+      output_dims.push_back(GetDimValue(builder, loc, rhs, rhs_shape, i));
+    }
+  }
+  return builder.create<mhlo::ConcatenateOp>(loc, output_dims,
+                                             builder.getI64IntegerAttr(0));
+}
+
+Value BroadcastZpContribution(OpBuilder &builder, Location loc,
+                              Value zp_contribution,
+                              llvm::ArrayRef<int64_t> contracting_dims,
+                              llvm::ArrayRef<int64_t> batching_dims,
+                              int64_t non_batching_starting_idx,
+                              RankedTensorType output_tensor_type,
+                              Value &output_dims_value, Value lhs, Value rhs,
+                              mhlo::DotDimensionNumbersAttr dims) {
+  // This function calculates the dims for broadcasting from the
+  // zero-point-offset tensor to the final output tensor, and then do the
+  // broadcast.
+  auto zp_contribution_rank =
+      zp_contribution.getType().dyn_cast<ShapedType>().getRank();
+  llvm::SmallVector<int64_t> broadcast_dims;
+  broadcast_dims.resize(zp_contribution_rank, 0);
+  // Result tensor will have batching dims first, then LHS result dims, then
+  // RHS result dims. So non-batching result dims index doesn't start from 0.
+  // The arg non_batching_starting_idx is used to distinguish LHS and RHS.
+  int64_t result_batching_idx = 0;
+  int64_t result_non_batching_idx = non_batching_starting_idx;
+  for (int64_t idx = 0, original_idx = 0; idx < zp_contribution_rank;
+       ++idx, ++original_idx) {
+    // zp_contribution has removed contracting dims from the tensor. The
+    // following recovers the index in the original tensor.
+    while (absl::c_count(contracting_dims, original_idx) != 0) {
+      original_idx++;
+    }
+    if (absl::c_count(batching_dims, original_idx) == 0) {
+      broadcast_dims[idx] = result_non_batching_idx++;
+    } else {
+      broadcast_dims[idx] = result_batching_idx++;
+    }
+  }
+  // Use broadcast_in_dim or dyanmic_broadcast_in_dim based on input shape
+  // dynamism.
+  if (zp_contribution.getType().dyn_cast<ShapedType>().hasStaticShape()) {
+    zp_contribution = builder.create<mhlo::BroadcastInDimOp>(
+        loc, output_tensor_type, zp_contribution,
+        DenseIntElementsAttr::get(
+            RankedTensorType::get({static_cast<int64_t>(broadcast_dims.size())},
+                                  builder.getI64Type()),
+            broadcast_dims));
+  } else {
+    if (!output_dims_value) {
+      output_dims_value =
+          CalculateDynamicOutputDims(builder, loc, lhs, rhs, dims);
+    }
+    zp_contribution = builder.create<mhlo::DynamicBroadcastInDimOp>(
+        loc, output_tensor_type, zp_contribution, output_dims_value,
+        DenseIntElementsAttr::get(
+            RankedTensorType::get({static_cast<int64_t>(broadcast_dims.size())},
+                                  builder.getI64Type()),
+            broadcast_dims));
+  }
+  return zp_contribution;
+}
+
+Value CalculateZeroPointOffset(OpBuilder &builder, Location loc, Value lhs,
+                               Value rhs, int64_t lhs_zp, int64_t rhs_zp,
+                               mhlo::DotDimensionNumbersAttr dims) {
+  // According to StableHLO spec, the output tensor has dims in the following
+  // order:
+  //   batching dims, LHS result dims, RHS result dims
+  // where LHS/RHS result dims are any dims that are neither batching dims nor
+  // contracting dims.
+  llvm::SmallVector<int64_t> output_dims;
+  mlir::ShapedType lhs_shape = lhs.getType().cast<mlir::ShapedType>();
+  mlir::ShapedType rhs_shape = rhs.getType().cast<mlir::ShapedType>();
+  for (int64_t i = 0; i < lhs_shape.getRank(); ++i) {
+    if (absl::c_count(dims.getLhsBatchingDimensions(), i) != 0) {
+      output_dims.push_back(lhs_shape.getDimSize(i));
+    }
+  }
+  for (int64_t i = 0; i < lhs_shape.getRank(); ++i) {
+    if (absl::c_count(dims.getLhsContractingDimensions(), i) == 0 &&
+        absl::c_count(dims.getLhsBatchingDimensions(), i) == 0) {
+      output_dims.push_back(lhs_shape.getDimSize(i));
+    }
+  }
+  for (int64_t i = 0; i < rhs_shape.getRank(); ++i) {
+    if (absl::c_count(dims.getRhsContractingDimensions(), i) == 0 &&
+        absl::c_count(dims.getRhsBatchingDimensions(), i) == 0) {
+      output_dims.push_back(rhs_shape.getDimSize(i));
+    }
+  }
+  auto output_element_type = builder.getI32Type();
+  auto output_tensor_type =
+      RankedTensorType::get(output_dims, output_element_type);
+
+  Value result = nullptr;
+  Value output_dims_value = nullptr;
+  // Calculate LHS contribution when RHS zp is non-zero.
+  if (rhs_zp != 0) {
+    Value lhs_zp_contribution = CreateZeroPointPartialOffset(
+        builder, loc, lhs, rhs_zp, dims.getLhsContractingDimensions());
+    // Broadcast lhs ZP contribution to result tensor shape.
+    lhs_zp_contribution = BroadcastZpContribution(
+        builder, loc, lhs_zp_contribution, dims.getLhsContractingDimensions(),
+        dims.getLhsBatchingDimensions(), dims.getLhsBatchingDimensions().size(),
+        output_tensor_type, output_dims_value, lhs, rhs, dims);
+    result = lhs_zp_contribution;
+  }
+  // Calculate RHS contribution when LHS zp is non-zero.
+  if (lhs_zp != 0) {
+    Value rhs_zp_contribution = CreateZeroPointPartialOffset(
+        builder, loc, rhs, lhs_zp, dims.getRhsContractingDimensions());
+    // Broadcast rhs ZP contribution to result tensor shape.
+    rhs_zp_contribution = BroadcastZpContribution(
+        builder, loc, rhs_zp_contribution, dims.getRhsContractingDimensions(),
+        dims.getRhsBatchingDimensions(),
+        lhs_shape.getRank() - dims.getLhsContractingDimensions().size(),
+        output_tensor_type, output_dims_value, lhs, rhs, dims);
+    if (result) {
+      result = builder.create<mhlo::AddOp>(loc, result, rhs_zp_contribution);
+    } else {
+      result = rhs_zp_contribution;
+    }
+  }
+
+  if (lhs_zp != 0 && rhs_zp != 0) {
+    // Contributions from LHS_ZP * RHS_ZP.
+    // This is multiplied by the product of all contracting dimensions.
+    int32_t contracting_dim_total_int = 1;
+    bool has_dynamic_contracting_dim = false;
+    Value dynamic_contracting_dim_total = builder.create<mhlo::ConstantOp>(
+        loc, builder.getI32IntegerAttr(static_cast<int32_t>(1)));
+    // Calculate the product for static/dynamic dims separately.
+    for (const int64_t rhs_idx : dims.getRhsContractingDimensions()) {
+      if (rhs_shape.isDynamicDim(rhs_idx)) {
+        has_dynamic_contracting_dim = true;
+        auto dim = builder.create<mhlo::GetDimensionSizeOp>(
+            loc, rhs, builder.getI64IntegerAttr(rhs_idx));
+        dynamic_contracting_dim_total = builder.create<mhlo::MulOp>(
+            loc, dynamic_contracting_dim_total, dim);
+      } else {
+        contracting_dim_total_int *= rhs_shape.getDimSize(rhs_idx);
+      }
+    }
+    Value zp_offset_value = builder.create<mhlo::ConstantOp>(
+        loc, builder.getI32IntegerAttr(static_cast<int32_t>(lhs_zp) *
+                                       static_cast<int32_t>(rhs_zp) *
+                                       contracting_dim_total_int));
+    // Multiply the static dims contribution by the dynamic one if needed.
+    if (has_dynamic_contracting_dim) {
+      zp_offset_value = builder.create<mhlo::MulOp>(
+          loc, zp_offset_value, dynamic_contracting_dim_total);
+    }
+    result = builder.create<chlo::BroadcastSubOp>(loc, result, zp_offset_value,
+                                                  nullptr);
+  }
+  return result;
+}
+
+template <typename DotOp, typename DotOpAdaptor>
+LogicalResult RewriteDotGeneralOp(DotOp op, DotOpAdaptor adaptor,
+                                  ArrayRef<NamedAttribute> attrs,
+                                  const mhlo::DotDimensionNumbersAttr &dims,
+                                  ConversionPatternRewriter &rewriter) {
+  // Lower Dot/DotGeneral UQ ops to DotGeneral int.
+  // Assumes that operands and results are uq types.
+  auto lhs_element_quant_type =
+      getElementTypeOrSelf(op.getLhs().getType())
+          .template dyn_cast<quant::UniformQuantizedType>();
+  auto rhs_element_quant_type =
+      getElementTypeOrSelf(op.getRhs().getType())
+          .template dyn_cast<quant::UniformQuantizedType>();
+  auto res_element_quant_type =
+      getElementTypeOrSelf(op.getResult())
+          .template dyn_cast<quant::UniformQuantizedType>();
+  Value lhs = adaptor.getLhs();
+  Value rhs = adaptor.getRhs();
+  auto res_int32_tensor_type =
+      op.getResult().getType().clone(rewriter.getI32Type());
+
+  // Dot result
+  //   = dot((lhs - zp_l) * scale_l, (rhs - zp_r) * scale_r) / scale_res
+  //       + zp_res
+  //   = dot(lhs - zp_l, rhs - zp_r) * scale_l * scale_r / scale_res + zp_res
+  //   = dot(lhs, rhs) * combined_scale + combined_zp
+  // where:
+  //   combined_scale = scale_l * scale_r / scale_res
+  //   combined_zp = res_zp - zp_offset * combined_scale
+  //   zp_offset = zp_l*rhs + zp_r*lhs - zp_l*zp_r
+  SmallVector<Value, 2> operands{lhs, rhs};
+  Value res_i32 = rewriter.create<mhlo::DotGeneralOp>(
+      op->getLoc(), res_int32_tensor_type, operands, attrs);
+
+  Value zp_offset = CalculateZeroPointOffset(
+      rewriter, op->getLoc(), lhs, rhs, lhs_element_quant_type.getZeroPoint(),
+      rhs_element_quant_type.getZeroPoint(), dims);
+
+  // Multiply dot result and zp_offset by combined_scale only if it is not 1.0.
+  double combined_scale_fp = lhs_element_quant_type.getScale() *
+                             rhs_element_quant_type.getScale() /
+                             res_element_quant_type.getScale();
+  if (combined_scale_fp != 1.0) {
+    Value combined_scale = rewriter.create<mhlo::ConstantOp>(
+        op->getLoc(), rewriter.getF32FloatAttr(combined_scale_fp));
+
+    auto res_float32_tensor_type =
+        op.getResult().getType().clone(rewriter.getF32Type());
+    Value res_f32 = rewriter.create<mhlo::ConvertOp>(
+        op->getLoc(), res_float32_tensor_type, res_i32);
+    res_f32 = rewriter.create<chlo::BroadcastMulOp>(
+        op->getLoc(), res_float32_tensor_type, res_f32, combined_scale,
+        nullptr);
+    res_i32 = rewriter.create<mhlo::ConvertOp>(op->getLoc(),
+                                               res_int32_tensor_type, res_f32);
+
+    // Skip zp_offset if it is 0.
+    if (zp_offset) {
+      auto zp_offset_float32_tensor_type =
+          zp_offset.getType().dyn_cast<TensorType>().clone(
+              rewriter.getF32Type());
+      zp_offset = rewriter.create<mhlo::ConvertOp>(
+          op->getLoc(), zp_offset_float32_tensor_type, zp_offset);
+      zp_offset = rewriter.create<chlo::BroadcastMulOp>(
+          op->getLoc(), zp_offset_float32_tensor_type, zp_offset,
+          combined_scale, nullptr);
+      zp_offset = rewriter.create<mhlo::ConvertOp>(
+          op->getLoc(),
+          zp_offset_float32_tensor_type.clone(rewriter.getI32Type()),
+          zp_offset);
+    }
+  }
+
+  Value combined_zp = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(),
+      rewriter.getI32IntegerAttr(res_element_quant_type.getZeroPoint()));
+  if (zp_offset) {
+    combined_zp = rewriter.create<chlo::BroadcastSubOp>(
+        op->getLoc(), res_int32_tensor_type, combined_zp, zp_offset, nullptr);
+  }
+  rewriter.replaceOpWithNewOp<chlo::BroadcastAddOp>(
+      op, res_int32_tensor_type, res_i32, combined_zp, nullptr);
+  return success();
+}
+
 class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -597,7 +940,29 @@ class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
   LogicalResult matchAndRewrite(
       mhlo::DotOp op, mhlo::DotOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    return matchAndRewriteDotLikeOp(op, adaptor, rewriter);
+    // Use matchAndRewriteDotLikeOp for DotHybrid.
+    if (!op.getLhs()
+             .getType()
+             .getElementType()
+             .isa<quant::UniformQuantizedType>() ||
+        !op.getRhs()
+             .getType()
+             .getElementType()
+             .isa<quant::UniformQuantizedType>()) {
+      return matchAndRewriteDotLikeOp(op, adaptor, rewriter);
+    }
+
+    // DotOp is a special case of DotGeneralOp, where LHS and RHS are both
+    // rank-2 tensors and have contracting dims of 1 and 0 respectively.
+    auto dims = mhlo::DotDimensionNumbersAttr::get(
+        rewriter.getContext(), /*lhsBatchingDimensions=*/{},
+        /*rhsBatchingDimensions=*/{}, /*lhsContractingDimensions=*/{1},
+        /*rhsContractingDimensions=*/{0});
+    llvm::SmallVector<mlir::NamedAttribute> attrs(op->getAttrs());
+    attrs.push_back(
+        {StringAttr::get(rewriter.getContext(), "dot_dimension_numbers"),
+         dims});
+    return RewriteDotGeneralOp(op, adaptor, attrs, dims, rewriter);
   }
 };
 
@@ -609,7 +974,19 @@ class ConvertUniformQuantizedDotGeneralOp
   LogicalResult matchAndRewrite(
       mhlo::DotGeneralOp op, mhlo::DotGeneralOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    return matchAndRewriteDotLikeOp(op, adaptor, rewriter);
+    // Use matchAndRewriteDotLikeOp for DotHybridGeneral.
+    if (!op.getLhs()
+             .getType()
+             .getElementType()
+             .isa<quant::UniformQuantizedType>() ||
+        !op.getRhs()
+             .getType()
+             .getElementType()
+             .isa<quant::UniformQuantizedType>()) {
+      return matchAndRewriteDotLikeOp(op, adaptor, rewriter);
+    }
+    return RewriteDotGeneralOp(op, adaptor, op->getAttrs(),
+                               op.getDotDimensionNumbers(), rewriter);
   }
 };
 
@@ -625,58 +1002,64 @@ class ConvertUniformQuantizedConvolutionOp
   }
 };
 
-// This pattern converts uq <-> int ConvertOps to int -> int ConvertOps.
-// The former are introduced in ConvertTFQuantToMHLO pass. The resulting int ->
-// int ConvertOps are no-ops and can be removed later in a Canonicalizer pass.
-class ConvertMhloConvertOp : public OpConversionPattern<mhlo::ConvertOp> {
+// This pattern lowers a generic MHLO op for uq->int.
+// This pattern essentially just performs type change, with no algorithm change.
+class ConvertGenericOp : public ConversionPattern {
  public:
-  using OpConversionPattern::OpConversionPattern;
+  explicit ConvertGenericOp(MLIRContext *ctx)
+      : ConversionPattern(MatchAnyOpTypeTag(), 1, ctx) {}
 
   LogicalResult matchAndRewrite(
-      mhlo::ConvertOp op, mhlo::ConvertOpAdaptor adaptor,
+      Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    Value input = adaptor.getOperand();
-
-    Type output_type;
-    if (auto qtype = op.getOperand()
-                         .getType()
-                         .getElementType()
-                         .dyn_cast<quant::UniformQuantizedType>()) {
-      // This lowers uq->int mhlo.convert. Since the input type should be
-      // converted with the defining op. No explicit type conversion is done
-      // here.
-      output_type = qtype.getStorageType();
-    } else if (auto qtype = op.getResult()
-                                .getType()
-                                .getElementType()
-                                .dyn_cast<quant::UniformQuantizedType>()) {
-      output_type = qtype.getStorageType();
-    } else {
+    // This pattern only handle selected ops.
+    if (!llvm::isa<mhlo::ConstantOp, mhlo::ConvertOp, mhlo::BroadcastInDimOp,
+                   mhlo::MaxOp, mhlo::MinOp>(op)) {
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, input, output_type);
-    return success();
-  }
-};
-
-class ConvertMhloConstantOp : public OpConversionPattern<mhlo::ConstantOp> {
- public:
-  using OpConversionPattern::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      mhlo::ConstantOp op, mhlo::ConstantOpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    auto output_element_type = getElementTypeOrSelf(op.getOutput().getType());
-    // Convert mhlo.ConstantOp to int type for uq type only.
-    if (auto quant_type =
-            output_element_type.dyn_cast<quant::UniformQuantizedType>()) {
-      rewriter.replaceOpWithNewOp<mhlo::ConstantOp>(
-          op, op.getOutput().getType().clone(quant_type.getStorageType()),
-          op.getValue());
-      return success();
+    // Check that all operands and result uq types are the same.
+    llvm::SmallVector<Type> uq_types;
+    for (auto result_type : op->getResultTypes()) {
+      auto type = getElementTypeOrSelf(result_type)
+                      .dyn_cast<quant::UniformQuantizedType>();
+      if (type) {
+        uq_types.push_back(type);
+      }
     }
-    return failure();
+    for (auto operand : op->getOperands()) {
+      auto type = getElementTypeOrSelf(operand.getType())
+                      .dyn_cast<quant::UniformQuantizedType>();
+      if (type) {
+        uq_types.push_back(type);
+      }
+    }
+    for (auto type : uq_types) {
+      if (type != uq_types.front()) {
+        return failure();
+      }
+    }
+
+    // Determine new result type: use storage type for uq types; use original
+    // type otherwise.
+    llvm::SmallVector<Type, 4> new_result_types;
+    for (auto result_type : op->getResultTypes()) {
+      if (getElementTypeOrSelf(result_type)
+              .isa<quant::UniformQuantizedType>()) {
+        new_result_types.push_back(result_type.cast<TensorType>().clone(
+            getElementTypeOrSelf(result_type)
+                .cast<quant::UniformQuantizedType>()
+                .getStorageType()));
+      } else {
+        new_result_types.push_back(result_type);
+      }
+    }
+
+    OperationState state(op->getLoc(), op->getName().getStringRef(), operands,
+                         new_result_types, op->getAttrs(), op->getSuccessors());
+    Operation *new_op = rewriter.create(state);
+    rewriter.replaceOp(op, new_op);
+    return success();
   }
 };
 
@@ -690,8 +1073,7 @@ void ConvertMHLOQuantToInt::runOnOperation() {
   patterns.add<ConvertUniformQuantizeOp, ConvertUniformDequantizeOp,
                ConvertUniformQuantizedAddOp, ConvertUniformQuantizedDotOp,
                ConvertUniformQuantizedDotGeneralOp,
-               ConvertUniformQuantizedConvolutionOp, ConvertMhloConvertOp,
-               ConvertMhloConstantOp>(context);
+               ConvertUniformQuantizedConvolutionOp, ConvertGenericOp>(context);
 
   ConversionTarget target(*op->getContext());
   // An addDynamicallyLegalDialect callback that declares a given operation as
@@ -728,12 +1110,11 @@ void ConvertMHLOQuantToInt::runOnOperation() {
   }
 }
 
-}  // end namespace
+}  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>> createConvertMHLOQuantToIntPass(
     bool legalize_chlo) {
   return std::make_unique<ConvertMHLOQuantToInt>(legalize_chlo);
 }
 
-}  // end namespace stablehlo
-}  // end namespace mlir
+}  // namespace mlir::quant::stablehlo

@@ -2167,7 +2167,7 @@ LogicalResult BitcastConvertOp::verify() {
 
 OpFoldResult BroadcastOp::fold(FoldAdaptor adaptor) {
   auto attrs = adaptor.getOperands();
-  auto type = getType().cast<RankedTensorType>();
+  auto type = getType().cast<ShapedType>();
   auto sizesType = getBroadcastSizes().getType();
   if (sizesType.getNumElements() == 0) {
     return getOperand();

@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream.h"
@@ -437,6 +438,11 @@ tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
               kernel, args);
 
   return implementation_->Launch(stream, thread_dims, block_dims, kernel, args);
+}
+
+tsl::Status StreamExecutor::Submit(Stream* stream,
+                                   const CommandBuffer& command_buffer) {
+  return implementation_->Submit(stream, command_buffer);
 }
 
 tsl::Status StreamExecutor::BlockHostUntilDone(Stream* stream) {

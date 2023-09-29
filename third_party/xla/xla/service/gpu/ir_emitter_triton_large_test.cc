@@ -15,14 +15,24 @@ limitations under the License.
 
 #include <string>
 
+#include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using TritonGemmTest = GpuCodegenTest;
+class TritonGemmTest : public GpuCodegenTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_cublas_fallback(false);
+    return debug_options;
+  }
+};
 
 TEST_F(TritonGemmTest, IndexUsing64Bits) {
   const char* kHloTextRef = R"(
@@ -107,12 +117,19 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-using TritonSoftmaxTest = GpuCodegenTest;
+class TritonSoftmaxTest : public GpuCodegenTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_triton_softmax_fusion(true);
+    return debug_options;
+  }
+};
 
 TEST_F(TritonSoftmaxTest,
        CanFuseAndEmitDiamondWithInputNumberOfElementsLargerThanInt32Max) {
   const std::string hlo_text = R"(
-HloModule softmax, input_output_alias={ {}: (0, {}, must-alias) }
+HloModule softmax
 
 max_computation {
   arg_0 = f16[] parameter(0)

@@ -31,6 +31,41 @@ bool DefaultFusionBoundaryFn(const HloInstruction&,
   return consumer.opcode() == HloOpcode::kParameter;
 }
 
+FusionBoundaryFn MakeProducerConsumerFusion(
+    const HloInstruction& fused_producer,
+    const HloInstruction& fused_consumer) {
+  if (fused_consumer.opcode() == HloOpcode::kFusion &&
+      fused_producer.opcode() == HloOpcode::kFusion) {
+    // fusion -> fusion.
+    return [&](const HloInstruction& producer, const HloInstruction& consumer) {
+      return DefaultFusionBoundaryFn(producer, consumer) &&
+             &producer != &fused_producer;
+    };
+  }
+  if (fused_consumer.opcode() == HloOpcode::kFusion) {
+    // non-fusion -> fusion.
+    return [&](const HloInstruction& producer, const HloInstruction& consumer) {
+      if (DefaultFusionBoundaryFn(producer, consumer)) {
+        return &producer != &fused_producer;
+      }
+      // Otherwise, don't follow edges above the fused producer.
+      return &consumer == &fused_producer;
+    };
+  }
+  // anything -> non-fusion.
+  return [&](const HloInstruction& producer, const HloInstruction& consumer) {
+    if (&consumer == &fused_consumer) {
+      // If the consumer is the fused user, only follow edges to the fused
+      // producer.
+      return &fused_producer != &producer;
+    }
+
+    // Otherwise, fall back to the default; we're already in the fused
+    // producer.
+    return DefaultFusionBoundaryFn(producer, consumer);
+  };
+}
+
 void HloBfsConsumersFirstTraversal(
     absl::Span<const HloInstruction* const> roots,
     const FusionBoundaryFn& boundary,
@@ -84,7 +119,7 @@ void HloBfsConsumersFirstTraversal(
   }
 }
 
-void FindFusionParameters(
+void FindFusionArguments(
     absl::Span<const HloInstruction* const> roots,
     const FusionBoundaryFn& boundary,
     const std::function<void(const HloInstruction& param)>& visit) {
@@ -103,16 +138,21 @@ void FindFusionParameters(
       [&](const HloInstruction&) { return TraversalResult::kVisitOperands; });
 }
 
-bool HloAnyOf(
+bool HloAnyOf(absl::Span<const HloInstruction* const> roots,
+              const FusionBoundaryFn& boundary,
+              const std::function<bool(const HloInstruction& node)>& visit) {
+  return HloFindIf(roots, boundary, visit) != nullptr;
+}
+
+const HloInstruction* HloFindIf(
     absl::Span<const HloInstruction* const> roots,
-    const std::function<bool(const HloInstruction& producer,
-                             const HloInstruction& consumer)>& boundary,
+    const FusionBoundaryFn& boundary,
     const std::function<bool(const HloInstruction& node)>& visit) {
-  bool result = false;
+  const HloInstruction* result = nullptr;
   HloBfsConsumersFirstTraversal(roots, boundary,
                                 [&](const HloInstruction& node) {
                                   if (visit(node)) {
-                                    result = true;
+                                    result = &node;
                                     return TraversalResult::kAbortTraversal;
                                   }
                                   return TraversalResult::kVisitOperands;

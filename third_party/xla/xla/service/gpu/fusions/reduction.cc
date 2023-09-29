@@ -278,7 +278,9 @@ StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
   }
 
   return std::make_unique<KernelThunk>(
-      fusion_op, entry.kernel_name, kernel_arguments.args(), launch_dimensions);
+      fusion_op, entry.kernel_name, kernel_arguments.args(), launch_dimensions,
+      // Shared memory is allocated statically.
+      /*shmem_bytes=*/0);
 }
 
 Status EmitExtraOutputsForReduce(llvm::IRBuilder<>* builder,
@@ -849,15 +851,13 @@ void GenerateElementForReducer(
 }
 
 // Emits code for reductions in the output_instructions.
-Status EmitIRForReduction(llvm::IRBuilder<>* builder,
-                          IrEmitterContext& ir_emitter_context,
-                          mlir::lmhlo::FusionOp fusion,
-                          absl::Span<HloInstruction* const> instr_index_group,
-                          FusedIrEmitter& fused_emitter,
-                          const ReductionOutputMap& result_ir_arrays,
-                          const ReductionCodegenInfo& reduction_info,
-                          const Shape& input_shape,
-                          ElementalIrEmitter& elemental_emitter) {
+Status EmitIRForReduction(
+    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
+    mlir::lmhlo::FusionOp fusion,
+    absl::Span<const HloInstruction* const> instr_index_group,
+    FusedIrEmitter& fused_emitter, const ReductionOutputMap& result_ir_arrays,
+    const ReductionCodegenInfo& reduction_info, const Shape& input_shape,
+    ElementalIrEmitter& elemental_emitter) {
   std::vector<const HloInstruction*> roots;
   std::vector<const HloReduceInstruction*> heroes;
   ExtraOutputGensMap extra_output_gens;
@@ -972,7 +972,8 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
   const HloComputation* fused_computation =
       fusion.fused_instructions_computation();
   if (!reduction_codegen_info->IsRaceFree()) {
-    absl::Span<HloInstruction* const> fusion_roots = analysis_.fusion_roots();
+    absl::Span<const HloInstruction* const> fusion_roots =
+        analysis_.fusion_roots();
     for (int i = 0; i < fusion_roots.size(); ++i) {
       if (IsReductionFromOrToContiguousDimensions(*fusion_roots[i])) {
         TF_ASSIGN_OR_RETURN(
@@ -1002,7 +1003,7 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
     ReductionOutputMap result_ir_arrays;
 
     int ir_arrays_idx = 0;
-    for (HloInstruction* root : analysis_.fusion_roots()) {
+    for (const HloInstruction* root : analysis_.fusion_roots()) {
       int get_num_results = GetNumOutputs(root->shape());
       result_ir_arrays[root] =
           absl::MakeSpan(outputs).subspan(ir_arrays_idx, get_num_results);
@@ -1015,7 +1016,7 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
     // block_id_y instead of block_id_x simplifies the index calculation
     // for reduction code generation as the block_id_y is orthogonal to
     // the indices used within the reductions.
-    const std::vector<std::vector<HloInstruction*>>& instr_index_groups =
+    const std::vector<std::vector<const HloInstruction*>>& instr_index_groups =
         reduction_codegen_info->GetIndexGroups();
     Shape reduce_operand_shape =
         reduction_codegen_info->GetReduceOperandShape();

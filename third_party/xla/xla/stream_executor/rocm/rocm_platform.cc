@@ -112,7 +112,6 @@ ROCmPlatform::DescriptionForDevice(int ordinal) const {
 tsl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
-  config.plugin_config = PluginConfig();
   config.device_options = DeviceOptions::Default();
   return GetExecutor(config);
 }
@@ -132,8 +131,7 @@ tsl::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
 tsl::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
-      this, std::make_unique<GpuExecutor>(config.plugin_config),
-      config.ordinal);
+      this, std::make_unique<GpuExecutor>(), config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
     return tsl::Status{

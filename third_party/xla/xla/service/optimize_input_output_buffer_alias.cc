@@ -38,6 +38,11 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
     HloInputOutputAliasConfig* alias_config,
     HloBufferDonorConfig* buffer_donor_config) {
   bool changed = false;
+  if (output_shape.is_dynamic()) {
+    // Restrict dynamic shape input-output aliasing due to potential
+    // dynamic shape size calculation mismatch.
+    return false;
+  }
 
   // Collects all buffer donors in a vector.
   struct DonorEntry {
@@ -54,7 +59,7 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
     VLOG(1) << "input_shape: " << input_shape.ToString();
     ShapeUtil::ForEachSubshape(input_shape, [&](const Shape& subshape,
                                                 const ShapeIndex& index) {
-      if (!LayoutUtil::IsDenseArray(subshape)) {
+      if (!LayoutUtil::IsDenseArray(subshape) || subshape.is_dynamic()) {
         return;
       }
       if (alias_config->ParameterHasAlias(param_number, index)) {

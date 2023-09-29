@@ -251,6 +251,29 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "c_api_opaque_test",
+    size = "small",
+    srcs = [
+        "c_api_opaque.cc",
+        "c_api_opaque.h",
+        "c_api_opaque_test.cc",
+    ],
+    deps = [
+        ":c_api",
+        ":c_api_types",
+        ":common",
+        ":registration_external",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_opaque_internal",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/kernels:kernel_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tflite_cc_library_with_c_headers_test(
     name = "common",
     srcs = ["common.cc"],

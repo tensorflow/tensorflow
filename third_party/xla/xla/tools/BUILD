@@ -1,11 +1,6 @@
 # Tools and utilities that aid in XLA development and usage.
 
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load(
-    "@local_tsl//tsl:tsl.bzl",
-    "if_cuda_or_rocm",
-)
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//xla:xla.bzl",
@@ -14,10 +9,15 @@ load(
     "xla_py_proto_library",
 )
 load(
+    "@local_tsl//tsl:tsl.bzl",
+    "if_cuda_or_rocm",
+)
+load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
+load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -263,6 +263,71 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:status",
+    ],
+)
+
+xla_cc_binary(
+    name = "hlo-expand",
+    testonly = True,
+    deps = [
+        ":hlo_expand_main",
+    ],
+)
+
+cc_library(
+    name = "hlo_expand_main",
+    srcs = ["hlo_expand_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":hlo_expand_lib",
+        ":hlo_module_loader",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_pass_pipeline",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/util:command_line_flags",
+    ],
+)
+
+cc_library(
+    name = "hlo_expand_lib",
+    srcs = ["hlo_expand.cc"],
+    hdrs = ["hlo_expand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "//xla/service:batchnorm_expander",
+        "//xla/service:cholesky_expander",
+        "//xla/service:hlo_pass_pipeline",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service:rng_bit_generator_expander",
+        "//xla/service:rng_expander",
+        "//xla/service:triangular_solve_expander",
+        "@local_tsl//tsl/util:command_line_flags",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_expand_test",
+    srcs = ["tests/hlo_expand_test.cc"],
+    data = [
+        "tests/cholesky.hlo",
+        ":hlo-expand",
+    ],
+    tags = [
+        "nomsan",  # No msan for precompiled Nvidia binaries.
+    ],
+    deps = [
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:subprocess",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

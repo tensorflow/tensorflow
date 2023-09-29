@@ -126,17 +126,14 @@ TEST_F(CollectivePermuteDecomposerTest, TransformedDefaultChannelId) {
 
   HloInstruction* send = FindInstruction(module.get(), "send");
   EXPECT_EQ(send->operand(1), after_all);
-  EXPECT_EQ(send->control_predecessors()[0], recv);
   EXPECT_EQ(send->channel_id().value(), 0);
   EXPECT_THAT(
       send->ToString(),
       HasSubstr(
           "_xla_send_recv_source_target_pairs=\"{{0,1},{1,2},{2,3},{3,4}}\""));
   check_metadata(send);
-  EXPECT_EQ(recv_done->control_predecessors()[0], send);
   HloInstruction* send_done = FindInstruction(module.get(), "send-done");
   EXPECT_EQ(send_done->operand(0), send);
-  EXPECT_EQ(send_done->control_predecessors()[0], recv_done);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::GetTupleElement(recv_done, 0));

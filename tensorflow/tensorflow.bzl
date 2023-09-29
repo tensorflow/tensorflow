@@ -977,7 +977,7 @@ def _create_symlink(src, dest, visibility = None):
         outs = [src],
         srcs = [dest],
         output_to_bindir = 1,
-        cmd = "ln -sf $$(realpath --relative-to=$(RULEDIR) $<) $@",
+        cmd = "ln -sf $$(basename $<) $@",
         visibility = visibility,
     )
 
@@ -1912,7 +1912,7 @@ def tf_gpu_kernel_library(
         hdrs = hdrs,
         copts = copts,
         deps = deps + if_cuda([
-            clean_dep("@local_tsl//tsl/cuda:cudart_stub"),
+            clean_dep("@local_tsl//tsl/cuda:cudart"),
         ]) + if_cuda_or_rocm([
             clean_dep("//tensorflow/core:gpu_lib"),
         ]),
@@ -2908,7 +2908,7 @@ _local_genrule_internal = rule(
         "srcs": attr.label_list(
             allow_files = True,
         ),
-        "_whitelist_function_transition": attr.label(default = "@bazel_tools//tools/whitelists/function_transition_whitelist"),
+        "_allowlist_function_transition": attr.label(default = "@bazel_tools//tools/allowlists/function_transition_allowlist"),
     },
 )
 

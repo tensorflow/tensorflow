@@ -694,6 +694,7 @@ StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
       CreateIfRtMemoryKindFromSharding(dst_sharding);
   if (ifrt_array_ptr->sharding().devices().devices() == devices.devices() &&
       (!dst_memory_kind.memory_kind().has_value() ||
+       !ifrt_array_ptr->sharding().memory_kind().memory_kind().has_value() ||
        ifrt_array_ptr->sharding().memory_kind() == dst_memory_kind)) {
     return *this;
   }

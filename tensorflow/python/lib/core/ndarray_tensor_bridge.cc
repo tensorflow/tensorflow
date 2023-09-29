@@ -15,6 +15,7 @@ limitations under the License.
 
 // clang-format off
 // Must be included first.
+#include "tensorflow/c/tf_datatype.h"
 #include "tsl/python/lib/core/numpy.h"
 // clang-format on
 
@@ -196,6 +197,12 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       break;
     case TF_FLOAT8_E4M3FN:
       *out_pyarray_type = custom_dtypes.float8_e4m3fn;
+      break;
+    case TF_INT4:
+      *out_pyarray_type = custom_dtypes.int4;
+      break;
+    case TF_UINT4:
+      *out_pyarray_type = custom_dtypes.uint4;
       break;
     default:
       return errors::Internal("Tensorflow type ", tf_datatype,

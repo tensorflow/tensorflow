@@ -232,12 +232,16 @@ service CoordinationService {
   // Register task to coordination service so that the service starts to track
   // liveness of the task. RPC blocks and returns only when it registers to
   // the service successfully, or error happens in the registering process.
-  rpc RegisterTask(RegisterTaskRequest) returns (RegisterTaskResponse);
+  rpc RegisterTask(RegisterTaskRequest) returns (RegisterTaskResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // Heartbeat message from task to coordination service. Heartbeat is sent from
   // a task to refresh its timestamp on leader to avoid it becoming stale.
   // RPC responds immediately after refreshing the timestamp on leader.
-  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // Wait for all tasks in the cluster to be up and running. The RPC request
   // only gets responded when all tasks have registered, or some error occurs.
@@ -248,7 +252,9 @@ service CoordinationService {
   // disconnecting together. If the barrier times out, tasks at the barrier will
   // still disconnect, while an error is reported to tasks that did not reach
   // the barrier on time.
-  rpc ShutdownTask(ShutdownTaskRequest) returns (ShutdownTaskResponse);
+  rpc ShutdownTask(ShutdownTaskRequest) returns (ShutdownTaskResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // Disconnects task from the service if it is in an ERROR state, thereby
   // allowing it to reconnect via RegisterTask() in the future.
@@ -274,11 +280,15 @@ service CoordinationService {
   // tasks. The key can be formatted as Unix file path with hierarchy. The
   // coordination service key-value store should only be used for cluster
   // configuration data.
-  rpc InsertKeyValue(InsertKeyValueRequest) returns (InsertKeyValueResponse);
+  rpc InsertKeyValue(InsertKeyValueRequest) returns (InsertKeyValueResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // Get configuration key-value. The request blocks until the key-value data
   // becomes available (i.e., set by a task in the cluster).
-  rpc GetKeyValue(GetKeyValueRequest) returns (GetKeyValueResponse);
+  rpc GetKeyValue(GetKeyValueRequest) returns (GetKeyValueResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // Get configuration key-value. The request does not block, but returns an
   // error if the requested key does not exist.
@@ -286,7 +296,9 @@ service CoordinationService {
 
   // Same as GetKeyValue, but returns all values that have keys which are
   // prefixed with the directory key.
-  rpc GetKeyValueDir(GetKeyValueDirRequest) returns (GetKeyValueDirResponse);
+  rpc GetKeyValueDir(GetKeyValueDirRequest) returns (GetKeyValueDirResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // Delete configuration key-value. If is_directory is set in request,
   // recursively clean up all key-values under the path specified by `key`.
@@ -319,7 +331,9 @@ service CoordinationService {
   //       for the same barrier, (2) one of the participating tasks is not in
   //       the cluster, or (3) task making the request is not included in the
   //       list of participating tasks.
-  rpc Barrier(BarrierRequest) returns (BarrierResponse);
+  rpc Barrier(BarrierRequest) returns (BarrierResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // Aborts the barrier if it is ongoing.
   // Current and future WaitAtBarrier() calls with the same id will return a

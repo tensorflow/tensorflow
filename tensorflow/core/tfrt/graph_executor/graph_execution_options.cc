@@ -69,7 +69,12 @@ tensorflow::SessionOptions CreateDefaultSessionOptions(
         ->mutable_experimental()
         ->set_num_virtual_devices_per_gpu(options.tfrt_gpu_parallelism);
   }
-
+  if (options.gpu_system_memory_size_in_mb > 0) {
+    config.mutable_gpu_options()
+        ->mutable_experimental()
+        ->set_gpu_system_memory_size_in_mb(
+            options.gpu_system_memory_size_in_mb);
+  }
   return session_options;
 }
 

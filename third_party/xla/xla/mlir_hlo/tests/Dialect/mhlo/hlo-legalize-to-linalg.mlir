@@ -1401,8 +1401,8 @@ func.func @reshape_empty(%arg0: tensor<7x0xf64>) -> tensor<0x42x101xf64> {
 
 // -----
 
-// CHECK-LABEL: func @minf
-func.func @minf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
+// CHECK-LABEL: func @minimumf
+func.func @minimumf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %0 = "mhlo.minimum"(%lhs, %rhs) {someattr}
           : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
@@ -1411,11 +1411,11 @@ func.func @minf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32>
 // CHECK: linalg.generic
 // CHECK-SAME: {someattr}
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %{{.*}}: f32):
-// CHECK-NEXT:   %[[RESULT:.*]] = arith.minf %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.minimumf %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // CHECK-PRIMITIVE: linalg.map
-// CHECK-PRIMITIVE: arith.minf
+// CHECK-PRIMITIVE: arith.minimumf
 
 // -----
 
@@ -2862,8 +2862,8 @@ func.func @clamp_static(%lb : tensor<4xf32>, %x : tensor<4xf32>, %ub : tensor<4x
   // CHECK: %[[INIT:.*]] = tensor.empty
   // CHECK: %[[RESULT:.*]] = linalg.generic {{.*}} ins(%[[LB]], %[[X]], %[[UB]] : tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) outs(%[[INIT]] : tensor<4xf32>)
   // CHECK: ^bb0(%[[SCALAR_LB:.*]]: f32, %[[SCALAR_X:.*]]: f32, %[[SCALAR_UB:.*]]: f32, %{{.*}}: f32):
-  // CHECK:   %[[MAX:.*]] = arith.maxf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
-  // CHECK:   %[[MIN:.*]] = arith.minf %[[MAX]], %[[SCALAR_UB]] : f32
+  // CHECK:   %[[MAX:.*]] = arith.maximumf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
+  // CHECK:   %[[MIN:.*]] = arith.minimumf %[[MAX]], %[[SCALAR_UB]] : f32
   // CHECK:   linalg.yield %[[MIN]]
   // CHECK: } -> tensor<4xf32>
   // CHECK: return %[[RESULT]] : tensor<4xf32>
@@ -2878,8 +2878,8 @@ func.func @clamp_static(%lb : tensor<4xf32>, %x : tensor<4xf32>, %ub : tensor<4x
 // CHECK-PRIMITIVE: %[[INIT:.*]] = tensor.empty
 // CHECK-PRIMITIVE: %[[RESULT:.*]] = linalg.map ins(%[[LB]], %[[X]], %[[UB]] : tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) outs(%[[INIT]] : tensor<4xf32>)
 // CHECK-PRIMITIVE: (%[[SCALAR_LB:.*]]: f32, %[[SCALAR_X:.*]]: f32, %[[SCALAR_UB:.*]]: f32)
-// CHECK-PRIMITIVE:   %[[MAX:.*]] = arith.maxf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
-// CHECK-PRIMITIVE:   %[[MIN:.*]] = arith.minf %[[MAX]], %[[SCALAR_UB]] : f32
+// CHECK-PRIMITIVE:   %[[MAX:.*]] = arith.maximumf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
+// CHECK-PRIMITIVE:   %[[MIN:.*]] = arith.minimumf %[[MAX]], %[[SCALAR_UB]] : f32
 // CHECK-PRIMITIVE:   linalg.yield %[[MIN]]
 // CHECK-PRIMITIVE: return %[[RESULT]] : tensor<4xf32>
 
@@ -2892,8 +2892,8 @@ func.func @clamp_dynamic(%lb : tensor<?xf32>, %x : tensor<?xf32>, %ub : tensor<?
   // CHECK: %[[INIT:.*]] = tensor.empty
   // CHECK: %[[RESULT:.*]] = linalg.generic {{.*}} ins(%[[LB]], %[[X]], %[[UB]] : tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) outs(%[[INIT]] : tensor<?xf32>)
   // CHECK: ^bb0(%[[SCALAR_LB:.*]]: f32, %[[SCALAR_X:.*]]: f32, %[[SCALAR_UB:.*]]: f32, %{{.*}}: f32):
-  // CHECK:   %[[MAX:.*]] = arith.maxf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
-  // CHECK:   %[[MIN:.*]] = arith.minf %[[MAX]], %[[SCALAR_UB]] : f32
+  // CHECK:   %[[MAX:.*]] = arith.maximumf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
+  // CHECK:   %[[MIN:.*]] = arith.minimumf %[[MAX]], %[[SCALAR_UB]] : f32
   // CHECK:   linalg.yield %[[MIN]]
   // CHECK: } -> tensor<?xf32>
   // CHECK: return %[[RESULT]] : tensor<?xf32>
@@ -2940,8 +2940,8 @@ func.func @clamp_scalar(%lb : tensor<f32>, %x : tensor<?xf32>, %ub : tensor<f32>
 // CHECK-PRIMITIVE-DAG: %[[SCALAR_UB:.*]] = tensor.extract %[[UB]]
 // CHECK-PRIMITIVE: %[[RESULT:.*]] = linalg.map ins(%[[X]] : tensor<?xf32>) outs(%[[INIT]] : tensor<?xf32>)
 // CHECK-PRIMITIVE: (%[[SCALAR_X:.*]]: f32)
-// CHECK-PRIMITIVE:   %[[MAX:.*]] = arith.maxf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
-// CHECK-PRIMITIVE:   %[[MIN:.*]] = arith.minf %[[MAX]], %[[SCALAR_UB]] : f32
+// CHECK-PRIMITIVE:   %[[MAX:.*]] = arith.maximumf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
+// CHECK-PRIMITIVE:   %[[MIN:.*]] = arith.minimumf %[[MAX]], %[[SCALAR_UB]] : f32
 // CHECK-PRIMITIVE:   linalg.yield %[[MIN]]
 // CHECK-PRIMITIVE: return %[[RESULT]]
 
@@ -6135,15 +6135,15 @@ func.func @clamp_complex(%min: tensor<8xcomplex<f32>>,
 // CHECK-PRIMITIVE-LABEL: func @reshape_sparse_encoding
 
 #ST_3D = #sparse_tensor.encoding<{
-  lvlTypes = ["compressed", "compressed", "compressed"]
+  map = (d0, d1, d2) -> (d0 : compressed, d1 : compressed, d2 : compressed)
 }>
 
 #ST_4D = #sparse_tensor.encoding<{
-  lvlTypes = ["compressed", "compressed", "compressed", "compressed"]
+  map = (d0, d1, d2, d3) -> (d0 : compressed, d1 : compressed, d2 : compressed, d3 : compressed)
 }>
 
 func.func @reshape_sparse_encoding(%arg0: tensor<1x49x16xf32, #ST_3D>) -> tensor<1x784x1x1xf32, #ST_4D> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<1x49x16xf32, #ST_3D>) -> tensor<1x784x1x1xf32, #ST_4D>
   func.return %0 : tensor<1x784x1x1xf32, #ST_4D>
 }
-// CHECK: tensor.reshape %{{.*}} : (tensor<1x49x16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed" ] }>>, tensor<4xi64>) -> tensor<1x784x1x1xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed", "compressed" ] }>>
+// CHECK: tensor.reshape %{{.*}} : (tensor<1x49x16xf32, #sparse_tensor.encoding<{{{.*}}}>>, tensor<4xi64>) -> tensor<1x784x1x1xf32, #sparse_tensor.encoding<{{{.*}}}>>

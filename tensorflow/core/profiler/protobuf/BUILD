@@ -119,6 +119,7 @@ tf_proto_library(
     protodeps = [
         ":diagnostics_proto",
         ":pod_stats_proto",
+        ":topology_proto",
     ],
     visibility = [":friends"],
 )

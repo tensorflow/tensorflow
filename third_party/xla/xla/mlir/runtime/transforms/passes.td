@@ -190,6 +190,18 @@ def ConvertAsserts : Pass<"xla-rt-convert-asserts", "ModuleOp"> {
   let dependentDialects = ["xla::runtime::RuntimeDialect"];
 }
 
+def AddInitializations : Pass<"xla-rt-add-initializations", "ModuleOp"> {
+  let summary = "Add initialization custom calls";
+
+  let description = [{
+    Add custom calls that initialize library support to the beginning of the
+    entry funcion.
+  }];
+
+  let constructor = "xla::runtime::CreateAddInitializationsPass()";
+  let dependentDialects = ["xla::runtime::RuntimeDialect"];
+}
+
 //===-----------------------------------------------------------------------===/
 // Conversions targeting `rt` dialect.
 //===-----------------------------------------------------------------------===/

@@ -44,6 +44,12 @@ inline constexpr absl::string_view kTfQuantConstantUnfreezingStepName =
 inline constexpr absl::string_view kTfQuantInsertRestoreOpStepName =
     "tf_quant_insert_restore_op";
 
+// StableHLO Quantization passes that are ran if StableHLO opset is selected.
+inline constexpr absl::string_view kTfQuantPtqPreCalibrationStepStableHloName =
+    "tf_quant_ptq_pre_calibration_stablehlo";
+inline constexpr absl::string_view kTfQuantPtqPostCalibrationStepStableHloName =
+    "tf_quant_ptq_post_calibration_stablehlo";
+
 absl::StatusOr<ExportedModel> QuantizeQatModel(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,

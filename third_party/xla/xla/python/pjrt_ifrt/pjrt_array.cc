@@ -21,7 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/strings/str_join.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/utils.h"
@@ -125,6 +126,9 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
                            sharding->devices().size(), pjrt_buffers.size());
   }
 
+  // Canonicalize memory kind in case it hasn't been done before.
+  MemoryKind canonicalized_sharding_memory_kind = CanonicalizeMemoryKind(
+      sharding->memory_kind(), sharding->devices().front());
   for (int i = 0; i < sharding->devices().size(); ++i) {
     if (pjrt_buffers[i]->device() != sharding->devices()[i]) {
       return InvalidArgument(
@@ -133,8 +137,15 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
           pjrt_buffers[i]->device()->DebugString(),
           sharding->devices()[i]->DebugString());
     }
-    // TODO(yashkatariya): Check for memory kind after PJRT C API supports
-    // memories on PJRT_Buffer.
+    MemoryKind buffer_memory_kind =
+        MakeMemoryKindFromPjRtBuffer(pjrt_buffers[i].get());
+    if (canonicalized_sharding_memory_kind != buffer_memory_kind) {
+      return InvalidArgument(
+          "PjRtBuffer's memory kind does not match sharding's memory kind. Got "
+          "PjRtBuffer's memory kind: %s vs shardings's memory kind: %s",
+          buffer_memory_kind.DebugString(),
+          canonicalized_sharding_memory_kind.DebugString());
+    }
   }
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
                                  std::move(sharding), std::move(pjrt_buffers));
@@ -294,65 +305,12 @@ Future<Status> PjRtArray::CopyToHostBuffer(
   return future;
 }
 
-StatusOr<std::unique_ptr<PjRtBuffer>> TransferPjRtBufferBetweenMemories(
-    std::shared_ptr<PjRtBuffer> pjrt_buffer, ifrt::Device* new_device,
-    ifrt::MemoryKind new_memory_kind) {
-  // Fast path for transferring asynchronously from host to device.
-  // TODO(yashkatariya, hyeontaek): Make this work for all memory kinds as the
-  // default path and remove the fallback code below.
-  if ((pjrt_buffer->memory_space() != nullptr &&
-       pjrt_buffer->memory_space()->memory_space_kind() == "unpinned_host") &&
-      (new_memory_kind.memory_kind().has_value() &&
-       new_memory_kind.memory_kind() == "tpu_hbm") &&
-      !absl::StrContains(new_device->client()->platform_version(),
-                         "PJRT C API")) {
-    // This is on_device_shape because pjrt_buffer is on the host.
-    std::shared_ptr<xla::MutableLiteralBase> literal =
-        std::make_shared<xla::Literal>(pjrt_buffer->on_device_shape());
-    TF_ASSIGN_OR_RETURN(
-        auto transfer_manager,
-        new_device->client()->CreateBuffersForAsyncHostToDevice(
-            absl::MakeConstSpan({pjrt_buffer->on_device_shape()}), new_device));
-    std::unique_ptr<PjRtBuffer> output_pjrt_buffer =
-        transfer_manager->RetrieveBuffer(0);
-
-    PjRtFuture<Status> future = pjrt_buffer->ToLiteral(literal.get());
-    future.OnReady([literal = std::move(literal),
-                    transfer_manager =
-                        std::move(transfer_manager)](Status status) mutable {
-      if (!status.ok()) {
-        transfer_manager->SetBufferError(0, std::move(status));
-        return;
-      }
-      LiteralSlice literal_slice = *literal;
-      // transfer_manager destruction could be blocking depending on the
-      // backend, extend its lifetime to after the transfer is done to avoid
-      // blocking a thread.
-      auto transfer_manager_ptr = transfer_manager.get();
-      Status transfer_status = transfer_manager_ptr->TransferLiteralToBuffer(
-          0, literal_slice,
-          [literal = std::move(literal),
-           transfer_manager = std::move(transfer_manager)]() {});
-      if (!transfer_status.ok()) {
-        transfer_manager_ptr->SetBufferError(0, std::move(transfer_status));
-      }
-    });
-    return output_pjrt_buffer;
-  }
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal,
-                      pjrt_buffer->ToLiteralSync());
-  // Avoid use-after-free on `literal` due to unsequenced move and use.
-  Literal* literal_pointer = literal.get();
-  absl::InlinedVector<int64_t, 4> byte_strides(
-      literal->shape().dimensions_size());
-  TF_RETURN_IF_ERROR(
-      ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
-  ifrt::Client::HostBufferSemantics host_buffer_semantics =
-      ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes;
-
+// TODO(yashkatariya): Maybe move this to ifrt::Device?
+StatusOr<PjRtMemorySpace*> GetMemorySpaceFromMemoryKind(
+    ifrt::Device* device, ifrt::MemoryKind memory_kind) {
   PjRtMemorySpace* memory_space = nullptr;
-  for (PjRtMemorySpace* ms : pjrt_buffer->device()->memory_spaces()) {
-    if (ms->memory_space_kind() == new_memory_kind.memory_kind()) {
+  for (PjRtMemorySpace* ms : device->memory_spaces()) {
+    if (ms->memory_space_kind() == memory_kind.memory_kind()) {
       memory_space = ms;
       break;
     }
@@ -360,18 +318,13 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TransferPjRtBufferBetweenMemories(
   if (memory_space == nullptr) {
     return InvalidArgument(
         "Invalid memory kind: %s; available memory kinds: %s",
-        new_memory_kind.DebugString(),
-        absl::StrJoin(pjrt_buffer->device()->memory_spaces(), ", ",
+        memory_kind.DebugString(),
+        absl::StrJoin(device->memory_spaces(), ", ",
                       [](std::string* out, PjRtMemorySpace* ms) {
                         absl::StrAppend(out, ms->memory_space_kind());
                       }));
   }
-  return new_device->client()->BufferFromHostBuffer(
-      literal_pointer->untyped_data(), literal_pointer->shape().element_type(),
-      literal_pointer->shape().dimensions(), byte_strides,
-      host_buffer_semantics,
-      [literal{std::move(literal)}]() { /* free literal */ }, memory_space,
-      /*device_layout=*/nullptr);
+  return memory_space;
 }
 
 StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
@@ -387,19 +340,24 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
   // permits device changes and nothing else.
   PjRtBuffers buffers;
   buffers.reserve(pjrt_buffers_.size());
+  CHECK_GT(new_sharding->devices().size(), 0);
+  // Canonicalize memory kind in case it hasn't been done before.
+  MemoryKind canonicalized_sharding_memory_kind = CanonicalizeMemoryKind(
+      new_sharding->memory_kind(), new_sharding->devices().front());
+  bool new_sharding_has_memory_kind =
+      canonicalized_sharding_memory_kind.memory_kind().has_value();
   for (int i = 0; i < pjrt_buffers_.size(); ++i) {
-    // TODO(yashkatariya): Remove the
-    // `pjrt_buffers_[i]->memory_space() != nullptr` check after PJRT C API
-    // populates memory space on PJRT_Buffer.
-    bool memory_kind_equal =
-        !new_sharding->memory_kind().memory_kind().has_value() ||
-        (pjrt_buffers_[i]->memory_space() != nullptr &&
-         pjrt_buffers_[i]->memory_space()->memory_space_kind() ==
-             new_sharding->memory_kind().memory_kind());
     bool devices_equal =
         pjrt_buffers_[i]->device() == new_sharding->devices()[i];
+    bool memories_supported = pjrt_buffers_[i]->memory_space() != nullptr;
+    bool memory_kind_equal =
+        new_sharding_has_memory_kind && memories_supported &&
+        pjrt_buffers_[i]->memory_space()->memory_space_kind() ==
+            canonicalized_sharding_memory_kind.memory_kind();
 
-    if (devices_equal && memory_kind_equal) {
+    // No need for data transfer.
+    if (devices_equal && (!new_sharding_has_memory_kind ||
+                          !memories_supported || memory_kind_equal)) {
       switch (semantics) {
         case ArrayCopySemantics::kAlwaysCopy:
           // TODO(hyeontaek): kAlwaysCopy should clone the buffer, but the PjRt
@@ -423,8 +381,27 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
             "first fetched to the host and then sent to the destination "
             "device.");
       }
-      // If memory kinds match but devices are not the same.
-      if (!devices_equal && memory_kind_equal) {
+      // Use `PjRtBuffer::CopyToMemorySpace` instead of
+      // `PjRtBuffer::CopyToDevice` when memories are supported. Because the
+      // semantics of the latter one is to copy to the default memory space of
+      // the device.
+      if (new_sharding_has_memory_kind && memories_supported) {
+        TF_ASSIGN_OR_RETURN(
+            auto memory_space,
+            GetMemorySpaceFromMemoryKind(new_sharding->devices()[i],
+                                         canonicalized_sharding_memory_kind));
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> copied_buffer,
+                            pjrt_buffers_[i]->CopyToMemorySpace(memory_space));
+        if (semantics == ArrayCopySemantics::kDonateInput) {
+          if (!memory_kind_equal) {
+            return Unimplemented(
+                "Donation across different memory kinds is not implemented.");
+          }
+          pjrt_buffers_[i] = nullptr;
+        }
+        buffers.push_back(std::shared_ptr<PjRtBuffer>(copied_buffer.release()));
+      } else {
+        // Use `PjRtBuffer::CopyToDevice` when memories are not supported.
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<xla::PjRtBuffer> copied_buffer,
             pjrt_buffers_[i]->CopyToDevice(new_sharding->devices()[i]));
@@ -432,32 +409,6 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
           pjrt_buffers_[i] = nullptr;
         }
         buffers.push_back(std::shared_ptr<PjRtBuffer>(copied_buffer.release()));
-      } else if (devices_equal && !memory_kind_equal) {
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> copied_buffer,
-                            TransferPjRtBufferBetweenMemories(
-                                pjrt_buffers_[i], new_sharding->devices()[i],
-                                new_sharding->memory_kind()));
-        if (semantics == ArrayCopySemantics::kDonateInput) {
-          return Unimplemented(
-              "Donation across different memory kinds is not implemented.");
-        }
-        buffers.push_back(std::shared_ptr<PjRtBuffer>(copied_buffer.release()));
-      } else {
-        CHECK(!devices_equal && !memory_kind_equal);
-        TF_ASSIGN_OR_RETURN(
-            std::shared_ptr<xla::PjRtBuffer> copied_buffer,
-            pjrt_buffers_[i]->CopyToDevice(new_sharding->devices()[i]));
-        TF_ASSIGN_OR_RETURN(
-            std::unique_ptr<PjRtBuffer> transferred_buffer,
-            TransferPjRtBufferBetweenMemories(std::move(copied_buffer),
-                                              new_sharding->devices()[i],
-                                              new_sharding->memory_kind()));
-        if (semantics == ArrayCopySemantics::kDonateInput) {
-          return Unimplemented(
-              "Donation across different memory kinds is not implemented.");
-        }
-        buffers.push_back(
-            std::shared_ptr<PjRtBuffer>(transferred_buffer.release()));
       }
     }
   }

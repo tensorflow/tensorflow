@@ -2999,6 +2999,45 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
               get_slice("negate_5", {}) == get_slice("negate_1", {}));
 }
 
+TEST_F(BufferAssignmentTest, AsyncCallImplicitSharding) {
+  std::string hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  called_computation {
+    param0 = f32[4] parameter(0)
+    constant = f32[1] constant(1)
+    dynamic-update-slice = f32[4] dynamic-update-slice(param0, constant, constant)
+    ROOT negate = f32[4] negate(dynamic-update-slice)
+  }
+
+  ENTRY entry {
+    p0 = f32[8] parameter(0)
+    call-start = ((f32[8]), f32[8], s32[]) call-start(p0), async_execution_thread="foo", to_apply=called_computation
+    ROOT call-done = f32[8] call-done(call-start), async_execution_thread="foo", to_apply=called_computation
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  AsyncOpCanonicalizer canonicalizer;
+  TF_ASSERT_OK(canonicalizer.Run(module.get()).status());
+  HloDCE dce;
+  TF_ASSERT_OK(dce.Run(module.get()).status());
+
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(module.get());
+
+  LOG(INFO) << buffers->ToString();
+
+  auto get_slice = [&](std::string_view hlo_name, const ShapeIndex& index) {
+    return buffers
+        ->GetUniqueSlice(FindInstruction(module.get(), hlo_name), index)
+        .value();
+  };
+
+  EXPECT_EQ(get_slice("p0", {}).size(), 32);
+  EXPECT_EQ(get_slice("dynamic-update-slice", {}).size(), 32);
+}
+
 TEST_F(BufferAssignmentTest, BufferInfoStringTest) {
   absl::string_view module_str = R"(
 HloModule test_module

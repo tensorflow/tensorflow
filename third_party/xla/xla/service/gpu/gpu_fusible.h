@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/gpu_device_info.h"
+#include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/instruction_fusion.h"
 
 // TODO(b/112957171): Extract logic to determine fusibility of HLO ops from
@@ -61,6 +62,11 @@ struct FusionInfoCache {
 // Returns projected shared memory usage of a given instruction in bytes.
 int64_t SharedMemoryUsage(const HloInstruction& instr,
                           FusionInfoCache* cache = nullptr);
+
+// Returns projected shared memory usage of a reduction fusion.
+int64_t ReductionProjectedShmemUsageBytes(
+    const ReductionDimensions& reduction_dimensions,
+    const std::vector<std::vector<const HloInstruction*>>& instr_index_groups);
 
 inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
 
@@ -178,7 +184,8 @@ size_t GetOutputSizeOfFusible(const HloInstruction& instr);
 //
 // For input: R1
 // Expected output: [R1]
-std::vector<HloInstruction*> GetFusionRoots(const HloComputation& computation);
+std::vector<const HloInstruction*> GetFusionRoots(
+    const HloComputation& computation);
 
 // Whether the instruction is a reduction hero for the given root.
 bool IsRealReductionHero(const HloInstruction& root,

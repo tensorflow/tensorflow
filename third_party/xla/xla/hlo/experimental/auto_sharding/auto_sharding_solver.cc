@@ -71,12 +71,12 @@ void PrintLargestInstructions(
   // different from liveness_set and strategy.memory_cost.
 
   std::vector<std::pair<LivenessIdx, double>> time_memory_usage;
-  for (LivenessIdx t = 0; t < liveness.size(); ++t) {
+  for (LivenessIdx time_idx = 0; time_idx < liveness.size(); ++time_idx) {
     double mem = 0.0;
-    for (NodeIdx i : liveness[t]) {
-      mem += memory_cost[i][chosen_strategy[i]];
+    for (NodeIdx node_idx : liveness[time_idx]) {
+      mem += memory_cost[node_idx][chosen_strategy[node_idx]];
     }
-    time_memory_usage.push_back(std::make_pair(t, mem));
+    time_memory_usage.push_back(std::make_pair(time_idx, mem));
   }
   struct {
     bool operator()(std::pair<LivenessIdx, double> a,
@@ -94,13 +94,13 @@ void PrintLargestInstructions(
   k = std::min(k, time_memory_usage.size());
   std::vector<std::pair<NodeIdx, double>> instruction_mem;
   absl::flat_hash_set<NodeIdx> instruction_set;
-  for (LivenessIdx t = 0; t < k; t++) {
-    for (NodeIdx i : liveness[time_memory_usage.at(t).first]) {
-      double mem = memory_cost[i][chosen_strategy[i]];
+  for (LivenessIdx time_idx = 0; time_idx < k; time_idx++) {
+    for (NodeIdx node_idx : liveness[time_memory_usage.at(time_idx).first]) {
+      double mem = memory_cost[node_idx][chosen_strategy[node_idx]];
       if (mem > 100 * 1024 * 1024 &&
-          instruction_set.find(i) == instruction_set.end()) {
-        instruction_mem.push_back(std::make_pair(i, mem));
-        instruction_set.insert(i);
+          instruction_set.find(node_idx) == instruction_set.end()) {
+        instruction_mem.push_back(std::make_pair(node_idx, mem));
+        instruction_set.insert(node_idx);
       }
     }
   }
@@ -127,6 +127,13 @@ void AddSalt(const std::string& name, double saltiplier, double* coeff) {
   double salt = saltiplier * hash / std::numeric_limits<tsl::uint64>::max();
   *coeff = *coeff * (1.0 + salt) + salt;
 }
+
+AutoShardingSolverResult SolveAndExtractSolution(
+    const AutoShardingSolverRequest& request,
+    const std::vector<std::vector<MPVariable*>>& s,
+    const std::vector<std::vector<MPVariable*>>& e,
+    const MPVariable* overbudget_var, const MPVariable* makespan_var,
+    MPSolver& solver);
 
 // We formulate the auto sharding process as the following ILP problem:
 // Variables:
@@ -194,66 +201,75 @@ AutoShardingSolverResult CallORToolsSolver(
   // Create variables
   std::vector<std::vector<MPVariable*>> s(request.num_nodes);
   std::vector<std::vector<MPVariable*>> e(num_edges);
-  MPVariable* overbudget_var = solver->MakeNumVar(
-      0.0, request.overbudget_coeff ? MPSolver::infinity() : 0.0, "overbudget");
+  MPVariable* overbudget_var = nullptr;
+  MPVariable* makespan_var = nullptr;
 
   size_t var_vector_cnt = 0;
-  for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-    if (request.s_follow[i] < 0) {
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
+    if (request.s_follow[node_idx] < 0) {
       var_vector_cnt += 1;
       // Creates variables for instructions that do not follow others.
-      solver->MakeBoolVarArray(request.s_len[i], absl::StrCat("s[", i, "]"),
-                               &s[i]);
+      solver->MakeBoolVarArray(request.s_len[node_idx],
+                               absl::StrCat("s[", node_idx, "]"), &s[node_idx]);
     }
   }
 
-  for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-    if (request.s_follow[i] >= 0) {
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
+    if (request.s_follow[node_idx] >= 0) {
       // Copies the variable of followed instruction to the following
       // instruction.
-      s[i] = s[request.s_follow[i]];
+      s[node_idx] = s[request.s_follow[node_idx]];
     }
   }
 
   std::vector<EdgeIdx> e_follow(num_edges, -1);
   absl::flat_hash_map<std::pair<NodeIdx, NodeIdx>, EdgeIdx> edge_map;
-  for (EdgeIdx i = 0; i < num_edges; ++i) {
-    const std::pair<NodeIdx, NodeIdx>& edge = request.e[i];
+  for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
+    const std::pair<NodeIdx, NodeIdx>& edge = request.e[edge_idx];
     std::pair<NodeIdx, NodeIdx> followed_edge = edge;
     if (int f = request.s_follow[edge.first]; f >= 0) followed_edge.first = f;
     if (int f = request.s_follow[edge.second]; f >= 0) followed_edge.second = f;
     if (const auto& it = edge_map.find(followed_edge); it != edge_map.end()) {
-      e[i] = e[it->second];  // Copy variable of followed edge to following edge
-      e_follow[i] = it->second;
+      e[edge_idx] = e[it->second];  // Copy variable of followed edge
+      e_follow[edge_idx] = it->second;
       continue;
     }
     solver->MakeBoolVarArray(
         request.s_len[edge.first] * request.s_len[edge.second],
-        absl::StrCat("e[", edge.first, ",", edge.second, "]"), &e[i]);
-    edge_map.insert({followed_edge, i});
+        absl::StrCat("e[", edge.first, ",", edge.second, "]"), &e[edge_idx]);
+    edge_map.insert({followed_edge, edge_idx});
+  }
+
+  if (request.memory_budget > 0 && request.overbudget_coeff) {
+    overbudget_var =
+        solver->MakeNumVar(0.0, MPSolver::infinity(), "overbudget");
+  }
+
+  if (request.makespan_coeff) {
+    makespan_var = CreateMakespanVar(request, e, *solver);
   }
 
   // Objective
   // Node costs
-  for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-    for (NodeStrategyIdx j = 0; j < s[i].size(); ++j) {
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
+    for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
       double accumulated_coefficient =
-          solver->Objective().GetCoefficient(s[i][j]);
-      double coefficient = request.c[i][j] + request.d[i][j];
-      AddSalt(absl::StrCat(i, "S", j), request.saltiplier, &coefficient);
+          solver->Objective().GetCoefficient(s[node_idx][j]);
+      double coefficient = request.c[node_idx][j] + request.d[node_idx][j];
+      AddSalt(absl::StrCat(node_idx, "S", j), request.saltiplier, &coefficient);
       solver->MutableObjective()->SetCoefficient(
-          s[i][j], accumulated_coefficient + coefficient);
+          s[node_idx][j], accumulated_coefficient + coefficient);
     }
   }
   // Edge costs
-  for (EdgeIdx i = 0; i < num_edges; ++i) {
-    for (EdgeStrategyIdx j = 0; j < e[i].size(); ++j) {
+  for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
+    for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
       double accumulated_coefficient =
-          solver->Objective().GetCoefficient(e[i][j]);
-      double coefficient = request.r[i][j];
-      AddSalt(absl::StrCat(i, "E", j), request.saltiplier, &coefficient);
+          solver->Objective().GetCoefficient(e[edge_idx][j]);
+      double coefficient = request.r[edge_idx][j];
+      AddSalt(absl::StrCat(edge_idx, "E", j), request.saltiplier, &coefficient);
       solver->MutableObjective()->SetCoefficient(
-          e[i][j], accumulated_coefficient + coefficient);
+          e[edge_idx][j], accumulated_coefficient + coefficient);
     }
   }
 
@@ -261,39 +277,41 @@ AutoShardingSolverResult CallORToolsSolver(
   // 0. Do not choose solutions with infinity costs, as it will make the
   // objective value so large that other solution choices do not matter anymore.
   // Remove these constraints once b/238210866 is done.
-  for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-    if (s[i].empty() || request.s_follow[i] >= 0) continue;
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
+    if (s[node_idx].empty() || request.s_follow[node_idx] >= 0) continue;
     bool all_infinity = true;
-    for (NodeStrategyIdx j = 0; j < s[i].size(); ++j) {
-      if (solver->Objective().GetCoefficient(s[i][j]) >= kInfinityCost) {
+    for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+      if (solver->Objective().GetCoefficient(s[node_idx][j]) >= kInfinityCost) {
         MPConstraint* constraint = solver->MakeRowConstraint(
-            0.0, 0.0, absl::StrCat("infinitycost: s[", i, "][", j, "] = 0"));
-        constraint->SetCoefficient(s[i][j], 1.0);
+            0.0, 0.0,
+            absl::StrCat("infinitycost: s[", node_idx, "][", j, "] = 0"));
+        constraint->SetCoefficient(s[node_idx][j], 1.0);
       } else {
         all_infinity = false;
       }
     }
     if (all_infinity) {
-      LOG(FATAL) << "All of s[" << i << "][*] have infinity costs";
+      LOG(FATAL) << "All of s[" << node_idx << "][*] have infinity costs";
     }
   }
 
-  for (EdgeIdx i = 0; i < num_edges; ++i) {
-    if (e[i].empty() || e_follow[i] >= 0) continue;
+  for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
+    if (e[edge_idx].empty() || e_follow[edge_idx] >= 0) continue;
     bool all_infinity = true;
-    for (EdgeStrategyIdx j = 0; j < e[i].size(); ++j) {
-      if (solver->Objective().GetCoefficient(e[i][j]) >= kInfinityCost) {
+    for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
+      if (solver->Objective().GetCoefficient(e[edge_idx][j]) >= kInfinityCost) {
         MPConstraint* constraint = solver->MakeRowConstraint(
-            0.0, 0.0, absl::StrCat("infinitycost: e[", i, "][", j, "] = 0"));
-        constraint->SetCoefficient(e[i][j], 1.0);
+            0.0, 0.0,
+            absl::StrCat("infinitycost: e[", edge_idx, "][", j, "] = 0"));
+        constraint->SetCoefficient(e[edge_idx][j], 1.0);
       } else {
         all_infinity = false;
       }
     }
     if (all_infinity) {
       auto err_msg =
-          absl::StrCat("All of e[", request.e[i].first, "][",
-                       request.e[i].second, "][*] have infinity costs");
+          absl::StrCat("All of e[", request.e[edge_idx].first, "][",
+                       request.e[edge_idx].second, "][*] have infinity costs");
       if (request.crash_at_infinity_costs_check) {
         LOG(FATAL) << err_msg;
       } else {
@@ -305,50 +323,53 @@ AutoShardingSolverResult CallORToolsSolver(
 
   // a. specified via "BoolVarArray"
   // b.
-  for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-    if (request.s_follow[i] >= 0) continue;
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
+    if (request.s_follow[node_idx] >= 0) continue;
     MPConstraint* constraint = solver->MakeRowConstraint(
         1.0, 1.0,
-        absl::StrCat("sum(s[", i, "][j] for j = [0 .. ", s[i].size(),
-                     ")) = 1"));
-    for (NodeStrategyIdx j = 0; j < s[i].size(); ++j) {
-      constraint->SetCoefficient(s[i][j], 1.0);
+        absl::StrCat("sum(s[", node_idx, "][j] for j = [0 .. ",
+                     s[node_idx].size(), ")) = 1"));
+    for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+      constraint->SetCoefficient(s[node_idx][j], 1.0);
     }
   }
   // c.
   if (request.memory_budget > 0) {
     int64_t minimum_memory_budget_required_estimate = 0;
-    for (LivenessIdx t = 0; t < request.live.size(); ++t) {
+    for (LivenessIdx time_idx = 0; time_idx < request.live.size(); ++time_idx) {
       int64_t minimum_memory_budget_required_estimate_local = 0;
       std::string str = "[";
       double total_fixed_memory_cost = 0.0;  // Amount consumed "no matter what"
-      for (NodeIdx i : request.live[t]) {
-        absl::StrAppend(&str, i, ", ");
-        total_fixed_memory_cost +=
-            *std::min_element(request.m[i].begin(), request.m[i].end());
+      for (NodeIdx node_idx : request.live[time_idx]) {
+        absl::StrAppend(&str, node_idx, ", ");
+        total_fixed_memory_cost += *std::min_element(
+            request.m[node_idx].begin(), request.m[node_idx].end());
       }
       str += "]";
       MPConstraint* constraint = solver->MakeRowConstraint(
           -MPSolver::infinity(),
           request.memory_budget - total_fixed_memory_cost,
-          absl::StrCat("mem[", t, "] = ", str));
-      constraint->SetCoefficient(overbudget_var, -1.0);
-      for (NodeIdx i : request.live[t]) {
-        auto fixed_memory_cost =
-            *std::min_element(request.m[i].begin(), request.m[i].end());
+          absl::StrCat("mem[", time_idx, "] = ", str));
+      if (overbudget_var) {
+        constraint->SetCoefficient(overbudget_var, -1.0);
+      }
+      for (NodeIdx node_idx : request.live[time_idx]) {
+        auto fixed_memory_cost = *std::min_element(request.m[node_idx].begin(),
+                                                   request.m[node_idx].end());
         minimum_memory_budget_required_estimate_local += fixed_memory_cost;
-        for (size_t j = 0; j < s[i].size(); ++j) {
-          double accumulated_coefficient = constraint->GetCoefficient(s[i][j]);
+        for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+          double accumulated_coefficient =
+              constraint->GetCoefficient(s[node_idx][j]);
           constraint->SetCoefficient(
-              s[i][j],
-              accumulated_coefficient + request.m[i][j] - fixed_memory_cost);
+              s[node_idx][j], accumulated_coefficient + request.m[node_idx][j] -
+                                  fixed_memory_cost);
         }
       }
       minimum_memory_budget_required_estimate =
           std::max(minimum_memory_budget_required_estimate,
                    minimum_memory_budget_required_estimate_local);
     }
-    if (request.overbudget_coeff) {
+    if (overbudget_var) {
       solver->MutableObjective()->SetCoefficient(overbudget_var,
                                                  *request.overbudget_coeff);
     }
@@ -359,49 +380,53 @@ AutoShardingSolverResult CallORToolsSolver(
 
   // d. specified via "BoolVarArray"
   // e.
-  for (EdgeIdx i = 0; i < num_edges; ++i) {
-    if (e_follow[i] >= 0) continue;
-    const std::pair<NodeIdx, NodeIdx>& edge = request.e[i];
+  for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
+    if (e_follow[edge_idx] >= 0) continue;
+    const std::pair<NodeIdx, NodeIdx>& edge = request.e[edge_idx];
     MPConstraint* constraint = solver->MakeRowConstraint(
         1.0, 1.0,
         absl::StrCat("sum(e[", edge.first, "][", edge.second, "][*]) = 1"));
-    for (EdgeStrategyIdx j = 0; j < e[i].size(); ++j) {
-      constraint->SetCoefficient(e[i][j], 1.0);
+    for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
+      constraint->SetCoefficient(e[edge_idx][j], 1.0);
     }
   }
   // f.
-  for (EdgeIdx i = 0; i < num_edges; ++i) {
-    if (e_follow[i] >= 0) continue;
-    const std::pair<NodeIdx, NodeIdx>& edge = request.e[i];
+  for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
+    if (e_follow[edge_idx] >= 0) continue;
+    const std::pair<NodeIdx, NodeIdx>& edge = request.e[edge_idx];
     for (NodeStrategyIdx p = 0; p < s[edge.first].size(); ++p) {
       MPConstraint* constraint = solver->MakeRowConstraint(
-          -MPSolver::infinity(), 0, absl::StrCat("f for i = ", i, ", p = ", p));
+          -MPSolver::infinity(), 0,
+          absl::StrCat("f for i = ", edge_idx, ", p = ", p));
       constraint->SetCoefficient(s[edge.first][p], -1.0);
       for (NodeStrategyIdx q = 0; q < s[edge.second].size(); ++q) {
-        constraint->SetCoefficient(e[i][p * s[edge.second].size() + q], 1.0);
+        constraint->SetCoefficient(e[edge_idx][p * s[edge.second].size() + q],
+                                   1.0);
       }
     }
   }
   // g.
-  for (EdgeIdx i = 0; i < num_edges; ++i) {
-    if (e_follow[i] >= 0) continue;
-    const std::pair<NodeIdx, NodeIdx>& edge = request.e[i];
+  for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
+    if (e_follow[edge_idx] >= 0) continue;
+    const std::pair<NodeIdx, NodeIdx>& edge = request.e[edge_idx];
     for (NodeStrategyIdx q = 0; q < s[edge.second].size(); ++q) {
       MPConstraint* constraint = solver->MakeRowConstraint(
-          -MPSolver::infinity(), 0, absl::StrCat("g for i = ", i, ", q = ", q));
+          -MPSolver::infinity(), 0,
+          absl::StrCat("g for i = ", edge_idx, ", q = ", q));
       constraint->SetCoefficient(s[edge.second][q], -1.0);
       for (NodeStrategyIdx p = 0; p < s[edge.first].size(); ++p) {
-        constraint->SetCoefficient(e[i][p * s[edge.second].size() + q], 1.0);
+        constraint->SetCoefficient(e[edge_idx][p * s[edge.second].size() + q],
+                                   1.0);
       }
     }
   }
   // h.
-  for (AliasIdx i = 0; i < request.a.size(); ++i) {
-    const std::pair<NodeIdx, NodeIdx>& alias = request.a[i];
+  for (AliasIdx alias_idx = 0; alias_idx < request.a.size(); ++alias_idx) {
+    const std::pair<NodeIdx, NodeIdx>& alias = request.a[alias_idx];
     for (NodeStrategyIdx p = 0; p < s[alias.first].size(); ++p) {
       for (NodeStrategyIdx q = 0; q < s[alias.second].size(); ++q) {
         // if lhs == 1
-        if (request.v[i][p * s[alias.second].size() + q] > 0.5) {
+        if (request.v[alias_idx][p * s[alias.second].size() + q] > 0.5) {
           MPConstraint* constraint = solver->MakeRowConstraint(
               -MPSolver::infinity(), 1,
               absl::StrCat("s[", alias.first, "][", p, "] + s[", alias.second,
@@ -416,21 +441,23 @@ AutoShardingSolverResult CallORToolsSolver(
     MPConstraint* constraint = solver->MakeRowConstraint(
         0, *request.max_departures,
         absl::StrCat("departures <= ", *request.max_departures));
-    for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-      for (NodeStrategyIdx j = 0; j < s[i].size(); ++j) {
-        double accumulated_coefficient = constraint->GetCoefficient(s[i][j]);
-        constraint->SetCoefficient(s[i][j],
-                                   accumulated_coefficient + request.p[i][j]);
+    for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
+      for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+        double accumulated_coefficient =
+            constraint->GetCoefficient(s[node_idx][j]);
+        constraint->SetCoefficient(
+            s[node_idx][j], accumulated_coefficient + request.p[node_idx][j]);
       }
     }
   }
 
   if (!request.s_hint.empty()) {
     std::vector<std::pair<const MPVariable*, double>> hint;
-    for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-      if (request.s_follow[i] >= 0) continue;
-      for (NodeStrategyIdx j = 0; j < s[i].size(); ++j) {
-        hint.push_back({s[i][j], (request.s_hint[i] == j) ? 1.0 : 0.0});
+    for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
+      if (request.s_follow[node_idx] >= 0) continue;
+      for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+        double hint_val = (request.s_hint[node_idx] == j) ? 1.0 : 0.0;
+        hint.push_back({s[node_idx][j], hint_val});
       }
     }
     solver->SetHint(hint);
@@ -465,20 +492,29 @@ AutoShardingSolverResult CallORToolsSolver(
           << "Memory budget: " << request.memory_budget / (1024 * 1024 * 1024)
           << "GB\n"
           << "Number of ILP constraints: " << solver->NumConstraints();
-  auto status = solver->Solve();
+  return SolveAndExtractSolution(request, s, e, overbudget_var, makespan_var,
+                                 *solver);
+}
 
+AutoShardingSolverResult SolveAndExtractSolution(
+    const AutoShardingSolverRequest& request,
+    const std::vector<std::vector<MPVariable*>>& s,
+    const std::vector<std::vector<MPVariable*>>& e,
+    const MPVariable* overbudget_var, const MPVariable* makespan_var,
+    MPSolver& solver) {
+  auto status = solver.Solve();
   if (status == operations_research::MPSolver::INFEASIBLE) {
     LOG(ERROR) << "MPSolver could not find any feasible solution.";
 #ifdef PLATFORM_GOOGLE
     if (request.compute_iis) {
       operations_research::MPModelRequest model_request;
-      solver->ExportModelToProto(model_request.mutable_model());
-      if (solver->ProblemType() ==
+      solver.ExportModelToProto(model_request.mutable_model());
+      if (solver.ProblemType() ==
           operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
         model_request.set_solver_type(
             operations_research::MPModelRequest::SAT_INTEGER_PROGRAMMING);
-      } else if (solver->ProblemType() == operations_research::MPSolver::
-                                              SCIP_MIXED_INTEGER_PROGRAMMING) {
+      } else if (solver.ProblemType() == operations_research::MPSolver::
+                                             SCIP_MIXED_INTEGER_PROGRAMMING) {
         model_request.set_solver_type(operations_research::MPModelRequest::
                                           SCIP_MIXED_INTEGER_PROGRAMMING);
       }
@@ -510,9 +546,9 @@ AutoShardingSolverResult CallORToolsSolver(
   }
 
   LOG(INFO) << "Solver Status: " << status
-            << " Objective value: " << solver->Objective().Value();
-  if (solver->Objective().Value() >= kInfinityCost) {
-    LOG(WARNING) << "Objective (" << solver->Objective().Value()
+            << " Objective value: " << solver.Objective().Value();
+  if (solver.Objective().Value() >= kInfinityCost) {
+    LOG(WARNING) << "Objective (" << solver.Objective().Value()
                  << ") is larger than kInfinityCost. It means the solver "
                     "chooses a solution with kInfinityCost and there may be "
                     "numerical issues when the solver considering other costs.";
@@ -521,42 +557,47 @@ AutoShardingSolverResult CallORToolsSolver(
     // Print solver information for debugging. This hasn't been useful so far,
     // so leave it at VLOG level 10.
     operations_research::MPModelProto model_proto;
-    solver->ExportModelToProto(&model_proto);
+    solver.ExportModelToProto(&model_proto);
     VLOG(10) << "MODEL:";
     XLA_VLOG_LINES(10, model_proto.DebugString());
     VLOG(10) << "RESPONSE:";
     operations_research::MPSolutionResponse response;
-    solver->FillSolutionResponseProto(&response);
+    solver.FillSolutionResponseProto(&response);
     XLA_VLOG_LINES(10, response.DebugString());
   }
 
   // Return value
+  size_t num_edges = request.e.size();
   double unsalted_objective = 0.0;
   std::vector<NodeStrategyIdx> chosen_strategy(request.num_nodes, -1);
   std::vector<EdgeStrategyIdx> e_val(num_edges, -1);
-  for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-    for (NodeStrategyIdx j = 0; j < s[i].size(); ++j) {
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
+    for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
       // if lhs == 1
-      if (s[i][j]->solution_value() > 0.5) {
-        chosen_strategy[i] = j;
-        unsalted_objective += request.c[i][j] + request.d[i][j];
+      if (s[node_idx][j]->solution_value() > 0.5) {
+        chosen_strategy[node_idx] = j;
+        unsalted_objective += request.c[node_idx][j] + request.d[node_idx][j];
         break;
       }
     }
   }
-  for (EdgeIdx i = 0; i < num_edges; ++i) {
-    for (EdgeStrategyIdx j = 0; j < e[i].size(); ++j) {
+  for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
+    for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
       // if lhs == 1
-      if (e[i][j]->solution_value() > 0.5) {
-        e_val[i] = j;
-        unsalted_objective += request.r[i][j];
+      if (e[edge_idx][j]->solution_value() > 0.5) {
+        e_val[edge_idx] = j;
+        unsalted_objective += request.r[edge_idx][j];
         break;
       }
     }
   }
-  if (request.memory_budget > 0 && request.overbudget_coeff) {
+  if (overbudget_var) {
     unsalted_objective +=
         *request.overbudget_coeff * overbudget_var->solution_value();
+  }
+  if (makespan_var) {
+    unsalted_objective +=
+        *request.makespan_coeff * makespan_var->solution_value();
   }
 
   LOG(INFO) << "Unsalted objective value: " << unsalted_objective;
@@ -579,12 +620,13 @@ bool CostComponents::operator==(const CostComponents& other) const {
   return communication_cost == other.communication_cost &&
          computation_cost == other.computation_cost &&
          resharding_cost == other.resharding_cost &&
-         overbudget_cost == other.overbudget_cost;
+         overbudget_cost == other.overbudget_cost &&
+         makespan_cost == other.makespan_cost;
 }
 
 double CostComponents::cost() const {
   return communication_cost + computation_cost + resharding_cost +
-         overbudget_cost;
+         overbudget_cost + makespan_cost;
 }
 
 bool AutoShardingEvaluation::operator==(
@@ -596,34 +638,39 @@ bool AutoShardingEvaluation::operator==(
 
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
                                 const AutoShardingSolverResult& result) {
+  const std::vector<std::vector<double>>& c = request.c;
+  const std::vector<std::vector<double>>& d = request.d;
+  const std::vector<std::vector<double>>& r = request.r;
   const std::vector<NodeStrategyIdx>& s_val = std::get<0>(*result.status);
   const std::vector<EdgeStrategyIdx>& e_val = std::get<1>(*result.status);
   AutoShardingEvaluation evaluation;
   // Compute violations.
-  for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-    if (request.s_follow[i] >= 0 && s_val[i] != s_val[request.s_follow[i]]) {
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
+    NodeIdx s_follow = request.s_follow[node_idx];
+    if (s_follow >= 0 && s_val[node_idx] != s_val[s_follow]) {
       evaluation.violation_codes.insert(kFollowerViolationCode);
     }
   }
-  for (AliasIdx i = 0; i < request.a.size(); ++i) {
-    const std::pair<NodeIdx, NodeIdx>& alias = request.a[i];
+  for (AliasIdx alias_idx = 0; alias_idx < request.a.size(); ++alias_idx) {
+    const std::pair<NodeIdx, NodeIdx>& alias = request.a[alias_idx];
     NodeStrategyIdx p = s_val[alias.first], q = s_val[alias.second];
-    if (request.v[i][p * request.s_len[alias.second] + q] > 0.5) {
+    if (request.v[alias_idx][p * request.s_len[alias.second] + q] > 0.5) {
       evaluation.violation_codes.insert(kAliasViolationCode);
     }
   }
-  for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-    if (request.c[i][s_val[i]] + request.d[i][s_val[i]] >= kInfinityCost) {
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
+    NodeStrategyIdx strat_idx = s_val[node_idx];
+    if (c[node_idx][strat_idx] + d[node_idx][strat_idx] >= kInfinityCost) {
       evaluation.violation_codes.insert(kInfiniteCostViolationCode);
     }
   }
-  for (EdgeIdx i = 0; i < request.e.size(); ++i) {
-    if (request.r[i][e_val[i]] >= kInfinityCost) {
+  for (EdgeIdx edge_idx = 0; edge_idx < request.e.size(); ++edge_idx) {
+    if (request.r[edge_idx][e_val[edge_idx]] >= kInfinityCost) {
       evaluation.violation_codes.insert(kInfiniteCostViolationCode);
     }
   }
-  for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-    evaluation.total_departures += request.p[i][s_val[i]];
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
+    evaluation.total_departures += request.p[node_idx][s_val[node_idx]];
     if (request.max_departures &&
         evaluation.total_departures > *request.max_departures) {
       evaluation.violation_codes.insert(kMaxDeparturesViolationCode);
@@ -632,13 +679,13 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
   if (request.memory_budget > 0) {
     double total_overbudget = 0.0;
     double lower_bound_overbudget = 0.0;
-    for (LivenessIdx t = 0; t < request.live.size(); ++t) {
+    for (LivenessIdx time_idx = 0; time_idx < request.live.size(); ++time_idx) {
       double total_memory_cost = 0.0;
       double lower_bound_memory_cost = 0.0;
-      for (NodeIdx i : request.live[t]) {
-        total_memory_cost += request.m[i][s_val[i]];
-        lower_bound_memory_cost +=
-            *std::min_element(request.m[i].begin(), request.m[i].end());
+      for (NodeIdx node_idx : request.live[time_idx]) {
+        const std::vector<double>& m = request.m[node_idx];
+        total_memory_cost += m[s_val[node_idx]];
+        lower_bound_memory_cost += *std::min_element(m.begin(), m.end());
       }
       if (request.overbudget_coeff) {
         total_overbudget = std::max(total_overbudget,
@@ -658,19 +705,20 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
     }
   }
   // Compute metrics & lower bounds.
-  for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-    evaluation.total.communication_cost += request.d[i][s_val[i]];
-    evaluation.total.computation_cost += request.c[i][s_val[i]];
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
+    evaluation.total.communication_cost += d[node_idx][s_val[node_idx]];
+    evaluation.total.computation_cost += c[node_idx][s_val[node_idx]];
     evaluation.lower_bound.communication_cost +=
-        *std::min_element(request.d[i].begin(), request.d[i].end());
+        *std::min_element(d[node_idx].begin(), d[node_idx].end());
     evaluation.lower_bound.computation_cost +=
-        *std::min_element(request.c[i].begin(), request.c[i].end());
+        *std::min_element(c[node_idx].begin(), c[node_idx].end());
   }
-  for (EdgeIdx i = 0; i < request.e.size(); ++i) {
-    evaluation.total.resharding_cost += request.r[i][e_val[i]];
+  for (EdgeIdx edge_idx = 0; edge_idx < request.e.size(); ++edge_idx) {
+    evaluation.total.resharding_cost += r[edge_idx][e_val[edge_idx]];
     evaluation.lower_bound.resharding_cost +=
-        *std::min_element(request.r[i].begin(), request.r[i].end());
+        *std::min_element(r[edge_idx].begin(), r[edge_idx].end());
   }
+  evaluation.total_makespan = EvaluateMakespan(request, result, evaluation);
   return evaluation;
 }
 
@@ -682,30 +730,32 @@ std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
 
   const std::vector<NodeStrategyIdx>& s_result = std::get<0>(*result.status);
   const std::vector<NodeStrategyIdx>& s_subopt = std::get<0>(*subopt.status);
-  for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-    const NodeStrategyIdx j = s_result[i], k = s_subopt[i];
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes; ++node_idx) {
+    const NodeStrategyIdx j = s_result[node_idx], k = s_subopt[node_idx];
     if (j != k) {
-      rationales.push_back(absl::StrCat("strategy changes for ", names[i], " (",
-                                        j, " -> ", k, ")"));
+      rationales.push_back(absl::StrCat(
+          "strategy changes for ", names[node_idx], " (", j, " -> ", k, ")"));
     }
-    const double dj = request.d[i][j], dk = request.d[i][k];
+    const double dj = request.d[node_idx][j], dk = request.d[node_idx][k];
     if (dj < dk) {
       rationales.push_back(absl::StrCat("communication cost increases for ",
-                                        names[i], " (", dj, " -> ", dk, ")"));
+                                        names[node_idx], " (", dj, " -> ", dk,
+                                        ")"));
     }
-    const double cj = request.c[i][j], ck = request.c[i][k];
+    const double cj = request.c[node_idx][j], ck = request.c[node_idx][k];
     if (cj < ck) {
       rationales.push_back(absl::StrCat("computation cost increases for ",
-                                        names[i], " (", cj, " -> ", ck, ")"));
+                                        names[node_idx], " (", cj, " -> ", ck,
+                                        ")"));
     }
   }
 
   const std::vector<EdgeStrategyIdx>& e_result = std::get<1>(*result.status);
   const std::vector<EdgeStrategyIdx>& e_subopt = std::get<1>(*subopt.status);
-  for (EdgeIdx i = 0; i < request.e.size(); ++i) {
-    const std::pair<NodeIdx, NodeIdx>& edge = request.e[i];
-    const EdgeStrategyIdx j = e_result[i], k = e_subopt[i];
-    const double rj = request.r[i][j], rk = request.r[i][k];
+  for (EdgeIdx edge_idx = 0; edge_idx < request.e.size(); ++edge_idx) {
+    const std::pair<NodeIdx, NodeIdx>& edge = request.e[edge_idx];
+    const EdgeStrategyIdx j = e_result[edge_idx], k = e_subopt[edge_idx];
+    const double rj = request.r[edge_idx][j], rk = request.r[edge_idx][k];
     if (rj < rk) {
       const std::string edge_name =
           absl::StrCat(names[edge.first], " and ", names[edge.second]);

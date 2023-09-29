@@ -962,6 +962,10 @@ bool IndependentHostTasks(int64_t task_id, bool evens) {
 
 namespace {
 
+REGISTER_DATASET_EXPERIMENT("noop_task_level", RandomJobSamplePercentage<50>,
+                            IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("noop_job_level", RandomJobSamplePercentage<50>,
+                            AllTasks);
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
@@ -982,12 +986,12 @@ REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("file_locality", RandomJobSamplePercentage<0>,
                             IndependentHostTasks);
-REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<50>,
+REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("no_compression", RandomJobSamplePercentage<50>,
                             AllTasks);
-REGISTER_DATASET_EXPERIMENT("inject_io_prefetch", RandomJobSamplePercentage<1>,
-                            IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("inject_io_prefetch", RandomJobSamplePercentage<0>,
+                            AllTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

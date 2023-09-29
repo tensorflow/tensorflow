@@ -987,7 +987,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .value("MAXIMAL", OpSharding::MAXIMAL)
       .value("MANUAL", OpSharding::MANUAL)
       .value("TUPLE", OpSharding::TUPLE)
-      .value("OTHER", OpSharding::OTHER);
+      .value("OTHER", OpSharding::OTHER)
+      .value("UNKNOWN", OpSharding::UNKNOWN);
 
   py::enum_<OpSharding::ShardGroupType> op_sharding_shard_group_type(
       m, "OpSharding_ShardGroupType");
@@ -1068,12 +1069,14 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           py::arg("subgroup_types") = absl::Span<const xla::OpSharding::Type>())
       .def_static("manual", [] { return HloSharding::Manual(); })
       .def_static("replicate", [] { return HloSharding::Replicate(); })
+      .def_static("unknown", [] { return HloSharding::Unknown(); })
       .def("__eq__", [](const xla::HloSharding& a,
                         const xla::HloSharding& b) { return a == b; })
       .def("__hash__",
            [](const xla::HloSharding& self) { return absl::HashOf(self); })
       .def("is_replicated", &xla::HloSharding::IsReplicated)
       .def("is_manual", &xla::HloSharding::IsManual)
+      .def("is_unknown", &xla::HloSharding::IsUnknown)
       .def("is_tiled", &xla::HloSharding::IsTiled)
       .def("tile", [](const xla::HloSharding& self,
                       xla::Shape shape) { return self.TileShape(shape); })

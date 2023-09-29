@@ -26,8 +26,10 @@ CompiledFunction = xla_extension.CompiledFunction
 class JitState:
   disable_jit: Optional[bool]
   enable_x64: Optional[bool]
-  extra_jit_context: Any
-  post_hook: Optional[Callable]
+  enable_memories: Optional[bool]
+  default_device: Optional[Any]
+  extra_jit_context: Optional[Any]
+  post_hook: Optional[Callable[..., Any]]
 
 def global_state() -> JitState: ...
 def thread_local_state() -> JitState: ...

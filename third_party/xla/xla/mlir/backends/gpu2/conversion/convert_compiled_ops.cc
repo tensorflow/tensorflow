@@ -492,234 +492,10 @@ LogicalResult ConvertCompiledOpToHal<OpTy>::matchAndRewrite(
 }
 
 //===----------------------------------------------------------------------===//
-// Converts compiled op to an XLA:GPU kernel dispatch API call
-//===----------------------------------------------------------------------===//
-
-TypedValue<ExecutionContextType> getExecutionContext(Operation *op) {
-  auto func = op->getParentOfType<func::FuncOp>();
-  return func.getArguments().front().cast<TypedValue<ExecutionContextType>>();
-}
-
-template <typename OpTy>
-struct ConvertCompiledOpToApiCall : public OpConversionPattern<OpTy> {
-  using OpAdaptor = typename OpConversionPattern<OpTy>::OpAdaptor;
-
-  ConvertCompiledOpToApiCall(TypeConverter &converter, MLIRContext *ctx,
-                             ThunkSequence *thunk_sequence,
-                             DeBufferization &state, XlaGpuApi &api,
-                             XlaGpuGraphs &graphs)
-      : OpConversionPattern<OpTy>(converter, ctx),
-        thunk_sequence(thunk_sequence),
-        state(state),
-        api(api),
-        graphs(graphs) {}
-
-  LogicalResult matchAndRewrite(
-      OpTy op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override;
-
-  // TODO(ezhulenev): This is a very conservative dependency tracking that
-  // adds edges between all operations that touch the same buffers. We need to
-  // track reads and writes separately and allow concurrent reads.
-
-  void updateGraphDependencies(TypedValue<GraphNodeType> node,
-                               ArrayRef<TypedValue<TensorType>> args,
-                               SmallVector<int64_t> tied_operands) const {
-    Block *block = node.getDefiningOp()->getBlock();
-    for (auto arg : args) {
-      graphs.dependency[block][arg] = node;
-    }
-  }
-
-  SmallVector<TypedValue<GraphNodeType>> getGraphDependencies(
-      Block *block, ArrayRef<TypedValue<TensorType>> args,
-      SmallVector<int64_t> tied_operands) const {
-    SetVector<TypedValue<GraphNodeType>> deps;
-    for (auto &tensor : args) {
-      auto it = graphs.dependency[block].find(tensor);
-      if (it != graphs.dependency[block].end()) deps.insert(it->second);
-    }
-    return deps.takeVector();
-  }
-
-  ThunkSequence *thunk_sequence;
-  DeBufferization &state;
-  XlaGpuApi &api;
-  XlaGpuGraphs &graphs;
-};
-
-template <typename OpTy>
-LogicalResult ConvertCompiledOpToApiCall<OpTy>::matchAndRewrite(
-    OpTy op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const {
-  ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-  auto *block = op->getBlock();
-  auto module = op->template getParentOfType<ModuleOp>();
-
-  // Detect if we are inside a graph dispatch region and we are building a graph
-  // construction function.
-  auto dispatch = op->template getParentOfType<GraphDispatchOp>();
-  TypedValue<GraphType> graph = dispatch ? dispatch.getGraph() : nullptr;
-
-  // Extract compiled operation from the thunk sequence.
-  auto compiled_op = extractCompiledOp(op, thunk_sequence, rewriter);
-  if (failed(compiled_op))
-    return rewriter.notifyMatchFailure(
-        op, "failed to extract device compilation result for an operation");
-
-  // Handle copy operations first, before handling kernel launch.
-  for (auto &copy : compiled_op->memcpy) {
-    auto src_memref = cast<TypedValue<MemRefType>>(copy->source_value());
-    auto dst_memref = cast<TypedValue<MemRefType>>(copy->destination_value());
-
-    auto src = state.remapped(block, src_memref);
-    auto dst = state.remapped(block, dst_memref);
-
-    assert(src && "unknown mapping from `src` memref to a tensor");
-    assert(dst && "unknown mapping from `dst` memref to a tensor");
-
-    auto src_view = api.getBufferView(b, src);
-    auto dst_view = api.getBufferView(b, dst);
-    SmallVector<Value> args = {getExecutionContext(op), dst_view, src_view};
-
-    // If we are inside a graph dispatch region, we convert memory copy
-    // operation to a memory copy node.
-    if (graph) {
-      // These are the nodes that previously updated dispatch arguments, we need
-      // to add them to a set of dependencies to build a correct DAG.
-      Value dependencies = api.getGraphNodeList(
-          b, getGraphDependencies(block, {dst, src}, /*tied_operands=*/{0}));
-
-      // Add additional arguments required by node building API.
-      args.insert(args.begin() + 1, {graph, dependencies});
-
-      func::FuncOp create_node = api.getCreateD2DMemcpyNode(b, module);
-      Value result = b.create<func::CallOp>(create_node.getSymName(),
-                                            create_node.getResultTypes(), args)
-                         .getResult(0);
-
-      // Update dependencies to track updated dst tensor.
-      updateGraphDependencies(cast<TypedValue<GraphNodeType>>(result),
-                              {dst, src}, /*tied_operands=*/{0});
-    }
-
-    // For regular regions we simply dispatch the kernel using API call.
-    if (!graph) {
-      func::FuncOp memcpy = api.getD2DMemcpy(b, module);
-      // TODO(ezhulenev): Should we import buffer view back and update
-      // remapping?
-      b.create<func::CallOp>(memcpy.getSymName(), TypeRange(), args);
-    }
-  }
-
-  // Compiled operation was a plain copy.
-  if (thunk_sequence && compiled_op->kernels.empty()) {
-    rewriter.eraseOp(op);
-    return success();
-  }
-
-  SmallVector<KernelThunk *> kernels = llvm::to_vector(llvm::map_range(
-      compiled_op->kernels, [&](auto &kernel) { return kernel.get(); }));
-  // Always add a fake kernel if we are running without thunk sequence.
-  if (!thunk_sequence) kernels.push_back(nullptr);
-
-  // Dispatch all kernels defined by thunks.
-  for (KernelThunk *kernel : kernels) {
-    // Get kernel launch parameters from a compiled fusion.
-    auto launch_params = getKernelLaunchParams(kernel);
-    auto [kernel_name, dims] = launch_params;
-
-    // Create XLA:GPU device kernel (it will own loaded PTX/CUBIN at run time).
-    func::FuncOp create_kernel = api.getCreateKernel(b, module);
-    auto kernel_type = b.getType<KernelType>();
-
-    auto initializer = [&](ImplicitLocOpBuilder &initializer_builder) -> Value {
-      auto [kernel_name, dims] = launch_params;  // capture requires C++20
-
-      Value name = b.create<IREE::Input::ByteBufferConstantOp>(
-          b.getType<IREE::Input::ByteBufferType>(),
-          b.getStringAttr("kernel_name"), kernel_name,
-          /*alignment=*/nullptr, /*mime_type=*/nullptr);
-      Value shmem = b.create<ConstantIntOp>(dims.SharedMemBytes(), 32);
-
-      return initializer_builder
-          .create<func::CallOp>(api.getCreateKernel(b, module).getSymName(),
-                                kernel_type, ValueRange({name, shmem}))
-          .getResult(0);
-    };
-
-    // Keep loaded device kernel as a module global.
-    IREE::Input::GlobalOp kernel_global = api.getOrCreateGlobal(
-        "__xla_gpu_kernel." + kernel_name, kernel_type, module, b, initializer);
-    auto loaded_kernel = api.loadGlobal<KernelType>(b, kernel_global);
-
-    // Prepare arguments for kernel dispatch.
-    SmallVector<Value> workgroup_size = {
-        b.create<ConstantIntOp>(dims.thread_counts_per_block().x, 32),
-        b.create<ConstantIntOp>(dims.thread_counts_per_block().y, 32),
-        b.create<ConstantIntOp>(dims.thread_counts_per_block().z, 32),
-    };
-
-    SmallVector<Value> workload_size = {
-        b.create<ConstantIntOp>(dims.block_counts().x, 32),
-        b.create<ConstantIntOp>(dims.block_counts().y, 32),
-        b.create<ConstantIntOp>(dims.block_counts().z, 32),
-    };
-
-    auto dispatch_args = getDispatchArguments(op, kernel, state);
-    auto &tensors = dispatch_args.second;
-
-    Value buffer_views = api.getBufferViewList(b, tensors);
-
-    // Prepare arguments for the kernel dispatch/create API call.
-    SmallVector<Value> args = {getExecutionContext(op), loaded_kernel,
-                               buffer_views};
-    args.append(workgroup_size.begin(), workgroup_size.end());
-    args.append(workload_size.begin(), workload_size.end());
-
-    // If we are inside a graph dispatch region, we convert compiled operation
-    // to a kernel node with explicit dependencies.
-    if (graph) {
-      auto tied_operands = getTiedOperands(op, kernel);
-
-      // These are the nodes that previously updated dispatch arguments, we need
-      // to add them to a set of dependencies to build a correct DAG.
-      Value dependencies = api.getGraphNodeList(
-          b, getGraphDependencies(block, tensors, tied_operands));
-
-      // Add additional arguments required by node building API.
-      args.insert(args.begin() + 1, {graph, dependencies});
-
-      func::FuncOp create_node = api.getCreateKernelNode(b, module);
-      Value result = b.create<func::CallOp>(create_node.getSymName(),
-                                            create_node.getResultTypes(), args)
-                         .getResult(0);
-
-      // Update dependencies to track all updated tensors.
-      updateGraphDependencies(cast<TypedValue<GraphNodeType>>(result), tensors,
-                              tied_operands);
-    }
-
-    // For regular regions we simply dispatch the kernel using API call.
-    if (!graph) {
-      func::FuncOp dispatch_kernel = api.getDispatchKernel(b, module);
-      // TODO(ezhulenev): Should we import buffer view back and update
-      // remapping?
-      b.create<func::CallOp>(dispatch_kernel.getSymName(),
-                             dispatch_kernel.getResultTypes(), args);
-    }
-  }
-
-  rewriter.eraseOp(op);
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// Converts lmhlo.fusion op to HAL / XLA:GPU runtime
+// Converts lmhlo.fusion op to dispatch
 //===----------------------------------------------------------------------===//
 
 using ConvertFusionOpToHal = ConvertCompiledOpToHal<lmhlo::FusionOp>;
-using ConvertFusionOpToApiCall = ConvertCompiledOpToApiCall<lmhlo::FusionOp>;
 
 // Returns Fusion kernel pipeline layout (ABI) inferred from the fusion
 // operation body looking at tensor<->memref conversions.
@@ -775,11 +551,10 @@ SmallVector<int64_t> getTiedOperands(lmhlo::FusionOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// Converts lmhlo.sort op to to HAL / XLA:GPU runtime
+// Converts lmhlo.sort op to dispatch
 //===----------------------------------------------------------------------===//
 
 using ConvertSortOpToHal = ConvertCompiledOpToHal<lmhlo::SortOp>;
-using ConvertSortOpToApiCall = ConvertCompiledOpToApiCall<lmhlo::SortOp>;
 
 IREE::Input::PipelineLayoutAttr getPipelineLayout(lmhlo::SortOp op) {
   auto n_args = op.getInputs().size();
@@ -881,19 +656,6 @@ void populateCompiledOpsConversionPatterns(
       /*ordinal=*/std::make_shared<int64_t>(0),
       std::make_shared<OptimizationBarriers>());
   patterns.insert<TerminatorOpLowering>(converter, ctx, state);
-}
-
-void populateCompiledOpsConversionPatterns(mlir::RewritePatternSet &patterns,
-                                           mlir::TypeConverter &converter,
-                                           ThunkSequence *thunk_sequence,
-                                           DeBufferization &state,
-                                           XlaGpuApi &api,
-                                           XlaGpuGraphs &graphs) {
-  auto *ctx = patterns.getContext();
-  patterns.insert<ConvertFusionOpToApiCall, ConvertSortOpToApiCall>(
-      converter, ctx, thunk_sequence, state, api, graphs);
-  patterns.insert<TerminatorOpLowering>(converter, ctx, state,
-                                        /*add_opt_barrier=*/false);
 }
 
 }  // namespace xla::gpu

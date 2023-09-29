@@ -94,7 +94,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
                            aot_or.status().message());
   }
   compile_result->aot =
-      xla::unique_ptr_static_cast<xla::cpu::CpuAotCompilationResult>(
+      xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResult>(
           std::move(aot_or.value().back()));
   compile_result->entry_point = aot_opts.entry_point_name();
   compile_result->pointer_size =

@@ -34,19 +34,17 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/logging.h"
 #include "tsl/util/determinism.h"
 using tsl::OpDeterminismRequired;
 
 namespace stream_executor {
 namespace gpu {
-
-PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocBlasPlugin);
 
 extern void rocm_Broadcast_fp32(void *stream, float *dst, int dst_stride,
                                 int batches, int src_batches, float *src,
@@ -136,28 +134,6 @@ bool ROCMBlas::SetStream(Stream *stream) {
   CHECK(AsGpuStreamValue(stream) != nullptr);
   CHECK(blas_ != nullptr);
   gpu::ScopedActivateExecutorContext sac{parent_};
-
-  hipStream_t current_stream;
-  rocblas_status get_current_stream =
-      wrap::rocblas_get_stream(blas_, &current_stream);
-  if (get_current_stream != rocblas_status_success) {
-    LOG(ERROR) << "failed to get current stream for rocBLAS calls: "
-               << ToString(get_current_stream);
-    return false;
-  }
-
-  // Do not set stream if it's already set
-  if (current_stream == ROCMStream(stream)) return true;
-
-  // Check the set stream is not in capture mode
-  hipStreamCaptureStatus capture_status;
-  hipStreamIsCapturing(ROCMStream(stream), &capture_status);
-  if (capture_status == hipStreamCaptureStatusActive) {
-    LOG(ERROR)
-        << "ROCmblasSetStream should not be called during graph capture, "
-           "since it will reset rocBLAS workspace";
-    return false;
-  }
 
   rocblas_status ret =
       wrap::rocblas_set_stream(blas_, AsGpuStreamValue(stream));
@@ -1216,13 +1192,13 @@ tsl::Status ROCMBlas::GetVersion(string *version) {
 
 void initialize_rocblas() {
   auto rocBlasAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
-      rocm::kROCmPlatformId, PluginKind::kBlas, gpu::kRocBlasPlugin);
+      rocm::kROCmPlatformId, PluginKind::kBlas);
 
   if (!rocBlasAlreadyRegistered) {
     tsl::Status status =
         PluginRegistry::Instance()
             ->RegisterFactory<PluginRegistry::BlasFactory>(
-                rocm::kROCmPlatformId, gpu::kRocBlasPlugin, "rocBLAS",
+                rocm::kROCmPlatformId, "rocBLAS",
                 [](internal::StreamExecutorInterface *parent)
                     -> blas::BlasSupport * {
                   gpu::GpuExecutor *rocm_executor =
@@ -1247,9 +1223,6 @@ void initialize_rocblas() {
     if (!status.ok()) {
       LOG(ERROR) << "Unable to register rocBLAS factory: " << status.message();
     }
-
-    PluginRegistry::Instance()->SetDefaultFactory(
-        rocm::kROCmPlatformId, PluginKind::kBlas, gpu::kRocBlasPlugin);
   }
 }
 

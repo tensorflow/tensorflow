@@ -68,7 +68,7 @@ class InPlaceDynamicUpdateSliceEmitter : public KernelFusionEmitterBase {
                     llvm::IRBuilder<>* builder,
                     int kernel_index) const override;
 
-  std::vector<HloInstruction*> dus_ops_;
+  std::vector<const HloInstruction*> dus_ops_;
 };
 
 }  // namespace gpu

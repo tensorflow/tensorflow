@@ -76,6 +76,7 @@ ENTRY AddDotsFunc {
   }
 }
 
+#if GOOGLE_CUDA
 TEST_F(GemmRewriteTest, TestBatchedAutotuning) {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     GTEST_SKIP()
@@ -97,6 +98,7 @@ ENTRY %test {
 ; CHECK: selected_algorithm
       )");
 }
+#endif
 
 TEST_F(GemmRewriteTest, SimpleRewriteDeterministic) {
   const char* hlo_text = R"(
@@ -184,6 +186,7 @@ ENTRY broadcast {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
+#if GOOGLE_CUDA
 // A test fixture class for tests which should have similar results with legacy
 // cublas and cublasLt
 class ParameterizedGemmRewriteTest
@@ -1262,6 +1265,7 @@ ENTRY main {
 
 INSTANTIATE_TEST_SUITE_P(CublasTestsBothLegacyAndLt,
                          ParameterizedGemmRewriteTest, ::testing::Bool());
+#endif
 
 // A test fixture class for tests which are specific to legacy cublas
 class LegacyCublasGemmRewriteTest : public GemmRewriteTest {
@@ -1693,6 +1697,7 @@ ENTRY test {
 )");
 }
 
+#if GOOGLE_CUDA
 // Test gemm matrix bias add fusion with mix type
 TEST_F(LegacyCublasGemmRewriteTest, MatrixBiasMixType) {
   std::vector<std::tuple<absl::string_view, absl::string_view>>
@@ -1763,6 +1768,7 @@ ENTRY test {
                                          m::Negate(m::Parameter(2)))));
   }
 }
+#endif
 
 // Test batch gemm matrix bias add fusion with mix type that is not supported
 TEST_F(LegacyCublasGemmRewriteTest, MatrixBiasMixTypeNotSupported) {
@@ -1896,6 +1902,7 @@ ENTRY test {
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()))));
 }
 
+#if GOOGLE_CUDA
 // A test fixture class for tests which are specific to cublasLt
 class CublasLtGemmRewriteTest : public GemmRewriteTest {
  public:
@@ -3614,6 +3621,37 @@ ENTRY test {
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
       )");
+}
+
+TEST_F(CublasLtGemmRewriteTest, VectorBiasF32UnpaddedWithBitcast) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3]{1,0} parameter(0)
+  y = f32[3,4]{1,0} parameter(1)
+  z = f32[2]{0} parameter(2)
+  dot_a = f32[2,4]{0,1} dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bitc = f32[4,2]{1,0} bitcast(f32[2,4]{0,1} dot_a)
+  z_bcast = f32[4,2] broadcast(z), dimensions={1}
+  ROOT add = f32[4,2]{1,0} add(bitc, z_bcast)
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Bitcast(m::CustomCall({"__cublas$lt$matmul"},
+                                          m::Parameter(0), m::Parameter(1),
+                                          m::Parameter(2).WithShape(F32, {2}))
+                                .WithShape(F32, {2, 4}))
+                     .WithShape(F32, {4, 2})));
 }
 
 // For F16, the operands are padded on GPUs with Tensor Cores (i.e. Volta and
@@ -7031,6 +7069,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, FnuzTypeF8) {
 
 INSTANTIATE_TEST_SUITE_P(Fp8CublasTestsBothLegacyAndLt,
                          ParameterizedFp8GemmRewriteTest, ::testing::Bool());
+#endif
 
 TEST_F(GemmRewriteTest, NoFuseBiasBroadcast) {
   const char* hlo = R"(

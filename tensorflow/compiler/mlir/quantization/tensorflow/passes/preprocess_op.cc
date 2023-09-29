@@ -43,8 +43,7 @@ namespace quant {
 
 namespace {
 
-using QuantMethod =
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 using QuantizationUnit = std::pair<Operation*, int>;
 using QuantizationUnits = llvm::SetVector<QuantizationUnit>;
 
@@ -101,16 +100,18 @@ class PreprocessOpPass
 
   Option<QuantMethod> quantization_method_{
       *this, "quantization-method",
-      llvm::cl::init(
-          tensorflow::quantization::QuantizationMethod::STATIC_RANGE),
+      llvm::cl::init(tensorflow::quantization::QuantizationMethod::
+                         METHOD_STATIC_RANGE_INT8),
       llvm::cl::desc("Choose quantization method."),
       llvm::cl::values(
-          clEnumValN(tensorflow::quantization::QuantizationMethod::STATIC_RANGE,
+          clEnumValN(tensorflow::quantization::QuantizationMethod::
+                         METHOD_STATIC_RANGE_INT8,
                      "ptq", "Post-training static-range quantization"),
-          clEnumValN(
-              tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE,
-              "drq", "Post-training dynamic-range quantizaiton"),
-          clEnumValN(tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY,
+          clEnumValN(tensorflow::quantization::QuantizationMethod::
+                         METHOD_DYNAMIC_RANGE_INT8,
+                     "drq", "Post-training dynamic-range quantizaiton"),
+          clEnumValN(tensorflow::quantization::QuantizationMethod::
+                         METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8,
                      "weight_only", "Post-training weight-only quantizaiton"))};
 
   Option<bool> enable_per_channel_quantization_{
@@ -209,7 +210,8 @@ class PreprocessConstantOp : public OpRewritePattern<TF::PartitionedCallOp> {
       if (op_set_ == OpSet::UNIFORM_QUANTIZED ||
           (op_set_ == OpSet::XLA && enable_per_channel_quantization_ &&
            quantization_method_ ==
-               tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY)) {
+               tensorflow::quantization::QuantizationMethod::
+                   METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8)) {
         return addReshapeOpToDepthwiseWeight(op, rewriter, function_name);
       }
     }

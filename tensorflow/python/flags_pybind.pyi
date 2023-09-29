@@ -24,6 +24,7 @@ class Flags:
     graph_building_optimization: Flag
     more_stack_traces: Flag
     op_building_optimization: Flag
+    replicate_small_constants: Flag
     saved_model_fingerprinting: Flag
     test_only_experiment_1: Flag
     test_only_experiment_2: Flag

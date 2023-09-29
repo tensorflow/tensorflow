@@ -171,73 +171,93 @@ struct EstimateRunTimeData {
 
 EstimateRunTimeData EstimateRunTimeImpl(
     const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis) {
+  const GpuDeviceInfo* device_info = cost_analysis->device_info_;
+
   int64_t flops = cost_analysis->flop_count(*instr);
   float bytes_written = cost_analysis->output_bytes_accessed(*instr);
   float bytes_read = cost_analysis->bytes_accessed(*instr) - bytes_written;
-  float elements_out = ShapeUtil::ElementsInRecursive(instr->shape());
+  float num_threads = ShapeUtil::ElementsInRecursive(instr->shape());
 
-  absl::Duration compute_time =
-      ComputeTime(*cost_analysis->device_info_, flops, elements_out);
-  absl::Duration read_time = ProducerInputAccessTime(
-      cost_analysis, *cost_analysis->device_info_, instr);
-  absl::Duration write_time = absl::Seconds(
-      bytes_written / cost_analysis->device_info_->memory_bandwidth);
-  absl::Duration exec_time = std::max(compute_time, read_time + write_time);
+  const absl::Duration compute_time =
+      ComputeTime(*device_info, /*n_flops=*/flops, /*n_threads=*/num_threads);
+  const absl::Duration read_time =
+      ProducerInputAccessTime(cost_analysis, *device_info, /*producer=*/instr);
+  const absl::Duration write_time =
+      absl::Seconds(bytes_written / device_info->memory_bandwidth);
+  const absl::Duration exec_time =
+      std::max(compute_time, read_time + write_time);
 
   if (VLOG_IS_ON(8)) {
     LOG(INFO) << "FLOPs: " << flops;
     LOG(INFO) << "Bytes read: " << bytes_read;
     LOG(INFO) << "Bytes written: " << bytes_written;
-    LOG(INFO) << "Elements out: " << elements_out;
+    LOG(INFO) << "Num threads:" << num_threads;
     LOG(INFO) << "Compute time: " << compute_time;
     LOG(INFO) << "Input read time: " << read_time;
     LOG(INFO) << "Output write time: " << write_time;
   }
 
-  return {flops, bytes_written, elements_out, write_time, exec_time};
+  return {flops, bytes_written, num_threads, write_time, exec_time};
 }
 
 }  // namespace
 
 GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
-    std::vector<HloInstruction*> fused_users, bool multi_output) {
+    std::vector<HloInstruction*> fused_consumers, bool multi_output) {
   VLOG(8) << "Producer: " << producer->name();
   if (producer->opcode() == HloOpcode::kFusion) {
     VLOG(10) << producer->fused_instructions_computation()->ToString();
   }
 
+  const GpuDeviceInfo* device_info = cost_analysis->device_info_;
+
   EstimateRunTimeData producer_data =
       EstimateRunTimeImpl(producer, cost_analysis);
 
-  int64_t fused_consumer_count = fused_users.size();
+  int64_t fused_consumer_count = fused_consumers.size();
   float total_producer_utilization = 0;
 
   absl::Duration exec_time_fused = absl::ZeroDuration();
   absl::Duration producer_output_read_time_unfused = absl::ZeroDuration();
-  for (const HloInstruction* u : fused_users) {
-    float utilization_by_this_consumer =
-        cost_analysis->operand_utilization(*u, u->operand_index(producer));
+  for (const HloInstruction* fused_consumer : fused_consumers) {
+    const float utilization_by_this_consumer =
+        cost_analysis->operand_utilization(
+            *fused_consumer, fused_consumer->operand_index(producer));
     total_producer_utilization += utilization_by_this_consumer;
 
+    // The model ignores consumer computation and output writes. The main goal
+    // of the model is to compare estimates of fused and unfused cases. Since
+    // epilog of the consumers remains unchanged in both bases, we only consider
+    // duplication of the producer computation and repeated access to producer
+    // inputs.
+    //
+    // TODO(shyshkov): Add calculations for consumer epilogue in the formula to
+    // make it complete.
     int64_t num_threads =
         producer_data.elements_out * utilization_by_this_consumer;
     if (auto thread_count =
-            EstimateThreadCount(u, *cost_analysis->device_info_)) {
+            EstimateThreadCount(fused_consumer, *cost_analysis->device_info_)) {
       num_threads = std::min(*thread_count, num_threads);
     }
-    absl::Duration compute_time_by_this_consumer = ComputeTime(
-        *cost_analysis->device_info_,
-        producer_data.flops * utilization_by_this_consumer, num_threads);
-    exec_time_fused +=
-        std::max(compute_time_by_this_consumer,
-                 ProducerInputAccessTime(
-                     cost_analysis, *cost_analysis->device_info_, producer, u));
-    producer_output_read_time_unfused += ReadTime(
-        *cost_analysis->device_info_,
-        std::min(producer_data.bytes_written,
-                 producer_data.bytes_written * utilization_by_this_consumer),
-        producer_data.bytes_written * utilization_by_this_consumer);
+    const absl::Duration compute_time_by_this_consumer = ComputeTime(
+        *device_info,
+        /*n_flops=*/producer_data.flops * utilization_by_this_consumer,
+        /*n_threads=*/num_threads);
+
+    const absl::Duration input_access_type_by_this_consumer =
+        ProducerInputAccessTime(cost_analysis, *device_info, producer,
+                                /*fused_consumer=*/fused_consumer);
+
+    exec_time_fused += std::max(compute_time_by_this_consumer,
+                                input_access_type_by_this_consumer);
+
+    const int64_t n_bytes_read_total =
+        producer_data.bytes_written * utilization_by_this_consumer;
+    const int64_t n_bytes_read_net =
+        std::min<int64_t>(producer_data.bytes_written, n_bytes_read_total);
+    producer_output_read_time_unfused +=
+        ReadTime(*device_info, n_bytes_read_net, n_bytes_read_total);
   }
 
   absl::Duration time_unfused =

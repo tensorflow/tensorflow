@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 #include "xla/xla.pb.h"
 
@@ -178,10 +178,10 @@ struct AutotunerUtil {
 
   // Adds the result to the autotune cache.
   //
-  // It is an error to call this, if the key is already present in the cache.
+  // Returns true if the entry is inserted.
   //
   // Normally, we don't have to use this low level method.
-  static Status AddResult(const AutotuneCacheKey& key, AutotuneResult result);
+  static bool AddResult(const AutotuneCacheKey& key, AutotuneResult result);
 
   // Creates a RedzoneAllocator from a given config. If `force_stream` is
   // provided, than it is used for checking redzones.

@@ -2,42 +2,43 @@
 
 # Import third party config rules.
 load("@bazel_skylib//lib:versions.bzl", "versions")
-load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
-load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
-load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
-load("//third_party/nccl:nccl_configure.bzl", "nccl_configure")
-load("//third_party/git:git_configure.bzl", "git_configure")
-load("//third_party/py:python_configure.bzl", "python_configure")
-load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
-load("//tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
-load("//tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
-load("//tools/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
-load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
-load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
-load("//tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
-load("//third_party/llvm:setup.bzl", "llvm_setup")
-
-# Import third party repository rules. See go/tfbr-thirdparty.
-load("//third_party/absl:workspace.bzl", absl = "repo")
-load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
-load("//third_party/eigen3:workspace.bzl", eigen3 = "repo")
-load("//third_party/farmhash:workspace.bzl", farmhash = "repo")
-load("//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
-load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
-load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
-load("//third_party/nasm:workspace.bzl", nasm = "repo")
-load("//third_party/py/ml_dtypes:workspace.bzl", ml_dtypes = "repo")
-load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
-load("//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
-load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 
 # Import external repository rules.
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
-load("//tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
-load("//tools/toolchains/remote:configure.bzl", "remote_execution_configure")
+load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
+
+# Import third party repository rules. See go/tfbr-thirdparty.
+load("//third_party/absl:workspace.bzl", absl = "repo")
+load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
+load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
+load("//third_party/eigen3:workspace.bzl", eigen3 = "repo")
+load("//third_party/farmhash:workspace.bzl", farmhash = "repo")
+load("//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
+load("//third_party/git:git_configure.bzl", "git_configure")
+load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
+load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
+load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
+load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
+load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
+load("//third_party/llvm:setup.bzl", "llvm_setup")
+load("//third_party/nasm:workspace.bzl", nasm = "repo")
+load("//third_party/nccl:nccl_configure.bzl", "nccl_configure")
+load("//third_party/py:python_configure.bzl", "python_configure")
+load("//third_party/py/ml_dtypes:workspace.bzl", ml_dtypes = "repo")
+load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
+load("//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
+load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
+load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
+load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
+load("//tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
+load("//tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
+load("//tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
 load("//tools/toolchains/clang6:repo.bzl", "clang6_configure")
+load("//tools/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
+load("//tools/toolchains/remote:configure.bzl", "remote_execution_configure")
+load("//tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -47,6 +48,7 @@ def _initialize_third_party():
     farmhash()
     gemmlowp()
     hwloc()
+    implib_so()
     jpeg()
     ml_dtypes()
     nasm()
@@ -167,18 +169,14 @@ def _tf_repositories():
         build_file = "//tensorflow/third_party/mkl_dnn:mkldnn_acl.BUILD",
         patch_file = [
             "//tensorflow/third_party/mkl_dnn:onednn_acl_threadcap.patch",
-            "//tensorflow/third_party/mkl_dnn:onednn_acl_remove_winograd.patch",
-            "//tensorflow/third_party/mkl_dnn:onednn_acl_fixed_format_kernels.patch",
-            "//tensorflow/third_party/mkl_dnn:onednn_acl_depthwise_convolution.patch",
-            "//tensorflow/third_party/mkl_dnn:onednn_acl_threadpool_scheduler.patch",
-            "//tensorflow/third_party/mkl_dnn:onednn_acl_reorder_padded.patch",
-            "//tensorflow/third_party/mkl_dnn:onednn_acl_reorder_update.patch",
             "//tensorflow/third_party/mkl_dnn:onednn_acl_reorder.patch",
             "//tensorflow/third_party/mkl_dnn:onednn_acl_thread_local_scheduler.patch",
+            "//tensorflow/third_party/mkl_dnn:onednn_acl_fp32_bf16_reorder.patch",
+            "//tensorflow/third_party/mkl_dnn:onednn_acl_bf16_capability_detection_for_ubuntu20.04.patch",
         ],
-        sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
-        strip_prefix = "oneDNN-2.7.3",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.7.3.tar.gz"),
+        sha256 = "2f76b407ef8893cca71340f88cd800019a1f14f8ac1bbdbb89a84be1370b52e3",
+        strip_prefix = "oneDNN-3.2.1",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.2.1.tar.gz"),
     )
 
     tf_http_archive(

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {

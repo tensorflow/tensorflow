@@ -19,11 +19,11 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#define EIGEN_USE_THREADS
+
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tsl/platform/status.h"
-#define EIGEN_USE_THREADS
-
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/cast_op.h"
 
@@ -136,6 +136,10 @@ CastFunctorType GetCpuCastFromFloat8e5m2(DataType dst_dtype);
 
 CastFunctorType GetCpuCastFromFloat8e4m3fn(DataType dst_dtype);
 
+CastFunctorType GetCpuCastFromInt4(DataType dst_dtype);
+
+CastFunctorType GetCpuCastFromUint4(DataType dst_dtype);
+
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // Same, for GPU.
@@ -172,6 +176,10 @@ CastFunctorType GetGpuCastFromBfloat(DataType dst_dtype);
 CastFunctorType GetGpuCastFromFloat8e5m2(DataType dst_dtype);
 
 CastFunctorType GetGpuCastFromFloat8e4m3fn(DataType dst_dtype);
+
+CastFunctorType GetGpuCastFromInt4(DataType dst_dtype);
+
+CastFunctorType GetGpuCastFromUint4(DataType dst_dtype);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

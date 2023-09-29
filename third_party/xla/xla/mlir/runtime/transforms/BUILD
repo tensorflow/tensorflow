@@ -29,6 +29,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "add_initializations.cc",
         "convert_asserts.cc",
         "convert_custom_calls.cc",
         "export_functions.cc",
@@ -42,6 +43,7 @@ cc_library(
         ":custom_call_encoding",
         ":passes_inc_gen",
         "//xla/mlir/runtime/ir:rt",
+        "//xla/mlir/runtime/utils:custom_calls",
         "//xla/runtime:custom_call",
         "//xla/runtime:tracing",
         "//xla/runtime:type_id",

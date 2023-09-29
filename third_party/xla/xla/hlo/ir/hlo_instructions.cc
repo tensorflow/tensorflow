@@ -343,7 +343,8 @@ void HloAsyncInstruction::PrintExtraAttributesImpl(
                 "\"");
     });
   }
-  if (options.syntax_sugar_async_ops()) {
+  if (options.syntax_sugar_async_ops() &&
+      async_wrapped_computation()->CanExpandIntoSingleInstruction()) {
     async_wrapped_instruction()->PrintExtraAttributes(printer, options);
   }
 }
@@ -367,8 +368,18 @@ std::unique_ptr<HloInstruction> HloAsyncInstruction::CloneWithNewOperandsImpl(
         context->FindComputation(async_wrapped_computation());
   }
   if (new_wrapped_computation == nullptr) {
-    new_wrapped_computation = module->AddEmbeddedComputation(
-        async_wrapped_computation()->Clone("clone", context));
+    // kAsyncDone and kAsyncUpdate uses the sync wrapped computation of its
+    // corresponding kAsyncUpdate or kAsyncDone, avoid cloning the computation
+    // again.
+    if ((opcode() == HloOpcode::kAsyncDone ||
+         opcode() == HloOpcode::kAsyncUpdate) &&
+        operand(0)->async_wrapped_computation() ==
+            async_wrapped_computation()) {
+      new_wrapped_computation = new_operands[0]->async_wrapped_computation();
+    } else {
+      new_wrapped_computation = module->AddEmbeddedComputation(
+          async_wrapped_computation()->Clone("clone", context));
+    }
   }
   return std::make_unique<HloAsyncInstruction>(
       opcode(), shape, new_operands, new_wrapped_computation, async_group_id_,
