@@ -168,8 +168,6 @@ class ConvertToCooTensorOp : public OpKernel {
   ConvertToCooTensorOp& operator=(const ConvertToCooTensorOp&) = delete;
 
   void Compute(OpKernelContext* ctx) override {
-    VLOG(1) << "Compute ConvertToCooTensorOp";
-
     const Tensor* indices_or_row_splits;
     OP_REQUIRES_OK(ctx,
                    ctx->input("indices_or_row_splits", &indices_or_row_splits));
@@ -288,7 +286,6 @@ class ConvertToCooTensorOp : public OpKernel {
       std::copy(col_ids.begin(), col_ids.end(), col_ids_tensor_ptr);
       std::copy(gains.begin(), gains.end(), gains_tensor_ptr);
     }
-    VLOG(1) << "Compute ConvertToCooTensorOp done";
   }
 
  private:
@@ -327,8 +324,6 @@ GetMinibatchesInCsrWithPhysicalReplicaOp::
 }
 
 void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
-  VLOG(1) << "Compute GetMinibatchesInCsrWithPhysicalReplicaOp";
-
   const Tensor* row_ids;
   OP_REQUIRES_OK(ctx, ctx->input("row_ids", &row_ids));
   const Tensor* col_ids;
@@ -346,6 +341,9 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   const Tensor* program_key_t;
   OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
   tstring program_key = program_key_t->vec<tstring>()(0);
+  OP_REQUIRES(ctx, !program_key.empty(),
+              absl::FailedPreconditionError("Expected non-empty program key"));
+
   int64_t per_sparse_core_batch_size = sample_count_ / num_sc_per_chip_;
 
   int64_t max_ids_per_partition = -1;
@@ -396,8 +394,8 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
           ". But the max minibatches per sparse core is set to be ",
           max_minibatches_per_sc_, " which is smaller.")));
   VLOG(2) << "GetMinibatchesInCsrWithPhysicalReplicaOp: "
-          << "program_key ='" << program_key << "'"
-          << ", table_name = " << table_name_
+          << "program_key = '" << program_key << "'"
+          << ", table_name = '" << table_name_ << "'"
           << ", max_ids = " << max_ids_per_partition
           << ", max_uniques = " << max_unique_ids_per_partition
           << ", num_minibatch_per_sc = " << num_minibatch_per_sc;
@@ -519,8 +517,6 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   row_pointers_unpadded_size_tensor->flat<int32>()(0) =
       row_pointers_unpadded_size;
   ids_unpadded_size_tensor->flat<int32>()(0) = ids_unpadded_size;
-
-  VLOG(1) << "Compute GetMinibatchesInCsrWithPhysicalReplicaOp done";
 }
 
 #ifdef LIBTPU_ON_GCE
@@ -557,6 +553,8 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   const Tensor* program_key_t;
   OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
   tstring program_key = program_key_t->vec<tstring>()(0);
+  OP_REQUIRES(ctx, !program_key.empty(),
+              absl::FailedPreconditionError("Expected non-empty program key"));
 
   int32 per_sc_sample_count = sample_count_ / num_sc_per_chip_;
 

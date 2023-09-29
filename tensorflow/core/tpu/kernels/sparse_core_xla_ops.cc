@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
 #include "xla/client/lib/slicing.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
@@ -269,8 +268,8 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
                                  feature_width, &max_ids_per_partition,
                                  &max_unique_ids_per_partition));
     VLOG(3) << "XlaSparseDenseMatmulWithCsrInputOp: "
-            << "table_name = " << table_name_
-            << ", max_ids = " << max_ids_per_partition
+            << "table_name = '" << table_name_
+            << "', max_ids = " << max_ids_per_partition
             << ", max_uniques = " << max_unique_ids_per_partition;
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(ctx->InputShape(
@@ -411,10 +410,9 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
                                  feature_width, &max_ids_per_partition,
                                  &max_unique_ids_per_partition));
     VLOG(3) << "XlaSparseDenseMatmulWithCsrInputOp: "
-            << "table_name = " << table_name_
-            << ", max_ids = " << max_ids_per_partition
+            << "table_name = '" << table_name_
+            << "', max_ids = " << max_ids_per_partition
             << ", max_uniques = " << max_unique_ids_per_partition;
-
 
     xla::XlaComputation optimizer = build_optimizer_computation(feature_width);
 
