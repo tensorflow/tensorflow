@@ -420,6 +420,8 @@ Status GpuRuntimeExecutable::Execute(
       executor_graphs->snapshot();
   CapturedFunctionExecutionCount::Snapshot execution_count =
       captured_function_counts_(executor)->snapshot();
+  OrdinalToFallback::Snapshot ordinal_to_fallback =
+      ordinal_to_fallback_.snapshot();
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   // Kernels in concurrent regions should be launched on borrowed stream, so
@@ -459,7 +461,7 @@ Status GpuRuntimeExecutable::Execute(
       // only.
       &fused_attention_runners, &fused_attention_backward_runners,
 #endif  // GOOGLE_CUDA
-      &graph_instances, &execution_count,
+      &graph_instances, &execution_count, &ordinal_to_fallback,
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       &concurrent_region_status,
       // Null pointer will be interpreted as an absence of async collectives
@@ -496,6 +498,7 @@ Status GpuRuntimeExecutable::Execute(
 
     if (auto instantiated = graph_instances_.InstantiateAllGraphs(
             run_options, executable, user_data, device_ptr,
+            &ordinal_to_fallback,
             debug_options_.xla_gpu_graph_eviction_timeout_seconds());
         !instantiated.ok()) {
       return InternalError("Failed to instantiate GPU graphs: %s",
