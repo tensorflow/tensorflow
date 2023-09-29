@@ -561,6 +561,8 @@ test:release_base --test_size_filters=small,medium
 
 # Target the AVX instruction set
 build:release_cpu_linux --config=avx_linux
+# Enable support for all targets
+build:release_cpu_linux --config=cpu_cross
 # Use the Clang toolchain to compile
 build:release_cpu_linux --crosstool_top="@sigbuild-r2.14-clang_config_cuda//crosstool:toolchain"
 # Disable clang extention that rejects type definitions within offsetof.
