@@ -42,13 +42,6 @@ cc_test(
 cc_binary(
     name = "internal_api_samples",
     srcs = ["internal_api_samples.cc"],
-    linkopts = select({
-        "//tensorflow:android": [
-            "-lEGL",
-            "-lGLESv3",
-        ],
-        "//conditions:default": [],
-    }),
     tags = [
         "nobuilder",
         "notap",

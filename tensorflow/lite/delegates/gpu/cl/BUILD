@@ -126,7 +126,6 @@ cc_test(
     deps = [
         ":buffer",
         ":cl_arguments",
-        ":cl_test",
         ":gpu_object",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "@com_google_absl//absl/strings",

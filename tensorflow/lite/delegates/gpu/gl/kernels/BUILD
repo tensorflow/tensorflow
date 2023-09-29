@@ -45,7 +45,6 @@ cc_test(
     ],
     deps = [
         ":converter",
-        ":test_util",
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -722,18 +721,10 @@ cc_library(
     testonly = 1,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
-    linkopts = select({
-        "//tensorflow:android": [
-            "-lEGL",
-            "-lGLESv3",
-            "-ldl",
-            "-lm",
-        ],
-        "//conditions:default": [
-            "-lEGL",
-            "-lGLESv3",
-        ],
-    }),
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
