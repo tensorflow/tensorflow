@@ -29,7 +29,6 @@ import tensorflow as tf
 
 # from tensorflow.python import keras
 # from tensorflow.python.layers import layers
-from tensorflow.python.tpu import api
 
 # Special dunders that we choose to export:
 _exported_dunders = set([
