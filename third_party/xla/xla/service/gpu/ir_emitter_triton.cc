@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -109,7 +110,6 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/tensor_float_32_utils.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -1397,10 +1397,15 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
       dot_input_rhs = apply_mask(1, dot_input_rhs);
     }
 
+    const bool allow_tf32 =
+        absl::c_none_of(dot_instr->precision_config().operand_precision(),
+                        [](const int precision) {
+                          return precision != PrecisionConfig::DEFAULT;
+                        });
+
     // Execute matrix multiplication of input tiles and pass the accumulator.
-    Value accumulator_next = b.create<mt::DotOp>(
-        dot_input_lhs, dot_input_rhs, iter_args.back(),
-        /*allowTF32=*/tsl::tensor_float_32_execution_enabled());
+    Value accumulator_next = b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs,
+                                                 iter_args.back(), allow_tf32);
     iter_args_next.push_back(accumulator_next);
 
     b.create<mlir::scf::YieldOp>(iter_args_next);

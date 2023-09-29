@@ -53,7 +53,6 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/tensor_float_32_utils.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -75,20 +74,6 @@ class TritonGemmTest : public GpuCodegenTest {
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
-};
-
-class TritonGemmNoTF32Test : public TritonGemmTest {
- public:
-  void SetUp() override {
-    tf32_state_ = tsl::tensor_float_32_execution_enabled();
-    tsl::enable_tensor_float_32_execution(false);
-  }
-  void TearDown() override {
-    tsl::enable_tensor_float_32_execution(tf32_state_);
-  }
-
- private:
-  bool tf32_state_;
 };
 
 class TritonFilecheckTest : public TritonGemmTest {
@@ -220,16 +205,15 @@ CHECK:    }
               tsl::testing::IsOkAndHolds(true));
 }
 
-TEST_F(TritonGemmNoTF32Test, DoNotUseTensorCoresForF32) {
+TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
   const std::string kHloText = R"(
-HloModule t, is_scheduled=true
-
 triton_gemm_r {
   parameter_0 = s8[80,15]{1,0} parameter(0)
   convert.3 = f32[80,15]{1,0} convert(parameter_0)
   parameter_1 = f32[16,15]{1,0} parameter(1)
   ROOT r.1 = f32[80,16]{1,0} dot(convert.3, parameter_1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    lhs_contracting_dims={1}, rhs_contracting_dims={1},
+    operand_precision={HIGH, HIGH}
 }
 
 ENTRY e {
@@ -237,9 +221,9 @@ ENTRY e {
   p0 = s8[80,15]{1,0} parameter(0)
   ROOT triton_gemm_r = f32[80,16]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_gemm_r,
-    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":2}}
+    backend_config={kind: "__triton_gemm", triton_gemm_config:
+      {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":2}}
 })";
-  CHECK(!tsl::tensor_float_32_execution_enabled());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
                           ParseAndReturnVerifiedModule(kHloText));
 
@@ -280,8 +264,6 @@ ENTRY e {
 
 TEST_F(TritonGemmTest, UseTensorCoresForF32OnAmpere) {
   const std::string kHloText = R"(
-HloModule t, is_scheduled=true
-
 triton_gemm_r {
   parameter_0 = s8[80,15]{1,0} parameter(0)
   convert.3 = f32[80,15]{1,0} convert(parameter_0)
@@ -295,9 +277,9 @@ ENTRY e {
   p0 = s8[80,15]{1,0} parameter(0)
   ROOT triton_gemm_r = f32[80,16]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_gemm_r,
-    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":2}}
+    backend_config={kind: "__triton_gemm", triton_gemm_config:
+      {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":2}}
 })";
-  CHECK(tsl::tensor_float_32_execution_enabled());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
                           ParseAndReturnVerifiedModule(kHloText));
 
