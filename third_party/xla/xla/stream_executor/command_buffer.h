@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <tuple>
 
+#include "absl/functional/any_invocable.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform/port.h"
@@ -29,6 +30,7 @@ limitations under the License.
 
 namespace stream_executor {
 
+class Stream;
 class StreamExecutor;
 
 namespace internal {
@@ -45,15 +47,35 @@ class CommandBufferInterface;
 // buffers allow to amortize the cost of launching "work" on device by building
 // it on the host ahead of time without expensive interaction with underlying
 // device.
+//
+// TODO(ezhulenev): Add a concept of a "nested" command buffer which can't be
+// submitted on its own, but has to be recorded into the parent command buffer.
+// For CUDA backend nested command buffers will never be instantiated into
+// executable graphs, but instead will only have a regular graph instance. We
+// should almost always trace into nested command buffers.
 class CommandBuffer {
  public:
-  explicit CommandBuffer(
-      std::unique_ptr<internal::CommandBufferInterface> implementation);
+  //===--------------------------------------------------------------------===//
+  // Command buffer constructors
+  //===--------------------------------------------------------------------===//
 
-  CommandBuffer(CommandBuffer&&) = default;
-  CommandBuffer& operator=(CommandBuffer&&) = default;
-
+  // Creates a new empty command buffer on the given executor.
   static tsl::StatusOr<CommandBuffer> Create(StreamExecutor* executor);
+
+  // Creates a new command buffer on the given executor by tracing `function`
+  // invocation. All StreamExecutor operations on a Stream argument will be
+  // recorded into the command buffer. Returned command buffer is finalized, and
+  // can't be updated.
+  //
+  // Command buffer tracing should be used only when it is impossible to use
+  // explicit construction APIs, e.g. when calling external libraries.
+  static tsl::StatusOr<CommandBuffer> Trace(
+      StreamExecutor* executor,
+      absl::AnyInvocable<tsl::Status(Stream*)> function);
+
+  //===--------------------------------------------------------------------===//
+  // Command buffer API
+  //===--------------------------------------------------------------------===//
 
   // Adds a kernel launch command to the command buffer.
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
@@ -74,9 +96,19 @@ class CommandBuffer {
                      const ThreadDim& threads, const BlockDim& blocks,
                      Args... args);
 
+  internal::CommandBufferInterface* implementation() {
+    return implementation_.get();
+  }
+
   const internal::CommandBufferInterface* implementation() const {
     return implementation_.get();
   }
+
+  explicit CommandBuffer(
+      std::unique_ptr<internal::CommandBufferInterface> implementation);
+
+  CommandBuffer(CommandBuffer&&) = default;
+  CommandBuffer& operator=(CommandBuffer&&) = default;
 
  private:
   std::unique_ptr<internal::CommandBufferInterface> implementation_;

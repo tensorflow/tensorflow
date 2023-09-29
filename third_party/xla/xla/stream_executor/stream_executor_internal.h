@@ -141,6 +141,11 @@ class CommandBufferInterface {
   CommandBufferInterface() = default;
   virtual ~CommandBufferInterface() = default;
 
+  // Traces `function` invocation by recording all operations on the `stream`
+  // into the command buffer. Command buffer must be empty.
+  virtual tsl::Status Trace(Stream* stream,
+                            absl::AnyInvocable<tsl::Status()> function) = 0;
+
   // Adds a kernel launch command to the command buffer.
   virtual tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
                              const KernelBase& kernel,

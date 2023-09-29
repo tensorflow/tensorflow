@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <type_traits>
 
+#include "absl/functional/any_invocable.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -35,6 +36,9 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
  public:
   GpuCommandBuffer(GpuExecutor* parent, GpuGraphHandle graph);
   ~GpuCommandBuffer() override;
+
+  tsl::Status Trace(Stream* stream,
+                    absl::AnyInvocable<tsl::Status()> function) override;
 
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
                      const KernelBase& kernel,
@@ -67,6 +71,10 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   }
 
  private:
+  // Returns OK status if command buffer is not finalized and it is still
+  // possible to add new commands to it, otherwise returns internal error.
+  tsl::Status CheckNotFinalized();
+
   static_assert(std::is_pointer_v<GpuGraphHandle>,
                 "GpuGraphHandle must be a pointer");
   static_assert(std::is_pointer_v<GpuGraphExecHandle>,

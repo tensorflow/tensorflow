@@ -24,14 +24,15 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor::cuda {
 
-TEST(CudaCommandBufferTest, LaunchSingleKernel) {
-  using AddI32Kernel = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
-                                   DeviceMemory<int32_t>>;
+using AddI32Kernel = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
+                                 DeviceMemory<int32_t>>;
 
+TEST(CudaCommandBufferTest, LaunchSingleKernel) {
   Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -63,6 +64,48 @@ TEST(CudaCommandBufferTest, LaunchSingleKernel) {
   ASSERT_TRUE(cmd_buffer.Finalize().ok());
 
   ASSERT_TRUE(executor->Submit(&stream, cmd_buffer).ok());
+
+  // Copy data back to host.
+  std::vector<int32_t> dst(4, 42);
+  stream.ThenMemcpy(dst.data(), c, byte_length);
+
+  std::vector<int32_t> expected = {3, 3, 3, 3};
+  ASSERT_EQ(dst, expected);
+}
+
+TEST(CudaCommandBufferTest, TraceSingleKernel) {
+  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
+
+  AddI32Kernel add(executor);
+  ASSERT_TRUE(executor->GetKernel(spec, &add).ok());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=1, b=2, c=0
+  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+
+  stream.ThenMemset32(&a, 1, byte_length);
+  stream.ThenMemset32(&b, 2, byte_length);
+  stream.ThenMemZero(&c, byte_length);
+
+  // Create a command buffer by tracing kernel launch operations.
+  auto cmd_buffer = CommandBuffer::Trace(executor, [&](Stream* stream) {
+    return stream->ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c);
+  });
+
+  ASSERT_TRUE(cmd_buffer.ok());
+  ASSERT_TRUE(executor->Submit(&stream, *cmd_buffer).ok());
 
   // Copy data back to host.
   std::vector<int32_t> dst(4, 42);
