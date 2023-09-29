@@ -76,10 +76,12 @@ absl::Status InitializeTpuLibrary(void* library_handle) {
 // Gets the path of current module. It is usually tensorflow_framework.so.
 const char* GetCurrentModulePath() {
   Dl_info DlInfo;
-  if (!dladdr((void*)GetCurrentModulePath, &DlInfo)) {
+  struct link_map* linkmap = nullptr;
+  if (!dladdr1((void*)GetCurrentModulePath, &DlInfo,
+               reinterpret_cast<void**>(&linkmap), RTLD_DL_LINKMAP)) {
     return nullptr;
   }
-  return DlInfo.dli_fname;
+  return linkmap->l_name;
 }
 
 absl::Status FindAndLoadTpuLibrary() {
