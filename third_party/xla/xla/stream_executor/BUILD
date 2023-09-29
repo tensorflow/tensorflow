@@ -34,18 +34,31 @@ package_group(
 # StreamExecutor public API
 #===--------------------------------------------------------------------------------------------===#
 
+# If you want to use StreamExecutor you have to depend on the "core" `xla/stream_executor` target
+# defined below which exports StreamExecutor public API headers and also provides implemenetation.
+
+# StreamExecutor also have a small number of public libraries that do not depend on StreamExecutor
+# itself (e.g. `device_description`), this is mostly a result of StreamExecutor being a hardware
+# abstraction layer for XLA (and Tensorflow).
+
+# StreamExecutor itself is a small abstrtaction layer on top of platform-specific API
+# implementations (e.g. see `stream_executor/cuda` folder for CUDA-specific details), and should
+# not contribute a lot to binary size or compilation time.
+
 # We bundle headers into filegroups for internal use only (we re-export the same set of headers
 # from multiple targets), and all external clients should depend on one of the public `cc_library`
 # targets that have dependencies required for compiling headers (e.g. absl dependencies). These
 # filegroup roughly correspond to "StreamExecutor components" that are available to the clients.
 
 # These are the headers that constitute StreamExecutor public API. Clients should not depend on
-# this filegroup directly, but instead depend on a `stream_executor_headers` target if they need
-# a header-only dependency (this is a very rare exception when we are building dynamic librarires
-# for open source projects, e.g. Tensorflow, internally at Google we almost always link statically),
-# or usually on a `sream_executor` target that will also link implementation.
+# this filegroup directly, but instead depend on a `stream_executor` target that implements these
+# headers. We also have a header-only `stream_executor_headers` target, but currently this is
+# an implementation detail of StreamExecutor and has internal visibility.
+#
+# TODO(ezhulenev): Remove from public API headers that are exported via standalone public libraries,
+# e.g. `platform` and `multi_platform_manager` should be added with an explicit dependency.
 filegroup(
-    name = "stream_executor_public_headers",
+    name = "stream_executor_api_headers",
     srcs = [
         "allocator_stats.h",
         "command_buffer.h",
@@ -62,6 +75,7 @@ filegroup(
         "kernel_spec.h",
         "launch_dim.h",
         "module_spec.h",
+        "multi_platform_manager.h",
         "numeric_options.h",
         "platform.h",
         "plugin.h",
@@ -87,6 +101,53 @@ filegroup(
         "fft.h",
     ],
     visibility = ["//visibility:public"],
+)
+
+# This is a list of dependencies required for building `stream_executor` target (and required for
+# making `stream_executor_headers` self-contained, which means that you can include any of the
+# public API headers and don't worry about adding dependencies).
+STREAM_EXECUTOR_DEPENDENCIES = [
+    ":allocator_stats",
+    ":device_description_proto_cc",
+    ":dnn_proto_cc",
+    ":host_or_device_scalar",
+    ":multi_platform_manager",
+    "@com_google_absl//absl/algorithm:container",
+    "@com_google_absl//absl/base:core_headers",
+    "@com_google_absl//absl/container:inlined_vector",
+    "@com_google_absl//absl/container:node_hash_map",
+    "@com_google_absl//absl/functional:any_invocable",
+    "@com_google_absl//absl/log:check",
+    "@com_google_absl//absl/memory",
+    "@com_google_absl//absl/status",
+    "@com_google_absl//absl/strings",
+    "@com_google_absl//absl/synchronization",
+    "@com_google_absl//absl/types:optional",
+    "@com_google_absl//absl/types:span",
+    "//xla/stream_executor/platform",
+    "@local_tsl//tsl/framework:device_id",
+    "@local_tsl//tsl/framework:device_type",
+    "@local_tsl//tsl/platform:env",
+    "@local_tsl//tsl/platform:errors",
+    "@local_tsl//tsl/platform:float8",
+    "@local_tsl//tsl/platform:logging",
+    "@local_tsl//tsl/platform:status",
+    "@local_tsl//tsl/platform:statusor",
+    "@local_tsl//tsl/platform:types",
+    "@local_tsl//tsl/protobuf:dnn_proto_cc",
+]
+
+cc_library(
+    name = "stream_executor",
+    hdrs = [
+        ":stream_executor_api_headers",
+        ":stream_executor_plugin_headers",
+    ],
+    visibility = ["//visibility:public"],
+    deps = STREAM_EXECUTOR_DEPENDENCIES + if_static([
+        ":stream_executor_impl",
+        "@com_google_protobuf//:protobuf",  # indirectly-used by dnn.h
+    ]),
 )
 
 #===--------------------------------------------------------------------------------------------===#
@@ -261,6 +322,26 @@ filegroup(
 # StreamExecutor implementation
 #===--------------------------------------------------------------------------------------------===#
 
+# TODO(ezhulenev): We need a clear separation between StreamExecutor "core" (event, stream, etc.),
+# and plugins (FFT, Blas, etc.). We should not be mixing headers and implementation of core
+# libraries with plugins. Today `stream_executor` exports all plugin headers, and we should remove
+# this, however it requires more work to break dependency from "core" to plugin implementation.
+
+# This header-only library is an internal implementation detail of StreamExecutor (to break
+# dependency cycles between internal libraries). All StreamExecutor clients should depend on a
+# regular `stream_executor` target that also provides an implementation for all headers.
+cc_library(
+    name = "stream_executor_headers",
+    hdrs = [
+        ":stream_executor_api_headers",
+        ":stream_executor_plugin_headers",
+    ],
+    visibility = ["//visibility:public"],
+    deps = STREAM_EXECUTOR_DEPENDENCIES + if_static([
+        "@com_google_protobuf//:protobuf",  # indirectly-used by dnn.h
+    ]),
+)
+
 # Targets that implement StreamExecutor APIs are private, and should not be used outside of
 # `stream_executor` package. Clients should depend on `stream_executor` (headers and
 # implementation) or `stream_executor_headers` (only headers, if there is a reason not to link
@@ -404,71 +485,6 @@ cc_library(
 
 #===--------------------------------------------------------------------------------------------===#
 
-# The stream_executor_headers target does not prescribe an implementation.
-cc_library(
-    name = "stream_executor_headers",
-    textual_hdrs = [
-        "allocator_stats.h",
-        "blas.h",
-        "command_buffer.h",
-        "device_description.h",
-        "device_memory.h",
-        "device_memory_allocator.h",
-        "device_options.h",
-        "device_id_utils.h",
-        "dnn.h",
-        "event.h",
-        "executor_cache.h",
-        "fft.h",
-        "kernel.h",
-        "kernel_cache_config.h",
-        "kernel_spec.h",
-        "scratch_allocator.h",
-        "data_type.h",
-        "launch_dim.h",
-        "numeric_options.h",
-        "module_spec.h",
-        "multi_platform_manager.h",
-        "platform.h",
-        "plugin.h",
-        "plugin_registry.h",
-        "stream.h",
-        "stream_executor.h",
-        "stream_executor_internal.h",
-        "stream_executor_pimpl.h",
-        "temporary_device_memory.h",
-        "temporary_memory_manager.h",
-        "trace_listener.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":allocator_stats",
-        ":device_description_proto_cc",
-        ":dnn_proto_cc",
-        ":host_or_device_scalar",
-        "//xla/stream_executor/platform",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/framework:device_id",
-        "@local_tsl//tsl/framework:device_type",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:float8",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:types",
-    ],
-)
-
 transitive_hdrs(
     name = "stream_executor_install_hdrs",
     deps = [":stream_executor_headers"],
@@ -527,7 +543,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":platform",
-        ":stream_executor_headers",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -683,53 +698,6 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ] + if_static(["@com_google_protobuf//:protobuf"]),
-)
-
-cc_library(
-    name = "stream_executor",
-    textual_hdrs = [
-        "allocator_stats.h",
-        "blas.h",
-        "data_type.h",
-        "device_description.h",
-        "device_memory.h",
-        "device_memory_allocator.h",
-        "device_options.h",
-        "device_id_utils.h",
-        "dnn.h",
-        "event.h",
-        "executor_cache.h",
-        "fft.h",
-        "kernel.h",
-        "kernel_cache_config.h",
-        "kernel_spec.h",
-        "launch_dim.h",
-        "module_spec.h",
-        "multi_platform_manager.h",
-        "scratch_allocator.h",
-        "platform.h",
-        "plugin.h",
-        "plugin_registry.h",
-        "stream.h",
-        "numeric_options.h",
-        "stream_executor.h",
-        "stream_executor_internal.h",
-        "stream_executor_pimpl.h",
-        "temporary_device_memory.h",
-        "temporary_memory_manager.h",
-        "trace_listener.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":stream_executor_headers",
-        "@com_google_absl//absl/log:check",
-        "@local_tsl//tsl/framework:device_id",
-        "@local_tsl//tsl/framework:device_type",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:types",
-    ] + if_static([":stream_executor_impl"]),
 )
 
 cc_library(
