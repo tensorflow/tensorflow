@@ -79,11 +79,11 @@ Value getEmptyTensor(OpBuilder& b, Location loc, RankedTensorType type) {
       .getResult(0);
 }
 
-struct SparseBatchedPackCallRewriter {
+struct SparseBatchedAssembleCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
     assert(op.getResults().size() == 1 && "Must be packing into one tensor");
     Value ret_sp_tensor = op.getResults()[0];
-    rewriter.replaceOpWithNewOp<sparse_tensor::PackOp>(
+    rewriter.replaceOpWithNewOp<sparse_tensor::AssembleOp>(
         op, ret_sp_tensor.getType(), op.getInputs()[0],  // sparse tensor values
         op.getInputs().drop_front());                    // sparse tensor levels
     return success();
@@ -396,31 +396,33 @@ struct SparseUnaryChloCallRewriter {
   }
 };
 
-struct SparseUnpackCallRewriter {
+struct SparseDisassembleCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
     // TODO(peiming): Canonicalizes these two cases. The old bridge that uses
     // jax.BCOO/BCSR does not require buffer lengths.
-    unsigned unpack_bufs_num = op.getInputs().size() - 1;
-    assert(op.getResults().size() == unpack_bufs_num ||
-           op.getResults().size() == unpack_bufs_num * 2);
-    SmallVector<Type> unpack_ret_tp(
-        op.getResults().take_front(unpack_bufs_num).getTypes());
+    unsigned disassemble_bufs_num = op.getInputs().size() - 1;
+    assert(op.getResults().size() == disassemble_bufs_num ||
+           op.getResults().size() == disassemble_bufs_num * 2);
+    SmallVector<Type> disassemble_ret_tp(
+        op.getResults().take_front(disassemble_bufs_num).getTypes());
     // Extra lengths for each buffer returned.
-    unpack_ret_tp.append(unpack_bufs_num, rewriter.getIndexType());
+    disassemble_ret_tp.append(disassemble_bufs_num, rewriter.getIndexType());
     Value tensor = op.getInputs()[0];
     Value out_vals = op.getInputs()[1];
     ValueRange out_lvls = op.getInputs().drop_front(2);
-    // Constructs the UnpackOp.
-    auto unpack_op = rewriter.create<sparse_tensor::UnpackOp>(
-        op.getLoc(), unpack_ret_tp, tensor, out_vals, out_lvls);
-    assert(unpack_op.getResults().size() == unpack_bufs_num * 2);
-    ValueRange bufs = unpack_op.getResults().take_front(unpack_bufs_num);
-    ValueRange lens = unpack_op.getResults().take_back(unpack_bufs_num);
+    // Constructs the disassembleOp.
+    auto disassemble_op = rewriter.create<sparse_tensor::DisassembleOp>(
+        op.getLoc(), disassemble_ret_tp, tensor, out_vals, out_lvls);
+    assert(disassemble_op.getResults().size() == disassemble_bufs_num * 2);
+    ValueRange bufs =
+        disassemble_op.getResults().take_front(disassemble_bufs_num);
+    ValueRange lens =
+        disassemble_op.getResults().take_back(disassemble_bufs_num);
 
     // Wraps the scalar value into a "scalar tensor", i.e., tensor<i64>
     SmallVector<Value> rets(bufs.begin(), bufs.end());
-    if (op.getResults().size() == unpack_bufs_num * 2) {
-      ValueRange ret_lens = op.getResults().take_back(unpack_bufs_num);
+    if (op.getResults().size() == disassemble_bufs_num * 2) {
+      ValueRange ret_lens = op.getResults().take_back(disassemble_bufs_num);
       for (auto [len, tensor_len] : llvm::zip(lens, ret_lens)) {
         auto ret_t_len = rewriter.create<tensor::EmptyOp>(
             op.getLoc(), tensor_len.getType(), ValueRange{});
@@ -629,8 +631,10 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       std::make_pair("sparse_tensor_sinh",
                      SparseUnaryChloCallRewriter<chlo::SinhOp>()),
       std::make_pair("sparse_tensor_slice", SparseSliceCallRewriter()),
-      std::make_pair("sparse_tensor_pack", SparseBatchedPackCallRewriter()),
-      std::make_pair("sparse_tensor_unpack", SparseUnpackCallRewriter()),
+      std::make_pair("sparse_tensor_assemble",
+                     SparseBatchedAssembleCallRewriter()),
+      std::make_pair("sparse_tensor_disassemble",
+                     SparseDisassembleCallRewriter()),
       std::make_pair("sparse_tensor_sub",
                      SparseBinaryCallRewriter<mhlo::SubtractOp>()),
       std::make_pair("sparse_tensor_tan",
