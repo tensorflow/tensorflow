@@ -18,15 +18,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <limits>
 #include <optional>
 #include <ostream>
 #include <string>
 
-#include "absl/meta/type_traits.h"
 #include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
 #include "xla/statusor.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
@@ -185,28 +184,19 @@ class Comparison {
     }
   }
 
-  // Applies the comparison from this Comparison's direction and ordering for
-  // integral types.
-  template <typename T,
-            absl::enable_if_t<std::numeric_limits<T>::is_integer, int> = 0>
+  template <typename T>
   inline bool Compare(const T a, const T b) const {
     DCHECK(primitive_util::IsCanonicalRepresentation<T>(primitive_type_));
-    return GetComparator<T>()(a, b);
-  }
-
-  // Applies the comparison from this Comparison's direction and ordering
-  // for floating point types.
-  template <typename T,
-            absl::enable_if_t<!std::numeric_limits<T>::is_integer, int> = 0>
-  inline bool Compare(const T a, const T b) const {
-    DCHECK(primitive_util::IsCanonicalRepresentation<T>(primitive_type_));
-    if (IsTotalOrder()) {
-      //  -NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN
-      // Reference:
-      // https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations
-      using R = SignedIntegerTypeForSizeType<sizeof(T)>;
-      return GetComparator<R>()(ToSignMagnitude(a), ToSignMagnitude(b));
+    if constexpr (is_specialized_floating_point_v<T>) {
+      if (IsTotalOrder()) {
+        //  -NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN
+        // Reference:
+        // https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations
+        using R = SignedIntegerTypeForSizeType<sizeof(T)>;
+        return GetComparator<R>()(ToSignMagnitude(a), ToSignMagnitude(b));
+      }
     }
+    // Applies the comparison from this Comparison's direction and ordering.
     return GetComparator<T>()(a, b);
   }
 

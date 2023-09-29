@@ -1,24 +1,24 @@
+load("//xla:pytype.default.bzl", "pytype_strict_library")
 load("//xla:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("@local_tsl//tsl/platform:build_config.bzl", "pyx_library", "tf_proto_library")
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//xla:xla.bzl",
     "xla_cc_test",
     "xla_py_test_deps",
 )
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "@local_tsl//tsl:tsl.bzl",
     "if_cuda_or_rocm",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_tsl//tsl:tsl.default.bzl", "tsl_pybind_extension")
-load("//xla:pytype.default.bzl", "pytype_strict_library")
+load("@local_tsl//tsl/platform:build_config.bzl", "pyx_library", "tf_proto_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -187,7 +187,6 @@ py_strict_test(
 cc_library(
     name = "exceptions",
     hdrs = ["exceptions.h"],
-    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -314,7 +313,6 @@ cc_library(
 cc_library(
     name = "py_client",
     srcs = [
-        "callback.cc",
         "py_array.cc",
         "py_buffer.cc",
         "py_client.cc",
@@ -324,11 +322,8 @@ cc_library(
         "py_host_callback.cc",
         "py_values.cc",
         "sharding.cc",
-    ] + if_cuda_or_rocm([
-        "py_client_gpu.cc",
-    ]),
+    ],
     hdrs = [
-        "callback.h",
         "py_array.h",
         "py_buffer.h",
         "py_client.h",
@@ -339,9 +334,7 @@ cc_library(
         "py_values.h",
         "sharded_device_array.h",
         "sharding.h",
-    ] + if_cuda_or_rocm([
-        "py_client_gpu.h",
-    ]),
+    ],
     compatible_with = [],
     copts = [
         "-fexceptions",
@@ -353,8 +346,10 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:public"],
     deps = [
+        ":callback",
         ":exceptions",
         ":pprof_profile_builder",
+        ":py_client_gpu",
         ":py_host_callback_proto_cc",
         ":python_ref_manager",
         ":python_utils",
@@ -368,7 +363,9 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
@@ -404,6 +401,67 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
+    ] + if_cuda([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
+)
+
+cc_library(
+    name = "callback",
+    srcs = [
+        "callback.cc",
+    ],
+    hdrs = [
+        "callback.h",
+    ],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":python_ref_manager",
+        "//xla:comparison_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/pjrt:transpose",
+        "//xla/service:custom_call_status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
+        "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "py_client_gpu",
+    srcs = if_cuda_or_rocm([
+        "py_client_gpu.cc",
+    ]),
+    hdrs = if_cuda_or_rocm([
+        "py_client_gpu.h",
+    ]),
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":callback",
+        ":exceptions",
+        "//xla:comparison_util",
+        "//xla/service:custom_call_status",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@pybind11",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm([
@@ -762,6 +820,7 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:all_passes",
         "//xla/pjrt:mlir_to_hlo",
+        "//xla/service/llvm_ir:llvm_util",
         "//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "@local_tsl//tsl/platform:errors",
         "@llvm-project//llvm:Support",
@@ -1012,6 +1071,7 @@ tsl_pybind_extension(
             "-Wl,-rpath,$$ORIGIN/../nvidia/cufft/lib",
             "-Wl,-rpath,$$ORIGIN/../nvidia/cudnn/lib",
             "-Wl,-rpath,$$ORIGIN/../nvidia/cusolver/lib",
+            "-Wl,-rpath,$$ORIGIN/../nvidia/nccl/lib",
         ],
         "//conditions:default": [],
     }),
@@ -1029,6 +1089,8 @@ tsl_pybind_extension(
 cc_library(
     name = "xla_extension_library",
     srcs = [
+        "logging.cc",
+        "logging.h",
         "xla.cc",
     ],
     hdrs = [
@@ -1068,6 +1130,8 @@ cc_library(
         ":weakref_lru_cache",
         ":xla_compiler",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:initialize",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -1079,13 +1143,13 @@ cc_library(
         "//xla:statusor",
         "//xla:types",
         "//xla:util",
-        "//xla/pjrt:interpreter_device",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_api",
         "//xla/pjrt:pjrt_c_api_client",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:tfrt_cpu_pjrt_client",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
         "//xla/pjrt/distributed:protocol_proto_cc",
@@ -1093,6 +1157,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/pjrt_ifrt",
         "@local_tsl//tsl/distributed_runtime/preemption:preemption_sync_manager",
+        "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform/cloud:gcs_file_system",
         "@local_tsl//tsl/python/lib/core:numpy",

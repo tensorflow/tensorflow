@@ -14,18 +14,31 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 
 namespace pjrt {
 namespace {
@@ -41,13 +54,38 @@ TEST(PjRtCApiHelperTest, ConvertValidPjRtValueType) {
       {"int64_list", int64_list},
       {"float", static_cast<float>(1.0)}};
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_map,
-                          ConvertToPjRtNamedValueList(original_cpp_map));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<PJRT_NamedValue> c_map,
+      ConvertToPjRtNamedValueList(original_cpp_map, /*api_minor_version=*/30));
   auto converted_back_cpp_map =
       ConvertFromPjRtNamedValueList(c_map.data(), c_map.size());
 
   EXPECT_THAT(converted_back_cpp_map,
               testing::UnorderedElementsAreArray(original_cpp_map));
+}
+
+TEST(PjRtCApiHelperTest, ConvertValidPjRtValueTypeWithUnsupportedApiVersion) {
+  std::vector<int64_t> int64_list = {static_cast<int64_t>(1),
+                                     static_cast<int64_t>(2)};
+  absl::flat_hash_map<std::string, xla::PjRtValueType> original_cpp_map = {
+      {"string", static_cast<std::string>("v1")},
+      {"int64", static_cast<int64_t>(1)},
+      {"int64_list", int64_list},
+      {"float", static_cast<float>(1.0)},
+      {"float", static_cast<float>(1.0)},
+      {"bool", static_cast<bool>(true)}};
+  int api_minor_version = 29;
+  absl::StatusOr<std::vector<PJRT_NamedValue>> c_map =
+      ConvertToPjRtNamedValueList(original_cpp_map, api_minor_version);
+  EXPECT_THAT(
+      c_map.status(),
+      ::tsl::testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          absl::StrCat(
+              "Client cannot provide this option for API versions less "
+              "than 0.30. The framework PJRT API version is ",
+              PJRT_API_MAJOR, ".", PJRT_API_MINOR,
+              "and the plugin minor version is ", api_minor_version, ".")));
 }
 
 TEST(PjRtCApiHelperTest, ValidOptionNameAndPjRtValueTypeIndex) {
@@ -56,7 +94,8 @@ TEST(PjRtCApiHelperTest, ValidOptionNameAndPjRtValueTypeIndex) {
       {"int64", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
   });
   absl::flat_hash_map<std::string, xla::PjRtValueType> valid_map = {
-      {"string", "v1"}, {"int64", static_cast<int64_t>(1)}};
+      {"string", static_cast<std::string>("v1")},
+      {"int64", static_cast<int64_t>(1)}};
 
   TF_EXPECT_OK(ValidateCreateOptions(valid_map, expected));
 }

@@ -20,9 +20,12 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "xla/debug_options_flags.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 #include "xla/tools/multihost_hlo_runner/hlo_runner_flags.h"
 #include "tsl/platform/init_main.h"
@@ -53,6 +56,15 @@ Single-GPU HLO:
     --num_partitions=2 \
     --hlo_file=path/to/hlo_module
 
+2 hosts-Mock GPU sharded HLO:
+  bazel run hlo_runner_main -- \
+     --use_spmd_partitioning=true \
+    --num_replicas=1 \
+    --num_partitions=2 \
+    --num_nodes=2 \
+    --enable_mock_gpu=true \
+    --hlo_file=path/to/hlo_module
+
 Tip: If the input generation takes too long or uses too much host memory,
 consider using --hlo_argument_mode=uninitialized.
 )";
@@ -64,8 +76,10 @@ int main(int argc, char** argv) {
   xla::InputFormat input_format;
   std::string hlo_file = "";
   bool should_run = true;
+  bool enable_mock_nccl = false;
   std::string dump_output_literal_to = "";
   int task_id = 0;
+  int num_nodes = 1;
   std::string device_type_str = "gpu";
   xla::FunctionalHloRunner::PreprocessingOptions preproc_options;
   xla::FunctionalHloRunner::RawCompileOptions raw_compile_options;
@@ -83,6 +97,10 @@ int main(int argc, char** argv) {
                 "Example: /a/b/literal.txt."),
       tsl::Flag("task_id", &task_id, "Borg task id."),
       tsl::Flag("device_type", &device_type_str, "Device type: gpu"),
+      tsl::Flag("num_nodes", &num_nodes, "Number of nodes (hosts)"),
+      tsl::Flag(
+          "enable_mock_nccl", &enable_mock_nccl,
+          "Should we simulate multi-hosts run with mock nccl collectives?"),
   };
 
   xla::MultiHostHloRunnerFlags hlo_runner_flags;
@@ -113,8 +131,14 @@ int main(int argc, char** argv) {
   }
 
   // The main logic:
-  xla::StatusOr<std::unique_ptr<xla::PjRtClient>> client =
-      xla::FunctionalHloRunner::CreateGpuClient();
+  xla::StatusOr<std::unique_ptr<xla::PjRtClient>> client;
+  if (enable_mock_nccl) {
+    CHECK_GT(num_nodes, 1);
+    client = xla::FunctionalHloRunner::CreateMockGpuClient(num_nodes);
+  } else {
+    CHECK_EQ(num_nodes, 1);
+    client = xla::FunctionalHloRunner::CreateGpuClient();
+  }
   TF_QCHECK_OK(client.status());
 
   if (should_run) {

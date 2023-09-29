@@ -34,7 +34,15 @@ namespace tsl {
 namespace profiler {
 namespace internal {
 
-std::atomic<int> g_trace_level(TraceMeRecorder::kTracingDisabled);
+#ifdef _WIN32
+#define DECL_DLL_EXPORT __declspec(dllexport)
+#else
+#define DECL_DLL_EXPORT
+#endif
+// DLL imported variables cannot be initialized on Windows. This file is
+// included only on DLL exports.
+DECL_DLL_EXPORT std::atomic<int> g_trace_level(
+    TraceMeRecorder::kTracingDisabled);
 
 // g_trace_level implementation must be lock-free for faster execution of the
 // TraceMe API. This can be commented (if compilation is failing) but execution

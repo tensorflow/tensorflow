@@ -1042,9 +1042,9 @@ class CaseOrIfRegionEliminatePassThrough
     if (result_to_extern_value.empty()) return failure();
 
     // Create new case/if region op.
-    auto new_op = rewriter.create<CaseOrIfRegionOp>(
-        op.getLoc(), new_result_types, op.getOperand(), op->getAttrs(),
-        op.getNumRegions());
+    auto new_op = CreateTfOp<CaseOrIfRegionOp>(rewriter, op, new_result_types,
+                                               op.getOperand(), op->getAttrs(),
+                                               op.getNumRegions());
 
     int next_index = 0;
     for (auto result : op.getResults()) {
@@ -1203,8 +1203,8 @@ LogicalResult HoistCwiseUnaryOutOfConcat::matchAndRewrite(
   SmallVector<Value, 8> unary_ops_args(unary_operands);
 
   // Concatenate unary ops operands.
-  auto concat_unary_operands = rewriter.create<ConcatV2Op>(
-      loc, op.getType(), unary_ops_args, op.getAxis());
+  auto concat_unary_operands = CreateTfOp<ConcatV2Op>(
+      rewriter, op, op.getType(), unary_ops_args, op.getAxis());
 
   // Replace original concat with an unary op.
   OperationState new_unary_op_state(loc, first_arg_op->getName().getStringRef(),
@@ -1212,6 +1212,7 @@ LogicalResult HoistCwiseUnaryOutOfConcat::matchAndRewrite(
                                     op.getResult().getType(),
                                     ArrayRef<NamedAttribute>());
   Operation* new_unary_op = rewriter.create(new_unary_op_state);
+  CopyDeviceAndUnderscoredAttributes(op, new_unary_op);
 
   rewriter.replaceOp(op, new_unary_op->getResults());
 
@@ -1371,8 +1372,8 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
     // Use `PackOp` for scalar concatenation because `ConcatV2Op` doesn't
     // support scalar concatenation.
     if (is_scalar) {
-      auto pack = rewriter.create<PackOp>(loc, result_type, args,
-                                          rewriter.getI64IntegerAttr(axis));
+      auto pack = CreateTfOp<PackOp>(rewriter, op, result_type, args,
+                                     rewriter.getI64IntegerAttr(axis));
       return pack.getResult();
     }
 
@@ -1389,7 +1390,7 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
     auto axis_const = rewriter.create<TF::ConstOp>(loc, attr);
 
     auto concat =
-        rewriter.create<ConcatV2Op>(loc, result_type, args, axis_const);
+        CreateTfOp<ConcatV2Op>(rewriter, op, result_type, args, axis_const);
     return concat.getResult();
   };
 
@@ -1406,6 +1407,7 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
       loc, first_arg_op->getName().getStringRef(), {lhs_concat, rhs_concat},
       op.getResult().getType(), ArrayRef<NamedAttribute>());
   Operation* new_binary_op = rewriter.create(new_binary_op_state);
+  CopyDeviceAndUnderscoredAttributes(op, new_binary_op);
 
   rewriter.replaceOp(op, new_binary_op->getResults());
 
@@ -2299,9 +2301,8 @@ class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
         } else {
           // When `y` is a non-zero splat constant, replace tf.DivNoNan with
           // tf.Div and tf.MulNoNan with tf.Mul.
-          rewriter.replaceOpWithNewOp<RetT>(op, op->getResult(0).getType(),
-                                            op->getOperand(0),
-                                            op->getOperand(1));
+          ReplaceTfOpWithNewOp<RetT>(rewriter, op, op->getResult(0).getType(),
+                                     op->getOperand(0), op->getOperand(1));
         }
         return success();
       }
@@ -2312,8 +2313,8 @@ class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
       } else {
         // When all the elements in `y` are non-splat and non-zero, replace
         // tf.DivNoNan with tf.Div and tf.MulNoNan with tf.Mul.
-        rewriter.replaceOpWithNewOp<RetT>(op, op->getResult(0).getType(),
-                                          op->getOperand(0), op->getOperand(1));
+        ReplaceTfOpWithNewOp<RetT>(rewriter, op, op->getResult(0).getType(),
+                                   op->getOperand(0), op->getOperand(1));
         return success();
       }
     }
@@ -2647,8 +2648,8 @@ static LogicalResult flipComatibleShapeError(Ty op, PatternRewriter& rewriter) {
   }
 
   // Shapes are known to be compatible.
-  rewriter.template replaceOpWithNewOp<Ty>(op, op.getX(), op.getY(),
-                                           rewriter.getBoolAttr(true));
+  ReplaceTfOpWithNewOp<Ty>(rewriter, op, op.getX(), op.getY(),
+                           rewriter.getBoolAttr(true));
   return success();
 }
 }  // namespace

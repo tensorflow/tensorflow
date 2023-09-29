@@ -86,7 +86,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     const std::unordered_set<std::string>& saved_model_tags,
     llvm::StringRef saved_model_dir,
     std::optional<tensorflow::Session*> session, std::string* result,
-    bool serialize_stablehlo_ops = true);
+    bool serialize_stablehlo_ops = false);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_

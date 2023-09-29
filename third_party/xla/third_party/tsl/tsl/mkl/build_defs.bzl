@@ -115,7 +115,7 @@ def onednn_v3_define():
       An empty list of all other cases (include ARM builds).
     """
     return select({
-        "@local_tsl//tsl/mkl:build_with_mkl_aarch64": [],
+        "@local_tsl//tsl/mkl:build_with_mkl_aarch64": ["-DENABLE_ONEDNN_V3"],
         "@local_tsl//tsl:linux_x86_64": ["-DENABLE_ONEDNN_V3"],
         "@local_tsl//tsl:windows": ["-DENABLE_ONEDNN_V3"],
         "//conditions:default": [],

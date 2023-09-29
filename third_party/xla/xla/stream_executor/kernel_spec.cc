@@ -15,28 +15,37 @@ limitations under the License.
 
 #include "xla/stream_executor/kernel_spec.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
+#include <string>
+#include <tuple>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 
 namespace stream_executor {
 
-KernelLoaderSpec::KernelLoaderSpec(absl::string_view kernelname)
-    : kernelname_(std::string(kernelname)) {}
+KernelLoaderSpec::KernelLoaderSpec(absl::string_view kernel_name)
+    : kernel_name_(std::string(kernel_name)) {}
 
 OnDiskKernelLoaderSpec::OnDiskKernelLoaderSpec(absl::string_view filename,
-                                               absl::string_view kernelname)
-    : KernelLoaderSpec(kernelname), filename_(std::string(filename)) {}
+                                               absl::string_view kernel_name)
+    : KernelLoaderSpec(kernel_name), filename_(std::string(filename)) {}
 
 CudaPtxOnDisk::CudaPtxOnDisk(absl::string_view filename,
-                             absl::string_view kernelname)
-    : OnDiskKernelLoaderSpec(filename, kernelname) {}
+                             absl::string_view kernel_name)
+    : OnDiskKernelLoaderSpec(filename, kernel_name) {}
 
 CudaCubinOnDisk::CudaCubinOnDisk(absl::string_view filename,
-                                 absl::string_view kernelname)
-    : OnDiskKernelLoaderSpec(filename, kernelname) {}
+                                 absl::string_view kernel_name)
+    : OnDiskKernelLoaderSpec(filename, kernel_name) {}
 
 CudaCubinInMemory::CudaCubinInMemory(const char *bytes,
-                                     absl::string_view kernelname)
-    : KernelLoaderSpec(kernelname), bytes_(bytes) {}
+                                     absl::string_view kernel_name)
+    : KernelLoaderSpec(kernel_name), bytes_(bytes) {}
 
 bool CompareComputeCapability(const std::tuple<int, int> &lhs,
                               const std::tuple<int, int> &rhs) {
@@ -157,91 +166,58 @@ const char *CudaPtxInMemory::original_text(int compute_capability_major,
   return ptx_iter->second;
 }
 
-OpenCLTextOnDisk::OpenCLTextOnDisk(absl::string_view filename,
-                                   absl::string_view kernelname)
-    : OnDiskKernelLoaderSpec(filename, kernelname) {}
-
-OpenCLTextInMemory::OpenCLTextInMemory(absl::string_view text,
-                                       absl::string_view kernelname)
-    : KernelLoaderSpec(kernelname), text_(text) {}
-
-OpenCLBinaryOnDisk::OpenCLBinaryOnDisk(absl::string_view filename,
-                                       absl::string_view kernelname)
-    : OnDiskKernelLoaderSpec(filename, kernelname) {}
-
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddOpenCLTextOnDisk(
-    absl::string_view filename, absl::string_view kernelname) {
-  CHECK(ocl_text_on_disk_ == nullptr);
-  ocl_text_on_disk_.reset(new OpenCLTextOnDisk{filename, kernelname});
-  return this;
-}
-
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddOpenCLBinaryOnDisk(
-    absl::string_view filename, absl::string_view kernelname) {
-  CHECK(ocl_binary_on_disk_ == nullptr);
-  ocl_binary_on_disk_.reset(new OpenCLBinaryOnDisk{filename, kernelname});
-  return this;
-}
-
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddOpenCLTextInMemory(
-    absl::string_view filename, absl::string_view kernelname) {
-  CHECK(ocl_text_in_memory_ == nullptr);
-  ocl_text_in_memory_.reset(new OpenCLTextInMemory{filename, kernelname});
-  return this;
-}
-
 MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaPtxOnDisk(
-    absl::string_view filename, absl::string_view kernelname) {
+    absl::string_view filename, absl::string_view kernel_name) {
   CHECK(cuda_ptx_on_disk_ == nullptr);
-  cuda_ptx_on_disk_.reset(new CudaPtxOnDisk{filename, kernelname});
+  cuda_ptx_on_disk_.reset(new CudaPtxOnDisk{filename, kernel_name});
   return this;
 }
 
 MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCubinInMemory(
-    const char *bytes, absl::string_view kernelname) {
+    const char *bytes, absl::string_view kernel_name) {
   CHECK(cuda_cubin_in_memory_ == nullptr);
-  cuda_cubin_in_memory_.reset(new CudaCubinInMemory{bytes, kernelname});
+  cuda_cubin_in_memory_.reset(new CudaCubinInMemory{bytes, kernel_name});
   return this;
 }
 
 MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCubinOnDisk(
-    absl::string_view filename, absl::string_view kernelname) {
+    absl::string_view filename, absl::string_view kernel_name) {
   CHECK(cuda_cubin_on_disk_ == nullptr);
-  cuda_cubin_on_disk_.reset(new CudaCubinOnDisk{filename, kernelname});
+  cuda_cubin_on_disk_.reset(new CudaCubinOnDisk{filename, kernel_name});
   return this;
 }
 
 MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaPtxInMemory(
-    absl::string_view ptx, absl::string_view kernelname) {
+    absl::string_view ptx, absl::string_view kernel_name) {
   CHECK(cuda_ptx_in_memory_ == nullptr);
   cuda_ptx_in_memory_.reset(
-      new CudaPtxInMemory{ptx, kernelname, false /* ptx_compressed */});
+      new CudaPtxInMemory{ptx, kernel_name, false /* ptx_compressed */});
   return this;
 }
 
 MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCompressedPtxInMemory(
-    absl::string_view ptx, absl::string_view kernelname) {
+    absl::string_view ptx, absl::string_view kernel_name) {
   CHECK(cuda_ptx_in_memory_ == nullptr);
   cuda_ptx_in_memory_.reset(
-      new CudaPtxInMemory{ptx, kernelname, true /* ptx_compressed */});
+      new CudaPtxInMemory{ptx, kernel_name, true /* ptx_compressed */});
   return this;
 }
 
 MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaPtxInMemory(
     std::initializer_list<CudaPtxInMemory::PtxSpec> spec_list,
-    absl::string_view kernelname) {
+    absl::string_view kernel_name) {
   CHECK(cuda_ptx_in_memory_ == nullptr);
   cuda_ptx_in_memory_.reset(
-      new CudaPtxInMemory{spec_list, kernelname, false /* ptx_compressed */});
+      new CudaPtxInMemory{spec_list, kernel_name, false /* ptx_compressed */});
   return this;
 }
 
 MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCompressedPtxInMemory(
     std::initializer_list<CudaPtxInMemory::PtxSpec> spec_list,
-    absl::string_view kernelname) {
+    absl::string_view kernel_name) {
   CHECK(cuda_ptx_in_memory_ == nullptr);
   cuda_ptx_in_memory_.reset(
-      new CudaPtxInMemory{spec_list, kernelname, true /* ptx_compressed */});
+      new CudaPtxInMemory{spec_list, kernel_name, true /* ptx_compressed */});
   return this;
 }
 

@@ -468,8 +468,10 @@ enum BuiltinOperator : int32 {
   STABLEHLO_GATHER = 201, // WARNING: No runtime support
   STABLEHLO_TRANSPOSE = 202, // WARNING: No runtime support
   DILATE = 203,
-  AVERAGE_POOL_3D = 204,
-  MAX_POOL_3D = 205,
+  STABLEHLO_RNG_BIT_GENERATOR = 204,
+  REDUCE_WINDOW = 205,
+  AVERAGE_POOL_3D = 206,
+  MAX_POOL_3D = 207,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -625,6 +627,8 @@ union BuiltinOptions2{
   StablehloGatherOptions,
   StablehloTransposeOptions,
   DilateOptions,
+  StablehloRngBitGeneratorOptions,
+  ReduceWindowOptions,
   Pool3DOptions,
 }
 
@@ -768,6 +772,23 @@ table StablehloScatterOptions {
   index_vector_dim: long;
   unique_indices: bool;
   update_computation_subgraph_index: int;
+}
+
+enum RngAlgorithm : byte {
+  // An algorithm auto-selected by the system according to device type.
+  DEFAULT = 0,
+  // The Philox algorithm, as described in paper
+  // ['Parallel Random Numbers: As Easy as 1, 2, 3']
+  // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+  PHILOX = 1,
+  // The ThreeFry algorithm, as described in paper
+  // ['Parallel Random Numbers: As Easy as 1, 2, 3']
+  // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+  THREEFRY = 2,
+}
+
+table StablehloRngBitGeneratorOptions {
+  algorithm:RngAlgorithm;
 }
 
 // LINT.IfChange
@@ -1428,6 +1449,19 @@ table RightShiftOptions {
 }
 
 table DilateOptions {
+}
+enum ReduceWindowFunction : int {
+  UNSUPPORTED,
+  ADD,
+  MUL,
+  MINIMUM,
+  MAXIMUM,
+  ALL,
+  ANY,
+}
+
+table ReduceWindowOptions{
+  reduce_function: ReduceWindowFunction;
 }
 
 table Pool3DOptions {

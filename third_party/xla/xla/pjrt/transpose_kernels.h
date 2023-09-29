@@ -27,8 +27,20 @@ limitations under the License.
 #define XLA_HAS_SSE2
 #endif
 
+#if defined(__ARM_NEON) && !defined(__ARM_BIG_ENDIAN)
+#define XLA_HAS_ARM_NEON
+#endif
+
 #ifdef XLA_HAS_SSE2
 #include <immintrin.h>  // IWYU pragma: keep
+#endif
+
+#ifdef XLA_HAS_ARM_NEON
+#include <arm_neon.h>
+#endif
+
+#if defined(XLA_HAS_SSE2) || defined(XLA_HAS_ARM_NEON)
+#define XLA_HAS_VEC128
 #endif
 
 #include <array>
@@ -285,34 +297,6 @@ inline __m128i Unpack<8, Extract::kHi>(__m128i a, __m128i b) {
   return _mm_unpackhi_epi64(a, b);
 }
 
-template <size_t element_size, size_t step_size, typename T, size_t N>
-inline std::array<T, N> UnpackStep(const std::array<T, N>& last_transpose) {
-  static_assert(N % (step_size * 2) == 0);
-  std::array<T, N> unpack;
-  XLA_UNROLL
-  for (int i = 0; i < N; i += step_size * 2) {
-    XLA_UNROLL
-    for (int j = 0; j < step_size; ++j) {
-      unpack[i + 2 * j + 0] = Unpack<element_size * step_size, Extract::kLo>(
-          last_transpose[i + j], last_transpose[i + j + step_size]);
-      unpack[i + 2 * j + 1] = Unpack<element_size * step_size, Extract::kHi>(
-          last_transpose[i + j], last_transpose[i + j + step_size]);
-    }
-  }
-  return unpack;
-}
-
-template <size_t element_size, size_t step_size, size_t max_step_size,
-          typename T, size_t N>
-inline std::array<T, N> UnpackSequence(const std::array<T, N>& last_transpose) {
-  if constexpr (element_size * step_size <= max_step_size) {
-    std::array<T, N> unpack =
-        UnpackStep<element_size, step_size>(last_transpose);
-    return UnpackSequence<element_size, step_size * 2, max_step_size>(unpack);
-  }
-  return last_transpose;
-}
-
 using Vec128 = __m128i;
 
 template <typename T>
@@ -364,9 +348,145 @@ inline void StoreElementFromVec128(void* p, __m128i v) {
     static_assert(sizeof(T) == 0);
   }
 }
+#endif
+
+#ifdef XLA_HAS_ARM_NEON
+template <size_t element_size, Extract>
+uint64x2_t Unpack(uint64x2_t a, uint64x2_t b);
+
+template <>
+inline uint64x2_t Unpack<1, Extract::kLo>(uint64x2_t a, uint64x2_t b) {
+  return vreinterpretq_u64_u8(
+      vzipq_u8(vreinterpretq_u8_u64(a), vreinterpretq_u8_u64(b)).val[0]);
+}
+template <>
+inline uint64x2_t Unpack<1, Extract::kHi>(uint64x2_t a, uint64x2_t b) {
+  return vreinterpretq_u64_u8(
+      vzipq_u8(vreinterpretq_u8_u64(a), vreinterpretq_u8_u64(b)).val[1]);
+}
+
+template <>
+inline uint64x2_t Unpack<2, Extract::kLo>(uint64x2_t a, uint64x2_t b) {
+  return vreinterpretq_u64_u16(
+      vzipq_u16(vreinterpretq_u16_u64(a), vreinterpretq_u16_u64(b)).val[0]);
+}
+template <>
+inline uint64x2_t Unpack<2, Extract::kHi>(uint64x2_t a, uint64x2_t b) {
+  return vreinterpretq_u64_u16(
+      vzipq_u16(vreinterpretq_u16_u64(a), vreinterpretq_u16_u64(b)).val[1]);
+}
+
+template <>
+inline uint64x2_t Unpack<4, Extract::kLo>(uint64x2_t a, uint64x2_t b) {
+  return vreinterpretq_u64_u32(
+      vzipq_u32(vreinterpretq_u32_u64(a), vreinterpretq_u32_u64(b)).val[0]);
+}
+template <>
+inline uint64x2_t Unpack<4, Extract::kHi>(uint64x2_t a, uint64x2_t b) {
+  return vreinterpretq_u64_u32(
+      vzipq_u32(vreinterpretq_u32_u64(a), vreinterpretq_u32_u64(b)).val[1]);
+}
+
+template <>
+inline uint64x2_t Unpack<8, Extract::kLo>(uint64x2_t a, uint64x2_t b) {
+  uint64x1_t a_lo = vget_low_u64(a);
+  uint64x1_t b_lo = vget_low_u64(b);
+  return vcombine_u64(a_lo, b_lo);
+}
+template <>
+inline uint64x2_t Unpack<8, Extract::kHi>(uint64x2_t a, uint64x2_t b) {
+  uint64x1_t a_hi = vget_high_u64(a);
+  uint64x1_t b_hi = vget_high_u64(b);
+  return vcombine_u64(a_hi, b_hi);
+}
+
+using Vec128 = uint64x2_t;
+
+template <typename T>
+uint64x2_t LoadElementIntoVec128(const void* p);
+
+template <>
+inline uint64x2_t LoadElementIntoVec128<uint32_t>(const void* p) {
+  // Ideally, we would use `vld1q_lane_u32` but it assumes that its input is
+  // aligned to a 32-bit boundary. We can only promise 8-bit aligned. That said,
+  // this sequence will compile to `ldr St, [Xn]` but without an alignment hint.
+  uint32_t x;
+  memcpy(&x, p, sizeof(x));
+  return vreinterpretq_u64_u32(vsetq_lane_u32(x, vdupq_n_u32(0), 0));
+}
+
+template <>
+inline uint64x2_t LoadElementIntoVec128<uint64_t>(const void* p) {
+  // Ideally, we would use `vld1q_lane_u64` but it assumes that its input is
+  // aligned to a 64-bit boundary. We can only promise 8-bit aligned. That said,
+  // this sequence will compile to `ldr Dt, [Xn]` but without an alignment hint.
+  return vreinterpretq_u64_u8(
+      vcombine_u8(vld1_u8(reinterpret_cast<const uint8_t*>(p)), vdup_n_u8(0)));
+}
+
+template <>
+inline uint64x2_t LoadElementIntoVec128<uint64x2_t>(const void* p) {
+  return vreinterpretq_u64_u8(vld1q_u8(reinterpret_cast<const uint8_t*>(p)));
+}
+
+template <typename T, int lane>
+inline void StoreElementFromVec128(void* p, uint64x2_t v) {
+  static_assert(sizeof(T) * (lane + 1) <= sizeof(uint64x2_t));
+  if constexpr (std::is_same_v<T, uint64x2_t>) {
+    vst1q_u8(reinterpret_cast<uint8_t*>(p), vreinterpretq_u8_u64(v));
+  } else {
+    T extracted;
+    if constexpr (std::is_same_v<T, uint64_t>) {
+      // Ideally, we would use `vst1q_lane_u64` but it assumes that its input is
+      // aligned to a 64-bit boundary. We can only promise 8-bit aligned. That
+      // said, this sequence will compile to `st1 {vt.d}[lane], [xn]` but
+      // without an alignment hint.
+      extracted = vgetq_lane_u64(v, lane);
+    } else if constexpr (std::is_same_v<T, uint32_t>) {
+      // Ideally, we would use `vst1q_lane_u32` but it assumes that its input is
+      // aligned to a 32-bit boundary. We can only promise 8-bit aligned. That
+      // said, this sequence will compile to `st1 {vt.s}[lane], [xn]` but
+      // without an alignment hint.
+      extracted = vgetq_lane_u32(vreinterpretq_u32_u64(v), lane);
+    } else {
+      static_assert(sizeof(T) == 0);
+    }
+    memcpy(p, &extracted, sizeof(extracted));
+  }
+}
+#endif
+
+#ifdef XLA_HAS_VEC128
+template <size_t element_size, size_t step_size, typename T, size_t N>
+inline std::array<T, N> UnpackStep(const std::array<T, N>& last_transpose) {
+  static_assert(N % (step_size * 2) == 0);
+  std::array<T, N> unpack;
+  XLA_UNROLL
+  for (int i = 0; i < N; i += step_size * 2) {
+    XLA_UNROLL
+    for (int j = 0; j < step_size; ++j) {
+      unpack[i + 2 * j + 0] = Unpack<element_size * step_size, Extract::kLo>(
+          last_transpose[i + j], last_transpose[i + j + step_size]);
+      unpack[i + 2 * j + 1] = Unpack<element_size * step_size, Extract::kHi>(
+          last_transpose[i + j], last_transpose[i + j + step_size]);
+    }
+  }
+  return unpack;
+}
+
+template <size_t element_size, size_t step_size, size_t max_step_size,
+          typename T, size_t N>
+inline std::array<T, N> UnpackSequence(const std::array<T, N>& last_transpose) {
+  if constexpr (element_size * step_size <= max_step_size) {
+    std::array<T, N> unpack =
+        UnpackStep<element_size, step_size>(last_transpose);
+    return UnpackSequence<element_size, step_size * 2, max_step_size>(unpack);
+  }
+  return last_transpose;
+}
 
 template <typename T, int bs>
-struct Sse2SquareTransposeMicroKernelImpl {
+struct Vec128SquareTransposeMicroKernelImpl {
   XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
                                 char* __restrict b, int64_t ldb) {
     constexpr size_t element_size = sizeof(T);
@@ -477,14 +597,14 @@ struct AvxRectangularTransposeMicroKernelImpl {
 };
 #endif
 
-#if defined(XLA_HAS_SSE2)
+#ifdef XLA_HAS_VEC128
 template <>
 struct TransposeMicroKernel<uint8_t, /*bs=*/4> {
   XLA_FLATTEN XLA_FLATTEN static void Apply(const char* __restrict a,
                                             int64_t lda, char* __restrict b,
                                             int64_t ldb) {
     using T = uint8_t;
-    constexpr int bs = 8;
+    constexpr int bs = 4;
     constexpr size_t element_size = sizeof(T);
     std::array<Vec128, bs> loads;
     // [  0,  1,  2,  3 ]
@@ -514,7 +634,7 @@ struct TransposeMicroKernel<uint8_t, /*bs=*/4> {
 };
 #endif
 
-#ifdef XLA_HAS_SSE2
+#ifdef XLA_HAS_VEC128
 template <>
 struct TransposeMicroKernel<uint8_t, /*bs=*/8> {
   XLA_FLATTEN XLA_FLATTEN static void Apply(const char* __restrict a,
@@ -599,31 +719,19 @@ struct TransposeMicroKernel<uint8_t, /*bs=*/16> {
     AvxRectangularTransposeMicroKernelImpl<uint8_t, 16>::Apply(a, lda, b, ldb);
   }
 };
-#elif defined(XLA_HAS_SSE2)
+#elif defined(XLA_HAS_VEC128)
 template <>
 struct TransposeMicroKernel<uint8_t, /*bs=*/16> {
   XLA_FLATTEN XLA_FLATTEN static void Apply(const char* __restrict a,
                                             int64_t lda, char* __restrict b,
                                             int64_t ldb) {
-    Sse2SquareTransposeMicroKernelImpl<uint8_t, /*bs=*/16>::Apply(a, lda, b,
-                                                                  ldb);
+    Vec128SquareTransposeMicroKernelImpl<uint8_t, /*bs=*/16>::Apply(a, lda, b,
+                                                                    ldb);
   }
 };
 #endif
 
-#ifdef __AVX__
-template <>
-struct TransposeMicroKernel<uint8_t, /*bs=*/32> {
-  XLA_FLATTEN XLA_FLATTEN static void Apply(const char* __restrict a,
-                                            int64_t lda, char* __restrict b,
-                                            int64_t ldb) {
-    AvxSquareTransposeMicroKernelImpl<uint8_t, /*bs=*/32>::Apply(a, lda, b,
-                                                                 ldb);
-  }
-};
-#endif
-
-#ifdef XLA_HAS_SSE2
+#ifdef XLA_HAS_VEC128
 template <>
 struct TransposeMicroKernel<uint16_t, /*bs=*/4> {
   XLA_FLATTEN XLA_FLATTEN static void Apply(const char* __restrict a,
@@ -632,8 +740,8 @@ struct TransposeMicroKernel<uint16_t, /*bs=*/4> {
     using T = uint16_t;
     constexpr int bs = 4;
     constexpr size_t element_size = sizeof(T);
-    // Note, SSE vectors can hold 8 uint16_t elements but our block size is 4.
-    // We need to issue 4 loads to properly handle strides.
+    // Note, Vec128 vectors can hold 8 uint16_t elements but our block size
+    // is 4. We need to issue 4 loads to properly handle strides.
     //
     // [ 0,  1,  2,  3],
     // [ 4,  5,  6,  7],
@@ -681,14 +789,14 @@ struct TransposeMicroKernel<uint16_t, /*bs=*/8> {
     AvxRectangularTransposeMicroKernelImpl<uint16_t, 8>::Apply(a, lda, b, ldb);
   }
 };
-#elif defined(XLA_HAS_SSE2)
+#elif defined(XLA_HAS_VEC128)
 template <>
 struct TransposeMicroKernel<uint16_t, /*bs=*/8> {
   XLA_FLATTEN XLA_FLATTEN static void Apply(const char* __restrict a,
                                             int64_t lda, char* __restrict b,
                                             int64_t ldb) {
-    Sse2SquareTransposeMicroKernelImpl<uint16_t, /*bs=*/8>::Apply(a, lda, b,
-                                                                  ldb);
+    Vec128SquareTransposeMicroKernelImpl<uint16_t, /*bs=*/8>::Apply(a, lda, b,
+                                                                    ldb);
   }
 };
 #endif
@@ -714,14 +822,14 @@ struct TransposeMicroKernel<uint32_t, /*bs=*/4> {
     AvxRectangularTransposeMicroKernelImpl<uint32_t, 4>::Apply(a, lda, b, ldb);
   }
 };
-#elif defined(XLA_HAS_SSE2)
+#elif defined(XLA_HAS_VEC128)
 template <>
 struct TransposeMicroKernel<uint32_t, /*bs=*/4> {
   XLA_FLATTEN XLA_FLATTEN static void Apply(const char* __restrict a,
                                             int64_t lda, char* __restrict b,
                                             int64_t ldb) {
-    Sse2SquareTransposeMicroKernelImpl<uint32_t, /*bs=*/4>::Apply(a, lda, b,
-                                                                  ldb);
+    Vec128SquareTransposeMicroKernelImpl<uint32_t, /*bs=*/4>::Apply(a, lda, b,
+                                                                    ldb);
   }
 };
 #endif
@@ -738,14 +846,14 @@ struct TransposeMicroKernel<uint32_t, /*bs=*/8> {
 };
 #endif
 
-#ifdef XLA_HAS_SSE2
+#ifdef XLA_HAS_VEC128
 template <>
 struct TransposeMicroKernel<uint64_t, /*bs=*/2> {
   XLA_FLATTEN XLA_FLATTEN static void Apply(const char* __restrict a,
                                             int64_t lda, char* __restrict b,
                                             int64_t ldb) {
-    Sse2SquareTransposeMicroKernelImpl<uint64_t, /*bs=*/2>::Apply(a, lda, b,
-                                                                  ldb);
+    Vec128SquareTransposeMicroKernelImpl<uint64_t, /*bs=*/2>::Apply(a, lda, b,
+                                                                    ldb);
   }
 };
 #endif

@@ -617,8 +617,6 @@ absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
   mlir::PassManager pm(module_->getContext());
   applyTensorflowAndCLOptions(pm);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createLegalizeSparseChloToLinalgPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass(
       /*legalizeBroadcasts=*/true, /*expandCompositions=*/true));
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());

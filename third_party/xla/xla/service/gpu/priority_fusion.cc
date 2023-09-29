@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -114,7 +115,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
       if (priority < 0) {
         continue;
       }
-      current_consumers_ = GetFusibleUsers(current_producer_);
+      current_consumers_ = current_producer_->users();
     }
 
     auto next_consumer = current_consumers_.back();
@@ -230,31 +231,22 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // Returns the priority of the producer based on its current operands and
   // users.
   Priority CalculateProducerPriority(HloInstruction* producer) {
-    std::vector<HloInstruction*> fusible_users = GetFusibleUsers(producer);
-
-    // Don't bother computing cost for non-fusible ops.
-    if (fusible_users.empty()) {
+    // Don't fuse if we can't fuse in all users.
+    if (!CanFuseWithAllUsers(producer)) {
       return std::numeric_limits<Priority>::min();
     }
 
     GpuPerformanceModel::RunTimes run_times =
         GpuPerformanceModel::EstimateRunTimes(producer, &cost_analysis_,
-                                              fusible_users);
+                                              producer->users());
     return absl::ToInt64Nanoseconds(run_times.time_unfused -
                                     run_times.time_fused);
   }
 
-  std::vector<HloInstruction*> GetFusibleUsers(HloInstruction* producer) const {
-    std::vector<HloInstruction*> fusible_users;
-    for (auto user : producer->users()) {
-      int64_t operand_index = user->operand_index(producer);
-
-      if (can_fuse_(user, operand_index)) {
-        fusible_users.push_back(user);
-      }
-    }
-
-    return fusible_users;
+  bool CanFuseWithAllUsers(HloInstruction* producer) const {
+    return absl::c_all_of(producer->users(), [&](HloInstruction* user) {
+      return can_fuse_(user, user->operand_index(producer));
+    });
   }
 
   // Store computation for cost analysis.

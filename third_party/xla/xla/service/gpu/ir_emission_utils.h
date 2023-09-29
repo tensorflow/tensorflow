@@ -123,8 +123,8 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 // that result is the output of a dynamic slice update, or if that result is the
 // output of a bitcast of a dynamic slice update---since such bitcast may be
 // handled as a no-op.
-std::vector<HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
-    const std::vector<HloInstruction*>& roots);
+std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
+    const std::vector<const HloInstruction*>& roots);
 
 // Returns the DynamicUpdateSliceOp(s) defining the results of a fusion node.
 // A dynamic slice update is said to be "defining" of a result if that result is

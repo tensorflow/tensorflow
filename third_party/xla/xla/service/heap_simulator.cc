@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
-#include "xla/service/memory_space_assignment_repacking.h"
+#include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/status.h"
 #include "xla/util.h"
 
@@ -757,7 +757,7 @@ bool BufferIntervalTree::Remove(int64_t start, int64_t end,
     //      /
     //    left
     if (root_ == to_delete) {
-      // Deleting root is simply reseting root;
+      // Deleting root is simply resetting root;
       root_ = to_delete->left;
       return true;
     }
@@ -1493,7 +1493,7 @@ Status GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
 
 namespace {
 
-// An iterator for iterating through permuations of slice times.
+// An iterator for iterating through permutations of slice times.
 class SliceTimePermutationIterator {
  public:
   explicit SliceTimePermutationIterator(int64_t latest_slice_time)
@@ -1715,44 +1715,70 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
   VLOG(1) << "Finding chunks for sliced buffer interval: "
           << sliced_buffer_interval.ToString();
 
-  // Find the max size of interval across its colocations and use this value
-  // to determine whether the buffer will fit in the heap.
   int64_t max_colocation_size =
-      sliced_buffer_interval.full_buffer_interval().size;
-  for (const BufferType* colocation : GetTransitiveColocations(
-           sliced_buffer_interval.full_buffer_interval())) {
+      GetMaxColocationSize(sliced_buffer_interval.full_buffer_interval());
+  auto chunks =
+      CreateSlicedAllocationFinder(sliced_buffer_interval, max_colocation_size,
+                                   preferred_offset)
+          .Find();
+  return PostProcessFindChunkCandidatesResult(sliced_buffer_interval,
+                                              std::move(chunks));
+}
+
+template <typename BufferType>
+int64_t GlobalDecreasingSizeBestFitHeap<BufferType>::GetMaxColocationSize(
+    const BufferInterval& buffer_interval) const {
+  int64_t max_colocation_size = buffer_interval.size;
+  for (const BufferType* colocation :
+       GetTransitiveColocations(buffer_interval)) {
     max_colocation_size =
         std::max(max_colocation_size, buffer_intervals_.at(colocation).size);
   }
 
+  return max_colocation_size;
+}
+
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder
+GlobalDecreasingSizeBestFitHeap<BufferType>::CreateSlicedAllocationFinder(
+    const SlicedBufferInterval& sliced_interval, int64_t max_colocation_size,
+    int64_t preferred_offset,
+    absl::AnyInvocable<bool(int64_t) const> is_offset_allowed) const {
   // Build up a list of free chunks for each slice time.
   std::vector<FreeChunks> free_chunks_per_slice_time;
-  free_chunks_per_slice_time.reserve(sliced_buffer_interval.num_slices());
-  for (int slice_time = 0; slice_time < sliced_buffer_interval.num_slices() - 1;
+  free_chunks_per_slice_time.reserve(sliced_interval.num_slices());
+  for (int slice_time = 0; slice_time < sliced_interval.num_slices() - 1;
        ++slice_time) {
     // We don't need to account for colocation until the last slice time, in
     // which we've allocated all the slices. So we set max_colocation_size to
     // -1.
-    free_chunks_per_slice_time.push_back(MakeFreeChunks(
-        sliced_buffer_interval.IntervalForMakeFreeChunks(slice_time),
-        /*max_colocation_size=*/-1));
+    free_chunks_per_slice_time.push_back(
+        MakeFreeChunks(sliced_interval.IntervalForMakeFreeChunks(slice_time),
+                       /*max_colocation_size=*/-1));
   }
   // We account for colocation size in the last slice time, where we've
   // allocated all the slices.
-  free_chunks_per_slice_time.push_back(
-      MakeFreeChunks(sliced_buffer_interval.IntervalForMakeFreeChunks(
-                         sliced_buffer_interval.num_slices() - 1),
-                     max_colocation_size));
+  free_chunks_per_slice_time.push_back(MakeFreeChunks(
+      sliced_interval.IntervalForMakeFreeChunks(sliced_interval.num_slices() -
+                                                1),
+      max_colocation_size));
 
-  auto chunks =
-      SlicedAllocationFinder(free_chunks_per_slice_time,
-                             sliced_buffer_interval.SliceSizesSortedByOffset(),
-                             max_colocation_size, preferred_offset, alignment_)
-          .Find();
+  return SlicedAllocationFinder(free_chunks_per_slice_time,
+                                sliced_interval.SliceSizesSortedByOffset(),
+                                max_colocation_size, preferred_offset,
+                                alignment_, std::move(is_offset_allowed));
+}
+
+template <typename BufferType>
+std::vector<typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk>
+GlobalDecreasingSizeBestFitHeap<BufferType>::
+    PostProcessFindChunkCandidatesResult(
+        const SlicedBufferInterval& sliced_interval,
+        std::vector<Chunk> chunks) const {
   if (chunks.empty()) {
     return {};
   }
-  CHECK_EQ(chunks.size(), sliced_buffer_interval.num_slices() + 1);
+  CHECK_EQ(chunks.size(), sliced_interval.num_slices() + 1);
   // The extra chunk is to ensure that colocations of larger sizes can fit.
   // However, we don't need that extra space for the buffer for which we found
   // chunks.
@@ -1864,7 +1890,7 @@ ChooseBestHeapAlgorithm<BufferType>::Finish() {
 
 template class GlobalDecreasingSizeBestFitHeap<HloValue>;
 template class GlobalDecreasingSizeBestFitHeap<
-    MemorySpaceAssignmentRepacker::AllocationBlock>;
+    memory_space_assignment::MemorySpaceAssignmentRepacker::AllocationBlock>;
 template class ChooseBestHeapAlgorithm<HloValue>;
 
 }  // namespace xla

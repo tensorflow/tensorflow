@@ -1,7 +1,7 @@
-// RUN: mlir-hlo-opt --sparse-chlo-legalize-to-linalg %s | FileCheck %s
+// RUN: mlir-hlo-opt --legalize-sparse-ops="legalize-to-custom-calls=false" %s | FileCheck %s
 
 #CSR = #sparse_tensor.encoding<{
-  lvlTypes = ["dense", "compressed"]
+  map = (d0, d1) -> (d0 : dense, d1 : compressed)
 }>
 
 // CHECK-LABEL: @asinh_scalar(
@@ -20,8 +20,7 @@ func.func @asinh_scalar(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-SAME:      tensor<10x20xf32, #{{.*}}>
 // CHECK:         %[[VAL:.*]] = linalg.generic
 // CHECK-SAME:        ins(%[[ARG]] : tensor<10x20xf32,
-// CHECK-SAME:        #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>
-// CHECK-SAME:        outs(%[[OUT]]
+// CHECK-SAME:        #sparse_tensor.encoding<{{{.*}}}>>) outs(%[[OUT]]
 // CHECK:           sparse_tensor.unary %{{.*}} : f32 to f32
 // CHECK:           present = {
 // CHECK:             tensor.from_elements

@@ -47,6 +47,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/gpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -77,6 +80,10 @@ auto* saved_model_grappler_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
         "/tensorflow/tfrt/saved_model/grappler_time",
         "Record the grappler time for the savedmodel.", "model_name");
+
+auto* free_gpu_memory = tensorflow::monitoring::Gauge<int64_t, 1>::New(
+    "/tensorflow/tfrt/saved_model/free_gpu_memory",
+    "Record the free GPU memory.", "gpu_id");
 
 std::vector<std::string> FindNamesForValidSignatures(
     const tensorflow::MetaGraphDef& meta_graph_def) {
@@ -276,6 +283,22 @@ void RegisterTFRTDialectsForAoT(mlir::DialectRegistry& registry) {
   registry.insert<tfrt::fallback::FallbackDialect>();
   registry.insert<tfrt::fallback_async::FallbackAsyncDialect>();
   tensorflow::RegisterGpuDialects(&registry);
+}
+
+void RecordFreeGpuMemory() {
+  se::Platform* gpu_manager = se::GPUMachineManager();
+  if (gpu_manager == nullptr || gpu_manager->VisibleDeviceCount() <= 0) return;
+
+  for (int i = 0; i < gpu_manager->VisibleDeviceCount(); ++i) {
+    se::StreamExecutor* se = gpu_manager->ExecutorForDevice(i).value();
+    int64_t free_memory = 0, total_memory = 0;
+    DCHECK(se->DeviceMemoryUsage(&free_memory, &total_memory));
+    free_gpu_memory->GetCell(std::to_string(i))->Set(free_memory);
+  }
+}
+
+int64_t GetFreeGpuMemory(int gpu_id) {
+  return free_gpu_memory->GetCell(std::to_string(gpu_id))->value();
 }
 
 }  // namespace tfrt_stub

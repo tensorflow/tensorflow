@@ -2,7 +2,7 @@
 // RUN: hlo_to_llvm_ir --xla_disable_all_hlo_passes=true %s | FileCheck --check-prefix=CHECK-LLVM %s
 // We check that the row loads are vectorized.
 
-HloModule SimpleAddRowBroadcasting
+HloModule SimpleAddRowBroadcasting, is_scheduled=true
 
 %fused_computation.0 (param_0: f32[672], param_1: f32[512,14,14,672]) -> f32[512,14,14,672]{
   %param_0 = f32[672]{0} parameter(0)
@@ -25,7 +25,7 @@ ENTRY main {
 
 // -----
 
-HloModule SimpleAddSmallRowBroadcasting
+HloModule SimpleAddSmallRowBroadcasting, is_scheduled=true
 
 %fused_computation.0 (param_0: f32[48], param_1: f32[512,14,14,48]) -> f32[512,14,14,48]{
   %param_0 = f32[48]{0} parameter(0)
@@ -49,7 +49,7 @@ ENTRY main {
 // -----
 
 // This test an BatchNorm fused kernel found in EfficientNet.
-HloModule EfficientNetSwish
+HloModule EfficientNetSwish, is_scheduled=true
 
 %fused_computation.1 (param_0.89: f32[672], param_1: f32[672], param_2: f32[672], param_3: f32[672], param_4: f16[512,14,14,672], param_5: f32[672], param_6: f16[512,14,14,672], param_7: f32[672]) -> f16[512,14,14,672] {
   %param_2 = f32[672]{0} parameter(2)
@@ -134,7 +134,7 @@ ENTRY main {
 
 // -----
 
-HloModule TransposeOutput
+HloModule TransposeOutput, is_scheduled=true
 
 %fused_computation.2 (param_0: f32[672], param_1: f32[512,14,14,672]) -> f32[512,14,14,672] {
   %param_0 = f32[672]{0} parameter(0)
@@ -157,7 +157,7 @@ ENTRY main {
 
 // -----
 
-HloModule TransposeInput
+HloModule TransposeInput, is_scheduled=true
 
 %fused_computation.3 (param_0: f32[672], param_1: f32[512,14,14,672]) -> f32[512,14,14,672] {
   %param_0 = f32[672]{0} parameter(0)
@@ -180,7 +180,7 @@ ENTRY main {
 
 // -----
 
-HloModule MOF
+HloModule MOF, is_scheduled=true
 
 %fused_computation.4 (param_0: f32[672], param_1: f32[512,14,14,672]) -> (f32[512,14,14,672], f32[512,14,14,672]) {
   %param_0 = f32[672]{0} parameter(0)
@@ -205,7 +205,7 @@ ENTRY main {
 
 // -----
 
-HloModule ScalarBroadcasting
+HloModule ScalarBroadcasting, is_scheduled=true
 
 %fused_computation.5 (param_0: f32[], param_1: f32[512,14,14,672]) -> f32[512,14,14,672] {
   %param_0 = f32[] parameter(0)
@@ -227,7 +227,7 @@ ENTRY main {
 
 // -----
 
-HloModule NotSupportedBroadcasting
+HloModule NotSupportedBroadcasting, is_scheduled=true
 
 %fused_computation.6 (param_0: f32[14,672], param_1: f32[512,14,14,672]) -> f32[512,14,14,672] {
   %param_0 = f32[14,672]{1,0} parameter(0)
@@ -249,7 +249,7 @@ ENTRY main {
 // CHECK: ld.global.nc.f
 
 // -----
-HloModule Module
+HloModule Module, is_scheduled=true
 
 %fused_computation.7 {
   %constant_2 = f32[] constant(0)
@@ -277,7 +277,7 @@ ENTRY %computation {
 // CHECK-LLVM-NOT: row_index
 
 // -----
-HloModule RowToLong
+HloModule RowToLong, is_scheduled=true
 
 %fused_computation.1 {
   %p0 = f32[2025]{0} parameter(0)
@@ -295,7 +295,7 @@ ENTRY main {
 
 // -----
 
-HloModule module
+HloModule module, is_scheduled=true
 
 %fused_computation.1 {
   %p0 = f16[5000,64,64,32] parameter(0)

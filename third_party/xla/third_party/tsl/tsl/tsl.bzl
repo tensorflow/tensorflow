@@ -1,18 +1,19 @@
 """Provides build configuration for TSL"""
 
+load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "if_cuda",
 )
 load(
-    "//tsl/platform:rules_cc.bzl",
-    "cc_binary",
-    "cc_library",
-    "cc_shared_library",
+    "//third_party/compute_library:build_defs.bzl",
+    "if_enable_acl",
 )
 load(
-    "@local_config_tensorrt//:build_defs.bzl",
-    "if_tensorrt",
+    "//third_party/mkl_dnn:build_defs.bzl",
+    "if_mkldnn_aarch64_acl",
+    "if_mkldnn_aarch64_acl_openmp",
+    "if_mkldnn_openmp",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -26,16 +27,15 @@ load(
     "onednn_v3_define",
 )
 load(
-    "//third_party/mkl_dnn:build_defs.bzl",
-    "if_mkldnn_aarch64_acl",
-    "if_mkldnn_aarch64_acl_openmp",
-    "if_mkldnn_openmp",
+    "//tsl/platform:rules_cc.bzl",
+    "cc_binary",
+    "cc_library",
+    "cc_shared_library",
 )
 load(
-    "//third_party/compute_library:build_defs.bzl",
-    "if_enable_acl",
+    "@local_config_tensorrt//:build_defs.bzl",
+    "if_tensorrt",
 )
-load("@bazel_skylib//lib:new_sets.bzl", "sets")
 
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
@@ -198,6 +198,14 @@ def if_with_tpu_support(if_true, if_false = []):
 
 def get_win_copts(is_external = False):
     WINDOWS_COPTS = [
+        # copybara:uncomment_begin(no MSVC flags in google)
+        # "-DPLATFORM_WINDOWS",
+        # "-DEIGEN_HAS_C99_MATH",
+        # "-DTENSORFLOW_USE_EIGEN_THREADPOOL",
+        # "-DEIGEN_AVOID_STL_ARRAY",
+        # "-Iexternal/gemmlowp",
+        # "-DNOGDI",
+        # copybara:uncomment_end_and_comment_begin
         "/DPLATFORM_WINDOWS",
         "/DEIGEN_HAS_C99_MATH",
         "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
@@ -212,13 +220,24 @@ def get_win_copts(is_external = False):
         # "/EHs-c-",
         "/wd4577",
         "/DNOGDI",
+        # copybara:comment_end
         # Also see build:windows lines in tensorflow/opensource_only/.bazelrc
         # where we set some other options globally.
     ]
+
     if is_external:
+        # copybara:uncomment_begin(no MSVC flags in google)
+        # return WINDOWS_COPTS + ["-UTF_COMPILE_LIBRARY"]
+        # copybara:uncomment_end_and_comment_begin
         return WINDOWS_COPTS + ["/UTF_COMPILE_LIBRARY"]
+        # copybara:comment_end
+
     else:
+        # copybara:uncomment_begin(no MSVC flags in google)
+        # return WINDOWS_COPTS + ["-DTF_COMPILE_LIBRARY"]
+        # copybara:uncomment_end_and_comment_begin
         return WINDOWS_COPTS + ["/DTF_COMPILE_LIBRARY"]
+        # copybara:comment_end
 
 def tsl_copts(
         android_optimization_level_override = "-O2",
@@ -321,7 +340,7 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
         kwargs.pop("default_copts", None)
     cc_library(
         deps = deps + if_cuda([
-            clean_dep("//tsl/cuda:cudart_stub"),
+            clean_dep("//tsl/cuda:cudart"),
             "@local_config_cuda//cuda:cuda_headers",
         ]) + if_rocm_is_configured([
             "@local_config_rocm//rocm:rocm_headers",

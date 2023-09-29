@@ -608,9 +608,11 @@ def prompt_loop_or_load_from_env(environ_cp,
 
 def set_clang_cuda_compiler_path(environ_cp):
   """Set CLANG_CUDA_COMPILER_PATH."""
-  default_clang_path = '/usr/lib/llvm-16/bin/clang'
+  default_clang_path = '/usr/lib/llvm-17/bin/clang'
   if not os.path.exists(default_clang_path):
-    default_clang_path = which('clang') or ''
+    default_clang_path = '/usr/lib/llvm-16/bin/clang'
+    if not os.path.exists(default_clang_path):
+      default_clang_path = which('clang') or ''
 
   clang_cuda_compiler_path = prompt_loop_or_load_from_env(
       environ_cp,
@@ -819,9 +821,11 @@ def set_clang_compiler_path(environ_cp):
     string value for clang_compiler_path.
   """
   # Default path if clang-16 is installed by using apt-get install
-  default_clang_path = '/usr/lib/llvm-16/bin/clang'
+  default_clang_path = '/usr/lib/llvm-17/bin/clang'
   if not os.path.exists(default_clang_path):
-    default_clang_path = which('clang') or ''
+    default_clang_path = '/usr/lib/llvm-16/bin/clang'
+    if not os.path.exists(default_clang_path):
+      default_clang_path = which('clang') or ''
 
   clang_compiler_path = prompt_loop_or_load_from_env(
       environ_cp,

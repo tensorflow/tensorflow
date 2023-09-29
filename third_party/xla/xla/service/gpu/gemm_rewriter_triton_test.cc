@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
@@ -73,7 +72,7 @@ class GemmRewriterTritonTest : public HloTestBase {
       : HloTestBase(/*verifier_layout_sensitive=*/true,
                     /*allow_mixed_precision_in_hlo_verifier=*/false) {}
 
-  GpuVersion gpu_version_{
+  se::GpuComputeCapability gpu_version_{
       se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
 };
 
@@ -98,6 +97,20 @@ ENTRY e {
   EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+}
+
+TEST_F(GemmRewriterTritonTest, UnsupportedTransposeIsNotFused) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f16[1,512,8,1024]{3,1,0,2} parameter(0)
+  c = f16[1,512,8,1024]{3,2,1,0} copy(p0)
+  b = f16[4096,1024]{1,0} bitcast(c)
+  p1 = f16[128,1024]{1,0} parameter(1)
+  ROOT d = f16[4096,128]{1,0} dot(b, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})")
+                    .value();
+  EXPECT_FALSE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
 }
 
 TEST_F(GemmRewriterTritonTest, BitcastChain) {
@@ -196,16 +209,20 @@ ENTRY e {
             p1);
   EXPECT_THAT(
       *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0),
-      ElementsAre(FieldsAre(/*stride=*/4, /*count=*/48, ElementsAre(48))));
+      ElementsAre(FieldsAre(/*stride=*/4, /*count=*/48, /*slice_start=*/0,
+                            /*slice_limit=*/48, ElementsAre(48))));
   EXPECT_THAT(
       *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
-      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/4, ElementsAre(4))));
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/4, /*slice_start=*/0,
+                            /*slice_limit=*/4, ElementsAre(4))));
   EXPECT_THAT(
       *analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 0),
-      ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4, ElementsAre(4))));
+      ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4, /*slice_start=*/0,
+                            /*slice_limit=*/4, ElementsAre(4))));
   EXPECT_THAT(
       *analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 1),
-      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3, ElementsAre(3))));
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3, /*slice_start=*/0,
+                            /*slice_limit=*/3, ElementsAre(3))));
 }
 
 TEST_F(TritonDotAnalysisTest, Merge) {
@@ -245,15 +262,19 @@ ENTRY e {
             p1);
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0),
               ElementsAre(FieldsAre(/*stride=*/4, /*count=*/6 * 8,
+                                    /*slice_start=*/0, /*slice_limit=*/6 * 8,
                                     /*subfragments=*/ElementsAre(6, 8))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/4,
+                                    /*slice_start=*/0, /*slice_limit=*/4,
                                     /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 0),
               ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4,
+                                    /*slice_start=*/0, /*slice_limit=*/4,
                                     /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3,
+                                    /*slice_start=*/0, /*slice_limit=*/3,
                                     /*subfragments=*/ElementsAre(3))));
 }
 
@@ -291,15 +312,19 @@ ENTRY e {
             p0);
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p1, 0),
               ElementsAre(FieldsAre(/*stride=*/2, /*count=*/24000,
+                                    /*slice_start=*/0, /*slice_limit=*/24000,
                                     /*subfragments=*/ElementsAre(24000))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p1, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2,
+                                    /*slice_start=*/0, /*slice_limit=*/2,
                                     /*subfragments=*/ElementsAre(2))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p0, 0),
               ElementsAre(FieldsAre(/*stride=*/2, /*count=*/2,
+                                    /*slice_start=*/0, /*slice_limit=*/2,
                                     /*subfragments=*/ElementsAre(2))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p0, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2,
+                                    /*slice_start=*/0, /*slice_limit=*/2,
                                     /*subfragments=*/ElementsAre(2))));
 }
 
@@ -341,15 +366,19 @@ ENTRY e {
             p1);
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8 * 6,
+                                    /*slice_start=*/0, /*slice_limit=*/8 * 6,
                                     /*subfragments=*/ElementsAre(6, 8))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
               ElementsAre(FieldsAre(/*stride=*/8 * 6, /*count=*/4,
+                                    /*slice_start=*/0, /*slice_limit=*/4,
                                     /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 0),
               ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4,
+                                    /*slice_start=*/0, /*slice_limit=*/4,
                                     /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3,
+                                    /*slice_start=*/0, /*slice_limit=*/3,
                                     /*subfragments=*/ElementsAre(3))));
 }
 
@@ -392,15 +421,19 @@ ENTRY e {
             p1);
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8 * 6,
+                                    /*slice_start=*/0, /*slice_limit=*/8 * 6,
                                     /*subfragments=*/ElementsAre(6, 8))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
               ElementsAre(FieldsAre(/*stride=*/8 * 6, /*count=*/4,
+                                    /*slice_start=*/0, /*slice_limit=*/4,
                                     /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 0),
               ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4,
+                                    /*slice_start=*/0, /*slice_limit=*/4,
                                     /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3,
+                                    /*slice_start=*/0, /*slice_limit=*/3,
                                     /*subfragments=*/ElementsAre(3))));
 }
 
@@ -440,17 +473,22 @@ ENTRY e {
             p1);
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8,
+                                    /*slice_start=*/0, /*slice_limit=*/8,
                                     /*subfragments=*/ElementsAre(8)),
                           FieldsAre(/*stride=*/4 * 8, /*count=*/3,
+                                    /*slice_start=*/0, /*slice_limit=*/3,
                                     /*subfragments=*/ElementsAre(3))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
               ElementsAre(FieldsAre(/*stride=*/8, /*count=*/4,
+                                    /*slice_start=*/0, /*slice_limit=*/4,
                                     /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 0),
               ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4,
+                                    /*slice_start=*/0, /*slice_limit=*/4,
                                     /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3,
+                                    /*slice_start=*/0, /*slice_limit=*/3,
                                     /*subfragments=*/ElementsAre(3))));
 }
 
@@ -482,11 +520,13 @@ ENTRY e {
                           TritonFusionAnalysis::Execute(*dot_computation));
   EXPECT_THAT(
       *analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT, dot_output, 0),
-      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/24,
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/24, /*slice_start=*/0,
+                            /*slice_limit=*/24,
                             /*subfragments=*/ElementsAre(2, 12))));
   EXPECT_THAT(
       *analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT, dot_output, 1),
-      ElementsAre(FieldsAre(/*stride=*/24, /*count=*/3,
+      ElementsAre(FieldsAre(/*stride=*/24, /*count=*/3, /*slice_start=*/0,
+                            /*slice_limit=*/3,
                             /*subfragments=*/ElementsAre(3))));
 }
 
@@ -525,7 +565,8 @@ ENTRY e {
       1);
   EXPECT_THAT(
       *analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT, output_param, 0),
-      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/24,
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/24, /*slice_start=*/0,
+                            /*slice_limit=*/24,
                             /*subfragments=*/ElementsAre(24))));
   EXPECT_EQ(
       analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT, output_param, 1)
@@ -533,7 +574,8 @@ ENTRY e {
       1);
   EXPECT_THAT(
       *analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT, output_param, 1),
-      ElementsAre(FieldsAre(/*stride=*/24, /*count=*/3,
+      ElementsAre(FieldsAre(/*stride=*/24, /*count=*/3, /*slice_start=*/0,
+                            /*slice_limit=*/3,
                             /*subfragments=*/ElementsAre(3))));
 }
 
@@ -596,6 +638,7 @@ ENTRY e {
       1);
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, vector, 0),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/4,
+                                    /*slice_start=*/0, /*slice_limit=*/4,
                                     /*subfragments=*/ElementsAre(4))));
 }
 
@@ -652,8 +695,10 @@ ENTRY e {
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
                                  dot_computation->root_instruction(), 0),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8 * 21,
+                                    /*slice_start=*/0, /*slice_limit=*/8 * 21,
                                     /*subfragments=*/ElementsAre(21, 8)),
                           FieldsAre(/*stride=*/8 * 21 * 58, /*count=*/30,
+                                    /*slice_start=*/0, /*slice_limit=*/30,
                                     /*subfragments=*/ElementsAre(30))));
 }
 
@@ -690,6 +735,7 @@ ENTRY e {
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
                                  computation->root_instruction(), 0),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/97,
+                                    /*slice_start=*/0, /*slice_limit=*/97,
                                     /*subfragments=*/ElementsAre(97))));
   EXPECT_EQ(analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
                               computation->root_instruction(), 1),
@@ -819,17 +865,17 @@ ENTRY e {
               "Operation non-distributive over addition after dot.")));
 }
 
-TEST_F(SplitKTest, AvoidSplitKWithNonDivisibleDimensionSize) {
-  const std::string hlo_text = R"(
+TEST_F(SplitKTest, MakeSplitKWithNonDivisibleDimensionSize) {
+  constexpr absl::string_view kHloText = R"(
 t {
   c1 = s32[] constant(1)
   bc1 = s32[31]{0} broadcast(c1), dimensions={}
   p0 = s32[31]{0} parameter(0)
   cmp = pred[31]{0} compare(bc1, p0), direction=EQ
   cvt = f32[31]{0} convert(cmp)
-  bc2 = f32[3,31]{1,0} broadcast(cvt), dimensions={1}
+  bc2 = f32[17,31]{1,0} broadcast(cvt), dimensions={1}
   c0 = f32[] constant(0)
-  bc0 = f32[3,16]{1,0} broadcast(c0), dimensions={}
+  bc0 = f32[17,16]{1,0} broadcast(c0), dimensions={}
   ROOT dot = f32[31,16]{1,0} dot(bc2, bc0),
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
 }
@@ -837,6 +883,35 @@ t {
 ENTRY e {
   p0 = s32[31]{0} parameter(0)
   ROOT r = f32[31,16]{1,0} fusion(p0),
+    kind=kCustom, calls=t, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(2);
+  key.set_num_stages(1);
+  key.set_num_warps(2);
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+}
+
+TEST_F(SplitKTest, AvoidSplitKWithSlicedContractingDimension) {
+  const std::string hlo_text = R"(
+t {
+  p0 = f16[32,1234] parameter(0)
+  s0 = f16[32,256] slice(p0), slice={[0:32], [41:297]}
+  p1 = f16[256,768] parameter(1)
+  ROOT d = f16[32,768] dot(s0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f16[32,1234] parameter(0)
+  p1 = f16[256,768] parameter(1)
+  ROOT r = f16[32,768] fusion(p0, p1),
     kind=kCustom, calls=t, backend_config="__triton_gemm"
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -852,7 +927,8 @@ ENTRY e {
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
       tsl::testing::StatusIs(
           tsl::error::CANCELLED,
-          absl::StrFormat("Contracting dimension is too fragmented.")));
+          absl::StrFormat(
+              "Sliced contracting dimension is not supported yet.")));
 }
 
 TEST_F(SplitKTest, MakeSplitKWithNonStandardOutputLayout) {
@@ -1007,8 +1083,8 @@ ENTRY e {
               GmockMatch(m::Convert(m::Reduce(m::Fusion(), m::Constant()))));
 }
 
-TEST_F(SplitKTest, SkipIndivisible) {
-  const std::string hlo_text = R"(
+TEST_F(SplitKTest, SupportsIndivisible) {
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 triton_gemm_dot {
@@ -1029,7 +1105,7 @@ ENTRY e {
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+                          ParseAndReturnVerifiedModule(kHloText));
   AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
   key.set_block_n(16);
@@ -1037,10 +1113,166 @@ ENTRY e {
   key.set_split_k(4);
   key.set_num_stages(1);
   key.set_num_warps(4);
-  EXPECT_THAT(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
-      tsl::testing::StatusIs(tsl::error::CANCELLED,
-                             "Contracting dimension is too fragmented."));
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+}
+
+TEST_F(SplitKTest, SupportsIndivisibleSimpleSplitK4) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[480,129]{1,0} parameter(0)
+  convert_0 = bf16[480,129]{1,0} convert(parameter_0)
+  parameter_1 = bf16[16,129]{1,0} parameter(1)
+  ROOT dot.0 = bf16[480,16]{1,0} dot(convert_0, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[480,129]{1,0} parameter(0)
+  p1 = bf16[16,129]{1,0} parameter(1)
+  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(4);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+}
+
+TEST_F(SplitKTest, SupportsIndivisibleSimpleSplitK16) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[480,255]{1,0} parameter(0)
+  convert_0 = bf16[480,255]{1,0} convert(parameter_0)
+  parameter_1 = bf16[16,255]{1,0} parameter(1)
+  ROOT dot.0 = bf16[480,16]{1,0} dot(convert_0, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[480,255]{1,0} parameter(0)
+  p1 = bf16[16,255]{1,0} parameter(1)
+  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(16);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+}
+
+TEST_F(SplitKTest, SupportsIndivisibleWithTranspose) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[480,255]{1,0} parameter(0)
+  convert_0 = bf16[480,255]{1,0} convert(parameter_0)
+  transpose_0 = bf16[255,480]{1,0} transpose(convert_0), dimensions={1,0}
+  parameter_1 = bf16[16,255]{1,0} parameter(1)
+  ROOT dot.0 = bf16[480,16]{1,0} dot(transpose_0, parameter_1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[480,255]{1,0} parameter(0)
+  p1 = bf16[16,255]{1,0} parameter(1)
+  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(16);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+}
+
+TEST_F(SplitKTest, SupportIndivisibleWithBroadcast) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[] parameter(0)
+  convert_0 = bf16[] convert(parameter_0)
+  broadcast_0 = bf16[480,255]{1,0} broadcast(convert_0)
+  parameter_1 = bf16[16,255]{1,0} parameter(1)
+  ROOT dot.0 = bf16[480,16]{1,0} dot(broadcast_0, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[] parameter(0)
+  p1 = bf16[16,255]{1,0} parameter(1)
+  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(16);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+}
+
+TEST_F(SplitKTest, SupportsIndivisibleWithBitcast) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[3,5,480,17]{3,0,1,2} parameter(0)
+  convert_0 = bf16[3,5,480,17]{3,0,1,2} convert(parameter_0)
+  bitcast_0 = bf16[480,255]{1,0} bitcast(convert_0)
+  parameter_1 = bf16[16,255]{1,0} parameter(1)
+  ROOT dot.0 = bf16[480,16]{1,0} dot(bitcast_0, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[3,5,480,17]{3,0,1,2} parameter(0)
+  p1 = bf16[16,255]{1,0} parameter(1)
+  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(16);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
 }
 
 TEST_F(SplitKTest, SkipSmallK) {
@@ -1134,7 +1366,8 @@ ENTRY e {
             ShapeUtil::MakeShapeWithDescendingLayout(F16, {8, 7, 5}));
   EXPECT_THAT(
       *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
-      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2560,
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2560, /*slice_start=*/0,
+                            /*slice_limit=*/2560,
                             /*subfragments=*/ElementsAre(20, 4, 4, 4, 2))));
 }
 
@@ -1166,6 +1399,7 @@ ENTRY e {
   key.set_num_stages(1);
   key.set_num_warps(4);
   key.set_split_k(4);
+  // Because HasDivisibleSuffixAllowingSplit({128, 3}, 4) == false.
   EXPECT_THAT(
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
       tsl::testing::StatusIs(tsl::error::CANCELLED,
@@ -1230,6 +1464,98 @@ ENTRY e {
   EXPECT_TRUE(GemmRewriterTriton(cc).Run(module.get()).value());
 }
 
+TEST_F(GemmRewriterTritonTest, FuseSliceOfParameterWithOtherUsers) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[97,121] parameter(0)
+  s0 = f32[7,101] slice(p0), slice={[3:10], [10:111]}
+  p1 = f32[101,16] parameter(1)
+  d = f32[16,7] dot(p1, s0),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  s1 = f32[3,33] slice(p0), slice={[10:13], [20:53]}
+  ROOT t = tuple(d, s1)
+})"));
+
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::VOLTA, 0};
+  EXPECT_TRUE(GemmRewriterTriton(cc).Run(module.get()).value());
+}
+
+TEST_F(GemmRewriterTritonTest, DoNotFuseSliceOfMixedDimensions) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = bf16[768,64] parameter(0)
+  s0 = bf16[768,32] slice(p0), slice={[0:768], [0:32]}
+  b0 = bf16[256,3,32] reshape(s0)
+  b1 = bf16[256,96] reshape(b0)
+  p1 = bf16[256,96] parameter(1)
+  ROOT d = bf16[96,96] dot(b1, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+})"));
+
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  EXPECT_FALSE(GemmRewriterTriton(cc).Run(module.get()).value());
+}
+
+TEST_F(GemmRewriterTritonTest, DoNotFuseSlicesOfNonMajorFragments) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[2,2,256,256] parameter(0)
+  s0 = f32[1,1,256,256] slice(p0),
+    slice={[0:1], [0:1], [0:256], [0:256]}
+  r0 = f32[256,256] reshape(s0)
+  p1 = f16[2,2,256,256] parameter(1)
+  s1 = f16[1,1,256,256] slice(p1),
+    slice={[0:1], [0:1], [0:256], [0:256]}
+  r1 = f16[256,256] reshape(s1)
+  ROOT d = f32[256,256] dot(r0, r1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  EXPECT_FALSE(GemmRewriterTriton(cc).Run(module.get()).value());
+}
+
+TEST_F(GemmRewriterTritonTest, SliceToDegenerateIsSkipped) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p = f32[3] parameter(0)
+  s = f32[1] slice(p), slice={[2:3]}
+  r = f32[] reshape(s)
+  b = f32[3,3] broadcast(r), dimensions={}
+  ROOT d = f32[3,3] dot(b, b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)"));
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  EXPECT_FALSE(GemmRewriterTriton(cc).Run(module.get()).value());
+}
+
+TEST_F(GemmRewriterTritonTest, MultipleUsesAreHandled) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  c = f32[] constant(1)
+  b = f32[6,8] broadcast(c), dimensions={}
+  p0 = f32[6,8] parameter(0)
+  a1 = f32[6,8] add(p0, b)
+  e = f32[6,8] exponential(a1)
+  a2 = f32[6,8] add(e, b)
+  d = f32[6,8] divide(b, a2)
+  p2 = f16[8,6] parameter(1)
+  cv = f32[8,6] convert(p2)
+  ROOT r = f32[6,6] dot(d, cv),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  EXPECT_TRUE(GemmRewriterTriton(cc).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+}
+
 class GemmRewriterTritonLevel2Test : public GemmRewriterTritonTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
@@ -1277,7 +1603,7 @@ ENTRY e {
   EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Transpose(), m::Parameter())));
+      GmockMatch(m::Fusion(m::Transpose(), m::Parameter(), m::Parameter())));
 }
 
 TEST_F(GemmRewriterTritonLevel2Test, DoNotFuseTooManyParameters) {
@@ -1396,6 +1722,40 @@ ENTRY e {
             HloInstruction::FusionKind::kCustom);
   EXPECT_LE(module->entry_computation()->root_instruction()->operand_count(),
             TritonFusionAnalysis::kMaxParameterPerScope * 2);
+}
+
+TEST_F(GemmRewriterTritonLevel2Test,
+       OperationsAddingMoreParametersGetMultipleTries) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  p0 = f32[2,2] parameter(0)
+  c0 = f32[] constant(12345)
+  b0 = f32[2,2] broadcast(c0), dimensions={}
+  m0 = f32[2,2] multiply(p0, b0)
+  c1 = f32[] constant(34567)
+  b1 = f32[2,2] broadcast(c1), dimensions={}
+  a0 = f32[2,2] add(m0, b1)
+  b3 = f32[2,2,2] broadcast(a0), dimensions={0,1}
+  p2 = f32[2,2,2] parameter(2)
+  m2 = f32[2,2,2] multiply(p2, b3)
+  p1 = f32[2]{0} parameter(1)
+  c2 = f32[] constant(5678)
+  b2 = f32[2] broadcast(c2), dimensions={}
+  a1 = f32[2]{0} add(p1, b2)
+  b4 = f32[2,2,2] broadcast(a1), dimensions={2}
+  m1 = f32[2,2,2] multiply(m2, b4)
+  b = f32[4,2] bitcast(m1)
+  p3 = f16[2,2] parameter(3)
+  p3c = f32[2,2] convert(p3)
+  ROOT r = f32[4,2] dot(b, p3c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
+                                    m::Parameter(), m::Parameter()))));
 }
 
 TEST_F(GemmRewriterTritonLevel2Test, FusionLevelIsLimitedOnVolta) {

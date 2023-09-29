@@ -279,6 +279,7 @@ class api_export(object):  # pylint: disable=invalid-name
       *args: str,
       api_name: str = TENSORFLOW_API_NAME,
       v1: Optional[Sequence[str]] = None,
+      allow_multiple_exports: bool = True,  # pylint: disable=unused-argument
   ):
     """Export under the names *args (first one is considered canonical).
 
@@ -288,6 +289,7 @@ class api_export(object):  # pylint: disable=invalid-name
         `estimator`). Default is `tensorflow`.
       v1: Names for the TensorFlow V1 API. If not set, we will use V2 API names
         both for TensorFlow V1 and V2 APIs.
+      allow_multiple_exports: Deprecated.
     """
     self._names = args
     self._names_v1 = v1 if v1 is not None else args
@@ -318,11 +320,13 @@ class api_export(object):  # pylint: disable=invalid-name
               '@tf_export is not allowed to export symbols under %s.*'
               % (subpackage)
           )
-    elif not all(n.startswith(self._api_name) for n in all_symbol_names):
-      raise InvalidSymbolNameError(
-          'Can only export symbols under package name of component. e.g.'
-          ' tensorflow_estimator must export all symbols under tf.estimator'
-      )
+    else:
+      if not all(n.startswith(self._api_name) for n in all_symbol_names):
+        raise InvalidSymbolNameError(
+            'Can only export symbols under package name of component. '
+            'e.g. tensorflow_estimator must export all symbols under '
+            'tf.estimator'
+        )
 
   def __call__(self, func: T) -> T:
     """Calls this decorator.
@@ -407,6 +411,7 @@ class ExportType(Protocol):
       self,
       *v2: str,
       v1: Optional[Sequence[str]] = None,
+      allow_multiple_exports: bool = True,  # Deprecated, no-op
   ) -> api_export:
     ...
 

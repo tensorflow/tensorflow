@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_TEST_MATCHERS_H_
 
 #include <gmock/gmock.h>
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tsl/platform/statusor.h"
 
 template <typename T>

@@ -42,9 +42,8 @@ cc_library(
     deps = [
         ":host_gpu_executor",
         ":host_platform_id",
-        "//xla/stream_executor:executor_cache",
+        "//xla/stream_executor",
         "//xla/stream_executor:multi_platform_manager",
-        "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
@@ -63,7 +62,8 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/stream_executor:kernel",
+        "//xla/stream_executor",
+        "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:denormal",
@@ -86,9 +86,7 @@ cc_library(
         ":host_platform_id",
         ":host_stream",
         "//xla/stream_executor",
-        "//xla/stream_executor:kernel",
         "//xla/stream_executor:stream_executor_internal",
-        "//xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",

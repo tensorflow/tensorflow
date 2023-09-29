@@ -19,11 +19,13 @@ limitations under the License.
 
 #ifndef XLA_STREAM_EXECUTOR_DEVICE_OPTIONS_H_
 #define XLA_STREAM_EXECUTOR_DEVICE_OPTIONS_H_
-#include <map>
 
+#include <map>
+#include <string>
+#include <vector>
+
+#include "absl/log/check.h"
 #include "absl/strings/str_join.h"
-#include "xla/stream_executor/platform/logging.h"
-#include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 

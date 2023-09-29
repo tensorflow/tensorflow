@@ -332,8 +332,7 @@ typedef std::unique_ptr<SE_OutsideCompilationParams, DestroyOCParams>
 void UnregisterCancellation(OpKernelContext* ctx,
                             CancellationManager* cancellation_manager,
                             se::Stream* stream, int device_ordinal,
-                            CancellationToken token,
-                            OpaqueTransferManagerImpl* transfer_manager) {
+                            CancellationToken token) {
   // If execution reaches this point, the host callback enqueued below will get
   // called regardless of stream status. Call inc_num_deferred_ops_function here
   // and dec_num_deferred_ops_function in the host callback.
@@ -375,9 +374,6 @@ void UnregisterCancellation(OpKernelContext* ctx,
     // dec_num_deferred_ops_function are called, ExecutorState::Finish will be
     // allowed to proceed.
     dec_num_deferred_ops_function();
-
-    stream_executor::tpu::OpsApiFn()->TpuExecutable_FreeOpaqueTransferManagerFn(
-        transfer_manager);
   });
   stream->ReturnSubStream(deregister_stream);
 }
@@ -542,7 +538,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     }
   }
   UnregisterCancellation(ctx, cancellation_manager, stream, device_ordinal,
-                         token, oc_params->opaque_host_device_transfer_mgr);
+                         token);
 
   VLOG(1) << "Cloud TPU: TPUExecute done";
   return output;

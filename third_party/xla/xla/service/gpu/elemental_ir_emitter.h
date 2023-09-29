@@ -87,6 +87,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitComplexAbs(PrimitiveType prim_type,
                                         llvm::Value* value) override;
 
+  StatusOr<llvm::Value*> EmitCbrt(PrimitiveType prim_type,
+                                  llvm::Value* value) override;
+
   StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view, bool /*is_reducer*/) override;

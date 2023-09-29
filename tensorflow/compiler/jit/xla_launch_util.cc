@@ -729,8 +729,10 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
         TF_RETURN_IF_ERROR(tensor_shape.AddDimWithStatus(dims[i]));
       }
       if (use_pjrt_tensor_buffer) {
-        Tensor output_tensor = MakeTensorFromPjRtStreamExecutorBuffer(
-            type, tensor_shape, std::move(executable_outputs[output_num]));
+        TF_ASSIGN_OR_RETURN(
+            Tensor output_tensor,
+            MakeTensorFromPjRtBuffer(
+                type, tensor_shape, std::move(executable_outputs[output_num])));
         ctx->set_output(i, output_tensor);
       } else {
         // Uses AsyncValueTensor. This path currently used by TPU but is going
@@ -770,9 +772,9 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
     }
 
     if (use_pjrt_tensor_buffer) {
-      PjRtTensorBufferUtil::UpdateOrMakeTensorWithPjRtStreamExecutorBuffer(
+      TF_RETURN_IF_ERROR(PjRtTensorBufferUtil::UpdateOrMakeTensorWithPjRtBuffer(
           write.type, write.shape, std::move(executable_outputs[output_num]),
-          var->tensor());
+          var->tensor()));
     } else {
       TF_RETURN_IF_ERROR(
           ctx->allocate_temp(write.type, write.shape, var->tensor()));

@@ -707,6 +707,9 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   StatusOr<std::shared_ptr<TrackedDeviceBuffer>> Release(
       bool wait_for_operations_to_complete);
 
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
+      PjRtFuture<absl::Status> dependency) override;
+
  private:
   friend class PjRtClient;
 
@@ -880,6 +883,7 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
   friend class PjRtStreamExecutorClient;
   friend class PjRtTpuClient;
   friend class InternalPjRtTpuClient;
+  friend class StreamExecutorGpuClient;
   // Initializes information about which arguments to which executables must be
   // donated due to aliases that were specified by the computation.
   Status SetUpDonation(bool tuple_inputs);

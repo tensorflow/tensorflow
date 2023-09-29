@@ -107,6 +107,18 @@ auto* saved_model_read_path_and_singleprint =
         "graph_def_program_hash, signature_def_hash, saved_object_graph_hash, "
         "and checkpoint_hash) of the loaded SavedModel.");
 
+// Gauge that marks whether or not the fingerprint.pb file was found when
+// loading the SavedModel.
+// Can hold one of the following string values:
+//  - "FOUND"
+//  - "NOT_FOUND"
+//  - "ERROR"
+auto* saved_model_found_fingerprint_on_load =
+    monitoring::Gauge<std::string, 0>::New(
+        "/tensorflow/core/saved_model/found_fingerprint_on_load",
+        "Whether or not the fingerprint.pb file was found when loading the "
+        "SavedModel.");
+
 // Distribution of checkpoint write durations.
 auto* checkpoint_write_durations = monitoring::Sampler<1>::New(
     {
@@ -249,6 +261,10 @@ ParseSavedModelPathAndSingleprint(std::string path_and_singleprint) {
         "Invalid path_and_singleprint argument. Empty singleprint.");
   }
   return std::pair<std::string, std::string>(path, singleprint);
+}
+
+monitoring::GaugeCell<std::string>& SavedModelFoundFingerprintOnLoad() {
+  return *saved_model_found_fingerprint_on_load->GetCell();
 }
 
 monitoring::SamplerCell& CheckpointReadDuration(absl::string_view api_label) {

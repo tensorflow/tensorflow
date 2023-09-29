@@ -914,7 +914,7 @@ class _FuncGraph(ops.Graph):
     op = self._add_op_and_parents(tensor.op)
     return op.outputs[tensor.value_index]
 
-  def _add_op_and_parents(self, op):
+  def _add_op_and_parents(self, op: ops.Operation):
     # pylint: disable=protected-access
     op_def = graph_to_function_def._get_op_def(op)
     if op._is_stateful and op not in self._allowlisted_stateful_ops:
@@ -1049,13 +1049,13 @@ def _is_guaranteed_const(tensor):
 
   class Work(object):
 
-    def __init__(self, op, leaving):
+    def __init__(self, op: ops.Operation, leaving):
       self.op = op
       self.leaving = leaving
 
   is_guaranteed_const = lambda op: op.node_def.op == "GuaranteeConst"
   constants = set([])
-  def all_inputs_const(op):
+  def all_inputs_const(op: ops.Operation):
     # If all inputs of an op are guaranteed constants, then we can infer that
     # the op produces a constant as well.
     return op.inputs and all(inp.op in constants for inp in op.inputs)

@@ -37,8 +37,10 @@ namespace {
 #include "gml_st/transforms/passes.h.inc"
 
 FailureOr<Operation *> tileUsingSCFForAndReplace(
-    PatternRewriter &rewriter, Operation *op,
-    const scf::SCFTilingOptions &tilingOptions) {
+    PatternRewriter &rewriter, Operation *op, ArrayRef<int64_t> tilingSizes) {
+  scf::SCFTilingOptions tilingOptions;
+  tilingOptions.setTileSizes(
+      getAsIndexOpFoldResult(rewriter.getContext(), tilingSizes));
   auto tilingResult = scf::tileUsingSCFForOp(
       rewriter, cast<TilingInterface>(op), tilingOptions);
   if (failed(tilingResult) || tilingResult->loops.empty()) return failure();
@@ -102,16 +104,14 @@ LogicalResult tileMmt4DOp(linalg::Mmt4DOp mmt4dOp, PatternRewriter &rewriter) {
                                  parallelTileSizes, reductionTileSizes);
 
   // Tile the parallel loops.
-  auto tiledOp = tileUsingSCFForAndReplace(
-      rewriter, mmt4dOp.getOperation(),
-      scf::SCFTilingOptions().setTileSizes(parallelTileSizes));
+  auto tiledOp = tileUsingSCFForAndReplace(rewriter, mmt4dOp.getOperation(),
+                                           parallelTileSizes);
   if (failed(tiledOp)) return failure();
   mmt4dOp = cast<linalg::Mmt4DOp>(*tiledOp);
 
   // Tile the reduction loops.
-  tiledOp = tileUsingSCFForAndReplace(
-      rewriter, mmt4dOp.getOperation(),
-      scf::SCFTilingOptions().setTileSizes(reductionTileSizes));
+  tiledOp = tileUsingSCFForAndReplace(rewriter, mmt4dOp.getOperation(),
+                                      reductionTileSizes);
   if (failed(tiledOp)) return failure();
   mmt4dOp = cast<linalg::Mmt4DOp>(*tiledOp);
 

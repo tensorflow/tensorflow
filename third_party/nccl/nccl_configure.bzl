@@ -9,6 +9,8 @@
   * `TF_CUDA_PATHS`: The base paths to look for CUDA and cuDNN. Default is
     `/usr/local/cuda,usr/`.
   * `TF_CUDA_CLANG`: "1" if using Clang, "0" if using NVCC.
+  * `TF_NCCL_USE_STUB`: "1" if a NCCL stub that loads NCCL dynamically should
+    be used, "0" if NCCL should be linked in statically.
 
 """
 
@@ -32,6 +34,7 @@ _TF_NCCL_VERSION = "TF_NCCL_VERSION"
 _TF_NEED_CUDA = "TF_NEED_CUDA"
 _TF_CUDA_PATHS = "TF_CUDA_PATHS"
 _TF_CUDA_CLANG = "TF_CUDA_CLANG"
+_TF_NCCL_USE_STUB = "TF_NCCL_USE_STUB"
 
 _DEFINE_NCCL_MAJOR = "#define NCCL_MAJOR"
 _DEFINE_NCCL_MINOR = "#define NCCL_MINOR"
@@ -63,26 +66,43 @@ alias(
 )
 """
 
+_NCCL_ARCHIVE_STUB_BUILD_CONTENT = """
+filegroup(
+  name = "LICENSE",
+  data = ["@nccl_archive//:LICENSE.txt"],
+  visibility = ["//visibility:public"],
+)
+
+alias(
+  name = "nccl",
+  actual = "@nccl_archive//:nccl_via_stub",
+  visibility = ["//visibility:public"],
+)
+
+alias(
+  name = "nccl_headers",
+  actual = "@nccl_archive//:nccl_headers",
+  visibility = ["//visibility:public"],
+)
+"""
+
 def _label(file):
     return Label("//third_party/nccl:{}".format(file))
 
 def _create_local_nccl_repository(repository_ctx):
-    # Resolve all labels before doing any real work. Resolving causes the
-    # function to be restarted with all previous state being lost. This
-    # can easily lead to a O(n^2) runtime in the number of labels.
-    # See https://github.com/tensorflow/tensorflow/commit/62bd3534525a036f07d9851b3199d68212904778
-    find_cuda_config_path = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_cuda_config.py.gz.base64"))
-
     nccl_version = get_host_environ(repository_ctx, _TF_NCCL_VERSION, "")
     if nccl_version:
         nccl_version = nccl_version.split(".")[0]
 
-    cuda_config = find_cuda_config(repository_ctx, find_cuda_config_path, ["cuda"])
+    cuda_config = find_cuda_config(repository_ctx, ["cuda"])
     cuda_version = cuda_config["cuda_version"].split(".")
 
     if nccl_version == "":
         # Alias to open source build from @nccl_archive.
-        repository_ctx.file("BUILD", _NCCL_ARCHIVE_BUILD_CONTENT)
+        if get_host_environ(repository_ctx, _TF_NCCL_USE_STUB, "0") == "0":
+            repository_ctx.file("BUILD", _NCCL_ARCHIVE_BUILD_CONTENT)
+        else:
+            repository_ctx.file("BUILD", _NCCL_ARCHIVE_STUB_BUILD_CONTENT)
 
         repository_ctx.template(
             "build_defs.bzl",
@@ -94,7 +114,7 @@ def _create_local_nccl_repository(repository_ctx):
         )
     else:
         # Create target for locally installed NCCL.
-        config = find_cuda_config(repository_ctx, find_cuda_config_path, ["nccl"])
+        config = find_cuda_config(repository_ctx, ["nccl"])
         config_wrap = {
             "%{nccl_version}": config["nccl_version"],
             "%{nccl_header_dir}": config["nccl_include_dir"],
@@ -144,12 +164,20 @@ remote_nccl_configure = repository_rule(
     remotable = True,
     attrs = {
         "environ": attr.string_dict(),
+        "_find_cuda_config": attr.label(
+            default = Label("@org_tensorflow//third_party/gpus:find_cuda_config.py"),
+        ),
     },
 )
 
 nccl_configure = repository_rule(
     implementation = _nccl_autoconf_impl,
     environ = _ENVIRONS,
+    attrs = {
+        "_find_cuda_config": attr.label(
+            default = Label("@org_tensorflow//third_party/gpus:find_cuda_config.py"),
+        ),
+    },
 )
 """Detects and configures the NCCL configuration.
 

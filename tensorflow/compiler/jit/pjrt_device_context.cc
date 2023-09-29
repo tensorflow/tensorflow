@@ -165,10 +165,13 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
   if (use_pjrt_tensor_buffer_) {
     // Copy the newly created tensor with PjRtTensorBuffer to output device
     // tensor.
-    //
-    // We currently assume the PjRtBuffer is a PjRtStreamExecutorBuffer.
-    *device_tensor = MakeTensorFromPjRtStreamExecutorBuffer(
+    StatusOr<Tensor> t = MakeTensorFromPjRtBuffer(
         device_tensor->dtype(), device_tensor->shape(), std::move(*buffer_or));
+    if (!t.ok()) {
+      done(t.status());
+      return;
+    }
+    *device_tensor = *t;
   } else {
     AsyncValueTensor* result_tensor =
         tensorflow::AsyncValueTensor::FromTensor(device_tensor);
@@ -271,10 +274,13 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
           ->use_pjrt_tensor_buffer()) {
     // Copy the newly created tensor with PjRtTensorBuffer to output device
     // tensor.
-    //
-    // We currently assume the PjRtBuffer is a PjRtStreamExecutorBuffer.
-    *output = MakeTensorFromPjRtStreamExecutorBuffer(
+    StatusOr<Tensor> t = MakeTensorFromPjRtBuffer(
         output->dtype(), output->shape(), std::move(*buffer_or));
+    if (!t.ok()) {
+      done(t.status());
+      return;
+    }
+    *output = *t;
   } else {
     AsyncValueTensor* output_tensor =
         tensorflow::AsyncValueTensor::FromTensor(output);

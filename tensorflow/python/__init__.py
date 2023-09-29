@@ -21,11 +21,6 @@ the constructors and utilities individually can import this file:
 import tensorflow as tf
 """
 
-import ctypes
-import importlib
-import sys
-import traceback
-
 # We aim to keep this file minimal and ideally remove completely.
 # If you are adding a new file with @tf_export decorators,
 # import it in modules_with_exports.py instead.
@@ -48,7 +43,3 @@ _exported_dunders = set([
 # Expose symbols minus dunders, unless they are allowlisted above.
 # This is necessary to export our dunders.
 __all__ = [s for s in dir() if s in _exported_dunders or not s.startswith('_')]
-
-# TODO(b/296442875): remove this when we remove the tf.distribution package.
-# This import is needed for tf.compat.v1.distributions.
-from tensorflow.python.ops.distributions import distributions

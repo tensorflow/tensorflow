@@ -21,9 +21,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
@@ -51,7 +55,7 @@ class TritonAutotuner : public HloModulePass {
 // TODO(b/266210099): have a way to generate/load these dynamically.
 // Returns a list of possible tilings for a GEMM performed in Triton.
 std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
-    const HloInstruction& instr, se::CudaComputeCapability compute_capability,
+    const HloDotInstruction& dot, se::CudaComputeCapability compute_capability,
     const DebugOptions& debug_options, bool exhaustive_tiling_search = false);
 
 }  // namespace gpu

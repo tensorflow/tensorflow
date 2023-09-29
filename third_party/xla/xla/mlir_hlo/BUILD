@@ -753,6 +753,8 @@ cc_library(
         "mhlo/transforms/legalize_mhlo_to_thlo/legalize_mhlo_to_thlo.cc",
         "mhlo/transforms/legalize_shape_computations/legalize_shape_computations.cc",
         "mhlo/transforms/legalize_sort/legalize_sort.cc",
+        "mhlo/transforms/legalize_sparse_ops/legalize_sparse_ops.cc",
+        "mhlo/transforms/legalize_sparse_ops/sparse_ops_to_custom_calls.cc",
         "mhlo/transforms/legalize_to_linalg/legalize_to_linalg.cc",
         "mhlo/transforms/legalize_to_standard/generated_legalize_to_standard.inc",
         "mhlo/transforms/legalize_to_standard/legalize_to_standard.cc",
@@ -779,7 +781,6 @@ cc_library(
         "mhlo/transforms/shape_reification/shape_reification_pass.cc",
         "mhlo/transforms/shape_simplification/shape_simplification.cc",
         "mhlo/transforms/sink_constants_to_control_flow/sink_constants_to_control_flow.cc",
-        "mhlo/transforms/sparse_chlo_legalize_to_linalg/sparse_chlo_legalize_to_linalg.cc",
         "mhlo/transforms/sparse_rewriting/sparse_rewriting.cc",
         "mhlo/transforms/stablehlo_legalize_to_hlo/stablehlo_legalize_to_hlo_pass.cc",
         "mhlo/transforms/symbolic_shape_optimization/symbolic_shape_optimization.cc",
@@ -2021,121 +2022,4 @@ cc_binary(
     linkshared = True,
     linkstatic = False,
     deps = ["@llvm-project//mlir:mlir_c_runner_utils"],
-)
-
-cc_library(
-    name = "mlir_interpreter_dialects",
-    srcs = glob(
-        [
-            "tools/mlir_interpreter/dialects/*.cc",
-        ],
-        exclude = ["tools/mlir_interpreter/dialects/util.cc"],
-    ),
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":deallocation",
-        ":gml_st",
-        ":mlir_hlo",
-        ":mlir_interpreter_dialect_utils",
-        ":mlir_interpreter_framework",
-        ":thlo",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AffineDialect",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:BufferizationDialect",
-        "@llvm-project//mlir:ComplexDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgDialect",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:VectorDialect",
-        "@llvm-project//mlir:ViewLikeInterface",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "mlir_interpreter_dialect_utils",
-    srcs = [
-        "tools/mlir_interpreter/dialects/util.cc",
-    ],
-    hdrs = [
-        "tools/mlir_interpreter/dialects/comparators.h",
-        "tools/mlir_interpreter/dialects/cwise_math.h",
-        "tools/mlir_interpreter/dialects/util.h",
-    ],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":mlir_interpreter_framework",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:ViewLikeInterface",
-    ],
-)
-
-cc_library(
-    name = "mlir_interpreter_framework",
-    srcs = [
-        "tools/mlir_interpreter/framework/interpreter.cc",
-        "tools/mlir_interpreter/framework/interpreter_value.cc",
-        "tools/mlir_interpreter/framework/registration.cc",
-        "tools/mlir_interpreter/framework/tensor_or_memref.cc",
-    ],
-    hdrs = [
-        "tools/mlir_interpreter/framework/interpreter.h",
-        "tools/mlir_interpreter/framework/interpreter_value.h",
-        "tools/mlir_interpreter/framework/interpreter_value_util.h",
-        "tools/mlir_interpreter/framework/registration.h",
-        "tools/mlir_interpreter/framework/tensor_or_memref.h",
-    ],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:DialectUtils",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-build_test(
-    name = "mlir-interpreter-runner_build_test",
-    targets = [
-        ":mlir-interpreter-runner",
-    ],
-)
-
-cc_binary(
-    name = "mlir-interpreter-runner",
-    srcs = ["tools/mlir_interpreter/mlir-interpreter-runner.cc"],
-    deps = [
-        ":deallocation",
-        ":gml_st",
-        ":hlo_dialect_registration",
-        ":lhlo",
-        ":lhlo_gpu",
-        ":mhlo_passes",
-        ":mlir_interpreter_dialects",
-        ":mlir_interpreter_framework",
-        ":thlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MlirReduceLib",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-    ],
 )

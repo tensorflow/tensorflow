@@ -28,10 +28,10 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/types.h"
 
 namespace stream_executor {
 
+class Stream;
 class DeviceMemoryAllocator;
 
 // Owning pointer for memory on a device.
@@ -42,7 +42,7 @@ class DeviceMemoryAllocator;
 //
 // We say that an instance of ScopedDeviceMemory is "active" if it currently
 // owns a (possibly empty) slice of memory on the device.  Moving,
-// Release()'ing, Free()'ing, and other actions can deactive an active object.
+// Release()'ing, Free()'ing, and other actions can deactivate an active object.
 template <typename ElemT>
 class ScopedDeviceMemory {
  public:

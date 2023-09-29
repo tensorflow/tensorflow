@@ -133,6 +133,10 @@ struct StablehloScatterOptions;
 struct StablehloScatterOptionsBuilder;
 struct StablehloScatterOptionsT;
 
+struct StablehloRngBitGeneratorOptions;
+struct StablehloRngBitGeneratorOptionsBuilder;
+struct StablehloRngBitGeneratorOptionsT;
+
 struct Conv2DOptions;
 struct Conv2DOptionsBuilder;
 struct Conv2DOptionsT;
@@ -640,6 +644,10 @@ struct RightShiftOptionsT;
 struct DilateOptions;
 struct DilateOptionsBuilder;
 struct DilateOptionsT;
+
+struct ReduceWindowOptions;
+struct ReduceWindowOptionsBuilder;
+struct ReduceWindowOptionsT;
 
 struct Pool3DOptions;
 struct Pool3DOptionsBuilder;
@@ -1206,13 +1214,15 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_STABLEHLO_GATHER = 201,
   BuiltinOperator_STABLEHLO_TRANSPOSE = 202,
   BuiltinOperator_DILATE = 203,
-  BuiltinOperator_AVERAGE_POOL_3D = 204,
-  BuiltinOperator_MAX_POOL_3D = 205,
+  BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR = 204,
+  BuiltinOperator_REDUCE_WINDOW = 205,
+  BuiltinOperator_AVERAGE_POOL_3D = 206,
+  BuiltinOperator_MAX_POOL_3D = 207,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
   BuiltinOperator_MAX = BuiltinOperator_MAX_POOL_3D
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[206] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[208] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1418,6 +1428,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[206] {
     BuiltinOperator_STABLEHLO_GATHER,
     BuiltinOperator_STABLEHLO_TRANSPOSE,
     BuiltinOperator_DILATE,
+    BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR,
+    BuiltinOperator_REDUCE_WINDOW,
     BuiltinOperator_AVERAGE_POOL_3D,
     BuiltinOperator_MAX_POOL_3D
   };
@@ -1425,7 +1437,7 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[206] {
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[207] = {
+  static const char * const names[209] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1630,6 +1642,8 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "STABLEHLO_GATHER",
     "STABLEHLO_TRANSPOSE",
     "DILATE",
+    "STABLEHLO_RNG_BIT_GENERATOR",
+    "REDUCE_WINDOW",
     "AVERAGE_POOL_3D",
     "MAX_POOL_3D",
     nullptr
@@ -4127,12 +4141,14 @@ enum BuiltinOptions2 : uint8_t {
   BuiltinOptions2_StablehloGatherOptions = 16,
   BuiltinOptions2_StablehloTransposeOptions = 17,
   BuiltinOptions2_DilateOptions = 18,
-  BuiltinOptions2_Pool3DOptions = 19,
+  BuiltinOptions2_StablehloRngBitGeneratorOptions = 19,
+  BuiltinOptions2_ReduceWindowOptions = 20,
+  BuiltinOptions2_Pool3DOptions = 21,
   BuiltinOptions2_MIN = BuiltinOptions2_NONE,
   BuiltinOptions2_MAX = BuiltinOptions2_Pool3DOptions
 };
 
-inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[20] {
+inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[22] {
   static const BuiltinOptions2 values[] = {
     BuiltinOptions2_NONE,
     BuiltinOptions2_StablehloConcatenateOptions,
@@ -4153,13 +4169,15 @@ inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[20] {
     BuiltinOptions2_StablehloGatherOptions,
     BuiltinOptions2_StablehloTransposeOptions,
     BuiltinOptions2_DilateOptions,
+    BuiltinOptions2_StablehloRngBitGeneratorOptions,
+    BuiltinOptions2_ReduceWindowOptions,
     BuiltinOptions2_Pool3DOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions2() {
-  static const char * const names[21] = {
+  static const char * const names[23] = {
     "NONE",
     "StablehloConcatenateOptions",
     "StablehloBroadcastInDimOptions",
@@ -4179,6 +4197,8 @@ inline const char * const *EnumNamesBuiltinOptions2() {
     "StablehloGatherOptions",
     "StablehloTransposeOptions",
     "DilateOptions",
+    "StablehloRngBitGeneratorOptions",
+    "ReduceWindowOptions",
     "Pool3DOptions",
     nullptr
   };
@@ -4267,6 +4287,14 @@ template<> struct BuiltinOptions2Traits<tflite::DilateOptions> {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_DilateOptions;
 };
 
+template<> struct BuiltinOptions2Traits<tflite::StablehloRngBitGeneratorOptions> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloRngBitGeneratorOptions;
+};
+
+template<> struct BuiltinOptions2Traits<tflite::ReduceWindowOptions> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_ReduceWindowOptions;
+};
+
 template<> struct BuiltinOptions2Traits<tflite::Pool3DOptions> {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_Pool3DOptions;
 };
@@ -4345,6 +4373,14 @@ template<> struct BuiltinOptions2UnionTraits<tflite::StablehloTransposeOptionsT>
 
 template<> struct BuiltinOptions2UnionTraits<tflite::DilateOptionsT> {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_DilateOptions;
+};
+
+template<> struct BuiltinOptions2UnionTraits<tflite::StablehloRngBitGeneratorOptionsT> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloRngBitGeneratorOptions;
+};
+
+template<> struct BuiltinOptions2UnionTraits<tflite::ReduceWindowOptionsT> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_ReduceWindowOptions;
 };
 
 template<> struct BuiltinOptions2UnionTraits<tflite::Pool3DOptionsT> {
@@ -4525,6 +4561,22 @@ struct BuiltinOptions2Union {
     return type == BuiltinOptions2_DilateOptions ?
       reinterpret_cast<const tflite::DilateOptionsT *>(value) : nullptr;
   }
+  tflite::StablehloRngBitGeneratorOptionsT *AsStablehloRngBitGeneratorOptions() {
+    return type == BuiltinOptions2_StablehloRngBitGeneratorOptions ?
+      reinterpret_cast<tflite::StablehloRngBitGeneratorOptionsT *>(value) : nullptr;
+  }
+  const tflite::StablehloRngBitGeneratorOptionsT *AsStablehloRngBitGeneratorOptions() const {
+    return type == BuiltinOptions2_StablehloRngBitGeneratorOptions ?
+      reinterpret_cast<const tflite::StablehloRngBitGeneratorOptionsT *>(value) : nullptr;
+  }
+  tflite::ReduceWindowOptionsT *AsReduceWindowOptions() {
+    return type == BuiltinOptions2_ReduceWindowOptions ?
+      reinterpret_cast<tflite::ReduceWindowOptionsT *>(value) : nullptr;
+  }
+  const tflite::ReduceWindowOptionsT *AsReduceWindowOptions() const {
+    return type == BuiltinOptions2_ReduceWindowOptions ?
+      reinterpret_cast<const tflite::ReduceWindowOptionsT *>(value) : nullptr;
+  }
   tflite::Pool3DOptionsT *AsPool3DOptions() {
     return type == BuiltinOptions2_Pool3DOptions ?
       reinterpret_cast<tflite::Pool3DOptionsT *>(value) : nullptr;
@@ -4650,6 +4702,39 @@ inline const char *EnumNameStablehloComparisonType(StablehloComparisonType e) {
   if (::flatbuffers::IsOutRange(e, StablehloComparisonType_STABLEHLO_COMPARISON_TYPE_NOTYPE, StablehloComparisonType_STABLEHLO_COMPARISON_TYPE_UNSIGNED)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesStablehloComparisonType()[index];
+}
+
+enum RngAlgorithm : int8_t {
+  RngAlgorithm_DEFAULT = 0,
+  RngAlgorithm_PHILOX = 1,
+  RngAlgorithm_THREEFRY = 2,
+  RngAlgorithm_MIN = RngAlgorithm_DEFAULT,
+  RngAlgorithm_MAX = RngAlgorithm_THREEFRY
+};
+
+inline const RngAlgorithm (&EnumValuesRngAlgorithm())[3] {
+  static const RngAlgorithm values[] = {
+    RngAlgorithm_DEFAULT,
+    RngAlgorithm_PHILOX,
+    RngAlgorithm_THREEFRY
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesRngAlgorithm() {
+  static const char * const names[4] = {
+    "DEFAULT",
+    "PHILOX",
+    "THREEFRY",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameRngAlgorithm(RngAlgorithm e) {
+  if (::flatbuffers::IsOutRange(e, RngAlgorithm_DEFAULT, RngAlgorithm_THREEFRY)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesRngAlgorithm()[index];
 }
 
 enum Padding : int8_t {
@@ -4878,6 +4963,51 @@ inline const char *EnumNameMirrorPadMode(MirrorPadMode e) {
   if (::flatbuffers::IsOutRange(e, MirrorPadMode_REFLECT, MirrorPadMode_SYMMETRIC)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesMirrorPadMode()[index];
+}
+
+enum ReduceWindowFunction : int32_t {
+  ReduceWindowFunction_UNSUPPORTED = 0,
+  ReduceWindowFunction_ADD = 1,
+  ReduceWindowFunction_MUL = 2,
+  ReduceWindowFunction_MINIMUM = 3,
+  ReduceWindowFunction_MAXIMUM = 4,
+  ReduceWindowFunction_ALL = 5,
+  ReduceWindowFunction_ANY = 6,
+  ReduceWindowFunction_MIN = ReduceWindowFunction_UNSUPPORTED,
+  ReduceWindowFunction_MAX = ReduceWindowFunction_ANY
+};
+
+inline const ReduceWindowFunction (&EnumValuesReduceWindowFunction())[7] {
+  static const ReduceWindowFunction values[] = {
+    ReduceWindowFunction_UNSUPPORTED,
+    ReduceWindowFunction_ADD,
+    ReduceWindowFunction_MUL,
+    ReduceWindowFunction_MINIMUM,
+    ReduceWindowFunction_MAXIMUM,
+    ReduceWindowFunction_ALL,
+    ReduceWindowFunction_ANY
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesReduceWindowFunction() {
+  static const char * const names[8] = {
+    "UNSUPPORTED",
+    "ADD",
+    "MUL",
+    "MINIMUM",
+    "MAXIMUM",
+    "ALL",
+    "ANY",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameReduceWindowFunction(ReduceWindowFunction e) {
+  if (::flatbuffers::IsOutRange(e, ReduceWindowFunction_UNSUPPORTED, ReduceWindowFunction_ANY)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesReduceWindowFunction()[index];
 }
 
 enum CustomOptionsFormat : int8_t {
@@ -7542,6 +7672,58 @@ inline ::flatbuffers::Offset<StablehloScatterOptions> CreateStablehloScatterOpti
 
 ::flatbuffers::Offset<StablehloScatterOptions> CreateStablehloScatterOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloScatterOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct StablehloRngBitGeneratorOptionsT : public ::flatbuffers::NativeTable {
+  typedef StablehloRngBitGeneratorOptions TableType;
+  tflite::RngAlgorithm algorithm = tflite::RngAlgorithm_DEFAULT;
+};
+
+struct StablehloRngBitGeneratorOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef StablehloRngBitGeneratorOptionsT NativeTableType;
+  typedef StablehloRngBitGeneratorOptionsBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_ALGORITHM = 4
+  };
+  tflite::RngAlgorithm algorithm() const {
+    return static_cast<tflite::RngAlgorithm>(GetField<int8_t>(VT_ALGORITHM, 0));
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_ALGORITHM, 1) &&
+           verifier.EndTable();
+  }
+  StablehloRngBitGeneratorOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(StablehloRngBitGeneratorOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<StablehloRngBitGeneratorOptions> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloRngBitGeneratorOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct StablehloRngBitGeneratorOptionsBuilder {
+  typedef StablehloRngBitGeneratorOptions Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_algorithm(tflite::RngAlgorithm algorithm) {
+    fbb_.AddElement<int8_t>(StablehloRngBitGeneratorOptions::VT_ALGORITHM, static_cast<int8_t>(algorithm), 0);
+  }
+  explicit StablehloRngBitGeneratorOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<StablehloRngBitGeneratorOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<StablehloRngBitGeneratorOptions>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<StablehloRngBitGeneratorOptions> CreateStablehloRngBitGeneratorOptions(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    tflite::RngAlgorithm algorithm = tflite::RngAlgorithm_DEFAULT) {
+  StablehloRngBitGeneratorOptionsBuilder builder_(_fbb);
+  builder_.add_algorithm(algorithm);
+  return builder_.Finish();
+}
+
+::flatbuffers::Offset<StablehloRngBitGeneratorOptions> CreateStablehloRngBitGeneratorOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloRngBitGeneratorOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct Conv2DOptionsT : public ::flatbuffers::NativeTable {
   typedef Conv2DOptions TableType;
   tflite::Padding padding = tflite::Padding_SAME;
@@ -7563,7 +7745,7 @@ struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_FUSED_ACTIVATION_FUNCTION = 10,
     VT_DILATION_W_FACTOR = 12,
     VT_DILATION_H_FACTOR = 14,
-    VT_quantized_bias_type = 16
+    VT_QUANTIZED_BIAS_TYPE = 16
   };
   tflite::Padding padding() const {
     return static_cast<tflite::Padding>(GetField<int8_t>(VT_PADDING, 0));
@@ -7584,7 +7766,7 @@ struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     return GetField<int32_t>(VT_DILATION_H_FACTOR, 1);
   }
   tflite::TensorType quantized_bias_type() const {
-    return static_cast<tflite::TensorType>(GetField<int8_t>(VT_quantized_bias_type, 0));
+    return static_cast<tflite::TensorType>(GetField<int8_t>(VT_QUANTIZED_BIAS_TYPE, 0));
   }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -7594,7 +7776,7 @@ struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
            VerifyField<int32_t>(verifier, VT_DILATION_W_FACTOR, 4) &&
            VerifyField<int32_t>(verifier, VT_DILATION_H_FACTOR, 4) &&
-           VerifyField<int8_t>(verifier, VT_quantized_bias_type, 1) &&
+           VerifyField<int8_t>(verifier, VT_QUANTIZED_BIAS_TYPE, 1) &&
            verifier.EndTable();
   }
   Conv2DOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -7625,7 +7807,7 @@ struct Conv2DOptionsBuilder {
     fbb_.AddElement<int32_t>(Conv2DOptions::VT_DILATION_H_FACTOR, dilation_h_factor, 1);
   }
   void add_quantized_bias_type(tflite::TensorType quantized_bias_type) {
-    fbb_.AddElement<int8_t>(Conv2DOptions::VT_quantized_bias_type, static_cast<int8_t>(quantized_bias_type), 0);
+    fbb_.AddElement<int8_t>(Conv2DOptions::VT_QUANTIZED_BIAS_TYPE, static_cast<int8_t>(quantized_bias_type), 0);
   }
   explicit Conv2DOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -8469,7 +8651,7 @@ struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
     VT_WEIGHTS_FORMAT = 6,
     VT_KEEP_NUM_DIMS = 8,
     VT_ASYMMETRIC_QUANTIZE_INPUTS = 10,
-    VT_quantized_bias_type = 12
+    VT_QUANTIZED_BIAS_TYPE = 12
   };
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
@@ -8484,7 +8666,7 @@ struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
     return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
   }
   tflite::TensorType quantized_bias_type() const {
-    return static_cast<tflite::TensorType>(GetField<int8_t>(VT_quantized_bias_type, 0));
+    return static_cast<tflite::TensorType>(GetField<int8_t>(VT_QUANTIZED_BIAS_TYPE, 0));
   }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -8492,7 +8674,7 @@ struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
            VerifyField<int8_t>(verifier, VT_WEIGHTS_FORMAT, 1) &&
            VerifyField<uint8_t>(verifier, VT_KEEP_NUM_DIMS, 1) &&
            VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS, 1) &&
-           VerifyField<int8_t>(verifier, VT_quantized_bias_type, 1) &&
+           VerifyField<int8_t>(verifier, VT_QUANTIZED_BIAS_TYPE, 1) &&
            verifier.EndTable();
   }
   FullyConnectedOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -8517,7 +8699,7 @@ struct FullyConnectedOptionsBuilder {
     fbb_.AddElement<uint8_t>(FullyConnectedOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
   }
   void add_quantized_bias_type(tflite::TensorType quantized_bias_type) {
-    fbb_.AddElement<int8_t>(FullyConnectedOptions::VT_quantized_bias_type, static_cast<int8_t>(quantized_bias_type), 0);
+    fbb_.AddElement<int8_t>(FullyConnectedOptions::VT_QUANTIZED_BIAS_TYPE, static_cast<int8_t>(quantized_bias_type), 0);
   }
   explicit FullyConnectedOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -11123,7 +11305,7 @@ struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Tab
     VT_STRIDE_W = 6,
     VT_STRIDE_H = 8,
     VT_FUSED_ACTIVATION_FUNCTION = 10,
-    VT_quantized_bias_type = 12
+    VT_QUANTIZED_BIAS_TYPE = 12
   };
   tflite::Padding padding() const {
     return static_cast<tflite::Padding>(GetField<int8_t>(VT_PADDING, 0));
@@ -11138,7 +11320,7 @@ struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Tab
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
   tflite::TensorType quantized_bias_type() const {
-    return static_cast<tflite::TensorType>(GetField<int8_t>(VT_quantized_bias_type, 0));
+    return static_cast<tflite::TensorType>(GetField<int8_t>(VT_QUANTIZED_BIAS_TYPE, 0));
   }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -11146,7 +11328,7 @@ struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Tab
            VerifyField<int32_t>(verifier, VT_STRIDE_W, 4) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_H, 4) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
-           VerifyField<int8_t>(verifier, VT_quantized_bias_type, 1) &&
+           VerifyField<int8_t>(verifier, VT_QUANTIZED_BIAS_TYPE, 1) &&
            verifier.EndTable();
   }
   TransposeConvOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -11171,7 +11353,7 @@ struct TransposeConvOptionsBuilder {
     fbb_.AddElement<int8_t>(TransposeConvOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
   }
   void add_quantized_bias_type(tflite::TensorType quantized_bias_type) {
-    fbb_.AddElement<int8_t>(TransposeConvOptions::VT_quantized_bias_type, static_cast<int8_t>(quantized_bias_type), 0);
+    fbb_.AddElement<int8_t>(TransposeConvOptions::VT_QUANTIZED_BIAS_TYPE, static_cast<int8_t>(quantized_bias_type), 0);
   }
   explicit TransposeConvOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -11194,8 +11376,8 @@ inline ::flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(
   TransposeConvOptionsBuilder builder_(_fbb);
   builder_.add_stride_h(stride_h);
   builder_.add_stride_w(stride_w);
-  builder_.add_fused_activation_function(fused_activation_function);
   builder_.add_quantized_bias_type(quantized_bias_type);
+  builder_.add_fused_activation_function(fused_activation_function);
   builder_.add_padding(padding);
   return builder_.Finish();
 }
@@ -14303,6 +14485,58 @@ inline ::flatbuffers::Offset<DilateOptions> CreateDilateOptions(
 
 ::flatbuffers::Offset<DilateOptions> CreateDilateOptions(::flatbuffers::FlatBufferBuilder &_fbb, const DilateOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct ReduceWindowOptionsT : public ::flatbuffers::NativeTable {
+  typedef ReduceWindowOptions TableType;
+  tflite::ReduceWindowFunction reduce_function = tflite::ReduceWindowFunction_UNSUPPORTED;
+};
+
+struct ReduceWindowOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef ReduceWindowOptionsT NativeTableType;
+  typedef ReduceWindowOptionsBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_REDUCE_FUNCTION = 4
+  };
+  tflite::ReduceWindowFunction reduce_function() const {
+    return static_cast<tflite::ReduceWindowFunction>(GetField<int32_t>(VT_REDUCE_FUNCTION, 0));
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_REDUCE_FUNCTION, 4) &&
+           verifier.EndTable();
+  }
+  ReduceWindowOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ReduceWindowOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<ReduceWindowOptions> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const ReduceWindowOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ReduceWindowOptionsBuilder {
+  typedef ReduceWindowOptions Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_reduce_function(tflite::ReduceWindowFunction reduce_function) {
+    fbb_.AddElement<int32_t>(ReduceWindowOptions::VT_REDUCE_FUNCTION, static_cast<int32_t>(reduce_function), 0);
+  }
+  explicit ReduceWindowOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<ReduceWindowOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<ReduceWindowOptions>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<ReduceWindowOptions> CreateReduceWindowOptions(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    tflite::ReduceWindowFunction reduce_function = tflite::ReduceWindowFunction_UNSUPPORTED) {
+  ReduceWindowOptionsBuilder builder_(_fbb);
+  builder_.add_reduce_function(reduce_function);
+  return builder_.Finish();
+}
+
+::flatbuffers::Offset<ReduceWindowOptions> CreateReduceWindowOptions(::flatbuffers::FlatBufferBuilder &_fbb, const ReduceWindowOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct Pool3DOptionsT : public ::flatbuffers::NativeTable {
   typedef Pool3DOptions TableType;
   tflite::Padding padding = tflite::Padding_SAME;
@@ -15039,6 +15273,12 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const tflite::DilateOptions *builtin_options_2_as_DilateOptions() const {
     return builtin_options_2_type() == tflite::BuiltinOptions2_DilateOptions ? static_cast<const tflite::DilateOptions *>(builtin_options_2()) : nullptr;
   }
+  const tflite::StablehloRngBitGeneratorOptions *builtin_options_2_as_StablehloRngBitGeneratorOptions() const {
+    return builtin_options_2_type() == tflite::BuiltinOptions2_StablehloRngBitGeneratorOptions ? static_cast<const tflite::StablehloRngBitGeneratorOptions *>(builtin_options_2()) : nullptr;
+  }
+  const tflite::ReduceWindowOptions *builtin_options_2_as_ReduceWindowOptions() const {
+    return builtin_options_2_type() == tflite::BuiltinOptions2_ReduceWindowOptions ? static_cast<const tflite::ReduceWindowOptions *>(builtin_options_2()) : nullptr;
+  }
   const tflite::Pool3DOptions *builtin_options_2_as_Pool3DOptions() const {
     return builtin_options_2_type() == tflite::BuiltinOptions2_Pool3DOptions ? static_cast<const tflite::Pool3DOptions *>(builtin_options_2()) : nullptr;
   }
@@ -15645,6 +15885,14 @@ template<> inline const tflite::StablehloTransposeOptions *Operator::builtin_opt
 
 template<> inline const tflite::DilateOptions *Operator::builtin_options_2_as<tflite::DilateOptions>() const {
   return builtin_options_2_as_DilateOptions();
+}
+
+template<> inline const tflite::StablehloRngBitGeneratorOptions *Operator::builtin_options_2_as<tflite::StablehloRngBitGeneratorOptions>() const {
+  return builtin_options_2_as_StablehloRngBitGeneratorOptions();
+}
+
+template<> inline const tflite::ReduceWindowOptions *Operator::builtin_options_2_as<tflite::ReduceWindowOptions>() const {
+  return builtin_options_2_as_ReduceWindowOptions();
 }
 
 template<> inline const tflite::Pool3DOptions *Operator::builtin_options_2_as<tflite::Pool3DOptions>() const {
@@ -17369,6 +17617,32 @@ inline ::flatbuffers::Offset<StablehloScatterOptions> CreateStablehloScatterOpti
       _index_vector_dim,
       _unique_indices,
       _update_computation_subgraph_index);
+}
+
+inline StablehloRngBitGeneratorOptionsT *StablehloRngBitGeneratorOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<StablehloRngBitGeneratorOptionsT>(new StablehloRngBitGeneratorOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void StablehloRngBitGeneratorOptions::UnPackTo(StablehloRngBitGeneratorOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = algorithm(); _o->algorithm = _e; }
+}
+
+inline ::flatbuffers::Offset<StablehloRngBitGeneratorOptions> StablehloRngBitGeneratorOptions::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloRngBitGeneratorOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateStablehloRngBitGeneratorOptions(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<StablehloRngBitGeneratorOptions> CreateStablehloRngBitGeneratorOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloRngBitGeneratorOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const StablehloRngBitGeneratorOptionsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _algorithm = _o->algorithm;
+  return tflite::CreateStablehloRngBitGeneratorOptions(
+      _fbb,
+      _algorithm);
 }
 
 inline Conv2DOptionsT *Conv2DOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
@@ -20734,6 +21008,32 @@ inline ::flatbuffers::Offset<DilateOptions> CreateDilateOptions(::flatbuffers::F
   struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const DilateOptionsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   return tflite::CreateDilateOptions(
       _fbb);
+}
+
+inline ReduceWindowOptionsT *ReduceWindowOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<ReduceWindowOptionsT>(new ReduceWindowOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void ReduceWindowOptions::UnPackTo(ReduceWindowOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = reduce_function(); _o->reduce_function = _e; }
+}
+
+inline ::flatbuffers::Offset<ReduceWindowOptions> ReduceWindowOptions::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const ReduceWindowOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateReduceWindowOptions(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<ReduceWindowOptions> CreateReduceWindowOptions(::flatbuffers::FlatBufferBuilder &_fbb, const ReduceWindowOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const ReduceWindowOptionsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _reduce_function = _o->reduce_function;
+  return tflite::CreateReduceWindowOptions(
+      _fbb,
+      _reduce_function);
 }
 
 inline Pool3DOptionsT *Pool3DOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
@@ -24112,6 +24412,14 @@ inline bool VerifyBuiltinOptions2(::flatbuffers::Verifier &verifier, const void 
       auto ptr = reinterpret_cast<const tflite::DilateOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions2_StablehloRngBitGeneratorOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloRngBitGeneratorOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions2_ReduceWindowOptions: {
+      auto ptr = reinterpret_cast<const tflite::ReduceWindowOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     case BuiltinOptions2_Pool3DOptions: {
       auto ptr = reinterpret_cast<const tflite::Pool3DOptions *>(obj);
       return verifier.VerifyTable(ptr);
@@ -24207,6 +24515,14 @@ inline void *BuiltinOptions2Union::UnPack(const void *obj, BuiltinOptions2 type,
       auto ptr = reinterpret_cast<const tflite::DilateOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions2_StablehloRngBitGeneratorOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloRngBitGeneratorOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions2_ReduceWindowOptions: {
+      auto ptr = reinterpret_cast<const tflite::ReduceWindowOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     case BuiltinOptions2_Pool3DOptions: {
       auto ptr = reinterpret_cast<const tflite::Pool3DOptions *>(obj);
       return ptr->UnPack(resolver);
@@ -24290,6 +24606,14 @@ inline ::flatbuffers::Offset<void> BuiltinOptions2Union::Pack(::flatbuffers::Fla
       auto ptr = reinterpret_cast<const tflite::DilateOptionsT *>(value);
       return CreateDilateOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions2_StablehloRngBitGeneratorOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloRngBitGeneratorOptionsT *>(value);
+      return CreateStablehloRngBitGeneratorOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions2_ReduceWindowOptions: {
+      auto ptr = reinterpret_cast<const tflite::ReduceWindowOptionsT *>(value);
+      return CreateReduceWindowOptions(_fbb, ptr, _rehasher).Union();
+    }
     case BuiltinOptions2_Pool3DOptions: {
       auto ptr = reinterpret_cast<const tflite::Pool3DOptionsT *>(value);
       return CreatePool3DOptions(_fbb, ptr, _rehasher).Union();
@@ -24370,6 +24694,14 @@ inline BuiltinOptions2Union::BuiltinOptions2Union(const BuiltinOptions2Union &u)
     }
     case BuiltinOptions2_DilateOptions: {
       value = new tflite::DilateOptionsT(*reinterpret_cast<tflite::DilateOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions2_StablehloRngBitGeneratorOptions: {
+      value = new tflite::StablehloRngBitGeneratorOptionsT(*reinterpret_cast<tflite::StablehloRngBitGeneratorOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions2_ReduceWindowOptions: {
+      value = new tflite::ReduceWindowOptionsT(*reinterpret_cast<tflite::ReduceWindowOptionsT *>(u.value));
       break;
     }
     case BuiltinOptions2_Pool3DOptions: {
@@ -24470,6 +24802,16 @@ inline void BuiltinOptions2Union::Reset() {
     }
     case BuiltinOptions2_DilateOptions: {
       auto ptr = reinterpret_cast<tflite::DilateOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions2_StablehloRngBitGeneratorOptions: {
+      auto ptr = reinterpret_cast<tflite::StablehloRngBitGeneratorOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions2_ReduceWindowOptions: {
+      auto ptr = reinterpret_cast<tflite::ReduceWindowOptionsT *>(value);
       delete ptr;
       break;
     }

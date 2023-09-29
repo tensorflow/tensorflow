@@ -42,9 +42,9 @@ namespace llvm_ir {
 // are supported.
 class IrArray {
  public:
-  // A multidimensional index into an IrArray. All the runtime indices
-  // (multidim) and dimensions (Shape::dimensions(), absl::Span<const int64_t>)
-  // are major-first.
+  // A multidimensional index into an IrArray. The order of the runtime indices
+  // (multidim) corresponds to the order of dimensions in the Shape passed to
+  // the constructor.
   //
   // This may also keep a linear index and the layout and dimensions it was
   // emitted for; if the shape where this `Index` is used matches, the linear

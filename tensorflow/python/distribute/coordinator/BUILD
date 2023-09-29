@@ -169,7 +169,7 @@ tf_py_strict_test(
     name = "fault_tolerance_test",
     srcs = ["fault_tolerance_test.py"],
     python_version = "PY3",
-    shard_count = 40,  # = number of tests, so one shard = one test
+    shard_count = 41,  # = number of tests, so one shard = one test
     tags = [
         "no_oss",  # TODO(b/219580021)
         "noasan",  # Multi-process runner does not work with test sanitizers
@@ -177,10 +177,16 @@ tf_py_strict_test(
         "nomsan",
     ],
     deps = [
+        ":cluster_coordinator",
         ":fault_tolerance_test_base",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
+        "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/training:coordinator",
+        "//tensorflow/python/training:server_lib",
     ],
 )
 

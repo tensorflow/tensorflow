@@ -448,13 +448,14 @@ class OptionalXlaContext:
       self.xla_context.Exit()
 
 
-# TODO(b/297237997): Use PolymorphicFunction here after migrating uses.
 @tf_export("__internal__.function.Function", v1=[])
-class Function(core.GenericFunction, trackable.Trackable):
+class Function(core.PolymorphicFunction, trackable.Trackable):
   """A `tf.types.experimental.PolymorphicFunction` created by `tf.function`.
 
   Currently, individual methods/attributes under this class are not guaranteed
   by the TF API contract, and are subject to future changes.
+
+  (Previously also known as `tf.types.experimental.GenericFunction`)
   """
 
   def __init__(self,
@@ -1705,7 +1706,8 @@ def class_method_to_instance_method(original_function, instance):
       autograph=original_function._autograph,
       input_signature=original_function.input_signature,
       reduce_retracing=original_function._reduce_retracing,
-      jit_compile=original_function._jit_compile)
+      jit_compile=original_function._jit_compile,
+      experimental_attributes=original_function._attributes)
   # pylint: enable=protected-access
 
   # We wrap the bound method with tf_decorator so inspection works correctly

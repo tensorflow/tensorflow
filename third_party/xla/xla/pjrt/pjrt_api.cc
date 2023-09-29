@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <utility>
 
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 namespace pjrt {
 
@@ -79,8 +79,8 @@ xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
 }
 
 typedef const PJRT_Api* (*PjrtApiInitFn)();
-xla::Status LoadPjrtPlugin(absl::string_view device_type,
-                           absl::string_view library_path) {
+xla::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
+                                              absl::string_view library_path) {
 #ifdef PLATFORM_WINDOWS
   return tsl::errors::Unimplemented(
       "LoadPjrtPlugin is not implemented on windows yet.");
@@ -97,7 +97,9 @@ xla::Status LoadPjrtPlugin(absl::string_view device_type,
   }
   LOG(INFO) << "GetPjrtApi was found for " << device_type << " at "
             << library_path;
-  return SetPjrtApi(device_type, init_fn());
+  const PJRT_Api* api = init_fn();
+  TF_RETURN_IF_ERROR(SetPjrtApi(device_type, api));
+  return api;
 #endif
 }
 

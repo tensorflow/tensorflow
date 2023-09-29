@@ -33,8 +33,10 @@ limitations under the License.
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/statusor.h"
+#include "xla/tools/hlo_module_loader.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/util/command_line_flags.h"
 
@@ -52,8 +54,9 @@ namespace xla {
 namespace xla_compile {
 
 const char kUsageHeader[] =
-    "xla_compile performs ahead-of-time compilation of an MHLO or StableHLO "
-    "module,\nresulting in an AotCompilationResult compiled for CPU.\n"
+    "xla_compile performs ahead-of-time compilation of an MHLO, StableHLO or "
+    "HLO "
+    "module,\nresulting in an AotCompilationResult compiled for CPU or GPU.\n"
     "A typical invocation looks like this:\n"
     "\n"
     "   $ xla_compile --module_file=mymodule.mlir --output_file=output "
@@ -100,11 +103,14 @@ StatusOr<std::string> AotCompileGpuExecutable(
 }
 #endif
 
-xla::Status XlaCompileMain(const std::string& module_path,
-                           const std::string& output_path,
-                           const std::string& platform,
-                           const std::string& gpu_target_config_path,
-                           const std::string& autotune_results_path) {
+xla::StatusOr<std::unique_ptr<HloModule>> LoadModule(
+    const std::string& module_path) {
+  auto format = std::string(tsl::io::Extension(module_path));
+  if (format == "hlo" || format == "txt") {
+    return LoadModuleFromFile(
+        module_path, hlo_module_loader_details::Config(),
+        /*format=*/"hlo", [&](HloModuleConfig* c) {}, nullptr);
+  }
   std::string module_string;
   TF_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), module_path, &module_string));
@@ -132,8 +138,16 @@ xla::Status XlaCompileMain(const std::string& module_path,
   DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
   HloModuleConfig config(shape);
   config.set_debug_options(debug_options);
+  return HloModule::CreateFromProto(hlo_module_proto, config);
+}
+
+xla::Status XlaCompileMain(const std::string& module_path,
+                           const std::string& output_path,
+                           const std::string& platform,
+                           const std::string& gpu_target_config_path,
+                           const std::string& autotune_results_path) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      HloModule::CreateFromProto(hlo_module_proto, config));
+                      LoadModule(module_path));
 
   // Run AOT compilation.
   std::string result;
@@ -194,7 +208,7 @@ int main(int argc, char* argv[]) {
   std::string autotune_results_path;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("module_file", &module_path,
-                "The path to the MHLO or StableHLO file"),
+                "The path to the HLO, MHLO or StableHLO file"),
       tsl::Flag("output_file", &output_path, "The path to the output file"),
       tsl::Flag("platform", &platform,
                 "The platform on which the built executable runs"),

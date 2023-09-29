@@ -36,6 +36,7 @@ tpu_py_strict_test(
     name = "custom_gradient_memory_test_tpu",
     size = "medium",
     srcs = ["custom_gradient_memory_test.py"],
+    args = ["--tpu_use_tfrt=false"],
     # TODO(b/238830423): This test uses experimental_get_compiler_ir, which is
     # not supported with TFRT (Failed getting HLO text: 'GetCompilerIr is not
     # supported on this device.').

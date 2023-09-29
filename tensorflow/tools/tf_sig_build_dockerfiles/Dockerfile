@@ -16,7 +16,7 @@ COPY builder.devtoolset/glibc2.17-inline.patch /glibc2.17-inline.patch
 RUN /build_devtoolset.sh devtoolset-9 /dt9
 
 ################################################################################
-FROM nvidia/cuda:11.8.0-base-ubuntu20.04 as devel
+FROM nvidia/cuda:12.2.0-base-ubuntu20.04 as devel
 ################################################################################
 COPY --from=builder /dt9 /dt9
 

@@ -87,6 +87,29 @@ cc_library(
 )
 
 cc_library(
+    name = "nccl_via_stub",
+    hdrs = ["src/nccl.h"],
+    include_prefix = "third_party/nccl",
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/cuda:nccl_stub",
+    ],
+)
+
+cc_library(
+    name = "nccl_headers",
+    hdrs = ["src/nccl.h"],
+    include_prefix = "third_party/nccl",
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cc_library(
     name = "nccl",
     srcs = glob(
         include = [

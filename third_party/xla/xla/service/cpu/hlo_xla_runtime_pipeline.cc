@@ -73,9 +73,8 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions(
 
   OneShotBufferizationOptions options;
   options.bufferizeFunctionBoundaries = true;
-  options.allowReturnAllocs = true;
+  options.allowReturnAllocsFromLoops = true;
   options.setFunctionBoundaryTypeConversion(LayoutMapOption::IdentityLayoutMap);
-  options.createDeallocs = !new_deallocator;
   options.unknownTypeConverterFn = [](mlir::Value value,
                                       mlir::Attribute memorySpace,
                                       const BufferizationOptions& options) {
@@ -165,7 +164,8 @@ static Status CreateHloXlaPipeline(
     // invoke the needed passes to lower such CHLO operations to HLO after we
     // rewrite the custom calls back to such CHLO unary operations.
     pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createLegalizeSparseChloToLinalgPass());
+        mlir::mhlo::createLegalizeSparseOperationsPass(
+            /*legalizeToCustomCalls=*/false));
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createChloLegalizeToHloPass());
     pm.addNestedPass<mlir::func::FuncOp>(

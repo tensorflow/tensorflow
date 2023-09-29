@@ -44,14 +44,16 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 // The Quantization Pass for Weight.
 //===----------------------------------------------------------------------===//
-namespace mlir {
-namespace stablehlo {
 
+namespace mlir::quant::stablehlo {
 namespace {
+
 #define GEN_PASS_DEF_QUANTIZEWEIGHTPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
 
 using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
+using mlir::stablehlo::ConstantOp;
+using mlir::stablehlo::ConvertOp;
 using ::stablehlo::quantization::QuantizationComponentSpec;
 
 // Min/Max values used for creating ConstantOp.
@@ -248,5 +250,4 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
     QuantizationComponentSpec quantization_component_spec) {
   return std::make_unique<QuantizeWeightPass>(quantization_component_spec);
 }
-}  // namespace stablehlo
-}  // namespace mlir
+}  // namespace mlir::quant::stablehlo

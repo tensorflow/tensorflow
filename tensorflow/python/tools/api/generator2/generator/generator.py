@@ -15,10 +15,10 @@
 """Library that generates the API for tensorflow."""
 
 import collections
-from collections.abc import Mapping, MutableMapping, Sequence
+from collections.abc import Mapping, Sequence, Set
 import dataclasses
 import os
-from typing import Optional, cast
+from typing import Optional
 
 from absl import app
 from absl import flags
@@ -408,6 +408,7 @@ def gen_public_api(
     packages_to_ignore: Sequence[str],
     module_prefix: str,
     root_file_name: str,
+    output_files: Set[str],
 ):
   """Generates the public API for tensorflow.
 
@@ -427,6 +428,7 @@ def gen_public_api(
     module_prefix: A prefix to add to the non-generated imports.
     root_file_name: The file name that should be generated for the top level
       API.
+    output_files: List of files expected to generate.
   """
   public_api = get_public_api(
       mapping_files,
@@ -463,6 +465,7 @@ def gen_public_api(
       file_prefixes_to_strip,
       use_lazy_loading,
       module_prefix,
+      output_files,
       root_file_name=root_file_name,
   )
 
@@ -492,6 +495,7 @@ def gen_public_api(
         file_prefixes_to_strip,
         use_lazy_loading,
         module_prefix,
+        output_files,
         subpackage_rewrite=f'{output_package}.compat.v{compat_version}',
     )
 
@@ -528,6 +532,7 @@ def gen_public_api(
           use_lazy_loading,
           compat_api_versions,
           module_prefix,
+          output_files,
       )
 
 
@@ -570,6 +575,7 @@ def _gen_init_files(
     file_prefixes_to_strip: Sequence[str],
     use_lazy_loading: bool,
     module_prefix: str,
+    output_files: Set[str],
     subpackage_rewrite: Optional[str] = None,
     root_file_name='__init__.py',
 ):
@@ -588,6 +594,12 @@ def _gen_init_files(
         module_path,
         root_file_name if not module_relative_to_package else '__init__.py',
     )
+    module_file_path = os.path.normpath(module_file_path)
+    if module_file_path not in output_files:
+      raise AssertionError(
+          f'Exported api attempted to write to "{module_file_path}" but it is'
+          ' not in output_files.'
+      )
     with open(module_file_path, 'w') as f:
       module_imports = _get_imports_for_module(
           module,
@@ -670,24 +682,29 @@ def gen_nested_compat_files(
     use_lazy_loading: bool,
     compat_versions: Sequence[int],
     module_prefix: str,
+    output_files: Set[str],
 ):
   """Generates the nested compat __init__.py files."""
-  nested_compat_symbols_by_module = cast(
-      MutableMapping[str, set[_Entrypoint]], symbols_by_module.copy()
-  )
-  nested_generated_imports_by_module = generated_imports_by_module.copy()
+  nested_compat_symbols_by_module: dict[str, set[_Entrypoint]] = {}
+  nested_generated_imports_by_module: dict[str, set[str]] = {}
   compat_module = f'{output_package}.compat'
-  modules_to_remove = [
-      module
-      for module in symbols_by_module.keys()
-      if module != output_package and module != compat_module
-  ]
-  for module in modules_to_remove:
-    del nested_compat_symbols_by_module[module]
-
-  for compat_version in compat_versions:
-    nested_generated_imports_by_module[compat_module].remove(
-        f'{output_package}.compat.v{compat_version}'
+  # The nested compat files should only generate imports for the nested root
+  # package, and its corresponding compat package.
+  if output_package in symbols_by_module:
+    nested_compat_symbols_by_module[output_package] = symbols_by_module[
+        output_package
+    ]
+  if compat_module in symbols_by_module:
+    nested_compat_symbols_by_module[compat_module] = symbols_by_module[
+        compat_module
+    ]
+  if output_package in generated_imports_by_module:
+    nested_generated_imports_by_module[output_package] = (
+        generated_imports_by_module[output_package]
+    )
+  if compat_module in generated_imports_by_module:
+    nested_generated_imports_by_module[compat_module] = (
+        generated_imports_by_module[compat_module]
     )
 
   _gen_init_files(
@@ -701,6 +718,7 @@ def gen_nested_compat_files(
       file_prefixes_to_strip,
       use_lazy_loading,
       module_prefix,
+      output_files,
       f'{compat_module}.v{api_version}',
   )
 
@@ -720,7 +738,9 @@ def main(argv: Sequence[str]) -> None:
     )
     return
 
-  for out_file in _OUTPUT_FILES.value:
+  output_files = [os.path.normpath(f) for f in _OUTPUT_FILES.value]
+
+  for out_file in output_files:
     with open(out_file, 'w') as f:
       f.write('')
 
@@ -737,4 +757,5 @@ def main(argv: Sequence[str]) -> None:
       _PACKAGES_TO_IGNORE.value,
       _MODULE_PREFIX.value,
       _ROOT_FILE_PATH.value,
+      set(output_files),
   )

@@ -137,6 +137,7 @@ void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
 }
 
 void AddConvertHloToTfPass(std::string entry_function_name,
+                           const mlir::TFL::PassConfig& pass_config,
                            mlir::OpPassManager* pass_manager) {
   pass_manager->addPass(mlir::odml::CreateRenameEntrypointToMainPass());
   pass_manager->addPass(
@@ -183,6 +184,18 @@ void AddConvertHloToTfPass(std::string entry_function_name,
       mlir::mhlo::createFlattenTuplePass());
 
   mlir::odml::AddMhloOptimizationPasses(*pass_manager);
+
+  // Undo the MHLO::BroadcastInDimOp folding pattern on splat constants. This
+  // pass must be added right before the legalization because pattern rewriter
+  // driver applies folding by default.
+  // TODO(b/295966255): Remove this pass after moving MHLO folders to a separate
+  // pass.
+  pass_manager->addPass(mlir::odml::CreateUnfoldSplatConstantPass());
+
+  // TFLite dialect passes.
+  if (!pass_config.disable_hlo_to_tfl_conversion) {
+    pass_manager->addPass(mlir::odml::CreateLegalizeHloToTfLitePass());
+  }
   // TF dialect passes
   pass_manager->addPass(mlir::odml::CreateLegalizeHloToTfPass());
 
@@ -211,7 +224,7 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
   if (pass_config.enable_hlo_to_tf_conversion) {
     // TODO(b/194747383): We need to valid that indeed the "main" func is
     // presented.
-    AddConvertHloToTfPass("main", pass_manager);
+    AddConvertHloToTfPass("main", pass_config, pass_manager);
   }
   // This pass wraps all the tf.FakeQuant ops in a custom op so they are not
   // folded before being converted to tfl.quantize and tfl.dequantize ops.

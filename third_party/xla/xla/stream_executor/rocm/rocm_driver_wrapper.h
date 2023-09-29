@@ -71,6 +71,7 @@ namespace wrap {
 #define HIP_ROUTINE_EACH(__macro)                   \
   __macro(hipCtxGetDevice)                          \
   __macro(hipCtxSetCurrent)                         \
+  __macro(hipCtxEnablePeerAccess)                   \
   __macro(hipDeviceCanAccessPeer)                   \
   __macro(hipDeviceEnablePeerAccess)                \
   __macro(hipDeviceGet)                             \
@@ -92,7 +93,7 @@ namespace wrap {
   __macro(hipEventSynchronize)                      \
   __macro(hipFree)                                  \
   __macro(hipFuncSetCacheConfig)                    \
-  __macro(hipFuncSetAttribute)                      \
+  __macro(hipFuncGetAttribute)                      \
   __macro(hipGetDevice)                             \
   __macro(hipGetDeviceCount)                        \
   __macro(hipGetDeviceProperties)                   \

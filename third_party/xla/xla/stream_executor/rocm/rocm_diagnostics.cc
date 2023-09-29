@@ -35,9 +35,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/host_info.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 namespace rocm {

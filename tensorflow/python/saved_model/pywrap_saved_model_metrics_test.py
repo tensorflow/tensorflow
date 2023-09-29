@@ -195,6 +195,23 @@ class MetricsTest(test.TestCase):
         str(excinfo.exception),
         "Invalid path_and_singleprint argument. Empty singleprint.")
 
+  def test_SM_found_fingerprint_on_load(self):
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintFound)
+    self.assertEqual(metrics.GetFoundFingerprintOnLoad(), "FOUND")
+
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintNotFound)
+    self.assertEqual(metrics.GetFoundFingerprintOnLoad(), "NOT_FOUND")
+
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintError)
+    self.assertEqual(metrics.GetFoundFingerprintOnLoad(), "ERROR")
+
+  def test_invalid_SM_found_fingerprint_on_load(self):
+    metrics.SetFoundFingerprintOnLoad(found_status="absolute nonsense")
+    self.assertEqual(metrics.GetFoundFingerprintOnLoad(), "")
+
+    metrics.SetFoundFingerprintOnLoad(found_status="found")
+    self.assertEqual(metrics.GetFoundFingerprintOnLoad(), "")
+
 
 if __name__ == "__main__":
   test.main()

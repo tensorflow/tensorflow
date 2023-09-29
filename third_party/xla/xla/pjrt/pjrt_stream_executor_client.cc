@@ -80,8 +80,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
@@ -100,6 +103,7 @@ limitations under the License.
 #include "xla/pjrt/metrics.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/utils.h"
@@ -121,6 +125,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -689,6 +694,69 @@ PjRtStreamExecutorBuffer::ReleaseDeviceMemoryOwnership(
         std::move(tracked_device_buffer));
   }
   return ref;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtStreamExecutorBuffer::DonateWithControlDependency(
+    PjRtFuture<absl::Status> dependency) {
+  VLOG(1) << "PjRtStreamExecutorBuffer::DonateWithControlDependency";
+  std::unique_ptr<PjRtBuffer> new_buffer;
+
+  auto tracked_buffer =
+      GetBufferWithHold(PjRtStreamExecutorBuffer::ScopedHold::kDonation);
+
+  if (!tracked_buffer.ok()) {
+    return InvalidArgument(
+        "Invalid buffer passed to DonateWithControlDependency: %s",
+        tracked_buffer.status().ToString());
+  }
+
+  // Copy all the data in the existing tracked_buffer.
+  absl::InlinedVector<se::DeviceMemoryBase, 4> buffers(
+      tracked_buffer->device_memory().begin(),
+      tracked_buffer->device_memory().end());
+  auto original_definition_events = tracked_buffer->definition_events();
+  absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 4>
+      definition_events;
+
+  auto definition_event_for_status =
+      std::make_shared<BufferSequencingEvent>(client()->thread_pool());
+  // definition_event_for_status must be the first one so that it blocks other
+  // actions like D2H transfer from execution before the buffer is ready.
+  definition_events.push_back(definition_event_for_status);
+  definition_events.insert(definition_events.end(),
+                           original_definition_events.begin(),
+                           original_definition_events.end());
+
+  auto new_device_buffer = std::make_shared<TrackedDeviceBuffer>(
+      tracked_buffer->allocator(), device()->local_hardware_id(),
+      std::move(buffers), std::move(definition_events),
+      /*on_delete_callback=*/std::function<void()>());
+
+  // Make the new buffer which is identical to the old, except for the new
+  // definition event.
+  new_buffer =
+      std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtStreamExecutorBuffer>(
+          on_device_shape(), std::move(new_device_buffer), client(), device()));
+
+  PjRtStreamExecutorDevice* device = this->device();
+  LocalDeviceState* local_device = device->local_device_state();
+  dependency.OnReady(
+      [definition_event_for_status = std::move(definition_event_for_status),
+       local_device](absl::Status status) mutable {
+        // Forward the absl::Status from the supplied dependency to the
+        // definition event.
+        auto stream = local_device->BorrowStreamFromPool();
+        auto event =
+            local_device->event_pool().ThenAllocateAndRecordEvent(stream.get());
+        TF_CHECK_OK(event.status());
+        definition_event_for_status->SetSequencingEvent(
+            std::move(event).value(), stream.get());
+        local_device->ReturnStreamToPool(std::move(stream));
+      });
+
+  tracked_buffer.ConfirmDonation();
+  return new_buffer;
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -1550,7 +1618,6 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
                           dst_device, dst_local_device, transfer_stream,
                           /*is_uninitialized_create=*/false, client_));
 
-
   ScopedHold dst_device_buffer(py_buffer->GetBufferWithUsageHold());
   CHECK(dst_device_buffer.ok());
 
@@ -2150,15 +2217,15 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
     tsl::thread::ThreadPool* thread_pool) {
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
-    return [device_ordinal](
-               int64_t channel_id, se::Stream*, const Shape&,
-               const se::DeviceMemoryBase&,
-               const absl::flat_hash_map<std::string, std::string>&) {
-      return InvalidArgument(
-          "Failed to send a buffer to the channel_id=%d, there was no send "
-          "callbacks registered for the device_ordinal=%d",
-          channel_id, device_ordinal);
-    };
+    return
+        [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
+                         const se::DeviceMemoryBase&,
+                         const absl::flat_hash_map<std::string, std::string>&) {
+          return InvalidArgument(
+              "Failed to send a buffer to the channel_id=%d, there was no send "
+              "callbacks registered for the device_ordinal=%d",
+              channel_id, device_ordinal);
+        };
   }
 
   // SendCallbacks registered for a device ordinal. Can be empty.
@@ -2305,15 +2372,15 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
     int device_ordinal, const ExecuteOptions& options) {
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
-    return [device_ordinal](
-               int64_t channel_id, se::Stream*, const Shape&,
-               se::DeviceMemoryBase*,
-               const absl::flat_hash_map<std::string, std::string>&) {
-      return InvalidArgument(
-          "Failed to receive a buffer from the channel_id=%d, there was no "
-          "recv callbacks registered for the device_ordinal=%d",
-          channel_id, device_ordinal);
-    };
+    return
+        [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
+                         se::DeviceMemoryBase*,
+                         const absl::flat_hash_map<std::string, std::string>&) {
+          return InvalidArgument(
+              "Failed to receive a buffer from the channel_id=%d, there was no "
+              "recv callbacks registered for the device_ordinal=%d",
+              channel_id, device_ordinal);
+        };
   }
 
   // RecvCallbacks registered for a device ordinal. Can be empty.

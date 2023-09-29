@@ -1225,9 +1225,9 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         out = nn_ops.conv2d(
             input_tensor,
             self.filters,
-            strides=[1, 1, 2, 1],
-            dilations=[1, 1, 1, 1],
-            padding='SAME',
+            strides=strides,
+            dilations=dilations,
+            padding=padding,
             data_format='NHWC',
         )
         if has_bias:

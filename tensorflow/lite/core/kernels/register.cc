@@ -370,6 +370,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RIGHT_SHIFT, Register_RIGHT_SHIFT());
   AddBuiltin(BuiltinOperator_STABLEHLO_SCATTER, Register_STABLEHLO_SCATTER());
   AddBuiltin(BuiltinOperator_DILATE, Register_DILATE());
+  AddBuiltin(BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR,
+             Register_STABLEHLO_RNG_BIT_GENERATOR());
+  AddBuiltin(BuiltinOperator_REDUCE_WINDOW, Register_REDUCE_WINDOW());
   AddBuiltin(BuiltinOperator_AVERAGE_POOL_3D, Register_AVERAGE_POOL_3D());
   AddBuiltin(BuiltinOperator_MAX_POOL_3D, Register_MAX_POOL_3D());
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());

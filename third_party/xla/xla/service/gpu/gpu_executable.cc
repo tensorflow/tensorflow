@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/executable.h"
 #include "xla/service/gpu/runtime2/executable.h"
@@ -56,11 +55,12 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
@@ -196,7 +196,7 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
         << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_arch
         << ", but was " << stream_arch;
   } else if (platform_id == stream_executor::cuda::kCudaPlatformId) {
-    GpuVersion cc = main_stream->GetCudaComputeCapability();
+    se::GpuComputeCapability cc = main_stream->GetCudaComputeCapability();
     TF_RET_CHECK(std::get<se::CudaComputeCapability>(cc) ==
                  std::get<se::CudaComputeCapability>(gpu_version_))
         << "Compute capability mismatch; expected {"
@@ -985,7 +985,8 @@ GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment) {
 GpuExecutable::GpuExecutable(
     std::shared_ptr<HloModule> hlo_module, std::string asm_text,
     std::vector<uint8_t> binary, std::vector<ConstantInfo> constants,
-    GpuVersion gpu_version, xla::EntryFunctionAttributes entry_func_attrs,
+    se::GpuComputeCapability gpu_version,
+    xla::EntryFunctionAttributes entry_func_attrs,
     absl::string_view module_name, Shape xla_output_shape,
     std::vector<BufferAllocation> allocations,
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
@@ -1080,7 +1081,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
     absl::string_view mlir_module,
     xla::EntryFunctionAttributes entry_func_attrs, DebugOptions debug_options,
     absl::string_view asm_text, absl::string_view binary,
-    std::vector<ConstantInfo> constants, GpuVersion gpu_version,
+    std::vector<ConstantInfo> constants, se::GpuComputeCapability gpu_version,
     se::StreamExecutor* executor) {
   VLOG(1) << "Load serialized Gpu executable from object file: module="
           << hlo_module->name();

@@ -2909,7 +2909,7 @@ func.func @tpu_execute_effect(
 
 // -----
 
-// Tests that we don't create dependencies between any two `RandomUniform` ops.
+// Tests that we don't create dependencies between any two instances of an op with `TF_RandomGeneratorSideEffect` trait.
 func.func @random_uniform_ordering_effect() -> (tensor<3xf32>) {
   // expected-remark@above {{ID: 9}}
   %graph = tf_executor.graph {

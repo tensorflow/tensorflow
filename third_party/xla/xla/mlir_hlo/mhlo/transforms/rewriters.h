@@ -178,9 +178,14 @@ void populateSparseRewritingPatterns(RewritePatternSet *patterns,
                                      MLIRContext *ctx);
 
 /// Populates sparse ops in CHLO to linalg rewriting patterns.
-void populateLegalizeSparseChloToLinalgPatterns(MLIRContext *context,
-                                                TypeConverter &typeConverter,
-                                                RewritePatternSet *patterns);
+void populateLegalizeSparseCHLOPatterns(MLIRContext *context,
+                                        TypeConverter &typeConverter,
+                                        RewritePatternSet *patterns);
+
+/// Populate sparse ops to mhlo.CustomCall patterns.
+void populateLegalizeSparseOpsToCustomCallPatterns(MLIRContext *context,
+                                                   TypeConverter &typeConverter,
+                                                   RewritePatternSet *patterns);
 
 }  // namespace mhlo
 

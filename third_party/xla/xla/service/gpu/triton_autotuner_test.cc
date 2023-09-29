@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "xla/service/gpu/triton_autotuner.h"
 
 #include <algorithm>
@@ -21,15 +20,24 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -39,8 +47,14 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/cpu_info.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -138,6 +152,7 @@ class TritonAutotunerTest : public HloTestBase {
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(true);
+    debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
 
@@ -222,12 +237,20 @@ class TritonAutotunerTestWithMorePreciseReduction : public TritonAutotunerTest {
 };
 
 TEST_F(TritonAutotunerTest, VoltaUsesNoMoreThanTwoStages) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  ROOT r = f32[1024,1024] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                                                  .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::VOLTA, /*minor=*/0};
   const std::vector<AutotuneResult::TritonGemmKey> configs =
       GetPossibleMatmulAutotuneConfigs(
-          *HloInstruction::CreateParameter(
-              0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
   EXPECT_FALSE(std::any_of(configs.begin(), configs.end(),
                            [](const AutotuneResult::TritonGemmKey& key) {
@@ -236,12 +259,20 @@ TEST_F(TritonAutotunerTest, VoltaUsesNoMoreThanTwoStages) {
 }
 
 TEST_F(TritonAutotunerTest, AmpereUsesMoreThanTwoStages) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  ROOT r = f32[1024,1024] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                                                  .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
   const std::vector<AutotuneResult::TritonGemmKey> configs =
       GetPossibleMatmulAutotuneConfigs(
-          *HloInstruction::CreateParameter(
-              0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
   EXPECT_TRUE(std::any_of(configs.begin(), configs.end(),
                           [](const AutotuneResult::TritonGemmKey& key) {
@@ -250,12 +281,20 @@ TEST_F(TritonAutotunerTest, AmpereUsesMoreThanTwoStages) {
 }
 
 TEST_F(TritonAutotunerTest, SmallOutputCanUseLargeSplitK) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  ROOT r = f32[1024,1024] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                                                  .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
   const std::vector<AutotuneResult::TritonGemmKey> configs =
       GetPossibleMatmulAutotuneConfigs(
-          *HloInstruction::CreateParameter(
-              0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
   EXPECT_TRUE(std::any_of(configs.begin(), configs.end(),
                           [](const AutotuneResult::TritonGemmKey& key) {
@@ -264,12 +303,20 @@ TEST_F(TritonAutotunerTest, SmallOutputCanUseLargeSplitK) {
 }
 
 TEST_F(TritonAutotunerTest, LargeOutputDoesNotUseLargeSplitK) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[20480,20480] parameter(0)
+  p1 = f32[20480,20480] parameter(1)
+  ROOT r = f32[20480,20480] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                                                  .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
   const std::vector<AutotuneResult::TritonGemmKey> configs =
       GetPossibleMatmulAutotuneConfigs(
-          *HloInstruction::CreateParameter(
-              0, ShapeUtil::MakeShape(F32, {20480, 20480}), ""),
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
   EXPECT_FALSE(std::any_of(configs.begin(), configs.end(),
                            [](const AutotuneResult::TritonGemmKey& key) {
@@ -407,6 +454,119 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(TritonAutotunerTest, DoNotRunAutotuningKernelSpillingRegisters) {
+  const std::string kHloText = R"(
+HloModule m
+
+%triton_gemm_dot {
+  %p1 = s8[4,12288]{1,0} parameter(1)
+  %p0 = s8[12288,1536]{1,0} parameter(0)
+  %convert.p0 = f16[12288,1536]{1,0} convert(s8[12288,1536]{1,0} %p0)
+  %convert.p1 = f16[4,12288]{1,0} convert(s8[4,12288]{1,0} %p1)
+  %dot = f16[4,1536]{1,0} dot(f16[4,12288]{1,0} %convert.p1, f16[12288,1536]{1,0} %convert.p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT %convert = s8[4,1536]{1,0} convert(f16[4,1536]{1,0} %dot)
+}
+
+ENTRY %e {
+  %get-tuple-element.7020 = s8[12288,1536]{1,0} parameter(0)
+  %convert = s8[4,12288]{1,0} parameter(1)
+  ROOT %triton = s8[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %get-tuple-element.7020, s8[4,12288]{1,0} %convert), kind=kCustom, calls=%triton_gemm_dot,
+    backend_config={"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16"}}
+})";
+
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Not enough shared memory to run big tiles before Ampere.";
+  }
+  auto module = ParseAndReturnVerifiedModule(kHloText).value();
+  EXPECT_THAT(
+      backend().compiler()->RunBackend(std::move(module),
+                                       backend().default_stream_executor(),
+                                       {/*device_allocator=*/nullptr,
+                                        /*thread_pool=*/nullptr,
+                                        /*layout_canonicalization_callback=*/{},
+                                        /*is_autotuning_compilation=*/true}),
+      tsl::testing::StatusIs(
+          tsl::error::CANCELLED,
+          absl::StrFormat(
+              "Compilation result discarded due to register spilling")));
+}
+
+TEST_F(TritonAutotunerTest, DoNotFilterOutAutotuningKernelSpillingRegisters) {
+  const std::string kHloText = R"(
+HloModule m
+
+%triton_gemm_dot {
+  %p1 = s8[4,12288]{1,0} parameter(1)
+  %p0 = s8[12288,1536]{1,0} parameter(0)
+  %convert.p0 = f16[12288,1536]{1,0} convert(s8[12288,1536]{1,0} %p0)
+  %convert.p1 = f16[4,12288]{1,0} convert(s8[4,12288]{1,0} %p1)
+  %dot = f16[4,1536]{1,0} dot(f16[4,12288]{1,0} %convert.p1, f16[12288,1536]{1,0} %convert.p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT %convert = s8[4,1536]{1,0} convert(f16[4,1536]{1,0} %dot)
+}
+
+ENTRY %e {
+  %get-tuple-element.7020 = s8[12288,1536]{1,0} parameter(0)
+  %convert = s8[4,12288]{1,0} parameter(1)
+  ROOT %triton = s8[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %get-tuple-element.7020, s8[4,12288]{1,0} %convert), kind=kCustom, calls=%triton_gemm_dot,
+    backend_config={"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16"}}
+})";
+
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Not enough shared memory to run big tiles before Ampere.";
+  }
+  auto module = ParseAndReturnVerifiedModule(kHloText).value();
+  HloModuleConfig config = module->config();
+  DebugOptions debug_options = config.debug_options();
+  debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
+      false);
+  config.set_debug_options(debug_options);
+  module->set_config(config);
+
+  std::unique_ptr<Executable> executable =
+      backend()
+          .compiler()
+          ->RunBackend(std::move(module), backend().default_stream_executor(),
+                       {/*device_allocator=*/nullptr,
+                        /*thread_pool=*/nullptr,
+                        /*layout_canonicalization_callback=*/{},
+                        /*is_autotuning_compilation=*/true})
+          .value();
+  EXPECT_NE(executable, nullptr);
+}
+
+TEST_F(TritonAutotunerTest, RunAutotuningKernelNotSpillingRegisters) {
+  const std::string kHloText = R"(
+HloModule m
+
+%triton_gemm_dot {
+  %p1 = f16[4,12288]{1,0} parameter(1)
+  %p0 = s8[12288,1536]{1,0} parameter(0)
+  %convert.10406 = f16[12288,1536]{1,0} convert(s8[12288,1536]{1,0} %p0)
+  ROOT %dot = f16[4,1536]{1,0} dot(f16[4,12288]{1,0} %p1, f16[12288,1536]{1,0} %convert.10406), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY %e {
+  %p0 = s8[12288,1536]{1,0} parameter(0)
+  %p1 = f16[4,12288]{1,0} parameter(1)
+  ROOT %triton_dot = f16[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %p0, f16[4,12288]{1,0} %p1), kind=kCustom, calls=%triton_gemm_dot,
+    backend_config={"kind":"__triton_gemm","triton_gemm_config":{"block_m":"16","block_n":"32","block_k":"16","split_k":"1","num_stages":"1","num_warps":"2"}}
+})";
+
+  auto module = ParseAndReturnVerifiedModule(kHloText).value();
+  std::unique_ptr<Executable> executable =
+      backend()
+          .compiler()
+          ->RunBackend(std::move(module), backend().default_stream_executor(),
+                       {/*device_allocator=*/nullptr,
+                        /*thread_pool=*/nullptr,
+                        /*layout_canonicalization_callback=*/{},
+                        /*is_autotuning_compilation=*/true})
+          .value();
+  EXPECT_NE(executable, nullptr);
+}
+
 // TODO(b/281489442): Write a testcase called
 // `SkipConfigsProducingDeviantResults` or similar.
 
@@ -416,6 +576,7 @@ class TritonAutotunerLevelTest : public HloTestBase,
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(GetParam());
+    debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
 };
@@ -455,8 +616,7 @@ INSTANTIATE_TEST_SUITE_P(TritonAutotunerLevelSweep, TritonAutotunerLevelTest,
 class TritonAutotunerExhaustiveTest : public TritonAutotunerTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_triton_gemm(true);
+    DebugOptions debug_options = TritonAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_exhaustive_tiling_search(true);
     return debug_options;
   }
@@ -500,19 +660,27 @@ ENTRY e {
 class TritonAutotunerDisableSplitK : public TritonAutotunerTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = TritonAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);
     return debug_options;
   }
 };
 
 TEST_F(TritonAutotunerDisableSplitK, SplitKIsDisabled) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  ROOT r = f32[1024,1024] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                                                  .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
   const std::vector<AutotuneResult::TritonGemmKey> configs =
       GetPossibleMatmulAutotuneConfigs(
-          *HloInstruction::CreateParameter(
-              0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
           compute_capability, GetDebugOptionsForTest());
   EXPECT_TRUE(std::all_of(configs.begin(), configs.end(),
                           [](const AutotuneResult::TritonGemmKey& key) {

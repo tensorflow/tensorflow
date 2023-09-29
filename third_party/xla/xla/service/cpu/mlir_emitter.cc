@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
-#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 
 namespace xla {
@@ -114,7 +115,8 @@ Status EmitMlirFuncAndCall(
   auto function = mlir::func::FuncOp::create(
       loc, func_name, mlir::FunctionType::get(context, operand_types, {}));
   function.addEntryBlock();
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module = mlir::ModuleOp::create(loc);
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      llvm_ir::CreateMlirModuleOp(loc);
   mlir_module->push_back(function);
   mlir::OpBuilder op_builder(&function.getBody());
   emitter(&op_builder, function);

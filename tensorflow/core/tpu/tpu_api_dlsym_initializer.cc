@@ -91,8 +91,8 @@ absl::Status FindAndLoadTpuLibrary() {
     LOG(INFO) << "Opening library: " << so_name;
     void* tf_lib = dlopen(so_name, RTLD_NOW | RTLD_GLOBAL);
     if (tf_lib == nullptr) {
-      return absl::InternalError(
-          absl::StrCat("Failed to open libtensorflow ", dlerror()));
+      LOG(WARNING) << "Failed to open library " << dlerror()
+                   << ". This may be expected if Tensorflow API is not used";
     }
   }
 

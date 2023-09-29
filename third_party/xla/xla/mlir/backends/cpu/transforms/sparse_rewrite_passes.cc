@@ -242,8 +242,8 @@ struct SparseDynSliceCallRewriter {
     auto srcEnc =
         retTp.getEncoding().cast<sparse_tensor::SparseTensorEncodingAttr>();
     auto sliceEnc = sparse_tensor::SparseTensorEncodingAttr::get(
-        ctx, srcEnc.getLvlTypes(), srcEnc.getDimToLvl(), srcEnc.getPosWidth(),
-        srcEnc.getCrdWidth(), slice_attrs);
+        ctx, srcEnc.getLvlTypes(), srcEnc.getDimToLvl(), srcEnc.getLvlToDim(),
+        srcEnc.getPosWidth(), srcEnc.getCrdWidth(), slice_attrs);
     auto sliceTp = RankedTensorType::get(retTp.getShape(),
                                          retTp.getElementType(), sliceEnc);
 
@@ -351,8 +351,8 @@ struct SparseSliceCallRewriter {
         retTp.getEncoding().cast<sparse_tensor::SparseTensorEncodingAttr>();
     // TODO(peiming): add a getSliceEncodingFrom into MLIR upstream.
     auto sliceEnc = sparse_tensor::SparseTensorEncodingAttr::get(
-        ctx, srcEnc.getLvlTypes(), srcEnc.getDimToLvl(), srcEnc.getPosWidth(),
-        srcEnc.getCrdWidth(), slice_attrs);
+        ctx, srcEnc.getLvlTypes(), srcEnc.getDimToLvl(), srcEnc.getLvlToDim(),
+        srcEnc.getPosWidth(), srcEnc.getCrdWidth(), slice_attrs);
     auto sliceTp = RankedTensorType::get(retTp.getShape(),
                                          retTp.getElementType(), sliceEnc);
     auto slice = rewriter.create<tensor::ExtractSliceOp>(
@@ -629,9 +629,8 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       std::make_pair("sparse_tensor_sinh",
                      SparseUnaryChloCallRewriter<chlo::SinhOp>()),
       std::make_pair("sparse_tensor_slice", SparseSliceCallRewriter()),
-      std::make_pair("sparse_tensor_sparse_pack",
-                     SparseBatchedPackCallRewriter()),
-      std::make_pair("sparse_tensor_sparse_unpack", SparseUnpackCallRewriter()),
+      std::make_pair("sparse_tensor_pack", SparseBatchedPackCallRewriter()),
+      std::make_pair("sparse_tensor_unpack", SparseUnpackCallRewriter()),
       std::make_pair("sparse_tensor_sub",
                      SparseBinaryCallRewriter<mhlo::SubtractOp>()),
       std::make_pair("sparse_tensor_tan",

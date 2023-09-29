@@ -18,25 +18,21 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include "absl/base/attributes.h"
-#include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/trace_listener.h"
@@ -395,6 +391,9 @@ class StreamExecutor {
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                      const BlockDim& block_dims, const KernelBase& kernel,
                      const KernelArgsArrayBase& args);
+
+  // Submits command buffer for execution to the underlying platform driver.
+  tsl::Status Submit(Stream* stream, const CommandBuffer& command_buffer);
 
   // Gets-or-creates (creates with memoization) a FftSupport datatype that can
   // be used to execute FFT routines on the current platform.

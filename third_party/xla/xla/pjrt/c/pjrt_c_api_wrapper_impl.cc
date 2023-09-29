@@ -1516,15 +1516,21 @@ PJRT_Error* PJRT_Buffer_DynamicDimensionIndices(
       PJRT_Buffer_DynamicDimensionIndices_Args_STRUCT_SIZE, args->struct_size));
   absl::Span<const bool> is_dyn_dim =
       args->buffer->buffer->is_dynamic_dimension();
-  std::vector<size_t>& dyn_dim_indices =
-      args->buffer->dynamic_dim_indices.emplace();
-  for (int i = 0; i < is_dyn_dim.size(); ++i) {
-    if (is_dyn_dim[i]) {
-      dyn_dim_indices.push_back(i);
+  std::optional<std::vector<size_t>>& dyn_dim_indices =
+      args->buffer->dynamic_dim_indices;
+  {
+    absl::MutexLock lock(&args->buffer->mu);
+    if (!dyn_dim_indices.has_value()) {
+      std::vector<size_t>& dyn_dim_indices_value = dyn_dim_indices.emplace();
+      for (int i = 0; i < is_dyn_dim.size(); ++i) {
+        if (is_dyn_dim[i]) {
+          dyn_dim_indices_value.push_back(i);
+        }
+      }
     }
   }
-  args->dynamic_dim_indices = dyn_dim_indices.data();
-  args->num_dynamic_dims = dyn_dim_indices.size();
+  args->dynamic_dim_indices = dyn_dim_indices->data();
+  args->num_dynamic_dims = dyn_dim_indices->size();
   return nullptr;
 }
 
@@ -1610,7 +1616,19 @@ PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args) {
       std::unique_ptr<xla::PjRtBuffer> dst_buffer,
       args->buffer->buffer->CopyToDevice(args->dst_device->device));
   args->dst_buffer =
-      new PJRT_Buffer{std::move(dst_buffer), args->buffer->client};
+      new PJRT_Buffer{std::move(dst_buffer), args->dst_device->client};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_CopyToMemory(PJRT_Buffer_CopyToMemory_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_CopyToMemory_Args",
+      PJRT_Buffer_CopyToMemory_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer> dst_buffer,
+      args->buffer->buffer->CopyToMemorySpace(args->dst_memory->memory_space));
+  args->dst_buffer =
+      new PJRT_Buffer{std::move(dst_buffer), args->dst_memory->client};
   return nullptr;
 }
 

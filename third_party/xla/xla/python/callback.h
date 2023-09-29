@@ -20,12 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/numpy.h"  // from @pybind11
 #include "xla/pjrt/transpose.h"
-#include "xla/python/py_values.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/service/custom_call_status.h"
-#include "xla/types.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

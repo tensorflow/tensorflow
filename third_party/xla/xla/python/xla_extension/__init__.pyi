@@ -464,7 +464,6 @@ class Client:
 
 
 def get_tfrt_cpu_client(asynchronous: bool = ...) -> Client: ...
-def get_interpreter_client() -> Client: ...
 def get_gpu_client(
     asynchronous: bool = ...,
     allocator_config: GpuAllocatorConfig = ...,

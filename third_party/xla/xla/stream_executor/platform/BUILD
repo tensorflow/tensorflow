@@ -17,7 +17,6 @@ cc_library(
     name = "platform",
     textual_hdrs = [
         "initialize.h",
-        "logging.h",
         "platform.h",
         "port.h",
     ],

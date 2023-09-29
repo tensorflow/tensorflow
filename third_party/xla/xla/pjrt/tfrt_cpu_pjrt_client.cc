@@ -33,6 +33,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -53,6 +55,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/abstract_tfrt_cpu_buffer.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -64,7 +67,9 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/runtime/cpu_event.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/cpu/buffer_desc.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_xfeed.h"
@@ -73,9 +78,15 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
+#include "xla/service/hlo_value.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/denormal.h"
@@ -85,6 +96,9 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
@@ -160,195 +174,64 @@ class ThreadPoolAsyncWorkRunner : public AsyncWorkRunner {
 };
 
 class TfrtCpuAsyncHostToDeviceTransferManager
-    : public PjRtClient::AsyncHostToDeviceTransferManager {
+    : public AbstractAsyncHostToHostMemoryTransferManager {
  public:
   static StatusOr<std::unique_ptr<TfrtCpuAsyncHostToDeviceTransferManager>>
   Create(absl::Span<const Shape> shapes, TfrtCpuDevice* device,
          TfrtCpuClient* client) {
-    for (const Shape& shape : shapes) {
+    absl::InlinedVector<std::unique_ptr<AbstractTfrtCpuBuffer>, 4> buffers;
+    buffers.reserve(shapes.size());
+    absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4> avs;
+    avs.reserve(shapes.size());
+    for (const auto& shape : shapes) {
       if (shape.IsTuple()) {
         return Unimplemented(
             "Tuples are not supported by "
             "TfrtCpuAsyncHostToDeviceTransferManager");
       }
-    }
-    absl::InlinedVector<std::unique_ptr<TfrtCpuBuffer>, 4> buffers;
-    buffers.reserve(shapes.size());
-    absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4> avs;
-    avs.reserve(shapes.size());
-    absl::InlinedVector<int64_t, 4> buffer_transfers_in_flight;
-    buffer_transfers_in_flight.resize(shapes.size(), 0);
-    absl::InlinedVector<bool, 4> last_transfer_finished;
-    last_transfer_finished.resize(shapes.size(), false);
-    for (const Shape& shape : shapes) {
       absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4> local_avs;
-      TF_ASSIGN_OR_RETURN(
-          std::unique_ptr<TfrtCpuBuffer> buffer,
-          AllocateDestinationBufferAndAvs(shape, &local_avs, device, client));
+      TF_ASSIGN_OR_RETURN(auto buffer, AllocateDestinationBufferAndAvs(
+                                           shape, &local_avs, device, client));
       CHECK_EQ(local_avs.size(), 1);
       avs.push_back(std::move(local_avs[0]));
       buffers.push_back(std::move(buffer));
     }
-    absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4> device_buffers;
-    device_buffers.reserve(buffers.size());
-    for (const std::unique_ptr<TfrtCpuBuffer>& buffer : buffers) {
-      auto usage_event = tfrt::MakeAvailableAsyncValueRef<CpuEvent>();
-      auto* device_buffer = buffer->AcquireUsage(std::move(usage_event));
-      CHECK(device_buffer);
-      device_buffers.push_back(device_buffer);
-    }
 
+    absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4> device_buffers;
     absl::InlinedVector<size_t, 4> buffer_sizes;
-    buffer_sizes.reserve(buffers.size());
-    for (const std::unique_ptr<TfrtCpuBuffer>& buffer : buffers) {
-      TF_ASSIGN_OR_RETURN(const size_t buffer_size,
-                          buffer->GetOnDeviceSizeInBytes());
-      buffer_sizes.push_back(buffer_size);
-    }
+    absl::InlinedVector<int64_t, 4> buffer_transfers_in_flight;
+    absl::InlinedVector<bool, 4> last_transfer_finished;
+    TF_RETURN_IF_ERROR(
+        AbstractAsyncHostToHostMemoryTransferManager::
+            PopulateAsyncTransferManagerData(
+                buffers, device_buffers, buffer_sizes,
+                buffer_transfers_in_flight, last_transfer_finished));
 
     return absl::WrapUnique(new TfrtCpuAsyncHostToDeviceTransferManager(
         std::move(avs), std::move(buffers), std::move(device_buffers),
-        std::move(buffer_sizes), DefaultThreadPoolSize(), device,
-        std::move(buffer_transfers_in_flight),
-        std::move(last_transfer_finished)));
-  }
-
-  ~TfrtCpuAsyncHostToDeviceTransferManager() override {
-    // Wait for in-flight transfers to finish.
-    absl::Condition transfers_finished(
-        +[](int* t) { return *t == 0; }, &transfers_in_flight_);
-    absl::MutexLock l(&mu_);
-    mu_.Await(transfers_finished);
-    for (auto& avref : avs_) {
-      auto av = avref.CopyRef();
-      if (av && av->IsUnavailable()) {
-        av->SetError(absl::InternalError(
-            "Async transfer object was deleted before transfers completed."));
-      }
-    }
-  }
-
-  size_t buffer_count() const override { return buffer_sizes_.size(); };
-
-  size_t buffer_size(int buffer_index) const override {
-    CHECK_GE(buffer_index, 0);
-    CHECK_LT(buffer_index, buffer_sizes_.size());
-    return buffer_sizes_[buffer_index];
+        std::move(buffer_sizes), std::move(buffer_transfers_in_flight),
+        std::move(last_transfer_finished), client->async_work_runner(),
+        device));
   }
 
   PjRtDevice* device() const override { return device_; }
 
-  std::unique_ptr<PjRtBuffer> RetrieveBuffer(int buffer_index) override {
-    absl::MutexLock l(&mu_);
-    CHECK_GE(buffer_index, 0);
-    CHECK_LT(buffer_index, buffers_.size());
-    return std::move(buffers_[buffer_index]);
-  }
-
-  Status TransferLiteralToBuffer(
-      int buffer_index, const LiteralSlice& literal,
-      absl::AnyInvocable<void() &&> on_done) override {
-    return TransferRawDataToSubBuffer(buffer_index, literal.untyped_data(), 0,
-                                      literal.size_bytes(), true,
-                                      std::move(on_done));
-  }
-
-  Status TransferRawDataToBuffer(
-      int buffer_index, absl::string_view data,
-      absl::AnyInvocable<void() &&> on_done) override {
-    return TransferRawDataToSubBuffer(buffer_index, data.data(), 0, data.size(),
-                                      true, std::move(on_done));
-  }
-
-  Status TransferRawDataToSubBuffer(
-      int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
-      bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) override {
-    absl::MutexLock l(&mu_);
-    CHECK_GE(buffer_index, 0);
-    CHECK_LT(buffer_index, buffers_.size());
-    CHECK_LE(transfer_size + offset, buffer_sizes_[buffer_index]);
-    CHECK(!last_transfer_finished_[buffer_index]);
-    ++buffer_transfers_in_flight_[buffer_index];
-    ++transfers_in_flight_;
-    EnqueueWork(
-        thread_pool_.get(),
-        [this, device_buffer = device_buffers_[buffer_index],
-         av = avs_[buffer_index].CopyRef(), data, offset, transfer_size,
-         is_last_transfer, on_done = std::move(on_done),
-         buffer_index]() mutable -> void {
-          absl::MutexLock l(&mu_);
-          const std::shared_ptr<MaybeOwningCpuMemory>& b =
-              device_buffer->Buffers()[0];
-          std::memcpy(reinterpret_cast<char*>(b->data()) + offset, data,
-                      transfer_size);
-          std::move(on_done)();
-          if (is_last_transfer) {
-            last_transfer_finished_[buffer_index] = true;
-          }
-          --buffer_transfers_in_flight_[buffer_index];
-          --transfers_in_flight_;
-          if (buffer_transfers_in_flight_[buffer_index] == 0 &&
-              last_transfer_finished_[buffer_index]) {
-            av->SetStateConcrete();
-          }
-        });
-    return tsl::OkStatus();
-  }
-
-  void SetBufferError(int buffer_index, Status error) override {
-    absl::MutexLock l(&mu_);
-    avs_[buffer_index]->SetError(error);
-  }
-
-  void AddTransferMetadata(const TransferMetadata& meta) override {
-    LOG(WARNING) << "AddTransferMetadata not implemented for TfrtCpuClient";
-  }
-
  private:
   TfrtCpuAsyncHostToDeviceTransferManager(
       absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4> avs,
-      absl::InlinedVector<std::unique_ptr<TfrtCpuBuffer>, 4> buffers,
+      absl::InlinedVector<std::unique_ptr<AbstractTfrtCpuBuffer>, 4> buffers,
       absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4> device_buffers,
-      absl::InlinedVector<size_t, 4> buffer_sizes, size_t num_threads,
-      TfrtCpuDevice* device,
-      absl::InlinedVector<int64_t, 4> transfers_for_buffer,
-      absl::InlinedVector<bool, 4> seen_last_transfer)
-      : transfers_in_flight_(0),
-        avs_(std::move(avs)),
-        buffer_transfers_in_flight_(std::move(transfers_for_buffer)),
-        last_transfer_finished_(std::move(seen_last_transfer)),
-        buffers_(std::move(buffers)),
-        device_buffers_(std::move(device_buffers)),
-        buffer_sizes_(std::move(buffer_sizes)),
-        thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
-            tsl::Env::Default(),
-            "XLATfrtCpuTfrtCpuAsyncHostToDeviceTransferManager", num_threads)),
+      absl::InlinedVector<size_t, 4> buffer_sizes,
+      absl::InlinedVector<int64_t, 4> buffer_transfers_in_flight,
+      absl::InlinedVector<bool, 4> last_transfer_finished,
+      AsyncWorkRunner* async_work_runner, TfrtCpuDevice* device)
+      : AbstractAsyncHostToHostMemoryTransferManager(
+            std::move(avs), std::move(buffers), std::move(device_buffers),
+            std::move(buffer_sizes), std::move(buffer_transfers_in_flight),
+            std::move(last_transfer_finished), async_work_runner),
         device_(device) {}
 
-  mutable absl::Mutex mu_;
-  // The number of transfers that are currently in flight.
-  int transfers_in_flight_ ABSL_GUARDED_BY(mu_);
-  // AsyncValues used to mark buffers as ready for consumption.
-  absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4> avs_
-      ABSL_GUARDED_BY(mu_);
-  // Holds the number of in-flight transfers for each buffer.
-  absl::InlinedVector<int64_t, 4> buffer_transfers_in_flight_
-      ABSL_GUARDED_BY(mu_);
-  // Flag to indicate whether we have seen the last transfer of each buffer.
-  absl::InlinedVector<bool, 4> last_transfer_finished_ ABSL_GUARDED_BY(mu_);
-  // The newly created buffers, which will be returned to the caller via
-  // Retrieve.
-  absl::InlinedVector<std::unique_ptr<TfrtCpuBuffer>, 4> buffers_
-      ABSL_GUARDED_BY(mu_);
-  // Device buffers which we use to get the underlying memory to populate.
-  absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4> device_buffers_
-      ABSL_GUARDED_BY(mu_);
-  // Cached versions of the sizes of all the buffers. Not modified after
-  // creation, so not guarded by mu_.
-  absl::InlinedVector<size_t, 4> buffer_sizes_;
-
-  std::unique_ptr<tsl::thread::ThreadPool> thread_pool_;
-  TfrtCpuDevice* device_;  // not owned.
+  TfrtCpuDevice* device_;
 };
 
 }  // namespace
@@ -819,7 +702,7 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false));
+      /*return_tuple=*/false, /*legalize_sparse_ops=*/true));
   return Compile(xla_computation, options);
 }
 

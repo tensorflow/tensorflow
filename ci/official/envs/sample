@@ -8,7 +8,7 @@
 # TFCI_GIT_DIR is set automatically by tensorflow/ci/official/utilities/setup.sh
 # "set +u ... set -u" ignores unknown CI variables, like $KOKORO_XYZ, since
 # they'll be overwritten anyway.
-set +u; source "$TFCI_GIT_DIR/ci/official/envs/your_choice_here"; set -u
+set +u; source ci/official/envs/your_choice_here; set -u
 
 # Reset bazel common options. This combines a local disk cache and
 # TensorFlow's remote cache to speed up your builds. The "nightly" branch has
@@ -16,14 +16,17 @@ set +u; source "$TFCI_GIT_DIR/ci/official/envs/your_choice_here"; set -u
 # different Python versions. You can add e.g. "--repo_env=TF_PYTHON_VERSION=3.9"
 # to change the Python version to anything available (including the default) in
 # tensorflow/tools/toolchains/python/python_repo.bzl.
-TFCI_BAZEL_COMMON_ARGS=(--config sigbuild_remote_cache --disk_cache=build_output/cache)
+TFCI_BAZEL_COMMON_ARGS=(--config tf_public_cache --disk_cache=build_output/cache)
 
 # Disable all CI-specific behavior. You never need any of these if you are
 # running a script locally.
 TFCI_INDEX_HTML_ENABLE=
-TFCI_UPLOAD_LIB_ENABLE=
-TFCI_UPLOAD_LIB_LATEST_ENABLE=
-TFCI_UPLOAD_WHL_GCS_ENABLE=
-TFCI_UPLOAD_WHL_PYPI_ENABLE=
+source ci/official/envs/disable_all_uploads
 
 # You can add other custom settings below.
+# 
+# Just for reference, you can dump the resolved contents of an env with
+# something like the following:
+# 
+# cd tensorflow_root_directory
+# bash -c "set -a; set -o posix; source ci/official/envs/MYENV; set" | grep TFCI

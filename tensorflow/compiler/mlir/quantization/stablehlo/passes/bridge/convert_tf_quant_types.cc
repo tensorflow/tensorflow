@@ -43,15 +43,19 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 
-namespace mlir {
-namespace stablehlo {
+namespace mlir::quant::stablehlo {
 namespace {
+
+using quant::tensorflow::GetDenseAttrFromTensorProtoAttr;
+using quant::tensorflow::GetIntTypeFromTFQint;
+using quant::tensorflow::IsTFQintType;
+using quant::tensorflow::IsTFUniformQuantizedOp;
 
 #define GEN_PASS_DEF_CONVERTTFQUANTTYPES
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
 
 // TODO: b/290366702 - Temporarily added metrics for debugging.
-auto *mlir_tf_quant_op_count = tensorflow::monitoring::Counter<1>::New(
+auto *mlir_tf_quant_op_count = ::tensorflow::monitoring::Counter<1>::New(
     "/tensorflow/core/tf2xla/tf_quant_op_count" /*metric_name*/,
     "Counts the number of ops that has qint types" /*metric description*/,
     "op_name" /*metric label*/);
@@ -321,5 +325,4 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertTFQuantTypesPass() {
   return std::make_unique<ConvertTFQuantTypes>();
 }
 
-}  // namespace stablehlo
-}  // namespace mlir
+}  // namespace mlir::quant::stablehlo

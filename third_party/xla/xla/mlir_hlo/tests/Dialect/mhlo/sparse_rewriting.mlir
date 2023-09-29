@@ -4,14 +4,14 @@
 
 // Verifies that mhlo sparse tensor type rewriting occurs.
 
-#SV= #sparse_tensor.encoding<{ lvlTypes = ["compressed"] }>
+#SV= #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
 
 #CSR = #sparse_tensor.encoding<{
-  lvlTypes = ["dense", "compressed"]
+  map = (d0, d1) -> (d0 : dense, d1 : compressed)
 }>
 
 #DCSR = #sparse_tensor.encoding<{
-  lvlTypes = ["compressed", "compressed"]
+  map = (d0, d1) -> (d0 : compressed, d1 : compressed)
 }>
 
 // CHECK-LABEL: func @rewrite_unary(
@@ -39,7 +39,7 @@ func.func @rewrite_binary(%arg0: tensor<100xf64>,
 // CHECK-LABEL: func @rewrite_binary_override(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>>,
 // CHECK-SAME:    %[[ARG1:.*]]: tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>> {
-// CHECK:         %[[VAL:.*]] = mhlo.multiply %[[ARG0]], %[[ARG1]] : (tensor<10x10xf64, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>, tensor<10x10xf64, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>) -> tensor<10x10xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>
+// CHECK:         %[[VAL:.*]] = mhlo.multiply %[[ARG0]], %[[ARG1]] : (tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>>, tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>>
 // CHECK-NEXT:    return %[[VAL:.*]] : tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>>
 func.func @rewrite_binary_override(%arg0: tensor<10x10xf64, #CSR>,
                                    %arg1: tensor<10x10xf64, #CSR>) -> tensor<10x10xf64, #DCSR> {
@@ -50,8 +50,8 @@ func.func @rewrite_binary_override(%arg0: tensor<10x10xf64, #CSR>,
 
 // CHECK-LABEL: func @rewrite_convert(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10x10xf64>) -> tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>> {
-// CHECK:         %[[VAL:.*]] = sparse_tensor.convert %[[ARG0]] : tensor<10x10xf64> to tensor<10x10xf64, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>
-// CHECK-NEXT:    return %[[VAL:.*]] : tensor<10x10xf64, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>
+// CHECK:         %[[VAL:.*]] = sparse_tensor.convert %[[ARG0]] : tensor<10x10xf64> to tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>>
+// CHECK-NEXT:    return %[[VAL:.*]] : tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>>
 func.func @rewrite_convert(%arg0: tensor<10x10xf64>) -> tensor<10x10xf64, #CSR> {
   %0 = sparse_tensor.convert %arg0 : tensor<10x10xf64> to tensor<10x10xf64, #DCSR>
   %1 = sparse_tensor.convert %0 : tensor<10x10xf64, #DCSR> to tensor<10x10xf64, #CSR>
@@ -60,9 +60,9 @@ func.func @rewrite_convert(%arg0: tensor<10x10xf64>) -> tensor<10x10xf64, #CSR> 
 }
 
 // CHECK-LABEL: func @rewrite_convert_nop(
-// CHECK-SAME:    %[[ARG0:.*]]: tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<10x10xf64, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>>
 // CHECK-NEXT:    %[[RES:.*]] = sparse_tensor.convert %[[ARG0]]
-// CHECK-NEXT:    return %[[RES]] : tensor<10x10xf64, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>
+// CHECK-NEXT:    return %[[RES]] : tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>>
 func.func @rewrite_convert_nop(%arg0: tensor<10x10xf64, #CSR>) -> tensor<10x10xf64, #CSR> {
   %0 = sparse_tensor.convert %arg0 : tensor<10x10xf64, #CSR> to tensor<10x10xf64, #DCSR>
   %1 = sparse_tensor.convert %0 : tensor<10x10xf64, #DCSR> to tensor<10x10xf64, #CSR>
@@ -84,7 +84,7 @@ func.func @rewrite_transpose(%arg0: tensor<100x200xf64, #CSR>) -> tensor<200x100
 // CHECK-SAME:    %[[ARG0:.*0]]: tensor<5x5xf64, #sparse_tensor.encoding<{{{.*}}}>>,
 // CHECK-SAME:    %[[ARG1:.*1]]: tensor<5x5xf64, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<5x5xf64, #sparse_tensor.encoding<{{{.*}}}>> {
 // CHECK:         %[[VAL:.*]] = "mhlo.dot"(%[[ARG0]], %[[ARG1]])
-// CHECK:         return %[[VAL]] : tensor<5x5xf64, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>
+// CHECK:         return %[[VAL]] : tensor<5x5xf64, #sparse_tensor.encoding<{{{.*}}}>>
 func.func @rewrite_dot(%arg0: tensor<5x5xf64, #CSR>,
                        %arg1: tensor<5x5xf64, #CSR>) -> tensor<5x5xf64, #CSR> {
   %0 = "mhlo.dot"(%arg0, %arg1)
@@ -100,7 +100,7 @@ func.func @rewrite_dot(%arg0: tensor<5x5xf64, #CSR>,
 // CHECK-SAME:    %[[ARG0:.*0]]: tensor<5x5xf64, #sparse_tensor.encoding<{{{.*}}}>>,
 // CHECK-SAME:    %[[ARG1:.*1]]: tensor<5x5xf64, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<5x5xf64, #sparse_tensor.encoding<{{{.*}}}>> {
 // CHECK:         %[[VAL:.*]] = "mhlo.dot_general"(%[[ARG0]], %[[ARG1]])
-// CHECK:         return %[[VAL]] : tensor<5x5xf64, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>
+// CHECK:         return %[[VAL]] : tensor<5x5xf64, #sparse_tensor.encoding<{{{.*}}}>>
 func.func @rewrite_general_dot(%arg0: tensor<5x5xf64, #CSR>,
                                %arg1: tensor<5x5xf64, #CSR>) -> tensor<5x5xf64, #CSR> {
    %0 = "mhlo.dot_general"(%arg0, %arg1)

@@ -459,6 +459,15 @@ std::optional<std::vector<HloInstruction*>> CollectIndependentOperandChain(
     }
   }
   for (auto* chain_instr : chain) {
+    // Allow tokens in the chain.
+    if (chain_instr->opcode() == HloOpcode::kAfterAll) {
+      continue;
+    }
+    if (chain_instr->opcode() == HloOpcode::kRecvDone) {
+      // Since we allow tokens in the chain, we need to exclude Recv-done in
+      // the chain, to prevent pipelining Recv/Recv-done by accident.
+      return std::nullopt;
+    }
     const bool all_users_in_chain = absl::c_all_of(
         chain_instr->users(), [&visited_set](const HloInstruction* u) {
           return visited_set.contains(u);
@@ -547,6 +556,15 @@ struct WhileMoveInfo {
 // Set channel_id of instruction to next available to avoid collisions.
 void UpdateInstructionChannelId(HloInstruction* cloned_instr,
                                 int64_t& next_channel_id) {
+  // Avoid updating Send and Recv instructions because pipelined Send and Recv
+  // instructions should keep the same channel-id to indicate that the group of
+  // instructions need to cooperate.
+  if (const auto* send_recv_instr =
+          DynCast<HloSendRecvInstruction>(cloned_instr)) {
+    if (!send_recv_instr->is_host_transfer()) {
+      return;
+    }
+  }
   if (auto* channel_instr = DynCast<HloChannelInstruction>(cloned_instr)) {
     if (channel_instr->channel_id()) {
       channel_instr->set_channel_id(next_channel_id++);
@@ -746,6 +764,8 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
     ++parameter_gtes_count[user->tuple_index()];
   }
   absl::flat_hash_map<const HloInstruction*, Range> index_ranges;
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      index_per_dyn_update_slice;
   if (loop_bound_) {
     // Compute the range of the index as "start + iteration_count * increment"
     Range index_range =
@@ -780,7 +800,7 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
           instr, while_body, level_to_operate_on, pipeline_use_tree_);
       if (dyn_update == nullptr) {
         VLOG(5)
-            << "Skipping " << instr->name()
+            << "Skipping " << instr->ToString()
             << " because update users > 1 or single user is not the root of "
                "computation";
         continue;
@@ -879,6 +899,42 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
                 << " because couldn't find unique output index for insertion";
         continue;
       }
+      //
+      auto merge_as_formatting =
+          [this](
+              absl::flat_hash_map<const HloInstruction*, int64_t>::iterator it,
+              HloInstruction* instr, HloInstruction* dyn_upd,
+              absl::Span<HloInstruction* const> formatting_ops) {
+            CHECK_EQ(move_infos_[it->second].dynamic_update_slice, dyn_upd)
+                << "Not the same dynamic-update-slice for converging entry";
+            absl::flat_hash_set<const HloInstruction*> existing_entry_instrs(
+                move_infos_[it->second].formatting_ops.begin(),
+                move_infos_[it->second].formatting_ops.end());
+            existing_entry_instrs.insert(
+                move_infos_[it->second].collective_to_move);
+            std::vector<HloInstruction*> to_merge;
+            // If instr is already in the set then this instruction is already
+            // in formatting-ops of the other one, so its already pipelined.
+            if (existing_entry_instrs.count(instr)) {
+              return;
+            }
+            to_merge.push_back(instr);
+            for (auto* op : formatting_ops) {
+              if (!existing_entry_instrs.count(op)) {
+                to_merge.push_back(op);
+              }
+            }
+            move_infos_[it->second].formatting_ops.insert(
+                move_infos_[it->second].formatting_ops.begin(),
+                to_merge.begin(), to_merge.end());
+          };
+      auto it = index_per_dyn_update_slice.find(dyn_update);
+      if (it != index_per_dyn_update_slice.end()) {
+        // Merge stuff with existing entry.
+        merge_as_formatting(it, instr, dyn_update, formatting_ops);
+        continue;
+      }
+      index_per_dyn_update_slice[dyn_update] = move_infos_.size();
       move_infos_.push_back({instr, dyn_update, std::move(formatting_ops),
                              *sliced_dim, *output_idx});
     } else {
@@ -1861,14 +1917,30 @@ static Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
   absl::flat_hash_map<HloInstruction*, int64_t> collective_to_move_map;
   absl::flat_hash_set<HloInstruction*> is_pipelined_instruction;
   absl::flat_hash_map<HloInstruction*, int64_t> is_output_instruction;
+  absl::flat_hash_set<const HloInstruction*> sideeffect_unused_instructions;
   int64_t count = 0;
   // Add instructions to duplicate into a set.
   for (auto& to_move : loop_analysis.GetMoveInfos()) {
-    collective_to_move_map[to_move.collective_to_move] = count;
-    is_pipelined_instruction.insert(to_move.collective_to_move);
+    HloInstruction* instr = to_move.collective_to_move;
+    collective_to_move_map[instr] = count;
+    is_pipelined_instruction.insert(instr);
     is_pipelined_instruction.insert(to_move.formatting_ops.begin(),
                                     to_move.formatting_ops.end());
     ++count;
+
+    // Collect unused instructions with side-effect in the chain, so that we
+    // can skip cloning such instructions. This is to work around the fact that
+    // we can't have unused Recv instructions to avoid deadlock, and
+    // HloModule::RemoveUnusedComputations can't remove unused Recv instructions
+    // as they are tagged as has-side-effect. The operand_count check here
+    // assumes we only need to collect such instructions when pipelining
+    // Recv-done, which may be changed though.
+    if (instr->operand_count() == 1) {
+      const HloInstruction* opnd = instr->operand(0);
+      if (opnd->HasSideEffect() && opnd->user_count() == 1) {
+        sideeffect_unused_instructions.insert(opnd);
+      }
+    }
   }
   HloInstruction* while_loop = loop_analysis.while_loop_instruction();
   HloComputation* while_body = while_loop->while_body();
@@ -1963,7 +2035,8 @@ static Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
   // input/output shapes and how we connect loop iterator to the original
   // chains that we are pipelining.
   for (auto* instr : while_body->MakeInstructionPostOrder()) {
-    if (instr == loop_parameter || instr == while_body->root_instruction()) {
+    if (instr == loop_parameter || instr == while_body->root_instruction() ||
+        sideeffect_unused_instructions.contains(instr)) {
       continue;
     }
     HloInstruction* cloned_instr = nullptr;
@@ -2057,7 +2130,8 @@ static Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
   std::vector<HloInstruction*> output_tuple_instructions(
       while_loop->shape().tuple_shapes_size(), nullptr);
   for (auto* instr : while_body->MakeInstructionPostOrder()) {
-    if (instr == loop_parameter || instr == while_body->root_instruction()) {
+    if (instr == loop_parameter || instr == while_body->root_instruction() ||
+        sideeffect_unused_instructions.contains(instr)) {
       continue;
     }
     auto instruction_is_output_it = is_output_instruction.find(instr);

@@ -18,21 +18,6 @@ limitations under the License.
 
 namespace stream_executor {
 
-// A plugin ID is a unique identifier for each registered plugin type.
-typedef void* PluginId;
-
-// Helper macro to define a plugin ID. To be used only inside plugin
-// implementation files. Works by "reserving" an address/value (guaranteed to be
-// unique) inside a process space.
-#define PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(ID_VAR_NAME) \
-  namespace {                                         \
-  int plugin_id_value;                                \
-  }                                                   \
-  const PluginId ID_VAR_NAME = &plugin_id_value;
-
-// kNullPlugin denotes an invalid plugin identifier.
-extern const PluginId kNullPlugin;
-
 // Enumeration to list the supported types of plugins / support libraries.
 enum class PluginKind {
   kInvalid,

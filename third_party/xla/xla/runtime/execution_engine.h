@@ -82,10 +82,10 @@ class ExecutionEngine {
 
   struct JitOptions {
     // User-provided codegen optimization level.
-    llvm::CodeGenOpt::Level opt_level = llvm::CodeGenOpt::Level::Default;
+    llvm::CodeGenOptLevel opt_level = llvm::CodeGenOptLevel::Default;
 
     // User-provided target machine specification.
-    llvm::TargetMachine *target_machine = nullptr;
+    std::shared_ptr<llvm::TargetMachine> target_machine = nullptr;
 
     // User-provided builder for the optimizing transformer.
     MakeOptimizingTransformer make_optimizing_transformer;
@@ -155,6 +155,12 @@ class ExecutionEngine {
 
   // We build execution engine on top of the ORC LLJIT API, which owns all
   // compiled/loaded object files and does the linking at run time.
+  //
+  // TODO(ezhulenev): Instead of keeping LLJIT alive we should be able to keep
+  // only llvm::orc::JITDylibSP owning main dylib and the object layer owning
+  // memory-mapped regions holding object files. Once we are done with
+  // executable compilation this jit is defunct because it holds an expired
+  // weak_ptr to an llvm::orc::TargetMachine instance.
   std::unique_ptr<llvm::orc::LLJIT> jit_;
 
   // Pointers to resolved exported functions. Indexed by function ordinal.

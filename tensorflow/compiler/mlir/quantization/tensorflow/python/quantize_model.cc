@@ -466,7 +466,7 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
       /*is_inliner_run=*/true,
       /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
-      bundle ? bundle->GetSession() : nullptr));
+      bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false));
 
   TF_QUANT_RETURN_IF_ERROR(RunPasses(
       /*name=*/kTfQuantQatStepName,
@@ -531,19 +531,32 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     return aliased_function_names.insert(aliases.first);
   });
 
+  const bool run_tf_to_stablehlo = (quantization_options.op_set() ==
+                                    tensorflow::quantization::OpSet::STABLEHLO);
   TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kTfQuantPtqPreCalibrationStepName,
       /*is_inliner_run=*/true,
       /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
-      bundle ? bundle->GetSession() : nullptr));
+      bundle ? bundle->GetSession() : nullptr, run_tf_to_stablehlo));
 
-  TF_QUANT_RETURN_IF_ERROR(RunPasses(
-      /*name=*/kTfQuantPtqPreCalibrationStepName,
-      /*add_passes_func=*/
-      [&quantization_options](mlir::PassManager &pm) {
-        AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
-      },
-      context, *module_ref));
+  // Use StableHLO Quantizer option if opset is specified.
+  if (run_tf_to_stablehlo) {
+    TF_QUANT_RETURN_IF_ERROR(RunPasses(
+        /*name=*/kTfQuantPtqPreCalibrationStepStableHloName,
+        /*add_passes_func=*/
+        [&quantization_options](mlir::PassManager &pm) {
+          AddQuantizePtqPreCalibrationStablehloPasses(pm, quantization_options);
+        },
+        context, *module_ref));
+  } else {
+    TF_QUANT_RETURN_IF_ERROR(RunPasses(
+        /*name=*/kTfQuantPtqPreCalibrationStepName,
+        /*add_passes_func=*/
+        [&quantization_options](mlir::PassManager &pm) {
+          AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
+        },
+        context, *module_ref));
+  }
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
@@ -610,16 +623,30 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
       /*mlir_dump_file_prefix=*/kTfQuantPtqPostCalibrationStepName,
       /*is_inliner_run=*/false,
       /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
-      bundle ? bundle->GetSession() : nullptr));
+      bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false));
 
-  TF_QUANT_RETURN_IF_ERROR(RunPasses(
-      /*name=*/kTfQuantPtqPostCalibrationStepName,
-      /*add_passes_func=*/
-      [&quantization_options](mlir::PassManager &pm) {
-        AddQuantizePtqPostCalibrationPasses(pm, quantization_options,
-                                            kTfQuantPtqPostCalibrationStepName);
-      },
-      context, *module_ref));
+  // Use StableHLO Quantizer option if opset is specified.
+  if (quantization_options.op_set() ==
+      tensorflow::quantization::OpSet::STABLEHLO) {
+    TF_QUANT_RETURN_IF_ERROR(RunPasses(
+        /*name=*/kTfQuantPtqPostCalibrationStepStableHloName,
+        /*add_passes_func=*/
+        [&quantization_options](mlir::PassManager &pm) {
+          AddQuantizePtqPostCalibrationStablehloPasses(
+              pm, quantization_options,
+              kTfQuantPtqPostCalibrationStepStableHloName);
+        },
+        context, *module_ref));
+  } else {
+    TF_QUANT_RETURN_IF_ERROR(RunPasses(
+        /*name=*/kTfQuantPtqPostCalibrationStepName,
+        /*add_passes_func=*/
+        [&quantization_options](mlir::PassManager &pm) {
+          AddQuantizePtqPostCalibrationPasses(
+              pm, quantization_options, kTfQuantPtqPostCalibrationStepName);
+        },
+        context, *module_ref));
+  }
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTempFilename());
@@ -682,7 +709,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
       /*is_inliner_run=*/true,
       /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
-      bundle ? bundle->GetSession() : nullptr));
+      bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false));
 
   TF_QUANT_RETURN_IF_ERROR(RunPasses(
       /*name=*/kTfQuantPtqDynamicRangeStepName,
@@ -757,7 +784,7 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
       /*is_inliner_run=*/true,
       /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
-      bundle ? bundle->GetSession() : nullptr));
+      bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false));
 
   TF_QUANT_RETURN_IF_ERROR(RunPasses(
       /*name=*/kTfQuantWeightOnlyStepName,

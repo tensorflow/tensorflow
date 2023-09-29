@@ -297,6 +297,7 @@ cc_library(
     deps = [
         ":ifrt",
         "//xla:test",
+        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_device_description",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",

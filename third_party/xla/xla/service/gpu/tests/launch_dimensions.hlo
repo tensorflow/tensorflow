@@ -9,11 +9,16 @@
 // CHECK:   ![[tid_range]] = !{i32 0, i32 1024}
 
 
-HloModule Test
+HloModule Test, is_scheduled=true
+
+fused_computation {
+  param_0 = f32[100,20]{1,0} parameter(0)
+  ROOT b.1 = f32[100,20]{1,0} round-nearest-even(f32[100,20]{1,0} param_0)
+}
 
 ENTRY main {
   a = f32[100, 20]{1,0} parameter(0)
-  ROOT b = f32[100, 20]{1,0} round-nearest-even(a)
+  ROOT wrapped_b = f32[100,20]{1,0} fusion(f32[100,20]{1,0} a), kind=kLoop, calls=fused_computation
 }
 
 // -----
@@ -27,11 +32,16 @@ ENTRY main {
 // CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
 // CHECK:   ![[tid_range]] = !{i32 0, i32 128}
 
-HloModule Test
+HloModule Test, is_scheduled=true
+
+fused_computation {
+  param_0 = f32[10000,10000]{1,0} parameter(0)
+  ROOT b.1 = f32[10000,10000]{1,0} round-nearest-even(f32[10000,10000]{1,0} param_0)
+}
 
 ENTRY main {
   a = f32[10000, 10000]{1,0} parameter(0)
-  ROOT b = f32[10000, 10000]{1,0} round-nearest-even(a)
+  ROOT wrapped_b = f32[10000,10000]{1,0} fusion(f32[10000,10000]{1,0} a), kind=kLoop, calls=fused_computation
 }
 
 // -----
@@ -49,7 +59,7 @@ ENTRY main {
 // CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
 // CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
 
-HloModule ScalarBroadcast
+HloModule ScalarBroadcast, is_scheduled=true
 
 %fused_computation.3 (param_0: f32[], param_1: f32[10000, 10000]) -> f32[10000, 10000] {
   %param_0 = f32[] parameter(0)
@@ -80,7 +90,7 @@ ENTRY main {
 // CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
 // CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
 
-HloModule SimpleFusion
+HloModule SimpleFusion, is_scheduled=true
 
 %fused_computation (param_0: f32[], param_1: f32[10000, 10000]) -> f32[10000, 10000] {
   %param_0 = f32[10000,10000] parameter(0)
@@ -109,7 +119,7 @@ ENTRY main {
 // CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
 // CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
 
-HloModule LargeConstant
+HloModule LargeConstant, is_scheduled=true
 
 %fused_computation (param_0: f32[], param_1: f32[10000, 10000]) -> f32[10000, 10000] {
   %param_0 = f32[10000,10000] parameter(0)
@@ -134,10 +144,10 @@ ENTRY main {
 // CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
 // CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
 // CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 195313}
-// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 97657}
+// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 256}
 
-HloModule NonElementwise
+HloModule NonElementwise, is_scheduled=true
 
 %fused_computation (param_0: f32[], param_1: f32[10000, 10000]) -> f32[10000, 10000] {
   %param_0 = f32[10000,10000] parameter(0)
@@ -168,10 +178,10 @@ ENTRY main {
 // CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
 // CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
 // CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 7813}
-// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 3907}
+// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 256}
 
-HloModule NoFewWaves
+HloModule NoFewWaves, is_scheduled=true
 
 %fused_computation (param_0: f32[], param_1: f32[2000, 2000]) -> f32[2000, 2000] {
   %param_0 = f32[2000] parameter(0)
@@ -215,7 +225,7 @@ ENTRY main {
 // CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 2000}
 // CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 500}
 
-HloModule RowVectorizable
+HloModule RowVectorizable, is_scheduled=true
 
 %fused_computation (param_0: f32[], param_1: f32[2000, 2000]) -> f32[2000, 2000] {
   %param_0 = f32[2000] parameter(0)
@@ -253,10 +263,10 @@ ENTRY main {
 // CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
 // CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
 // CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1008}
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
 // CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
 
-HloModule ScalarBroadcastFourInputs
+HloModule ScalarBroadcastFourInputs, is_scheduled=true
 
 %fused_computation (param_0: f32[], param_1: f32[2000, 2000]) -> f32[2000, 2000] {
   %param_0 = f32[] parameter(0)
@@ -293,7 +303,7 @@ ENTRY main {
 // CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
 // CHECK:   ![[tid_range]] = !{i32 0, i32 128}
 
-HloModule Test
+HloModule Test, is_scheduled=true
 
 %fused_computation (param_0: f16[6,512,4096]) -> f16[6,512,4096] {
   %param_0 = f16[6,512,4096]{2,1,0} parameter(0)

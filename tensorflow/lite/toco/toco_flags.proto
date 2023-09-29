@@ -195,8 +195,6 @@ message TocoFlags {
 
   // This flag only works when converting to TensorFlow Lite format.
   // When enabled, unsupported ops will be converted to select TensorFlow ops.
-  // TODO(ycling): Consider to rename the following 2 flags and don't call it
-  // "Flex".
   // `enable_select_tf_ops` should always be used with `allow_custom_ops`.
   // WARNING: Experimental interface, subject to change
   optional bool enable_select_tf_ops = 27 [default = false];

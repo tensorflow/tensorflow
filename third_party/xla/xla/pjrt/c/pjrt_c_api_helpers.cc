@@ -16,25 +16,34 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace pjrt {
 
@@ -405,7 +414,8 @@ xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
 }
 
 static xla::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
-    const std::string& name, const xla::PjRtValueType& value) {
+    const std::string& name, const xla::PjRtValueType& value,
+    int api_minor_version) {
   PJRT_NamedValue c_value;
   c_value.struct_size = PJRT_NamedValue_STRUCT_SIZE;
   c_value.priv = nullptr;
@@ -431,6 +441,19 @@ static xla::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
     c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kFloat;
     c_value.float_value = std::get<float>(value);
     c_value.value_size = 1;
+  } else if (std::holds_alternative<bool>(value)) {
+    // TODO: b/300294893 - Remove this after 12 weeks (12/06/2023) as that is
+    // how long we support old behavior for
+    if (api_minor_version < 30) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Client cannot provide this option for API versions "
+          "less than 0.30. The framework PJRT API version is ",
+          PJRT_API_MAJOR, ".", PJRT_API_MINOR,
+          "and the plugin minor version is ", api_minor_version, "."));
+    }
+    c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kBool;
+    c_value.bool_value = std::get<bool>(value);
+    c_value.value_size = 1;
   } else {
     return tsl::errors::InvalidArgument("Unexpected PjRtValueType: '",
                                         value.index(), " with name: ", name);
@@ -440,12 +463,14 @@ static xla::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
 }
 
 xla::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
-    const absl::flat_hash_map<std::string, xla::PjRtValueType>& cpp_value_map) {
+    const absl::flat_hash_map<std::string, xla::PjRtValueType>& cpp_value_map,
+    int api_minor_version) {
   std::vector<PJRT_NamedValue> c_value_list;
   c_value_list.reserve(cpp_value_map.size());
   for (const auto& [name, value] : cpp_value_map) {
-    TF_ASSIGN_OR_RETURN(PJRT_NamedValue c_value,
-                        ConvertToPjRtNamedValue(name, value));
+    TF_ASSIGN_OR_RETURN(
+        PJRT_NamedValue c_value,
+        ConvertToPjRtNamedValue(name, value, api_minor_version));
     c_value_list.push_back(c_value);
   }
   return c_value_list;
@@ -478,6 +503,10 @@ ConvertFromPjRtNamedValueList(PJRT_NamedValue* c_value_list, size_t list_size) {
         cpp_value_map[name] = xla::PjRtValueType(c_value.float_value);
         break;
       }
+      case PJRT_NamedValue_Type::PJRT_NamedValue_kBool: {
+        cpp_value_map[name] = xla::PjRtValueType(c_value.bool_value);
+        break;
+      }
       default: {
         LOG(FATAL) << "Unexpected PJRT_NamedValue type: " << c_value.type
                    << " with name: " << name;
@@ -501,6 +530,9 @@ static xla::StatusOr<PJRT_NamedValue_Type> GetPjrtNamedValueType(
   }
   if (std::holds_alternative<float>(cpp_value)) {
     return PJRT_NamedValue_Type::PJRT_NamedValue_kFloat;
+  }
+  if (std::holds_alternative<bool>(cpp_value)) {
+    return PJRT_NamedValue_Type::PJRT_NamedValue_kBool;
   }
   return tsl::errors::InvalidArgument("Unexpected PjRtValueType with index",
                                       cpp_value.index());
@@ -560,6 +592,17 @@ absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api) {
   absl::string_view platform_version(args.platform_version,
                                      args.platform_version_size);
   return platform_version;
+}
+
+absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api) {
+  PJRT_Client_PlatformName_Args args;
+  args.client = client;
+  args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  pjrt::LogFatalIfPjrtError(api->PJRT_Client_PlatformName(&args), api);
+
+  absl::string_view platform_name(args.platform_name, args.platform_name_size);
+  return platform_name;
 }
 
 PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk) {

@@ -21,6 +21,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
 #define XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -29,12 +30,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
-#include "absl/types/optional.h"
+#include "absl/status/status.h"
 #include "xla/stream_executor/allocator_stats.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_options.h"
-#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_cache_config.h"
@@ -45,12 +46,17 @@ limitations under the License.
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/trace_listener.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
 class Stream;
+
+//===----------------------------------------------------------------------===//
+// ModuleHandle
+//===----------------------------------------------------------------------===//
 
 // An opaque handle to a loaded module.
 //
@@ -71,6 +77,10 @@ class ModuleHandle {
 
 namespace internal {
 
+//===----------------------------------------------------------------------===//
+// EventInterface
+//===----------------------------------------------------------------------===//
+
 // Platform-dependent interface class for the generic Events interface, in
 // the PIMPL style.
 class EventInterface {
@@ -81,6 +91,10 @@ class EventInterface {
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(EventInterface);
 };
+
+//===----------------------------------------------------------------------===//
+// KernelInterface
+//===----------------------------------------------------------------------===//
 
 // Pointer-to-implementation object type (i.e. the KernelBase class delegates to
 // this interface) with virtual destruction. This class exists for the
@@ -106,6 +120,53 @@ class KernelInterface {
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(KernelInterface);
 };
+
+//===----------------------------------------------------------------------===//
+// CommandBufferInterface
+//===----------------------------------------------------------------------===//
+
+// Platform-dependent interface class for implementing generic CommandBuffer.
+//
+// TODO(ezhulenev): Currently we assume that all operations between barriers
+// can execute concurrently, and it's up to the caller to insert barriers to
+// guarantee correctness. Consider adding finer grained synchronization
+// mechanism between different commands.
+//
+// TODO(ezhulenev): Currently command buffers do no support updates, and once
+// finalized can be executed as recorded. We need to support cheap command
+// buffer updates that in GPU backend will be mapped to CUDA/HIP graph node
+// updates.
+class CommandBufferInterface {
+ public:
+  CommandBufferInterface() = default;
+  virtual ~CommandBufferInterface() = default;
+
+  // Traces `function` invocation by recording all operations on the `stream`
+  // into the command buffer. Command buffer must be empty.
+  virtual tsl::Status Trace(Stream* stream,
+                            absl::AnyInvocable<tsl::Status()> function) = 0;
+
+  // Adds a kernel launch command to the command buffer.
+  virtual tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
+                             const KernelBase& kernel,
+                             const KernelArgsArrayBase& args) = 0;
+
+  // Adds a device-to-device memory copy to the command buffer.
+  virtual tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
+                                           const DeviceMemoryBase& src,
+                                           uint64_t size) = 0;
+
+  // Finalizes command buffer and makes it executable. Once command buffer is
+  // finalized no commands can be added to it.
+  virtual tsl::Status Finalize() = 0;
+
+ private:
+  SE_DISALLOW_COPY_AND_ASSIGN(CommandBufferInterface);
+};
+
+//===----------------------------------------------------------------------===//
+// StreamInterface
+//===----------------------------------------------------------------------===//
 
 // Pointer-to-implementation object type (i.e. the Stream class delegates to
 // this interface) with virtual destruction. This class exists for the
@@ -145,6 +206,10 @@ class StreamInterface {
   SE_DISALLOW_COPY_AND_ASSIGN(StreamInterface);
 };
 
+//===----------------------------------------------------------------------===//
+// StreamExecutorInterface
+//===----------------------------------------------------------------------===//
+
 // Interface for the different StreamExecutor platforms (i.e. CUDA, OpenCL).
 //
 // Various platforms will provide an implementation that satisfy this interface.
@@ -174,21 +239,26 @@ class StreamExecutorInterface {
 
   virtual tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                                 KernelBase* kernel) {
-    return tsl::errors::Unimplemented("Not Implemented");
+    return absl::UnimplementedError("Not Implemented");
   }
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
   virtual tsl::Status LoadModule(const MultiModuleLoaderSpec& spec,
                                  ModuleHandle* module_handle) {
-    return tsl::errors::Unimplemented("Not Implemented");
+    return absl::UnimplementedError("Not Implemented");
   }
   virtual tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
   CreateOrShareConstant(Stream* stream, const std::vector<uint8_t>& content) {
-    return tsl::errors::Unimplemented("Not Implemented");
+    return absl::UnimplementedError("Not Implemented");
   }
   virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                              const BlockDim& block_dims, const KernelBase& k,
                              const KernelArgsArrayBase& args) {
-    return tsl::errors::Unimplemented("Not Implemented");
+    return absl::UnimplementedError("Not Implemented");
+  }
+
+  virtual tsl::Status Submit(Stream* stream,
+                             const CommandBuffer& command_buffer) {
+    return absl::UnimplementedError("Not Implemented");
   }
 
   // Releases any state associated with the kernel.
@@ -250,8 +320,7 @@ class StreamExecutorInterface {
   virtual tsl::Status WaitForEvent(Stream* stream, Event* event) = 0;
   virtual tsl::Status WaitForEventOnExternalStream(std::intptr_t stream,
                                                    Event* event) {
-    return tsl::Status(
-        absl::StatusCode::kUnimplemented,
+    return absl::UnimplementedError(
         "WaitForEventOnExternalStream not supported on this executor.");
   }
   virtual Event::Status PollForEventStatus(Event* event) = 0;
@@ -260,8 +329,8 @@ class StreamExecutorInterface {
   virtual bool CreateStreamDependency(Stream* dependent, Stream* other) = 0;
   virtual tsl::Status BlockHostUntilDone(Stream* stream) = 0;
   virtual tsl::Status GetStatus(Stream* stream) {
-    return tsl::Status(absl::StatusCode::kUnimplemented,
-                       "GetStatus is not supported on this executor.");
+    return absl::UnimplementedError(
+        "GetStatus is not supported on this executor.");
   }
   virtual tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface* other) = 0;
@@ -330,6 +399,11 @@ class StreamExecutorInterface {
   virtual std::unique_ptr<EventInterface> CreateEventImplementation() = 0;
   virtual std::unique_ptr<KernelInterface> CreateKernelImplementation() = 0;
   virtual std::unique_ptr<StreamInterface> GetStreamImplementation() = 0;
+
+  virtual tsl::StatusOr<std::unique_ptr<CommandBufferInterface>>
+  GetCommandBufferImplementation() {
+    return absl::UnimplementedError("Command buffers are not implemented");
+  }
 
   // Returns the CUDA or ROCm context associated with this StreamExecutor
   // platform implementation.

@@ -155,7 +155,8 @@ Status ConvertTfMlirToRuntimeExecutable(
                              const tensorflow::TfrtPipelineOptions& options)>
         emit_executable,
     tfrt_stub::ModelRuntimeContext& model_context,
-    tfrt_stub::FallbackState* fallback_state) {
+    tfrt_stub::FallbackState* fallback_state,
+    std::vector<std::string>* added_xla_function_names) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
   {
@@ -224,7 +225,8 @@ Status ConvertTfMlirToRuntimeExecutable(
     // GPU XLA clusters are wrapped in functions, which could be transformed by
     // bridge. Hence, the MLIR functions for XLA clusters are exported and added
     // to the function library.
-    TF_RETURN_IF_ERROR(AddXlaFunctions(fallback_state, module));
+    TF_RETURN_IF_ERROR(
+        AddXlaFunctions(fallback_state, module, added_xla_function_names));
   }
 
   if (VLOG_IS_ON(1)) {
@@ -256,7 +258,8 @@ Status ConvertTfMlirToRuntimeExecutable(
 Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
                           mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
                           tfrt_stub::ModelRuntimeContext& model_context,
-                          tfrt_stub::FallbackState* fallback_state) {
+                          tfrt_stub::FallbackState* fallback_state,
+                          std::vector<std::string>* added_xla_function_names) {
   return ConvertTfMlirToRuntimeExecutable(
       options, module,
       [bef_buffer](mlir::PassManager& pm, mlir::ModuleOp module,
@@ -283,7 +286,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
         bef_buffer->shrink_to_fit();
         return OkStatus();
       },
-      model_context, fallback_state);
+      model_context, fallback_state, added_xla_function_names);
 }
 
 std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
@@ -328,13 +331,17 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   return pipeline_options;
 }
 
-tensorflow::Status AddXlaFunctions(tfrt_stub::FallbackState* fallback_state,
-                                   mlir::ModuleOp mlir_module) {
+tensorflow::Status AddXlaFunctions(
+    tfrt_stub::FallbackState* fallback_state, mlir::ModuleOp mlir_module,
+    std::vector<std::string>* added_xla_function_names) {
   if (fallback_state != nullptr) {
     TF_ASSIGN_OR_RETURN(const std::vector<FunctionDef> xla_func_defs,
                         ExportXlaFunctions(mlir_module));
     for (const auto& func_def : xla_func_defs) {
       TF_RETURN_IF_ERROR(fallback_state->AddFunctionDef(func_def));
+      if (added_xla_function_names != nullptr) {
+        added_xla_function_names->push_back(func_def.signature().name());
+      }
     }
   }
 

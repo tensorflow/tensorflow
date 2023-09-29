@@ -94,10 +94,6 @@ def make_gpu_client(
   ...
 
 
-def make_interpreter_client() -> Client:
-  ...
-
-
 def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None) -> Client:
   ...
 
@@ -123,7 +119,7 @@ def make_c_api_client(
 def pjrt_plugin_loaded(plugin_name: str) -> bool:
   ...
 
-def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
+def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> Any:
   ...
 
 
@@ -253,4 +249,10 @@ def register_custom_call_target(
     name: str, fn: Callable, platform: str = ...
 ) -> None:
   ...
+
+
+def register_custom_call_handler(xla_platform_name: str, handler: Any) -> None:
+  ...
+
+
 def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
