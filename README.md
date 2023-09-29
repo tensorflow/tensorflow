@@ -153,7 +153,7 @@ Build Type                    | Status                                          
 *   [TensorFlow Codelabs](https://codelabs.developers.google.com/?cat=TensorFlow)
 *   [TensorFlow Blog](https://blog.tensorflow.org)
 *   [Learn ML with TensorFlow](https://www.tensorflow.org/resources/learn-ml)
-*   [TensorFlow Twitter](https://twitter.com/tensorflow)
+*   [TensorFlow X (former twitter)](https://twitter.com/tensorflow)
 *   [TensorFlow YouTube](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
 *   [TensorFlow model optimization roadmap](https://www.tensorflow.org/model_optimization/guide/roadmap)
 *   [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
