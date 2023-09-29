@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/service/gpu/buffer_comparator.h"
 #include "xla/service/gpu/gemm_rewriter.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/instruction_fusion.h"
@@ -339,8 +338,8 @@ int GetLogEveryN() { return VLOG_IS_ON(3) ? 100 : 1000; }
 
 StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     const AutotuneResult::TritonGemmKey& key,
-    const GpuDeviceInfo& gpu_device_info, const HloFusionInstruction* fusion,
-    DebugOptions debug_opts) {
+    const se::DeviceDescription& gpu_device_info,
+    const HloFusionInstruction* fusion, DebugOptions debug_opts) {
   std::unique_ptr<HloModule> new_module =
       AutotunerUtil::ExtractInstructionIntoNewModule(*fusion);
   // Reduce memory usage during compilation by disabling GPU runtime.
@@ -390,8 +389,8 @@ StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
   new_module->config().set_debug_options(debug_opts);
 
   GemmRewriter rewriter(config.GetCudaComputeCapability());
-  GpuInstructionFusion fusion_pass(/*may_duplicate=*/false,
-                                   GetGpuDeviceInfo(config.GetExecutor()));
+  GpuInstructionFusion fusion_pass(
+      /*may_duplicate=*/false, config.GetExecutor()->GetDeviceDescription());
   TF_RETURN_IF_ERROR(rewriter.Run(new_module.get()).status());
   TF_RETURN_IF_ERROR(fusion_pass.Run(new_module.get()).status());
   // TODO(tdanyluk): Consider running GemmAlgorithmPicker here for better cuBLAS
@@ -416,7 +415,8 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
     return executable_sets;
   }
 
-  GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(config.GetExecutor());
+  const se::DeviceDescription& gpu_device_info =
+      config.GetExecutor()->GetDeviceDescription();
 
   const int log_every_n = GetLogEveryN();
   int64_t config_count = 0;
@@ -726,8 +726,8 @@ Status DumpAutotunedFusions(const AutotuneConfig& config,
                       util.ExtractModule([&](const DebugOptions& debug_opts) {
                         return TritonGemmAutotuneExtractor(
                             result.triton(),
-                            GetGpuDeviceInfo(config.GetExecutor()), fusion,
-                            debug_opts);
+                            config.GetExecutor()->GetDeviceDescription(),
+                            fusion, debug_opts);
                       }));
   module->set_name(std::string(fusion->name()));
   // Using the original module for its debug info and name in the first

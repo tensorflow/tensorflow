@@ -91,7 +91,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -1622,7 +1621,8 @@ std::string GetLibdevicePath(const HloComputation* hlo_computation) {
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
-    const HloComputation* hlo_computation, const GpuDeviceInfo& device_info,
+    const HloComputation* hlo_computation,
+    const se::DeviceDescription& device_info,
     const AutotuneResult::TritonGemmKey& config, TritonIrEmitter ir_emitter,
     mlir::MLIRContext& mlir_context) {
   mlir_context.loadDialect<mt::TritonDialect>();
@@ -1657,7 +1657,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
   TF_RETURN_IF_ERROR(ir_emitter(b, GetLibdevicePath(hlo_computation), analysis,
                                 hlo_computation, fn, config,
-                                device_info.shared_memory_per_block_optin));
+                                device_info.shared_memory_per_block_optin()));
 
   b.create<mt::ReturnOp>(loc);
 
@@ -1674,7 +1674,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloComputation* hlo_computation, absl::string_view fusion_kind,
-    const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
+    const se::CudaComputeCapability& cc,
+    const se::DeviceDescription& device_info,
     const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
     TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context) {
   if (fusion_kind == kTritonGemmFusionKind) {
@@ -1783,7 +1784,7 @@ StatusOr<TritonWrapperResult> TritonWrapper(
           ->getAttrOfType<mlir::IntegerAttr>("triton_gpu.shared")
           .getInt();
   VLOG(2) << "Shared memory usage: " << shared_mem_bytes << " B";
-  if (shared_mem_bytes > device_info.shared_memory_per_block_optin) {
+  if (shared_mem_bytes > device_info.shared_memory_per_block_optin()) {
     return ResourceExhausted("Shared memory size limit exceeded.");
   }
 

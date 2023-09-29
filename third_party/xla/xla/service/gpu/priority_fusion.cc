@@ -37,12 +37,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/fusion_queue.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/gpu_performance_model.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
@@ -72,7 +72,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
   GpuPriorityFusionQueue(
       HloComputation* computation,
       const GpuHloCostAnalysis::Options& cost_analysis_options,
-      const GpuDeviceInfo* device_info, const CanFuseCallback& can_fuse)
+      const se::DeviceDescription* device_info, const CanFuseCallback& can_fuse)
       : computation_(computation),
         cost_analysis_(cost_analysis_options, device_info),
         can_fuse_(can_fuse) {

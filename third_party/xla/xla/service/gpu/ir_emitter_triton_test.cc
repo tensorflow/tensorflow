@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
@@ -320,7 +319,8 @@ ENTRY entry {
       hlo_module->entry_computation()
           ->root_instruction()
           ->fused_instructions_computation();
-  const GpuDeviceInfo dev_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  const se::DeviceDescription dev_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
@@ -353,7 +353,7 @@ ENTRY entry {
                                               /*minor=*/0},
                     dev_info, config, &llvm_module, &EmitMatMul, mlir_context));
   // Use optin shared memory which is > shared_memory_per_block.
-  EXPECT_GT(result.shmem_bytes, dev_info.shared_memory_per_block);
+  EXPECT_GT(result.shmem_bytes, dev_info.shared_memory_per_block());
 }
 
 TEST_F(TritonGemmTest, WorksWhenKIsDivisibleByBlockKButNotByBlockKTimesSplitK) {
@@ -776,7 +776,8 @@ ENTRY entry {
       hlo_module->entry_computation()
           ->root_instruction()
           ->fused_instructions_computation();
-  const GpuDeviceInfo dev_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  const se::DeviceDescription dev_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
@@ -1671,10 +1672,11 @@ TEST_F(CompareTest, UsingOptinSharedMemoryOnAmpereProducesSameResult) {
           se::CudaComputeCapability::AMPERE)) {
     GTEST_SKIP() << "This test is for Ampere+ GPUs.";
   }
-  const GpuDeviceInfo dev_info =
-      GetGpuDeviceInfo(backend().default_stream_executor());
+  const se::DeviceDescription dev_info =
+      backend().default_stream_executor()->GetDeviceDescription();
   constexpr int kBytesOfSharedMemoryTested = 64 * 1024;
-  EXPECT_GE(dev_info.shared_memory_per_block_optin, kBytesOfSharedMemoryTested);
+  EXPECT_GE(dev_info.shared_memory_per_block_optin(),
+            kBytesOfSharedMemoryTested);
 
   const std::string kHloTextOptinShmem = R"(
 HloModule t
@@ -1720,7 +1722,7 @@ ENTRY e {
   // has the optin one should be able to execute the test.
   EXPECT_EQ(result.shmem_bytes, kBytesOfSharedMemoryTested);
   // Make sure the written config indeed has to use optin shared memory.
-  EXPECT_GT(result.shmem_bytes, dev_info.shared_memory_per_block);
+  EXPECT_GT(result.shmem_bytes, dev_info.shared_memory_per_block());
 
   const std::string kHloTextLowShmem = R"(
 HloModule t

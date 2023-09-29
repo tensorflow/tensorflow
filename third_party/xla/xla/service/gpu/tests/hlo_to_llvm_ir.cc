@@ -64,21 +64,20 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   llvm::LLVMContext llvm_context;
 
-  tensorflow::se::CudaComputeCapability cuda_compute_capability;
+  stream_executor::CudaComputeCapability cuda_compute_capability;
   cuda_compute_capability.major = sm / 10;
   cuda_compute_capability.minor = sm % 10;
 
 #if GOOGLE_CUDA
-  xla::gpu::GpuDeviceInfo gpu_device_info =
-      xla::gpu::TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  gpu_device_info.compute_capability = cuda_compute_capability;
+  stream_executor::DeviceDescription gpu_device_info =
+      xla::gpu::TestGpuDeviceInfo::RTXA6000DeviceInfo(cuda_compute_capability);
   std::string target_triple = xla::gpu::nvptx::TargetTriple();
   std::string data_layout = xla::gpu::nvptx::DataLayout();
   std::string platform_name = "CUDA";
   stream_executor::Platform::Id platform_id =
       stream_executor::cuda::kCudaPlatformId;
 #elif TENSORFLOW_USE_ROCM
-  xla::gpu::GpuDeviceInfo gpu_device_info =
+  se::DeviceDescription gpu_device_info =
       xla::gpu::TestGpuDeviceInfo::AMDMI210DeviceInfo();
   std::string target_triple = xla::gpu::amdgpu::TargetTriple();
   std::string data_layout = xla::gpu::amdgpu::DataLayout();

@@ -1473,6 +1473,7 @@ cc_library(
         "@local_xla//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl",
         "@local_xla//xla/service/gpu:backend_configs_cc_impl",
         "@local_xla//xla/service/gpu:hlo_op_profile_proto_cc_impl",
+        "@local_xla//xla/stream_executor:device_description_proto_cc_impl",
     ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:

@@ -58,12 +58,12 @@ bool FusionUsesParameterElementwiseFromRoot(
 // Estimate read time of n_bytes_total bytes from global memory on a
 // given GPU. Account for L1 / L2 cache speedup if the input's nominal size
 // n_bytes_net is small.
-absl::Duration ReadTime(const GpuDeviceInfo& gpu_device_info,
+absl::Duration ReadTime(const se::DeviceDescription& gpu_device_info,
                         int64_t n_bytes_net, int64_t n_bytes_total) {
-  float bw = gpu_device_info.memory_bandwidth;
-  if (n_bytes_net < gpu_device_info.l2_cache_size) {
+  float bw = gpu_device_info.memory_bandwidth();
+  if (n_bytes_net < gpu_device_info.l2_cache_size()) {
     bw *= kL2CacheSpeedup;
-    if (n_bytes_net < kL1CacheSizePerSM * gpu_device_info.core_count) {
+    if (n_bytes_net < kL1CacheSizePerSM * gpu_device_info.core_count()) {
       bw *= kL1CacheSpeedup;
     }
   }
@@ -75,7 +75,8 @@ absl::Duration ReadTime(const GpuDeviceInfo& gpu_device_info,
 // inputs as if it is fused into the consumer.
 absl::Duration ProducerInputAccessTime(
     const GpuHloCostAnalysis* cost_analysis,
-    const GpuDeviceInfo& gpu_device_info, const HloInstruction* producer,
+    const se::DeviceDescription& gpu_device_info,
+    const HloInstruction* producer,
     const HloInstruction* fused_consumer = nullptr) {
   absl::Duration ret = absl::ZeroDuration();
   float producer_output_utilization = 1.f;
@@ -142,7 +143,7 @@ absl::Duration ProducerInputAccessTime(
 // Use HloFusionAnalysis for computing the actual number of threads that the
 // IR emitter will use. Return std::nullopt if this data is not available.
 std::optional<int64_t> EstimateThreadCount(
-    const HloInstruction* instr, const GpuDeviceInfo& gpu_device_info) {
+    const HloInstruction* instr, const se::DeviceDescription& gpu_device_info) {
   auto fusion = DynCast<const HloFusionInstruction>(instr);
   if (fusion == nullptr) return std::nullopt;
   auto analysis = HloFusionAnalysis::Create(fusion, &gpu_device_info);
@@ -152,11 +153,12 @@ std::optional<int64_t> EstimateThreadCount(
   return launch_dimensions->launch_bound();
 }
 
-absl::Duration ComputeTime(const GpuDeviceInfo& gpu_device_info,
+absl::Duration ComputeTime(const se::DeviceDescription& gpu_device_info,
                            int64_t n_flops, int64_t n_threads) {
-  int fpu_count = gpu_device_info.core_count * gpu_device_info.fpus_per_core;
+  int fpu_count =
+      gpu_device_info.core_count() * gpu_device_info.fpus_per_core();
   float n_threads_active = fmin(n_threads, fpu_count);
-  float flop_per_second_per_fpu = 2 * 1e9 * gpu_device_info.clock_rate_ghz;
+  float flop_per_second_per_fpu = 2 * 1e9 * gpu_device_info.clock_rate_ghz();
   float flop_per_second_effective = flop_per_second_per_fpu * n_threads_active;
   return absl::Seconds(n_flops / flop_per_second_effective);
 }
@@ -171,7 +173,7 @@ struct EstimateRunTimeData {
 
 EstimateRunTimeData EstimateRunTimeImpl(
     const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis) {
-  const GpuDeviceInfo* device_info = cost_analysis->device_info_;
+  const se::DeviceDescription* device_info = cost_analysis->device_info_;
 
   int64_t flops = cost_analysis->flop_count(*instr);
   float bytes_written = cost_analysis->output_bytes_accessed(*instr);
@@ -183,7 +185,7 @@ EstimateRunTimeData EstimateRunTimeImpl(
   const absl::Duration read_time =
       ProducerInputAccessTime(cost_analysis, *device_info, /*producer=*/instr);
   const absl::Duration write_time =
-      absl::Seconds(bytes_written / device_info->memory_bandwidth);
+      absl::Seconds(bytes_written / device_info->memory_bandwidth());
   const absl::Duration exec_time =
       std::max(compute_time, read_time + write_time);
 
@@ -210,7 +212,7 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     VLOG(10) << producer->fused_instructions_computation()->ToString();
   }
 
-  const GpuDeviceInfo* device_info = cost_analysis->device_info_;
+  const se::DeviceDescription* device_info = cost_analysis->device_info_;
 
   EstimateRunTimeData producer_data =
       EstimateRunTimeImpl(producer, cost_analysis);
@@ -290,7 +292,7 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
 
   EstimateRunTimeData data = EstimateRunTimeImpl(instruction, cost_analysis);
   double cycles = absl::ToDoubleNanoseconds(data.exec_time) *
-                  cost_analysis->device_info_->clock_rate_ghz;
+                  cost_analysis->device_info_->clock_rate_ghz();
 
   auto backend_config = instruction->backend_config<FusionBackendConfig>();
   TF_CHECK_OK(backend_config.status()) << instruction->ToString();

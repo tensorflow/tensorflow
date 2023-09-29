@@ -105,7 +105,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_conv_rewriter.h"
 #include "xla/service/gpu/gpu_convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/gpu_cost_model_stats_collection.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/gpu_hlo_cost_analysis.h"
@@ -414,7 +413,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       } else {
         // Use a simple mesh shape if not specified.
         option.device_mesh_shape = {
-            gpu_target_config.gpu_device_info.core_count, 1};
+            gpu_target_config.gpu_device_info.core_count(), 1};
       }
       if (!hlo_module->config().auto_spmd_partitioning_mesh_ids().empty()) {
         option.device_mesh_ids =
@@ -457,7 +456,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
     HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
       const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-          &gpu_target_config.gpu_device_info.compute_capability);
+          &gpu_target_config.gpu_device_info.gpu_compute_capability());
       if (cuda_cc != nullptr &&
           !cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) {
         return true;
@@ -696,7 +695,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
   // Run target-specific HLO optimization passes for convolution
   // canonicalization.
   se::GpuComputeCapability gpu_version =
-      gpu_target_config.gpu_device_info.compute_capability;
+      gpu_target_config.gpu_device_info.gpu_compute_capability();
   se::dnn::VersionInfo dnn_version = gpu_target_config.dnn_version_info;
   if (stream_exec != nullptr) {
     gpu_version = GetGpuVersion(stream_exec);
@@ -735,7 +734,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       hlo_module, stream_exec, options, gpu_target_config, autotune_results,
       thread_pool));
 
-  const GpuDeviceInfo& gpu_device_info = gpu_target_config.gpu_device_info;
+  const se::DeviceDescription& gpu_device_info =
+      gpu_target_config.gpu_device_info;
 
   TF_RETURN_IF_ERROR(
       FusionPipeline(debug_options, ShapeSizeBytesFunction(), gpu_device_info)
@@ -899,7 +899,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // Constants:
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   const se::GpuComputeCapability gpu_version =
-      gpu_target_config.gpu_device_info.compute_capability;
+      gpu_target_config.gpu_device_info.gpu_compute_capability();
   const AlgebraicSimplifierOptions simplifier_options = [&] {
     AlgebraicSimplifierOptions opts;
     opts.set_supports_non_canonical_dots(false);
@@ -957,7 +957,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
     // Rewrite GEMMs into custom calls.
     se::GpuComputeCapability gpu_version =
-        gpu_target_config.gpu_device_info.compute_capability;
+        gpu_target_config.gpu_device_info.gpu_compute_capability();
     const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
     if (debug_options.xla_gpu_enable_triton_gemm() && cuda_cc != nullptr &&
         cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) {
@@ -1155,7 +1155,8 @@ Status RunPostSchedulingCopyInsertion(
 
 StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
     HloModule* hlo_module, se::StreamExecutor* stream_exec) {
-  const GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
+  const se::DeviceDescription& gpu_device_info =
+      stream_exec->GetDeviceDescription();
   const int64_t scheduler_mem_limit =
       GetSchedulerMemoryLimit(hlo_module, gpu_device_info, pointer_size_);
   TF_RETURN_IF_ERROR(
@@ -1466,7 +1467,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   llvm::LLVMContext llvm_context;
 
-  const GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
+  const se::DeviceDescription& gpu_device_info =
+      stream_exec->GetDeviceDescription();
 
   if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
     HloCostAnalysis::Options cost_analysis_options{ShapeSizeBytesFunction()};
@@ -1610,8 +1612,9 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     const int64_t scheduler_mem_limit = GetSchedulerMemoryLimit(
         module.get(),
-        gpu_target_config != nullptr ? gpu_target_config->gpu_device_info
-                                     : GetGpuDeviceInfo(options.executor()),
+        gpu_target_config != nullptr
+            ? gpu_target_config->gpu_device_info
+            : options.executor()->GetDeviceDescription(),
         pointer_size_);
     TF_RETURN_IF_ERROR(
         ScheduleGpuModule(module.get(), pointer_size_, scheduler_mem_limit));
@@ -1633,7 +1636,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
           module.get(), &llvm_context, target_triple_, data_layout_,
           stream_exec->platform()->Name(), options.PlatformId(),
-          GetGpuDeviceInfo(stream_exec), GetCanShareBuffer(),
+          stream_exec->GetDeviceDescription(), GetCanShareBuffer(),
           BufferSizeBytesFunction(), &compile_module_results));
     }
     if (user_pre_optimization_hook_) {
@@ -1647,7 +1650,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           backend_result,
           CompileToTargetBinary(
               module->config(), std::move(compile_module_results.llvm_module),
-              gpu_target_config->gpu_device_info.compute_capability,
+              gpu_target_config->gpu_device_info.gpu_compute_capability(),
               options.executor(), {options.device_allocator()}, module.get()));
     } else {
       TF_ASSIGN_OR_RETURN(

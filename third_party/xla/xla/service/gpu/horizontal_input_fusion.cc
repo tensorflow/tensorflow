@@ -43,7 +43,7 @@ Shape GetInputShapeForMultiOutputFusion(const HloInstruction& instr) {
 class HorizontalInputFusionImpl {
  public:
   explicit HorizontalInputFusionImpl(HloComputation* computation,
-                                     const GpuDeviceInfo& d)
+                                     const se::DeviceDescription& d)
       : computation_(computation), device_info_(d) {}
 
   ~HorizontalInputFusionImpl() {}
@@ -52,7 +52,7 @@ class HorizontalInputFusionImpl {
 
  private:
   HloComputation* computation_;
-  const GpuDeviceInfo device_info_;
+  const se::DeviceDescription& device_info_;
 };  // HorizontalInputFusionImpl
 
 // Compares one-by-one the dimensions of `shape_a` and `shape_b` from left to

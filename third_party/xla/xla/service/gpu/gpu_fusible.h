@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/stream_executor/device_description.h"
 
 // TODO(b/112957171): Extract logic to determine fusibility of HLO ops from
 // GpuInstructionFusion, FusionMerger, and GpuMultiOutputFusion.
@@ -102,7 +102,7 @@ bool IsInputFusibleScatter(const HloInstruction& instr);
 // the producer, set consumer_producer_fusion to true to enable more fusion.
 FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
                                   const HloInstruction& instr2,
-                                  const GpuDeviceInfo& device_info,
+                                  const se::DeviceDescription& device_info,
                                   bool is_consumer_producer_fusion = false,
                                   FusionInfoCache* cache = nullptr);
 

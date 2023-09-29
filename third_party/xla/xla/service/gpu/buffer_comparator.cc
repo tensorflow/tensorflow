@@ -1067,22 +1067,8 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
                                    se::DeviceMemory<uint64_t>>(
           kernel_name, buffer_compare_ptx, compiled_ptx)));
 
-  GpuDeviceInfo gpu_device_info;
-  gpu_device_info.threads_per_block_limit =
-      executor->GetDeviceDescription().threads_per_block_limit();
-  gpu_device_info.threads_per_warp =
-      executor->GetDeviceDescription().threads_per_warp();
-  gpu_device_info.shared_memory_per_block =
-      executor->GetDeviceDescription().shared_memory_per_block();
-  gpu_device_info.threads_per_core_limit =
-      executor->GetDeviceDescription().threads_per_core_limit();
-  gpu_device_info.core_count = executor->GetDeviceDescription().core_count();
-  gpu_device_info.block_dim_limit_x =
-      executor->GetDeviceDescription().block_dim_limit().x;
-  gpu_device_info.block_dim_limit_y =
-      executor->GetDeviceDescription().block_dim_limit().y;
-  gpu_device_info.block_dim_limit_z =
-      executor->GetDeviceDescription().block_dim_limit().z;
+  const se::DeviceDescription& gpu_device_info =
+      executor->GetDeviceDescription();
 
   TF_ASSIGN_OR_RETURN(LaunchDimensions dim,
                       CalculateLaunchDimensions(buffer_shape, gpu_device_info));
