@@ -242,6 +242,7 @@ cc_test(
     linkopts = [
         "-lEGL",
         "-lGLESv2",
+        "-lm",
     ],
     tags = tf_gpu_tests_tags() + [
         "local",
@@ -475,6 +476,9 @@ cc_library(
 cc_test(
     name = "serialization_test",
     srcs = ["serialization_test.cc"],
+    linkopts = [
+        "-lm",
+    ],
     tags = [
         "local",
         "nobuilder",
