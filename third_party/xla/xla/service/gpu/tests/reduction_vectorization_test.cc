@@ -138,14 +138,12 @@ CHECK-COUNT-6: SHUFFLE
 CHECK-NOT: SHUFFLE
 )";
 
-  expected_optimized_llvm_ir =
-    absl::StrReplaceAll(expected_optimized_llvm_ir, {
-      {"X_THREAD", is_built_with_rocm_ ? 
-        "@llvm.amdgcn.workitem.id.x" :
-        "@llvm.nvvm.read.ptx.sreg.tid.x"},
-      {"SHUFFLE", is_built_with_rocm_ ?
-        "llvm.amdgcn.ds.bpermute" :
-       	"llvm.nvvm.shfl.sync.down.f32"}});
+  expected_optimized_llvm_ir = absl::StrReplaceAll(
+      expected_optimized_llvm_ir,
+      {{"X_THREAD", is_built_with_rocm_ ? "@llvm.amdgcn.workitem.id.x"
+                                        : "@llvm.nvvm.read.ptx.sreg.tid.x"},
+       {"SHUFFLE", is_built_with_rocm_ ? "llvm.amdgcn.ds.bpermute"
+                                       : "llvm.nvvm.shfl.sync.down.f32"}});
 
   CompileAndVerifyIr(hlo_text, expected_optimized_llvm_ir, true);
 

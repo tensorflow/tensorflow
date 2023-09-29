@@ -118,6 +118,7 @@ tsl::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithId(
 tsl::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithName(
     absl::string_view target, bool initialize_platform) {
   absl::MutexLock lock(&mu_);
+
   TF_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
   if (initialize_platform && !platform->Initialized()) {
     TF_RETURN_IF_ERROR(platform->Initialize({}));
