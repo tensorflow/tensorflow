@@ -561,6 +561,8 @@ try-import %workspace%/.bazelrc.user
 # Here are bazelrc configs for release builds
 # Build TensorFlow v2.
 test:release_base --test_size_filters=small,medium
+# TODO(b/294367488) disable after 2.15 brancut
+test:release_base --flaky_test_attempts=3
 
 # Target the AVX instruction set
 build:release_cpu_linux --config=avx_linux
