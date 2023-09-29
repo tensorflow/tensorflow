@@ -140,6 +140,8 @@ enum HostEventType {
   kASBSQueueSchedule,
   // TFRT related.
   kTfrtModelRun,
+  // Serving related.
+  kServingModelRun,
   // GPU related.
   kKernelLaunch,
   kKernelExecute,

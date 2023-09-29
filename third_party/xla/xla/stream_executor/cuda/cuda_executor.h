@@ -19,8 +19,8 @@ limitations under the License.
 // The notions from the StreamExecutor basically correspond to the CUDA streams
 // programming model provided by the libcuda.so driver APIs, so we don't have
 // to do much more than wrap the calls to the libraries appropriately.
-#ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_GPU_EXECUTOR_H_
-#define XLA_STREAM_EXECUTOR_CUDA_CUDA_GPU_EXECUTOR_H_
+#ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_EXECUTOR_H_
+#define XLA_STREAM_EXECUTOR_CUDA_CUDA_EXECUTOR_H_
 
 #include "xla/stream_executor/gpu/gpu_executor.h"
 
@@ -32,4 +32,4 @@ using CUDAExecutor = gpu::GpuExecutor;
 }  // namespace cuda
 }  // namespace stream_executor
 
-#endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_GPU_EXECUTOR_H_
+#endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_EXECUTOR_H_

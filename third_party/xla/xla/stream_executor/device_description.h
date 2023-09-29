@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -195,6 +196,9 @@ class RocmComputeCapability {
   };
 };
 
+using GpuComputeCapability =
+    std::variant<CudaComputeCapability, RocmComputeCapability>;
+
 // Data that describes the execution target of the StreamExecutor, in terms of
 // important logical parameters. These include dimensionality limits and
 // physical parameters of interest, such as number of cores present on the
@@ -319,6 +323,8 @@ class DeviceDescription {
   // be "gfx000" (which is an invalid gfx arch).
   RocmComputeCapability rocm_compute_capability() const;
 
+  GpuComputeCapability gpu_compute_capability() const;
+
   // Returns the maximum amount of shared memory present on a single core
   // (i.e. Streaming Multiprocessor on NVIDIA GPUs; Compute Unit for OpenCL
   // devices). Note that some devices, such as NVIDIA's have a configurable
@@ -378,11 +384,7 @@ class DeviceDescription {
 
   float clock_rate_ghz_;
 
-  // CUDA "CC" major value, -1 if not available.
-  CudaComputeCapability cuda_compute_capability_{-1, -1};
-
-  // ROCm gfx arch,  "gfx000" if not available.
-  RocmComputeCapability rocm_compute_capability_;
+  GpuComputeCapability gpu_compute_capability_;
 
   int numa_node_;
   int core_count_;
@@ -477,12 +479,12 @@ class DeviceDescriptionBuilder {
   }
 
   void set_cuda_compute_capability(int major, int minor) {
-    device_description_->cuda_compute_capability_ =
+    device_description_->gpu_compute_capability_ =
         CudaComputeCapability{major, minor};
   }
 
   void set_rocm_compute_capability(std::string gcn_arch_name) {
-    device_description_->rocm_compute_capability_ =
+    device_description_->gpu_compute_capability_ =
         RocmComputeCapability(gcn_arch_name);
   }
 

@@ -387,7 +387,7 @@ auto BcastConstScalarNear(double value) {
         // Not a very robust floating-point comparison, but good enough for our
         // purposes.
         std::optional<double> actual =
-            static_cast<const HloConstantInstruction *>(instr)
+            tensorflow::down_cast<const HloConstantInstruction *>(instr)
                 ->literal()
                 .GetAsDouble({});
         if (!actual.has_value()) return false;
@@ -464,7 +464,7 @@ auto OptionalBitcast(HloInstruction **optional_bitcast, Pattern pattern) {
 // when the output of the GEMM is requested in FP8 format.
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmRewriterVisitor(GpuVersion gpu_version)
+  explicit GemmRewriterVisitor(se::GpuComputeCapability gpu_version)
       : gpu_version_(gpu_version) {}
 
   Status HandleDot(HloInstruction *instr) override {
@@ -1528,7 +1528,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  GpuVersion gpu_version_;
+  se::GpuComputeCapability gpu_version_;
 
   // Choose cublas or cublasLt for the target of the custom call that instr will
   // be rewritten into.
@@ -1846,8 +1846,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                         MatrixIsColumnMajor(instr, gemm_backend_config));
 
     if (std::holds_alternative<se::RocmComputeCapability>(gpu_version_)) {
-      if (!output_is_column_major) return false;
-
       auto rocm_compute_capability_ =
           std::get<se::RocmComputeCapability>(gpu_version_);
 
@@ -1939,7 +1937,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 };
 
 StatusOr<bool> RunOnComputation(HloComputation *computation,
-                                GpuVersion gpu_version) {
+                                se::GpuComputeCapability gpu_version) {
   GemmRewriterVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
@@ -1947,7 +1945,7 @@ StatusOr<bool> RunOnComputation(HloComputation *computation,
 
 }  // anonymous namespace
 
-GemmRewriter::GemmRewriter(GpuVersion gpu_version)
+GemmRewriter::GemmRewriter(se::GpuComputeCapability gpu_version)
     : gpu_version_(gpu_version) {}
 
 StatusOr<bool> GemmRewriter::Run(

@@ -149,6 +149,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cudnn_version",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@local_config_cuda//cuda:cudnn_header",
         "//tsl/platform:dso_loader",
         "//tsl/platform:env",

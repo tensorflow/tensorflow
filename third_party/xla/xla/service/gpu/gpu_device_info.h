@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 #include <variant>
 
-#include "xla/service/gpu/gpu_types.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -30,7 +30,7 @@ namespace gpu {
 // se::DeviceDescription, but separating these out lets us write code that does
 // not depend on stream executor.
 struct GpuDeviceInfo {
-  GpuVersion compute_capability;
+  stream_executor::GpuComputeCapability compute_capability;
   int threads_per_block_limit;
   int threads_per_warp;
   int shared_memory_per_block;

@@ -21,11 +21,6 @@ the constructors and utilities individually can import this file:
 import tensorflow as tf
 """
 
-import ctypes
-import importlib
-import sys
-import traceback
-
 # We aim to keep this file minimal and ideally remove completely.
 # If you are adding a new file with @tf_export decorators,
 # import it in modules_with_exports.py instead.

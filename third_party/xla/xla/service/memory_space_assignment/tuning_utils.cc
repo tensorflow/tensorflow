@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/memory_space_assignment/memory_space_assignment_tuning_utils.h"
+#include "xla/service/memory_space_assignment/tuning_utils.h"
 
-#include "xla/service/memory_space_assignment/memory_space_assignment_utils.h"
 namespace xla {
 
 namespace memory_space_assignment {

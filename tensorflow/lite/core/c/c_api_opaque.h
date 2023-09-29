@@ -92,6 +92,26 @@ TFL_CAPI_EXPORT extern void* TfLiteOpaqueTensorData(
 TFL_CAPI_EXPORT extern TfLiteAllocationType TfLiteOpaqueTensorGetAllocationType(
     const TfLiteOpaqueTensor* opaque_tensor);
 
+/// Returns a tensor data allocation strategy.
+TFL_CAPI_EXPORT extern TfLiteAllocationStrategy
+TfLiteOpaqueTensorGetAllocationStrategy(const TfLiteOpaqueTensor* t);
+
+/// Returns how stable a tensor data buffer address is across runs.
+TFL_CAPI_EXPORT extern TfLiteRunStability
+TfLiteOpaqueTensorGetBufferAddressStability(const TfLiteOpaqueTensor* t);
+
+/// Returns how stable a tensor data values are across runs.
+TFL_CAPI_EXPORT extern TfLiteRunStability TfLiteOpaqueTensorGetDataStability(
+    const TfLiteOpaqueTensor* t);
+
+/// Returns the operation step when the data of a tensor is populated.
+TFL_CAPI_EXPORT extern TfLiteRunStep TfLiteOpaqueTensorGetDataKnownStep(
+    const TfLiteOpaqueTensor* t);
+
+/// Returns the operation step when the shape of a tensor is computed.
+TFL_CAPI_EXPORT extern TfLiteRunStep TfLiteOpaqueTensorGetShapeKnownStep(
+    const TfLiteOpaqueTensor* t);
+
 /// Returns the (null-terminated) name of the tensor.
 TFL_CAPI_EXPORT extern const char* TfLiteOpaqueTensorName(
     const TfLiteOpaqueTensor* opaque_tensor);

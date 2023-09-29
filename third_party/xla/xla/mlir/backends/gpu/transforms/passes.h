@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "xla/service/gpu/gpu_types.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -47,7 +47,7 @@ struct GpuPipelineOpts {
   int32_t gpu_graph_level = 0;
   int32_t min_graph_size = 0;
   bool enable_concurrent_region = false;
-  GpuVersion compute_capability;
+  stream_executor::GpuComputeCapability compute_capability;
 };
 
 // Populate passes that lower MLIR modules from a combination of LMHLO and

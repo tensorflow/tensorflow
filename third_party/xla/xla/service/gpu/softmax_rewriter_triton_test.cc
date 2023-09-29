@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/errors.h"
 
@@ -39,8 +39,8 @@ namespace m = ::xla::match;
 // Wrapper around SoftmaxRewriterTriton(gpu_version).Run(module) that finds
 // and fuses as many diamond chains as possible without invoking any kind of
 // cost analysis.
-StatusOr<bool> SoftmaxRewriterTritonMatchAndRewrite(GpuVersion gpu_version,
-                                                    HloModule* module) {
+StatusOr<bool> SoftmaxRewriterTritonMatchAndRewrite(
+    se::GpuComputeCapability gpu_version, HloModule* module) {
   CHECK_NE(module, nullptr);
   SoftmaxRewriterTriton softmax_rewriter_triton(gpu_version);
   std::vector<DiamondChainDescriptor> diamond_chains =
@@ -61,12 +61,12 @@ class SoftmaxRewriterTritonTest
       public ::testing::WithParamInterface<PrimitiveType> {
  public:
   void SetUp() override {
-    gpu_version_ = GpuVersion{
+    gpu_version_ = se::GpuComputeCapability{
         se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
   }
 
  protected:
-  GpuVersion gpu_version_;
+  se::GpuComputeCapability gpu_version_;
 };
 
 TEST_P(SoftmaxRewriterTritonTest, CanFuseExactSoftmax) {
@@ -1595,7 +1595,6 @@ ENTRY main {
 
 TEST_P(
     SoftmaxRewriterTritonTest,
-
     CanFuseBinaryElementwiseWhereTheFirstOperandIsASplatConstantWithinDiamond) {
   PrimitiveType data_type = GetParam();
   const std::string hlo_string_template = R"(
@@ -1663,33 +1662,40 @@ ENTRY main {
               GmockMatch(m::Fusion(m::Parameter())));
 }
 
-TEST_F(
-    SoftmaxRewriterTritonTest,
-    DoesNotFuseBinaryElementwiseOperationWhereOneOperandIsASharedSplatProducer) {  // NOLINT(whitespace/line_length)
-  const std::string hlo_string = R"(
+TEST_P(SoftmaxRewriterTritonTest,
+       CanFuseBinaryElementwiseOperationWhereOneOperandIsASharedSplatProducer) {
+  PrimitiveType data_type = GetParam();
+  const std::string hlo_string_template = R"(
 HloModule nonfusible_diamond
-add_computation {
-  arg_0.1 = f32[] parameter(0)
-  arg_1.1 = f32[] parameter(1)
-  ROOT add = f32[] add(arg_0.1, arg_1.1)
+max_computation {
+  arg_0 = $0[] parameter(0)
+  arg_1 = $0[] parameter(1)
+  ROOT max = $0[] maximum(arg_0, arg_1)
 }
 ENTRY main {
-  param_0 = f32[127,125]{1,0} parameter(0)
-  constant.2 = f32[] constant(0.333333343)
-  broadcast_splat = f32[127,125]{1,0} broadcast(constant.2), dimensions={}
-  param_1 = f32[127,125]{1,0} parameter(1)
-  multiply_splat = f32[127,125]{1,0} multiply(broadcast_splat, param_1)
-  multiply = f32[127,125]{1,0} multiply(param_0, broadcast_splat)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(multiply, constant_neg_inf), dimensions={1}, to_apply=add_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  ROOT subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+  param_0 = $0[127,125]{1,0} parameter(0)
+  constant_2 = $0[] constant(0.333333343)
+  broadcast_splat = $0[127,125]{1,0} broadcast(constant_2), dimensions={}
+  param_1 = $0[127,125]{1,0} parameter(1)
+  multiply_splat = $0[127,125]{1,0} multiply(broadcast_splat, param_1)
+  multiply = $0[127,125]{1,0} multiply(param_0, broadcast_splat)
+  constant_neg_inf = $0[] constant(-inf)
+  reduce = $0[127]{0} reduce(multiply, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = $0[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = $0[127,125]{1,0} subtract(param_0, broadcast)
 }
 )";
+  const std::string hlo_string =
+      absl::Substitute(hlo_string_template,
+                       primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  VLOG(2) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter())));
 }
 
 TEST_F(

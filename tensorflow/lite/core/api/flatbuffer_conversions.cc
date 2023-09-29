@@ -881,7 +881,38 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_GATHER: {
       return ParseStablehloGather(op, error_reporter, allocator, builtin_data);
     }
-
+    case BuiltinOperator_REDUCE_WINDOW: {
+      auto params = safe_allocator.Allocate<TfLiteReduceWindowParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* reduce_params =
+              op->builtin_options_2_as_ReduceWindowOptions()) {
+        switch (reduce_params->reduce_function()) {
+          case ReduceWindowFunction_ADD:
+            params->reduce_function = TfLiteReduceWindowFunctionAdd;
+            break;
+          case ReduceWindowFunction_MUL:
+            params->reduce_function = TfLiteReduceWindowFunctionMul;
+            break;
+          case ReduceWindowFunction_MINIMUM:
+            params->reduce_function = TfLiteReduceWindowFunctionMin;
+            break;
+          case ReduceWindowFunction_MAXIMUM:
+            params->reduce_function = TfLiteReduceWindowFunctionMax;
+            break;
+          case ReduceWindowFunction_ALL:
+            params->reduce_function = TfLiteReduceWindowFunctionAll;
+            break;
+          case ReduceWindowFunction_ANY:
+            params->reduce_function = TfLiteReduceWindowFunctionAny;
+            break;
+          case ReduceWindowFunction_UNSUPPORTED:
+          default:
+            return kTfLiteError;
+        }
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
     // TODO: skip param parsing for now since ops below don't have kernels
     case BuiltinOperator_STABLEHLO_SLICE:
     case BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM:

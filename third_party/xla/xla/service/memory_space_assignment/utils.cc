@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/memory_space_assignment/memory_space_assignment_utils.h"
+#include "xla/service/memory_space_assignment/utils.h"
 
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 
 namespace xla {
+namespace memory_space_assignment {
 
 bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
     const HloValue* value) {
@@ -90,4 +91,5 @@ bool MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
          absl::c_all_of(interval.colocations, IsValueAllowedInAlternateMemory);
 }
 
+}  // namespace memory_space_assignment
 }  // namespace xla

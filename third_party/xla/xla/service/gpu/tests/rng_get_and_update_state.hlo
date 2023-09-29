@@ -1,6 +1,6 @@
 // RUN: hlo_to_llvm_ir %s | FileCheck %s
 
-HloModule TestModule
+HloModule TestModule, is_scheduled=true
 
 // CHECK-LABEL: entry:
 // CHECK:         %[[VAL_0:.*]] = load i128, ptr addrspace(1) @rng_state, align {{.*}}

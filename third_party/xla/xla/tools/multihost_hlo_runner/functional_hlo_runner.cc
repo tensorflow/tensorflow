@@ -241,6 +241,16 @@ StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient() {
       /*asynchronous=*/true, GpuAllocatorConfig(), /*node_id=*/0);
 }
 
+StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateMockGpuClient(
+    int num_nodes) {
+  return GetStreamExecutorGpuClient(
+      /*asynchronous=*/true, GpuAllocatorConfig(), /*node_id=*/0,
+      /*num_nodes=*/num_nodes, /*allowed_devices=*/std::nullopt,
+      /*platform_name=*/std::nullopt,
+      /*should_stage_host_to_device_transfers=*/true,
+      /*kv_get=*/nullptr, /*kv_put=*/nullptr, /*enable_mock_nccl=*/true);
+}
+
 StatusOr<ExecutionOptions> FunctionalHloRunner::LoadExecutionOptions(
     absl::string_view path) {
   ExecutionOptions execution_options;

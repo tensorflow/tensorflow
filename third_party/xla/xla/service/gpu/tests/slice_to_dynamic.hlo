@@ -65,7 +65,7 @@
 // CHECK:         br label %[[VAL_29]]
 
 
-HloModule SliceToDynamic
+HloModule SliceToDynamic, is_scheduled=true
 
 ENTRY main {
   %param = s32[2,2,2]{2,0,1} parameter(0)

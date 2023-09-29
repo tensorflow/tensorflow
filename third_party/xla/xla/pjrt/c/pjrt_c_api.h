@@ -1565,9 +1565,9 @@ struct PJRT_Buffer_CopyToDevice_Args {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_CopyToDevice_Args, dst_buffer);
 
-// Copies the buffer to device `dst_device`. Caller is responsible for freeing
-// returned `dst_buffer` with PJRT_Buffer_Destroy. Returns an error if the
-// buffer is already on `dst_device`.
+// Copies the buffer to device `dst_device` within the same client. Caller is
+// responsible for freeing returned `dst_buffer` with PJRT_Buffer_Destroy.
+// Returns an error if the buffer is already on `dst_device`.
 typedef PJRT_Error* PJRT_Buffer_CopyToDevice(
     PJRT_Buffer_CopyToDevice_Args* args);
 
@@ -1580,9 +1580,9 @@ struct PJRT_Buffer_CopyToMemory_Args {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_CopyToMemory_Args, dst_buffer);
 
-// Copies the buffer to memory `dst_memory`. Caller is responsible for freeing
-// returned `dst_buffer` with PJRT_Buffer_Destroy. Returns an error if the
-// buffer is already on `dst_memory`.
+// Copies the buffer to memory `dst_memory` within the same client. Caller is
+// responsible for freeing returned `dst_buffer` with PJRT_Buffer_Destroy.
+// Returns an error if the buffer is already on `dst_memory`.
 typedef PJRT_Error* PJRT_Buffer_CopyToMemory(
     PJRT_Buffer_CopyToMemory_Args* args);
 

@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -72,16 +71,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-int GetFusionLevel(const HloInstruction& hlo, const GpuVersion gpu_version) {
-  int level =
-      hlo.GetModule()->config().debug_options().xla_gpu_triton_fusion_level();
-  if (!std::get<se::CudaComputeCapability>(gpu_version)
-           .IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    level = std::min(level, 1);
-  }
-  return level;
-}
 
 bool HasDivisibleSuffixAllowingSplit(const absl::Span<int64_t const> span,
                                      const int64_t divisor) {
@@ -176,8 +165,8 @@ bool IsDistributiveOverAddition(const HloInstruction& hlo) {
   return false;
 }
 
-FusionDecision RequireTritonFusibleConvert(const HloInstruction* input,
-                                           GpuVersion gpu_version) {
+FusionDecision RequireTritonFusibleConvert(
+    const HloInstruction* input, se::GpuComputeCapability gpu_version) {
   // TODO(b/266862494): Can pick up almost any
   // convert, but if it's reducing the data volume it should rather be fused
   // to the output of the producer kernel. However not all operations support
@@ -448,7 +437,7 @@ class FusionContext {
       const HloInstruction& hlo, bool as_input,
       absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
           old_to_new_mapping,
-      GpuVersion gpu_version) const;
+      se::GpuComputeCapability gpu_version) const;
   // Add dimension orders from `updates` to `dim_orders_` and update the
   // splittable dimension ratio if all of them are compatible.
   bool MergeUpdates(const DimOrderUpdates& updates);
@@ -456,7 +445,7 @@ class FusionContext {
   // If an input is not fusible stop there and make a parameter of the new
   // fusion, otherwise put it onto stack and check its own inputs first.
   void TryToFuseWithInputsRecursively(
-      HloInstruction& root, GpuVersion gpu_version,
+      HloInstruction& root, se::GpuComputeCapability gpu_version,
       absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
           old_to_new_mapping,
       std::vector<HloInstruction*>& fusion_inputs,
@@ -1086,7 +1075,13 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
     const HloInstruction& hlo, bool as_input,
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
         old_to_new_mapping,
-    const GpuVersion gpu_version) const {
+    const se::GpuComputeCapability gpu_version) const {
+  int fusion_level =
+      hlo.GetModule()->config().debug_options().xla_gpu_triton_fusion_level();
+  if (!std::get<se::CudaComputeCapability>(gpu_version)
+           .IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    fusion_level = std::min(fusion_level, 1);
+  }
   if (hlo.opcode() == HloOpcode::kTuple ||
       hlo.opcode() == HloOpcode::kGetTupleElement) {
     return "Unsupported instruction.";
@@ -1107,7 +1102,7 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
     return "Unsupported output data type.";
   }
   if (as_input) {
-    if (GetFusionLevel(hlo, gpu_version) < 2) {
+    if (fusion_level < 2) {
       if (hlo.opcode() == HloOpcode::kConvert) {
         if (FusionDecision decision =
                 RequireTritonFusibleConvert(&hlo, gpu_version);
@@ -1123,7 +1118,7 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
       }
     }
   } else {
-    if (GetFusionLevel(hlo, gpu_version) < 2) {
+    if (fusion_level < 2) {
       return "Skipping fusing outputs at low fusion levels.";
     }
     for (const HloInstruction* operand : hlo.operands()) {
@@ -1228,7 +1223,7 @@ bool FusionContext::MergeUpdates(const DimOrderUpdates& updates) {
 }
 
 void FusionContext::TryToFuseWithInputsRecursively(
-    HloInstruction& root, const GpuVersion gpu_version,
+    HloInstruction& root, const se::GpuComputeCapability gpu_version,
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
         old_to_new_mapping,
     std::vector<HloInstruction*>& fusion_inputs,
@@ -1243,14 +1238,21 @@ void FusionContext::TryToFuseWithInputsRecursively(
   absl::flat_hash_set<const HloInstruction*> enqueued;
   std::queue<HloInstruction*> to_visit;
   to_visit.push(&root);
-  while (!to_visit.empty()) {
+  int num_requeued = 0;
+  while (to_visit.size() > num_requeued) {
     HloInstruction* hlo = to_visit.front();
     to_visit.pop();
-    // Limit the total number of fusion parameters.
+    // Watch the total number of fusion parameters.
     if (inputs.size() >= TritonFusionAnalysis::kMaxParameterPerScope &&
         NumAddedParameters(*hlo) > 0) {
+      // Re-queue: the number of parameters may go down when other instructions
+      // are processed.
+      to_visit.push(hlo);
+      // Prevent infinite loops.
+      ++num_requeued;
       continue;
     }
+    num_requeued = 0;
     const DimOrderUpdatesOrError result = AnalyzeForFusion(
         *hlo, /*as_input=*/true, old_to_new_mapping, gpu_version);
     if (!std::holds_alternative<DimOrderUpdates>(result) ||
@@ -1297,7 +1299,7 @@ void FusionContext::TryToFuseWithInputsRecursively(
 // call to this fusion. fusion_output_ptr (if not nullptr) gets assigned the
 // original instruction that has to be replaced by the call to the fusion.
 StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
-                                 const GpuVersion gpu_version,
+                                 const se::GpuComputeCapability gpu_version,
                                  HloComputation::Builder& builder,
                                  std::vector<HloInstruction*>& fusion_inputs,
                                  HloInstruction** fusion_output_ptr) {
@@ -1373,14 +1375,10 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
   if (dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any()) {
     return FusionDecision{};
   }
-
-  absl::flat_hash_set<HloOpcode> triggers{
-      HloOpcode::kConvert, HloOpcode::kSlice, HloOpcode::kTranspose};
-  if (GetFusionLevel(dot, gpu_version) >= 2) {
-    triggers.insert(HloOpcode::kCopy);
-  }
   for (const auto& iter : old_to_new_mapping) {
-    if (triggers.contains(iter.second->opcode())) {
+    if (iter.second->opcode() == HloOpcode::kConvert ||
+        iter.second->opcode() == HloOpcode::kSlice ||
+        iter.second->opcode() == HloOpcode::kTranspose) {
       return FusionDecision{};
     }
   }
@@ -1391,7 +1389,7 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
 // operations that can target the triton GEMM emitter.
 class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmRewriterTritonVisitor(const GpuVersion gpu_version)
+  explicit GemmRewriterTritonVisitor(const se::GpuComputeCapability gpu_version)
       : gpu_version_(gpu_version) {}
   // Checks that a dot() should be targeting the triton GEMM emitter;
   // if so - fuses all its compatible inputs and outputs as a new computation
@@ -1445,11 +1443,11 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  GpuVersion gpu_version_;
+  se::GpuComputeCapability gpu_version_;
 };
 
 StatusOr<bool> RunOnComputation(HloComputation* computation,
-                                GpuVersion gpu_version) {
+                                se::GpuComputeCapability gpu_version) {
   GemmRewriterTritonVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
@@ -1760,7 +1758,8 @@ Status FusionContext::PropagateDimensionOrdersToParameters(
 }  // anonymous namespace
 
 // Data types that are supported by the Triton emitters.
-bool IsTritonSupportedDataType(PrimitiveType type, GpuVersion gpu_version) {
+bool IsTritonSupportedDataType(PrimitiveType type,
+                               se::GpuComputeCapability gpu_version) {
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(gpu_version);
   switch (type) {
@@ -1973,7 +1972,7 @@ const DimIterationSpec* TritonFusionAnalysis::IterSpec(
 }
 
 FusionDecision CanTritonHandleGEMM(const HloInstruction& dot,
-                                   const GpuVersion gpu_version) {
+                                   const se::GpuComputeCapability gpu_version) {
   if (dot.opcode() != HloOpcode::kDot ||
       absl::c_any_of(dot.precision_config().operand_precision(),
                      [](int x) { return x != PrecisionConfig::DEFAULT; })) {
@@ -2027,7 +2026,8 @@ FusionDecision CanTritonHandleGEMM(const HloInstruction& dot,
   return FusionDecision{};
 }
 
-bool ShouldTritonHandleGEMM(HloInstruction& dot, const GpuVersion gpu_version) {
+bool ShouldTritonHandleGEMM(HloInstruction& dot,
+                            const se::GpuComputeCapability gpu_version) {
   std::vector<HloInstruction*> fusion_inputs;
   HloComputation::Builder builder("disposable");
   return FuseDot(dot, gpu_version, builder, fusion_inputs,

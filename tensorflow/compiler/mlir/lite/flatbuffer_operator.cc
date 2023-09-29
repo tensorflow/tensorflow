@@ -635,6 +635,23 @@ void mlir::BuiltinOptions2ToAttributes(
 
     return;
   }
+  if (const auto* op = op_union.AsStablehloRngBitGeneratorOptions()) {
+    mlir::stablehlo::RngAlgorithm algorithm;
+    switch (op->algorithm) {
+      case tflite::RngAlgorithm_THREEFRY:
+        algorithm = mlir::stablehlo::RngAlgorithm::THREE_FRY;
+        break;
+      case tflite::RngAlgorithm_PHILOX:
+        algorithm = mlir::stablehlo::RngAlgorithm::PHILOX;
+        break;
+      case tflite::RngAlgorithm_DEFAULT:
+        algorithm = mlir::stablehlo::RngAlgorithm::DEFAULT;
+    }
+    auto attr =
+        mlir::stablehlo::RngAlgorithmAttr::get(builder.getContext(), algorithm);
+    attributes.emplace_back(builder.getNamedAttr("rng_algorithm", attr));
+    return;
+  }
 }
 
 // Pull in FlatBuffer writers for TFLite generated using TableGen

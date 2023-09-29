@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#include "absl/container/flat_hash_map.h"
 #include "third_party/gpus/cudnn/cudnn.h"
 #include "tsl/platform/dso_loader.h"
 #include "tsl/platform/env.h"
@@ -53,8 +55,24 @@ constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char*);
 
 extern "C" {
 
+static size_t GetVersionStub() { return 0; }
+
+static const char* GetErrorStringStub() {
+  return "cuDNN could not be found or could not be loaded.";
+}
+
 static cudnnStatus_t GetSymbolNotFoundError() {
   return CUDNN_STATUS_INTERNAL_ERROR;
+}
+
+static absl::flat_hash_map<std::string_view, void*> const& SymbolOverrides() {
+  static auto* syms = new absl::flat_hash_map<std::string_view, void*>{
+      {"cudnnGetVersion", reinterpret_cast<void*>(&GetVersionStub)},
+      {"cudnnGetMaxDeviceVersion", reinterpret_cast<void*>(&GetVersionStub)},
+      {"cudnnGetCudartVersion", reinterpret_cast<void*>(&GetVersionStub)},
+      {"cudnnGetErrorString", reinterpret_cast<void*>(&GetErrorStringStub)},
+  };
+  return *syms;
 }
 
 extern void* _cudnn_tramp_table[];
@@ -64,7 +82,13 @@ void _cudnn_tramp_resolve(int i) {
   CHECK_LT(i, kNumSymbols);
   void* p = LoadSymbol(kSymbols[i]);
   if (!p) {
-    p = reinterpret_cast<void*>(&GetSymbolNotFoundError);
+    const auto& overrides = SymbolOverrides();
+    auto it = overrides.find(kSymbols[i]);
+    if (it == overrides.end()) {
+      p = reinterpret_cast<void*>(&GetSymbolNotFoundError);
+    } else {
+      p = it->second;
+    }
   }
   _cudnn_tramp_table[i] = p;
 }

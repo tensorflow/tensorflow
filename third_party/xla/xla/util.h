@@ -23,6 +23,7 @@ limitations under the License.
 #include <array>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/math/math_util.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -612,10 +615,10 @@ T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
   return absl::bit_cast<T>(rep);
 }
 
-// Utility for performing a static_cast<> on a std::unique_ptr<>.
+// Utility for performing a down_cast<> on a std::unique_ptr<>.
 template <typename Derived, typename Base>
-std::unique_ptr<Derived> unique_ptr_static_cast(std::unique_ptr<Base> ptr) {
-  return std::unique_ptr<Derived>(static_cast<Derived*>(ptr.release()));
+std::unique_ptr<Derived> unique_ptr_down_cast(std::unique_ptr<Base> ptr) {
+  return absl::WrapUnique(tensorflow::down_cast<Derived*>(ptr.release()));
 }
 
 int64_t Product(absl::Span<const int64_t> xs);

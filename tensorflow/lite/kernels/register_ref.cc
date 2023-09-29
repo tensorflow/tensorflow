@@ -187,6 +187,7 @@ TfLiteRegistration* Register_RIGHT_SHIFT();
 TfLiteRegistration* Register_STABLEHLO_SCATTER();
 TfLiteRegistration* Register_DILATE();
 TfLiteRegistration* Register_STABLEHLO_RNG_BIT_GENERATOR();
+TfLiteRegistration* Register_REDUCE_WINDOW();
 
 namespace {
 
@@ -543,6 +544,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_DILATE, Register_DILATE());
   AddBuiltin(BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR,
              Register_STABLEHLO_RNG_BIT_GENERATOR());
+  AddBuiltin(BuiltinOperator_REDUCE_WINDOW, Register_REDUCE_WINDOW());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

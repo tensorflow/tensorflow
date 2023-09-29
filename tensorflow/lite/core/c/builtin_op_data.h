@@ -605,6 +605,20 @@ typedef struct {
   bool indices_are_sorted;
 } TfLiteStablehloGatherParams;
 
+enum TfLiteReduceWindowFunction {
+  TfLiteReduceWindowFunctionUnsupported,
+  TfLiteReduceWindowFunctionAdd,
+  TfLiteReduceWindowFunctionMul,
+  TfLiteReduceWindowFunctionMin,
+  TfLiteReduceWindowFunctionMax,
+  TfLiteReduceWindowFunctionAll,
+  TfLiteReduceWindowFunctionAny
+};
+
+typedef struct {
+  enum TfLiteReduceWindowFunction reduce_function;
+} TfLiteReduceWindowParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

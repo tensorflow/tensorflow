@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -743,11 +743,11 @@ $L__BB3_8:
 
 $L__BB4_3:
 	{
-	.reg .b32 %temp; 
+	.reg .b32 %temp;
 	mov.b64 	{%r7, %temp}, %fd2;
 	}
 	{
-	.reg .b32 %temp; 
+	.reg .b32 %temp;
 	mov.b64 	{%temp, %r1}, %fd2;
 	}
 	and.b32  	%r8, %r1, 2147483647;
@@ -757,11 +757,11 @@ $L__BB4_3:
 	@%p6 bra 	$L__BB4_6;
 
 	{
-	.reg .b32 %temp; 
+	.reg .b32 %temp;
 	mov.b64 	{%r9, %temp}, %fd1;
 	}
 	{
-	.reg .b32 %temp; 
+	.reg .b32 %temp;
 	mov.b64 	{%temp, %r2}, %fd1;
 	}
 	and.b32  	%r10, %r2, 2147483647;

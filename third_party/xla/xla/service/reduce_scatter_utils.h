@@ -38,8 +38,7 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     int64_t num_replicas, bool allow_multiple_split_dims = false,
     bool allow_intervening_reshape = false, int64_t min_rank = 1,
     HloPredicate match_partition_id = HloPredicateIsOp<HloOpcode::kPartitionId>,
-    HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>,
-    bool true_scalar_for_offset_computation = false);
+    HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>);
 
 }  // namespace xla
 

@@ -95,12 +95,15 @@ limitations under the License.
 #include "xla/service/gpu/copy_fusion.h"
 #include "xla/service/gpu/dot_dimension_sorter.h"
 #include "xla/service/gpu/fusion_pipeline.h"
+#include "xla/service/gpu/fusion_wrapper.h"
 #include "xla/service/gpu/gemm_broadcast_folding_rewriter.h"
 #include "xla/service/gpu/gemm_rewriter.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
+#include "xla/service/gpu/gpu_all_gather_optimizer.h"
 #include "xla/service/gpu/gpu_async_collective_annotator.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_conv_rewriter.h"
+#include "xla/service/gpu/gpu_convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -112,7 +115,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "xla/service/gpu/gpu_scatter_expander.h"
 #include "xla/service/gpu/gpu_shape_verifier.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/gpu/hlo_fusion_stats.h"
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -141,12 +143,14 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_fix.h"
 #include "xla/service/hlo_pass_pipeline.h"
+#include "xla/service/hlo_rematerialization.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_normalization.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/logistic_expander.h"
 #include "xla/service/loop_schedule_linearizer.h"
 #include "xla/service/operand_upcaster.h"
+#include "xla/service/optimization_barrier_expander.h"
 #include "xla/service/qr_expander.h"
 #include "xla/service/real_imag_expander.h"
 #include "xla/service/reduce_decomposer.h"
@@ -182,7 +186,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -613,6 +616,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     HloPassPipeline collectives_pipeline("collective-optimizations");
     collectives_pipeline.AddPass<AllReduceFolder>();
     collectives_pipeline.AddPass<ReduceScatterCreator>();
+    collectives_pipeline.AddPass<AllGatherOptimizer>();
     collectives_pipeline.AddPass<AllReduceReassociate>(
         debug_options.xla_gpu_enable_reassociation_for_converted_ar());
     collectives_pipeline.AddPass<ReduceScatterReassociate>();
@@ -691,7 +695,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
   // Run target-specific HLO optimization passes for convolution
   // canonicalization.
-  GpuVersion gpu_version = gpu_target_config.gpu_device_info.compute_capability;
+  se::GpuComputeCapability gpu_version =
+      gpu_target_config.gpu_device_info.compute_capability;
   se::dnn::VersionInfo dnn_version = gpu_target_config.dnn_version_info;
   if (stream_exec != nullptr) {
     gpu_version = GetGpuVersion(stream_exec);
@@ -893,10 +898,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     tsl::thread::ThreadPool* thread_pool) {
   // Constants:
   const DebugOptions& debug_options = hlo_module->config().debug_options();
-  const GpuVersion gpu_version =
+  const se::GpuComputeCapability gpu_version =
       gpu_target_config.gpu_device_info.compute_capability;
-  const se::CudaComputeCapability* const cuda_cc =
-      std::get_if<se::CudaComputeCapability>(&gpu_version);
   const AlgebraicSimplifierOptions simplifier_options = [&] {
     AlgebraicSimplifierOptions opts;
     opts.set_supports_non_canonical_dots(false);
@@ -953,6 +956,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
     // Rewrite GEMMs into custom calls.
+    se::GpuComputeCapability gpu_version =
+        gpu_target_config.gpu_device_info.compute_capability;
+    const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
     if (debug_options.xla_gpu_enable_triton_gemm() && cuda_cc != nullptr &&
         cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) {
       pipeline.AddPass<GemmRewriterTriton>(gpu_version);
@@ -1193,7 +1199,7 @@ static void NullDiagnosticHandler(const llvm::DiagnosticInfo& diag_info,
 StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                                    std::unique_ptr<llvm::Module> llvm_module,
-                                   GpuVersion gpu_version,
+                                   se::GpuComputeCapability gpu_version,
                                    se::StreamExecutor* stream_exec,
                                    const CompileOptions& options,
                                    const HloModule* debug_module) {
@@ -1478,11 +1484,18 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     }
   }
 
+  const int64_t scheduler_mem_limit =
+      GetSchedulerMemoryLimit(module.get(), gpu_device_info, pointer_size_);
+  TF_RETURN_IF_ERROR(
+      ScheduleGpuModule(module.get(), pointer_size_, scheduler_mem_limit));
+  TF_RETURN_IF_ERROR(
+      RunPostSchedulingPipelines(module.get(), scheduler_mem_limit));
+
   CompileModuleResults compile_module_results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       module.get(), &llvm_context, target_triple_, data_layout_,
       stream_exec->platform()->Name(), stream_exec->platform()->id(),
-      gpu_device_info, GetCanShareBuffer(), pointer_size_,
+      gpu_device_info, GetCanShareBuffer(), BufferSizeBytesFunction(),
       &compile_module_results, stream_exec));
 
   if (user_pre_optimization_hook_) {
@@ -1595,6 +1608,16 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
   for (const auto& module : modules) {
     llvm::LLVMContext llvm_context;
 
+    const int64_t scheduler_mem_limit = GetSchedulerMemoryLimit(
+        module.get(),
+        gpu_target_config != nullptr ? gpu_target_config->gpu_device_info
+                                     : GetGpuDeviceInfo(options.executor()),
+        pointer_size_);
+    TF_RETURN_IF_ERROR(
+        ScheduleGpuModule(module.get(), pointer_size_, scheduler_mem_limit));
+    TF_RETURN_IF_ERROR(
+        RunPostSchedulingPipelines(module.get(), scheduler_mem_limit));
+
     // Compile the module
     CompileModuleResults compile_module_results;
 
@@ -1603,15 +1626,15 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           module.get(), &llvm_context, target_triple_, data_layout_,
           gpu_target_config->platform_name, options.PlatformId(),
           gpu_target_config->gpu_device_info, GetCanShareBuffer(),
-          pointer_size_, &compile_module_results));
+          BufferSizeBytesFunction(), &compile_module_results));
     } else {
       CHECK(options.executor() != nullptr);
       auto stream_exec = options.executor();
       TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
           module.get(), &llvm_context, target_triple_, data_layout_,
           stream_exec->platform()->Name(), options.PlatformId(),
-          GetGpuDeviceInfo(stream_exec), GetCanShareBuffer(), pointer_size_,
-          &compile_module_results));
+          GetGpuDeviceInfo(stream_exec), GetCanShareBuffer(),
+          BufferSizeBytesFunction(), &compile_module_results));
     }
     if (user_pre_optimization_hook_) {
       user_pre_optimization_hook_(*compile_module_results.llvm_module);
@@ -1722,6 +1745,62 @@ StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
           module_proto, obj_file, mlir_module, entry_func_attrs, text, binary,
           gpu_executable->constants());
   return result;
+}
+
+Status GpuCompiler::RunPostSchedulingPipelines(
+    HloModule* module, int64_t scheduler_mem_limit) const {
+  TF_RETURN_IF_ERROR(
+      RunPostSchedulingCopyInsertion(module, GetCanShareBuffer()));
+  {
+    HloPassPipeline pipeline("post-scheduling-passes");
+
+    HloPredicate is_nop =
+        HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant,
+                         HloOpcode::kBitcast, HloOpcode::kGetTupleElement>;
+    pipeline.AddPass<GpuConvertAsyncCollectivesToSync>(is_nop);
+    pipeline.AddPass<OptimizationBarrierExpander>();
+
+    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
+  }
+
+  {
+    HloPassPipeline pipeline("remat-pipeline");
+
+    HloCostAnalysis hlo_cost_analysis(ShapeSizeBytesFunction());
+    HloRematerialization::RematerializationModeConfig
+        rematerialization_mode_config(/*recompute=*/true, /*compress=*/true,
+                                      /*host_offload=*/false);
+    HloRematerialization::Options options(
+        hlo_cost_analysis, rematerialization_mode_config,
+        // Assume 75% of the total device memory is available for XLA.
+        /*memory_limit_bytes=*/scheduler_mem_limit,
+        /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
+        /*min_remat_size=*/0, /*compact_shape_function=*/nullptr,
+        /*host_memory_offload_config=*/std::nullopt);
+    HloRematerialization::RematerializationSizes sizes;
+    pipeline.AddPass<HloRematerialization>(options, sizes);
+
+    TF_ASSIGN_OR_RETURN(bool changed, pipeline.Run(module));
+    if (changed) {
+      VLOG(1) << "HloRematerialization saved "
+              << sizes.before_bytes - sizes.after_bytes << " bytes";
+    }
+  }
+
+  {
+    HloPassPipeline pipeline("fusion-wrapper");
+    pipeline.AddPass<FusionWrapper>();
+    // Wrap remaining unfused ops that have no LHLO equivalent in single-op
+    // fusions. This needs to happen after rematerialization, because that will
+    // insert additional copies.
+    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
+  }
+  return OkStatus();
+}
+
+se::GpuComputeCapability GpuCompiler::GetGpuVersion(
+    se::StreamExecutor* stream_exec) {
+  return stream_exec->GetDeviceDescription().gpu_compute_capability();
 }
 
 }  // namespace gpu

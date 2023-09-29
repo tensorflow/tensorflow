@@ -166,3 +166,25 @@ tf_cc_test(
         "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )
+
+cc_library(
+    name = "tf_dialect_to_executor",
+    srcs = ["tf_dialect_to_executor.cc"],
+    hdrs = ["tf_dialect_to_executor.h"],
+    deps = [
+        "//tensorflow/core/platform:status",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:status",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_dialect_to_executor_test",
+    srcs = ["tf_dialect_to_executor_test.cc"],
+    deps = [
+        ":tf_dialect_to_executor",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/lib/core:status_test_util",
+    ],
+)

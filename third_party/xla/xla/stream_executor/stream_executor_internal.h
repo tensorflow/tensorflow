@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "xla/stream_executor/allocator_stats.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_options.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/trace_listener.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -129,10 +131,20 @@ class KernelInterface {
 // can execute concurrently, and it's up to the caller to insert barriers to
 // guarantee correctness. Consider adding finer grained synchronization
 // mechanism between different commands.
+//
+// TODO(ezhulenev): Currently command buffers do no support updates, and once
+// finalized can be executed as recorded. We need to support cheap command
+// buffer updates that in GPU backend will be mapped to CUDA/HIP graph node
+// updates.
 class CommandBufferInterface {
  public:
   CommandBufferInterface() = default;
   virtual ~CommandBufferInterface() = default;
+
+  // Traces `function` invocation by recording all operations on the `stream`
+  // into the command buffer. Command buffer must be empty.
+  virtual tsl::Status Trace(Stream* stream,
+                            absl::AnyInvocable<tsl::Status()> function) = 0;
 
   // Adds a kernel launch command to the command buffer.
   virtual tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
@@ -143,6 +155,10 @@ class CommandBufferInterface {
   virtual tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                            const DeviceMemoryBase& src,
                                            uint64_t size) = 0;
+
+  // Finalizes command buffer and makes it executable. Once command buffer is
+  // finalized no commands can be added to it.
+  virtual tsl::Status Finalize() = 0;
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(CommandBufferInterface);
@@ -237,6 +253,11 @@ class StreamExecutorInterface {
   virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                              const BlockDim& block_dims, const KernelBase& k,
                              const KernelArgsArrayBase& args) {
+    return absl::UnimplementedError("Not Implemented");
+  }
+
+  virtual tsl::Status Submit(Stream* stream,
+                             const CommandBuffer& command_buffer) {
     return absl::UnimplementedError("Not Implemented");
   }
 

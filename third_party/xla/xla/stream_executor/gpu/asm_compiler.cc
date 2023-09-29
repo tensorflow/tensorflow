@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/util.h"
 #include "tsl/platform/cuda_libdevice_path.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -252,7 +253,8 @@ tsl::StatusOr<std::array<int64_t, 3>> GetAsmCompilerVersion(
 
 tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
                                                   const char* ptx_contents,
-                                                  GpuAsmOpts options) {
+                                                  GpuAsmOpts options,
+                                                  bool cancel_if_reg_spill) {
   std::string ptxas_path =
       FindCudaExecutable("ptxas", options.preferred_cuda_dir);
 
@@ -329,6 +331,11 @@ tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
   if (!stderr_output.empty()) {
     if (absl::StrContains(stderr_output, "warning")) {
       LOG(INFO) << stderr_output;
+      if (cancel_if_reg_spill &&
+          absl::StrContains(stderr_output, "Registers are spilled")) {
+        return xla::Cancelled(
+            "Compilation result discarded due to register spilling");
+      }
     } else {
       VLOG(2) << stderr_output;
     }

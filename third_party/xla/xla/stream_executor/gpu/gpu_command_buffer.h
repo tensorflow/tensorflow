@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstdint>
 #include <type_traits>
 
+#include "absl/functional/any_invocable.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
@@ -35,6 +37,9 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   GpuCommandBuffer(GpuExecutor* parent, GpuGraphHandle graph);
   ~GpuCommandBuffer() override;
 
+  tsl::Status Trace(Stream* stream,
+                    absl::AnyInvocable<tsl::Status()> function) override;
+
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
                      const KernelBase& kernel,
                      const KernelArgsArrayBase& args) override;
@@ -42,6 +47,10 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                    const DeviceMemoryBase& src,
                                    uint64_t size) override;
+
+  tsl::Status Finalize() override;
+
+  GpuGraphExecHandle executable() const { return exec_; }
 
   // We track the total number of allocated and alive executable graphs in the
   // process to track the command buffers resource usage. Executable graph
@@ -56,7 +65,16 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   static int64_t AllocatedExecs();
   static int64_t AliveExecs();
 
+  static const GpuCommandBuffer* Cast(const CommandBuffer* command_buffer) {
+    return static_cast<const GpuCommandBuffer*>(
+        command_buffer->implementation());
+  }
+
  private:
+  // Returns OK status if command buffer is not finalized and it is still
+  // possible to add new commands to it, otherwise returns internal error.
+  tsl::Status CheckNotFinalized();
+
   static_assert(std::is_pointer_v<GpuGraphHandle>,
                 "GpuGraphHandle must be a pointer");
   static_assert(std::is_pointer_v<GpuGraphExecHandle>,
