@@ -176,6 +176,19 @@ class HloModule {
     return config_.entry_computation_layout();
   }
 
+  void set_frontend_attributes(FrontendAttributes frontend_attributes) {
+    frontend_attributes_ = std::move(frontend_attributes);
+  }
+
+  void add_frontend_attributes(FrontendAttributes frontend_attributes) {
+    frontend_attributes_.mutable_map()->insert(
+        frontend_attributes.map().begin(), frontend_attributes.map().end());
+  }
+
+  const FrontendAttributes& frontend_attributes() const {
+    return frontend_attributes_;
+  }
+
   void set_use_auto_spmd_partitioning(bool use) {
     use_auto_spmd_partitioning_ = use;
   }
@@ -659,6 +672,10 @@ class HloModule {
   // buffer_donor_config_ indicates the donor information of input buffers that
   // are expected from the module.
   HloBufferDonorConfig buffer_donor_config_;
+
+  // Attributes passed from the frontend to give hints to the backend about
+  // how to compile this HLO.
+  FrontendAttributes frontend_attributes_;
 
   // The HLO shardings of the entry computation's parameters for
   // SPMD-partitioned programs.
