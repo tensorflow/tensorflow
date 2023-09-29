@@ -386,7 +386,7 @@ Status mlir::CustomOptionsToAttributes(
 
 // TODO(zichuanwei@): Populate Builtin_options_2 manual for now, should automate
 // these in the future
-void mlir::BuiltinOptions2ToAttributes(
+void BuiltinOptions2ToAttributesManual(
     tflite::BuiltinOptions2Union op_union, mlir::Builder builder,
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes) {
   if (const auto* op = op_union.AsStablehloConcatenateOptions()) {
