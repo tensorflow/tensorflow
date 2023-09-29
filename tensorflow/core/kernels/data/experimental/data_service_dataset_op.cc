@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -102,6 +103,10 @@ constexpr const char kDistributedEpoch[] = "distributed_epoch";
 
 // Default interval between task list refreshes.
 constexpr absl::Duration kDefaultTaskRefreshInterval = absl::Seconds(1);
+
+// Default starting `max_outstanding_requests` when it is autotuned.
+constexpr int64_t kStartingMaxOutstandingRequests = 16;
+
 }  // namespace
 
 // Dataset for reading data from the tf.data service.
@@ -437,11 +442,16 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (element_size_cache_ == 0.0) {
           element_size_cache_ = node_->AverageBufferedElementSize();
           if (element_size_cache_ == 0) {
-            VLOG(3) << "The average element size of `DataService` is 0. "
-                       "Request to change `max_outstanding_requests` from "
-                    << max_outstanding_requests << " to "
-                    << requested_outstanding_requests << " is granted.";
-            return requested_outstanding_requests;
+            int64_t new_outstanding_requests = std::max(
+                max_outstanding_requests, kStartingMaxOutstandingRequests);
+            VLOG(3) << "The average element size of `DataService` is 0. The "
+                       "`max_outstanding_requests` value "
+                    << max_outstanding_requests
+                    << (max_outstanding_requests == new_outstanding_requests
+                            ? " is kept at "
+                            : " is changed to the default value of ")
+                    << new_outstanding_requests << ".";
+            return new_outstanding_requests;
           }
         }
         const int64_t delta_outstanding_requests =
