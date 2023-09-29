@@ -318,50 +318,75 @@ bool IsInputFusible(const HloInstruction& instr) {
           IsInputFusibleTranspose(instr));
 }
 
+// Returns true if `instr` can be fused as a producer or as a consumer into a
+// kLoop fusion.
 bool IsUniversallyLoopFusible(const HloInstruction& instr,
                               const HloInstruction& hero) {
-  // Don't fuse get-tuple-element on GPU: We can, but it's slower than not
-  // fusing.  We never generate kernels for unfused GTEs.  Instead, if an
-  // unfused GTE is an input to a kernel (including a fusion kernel), we
-  // compute the address of the GTE at the top of the kernel.  Often we know the
-  // address of the GTE result statically, so we can do this without chasing any
-  // pointers.
-  return ((instr.IsElementwise() && instr.operand_count() > 0 &&
-           instr.opcode() != HloOpcode::kCopy) ||
-          (instr.opcode() == HloOpcode::kCopy &&
-           !GetDescriptionForTiledTransposeEmitter(instr, hero).has_value()) ||
-          instr.opcode() == HloOpcode::kBitcast ||
-          instr.opcode() == HloOpcode::kBroadcast ||
-          instr.opcode() == HloOpcode::kConcatenate ||
-          instr.opcode() == HloOpcode::kDynamicSlice ||
-          instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
-          (instr.opcode() == HloOpcode::kFusion &&
-           instr.fusion_kind() == HloInstruction::FusionKind::kLoop) ||
-          instr.opcode() == HloOpcode::kGather ||
-          instr.opcode() == HloOpcode::kPad ||
-          instr.opcode() == HloOpcode::kReduceWindow ||
-          instr.opcode() == HloOpcode::kReshape ||
-          instr.opcode() == HloOpcode::kReverse ||
-          instr.opcode() == HloOpcode::kSlice ||
-          instr.opcode() == HloOpcode::kTranspose);
+  // NOTE: this check is done before the switch below, because a fusion instr
+  // can also be elementwise, even if it's not a kLoop.
+  if (instr.IsElementwise() && instr.operand_count() > 0 &&
+      instr.opcode() != HloOpcode::kCopy) {
+    return true;
+  }
+
+  switch (instr.opcode()) {
+    case HloOpcode::kCopy:
+      return !GetDescriptionForTiledTransposeEmitter(instr, hero).has_value();
+
+    case HloOpcode::kFusion:
+      return instr.fusion_kind() == HloInstruction::FusionKind::kLoop;
+
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kGather:
+    case HloOpcode::kPad:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kReshape:
+    case HloOpcode::kReverse:
+    case HloOpcode::kSlice:
+    case HloOpcode::kTranspose:
+      return true;
+    default:
+      return false;
+  }
 }
 
+// Returns true if `instr` can be fused as a consumer into a kLoop fusion.
 bool IsLoopFusibleAsConsumer(const HloInstruction& instr,
                              const HloInstruction& hero) {
-  return instr.IsFusible() && instr.opcode() != HloOpcode::kBitcast &&
-         (IsUniversallyLoopFusible(instr, hero) ||
-          // Any reduction can be fused as a consumer.
-          instr.opcode() == HloOpcode::kReduce);
+  // Instr should be fusible.
+  if (!instr.IsFusible()) return false;
+
+  // An optimization for instruction fusion. Bitcast as a consumer means that it
+  // will be a root of a fusion. This just adds indexing overhead without any
+  // benefit.
+  if (instr.opcode() == HloOpcode::kBitcast) return false;
+
+  // Any reduction can be fused as a consumer.
+  if (instr.opcode() == HloOpcode::kReduce) return true;
+
+  return IsUniversallyLoopFusible(instr, hero);
 }
 
+// Returns true if `instr` can be fused as a producer into a kLoop fusion.
 bool IsLoopFusibleAsProducer(const HloInstruction& instr,
                              const HloInstruction& hero) {
-  return instr.IsFusible() &&
-         (IsUniversallyLoopFusible(instr, hero) ||
-          (instr.opcode() == HloOpcode::kIota ||
-           instr.opcode() == HloOpcode::kConstant ||
-           // Non-variadic reductions can be fused as producers.
-           (instr.opcode() == HloOpcode::kReduce && !instr.shape().IsTuple())));
+  // Instr should be fusible.
+  if (!instr.IsFusible()) return false;
+
+  switch (instr.opcode()) {
+    case HloOpcode::kIota:
+    case HloOpcode::kConstant:
+      return true;
+    case HloOpcode::kReduce:
+      // Non-variadic reductions can be fused as producers.
+      return !instr.shape().IsTuple();
+    default:
+      return IsUniversallyLoopFusible(instr, hero);
+  }
 }
 
 static bool AllSatisfy(const HloInstruction& instr,
