@@ -191,24 +191,13 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
     return &topology_;
   }
 
-  // TODO(b/285385306): Enable loading a non-loaded PjRtExecutable.
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
       std::unique_ptr<PjRtExecutable> executable,
-      const LoadOptions& load_options) override {
-    return absl::WrapUnique<PjRtLoadedExecutable>(
-        tensorflow::down_cast<PjRtLoadedExecutable*>(executable.release()));
-  }
+      const LoadOptions& load_options) override;
 
-  // TODO(b/296466237): Unify `Load` method after (de)serialization and tests on
-  // existing use cases are done.
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
-      std::unique_ptr<PjRtExecutable> executable);
-
-  // TODO(b/296466237): Unify `LoadSerializedExecutable` after fixing existing
-  // tests.
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerialized(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerializedExecutable(
       absl::string_view serialized, std::optional<CompileOptions> options,
-      const LoadOptions& load_options);
+      const LoadOptions& load_options) override;
 
  private:
   xla::StreamExecutorGpuTopologyDescription topology_;

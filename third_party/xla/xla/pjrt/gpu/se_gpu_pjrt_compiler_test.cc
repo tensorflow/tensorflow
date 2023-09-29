@@ -57,17 +57,6 @@ absl::StatusOr<xla::XlaComputation> GetXlaComputation(
   return XlaComputation(hlo_module->ToProto());
 }
 
-TEST(StreamExecutorGpuCompilerTest, NoClientXla) {
-  StreamExecutorGpuCompiler compiler;
-  StreamExecutorGpuTopologyDescription topology(CudaId(), CudaName(),
-                                                "Fake_device", {0, 1});
-
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
-  EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
-                               /*client=*/nullptr),
-              StatusIs(absl::StatusCode::kUnimplemented));
-}
-
 TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {
   StreamExecutorGpuCompiler compiler;
   StreamExecutorGpuTopologyDescription topology(CudaId(), CudaName(),

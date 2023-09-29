@@ -1167,6 +1167,7 @@ cc_library(
         ":hlo_execution_profile",
         ":hlo_module_config",
         ":hlo_module_util",
+        ":local_service_utils",
         ":platform_util",
         ":service",
         ":shaped_buffer",
@@ -1187,6 +1188,31 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "local_service_utils",
+    srcs = ["local_service_utils.cc"],
+    hdrs = ["local_service_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":backend",
+        ":hlo_module_config",
+        ":hlo_module_util",
+        ":service",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/client:executable_build_options",
+        "//xla/client:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
