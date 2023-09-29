@@ -1747,6 +1747,8 @@ StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
 
 Status GpuCompiler::RunPostSchedulingPipelines(
     HloModule* module, int64_t scheduler_mem_limit) const {
+  TF_RETURN_IF_ERROR(
+      RunPostSchedulingCopyInsertion(module, GetCanShareBuffer()));
   {
     HloPassPipeline pipeline("post-scheduling-passes");
 

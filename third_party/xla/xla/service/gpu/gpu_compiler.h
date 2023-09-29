@@ -234,7 +234,7 @@ class GpuCompiler : public LLVMCompiler {
       se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) = 0;
 
-  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {
+  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const {
     return &FusionCanShareBufferHint;
   }
 

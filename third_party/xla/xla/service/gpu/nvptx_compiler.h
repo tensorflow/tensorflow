@@ -69,7 +69,7 @@ class NVPTXCompiler : public GpuCompiler {
   Status SerializeAutotuneResultsToFile(
       const DebugOptions& debug_options) override;
 
-  HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() override;
+  HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const override;
 
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
