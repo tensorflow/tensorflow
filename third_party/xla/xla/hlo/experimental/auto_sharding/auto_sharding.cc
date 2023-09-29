@@ -751,6 +751,14 @@ void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
   }
 }
 
+void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
+                               const Array<int64_t>& device_mesh,
+                               const ClusterEnvironment& cluster_env,
+                               const StrategyMap& strategy_map,
+                               std::unique_ptr<StrategyVector>& strategies,
+                               const CallGraph& call_graph,
+                               absl::Span<const int64_t> tensor_dims);
+
 // Enumerate 2D partition
 void EnumerateAll2DPartition(const HloInstruction* ins, const Shape& shape,
                              const Array<int64_t>& device_mesh,
@@ -782,59 +790,74 @@ void EnumerateAll2DPartition(const HloInstruction* ins, const Shape& shape,
         continue;
       }
 
-      std::string name = absl::StrFormat("S{%d,%d} @ {0,1}", i, j);
-      HloSharding output_spec = Tile(shape, {i, j}, {0, 1}, device_mesh);
-      double compute_cost = 0, communication_cost = 0;
-      double memory_cost = GetBytes(shape) / output_spec.NumTiles();
-      std::vector<std::optional<HloSharding>> input_shardings;
-      std::vector<std::vector<double>> resharding_costs;
-      if (ins->opcode() == HloOpcode::kConditional) {
-        // TODO(pratikf): Compute input_shardings for kConditional ops
-        resharding_costs =
-            CreateZeroReshardingCostsForAllOperands(ins, strategy_map);
-      } else if (ins->operand_count() > 0 &&
-                 ins->operand(0)->shape().IsTuple()) {
-        CHECK_EQ(ins->operand_count(), 1)
-            << "Do not support instructions with more than one tuple "
-               "operand. If this CHECK fails, we will need to fix "
-               "b/233412625.";
-        std::tie(resharding_costs, input_shardings) =
-            ReshardingCostsForTupleOperand(
-                ins->operand(0), strategy_map.at(ins->operand(0)).get());
-        LOG(INFO) << absl::StrJoin(resharding_costs.back(), ",");
-      } else {
-        std::tie(resharding_costs, input_shardings) =
-            GenerateReshardingCostsAndShardingsForAllOperands(
-                ins, output_spec, strategy_map, cluster_env, call_graph);
-      }
-      // TODO(pratikf) Communication costs for sort HLO ops. This is currently a
-      // placeholder approximation and should be improved.
-      if (ins->opcode() == HloOpcode::kSort) {
-        auto sort_ins = xla::DynCast<HloSortInstruction>(ins);
-        CHECK(sort_ins);
-
-        if (sort_ins->sort_dimension() == i) {
-          communication_cost = ComputeSortCommunicationCost(
-              sort_ins->sort_dimension(), i, 0, shape, cluster_env);
-        } else if (sort_ins->sort_dimension() == j) {
-          communication_cost = ComputeSortCommunicationCost(
-              sort_ins->sort_dimension(), j, 1, shape, cluster_env);
-        }
-      } else if (IsTopKCustomCall(ins)) {
-        auto topk_dim = ins->operand(0)->shape().rank() - 1;
-        if (topk_dim == i) {
-          communication_cost =
-              ComputeSortCommunicationCost(topk_dim, i, 0, shape, cluster_env);
-        } else if (topk_dim == j) {
-          communication_cost =
-              ComputeSortCommunicationCost(topk_dim, j, 1, shape, cluster_env);
-        }
-      }
-      strategies->leaf_vector.push_back(ShardingStrategy(
-          {name, output_spec, compute_cost, communication_cost, memory_cost,
-           std::move(resharding_costs), input_shardings}));
+      BuildStrategyAndCostForOp(ins, shape, device_mesh, cluster_env,
+                                strategy_map, strategies, call_graph, {i, j});
     }
   }
+}
+
+// Builds the strategy + cost for the given tensor_dims & mesh_dims.
+void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
+                               const Array<int64_t>& device_mesh,
+                               const ClusterEnvironment& cluster_env,
+                               const StrategyMap& strategy_map,
+                               std::unique_ptr<StrategyVector>& strategies,
+                               const CallGraph& call_graph,
+                               absl::Span<const int64_t> tensor_dims) {
+  std::vector<int64_t> mesh_dims(tensor_dims.size());
+  std::iota(mesh_dims.begin(), mesh_dims.end(), 0);
+  std::string name =
+      absl::StrFormat("S{%s} @ {%s}", absl::StrJoin(tensor_dims, ","),
+                      absl::StrJoin(mesh_dims, ","));
+  HloSharding output_spec = Tile(shape, tensor_dims, mesh_dims, device_mesh);
+  double compute_cost = 0, communication_cost = 0;
+  double memory_cost = GetBytes(shape) / output_spec.NumTiles();
+  std::vector<std::optional<HloSharding>> input_shardings;
+  std::vector<std::vector<double>> resharding_costs;
+  if (ins->opcode() == HloOpcode::kConditional) {
+    // TODO(pratikf): Compute input_shardings for kConditional ops
+    resharding_costs =
+        CreateZeroReshardingCostsForAllOperands(ins, strategy_map);
+  } else if (ins->operand_count() > 0 && ins->operand(0)->shape().IsTuple()) {
+    CHECK_EQ(ins->operand_count(), 1)
+        << "Do not support instructions with more than one tuple "
+           "operand. If this CHECK fails, we will need to fix "
+           "b/233412625.";
+    std::tie(resharding_costs, input_shardings) =
+        ReshardingCostsForTupleOperand(ins->operand(0),
+                                       strategy_map.at(ins->operand(0)).get());
+    LOG(INFO) << absl::StrJoin(resharding_costs.back(), ",");
+  } else {
+    std::tie(resharding_costs, input_shardings) =
+        GenerateReshardingCostsAndShardingsForAllOperands(
+            ins, output_spec, strategy_map, cluster_env, call_graph);
+  }
+  // TODO(pratikf) Communication costs for sort HLO ops. This is currently a
+  // placeholder approximation and should be improved.
+  if (ins->opcode() == HloOpcode::kSort) {
+    auto sort_ins = xla::DynCast<HloSortInstruction>(ins);
+    CHECK(sort_ins);
+    for (int64_t dim = 0; dim < tensor_dims.size(); ++dim) {
+      if (sort_ins->sort_dimension() == tensor_dims[dim]) {
+        communication_cost = ComputeSortCommunicationCost(
+            sort_ins->sort_dimension(), tensor_dims[dim], dim, shape,
+            cluster_env);
+        break;
+      }
+    }
+  } else if (IsTopKCustomCall(ins)) {
+    auto topk_dim = ins->operand(0)->shape().rank() - 1;
+    for (int64_t dim = 0; dim < tensor_dims.size(); ++dim) {
+      if (topk_dim == tensor_dims[dim]) {
+        communication_cost = ComputeSortCommunicationCost(
+            topk_dim, tensor_dims[dim], dim, shape, cluster_env);
+        break;
+      }
+    }
+  }
+  strategies->leaf_vector.push_back(ShardingStrategy(
+      {name, output_spec, compute_cost, communication_cost, memory_cost,
+       std::move(resharding_costs), input_shardings}));
 }
 
 // Enumerate all 1d partition strategies for reshape.
@@ -888,6 +911,13 @@ void EnumerateAll1DPartitionReshape(const HloInstruction* ins,
   }
 }
 
+void BuildStrategyAndCostForReshape(const HloInstruction* ins,
+                                    const Array<int64_t>& device_mesh,
+                                    const ClusterEnvironment& cluster_env,
+                                    const StrategyMap& strategy_map,
+                                    std::unique_ptr<StrategyVector>& strategies,
+                                    absl::Span<const int64_t> tensor_dims);
+
 // Enumerate 2D partition for reshape. Batch dim is always partitioned.
 void Enumerate2DPartitionReshape(const HloInstruction* ins,
                                  const Array<int64_t>& device_mesh,
@@ -902,7 +932,6 @@ void Enumerate2DPartitionReshape(const HloInstruction* ins,
     batch_dim = iter->second;
   }
 
-  const HloInstruction* operand = ins->operand(0);
 
   // Split batch dim + another dim
   for (int64_t i = 0; i < ins->shape().rank(); ++i) {
@@ -920,31 +949,45 @@ void Enumerate2DPartitionReshape(const HloInstruction* ins,
         continue;
       }
 
-      HloSharding output_spec = Tile(ins->shape(), {i, j}, {0, 1}, device_mesh);
-      std::optional<HloSharding> input_spec =
-          hlo_sharding_util::ReshapeSharding(ins->shape(), operand->shape(),
-                                             output_spec);
-      if (!input_spec.has_value()) {  // invalid reshape
-        continue;
-      }
-
-      std::string name = absl::StrFormat("S%d%d @ {%d,%d}", i, j, 0, 1);
-      double compute_cost = 0, communication_cost = 0;
-      double memory_cost = GetBytes(ins->shape()) / output_spec.NumTiles();
-
-      std::vector<std::vector<double>> resharding_costs{
-          ReshardingCostVector(strategy_map.at(operand).get(), operand->shape(),
-                               *input_spec, cluster_env)};
-      strategies->leaf_vector.push_back(
-          ShardingStrategy({name,
-                            output_spec,
-                            compute_cost,
-                            communication_cost,
-                            memory_cost,
-                            std::move(resharding_costs),
-                            {*input_spec}}));
+      BuildStrategyAndCostForReshape(ins, device_mesh, cluster_env,
+                                     strategy_map, strategies, {i, j});
     }
   }
+}
+
+void BuildStrategyAndCostForReshape(const HloInstruction* ins,
+                                    const Array<int64_t>& device_mesh,
+                                    const ClusterEnvironment& cluster_env,
+                                    const StrategyMap& strategy_map,
+                                    std::unique_ptr<StrategyVector>& strategies,
+                                    absl::Span<const int64_t> tensor_dims) {
+  const HloInstruction* operand = ins->operand(0);
+  std::vector<int64_t> mesh_dims(tensor_dims.size());
+  std::iota(mesh_dims.begin(), mesh_dims.end(), 0);
+  HloSharding output_spec =
+      Tile(ins->shape(), tensor_dims, mesh_dims, device_mesh);
+  std::optional<HloSharding> input_spec = hlo_sharding_util::ReshapeSharding(
+      ins->shape(), operand->shape(), output_spec);
+  if (!input_spec.has_value()) {  // invalid reshape
+    return;
+  }
+  std::string name =
+      absl::StrFormat("S%s @ {%s}", absl::StrJoin(tensor_dims, ""),
+                      absl::StrJoin(mesh_dims, ","));
+  double compute_cost = 0, communication_cost = 0;
+  double memory_cost = GetBytes(ins->shape()) / output_spec.NumTiles();
+
+  std::vector<std::vector<double>> resharding_costs{
+      ReshardingCostVector(strategy_map.at(operand).get(), operand->shape(),
+                           *input_spec, cluster_env)};
+  strategies->leaf_vector.push_back(
+      ShardingStrategy({name,
+                        output_spec,
+                        compute_cost,
+                        communication_cost,
+                        memory_cost,
+                        std::move(resharding_costs),
+                        {*input_spec}}));
 }
 
 // Return the maximum number of tiles among all strategies of an instruction.
