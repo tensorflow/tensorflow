@@ -1625,8 +1625,8 @@ std::vector<int64_t> GetDimensionMapping(
   return mapping;
 }
 
-bool IsDivisible(int64_t denominator, int64_t numerator) {
-  return (denominator % numerator == 0);
+bool IsDivisible(int64_t numerator, int64_t denominator) {
+  return (numerator % denominator == 0);
 }
 
 std::vector<std::vector<int64_t>> GetReplicaGroupsAlongOneDimension(

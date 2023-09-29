@@ -525,8 +525,8 @@ inline std::vector<const HloInstruction*> GetGradientComputationInstructions(
 std::vector<int64_t> GetDimensionMapping(
     absl::Span<const int64_t> reduced_dimensions, int64_t op_count);
 
-// Checks whether denominator is divisible by numerator.
-bool IsDivisible(int64_t denominator, int64_t numerator);
+// Checks whether numerator is divisible by denominator.
+bool IsDivisible(int64_t numerator, int64_t denominator);
 
 // Generate all replica groups along one device_mesh dimension. Device_mesh can
 // be any number of dimensions. |communication_dim| has to be one of
