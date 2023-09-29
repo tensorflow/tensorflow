@@ -99,6 +99,7 @@ limitations under the License.
 #include "xla/service/gpu/gemm_broadcast_folding_rewriter.h"
 #include "xla/service/gpu/gemm_rewriter.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
+#include "xla/service/gpu/gpu_all_gather_optimizer.h"
 #include "xla/service/gpu/gpu_async_collective_annotator.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_conv_rewriter.h"
@@ -615,6 +616,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     HloPassPipeline collectives_pipeline("collective-optimizations");
     collectives_pipeline.AddPass<AllReduceFolder>();
     collectives_pipeline.AddPass<ReduceScatterCreator>();
+    collectives_pipeline.AddPass<AllGatherOptimizer>();
     collectives_pipeline.AddPass<AllReduceReassociate>(
         debug_options.xla_gpu_enable_reassociation_for_converted_ar());
     collectives_pipeline.AddPass<ReduceScatterReassociate>();

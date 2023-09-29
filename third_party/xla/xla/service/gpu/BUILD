@@ -2425,6 +2425,23 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_all_gather_optimizer",
+    srcs = ["gpu_all_gather_optimizer.cc"],
+    hdrs = ["gpu_all_gather_optimizer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:statusor",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
     name = "gpu_float_support",
     srcs = ["gpu_float_support.cc"],
     hdrs = ["gpu_float_support.h"],
@@ -2625,6 +2642,7 @@ cc_library(
         ":gpu_hlo_schedule",
         ":gpu_layout_assignment",
         ":gpu_reduce_scatter_creator",
+        ":gpu_all_gather_optimizer",
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
         ":gpu_shape_verifier",
@@ -4080,6 +4098,7 @@ test_suite(
         "//xla/service/gpu/tests:gemm_broadcast_folding_rewrite_test",
         "//xla/service/gpu/tests:gemm_rewrite_test",
         "//xla/service/gpu/tests:gpu_alignment_test",
+        "//xla/service/gpu/tests:gpu_all_gather_optimizer_test",
         "//xla/service/gpu/tests:gpu_atomic_test",
         "//xla/service/gpu/tests:gpu_compilation_parallelism_test",
         "//xla/service/gpu/tests:gpu_convolution_regression_test",
