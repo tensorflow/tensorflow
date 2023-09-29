@@ -1052,8 +1052,14 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     devices = BuildLocalDevices(std::move(local_device_states), node_id);
   }
 
+#if TENSORFLOW_USE_ROCM
+  auto pjrt_platform_name = xla::RocmName();
+#else   // TENSORFLOW_USE_ROCM
+  auto pjrt_platform_name = xla::CudaName();
+#endif  // TENSORFLOW_USE_ROCM
+
   return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(
-      GpuName(), xla_client, std::move(devices),
+      pjrt_platform_name, xla_client, std::move(devices),
       /*node_id=*/node_id, std::move(allocator),
       std::move(host_memory_allocator), should_stage_host_to_device_transfers,
       /*gpu_run_options=*/std::move(gpu_run_options)));

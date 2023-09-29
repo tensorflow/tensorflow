@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "xla/client/xla_computation.h"
@@ -51,7 +52,7 @@ namespace xla {
 namespace {
 
 bool IsGpuClient(const PjRtClient& client) {
-  return client.platform_id() == GpuId();
+  return client.platform_id() == CudaId() || client.platform_id() == RocmId();
 }
 
 bool IsSameTopology(const PjRtTopologyDescription& topology1,
@@ -191,6 +192,6 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
 REGISTER_MODULE_INITIALIZER(pjrt_register_se_gpu_compiler, {
   std::unique_ptr<PjRtCompiler> compiler =
       std::make_unique<StreamExecutorGpuCompiler>();
-  PjRtRegisterCompiler(GpuName(), std::move(compiler));
+  PjRtRegisterCompiler(CudaName(), std::move(compiler));
 });
 }  // namespace xla

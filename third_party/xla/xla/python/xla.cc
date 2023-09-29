@@ -40,6 +40,7 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/cast.h"  // from @pybind11
@@ -202,7 +203,18 @@ static void Init(py::module_& m) {
                              "Deprecated; please use process_index")
       .def_property_readonly("platform",
                              [](const ClientAndPtr<PjRtDevice>& device) {
-                               return device.client()->platform_name();
+                               // TODO(phawkins): this is a temporary backwards
+                               // compatibility shim. We changed the name PJRT
+                               // reports for GPU platforms to "cuda" or "rocm",
+                               // but we haven't yet updated JAX clients that
+                               // expect "gpu". Migrate users and remove this
+                               // code.
+                               if (device.client()->platform_name() == "cuda" ||
+                                   device.client()->platform_name() == "rocm") {
+                                 return absl::string_view("gpu");
+                               } else {
+                                 return device.client()->platform_name();
+                               }
                              })
       .def_property_readonly("device_kind", &PjRtDevice::device_kind)
       .def_property_readonly("client",
@@ -371,7 +383,18 @@ static void Init(py::module_& m) {
       .def_property_readonly(
           "platform",
           [](const ClientAndPtr<PjRtMemorySpace>& memory_space) {
-            return memory_space.client()->platform_name();
+            // TODO(phawkins): this is a temporary backwards
+            // compatibility shim. We changed the name PJRT
+            // reports for GPU platforms to "cuda" or "rocm",
+            // but we haven't yet updated JAX clients that
+            // expect "gpu". Migrate users and remove this
+            // code.
+            if (memory_space.client()->platform_name() == "cuda" ||
+                memory_space.client()->platform_name() == "rocm") {
+              return absl::string_view("gpu");
+            } else {
+              return memory_space.client()->platform_name();
+            }
           })
       .def_property_readonly("kind", &PjRtMemorySpace::memory_space_kind)
       .def("__str__", &PjRtMemorySpace::DebugString)
