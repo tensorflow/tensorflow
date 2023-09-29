@@ -56,6 +56,12 @@ std::string GetPjRtDeviceCompilerResourceName(const DeviceType& device_type);
 // when PjRt is used for compilation and execution.
 std::string GetPjRtDeviceCompilationProfilerResourceName(
     const DeviceType& device_type);
+
+// Gets the ResourceMgr where the DeviceCompiler is/should be stored for the
+// given `device_type`.
+StatusOr<ResourceMgr*> GetResourceMgrForDeviceCompiler(
+    const OpKernelContext& ctx, const DeviceType& device_type);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_COMPILE_UTIL_H_

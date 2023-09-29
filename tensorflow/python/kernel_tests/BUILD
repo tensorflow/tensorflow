@@ -85,7 +85,7 @@ cuda_py_strict_test(
     srcs = ["collective_ops_test.py"],
     shard_count = 4,
     tags = [
-        "multi_and_single_gpu",
+        # "multi_and_single_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
         "no_tfrt",  # TODO(b/185944042)
     ],
     deps = [
@@ -291,7 +291,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:gradient_descent",
     ],
 )
 

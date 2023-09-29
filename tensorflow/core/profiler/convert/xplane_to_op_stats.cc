@@ -38,17 +38,19 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tsl/profiler/utils/tpu_xplane_utils.h"
+#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+using tsl::profiler::FindTensorCorePlanes;
 
 std::string Hostname(const XSpace& space) {
   if (space.hostnames().empty()) return "localhost";
@@ -83,7 +85,7 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
         {UniToGiga(cap.memory_bandwidth()), UniToGiga(cap.memory_bandwidth()),
          UniToGiga(cap.memory_bandwidth()), UniToGiga(cap.memory_bandwidth())});
   } else {
-    XPlaneVisitor visitor = CreateTfXPlaneVisitor(&device_plane);
+    XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(&device_plane);
     auto peak_tera_flops_per_second =
         visitor.GetStat(StatType::kDevCapPeakTeraflopsPerSecond);
     auto peak_tera_flops_per_second_val =
@@ -135,7 +137,8 @@ void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
   } else if (std::vector<const XPlane*> tpu_planes =
                  FindTensorCorePlanes(space);
              !tpu_planes.empty()) {
-    XPlaneVisitor visitor = CreateTfXPlaneVisitor(tpu_planes.at(0));
+    XPlaneVisitor visitor =
+        tsl::profiler::CreateTfXPlaneVisitor(tpu_planes.at(0));
     auto xstat = visitor.GetStat(StatType::kDeviceTypeString);
     if (xstat.has_value()) {
       env->set_device_type(std::string(xstat->StrOrRefValue()));
@@ -183,6 +186,8 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
 
   // TODO(b/161942993) parallelize XPlane processing per thread.
   for (const XPlane* device_trace : device_planes) {
+    XPlane aggregated_xplane;
+    bool use_aggregated_xplane = false;
     if (options.generate_op_metrics_db) {
       if (!op_stats.has_perf_env()) {
         *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
@@ -192,16 +197,16 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
             ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
         op_metrics_db_combiner.Combine(device_op_metrics_db);
       } else {
-        XPlane aggregated_xplane;
         AggregateXPlane(*device_trace, aggregated_xplane);
+        use_aggregated_xplane = true;
         OpMetricsDb device_op_metrics_db =
             ConvertTpuDeviceTraceXPlaneToOpMetricsDb(aggregated_xplane);
         op_metrics_db_combiner.Combine(device_op_metrics_db);
       }
     }
     if (options.generate_step_db) {
-      StepEvents device_step_events =
-          ConvertDeviceTraceXPlaneToStepEvents(*device_trace);
+      StepEvents device_step_events = ConvertDeviceTraceXPlaneToStepEvents(
+          use_aggregated_xplane ? aggregated_xplane : *device_trace);
       CombineStepEvents(device_step_events, &step_events);
     }
     if (options.generate_kernel_stats_db) {
@@ -231,7 +236,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
           ConvertHostThreadsXPlaneToStepEvents(*host_plane, device_step_events);
       CombineStepEvents(host_step_events, &step_events);
     }
-    XPlaneVisitor visitor = CreateTfXPlaneVisitor(host_plane);
+    XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(host_plane);
     auto stat = visitor.GetStat(StatType::kMatrixUnitUtilizationPercent);
     if (stat.has_value()) {
       op_stats.mutable_performance_counter_result()

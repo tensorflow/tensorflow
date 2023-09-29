@@ -17,16 +17,15 @@
 import functools
 import threading
 
+from tensorflow.core.function.polymorphism import function_cache
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
 from tensorflow.python.eager.polymorphic_function import tracing_compilation
-
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
@@ -185,12 +184,19 @@ def _jvp_helper_wrapper(op_name, attr_tuple, inputs, outputs, tangents,
 # eagerly (infinite recursion), and even if it did it would use extra memory and
 # run unnecessary computation. The function does not create variables, so the
 # two symbols are otherwise equivalent.
+_jvp_function_cache = function_cache.FunctionCache()
 _jvp_relaxed_config = tracing_compilation.TracingOptions(
-    _jvp_helper_wrapper, name="_jvp_relaxed_shapes", reduce_retracing=True
+    _jvp_helper_wrapper,
+    name="_jvp_relaxed_shapes",
+    reduce_retracing=True,
+    function_cache=_jvp_function_cache,
 )
 
 _jvp_exact_config = tracing_compilation.TracingOptions(
-    _jvp_helper_wrapper, name="_jvp_exact_shapes", reduce_retracing=False
+    _jvp_helper_wrapper,
+    name="_jvp_exact_shapes",
+    reduce_retracing=False,
+    function_cache=_jvp_function_cache,
 )
 
 # The maximum number of exact-shape traces to perform for a single op before

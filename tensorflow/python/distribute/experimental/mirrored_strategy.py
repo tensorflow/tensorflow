@@ -92,3 +92,8 @@ class MirroredStrategy(distribute_lib.Strategy):
 
   def reduce(self, reduce_op, value, axis):
     return dtensor_util.dtensor_reduce(self, reduce_op, value, axis)
+
+  @property
+  def mesh(self):
+    """Returns the mesh used by the strategy."""
+    return self._mesh

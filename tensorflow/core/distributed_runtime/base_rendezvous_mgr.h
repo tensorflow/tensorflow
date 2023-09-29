@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/platform/refcount.h"
+#include "tsl/platform/refcount.h"
 
 namespace tensorflow {
 

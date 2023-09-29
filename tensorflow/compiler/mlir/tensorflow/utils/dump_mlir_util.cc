@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/tsl/lib/io/buffered_file.h"
+#include "tsl/lib/io/buffered_file.h"
 
 using llvm::raw_ostream;
 
@@ -218,10 +218,10 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
   if (!result.ok()) return std::string(result.message());
 
+  LOG(INFO) << "Dumping MLIR operation '" << op->getName().getStringRef().str()
+            << "' to '" << filepath << "'";
   if (pass_manager) PrintPassPipeline(*pass_manager, op, *os);
   op->print(*os, mlir::OpPrintingFlags().useLocalScope());
-  LOG(INFO) << "Dumped MLIR operation '" << op->getName().getStringRef().str()
-            << "' to '" << filepath << "'";
   return filepath;
 }
 

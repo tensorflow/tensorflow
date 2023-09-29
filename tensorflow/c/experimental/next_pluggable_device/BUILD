@@ -1,4 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,6 +12,7 @@ cc_library(
     hdrs = ["c_api.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":tensor_pjrt_buffer_util",
         "//tensorflow/c:c_api_headers",
         "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/c:kernels_experimental_hdrs",
@@ -21,20 +23,19 @@ cc_library(
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/jit:variable_info",
         "//tensorflow/compiler/jit:variable_info_util",
-        "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/next_pluggable_device:plugin_resource",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/common:async_value_tensor",
         "//tensorflow/core/tfrt/common:pjrt_util",
-        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/pjrt:pjrt_c_api_client",
+        "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
     ],
 )
 
@@ -48,6 +49,42 @@ cc_library(
         "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_buffer_internal",
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+        "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
+    name = "tensor_pjrt_buffer_util",
+    srcs = ["tensor_pjrt_buffer_util.cc"],
+    hdrs = ["tensor_pjrt_buffer_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tfrt/common:async_value_tensor",
+        "//tensorflow/core/tfrt/common:pjrt_util",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/pjrt:pjrt_c_api_client",
+        "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
+    ],
+)
+
+tf_cc_test(
+    name = "tensor_pjrt_buffer_util_test",
+    srcs = ["tensor_pjrt_buffer_util_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tensor_pjrt_buffer_util",
+        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core/tfrt/common:async_value_tensor",
+        "//tensorflow/core/tfrt/common:pjrt_util",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/pjrt:pjrt_api",
+        "@local_xla//xla/pjrt:pjrt_c_api_client",
+        "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
+        "@local_xla//xla/pjrt/c:pjrt_c_api_cpu",
+        "@local_xla//xla/pjrt/c:pjrt_c_api_wrapper_impl",
     ],
 )

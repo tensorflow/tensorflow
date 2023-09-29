@@ -28,7 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/escaping.h"
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -74,7 +74,6 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CeilOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinOp);
@@ -365,7 +364,7 @@ bool VerifySubOpShapeConstraints(SubOp op) {
       IsQI16Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/5);
+        /*max_bcast_rank=*/6);
   }
 
   // Allows QI8 output when the operands have valid shapes, which are
@@ -373,7 +372,7 @@ bool VerifySubOpShapeConstraints(SubOp op) {
   if (IsQI8Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/4);
+        /*max_bcast_rank=*/6);
   }
   return false;
 }
@@ -392,7 +391,7 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
     }
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/4);
+        /*max_bcast_rank=*/6);
   }
 
   // Allows I32, I64, QI16 and F32 outputs when the operands have valid shapes,
@@ -403,7 +402,7 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
       element_type.isF32()) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/4);
+        /*max_bcast_rank=*/6);
   }
   return false;
 }
@@ -1046,6 +1045,86 @@ void BroadcastToOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 //===----------------------------------------------------------------------===//
+// BatchMatMulOp
+//===----------------------------------------------------------------------===//
+
+// Verifier to check if following is true. Will perform the verification only if
+// the BatchMatMulOp inputs and output are RankedTensors
+// 1. The operands of a BatchMatMulOp are broadcast compatible
+// 2. The result dimensions are correct
+LogicalResult BatchMatMulOp::verify() {
+  BatchMatMulOp op = *this;
+  // batch size in lhs and rhs must be broadcastable
+  RankedTensorType x_ty = op.getX().getType().dyn_cast<RankedTensorType>();
+  RankedTensorType y_ty = op.getY().getType().dyn_cast<RankedTensorType>();
+
+  if (!x_ty || !y_ty) return success();
+  ArrayRef<int64_t> x_shape = x_ty.getShape();
+  ArrayRef<int64_t> y_shape = y_ty.getShape();
+
+  llvm::SmallVector<int64_t, 4> result_batch_shape;
+  llvm::ArrayRef<int64_t> x_batches = x_shape.drop_back(2);
+  llvm::ArrayRef<int64_t> y_batches = y_shape.drop_back(2);
+
+  if (!OpTrait::util::getBroadcastedShape(x_batches, y_batches,
+                                          result_batch_shape)) {
+    return op.emitOpError()
+           << "found incompatible broadcast batch dimensions for lhs shape "
+           << x_ty << " and rhs shape " << y_ty;
+  }
+
+  RankedTensorType output_ty =
+      op.getOutput().getType().dyn_cast<RankedTensorType>();
+  if (!output_ty) return success();
+
+  int64_t expected_output_rank = std::max(x_ty.getRank(), y_ty.getRank());
+  if (output_ty.getRank() != expected_output_rank) {
+    return op.emitOpError()
+           << "found invalid output rank, expected " << expected_output_rank
+           << " but got " << output_ty.getRank();
+  }
+
+  // Check output batch dim with potential broadcasting.
+  ArrayRef<int64_t> output_shape = output_ty.getShape();
+  for (int i = 0; i < result_batch_shape.size(); ++i) {
+    if (output_shape[i] != ShapedType::kDynamic &&
+        result_batch_shape[i] != ShapedType::kDynamic &&
+        output_shape[i] != result_batch_shape[i])
+      return op.emitOpError()
+             << "has mismatching input batch dimension "
+             << result_batch_shape[i] << " and output batch dimension "
+             << output_shape[i];
+  }
+
+  // Check output shape for non-batch dimension, following documentation below.
+  // https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/batch-mat-mul
+  int64_t x_row_dim = x_shape[x_shape.size() - 2];
+  int64_t x_col_dim = x_shape[x_shape.size() - 1];
+  int64_t y_row_dim = y_shape[y_shape.size() - 2];
+  int64_t y_col_dim = y_shape[y_shape.size() - 1];
+  int64_t out_row_dim = output_shape[output_shape.size() - 2];
+  int64_t out_col_dim = output_shape[output_shape.size() - 1];
+
+  int64_t expected_out_row_dim = op.getAdjX() ? x_col_dim : x_row_dim;
+  int64_t expected_out_col_dim = op.getAdjY() ? y_row_dim : y_col_dim;
+
+  if (expected_out_row_dim != ShapedType::kDynamic &&
+      out_row_dim != ShapedType::kDynamic &&
+      out_row_dim != expected_out_row_dim)
+    return op.emitOpError()
+           << "found invalid output dimension on row, expected "
+           << expected_out_row_dim << " but got " << out_row_dim;
+  if (expected_out_col_dim != ShapedType::kDynamic &&
+      out_col_dim != ShapedType::kDynamic &&
+      out_col_dim != expected_out_col_dim)
+    return op.emitOpError()
+           << "found invalid output dimension on col, expected "
+           << expected_out_col_dim << " but got " << out_col_dim;
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // FullyConnectedOp
 //===----------------------------------------------------------------------===//
 
@@ -1225,7 +1304,7 @@ static LogicalResult ComputeConvWindowedOutputSize(
   int64_t pad_low;
   int64_t pad_high;
 
-  tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+  tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
       input_size, filter_size, dilation_rate, stride, padding, output_size,
       &pad_low, &pad_high);
   // Return failure if expected_output_size could not be calculated.
@@ -3564,11 +3643,11 @@ static void BuildTransposeOp(OpBuilder* builder, OperationState& result,
 /// during the flow of control. `operands` is a set of optional attributes that
 /// correspond to a constant value for each operand, or null if that operand is
 /// not a constant.
-void IfOp::getSuccessorRegions(std::optional<unsigned> index,
-                               ArrayRef<Attribute> operands,
+void IfOp::getSuccessorRegions(RegionBranchPoint point,
+
                                SmallVectorImpl<RegionSuccessor>& regions) {
   // The `then` and the `else` region branch back to the parent operation.
-  if (index.has_value()) {
+  if (!point.isParent()) {
     regions.push_back(RegionSuccessor(getResults()));
     return;
   }
@@ -3577,10 +3656,24 @@ void IfOp::getSuccessorRegions(std::optional<unsigned> index,
   Region* else_reg = &getElseRegion();
   if (else_reg->empty()) else_reg = nullptr;
 
-  // Otherwise, the successor is dependent on the condition.
+  // If the condition isn't constant, both regions may be executed.
+  regions.push_back(RegionSuccessor(&getThenRegion()));
+  // If the else region does not exist, it is not a viable successor.
+  if (else_reg) regions.push_back(RegionSuccessor(else_reg));
+}
+
+void IfOp::getEntrySuccessorRegions(ArrayRef<Attribute> operands,
+                                    SmallVectorImpl<RegionSuccessor>& regions) {
+  // Don't consider the else region if it is empty.
+  Region* else_reg = &getElseRegion();
+  if (else_reg->empty()) else_reg = nullptr;
+
   bool condition;
   if (auto cond_attr = operands.front().dyn_cast_or_null<IntegerAttr>()) {
     condition = cond_attr.getValue().isOne();
+
+    // Add the successor regions using the condition.
+    regions.push_back(RegionSuccessor(condition ? &getThenRegion() : else_reg));
   } else {
     // If the condition isn't constant, both regions may be executed.
     regions.push_back(RegionSuccessor(&getThenRegion()));
@@ -3588,9 +3681,6 @@ void IfOp::getSuccessorRegions(std::optional<unsigned> index,
     if (else_reg) regions.push_back(RegionSuccessor(else_reg));
     return;
   }
-
-  // Add the successor regions using the condition.
-  regions.push_back(RegionSuccessor(condition ? &getThenRegion() : else_reg));
 }
 
 //===----------------------------------------------------------------------===//
@@ -3619,8 +3709,7 @@ void PolyCallOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 void PolyCallOp::getSuccessorRegions(
-    std::optional<unsigned> index, ArrayRef<Attribute> operands,
-    SmallVectorImpl<RegionSuccessor>& regions) {
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
   // Defaults to first region for TFLite execution.
 }
 
@@ -3770,7 +3859,7 @@ void WhileOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add<WhileResultOperandsMatchAndImplicitCapture>(context);
 }
 
-Region& WhileOp::getLoopBody() { return getBody(); }
+SmallVector<Region*> WhileOp::getLoopRegions() { return {&getBody()}; }
 
 bool WhileOp::isDefinedOutsideOfLoop(Value value) {
   // TODO(jpienaar): This is to overly conservative and disables anything other

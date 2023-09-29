@@ -1,4 +1,4 @@
-load("//tensorflow:pytype.default.bzl", "pytype_library")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "if_google")
 load(
@@ -19,7 +19,7 @@ exports_files([
     "collective_test.py",
 ])
 
-pytype_library(
+pytype_strict_library(
     name = "test_util",
     testonly = if_google(
         True,
@@ -69,6 +69,25 @@ pytype_library(
     ],
 )
 
+# TODO(b/301286466): Investigate why python annotation type mismatch is not catptured by the type
+# strict BUILD rules.
+
+dtensor_test(
+    name = "array_ops_test",
+    srcs = ["array_ops_test.py"],
+    additional_backends = [],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
 dtensor_test(
     name = "config_test",
     srcs = ["config_test.py"],
@@ -77,7 +96,7 @@ dtensor_test(
         ":test_util",
         "//tensorflow/dtensor/python:config",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -261,6 +280,8 @@ dtensor_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/ops:stateless_random_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
@@ -269,7 +290,27 @@ dtensor_test(
     ],
 )
 
-pytype_library(
+dtensor_test(
+    name = "mesh_util_test",
+    srcs = ["mesh_util_test.py"],
+    additional_backends = [
+        TPU_V3_DONUT_BACKEND,
+        GPU_2DEVS_BACKEND,
+    ],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:config",
+        "//tensorflow/dtensor/python:mesh_util",
+        "//tensorflow/dtensor/python:tpu_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:device",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+pytype_strict_library(
     name = "multi_client_test_util",
     testonly = if_google(
         True,
@@ -283,9 +324,9 @@ pytype_library(
     ],
     deps = [
         ":test_util",
-        "//tensorflow/python/framework:config",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/flags",
+        "@pypi_portpicker//:pkg",
     ],
 )
 
@@ -348,7 +389,6 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "NCCL_PROTO": "Simple",  # FIXME(b/272050398): Delete this when the Clang-16/NCCL incompatibility has been resolved.
     },
     tags = [
         "no_windows",
@@ -394,7 +434,6 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "NCCL_PROTO": "Simple",  # FIXME(b/272050398): Delete this when the Clang-16/NCCL incompatibility has been resolved.
     },
     tags = [
         "no_windows",
@@ -516,6 +555,7 @@ dtensor_test(
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:resource_variable_ops_gen",
         "//tensorflow/python/ops:special_math_ops",
+        "//tensorflow/python/ops:spectral_ops_gen",
         "//tensorflow/python/ops:stateless_random_ops",
         "//tensorflow/python/ops:stateless_random_ops_gen",
         "//tensorflow/python/ops:string_ops_gen",
@@ -569,6 +609,7 @@ dtensor_test(
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:resource_variable_ops_gen",
         "//tensorflow/python/ops:special_math_ops",
+        "//tensorflow/python/ops:spectral_ops_gen",
         "//tensorflow/python/ops:stateless_random_ops",
         "//tensorflow/python/ops:stateless_random_ops_gen",
         "//tensorflow/python/ops:string_ops_gen",
@@ -577,5 +618,35 @@ dtensor_test(
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
+    name = "variable_test",
+    srcs = ["variable_test.py"],
+    disable_tfrt = [
+        "tpu",
+        "gpu",
+    ],  # b/198521331 timeout on TFRT TPU.
+    main = "variable_test.py",
+    tags = [
+        "nomultivm",
+    ],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
     ],
 )

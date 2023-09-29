@@ -71,7 +71,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
     if (!attr.has_value() || attr.value().empty()) {
       Value zero = rewriter->create<LLVM::ConstantOp>(
           loc, size_ty, rewriter->getIntegerAttr(size_ty, 0));
-      Value null_ptr = rewriter->create<LLVM::NullOp>(loc, ptr_ty);
+      Value null_ptr = rewriter->create<LLVM::ZeroOp>(loc, ptr_ty);
       return std::make_pair(zero, null_ptr);
     }
 
@@ -203,7 +203,8 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     }
 
     // Compute strides and populate descriptor `size` and `stride` fields.
-    Value stride_carried = createIndexConstant(rewriter, loc, 1);
+    Value stride_carried =
+        createIndexAttrConstant(rewriter, loc, getIndexType(), 1);
     for (int pos = sizes.size() - 1; pos >= 0; --pos) {
       Value size = sizes[pos];
       memref_desc.setSize(rewriter, loc, pos, size);
@@ -450,7 +451,7 @@ class NullContextOpConverter : public ConvertOpToLLVMPattern<NullContextOp> {
   LogicalResult matchAndRewrite(
       NullContextOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<LLVM::NullOp>(op, getVoidPtrType());
+    rewriter.replaceOpWithNewOp<LLVM::ZeroOp>(op, getVoidPtrType());
     return success();
   }
 };
@@ -463,7 +464,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
       NullMemRefOp null_memref_op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = null_memref_op->getLoc();
-    LLVMTypeConverter type_converter = *getTypeConverter();
+    const LLVMTypeConverter &type_converter = *getTypeConverter();
     MLIRContext *ctx = null_memref_op.getContext();
     mlir::Operation *op = null_memref_op.getOperation();
 
@@ -475,11 +476,12 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
     LLVM::LLVMPointerType llvm_ptr_type =
         LLVM::LLVMPointerType::get(ctx, address_space);
 
-    Value zero = createIndexConstant(rewriter, loc, 0);
+    Value zero = createIndexAttrConstant(rewriter, loc, getIndexType(), 0);
     if (auto result_type = null_memref_op.getType().dyn_cast<MemRefType>()) {
       // Set all dynamic sizes to 1 and compute fake strides.
-      SmallVector<Value, 4> dyn_sizes(result_type.getNumDynamicDims(),
-                                      createIndexConstant(rewriter, loc, 1));
+      SmallVector<Value, 4> dyn_sizes(
+          result_type.getNumDynamicDims(),
+          createIndexAttrConstant(rewriter, loc, getIndexType(), 1));
       SmallVector<Value, 4> sizes, strides;
       Value sizeBytes;
       getMemRefDescriptorSizes(loc, result_type, dyn_sizes, rewriter, sizes,
@@ -487,7 +489,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
 
       // Prepare packed args [allocatedPtr, alignedPtr, offset, sizes, strides]
       // to create a memref descriptor.
-      Value null = rewriter.create<LLVM::NullOp>(loc, llvm_ptr_type);
+      Value null = rewriter.create<LLVM::ZeroOp>(loc, llvm_ptr_type);
       SmallVector<Value, 12> packed_values{null, null, zero};
       packed_values.append(sizes);
       packed_values.append(strides);
@@ -522,7 +524,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
         sizes.front());
 
     // Populate underlying ranked descriptor.
-    Value null = rewriter.create<LLVM::NullOp>(loc, llvm_ptr_type);
+    Value null = rewriter.create<LLVM::ZeroOp>(loc, llvm_ptr_type);
     UnrankedMemRefDescriptor::setAllocatedPtr(
         rewriter, loc, underlying_desc_ptr, llvm_ptr_type, null);
     UnrankedMemRefDescriptor::setAlignedPtr(rewriter, loc, *getTypeConverter(),
@@ -553,7 +555,7 @@ class IsValidMemRefOpConverter
     int64_t rank = op.getArg().getType().cast<MemRefType>().getRank();
     Value is_empty_shape = rewriter.create<LLVM::ConstantOp>(
         loc, rewriter.getI1Type(), rewriter.getBoolAttr(false));
-    Value zero = createIndexConstant(rewriter, loc, 0);
+    Value zero = createIndexAttrConstant(rewriter, loc, getIndexType(), 0);
     for (int i = 0; i < rank; ++i) {
       Value size = desc.size(rewriter, loc, i);
       Value is_zero_size = rewriter.create<LLVM::ICmpOp>(
@@ -563,7 +565,7 @@ class IsValidMemRefOpConverter
     }
 
     Value ptr = desc.allocatedPtr(rewriter, loc);
-    Value null = rewriter.create<LLVM::NullOp>(loc, getVoidPtrType());
+    Value null = rewriter.create<LLVM::ZeroOp>(loc, getVoidPtrType());
     Value is_not_nullptr = rewriter.create<LLVM::ICmpOp>(
         loc, rewriter.getI1Type(), LLVM::ICmpPredicate::ne, ptr, null);
 

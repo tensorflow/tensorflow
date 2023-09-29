@@ -15,18 +15,22 @@ limitations under the License.
 #include "tensorflow/core/data/service/client/utils.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -57,6 +61,25 @@ StatusOr<DataServiceMetadata> GetDataServiceMetadata(
   }
   TF_RETURN_IF_ERROR(status);
   return metadata;
+}
+
+StatusOr<bool> CompressionDisabledAtRuntime(
+    const std::string& dataset_id, const std::string& address,
+    const std::string& protocol, bool disable_compression_at_runtime) {
+  DataServiceDispatcherClient client(address, protocol);
+  DisableCompressionAtRuntimeResponse response;
+  absl::Time deadline =
+      absl::FromUnixMicros(EnvTime::NowMicros()) + kGetMetadataRetryTimeout;
+  TF_RETURN_IF_ERROR(grpc_util::Retry(
+      [&]() {
+        return client.DisableCompressionAtRuntime(
+            dataset_id, disable_compression_at_runtime, response);
+      },
+      absl::Substitute(
+          "Get compression disabled at runtime with dispatcher at $0.",
+          address),
+      absl::ToUnixMicros(deadline)));
+  return response.compression_disabled_at_runtime();
 }
 
 StatusOr<DataServiceConfig> GetDataServiceConfig(const std::string& address,

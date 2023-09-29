@@ -14,14 +14,19 @@
 # ==============================================================================
 """Core TensorFlow types."""
 
+import abc
+import inspect
 import sys
 import textwrap
-
 from typing import Union
 
 import numpy as np
 
 from tensorflow.python.types import doc_typealias
+
+
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import, g-bad-import-order
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint:disable=g-import-not-at-top
@@ -56,7 +61,7 @@ class Tensor(object):
     pass
 
 
-# `ops.EagerTensor` subclasses `Symbol` by way of subclassing `ops.Tensor`;
+# `ops.EagerTensor` subclasses `Symbol` by way of subclassing `tensor.Tensor`;
 # care should be taken when performing `isinstance` checks on `Value`, e.g.:
 #
 # ```
@@ -83,13 +88,39 @@ class Value(Tensor):
     pass
 
 
+@tf_export("types.experimental.FunctionType")
+class FunctionType(inspect.Signature, metaclass=abc.ABCMeta):
+  """Represents the type of a TensorFlow callable.
+
+  FunctionType inherits from inspect.Signature which canonically represents the
+  structure (and optionally type) information of input parameters and output of
+  a Python function. Additionally, it integrates with the tf.function type
+  system (`tf.types.experimental.TraceType`) to provide a holistic
+  representation of the the I/O contract of the callable. It is used for:
+    - Canonicalization and type-checking of Python input arguments
+    - Type-based dispatch to concrete functions
+    - Packing/unpacking structured python values to Tensors
+    - Generation of structured placeholder values for tracing
+  """
+
+  # The signature of this method changes in Py3.10 so we override to enforce it.
+  @classmethod
+  def from_callable(cls, obj, *, follow_wrapped=True):
+    return super().from_callable(obj, follow_wrapped=follow_wrapped)
+
+
 @tf_export("types.experimental.Callable", v1=[])
-class Callable:
+class Callable(metaclass=abc.ABCMeta):
   """Base class for TF callables like those created by tf.function.
 
   Note: Callables are conceptually very similar to `tf.Operation`: a
   `tf.Operation` is a kind of callable.
   """
+
+  @property
+  @abc.abstractmethod
+  def function_type(self) -> FunctionType:
+    """Returns a FunctionType describing this callable."""
 
   def __call__(self, *args, **kwargs):
     """Executes this callable.
@@ -109,18 +140,56 @@ class Callable:
     """
 
 
-@tf_export("types.experimental.ConcreteFunction", v1=[])
-class ConcreteFunction(Callable):
+@tf_export("types.experimental.AtomicFunction", v1=[])
+class AtomicFunction(Callable):
   """Base class for graph functions.
 
-  A `ConcreteFunction` encapsulates a single graph function definition and
-  is differentiable under `tf.GradientTape` contexts.
+  An `AtomicFunction` encapsulates a single graph function definition.
+
+  `AtomicFunction` can be called directly only if no captures are needed
+  according to the `FunctionType`. If captures are present, please use
+  `call_with_captures` instead.
+
+  `AtomicFunction` does not support gradients. Please use the parent
+  `ConcreteFunction` if you need gradient support.
   """
 
+  def call_with_captures(self, args, kwargs, captures):
+    """Calls this AtomicFunction with captures as defined by its FunctionType.
 
-# TODO(mdan): Name just `types.Function`, for historic continuity?
-@tf_export("types.experimental.GenericFunction", v1=[])
-class GenericFunction(Callable):
+    Args:
+      args: Tuple containing positional arguments
+      kwargs: Dict containing keyword arguments
+      captures: Tuple of tensors supplying captured tensor values.
+
+    Returns:
+      A structured output value based on the inputs.
+    """
+
+
+@tf_export("types.experimental.ConcreteFunction", v1=[])
+class ConcreteFunction(Callable, metaclass=abc.ABCMeta):
+  """Base class for differentiable graph functions.
+
+  A `ConcreteFunction` encapsulates the original graph function definition with
+  support for differentiability under `tf.GradientTape` contexts. In the
+  process, it may generate new graph functions (using the original) to
+  efficiently perform forwards and backwards passes.
+  """
+
+  @property
+  @abc.abstractmethod
+  def inference_fn(self) -> AtomicFunction:
+    """Returns the original `AtomicFunction` owned by this ConcreteFunction."""
+
+
+# TODO(fmuham): Remove the export as GenericFunction in future release.
+@tf_export(
+    "types.experimental.PolymorphicFunction",
+    "types.experimental.GenericFunction",  # Deprecated
+    v1=[],
+)
+class PolymorphicFunction(Callable, metaclass=abc.ABCMeta):
   """Base class for polymorphic graph functions.
 
   Graph functions are Python callable objects that dispatch calls to a
@@ -132,6 +201,7 @@ class GenericFunction(Callable):
   Also see `tf.function`.
   """
 
+  @abc.abstractmethod
   def get_concrete_function(self, *args, **kwargs) -> ConcreteFunction:
     """Returns a `ConcreteFunction` specialized to input types.
 
@@ -313,6 +383,10 @@ class TensorProtocol(Protocol):
       A Tensor.
     """
     pass
+
+
+_pywrap_utils.RegisterType("TensorProtocol", TensorProtocol)
+_pywrap_utils.RegisterType("CoreTypeValue", Value)
 
 
 # TODO(rahulkamat): Add missing types that are convertible to Tensor.

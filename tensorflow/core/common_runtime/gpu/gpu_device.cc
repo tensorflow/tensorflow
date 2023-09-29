@@ -15,7 +15,6 @@ limitations under the License.
 
 // TODO(opensource): Use a more generic sounding preprocessor name than
 // GOOGLE_CUDA
-#include "tensorflow/tsl/framework/allocator.h"
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
@@ -45,9 +44,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_split.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/stream_executor/device_id_utils.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
@@ -69,24 +68,25 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/tsl/framework/device_id.h"
-#include "tensorflow/tsl/framework/device_id_utils.h"
+#include "tsl/framework/allocator.h"
+#include "tsl/framework/device_id.h"
+#include "tsl/framework/device_id_utils.h"
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
 #ifdef TF_GPU_USE_PJRT
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/xla/pjrt/gpu/gpu_helpers.h"
-#include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
-#include "tensorflow/compiler/xla/stream_executor/device_host_allocator.h"
+#include "xla/pjrt/gpu/gpu_helpers.h"
+#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/stream_executor/device_host_allocator.h"
 #endif  // TF_GPU_USE_PJRT
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
@@ -365,27 +365,42 @@ class BaseGPUDevice::StreamGroupFactory {
     for (auto& item : streams_) {
       auto& stream = item.second;
       if (stream.compute) {
+#ifndef TF_GPU_USE_PJRT  // When PJRT is used, streams are managed by
+                         // PjRtClient.
         delete stream.compute;
+#endif
         stream.compute = nullptr;
       }
 #if TENSORFLOW_USE_ROCM
       if (stream.nccl) {
+#ifndef TF_GPU_USE_PJRT  // When PJRT is used, streams are managed by
+                         // PjRtClient.
         delete stream.nccl;
+#endif
         stream.nccl = nullptr;
       }
 #endif
       if (stream.host_to_device) {
+#ifndef TF_GPU_USE_PJRT  // When PJRT is used, streams are managed by
+                         // PjRtClient.
         delete stream.host_to_device;
+#endif
         stream.host_to_device = nullptr;
       }
       if (stream.device_to_host) {
+#ifndef TF_GPU_USE_PJRT  // When PJRT is used, streams are managed by
+                         // PjRtClient.
         delete stream.device_to_host;
+#endif
         stream.device_to_host = nullptr;
       }
       while (!stream.device_to_device.empty()) {
         auto back = stream.device_to_device.back();
         if (back) {
+#ifndef TF_GPU_USE_PJRT  // When PJRT is used, streams are managed by
+                         // PjRtClient.
           delete back;
+#endif
         }
         stream.device_to_device.pop_back();
       }
@@ -438,6 +453,16 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
   // XLA device IDs for GPUs are arbitrary but must be unique, so we hash device
   // names (which include a replica index even for multi-client).
   set_xla_global_id(Fingerprint32(name) % std::numeric_limits<int32_t>::max());
+
+#ifdef TF_GPU_USE_PJRT
+  // Note: ShapeDeterminationFns is not used in GPU.
+  XlaShapeLayoutHelpers::ShapeDeterminationFns shape_fns{
+      UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
+
+  pjrt_device_context_ = core::RefCountPtr<DeviceContext>(
+      new PjRtDeviceContext(shape_fns, /*use_pjrt_tensor_buffer=*/true));
+#endif  // TF_GPU_USE_PJRT
+
   GPUProcessState::singleton()->EnableGPUDevice();
 }
 
@@ -559,6 +584,14 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   accelerator_device_info_ = new DeviceBase::AcceleratorDeviceInfo;
   accelerator_device_info_->stream = stream_->compute;
   accelerator_device_info_->default_context = device_context_;
+#ifdef TF_GPU_USE_PJRT
+  accelerator_device_info_->pjrt_context = pjrt_device_context_.get();
+  bool use_pjrt =
+      GetXlaOpsCommonFlags()->tf_xla_use_device_api.IsEnabledForGpu();
+  accelerator_device_info_->use_pjrt_tensor_buffer =
+      use_pjrt && static_cast<PjRtDeviceContext*>(pjrt_device_context_.get())
+                      ->use_pjrt_tensor_buffer();
+#endif  // TF_GPU_USE_PJRT
   accelerator_device_info_->event_mgr = em_;
   tsl::PlatformDeviceId platform_device_id;
   TF_RETURN_IF_ERROR(
@@ -1194,7 +1227,30 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
     allocated_memory = total_memory * per_process_gpu_memory_fraction;
   }
 
+  const auto maybe_update_allocated_memory = [&](int64_t reserved_mb) {
+    // Convert MBytes to Bytes.
+    int64_t allowable_reserved_memory = reserved_mb * 1024 * 1024;
+    // overrides per_process_gpu_memory_fraction.
+    if (allowable_reserved_memory <= available_memory) {
+      allocated_memory = available_memory - allowable_reserved_memory;
+      VLOG(1) << "Setting the GPU reserved bytes to "
+              << strings::HumanReadableNumBytes(allocated_memory) << " MBytes";
+    } else {
+      LOG(WARNING) << "The requested reserved device memory "
+                   << strings::HumanReadableNumBytes(allowable_reserved_memory)
+                   << " is larger than the available memory of "
+                   << strings::HumanReadableNumBytes(available_memory)
+                   << ". The request is ignored.";
+    }
+  };
+  // Override the excluded memory if gpu_system_memory_size_in_mb is set.
+  if (gpu_options.experimental().gpu_system_memory_size_in_mb() > 0) {
+    maybe_update_allocated_memory(
+        gpu_options.experimental().gpu_system_memory_size_in_mb());
+  }
   // Override the excluded memory when TF_DEVICE_MIN_SYS_MEMORY_IN_MB is set.
+  // TF_DEVICE_MIN_SYS_MEMORY_IN_MB takes precedence over
+  // gpu_system_memory_size_in_mb when both are set.
   const char* force_device_reserved_bytes =
       std::getenv("TF_DEVICE_MIN_SYS_MEMORY_IN_MB");
   if (force_device_reserved_bytes != nullptr &&
@@ -1206,23 +1262,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
                    << force_device_reserved_bytes
                    << " is invalid. The request will be ignored.";
     } else {
-      // Convert MBytes to Bytes.
-      int64_t allowable_reserved_memory = reserved_mb * 1024 * 1024;
-      // TF_DEVICE_MIN_SYS_MEMORY_IN_MB overrides
-      // per_process_gpu_memory_fraction.
-      if (allowable_reserved_memory <= available_memory) {
-        allocated_memory = available_memory - allowable_reserved_memory;
-        VLOG(1) << "Setting the GPU reserved bytes to "
-                << strings::HumanReadableNumBytes(allocated_memory)
-                << " MBytes";
-      } else {
-        LOG(WARNING) << "The requested reserved device memory "
-                     << strings::HumanReadableNumBytes(
-                            allowable_reserved_memory)
-                     << " is larger than the available memory of "
-                     << strings::HumanReadableNumBytes(available_memory)
-                     << ". The request is ignored.";
-      }
+      maybe_update_allocated_memory(reserved_mb);
     }
   }
   *memory_limit = allocated_memory;
@@ -1532,6 +1572,10 @@ Status BaseGPUDeviceFactory::CreateDevices(
           valid_platform_device_ids == visible_gpu_order);
   }
 
+  if (num_gpus_to_use == 0) {
+    return OkStatus();
+  }
+
   struct TfDeviceSpec {
     tsl::PlatformDeviceId platform_device_id;
     int64_t memory_limit_bytes;
@@ -1558,9 +1602,22 @@ Status BaseGPUDeviceFactory::CreateDevices(
       TF_RETURN_IF_ERROR(
           SingleVirtualDeviceMemoryLimit(gpu_options, platform_device_id,
                                          &single_virtual_device_memory_limit));
-      tf_device_specs.emplace_back(
-          platform_device_id, single_virtual_device_memory_limit,
-          /*index=*/tf_device_specs.size(), /*device_ordinal=*/0);
+      const int num_virtual_devices =
+          gpu_options.experimental().num_virtual_devices_per_gpu();
+      if (num_virtual_devices > 1) {
+        // The available memory is split equally among all virtual devices.
+        const int64_t memory_limit_per_virtual_device =
+            single_virtual_device_memory_limit / num_virtual_devices;
+        for (int j = 0; j < num_virtual_devices; ++j) {
+          tf_device_specs.emplace_back(
+              platform_device_id, memory_limit_per_virtual_device,
+              /*index=*/tf_device_specs.size(), /*device_ordinal=*/0);
+        }
+      } else {
+        tf_device_specs.emplace_back(
+            platform_device_id, single_virtual_device_memory_limit,
+            /*index=*/tf_device_specs.size(), /*device_ordinal=*/0);
+      }
     } else {
       const GPUOptions::Experimental::VirtualDevices& virtual_devices_for_gpu =
           virtual_devices.Get(i);
@@ -1589,7 +1646,8 @@ Status BaseGPUDeviceFactory::CreateDevices(
                 return false;
               }
               DCHECK_EQ(a.device_ordinal, b.device_ordinal);
-              DCHECK_NE(a.index, b.index);  // index is unique.
+              DCHECK(std::addressof(a) == std::addressof(b) ||
+                     a.index != b.index);  // index is unique.
               if (a.index < b.index) {
                 return true;
               }
@@ -1617,10 +1675,42 @@ Status BaseGPUDeviceFactory::CreateDevices(
   // tf_device_id.
   std::map<int, std::unique_ptr<xla::LocalDeviceState>> local_device_states;
 
-  // TODO(chuanhao): create allowed_devices in TF.
-  TF_ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
-                      xla::GetGpuXlaClient(/*platform_name=*/std::nullopt,
-                                           /*allowed_devices=*/std::nullopt));
+  std::set<int> allowed_devices;
+  if (!gpu_options.visible_device_list().empty()) {
+    for (const TfDeviceSpec& tf_device_spec : tf_device_specs) {
+      allowed_devices.insert(tf_device_spec.platform_device_id.value());
+    }
+  }
+  TF_ASSIGN_OR_RETURN(
+      xla::LocalClient * xla_client,
+      xla::GetGpuXlaClient(
+          /*platform_name=*/std::nullopt,
+          allowed_devices.empty() ? std::nullopt
+                                  : std::make_optional(allowed_devices)));
+
+  bool should_create_new_pjrt_client = true;
+  xla::PjRtStreamExecutorClient* pjrt_se_client = nullptr;
+  auto obtained_pjrt_client = GetPjRtClient(DeviceType(DEVICE_GPU));
+  if (obtained_pjrt_client.ok()) {
+    pjrt_se_client = tensorflow::down_cast<xla::PjRtStreamExecutorClient*>(
+        *obtained_pjrt_client);
+    // TODO(b/291943099): This check may not be enough because the virtual
+    // device options can change while the device count remains the same.
+    // However, it's most likely that in real use cases, CreateDevices() won't
+    // be called more than once with different options being set. If such use
+    // cases exist we may need to update the check here.
+    if (pjrt_se_client->addressable_device_count() == tf_device_specs.size()) {
+      should_create_new_pjrt_client = false;
+    } else {
+      LOG(WARNING) << "A PjRt GPU Client was previously created, but the "
+                      "addressable device count: "
+                   << pjrt_se_client->addressable_device_count()
+                   << " is not equal to tf_device_specs size: "
+                   << tf_device_specs.size()
+                   << ". This usually only happens in unit tests and we will "
+                      "create a new PjRt GPU Client.";
+    }
+  }
 #endif  // TF_GPU_USE_PJRT
 
   GPUProcessState* process_state = GPUProcessState::singleton();
@@ -1664,33 +1754,40 @@ Status BaseGPUDeviceFactory::CreateDevices(
     }
 
     xla::LocalDeviceState* local_device_state = nullptr;
-    const int priority = GetPriority(tf_device_id.value(), gpu_options);
-    xla::LocalDeviceState::StreamOptions stream_options;
-    int num_d2d_streams =
-        gpu_options.experimental().num_dev_to_dev_copy_streams();
-    if (num_d2d_streams == 0) num_d2d_streams = 1;
-    if (num_d2d_streams < 1 || num_d2d_streams > 4) {
-      LOG(ERROR)
-          << "Illegal GPUOptions.experimental.num_dev_to_dev_copy_streams="
-          << num_d2d_streams << " set to 1 instead.";
-      num_d2d_streams = 1;
-    }
-    stream_options.num_device_to_device_streams = num_d2d_streams;
-    stream_options.priority = priority;
+    if (should_create_new_pjrt_client) {
+      const int priority = GetPriority(tf_device_id.value(), gpu_options);
+      xla::LocalDeviceState::StreamOptions stream_options;
+      int num_d2d_streams =
+          gpu_options.experimental().num_dev_to_dev_copy_streams();
+      if (num_d2d_streams == 0) num_d2d_streams = 1;
+      if (num_d2d_streams < 1 || num_d2d_streams > 4) {
+        LOG(ERROR)
+            << "Illegal GPUOptions.experimental.num_dev_to_dev_copy_streams="
+            << num_d2d_streams << " set to 1 instead.";
+        num_d2d_streams = 1;
+      }
+      stream_options.num_device_to_device_streams = num_d2d_streams;
+      stream_options.priority = priority;
 
-    auto emplace_result = local_device_states.emplace(
-        di, std::make_unique<xla::LocalDeviceState>(
-                executor_status.value(), xla_client,
-                xla::LocalDeviceState::kComputeSynchronized,
-                /*max_inflight_computations=*/32,
-                /*allow_event_reuse=*/true, /*use_callback_stream=*/true,
-                /*device_ordinal=*/di, /*stream_options=*/stream_options));
-    if (!emplace_result.second) {
-      return absl::InternalError(absl::StrCat(
-          "GPU local device state for tf_device_id: ", tf_device_id.value(),
-          " already exists."));
+      auto emplace_result = local_device_states.emplace(
+          di, std::make_unique<xla::LocalDeviceState>(
+                  executor_status.value(), xla_client,
+                  xla::LocalDeviceState::kComputeSynchronized,
+                  /*max_inflight_computations=*/32,
+                  /*allow_event_reuse=*/true, /*use_callback_stream=*/true,
+                  /*device_ordinal=*/di, /*stream_options=*/stream_options));
+      if (!emplace_result.second) {
+        return absl::InternalError(absl::StrCat(
+            "GPU local device state for tf_device_id: ", tf_device_id.value(),
+            " already exists."));
+      }
+      local_device_state = emplace_result.first->second.get();
+    } else {
+      auto* pjrt_se_client =
+          tensorflow::down_cast<xla::PjRtStreamExecutorClient*>(
+              *obtained_pjrt_client);
+      local_device_state = &(pjrt_se_client->device_state(di));
     }
-    local_device_state = emplace_result.first->second.get();
 
     // CreateGPUDevice sets stream to `gpu_allocator` and preallocates
     // devices memory.
@@ -1699,10 +1796,12 @@ Status BaseGPUDeviceFactory::CreateDevices(
         /*dev_locality=*/it->second,
         /*xla_local_device_state=*/local_device_state, gpu_allocator, devices));
 
-    auto gpu_allocator_ptr = std::unique_ptr<Allocator>(gpu_allocator);
-    allocator_id_stream_tuples.emplace_back(
-        std::move(gpu_allocator_ptr), tf_device_id.value(),
-        local_device_state->compute_stream());
+    if (should_create_new_pjrt_client) {
+      auto gpu_allocator_ptr = std::unique_ptr<Allocator>(gpu_allocator);
+      allocator_id_stream_tuples.emplace_back(
+          std::move(gpu_allocator_ptr), tf_device_id.value(),
+          local_device_state->compute_stream());
+    }
   }
 
   // No GPU device is created. This is an allowed behavior.
@@ -1710,36 +1809,42 @@ Status BaseGPUDeviceFactory::CreateDevices(
     return OkStatus();
   }
 
-  auto allocator_adapter = std::make_unique<se::MultiDeviceAdapter>(
-      gpu_manager, std::move(allocator_id_stream_tuples));
+  if (should_create_new_pjrt_client) {
+    auto allocator_adapter = std::make_unique<se::MultiDeviceAdapter>(
+        gpu_manager, std::move(allocator_id_stream_tuples));
 
-  // TODO(chuanhao): Use the correct NUMA_NODE.
-  const int64_t numa_node = 0;
+    // TODO(chuanhao): Use the correct NUMA_NODE.
+    const int64_t numa_node = 0;
 
-  std::unique_ptr<tsl::Allocator> pjrt_gpu_host_allocator(
-      process_state->GetGpuHostAllocator(/*options=*/{}, numa_node));
+    std::unique_ptr<tsl::Allocator> pjrt_gpu_host_allocator(
+        process_state->GetGpuHostAllocator(/*options=*/{}, numa_node));
 
-  std::vector<std::unique_ptr<xla::PjRtStreamExecutorDevice>> pjrt_devices =
-      xla::BuildLocalDevices(std::move(local_device_states),
-                              /*node_id=*/numa_node);
+    std::vector<std::unique_ptr<xla::PjRtStreamExecutorDevice>> pjrt_devices =
+        xla::BuildLocalDevices(std::move(local_device_states),
+                               /*node_id=*/numa_node);
 
-  // TODO(chuanhao): set the rollout flag with
-  // AllowForDeviceInXlaLaunch("GPU") here at device creation.
-  //
-  // Creates PJRT GPU client and places it into a TF global resource manager.
-  auto gpu_run_options =
-      std::make_unique<xla::gpu::GpuExecutableRunOptions>();
-  std::unique_ptr<xla::PjRtClient> pjrt_client =
-      std::make_unique<xla::StreamExecutorGpuClient>(
-          xla::GpuName(), xla_client, std::move(pjrt_devices),
-          /*process_index=*/numa_node,
-          /*allocator=*/std::move(allocator_adapter),
-          /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),
-          /*should_stage_host_to_device_transfers=*/true,
-          /*gpu_run_options=*/std::move(gpu_run_options));
+    auto& pjrt_rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
+    pjrt_rollout_config.AllowForDeviceInXlaLaunch(DEVICE_GPU);
+    pjrt_rollout_config.AllowForDeviceInXlaCompileOnDemand(DEVICE_GPU);
+    pjrt_rollout_config.AllowForDeviceInXlaCompileAndRun(DEVICE_GPU);
 
-  return SetPjRtClientInTFGlobalResourceManager(DeviceType(DEVICE_GPU),
-                                                std::move(pjrt_client));
+    // Creates PJRT GPU client and places it into a TF global resource manager.
+    auto gpu_run_options =
+        std::make_unique<xla::gpu::GpuExecutableRunOptions>();
+    std::unique_ptr<xla::PjRtClient> pjrt_client =
+        std::make_unique<xla::StreamExecutorGpuClient>(
+            xla::GpuName(), xla_client, std::move(pjrt_devices),
+            /*process_index=*/numa_node,
+            /*allocator=*/std::move(allocator_adapter),
+            /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),
+            /*should_stage_host_to_device_transfers=*/true,
+            /*gpu_run_options=*/std::move(gpu_run_options));
+
+    return SetPjRtClientInTFGlobalResourceManager(DeviceType(DEVICE_GPU),
+                                                  std::move(pjrt_client));
+  } else {
+    return obtained_pjrt_client.status();
+  }
 #else
     TF_RETURN_IF_ERROR(CreateGPUDevice(options, name_prefix, tf_device_id,
                                        /*dev_locality=*/it->second,
@@ -1797,9 +1902,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   auto desc = std::move(desc_status).value();
 
   std::optional<AllocatorStats> stats = gpu_allocator->GetStats();
-  if (!stats) {
-    return errors::Internal("No allocator statistics");
-  }
+
   // 'memory_limit' is the required memory size, but if the allocator with
   // given tf_device_id was created before, we'll use it instead of creating a
   // new one (as TF gpu device is a shared resource), in which case the actual
@@ -1808,7 +1911,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   //
   // TODO(laigd): report error if memory_limit doesn't match
   // stats->bytes_limit.
-  int64_t bytes_limit = stats->bytes_limit ? *stats->bytes_limit : 0;
+  int64_t bytes_limit = (stats && stats->bytes_limit) ? *stats->bytes_limit : 0;
   std::unique_ptr<BaseGPUDevice> gpu_device = CreateGPUDevice(
       options, device_name, static_cast<Bytes>(bytes_limit), dev_locality,
       tf_device_id, GetShortDeviceDescription(platform_device_id, *desc),

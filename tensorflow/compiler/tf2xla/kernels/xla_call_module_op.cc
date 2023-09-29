@@ -45,20 +45,20 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/shape_util.h"
+#include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -169,10 +169,16 @@ class XlaCallModuleOp : public XlaOpKernel {
                       "Unexpected device type ", loading_device_type)));
     }
     VLOG(3) << "Initialized XlaCallModuleOp on " << loading_platform;
+    if (!ctx->GetAttr("has_token_input_output", &module_has_token_input_output_)
+             .ok()) {
+      module_has_token_input_output_ = false;
+    }
     {
       auto loader = XlaCallModuleLoader::Create(
           &context_, version, std::move(module_str), std::move(dim_args_spec),
-          std::move(disabled_checks), std::move(platforms), loading_platform);
+          std::move(disabled_checks), std::move(platforms), loading_platform,
+          /*num_invocation_args=*/ctx->num_inputs(),
+          module_has_token_input_output_);
       OP_REQUIRES_OK(ctx, loader.status());
       loader_ = *std::move(loader);
     }
@@ -182,10 +188,6 @@ class XlaCallModuleOp : public XlaOpKernel {
       function_list_.clear();
     }
 
-    if (!ctx->GetAttr("has_token_input_output", &module_has_token_input_output_)
-             .ok()) {
-      module_has_token_input_output_ = false;
-    }
     if (!ctx->GetAttr(kXlaTokenInputNodesAttrName, &token_input_nodes_).ok()) {
       token_input_nodes_.clear();
       op_has_token_input_output_ = false;

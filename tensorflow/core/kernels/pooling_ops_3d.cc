@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <array>
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -76,15 +76,16 @@ Pool3dParameters::Pool3dParameters(OpKernelContext* context,
       errors::Unimplemented(
           "Pooling3d only supports pooling across plane/width/height."));
 
-  OP_REQUIRES_OK(context, GetWindowedOutputSize(tensor_in_planes, window_planes,
-                                                plane_stride, padding,
-                                                &out_plane, &pad_planes));
-  OP_REQUIRES_OK(context,
-                 GetWindowedOutputSize(tensor_in_rows, window_rows, row_stride,
-                                       padding, &out_height, &pad_rows));
-  OP_REQUIRES_OK(context,
-                 GetWindowedOutputSize(tensor_in_cols, window_cols, col_stride,
-                                       padding, &out_width, &pad_cols));
+  OP_REQUIRES_OK(
+      context, GetWindowedOutputSize(tensor_in_planes, window_planes,
+                                     /*dilation_rate=*/1, plane_stride, padding,
+                                     &out_plane, &pad_planes));
+  OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                              tensor_in_rows, window_rows, /*dilation_rate=*/1,
+                              row_stride, padding, &out_height, &pad_rows));
+  OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                              tensor_in_cols, window_cols, /*dilation_rate=*/1,
+                              col_stride, padding, &out_width, &pad_cols));
 }
 
 Status Pool3dParameters::forward_output_shape(TensorShape* shape) {

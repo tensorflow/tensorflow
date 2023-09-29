@@ -244,36 +244,45 @@ class TypeSpec(
         self._component_specs)
     return self._from_components(component_placeholders)
 
-  def _to_tensors(self, value):
+  @doc_controls.do_not_doc_inheritable
+  def to_tensors(self, value):
+    """See TraceType base class for details. Do not override."""
+
     tensors = []
     nest.map_structure(
-        lambda spec, v: tensors.extend(spec._to_tensors(v)),  # pylint: disable=protected-access
+        lambda spec, v: tensors.extend(spec.to_tensors(v)),
         self._component_specs,
         self._to_components(value))
     return tensors
 
-  def _from_tensors(self, tensors):
+  @doc_controls.do_not_doc_inheritable
+  def from_tensors(self, tensors):
+    """See TraceType base class for details. Do not override."""
     components = nest.map_structure(
-        lambda spec: spec._from_tensors(tensors),  # pylint: disable=protected-access
+        lambda spec: spec.from_tensors(tensors),
         self._component_specs
     )
     return self._from_components(components)
 
-  def _flatten(self):
+  @doc_controls.do_not_doc_inheritable
+  def flatten(self):
+    """See TraceType base class for details. Do not override."""
     flat = []
     nest.map_structure(
-        lambda spec: flat.extend(spec._flatten()),  # pylint: disable=protected-access
+        lambda spec: flat.extend(spec.flatten()),
         self._component_specs)
     return flat
 
-  def _cast(self, value, casting_context):
+  @doc_controls.do_not_doc_inheritable
+  def cast(self, value, casting_context):
+    """See TraceType base class for details. Do not override."""
     if casting_context.allow_specs and isinstance(value, TypeSpec):
       assert value.is_subtype_of(self), f"Can not cast {value!r} to {self!r}"
       return self
 
     did_cast = False
     def cast_fn(spec, v):
-      casted_v = spec._cast(v, casting_context)  # pylint: disable=protected-access
+      casted_v = spec.cast(v, casting_context)
       if casted_v is not v:
         nonlocal did_cast
         did_cast = True

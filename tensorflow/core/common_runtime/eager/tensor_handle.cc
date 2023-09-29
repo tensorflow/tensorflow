@@ -712,16 +712,22 @@ Status TensorHandle::RemoteAddress(const Device* d, const bool wait_until_ready,
   DVLOG(3) << "RemoteAddress on TensorHandle: " << this << " device: " << d
            << " " << d->name();
 
+  const tensorflow::RemoteTensorHandleData* remote_data = nullptr;
+
+  // Waiting on a different device handle.
   if (d != device_) {
     tf_shared_lock l(mu_);
     auto mirror = remote_mirrors_.find(d->name());
     if (mirror != remote_mirrors_.end()) {
-      return mirror->second.OpIdAndOutputNum(wait_until_ready, op_id,
-                                             output_num);
+      remote_data = &mirror->second;
+    } else {
+      return errors::FailedPrecondition(
+          "Could not find remote mirror for specified device");
     }
+  }
 
-    return errors::FailedPrecondition(
-        "Could not find remote mirror for specified device");
+  if (remote_data != nullptr) {
+    return remote_data->OpIdAndOutputNum(wait_until_ready, op_id, output_num);
   }
 
   if (Type() != REMOTE) {
@@ -844,7 +850,7 @@ Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
                            context_view_id, mirror.context_view_id()));
     } else {
       LOG(WARNING) << "SetRemoteShape is ignored for a remote mirror that is "
-                      "accociated with a newer context_view_id.";
+                      "associated with a newer context_view_id.";
     }
     return OkStatus();
   }
@@ -999,6 +1005,7 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
   if (src->dtype() == tensorflow::DT_VARIANT) {
     attr.set_on_host(true);
   }
+  const auto* dstd_info = dstd->tensorflow_accelerator_device_info();
   tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
   if (src->shape().num_elements() == 0) {
     *output = dst;
@@ -1011,8 +1018,18 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
   }
   tensorflow::DeviceContext* dst_device_context = nullptr;
   if (!dst_cpu) {
-    dst_device_context =
-        dstd->tensorflow_accelerator_device_info()->default_context;
+    // PJRT will soon pack int4 tensors when transferring them to device (once
+    // XLA int4 support is implemented), but TF currently represents int4 as
+    // unpacked, so do not use PJRT for int4 tensors.
+    // TODO(b/226482736): Either pack int4, or support unpacked int4 tensors in
+    // PJRT. Also update beginning of comment from future to present tense once
+    // PJRT packs int4 tensors.
+    if (dstd_info->use_pjrt_tensor_buffer && DataType() != DT_INT4 &&
+        DataType() != DT_UINT4) {
+      dst_device_context = dstd_info->pjrt_context;
+    } else {
+      dst_device_context = dstd_info->default_context;
+    }
   }
   // TODO(ashankar): The Sync() call below may be more aggressive than
   // necessary. It is based on knowledge of implementation details - that

@@ -169,12 +169,6 @@ class ValidateExportTest(test.TestCase):
     self.assertEqual([(('NAME_C', 'NAME_D'), 'abc'),
                       (('NAME_E', 'NAME_F'), 0.5)], module2._tf_api_constants)
 
-  def testRaisesExceptionIfAlreadyHasAPINames(self):
-    self._test_function._tf_api_names = ['abc']
-    export_decorator = tf_export.tf_export('nameA', 'nameB')
-    with self.assertRaises(tf_export.SymbolAlreadyExposedError):
-      export_decorator(self._test_function)
-
   def testRaisesExceptionIfInvalidSymbolName(self):
     # TensorFlow code is not allowed to export symbols under package
     # tf.estimator
@@ -184,19 +178,6 @@ class ValidateExportTest(test.TestCase):
   def testRaisesExceptionIfInvalidV1SymbolName(self):
     with self.assertRaises(tf_export.InvalidSymbolNameError):
       tf_export.tf_export('valid', v1=['estimator.invalid'])
-
-  def testOverridesFunction(self):
-    export_decorator2 = tf_export.tf_export('nameA', 'nameB')
-    export_decorator2(self._test_function2)
-
-    export_decorator = tf_export.tf_export(
-        'nameA', 'nameB', overrides=[self._test_function2]
-    )
-    export_decorator(self._test_function)
-
-    # _test_function overrides _test_function2. So, _tf_api_names
-    # should be removed from _test_function2.
-    self.assertFalse(hasattr(self._test_function2, '_tf_api_names'))
 
   def testMultipleDecorators(self):
 

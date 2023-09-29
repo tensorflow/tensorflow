@@ -17,11 +17,13 @@ limitations under the License.
 #include <stdint.h>
 
 #include <cstddef>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "google/protobuf/text_format.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -31,8 +33,9 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "third_party/protobuf/text_format.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tfrt/constants.h"
@@ -44,6 +47,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/tpu_conversion_patterns.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
 
@@ -51,7 +56,8 @@ namespace tensorflow {
 namespace mlrt_compiler {
 namespace {
 
-// TODO(chky): Add registration interface for custom device
+constexpr char kXlaLaunchOp[] = "XlaLaunch";
+
 mlir::Value CreateCustomDevice(mlir::Location loc, llvm::StringRef device_name,
                                mlir::ConversionPatternRewriter &rewriter) {
   if (device_name == kTpuHostDevice) {
@@ -112,6 +118,23 @@ class FuncOpSignatureConversion final
   mlir::TypeConverter &type_converter_;
   const llvm::DenseMap<llvm::StringRef, llvm::SmallVector<mlir::Type>>
       &function_call_site_input_types_;
+};
+
+// Convert tf_mlrt::AsyncWhile's signature to tf_mlrt::TFTensorType
+class TFAsyncWhileOpConversion
+    : public mlir::OpConversionPattern<tf_mlrt::TFAsyncWhileOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      tf_mlrt::TFAsyncWhileOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter &rewriter) const override {
+    auto new_op = rewriter.create<tf_mlrt::AsyncWhileOp>(
+        op.getLoc(), op.getResultTypes(), adaptor.getOperands(),
+        op->getAttrs());
+    rewriter.replaceOp(op, new_op.getResults());
+    return mlir::success();
+  }
 };
 
 class TFAwaitOpConversion final
@@ -399,18 +422,7 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
     CanonicalizeFunctionNameInNodeDef(symbol_table_, node_def);
 
     std::string node_def_text;
-    proto2::TextFormat::PrintToString(node_def, &node_def_text);
-
-    auto op_kernel_runner = op_kernel_cache_.GetOrCreate(
-        tfrt::Location(nullptr, execute_key), node_def.op(), node_def.device(),
-        op->getNumOperands(),
-        [&](tensorflow::AttrValueMap *attr_value_map) {
-          *attr_value_map = node_def.attr();
-          return OkStatus();
-        },
-        fallback_state_.device_manager(),
-        fallback_state_.process_function_library_runtime());
-    LOG_IF(ERROR, !op_kernel_runner.ok()) << op_kernel_runner.status();
+    google::protobuf::TextFormat::PrintToString(node_def, &node_def_text);
 
     mlir::Value device;
     if (auto custom_device =
@@ -421,11 +433,8 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
     }
 
     mlir::Operation *new_op = nullptr;
-    if (op_kernel_runner.ok() && (*op_kernel_runner)->IsAsync()) {
-      // If it is an AsyncOpKernel, we lower it to tf_mlrt.async_executeop,
-      // which return !mlrt.futures. These results will be converted as
-      // necessary through the target materialization hook in the type
-      // converter.
+
+    auto create_async_execute_ops = [&]() -> mlir::LogicalResult {
       llvm::SmallVector<mlir::Type, 4> result_types(
           op->getNumResults(), rewriter.getType<mlrt::compiler::FutureType>());
       if (device) {
@@ -439,25 +448,62 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
               execute_op_registry_.RegisterExecuteOp(new_op, execute_key))) {
         return op->emitWarning("Fail to register async op");
       }
+      return mlir::success();
+    };
+
+    // TODO(b/300999257): check whether to clean up for AoT mockGpu case later
+
+    if (node_def.op() == kXlaLaunchOp) {
+      // XlaLaunch Op an AsyncOpKernel, we lower it to tf_mlrt.async_executeop,
+      // which return !mlrt.futures. These results will be converted as
+      // necessary through the target materialization hook in the type
+      // converter.
+      if (mlir::failed(create_async_execute_ops())) {
+        return mlir::failure();
+      }
     } else {
-      // Otherwise, lower to tf_mlrt.executeop.
-      llvm::SmallVector<mlir::Type, 4> result_types(
-          op->getNumResults(), rewriter.getType<tf_mlrt::TFTensorType>());
-      if (device) {
-        new_op = rewriter.replaceOpWithNewOp<tf_mlrt::ExecuteOpWithDevice>(
-            op, result_types, device, operands, node_def_text, execute_key);
-      } else {
-        new_op = rewriter.replaceOpWithNewOp<tf_mlrt::ExecuteOp>(
-            op, result_types, operands, node_def_text, execute_key);
+      auto op_kernel_runner = op_kernel_cache_.GetOrCreate(
+          tfrt::Location(nullptr, execute_key), node_def.op(),
+          node_def.device(), op->getNumOperands(),
+          [&](tensorflow::AttrValueMap *attr_value_map) {
+            *attr_value_map = node_def.attr();
+            return OkStatus();
+          },
+          fallback_state_.device_manager(),
+          fallback_state_.process_function_library_runtime());
+      // TODO(290630314): Use LOG_IF when absl logging is available
+      if (!op_kernel_runner.ok()) {
+        std::cerr << op_kernel_runner.status() << "\n";
       }
 
-      if (op_kernel_runner.ok()) {
-        // Only register this executeop if its opkernel can be created.
-        // Otherwise, it is an unused op so we don't need to create them at
-        // runtime.
-        if (mlir::failed(
-                execute_op_registry_.RegisterExecuteOp(new_op, execute_key))) {
-          return op->emitWarning("Fail to register sync op");
+      if (op_kernel_runner.ok() && (*op_kernel_runner)->IsAsync()) {
+        // If it is an AsyncOpKernel, we lower it to tf_mlrt.async_executeop,
+        // which return !mlrt.futures. These results will be converted as
+        // necessary through the target materialization hook in the type
+        // converter.
+        if (mlir::failed(create_async_execute_ops())) {
+          return mlir::failure();
+        }
+      } else {
+        // Otherwise, lower to tf_mlrt.executeop.
+        llvm::SmallVector<mlir::Type, 4> result_types(
+            op->getNumResults(), rewriter.getType<tf_mlrt::TFTensorType>());
+        if (device) {
+          new_op = rewriter.replaceOpWithNewOp<tf_mlrt::ExecuteOpWithDevice>(
+              op, result_types, device, operands, node_def_text, execute_key);
+        } else {
+          new_op = rewriter.replaceOpWithNewOp<tf_mlrt::ExecuteOp>(
+              op, result_types, operands, node_def_text, execute_key);
+        }
+
+        if (op_kernel_runner.ok()) {
+          // Only register this executeop if its opkernel can be created.
+          // Otherwise, it is an unused op so we don't need to create them at
+          // runtime.
+          if (mlir::failed(execute_op_registry_.RegisterExecuteOp(
+                  new_op, execute_key))) {
+            return op->emitWarning("Fail to register sync op");
+          }
         }
       }
     }
@@ -717,7 +763,7 @@ class BatchFunctionOpConversion
     const auto &node_def = **statusor_node_def;
 
     std::string node_def_text;
-    proto2::TextFormat::PrintToString(node_def, &node_def_text);
+    google::protobuf::TextFormat::PrintToString(node_def, &node_def_text);
 
     llvm::SmallVector<mlir::Type, 4> result_types(
         op->getNumResults(), rewriter.getType<mlrt::compiler::FutureType>());
@@ -992,6 +1038,40 @@ class TfToMlrtConversionPass
       op->replaceAllUsesWith(op->getOperands());
       op->erase();
     });
+
+    AddAwaitOpToUnusedFutures(module);
+  }
+
+  void AddAwaitOpToUnusedFutures(mlir::ModuleOp module) {
+    for (auto func : module.getOps<mlir::func::FuncOp>()) {
+      llvm::SmallVector<mlir::Value> unused_futures;
+
+      auto is_unused_future = [](mlir::Value result) {
+        return llvm::isa<::mlrt::compiler::FutureType>(result.getType()) &&
+               result.use_empty();
+      };
+
+      for (auto arg : func.getArguments()) {
+        if (is_unused_future(arg)) {
+          unused_futures.push_back(arg);
+        }
+      }
+
+      for (auto &op : func.getBody().front()) {
+        for (mlir::Value result : op.getResults()) {
+          if (is_unused_future(result)) {
+            unused_futures.push_back(result);
+          }
+        }
+      }
+
+      if (!unused_futures.empty()) {
+        auto builder =
+            mlir::OpBuilder::atBlockTerminator(&func.getBody().front());
+        builder.create<::mlrt::compiler::AwaitAllControlOp>(func.getLoc(),
+                                                            unused_futures);
+      }
+    }
   }
 
   mlir::LogicalResult PostProcessFunctionSignature(
@@ -1049,6 +1129,8 @@ class TfToMlrtConversionPass
     target.addLegalDialect<mlrt::compiler::MlrtDialect,
                            tensorflow::tf_mlrt::TensorflowMlrtDialect>();
     target.addIllegalDialect<mlir::TF::TensorFlowDialect>();
+
+    target.addIllegalOp<tf_mlrt::TFAsyncWhileOp>();
     target.addIllegalOp<tf_mlrt::TFAwaitOp>();
     target.addIllegalOp<tf_mlrt::TFPromiseOp>();
     target.addIllegalOp<tf_mlrt::TFMapFnOp>();
@@ -1074,7 +1156,9 @@ class TfToMlrtConversionPass
     target.addDynamicallyLegalOp<mlir::func::CallOp>(
         [this](mlir::func::CallOp op) {
           for (auto operand : op.getOperands()) {
-            if (!type_converter_.isLegal(operand.getType())) return false;
+            if (!type_converter_.isLegal(operand.getType())) {
+              return false;
+            }
           }
           return true;
         });
@@ -1086,7 +1170,8 @@ class TfToMlrtConversionPass
                  SetResourceOpConversion, TFAwaitOpConversion,
                  TFPromiseOpConversion>(&context);
     patterns.add<BatchFunctionOpConversion, CaseOpConversion, CondOpConversion,
-                 TFMapFnOpConversion>(type_converter_, &context);
+                 TFAsyncWhileOpConversion, TFMapFnOpConversion>(type_converter_,
+                                                                &context);
     patterns.add<ExecuteOpConversion>(&context, &symbol_table, &type_converter_,
                                       &execute_op_registry_, &op_kernel_cache_,
                                       &fallback_state_);

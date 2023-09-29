@@ -18,7 +18,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import indexed_slices
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -176,7 +176,7 @@ def _create_grad_indexed_slices_init(grad_output_slices, forward_input):
     Zeros IndexedSlices, created in current Graph.
   """
   assert isinstance(grad_output_slices, indexed_slices.IndexedSlices)
-  assert isinstance(forward_input, ops.Tensor)
+  assert isinstance(forward_input, tensor.Tensor)
   values_out = grad_output_slices.values
   indices_out = grad_output_slices.indices
 

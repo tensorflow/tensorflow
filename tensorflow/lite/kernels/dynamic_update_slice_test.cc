@@ -85,6 +85,28 @@ class DynamicUpdateSliceOpModel : public SingleOpModel {
   int output_;
 };
 
+TEST(DynamicUpdateSliceOpTest, SimpleTestF32InPlaceInput) {
+  DynamicUpdateSliceOpModel m({TensorType_FLOAT32, {3, 3}},
+                              {TensorType_FLOAT32, {2, 1}},
+                              {TensorType_INT32, {2}});
+  m.SetInput<float>({1, 2, 3,  //
+                     4, 5, 6,  //
+                     7, 8, 9});
+  m.SetUpdate<float>({-1, -2});
+  m.SetStartIndices<int32_t>({1, 1});
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({1, 2, 3,   //
+                                               4, -1, 6,  //
+                                               7, -2, 9})));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
 TEST(DynamicUpdateSliceOpTest, SimpleTestF32) {
   DynamicUpdateSliceOpModel m({TensorType_FLOAT32, {3, 3}},
                               {TensorType_FLOAT32, {2, 1}},

@@ -27,7 +27,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:function_def_to_graph",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:custom_gradient",
         "//tensorflow/python/ops:default_gradient",
         "//tensorflow/python/ops:handle_data_util",

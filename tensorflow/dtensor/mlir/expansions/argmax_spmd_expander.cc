@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -50,16 +51,11 @@ StatusOr<Layout> ComputeResultLayout(mlir::Operation* op,
 
   if (axis < 0) axis += input_rank;
 
-  LayoutProto output_layout_proto;
-  TF_ASSIGN_OR_RETURN(*output_layout_proto.mutable_mesh_config(),
-                      input_layout.mesh().ToProto());
-
+  std::vector<std::string> sharding_specs;
   for (int i = 0; i < input_rank; ++i) {
-    if (i != axis)
-      output_layout_proto.add_sharding_specs()->set_sharding_spec(
-          input_layout.sharding_spec(i));
+    if (i != axis) sharding_specs.push_back(input_layout.sharding_spec(i));
   }
-  return Layout::FromProto(output_layout_proto).value();
+  return Layout::GetLayout(sharding_specs, input_layout.mesh());
 }
 }  // namespace
 
@@ -84,28 +80,27 @@ StatusOr<mlir::Operation*> ArgMaxSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   mlir::OpBuilder builder(op);
   {
-    LayoutProto tgt_input_layout_proto;
-    TF_ASSIGN_OR_RETURN(*tgt_input_layout_proto.mutable_mesh_config(),
-                        input_layout->mesh().ToProto());
+    std::vector<std::string> tgt_input_sharding_specs;
+    tgt_input_sharding_specs.reserve(input_shape.size());
+    Mesh mesh = input_layout->mesh();
 
     for (int i = 0; i < input_shape.size(); ++i) {
       // const auto dim_name
       if (i == axis) {
         // Set replicated for `axis` dim.
-        tgt_input_layout_proto.add_sharding_specs()->set_sharding_spec(
-            Layout::kUnshardedDim);
+        tgt_input_sharding_specs.push_back(Layout::kUnshardedDim);
       } else {
         // Keep the rest dimension.
-        tgt_input_layout_proto.add_sharding_specs()->set_sharding_spec(
-            input_layout->sharding_spec(i));
+        tgt_input_sharding_specs.push_back(input_layout->sharding_spec(i));
       }
     }
 
     if (!Layout::IsUnshardedDimension(input_layout->sharding_spec(axis))) {
-      TF_ASSIGN_OR_RETURN(
-          input,
-          EmitAllGather(builder, input, *input_layout,
-                        Layout::FromProto(tgt_input_layout_proto).value()));
+      TF_ASSIGN_OR_RETURN(Layout layout,
+                          Layout::GetLayout(input_layout->type(),
+                                            tgt_input_sharding_specs, mesh));
+      TF_ASSIGN_OR_RETURN(input,
+                          EmitAllGather(builder, input, *input_layout, layout));
     }
   }
 

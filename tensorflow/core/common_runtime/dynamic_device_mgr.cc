@@ -109,6 +109,7 @@ Status DynamicDeviceMgr::LookupDevice(StringPiece name, Device** device) const {
   auto iter = device_map_.find(string(name));
   if (iter == device_map_.end()) {
     std::vector<StringPiece> device_names;
+    device_names.reserve(device_map_.size());
     for (auto&& itr : device_map_) {
       device_names.push_back(itr.first);
     }

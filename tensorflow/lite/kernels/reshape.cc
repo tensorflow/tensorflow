@@ -224,8 +224,18 @@ void Free(TfLiteContext* context, void* buffer) {
 }  // namespace reshape
 
 TfLiteRegistration* Register_RESHAPE() {
-  static TfLiteRegistration r = {reshape::Init, reshape::Free, reshape::Prepare,
-                                 reshape::Eval};
+  static TfLiteRegistration r = {
+      reshape::Init,
+      reshape::Free,
+      reshape::Prepare,
+      reshape::Eval,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified};
   return &r;
 }
 

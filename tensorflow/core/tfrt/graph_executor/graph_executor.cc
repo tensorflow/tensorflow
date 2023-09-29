@@ -25,7 +25,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/call_once.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -40,15 +39,19 @@ limitations under the License.
 #include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/update_op_cost_in_tfrt_mlir.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/errors.h"
@@ -58,9 +61,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/graph_executor/executable_context.h"
 #include "tensorflow/core/tfrt/graph_executor/export_mlir.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/sync_resource_state.h"
@@ -70,12 +75,16 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/interpreter/execute.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
+#include "tensorflow/core/tfrt/runtime/step_id.h"
+#include "tensorflow/core/tfrt/runtime/stream.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/stubs/tfrt_native_lowering_stub.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/refcount.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
@@ -101,6 +110,11 @@ constexpr char kTensorNameJoiningDelimiter[] = "-";
 constexpr char kArgumentTypeJoiningDelimiter[] = "^";
 constexpr char kFallbackInitFunction[] = "_tfrt_fallback_init";
 constexpr char kResourceInitFunction[] = "_tfrt_resource_init";
+
+StepId GetNextStepId() {
+  static StepIdGenerator gen;
+  return gen.GetNextStepId();
+}
 
 }  // namespace
 
@@ -183,6 +197,8 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array,
     const tensorflow::tfrt_stub::FallbackState& fallback_state,
+    const tensorflow::ProcessFunctionLibraryRuntime&
+        process_function_library_runtime,
     CostRecorder* cost_recorder) {
   auto request_info = std::make_unique<RequestInfo>();
 
@@ -197,11 +213,11 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     // If the user provides a work_queue, we use it for inter-op tasks.
     request_id = work_queue->id();
     // If the user does not provide a valid id, we need to generate one.
-    if (request_id == 0) request_id = tfrt::GetUniqueInt();
+    if (request_id == 0) request_id = GetNextStepId().id;
     request_info->request_queue = work_queue;
   } else {
+    request_id = GetNextStepId().id;
     // Otherwise we use the global queue in `runtime`.
-    request_id = tfrt::GetUniqueInt();
     TF_ASSIGN_OR_RETURN(request_info->request_queue_owner,
                         runtime.CreateRequestQueue(request_id));
     request_info->request_queue = request_info->request_queue_owner.get();
@@ -228,15 +244,15 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
               &request_info->runner, &fallback_state.device_manager(),
               request_context_builder.id(), runner_table, resource_array,
               request_queue->GetIntraOpThreadPool(), options.model_metadata,
-              &fallback_state.process_function_library_runtime());
+              &process_function_library_runtime);
 
   fallback_request_state.set_cost_recorder(cost_recorder);
   fallback_request_state.set_client_graph_resource_context(
       client_graph_resource_context);
   fallback_request_state.set_runtime_config(&options.runtime_config);
+  fallback_request_state.set_cancellation_manager(
+      &request_info->cancellation_manager);
 
-  TF_RETURN_IF_ERROR(
-      tensorflow::SetUpTfJitRtRequestContext(&request_context_builder));
   // Set priority in the builder.
   tfrt::RequestOptions request_options;
   request_options.priority = run_options.priority;
@@ -264,19 +280,23 @@ tensorflow::Status GraphExecutionRunOnFunction(
     OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array, const Runtime& runtime,
     const FallbackState& fallback_state,
+    const tensorflow::ProcessFunctionLibraryRuntime&
+        process_function_library_runtime,
     tfrt::RequestDeadlineTracker* req_deadline_tracker,
+    std::optional<StreamCallbackId> stream_callback_id,
     CostRecorder* cost_recorder) {
   TF_ASSIGN_OR_RETURN(
       auto request_info,
       CreateRequestInfo(options, run_options, run_options.work_queue,
                         resource_context, client_graph_resource_context,
                         runner_table, resource_array, fallback_state,
-                        cost_recorder));
+                        process_function_library_runtime, cost_recorder));
 
-  tensorflow::profiler::TraceMeProducer traceme(
-      // To TraceMeConsumers in RunHandlerThreadPool::WorkerLoop.
-      [request_id = request_info->tfrt_request_context->id(), signature_name,
-       &options, symbol_uids] {
+  int64_t request_id = request_info->tfrt_request_context->id();
+  // The top level traceme root for this request. The thread pool used later
+  // will add TraceMeProducer and TraceMeConsumer to connect async tasks.
+  tsl::profiler::TraceMe traceme(
+      [request_id, signature_name, &options, symbol_uids] {
         return tensorflow::profiler::TraceMeEncode(
             "TfrtModelRun",
             {{"_r", 1},
@@ -286,9 +306,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
                                        options.model_metadata.version())},
              {"tf_symbol_uid", symbol_uids.tf_symbol_uid},
              {"tfrt_symbol_uid", symbol_uids.tfrt_symbol_uid}});
-      },
-      tensorflow::profiler::ContextType::kTfrtExecutor,
-      request_info->tfrt_request_context->id());
+      });
 
   // Only configure timer when the deadline is set.
   if (run_options.deadline.has_value()) {
@@ -302,6 +320,37 @@ tensorflow::Status GraphExecutionRunOnFunction(
     }
     req_deadline_tracker->CancelRequestOnDeadline(
         deadline, request_info->tfrt_request_context);
+  }
+
+  ScopedStreamCallback scoped_stream_callback;
+
+  if (run_options.streamed_output_callback && !stream_callback_id.has_value()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Signature '", signature_name, "' does not support streaming."));
+  }
+
+  if (stream_callback_id.has_value()) {
+    if (!run_options.streamed_output_callback) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Signature '", signature_name,
+                       "' contains streaming ops but is called using Predict "
+                       "without the streamed callback."));
+    }
+  }
+
+  if (run_options.streamed_output_callback) {
+    if (!stream_callback_id.has_value()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Signature ", signature_name, " does not support streaming."));
+    }
+
+    auto streamed_output_callback = run_options.streamed_output_callback;
+
+    TF_ASSIGN_OR_RETURN(
+        scoped_stream_callback,
+        GetGlobalStreamCallbackRegistry().Register(
+            options.model_metadata.name(), *stream_callback_id,
+            StepId(request_id), std::move(streamed_output_callback)));
   }
 
   if (loaded_executable) {
@@ -427,13 +476,14 @@ StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
   if (options.runtime == nullptr) {
     return errors::InvalidArgument("options.runtime must be non-null ");
   }
+  if (options.enable_online_cost_analysis) {
+    // Overrides cost_analysis_options.
+    options.cost_analysis_options.version = Options::CostAnalysisOptions::kOnce;
+  }
 
   TfrtGraphExecutionState::Options graph_execution_state_options;
   graph_execution_state_options.run_placer_grappler_on_functions =
       options.run_placer_grappler_on_functions;
-  graph_execution_state_options.enable_tfrt_gpu = options.enable_tfrt_gpu;
-  graph_execution_state_options.use_bridge_for_gpu =
-      options.compile_options.use_bridge_for_gpu;
 
   options.compile_options.fuse_get_resource_ops_in_hoisting =
       !options.enable_mlrt;
@@ -541,12 +591,12 @@ tensorflow::Status GraphExecutor::Run(
     flat_inputs.push_back(inputs.at(original_index).second);
   }
 
-  // Conduct cost analysis for the first request on this `loaded_client_graph`.
-  std::unique_ptr<CostRecorder> cost_recorder;
-  if (options_.enable_online_cost_analysis) {
-    cost_recorder = loaded_client_graph.MaybeCreateCostRecorder(
-        options_.online_cost_analysis_normalize_ratio);
-  }
+  // Possibly record costs, depending on the particular setting of
+  // `CostAnalysisOptions`.
+  auto now = absl::Now() + simulated_duration_;
+  bool do_recompilation;
+  CostRecorder* cost_recorder =
+      loaded_client_graph.MaybeGetCostRecorder(now, &do_recompilation);
 
   std::vector<tensorflow::Tensor> flat_outputs;
   TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
@@ -556,13 +606,19 @@ tensorflow::Status GraphExecutor::Run(
       &executable_context->resource_context,
       &loaded_client_graph.runner_table(),
       &loaded_client_graph.resource_array(), runtime(), fallback_state_,
-      &req_deadline_tracker_, cost_recorder.get()));
+      loaded_client_graph.process_function_library_runtime(),
+      &req_deadline_tracker_, loaded_client_graph.stream_callback_id(),
+      cost_recorder));
 
-  if (cost_recorder != nullptr) {
+  if (do_recompilation) {
     TF_RETURN_IF_ERROR(
         loaded_client_graph.UpdateCost(*cost_recorder, runtime()));
+    tensorflow::mutex_lock l(num_recompilations_mu_);
+    num_recompilations_ += 1;
   }
-
+  if (cost_recorder != nullptr) {
+    loaded_client_graph.UpdateCostAnalysisData(now, do_recompilation);
+  }
   // Create the outputs from the actual function results, which are sorted
   // according to the output tensor names.
   auto flat_output_iter = flat_outputs.begin();
@@ -586,9 +642,22 @@ GraphExecutor::ImportAndCompileClientGraph(
   auto import_start_time = absl::Now();
   mlir::DialectRegistry registry;
   RegisterMlirDialect(registry);
-  auto context = std::make_unique<mlir::MLIRContext>(registry);
+  // Disable multi-threading in lazy loading as the thread pool it uses is out
+  // of our control and this affects serving performance.
+  //
+  // TODO(chky): Consider using a custom thread pool with limited threads for
+  // compilation.
+  auto context = std::make_unique<mlir::MLIRContext>(
+      registry, mlir::MLIRContext::Threading::DISABLED);
   ASSIGN_OR_RETURN_IN_IMPORT(
-      auto module, ImportClientGraphToMlirModule(client_graph, context.get()));
+      auto flib_def_and_module,
+      ImportClientGraphToMlirModule(client_graph, context.get()));
+  auto& [flib_def, module] = flib_def_and_module;
+
+  TF_ASSIGN_OR_RETURN(
+      auto stream_callback_id,
+      CreateStreamCallbackId(options().model_metadata.name(), module.get()));
+
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
   symbol_uids.tf_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
@@ -609,6 +678,7 @@ GraphExecutor::ImportAndCompileClientGraph(
   ModelRuntimeContext model_context(&options_,
                                     options_.compile_options.saved_model_dir,
                                     resource_context_.get());
+  model_context.set_function_library_definition(&flib_def);
 
   if (options_.compile_options.compile_to_sync_tfrt_dialect) {
     if (kernel_registry_ == nullptr) {
@@ -626,7 +696,7 @@ GraphExecutor::ImportAndCompileClientGraph(
     ASSIGN_OR_RETURN_IN_COMPILE(
         auto bytecode_buffer,
         tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
-            options_.compile_options, fallback_state_, module.get(),
+            options_.compile_options, fallback_state(), module.get(),
             model_context, &module_with_op_keys));
     mlrt::bc::Executable executable(bytecode_buffer.data());
     auto bytecode_executable =
@@ -652,7 +722,7 @@ GraphExecutor::ImportAndCompileClientGraph(
   return std::make_unique<LoadedClientGraph>(
       client_graph.name, std::move(symbol_uids), this, std::move(context),
       std::move(module_with_op_keys), std::move(module),
-      std::move(executable_context), options_.enable_online_cost_analysis);
+      std::move(executable_context), stream_callback_id, std::move(flib_def));
 }
 
 StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
@@ -679,7 +749,8 @@ GraphExecutor::LoadClientGraph(
   return loaded_client_graph;
 }
 
-tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+tensorflow::StatusOr<
+    std::pair<FunctionLibraryDefinition, mlir::OwningOpRef<mlir::ModuleOp>>>
 GraphExecutor::ImportClientGraphToMlirModule(
     const GraphExecutor::ClientGraph& client_graph,
     mlir::MLIRContext* context) const {
@@ -690,6 +761,7 @@ GraphExecutor::ImportClientGraphToMlirModule(
   graph_import_config.inputs = client_graph.input_nodes;
   graph_import_config.outputs = client_graph.output_nodes;
   graph_import_config.control_outputs = client_graph.target_nodes;
+  graph_import_config.set_original_tf_func_name = true;
 
   // Optimize the graph.
   TF_ASSIGN_OR_RETURN(
@@ -707,9 +779,14 @@ GraphExecutor::ImportClientGraphToMlirModule(
             << " ms. Client graph name: " << client_graph.name;
 
   // Convert the optimized graph to an MLIR module.
-  return tensorflow::ConvertGraphToMlir(
-      *optimized_graph.graph, /*debug_info=*/{},
-      optimized_graph.graph->flib_def(), graph_import_config, context);
+  TF_ASSIGN_OR_RETURN(
+      auto module,
+      tensorflow::ConvertGraphToMlir(*optimized_graph.graph, /*debug_info=*/{},
+                                     optimized_graph.graph->flib_def(),
+                                     graph_import_config, context));
+
+  return std::make_pair(std::move(*optimized_graph.graph->mutable_flib_def()),
+                        std::move(module));
 }
 
 tensorflow::Status GraphExecutor::InitBef(
@@ -722,7 +799,8 @@ tensorflow::Status GraphExecutor::InitBef(
           options_, /*run_options=*/{}, work_queue, resource_context_.get(),
           /*client_graph_resource_context=*/nullptr,
           &loaded_client_graph->runner_table(),
-          &loaded_client_graph->resource_array(), fallback_state_));
+          &loaded_client_graph->resource_array(), fallback_state(),
+          loaded_client_graph->process_function_library_runtime()));
 
   tfrt::ExecutionContext exec_ctx(request_info->tfrt_request_context);
 
@@ -749,7 +827,8 @@ tensorflow::Status GraphExecutor::InitBytecode(
                         options_.runtime->work_queue(), resource_context_.get(),
                         /*client_graph_resource_context=*/nullptr,
                         &loaded_graph->runner_table(),
-                        &loaded_graph->resource_array(), fallback_state_));
+                        &loaded_graph->resource_array(), fallback_state(),
+                        loaded_graph->process_function_library_runtime()));
 
   const auto* loaded_executable =
       loaded_graph->executable_context()->bytecode_executable.get();
@@ -860,11 +939,12 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
                  &loaded_client_graph.sync_resource_state());
 
   tensorflow::tfd::KernelFallbackCompatRequestState kernel_fallback_state(
-      tfd::GetDefaultRunner(), &fallback_state_.get().device_manager(),
+      tfd::GetDefaultRunner(), &fallback_state().device_manager(),
       /*step_id=*/0, &loaded_client_graph.runner_table(),
       &loaded_client_graph.resource_array(),
       /*user_intra_op_threadpool=*/nullptr, /*model_metadata=*/std::nullopt,
-      &fallback_state_.get().process_function_library_runtime());
+      &loaded_client_graph.process_function_library_runtime());
+
   auto tf_context = std::make_unique<tensorflow::tf_mlrt::Context>(
       &kernel_fallback_state, resource_context_.get());
   execution_context.AddUserContext(std::move(tf_context));
@@ -878,34 +958,44 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
   return execution_context.status();
 }
 
-std::unique_ptr<CostRecorder>
-GraphExecutor::LoadedClientGraph::MaybeCreateCostRecorder(
-    uint64_t normalize_ratio) const {
-  std::unique_ptr<CostRecorder> cost_recorder;
-  absl::call_once(create_cost_recorder_once_, [&]() {
-    cost_recorder = std::make_unique<CostRecorder>(normalize_ratio);
-  });
-  return cost_recorder;
+CostRecorder* GraphExecutor::LoadedClientGraph::MaybeGetCostRecorder(
+    absl::Time now, bool* do_recompilation) {
+  *do_recompilation = false;
+  tensorflow::mutex_lock l(cost_analysis_data_.mu);
+  if (!cost_analysis_data_.is_available) {
+    return nullptr;
+  }
+  const auto& options = graph_executor_->options().cost_analysis_options;
+  absl::Duration elapsed_duration = now - cost_analysis_data_.start_time;
+  double intended_num_updates = absl::ToDoubleSeconds(elapsed_duration) /
+                                absl::ToDoubleSeconds(options.reset_interval) *
+                                options.updates_per_interval;
+  // Compare with the actual number of cost updates to decide whether or not to
+  // record costs for this particular execution.
+  if (intended_num_updates - cost_analysis_data_.num_cost_updates >= 1) {
+    cost_analysis_data_.is_available = false;
+    *do_recompilation = 1 + cost_analysis_data_.num_cost_updates >=
+                        options.updates_per_interval;
+    return cost_analysis_data_.cost_recorder.get();
+  }
+  return nullptr;
 }
 
 Status GraphExecutor::LoadedClientGraph::UpdateCost(
     const CostRecorder& cost_recorder, const Runtime& runtime) {
   LOG(INFO) << "TFRT updating op costs of loaded client graph (" << this << ") "
             << name_;
-  // Move to function scope to reduce memory footprint.
-  auto tfrt_mlir = std::move(tfrt_mlir_);
-  auto tf_mlir_with_op_keys = std::move(tf_mlir_with_op_keys_);
-  mlir::StatusScopedDiagnosticHandler diag_handler(
-      tfrt_mlir.get().getContext());
   std::shared_ptr<ExecutableContext> new_executable_context = nullptr;
   if (executable_context()->IsForMlrt()) {
+    auto tf_mlir_with_op_keys = ::mlir::OwningOpRef<mlir::ModuleOp>(
+        cost_analysis_data_.tf_mlir_with_op_keys.get().clone());
     // Recompile from the TF MLIR with recorded costs (skipping
     // AssignOpKeyPass), during which Stream Analysis is redone.
     TF_ASSIGN_OR_RETURN(
         auto bytecode_buffer,
         tensorflow::mlrt_compiler::ConvertTfMlirWithOpKeysToBytecode(
             graph_executor_->options().compile_options,
-            graph_executor_->fallback_state_.get(), tf_mlir_with_op_keys.get(),
+            graph_executor_->fallback_state(), tf_mlir_with_op_keys.get(),
             cost_recorder));
     mlrt::bc::Executable executable(bytecode_buffer.data());
     auto bytecode_executable = std::make_unique<mlrt::LoadedExecutable>(
@@ -914,12 +1004,15 @@ Status GraphExecutor::LoadedClientGraph::UpdateCost(
         std::move(bytecode_buffer), std::move(bytecode_executable));
   } else {
     // Update costs in TFRT MLIR.
+    auto tfrt_mlir = ::mlir::OwningOpRef<mlir::ModuleOp>(
+        cost_analysis_data_.tfrt_mlir.get().clone());
+    mlir::StatusScopedDiagnosticHandler diag_handler(
+        tfrt_mlir.get().getContext());
     tfrt_compiler::UpdateOpCostInTfrtMlir(tfrt_mlir.get(), cost_recorder);
     // Recompile from the updated TFRT MLIR, during which Stream Analysis is
     // redone.
     auto bef = tfrt::ConvertMLIRToBEF(tfrt_mlir.get(),
                                       /*disable_optional_sections=*/true);
-
     if (bef.empty()) {
       return diag_handler.Combine(
           tensorflow::errors::Internal("failed to convert MLIR to BEF."));
@@ -930,12 +1023,85 @@ Status GraphExecutor::LoadedClientGraph::UpdateCost(
     new_executable_context = std::make_shared<ExecutableContext>(
         std::move(bef), std::move(bef_file));
   }
-  // Swap in the new `ExecutableContext`.
-  tensorflow::mutex_lock lock(executable_context_mu_);
-  // TODO(b/259602527): Add test cases that fail when code is changed. E.g.,
-  // add a test kernel that examines the cost.
-  executable_context_ = std::move(new_executable_context);
+  {
+    // Swap in the new `ExecutableContext`.
+    tensorflow::mutex_lock lock(executable_context_mu_);
+    // TODO(b/259602527): Add test cases that fail when code is changed. E.g.,
+    // add a test kernel that examines the cost.
+    executable_context_ = std::move(new_executable_context);
+  }
   return OkStatus();
+}
+
+GraphExecutor::LoadedClientGraph::LoadedClientGraph(
+    std::string name, SymbolUids symbol_uids, GraphExecutor* graph_executor,
+    std::unique_ptr<mlir::MLIRContext> mlir_context,
+    mlir::OwningOpRef<mlir::ModuleOp> tf_mlir_with_op_keys,
+    mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
+    std::shared_ptr<ExecutableContext> executable_context,
+    std::optional<StreamCallbackId> stream_callback_id,
+    FunctionLibraryDefinition flib_def)
+    : name_(std::move(name)),
+      symbol_uids_(std::move(symbol_uids)),
+      graph_executor_(graph_executor),
+      mlir_context_(std::move(mlir_context)),
+      executable_context_(std::move(executable_context)),
+      stream_callback_id_(stream_callback_id),
+      flib_def_(std::move(flib_def)),
+      pflr_(&graph_executor->fallback_state().device_manager(),
+            graph_executor->fallback_state().session_options().env,
+            &graph_executor->fallback_state().session_options().config,
+            TF_GRAPH_DEF_VERSION, &flib_def_,
+            graph_executor->fallback_state()
+                .session_options()
+                .config.graph_options()
+                .optimizer_options(),
+            /*thread_pool=*/nullptr, /*parent=*/nullptr,
+            /*session_metadata=*/nullptr,
+            Rendezvous::Factory{[](int64_t, const DeviceMgr* device_mgr,
+                                   tsl::core::RefCountPtr<Rendezvous>* r) {
+              *r = tsl::core::RefCountPtr<Rendezvous>(
+                  new IntraProcessRendezvous(device_mgr));
+              return OkStatus();
+            }}) {
+  const auto& options = graph_executor_->options().cost_analysis_options;
+  if (options.version != Options::CostAnalysisOptions::kDisabled) {
+    // Initialize in a way that ensures recompilation on the first run.
+    cost_analysis_data_.start_time = absl::Now() - options.reset_interval;
+    cost_analysis_data_.is_available = true;
+    cost_analysis_data_.num_cost_updates = options.updates_per_interval - 1;
+    cost_analysis_data_.cost_recorder = std::make_unique<CostRecorder>();
+    if (executable_context_->IsForMlrt()) {
+      cost_analysis_data_.tf_mlir_with_op_keys =
+          std::move(tf_mlir_with_op_keys);
+    } else {
+      cost_analysis_data_.tfrt_mlir = std::move(tfrt_mlir);
+    }
+  }
+}
+
+void GraphExecutor::LoadedClientGraph::UpdateCostAnalysisData(
+    absl::Time now, bool do_recompilation) {
+  tensorflow::mutex_lock lock(cost_analysis_data_.mu);
+  if (!do_recompilation) {
+    cost_analysis_data_.num_cost_updates += 1;
+    cost_analysis_data_.is_available = true;
+    return;
+  }
+  if (graph_executor_->options().cost_analysis_options.version ==
+      Options::CostAnalysisOptions::kOnce) {
+    // Free the cost analysis data if it will not be used again.
+    cost_analysis_data_.is_available = false;
+    cost_analysis_data_.tfrt_mlir = nullptr;
+    cost_analysis_data_.tf_mlir_with_op_keys = nullptr;
+    cost_analysis_data_.cost_recorder = nullptr;
+  } else {
+    // Update cost analysis data.
+    cost_analysis_data_.cost_recorder = std::make_unique<CostRecorder>();
+    cost_analysis_data_.is_available = true;
+    cost_analysis_data_.start_time = now;
+    cost_analysis_data_.num_cost_updates = 0;
+  }
 }
 
 tensorflow::Status GraphExecutor::CompileGraph(

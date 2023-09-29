@@ -59,7 +59,7 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
@@ -587,10 +587,10 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   optimized_graph_info->function_graph->mutable_flib_def()
       ->set_default_registry(&(optimized_graph_info->lib_def));
 
-  TF_ASSIGN_OR_RETURN(
-      auto subgraphs,
-      PreprocessAndPartitionGraph(function_name, *optimized_graph_info, options,
-                                  *dev_set, lib_def_, composite_devices, env_));
+  TF_ASSIGN_OR_RETURN(auto subgraphs, PreprocessAndPartitionGraph(
+                                          function_name, *optimized_graph_info,
+                                          options, *dev_set, lib_def_,
+                                          composite_devices, cpu_device, env_));
   const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
   const uint64 graph_optimization_duration =
       optimization_end_time_usecs - optimization_start_time_usecs;

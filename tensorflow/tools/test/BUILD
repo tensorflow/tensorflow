@@ -27,10 +27,12 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:gfile",
+        "@six_archive//:six",
     ],
 )
 
@@ -55,6 +57,8 @@ py_strict_library(
         ":system_info_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:gfile",
+        "@absl_py//absl/logging",
+        "@six_archive//:six",
     ],
 )
 
@@ -83,6 +87,7 @@ py_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
+        "@six_archive//:six",
     ],
 )
 

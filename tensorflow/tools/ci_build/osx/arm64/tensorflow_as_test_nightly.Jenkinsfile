@@ -19,41 +19,6 @@ pipeline {
     stages {
         stage("Build Tensorflow") {
             parallel {
-                stage("Python 3.8") {
-                    agent {
-                        label "silicon-ci"
-                    }
-                    environment {
-                        PYENV_ROOT="$HOME/.pyenv"
-                        PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
-
-                    }
-                    steps {
-
-                        sh '''
-                            echo 3.8.13 > /Users/admin/.python-version
-                            pyenv init -
-                            pyenv global 3.8.13
-                        '''
-
-                        sh 'python --version'
-
-                        git branch: "nightly",
-                            url: "https://github.com/tensorflow/tensorflow.git"
-                            
-                        sh '''
-                            pip install --upgrade pip
-                            pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
-                        '''
-
-                        sh '''
-                            bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" test \
-                            --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.8.13/lib/python3.8/site-packages" \
-                            --action_env PYTHON_BIN_PATH="/Users/admin/.pyenv/versions/3.8.13/bin/python3.8" \
-                            --config=nonpip
-                            '''
-                    }
-                }
                 stage("Python 3.9") {
                     agent {
                         label "silicon-ci"
@@ -61,6 +26,7 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                        TF_PYTHON_VERSION=3.9
                     }
                     steps {
 
@@ -82,8 +48,6 @@ pipeline {
 
                         sh '''
                             bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" test \
-                            --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.9.13/lib/python3.9/site-packages" \
-                            --action_env PYTHON_BIN_PATH="/Users/admin/.pyenv/versions/3.9.13/bin/python3.9" \
                             --config=nonpip
                             '''
                     }
@@ -95,6 +59,7 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                        TF_PYTHON_VERSION=3.10
                     }
                     steps {
                         sh '''
@@ -116,8 +81,6 @@ pipeline {
                         
                         sh '''
                             bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" test \
-                            --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.10.4/lib/python3.10/site-packages" \
-                            --action_env PYTHON_BIN_PATH="/Users/admin/.pyenv/versions/3.10.4/bin/python3.10" \
                             --config=nonpip
                             '''
 
@@ -130,6 +93,7 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                        TF_PYTHON_VERSION=3.11
                     }
                     steps {
                         sh '''
@@ -151,8 +115,6 @@ pipeline {
 
                         sh '''
                             bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" test \
-                            --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.11.2/lib/python3.11/site-packages" \
-                            --action_env PYTHON_BIN_PATH="/Users/admin/.pyenv/versions/3.11.2/bin/python3.11" \
                             --config=nonpip
                             '''
 

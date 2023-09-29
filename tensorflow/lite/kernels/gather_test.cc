@@ -20,9 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace {
@@ -48,7 +48,12 @@ class GatherOpModel : public SingleOpModel {
                  CreateGatherOptions(builder_, axis, batch_dims).Union());
     BuildInterpreter({GetShape(input_), GetShape(positions_)});
     if (!constant_tensor) {
-      SetInput(input_, input_data, std::is_same<std::string, InputType>());
+      if (input.type == TensorType_INT4) {
+        SetInputInt4(input_, input_data,
+                     std::is_same<std::string, InputType>());
+      } else {
+        SetInput(input_, input_data, std::is_same<std::string, InputType>());
+      }
       SetPositions(positions_data);
     }
   }
@@ -64,6 +69,20 @@ class GatherOpModel : public SingleOpModel {
     PopulateStringTensor(input_, data);
   }
 
+  template <typename T>
+  void SetInputInt4(int input, const std::vector<T> data, std::false_type) {
+    auto non_const = *const_cast<std::vector<T>*>(&data);
+    std::vector<int8_t> data_int8(non_const.size());
+    std::copy(non_const.begin(), non_const.end(), data_int8.begin());
+    PopulateTensor4bit(input, 0, data_int8.data(),
+                       data_int8.data() + data_int8.size());
+  }
+
+  template <typename T>
+  void SetInputInt4(int input, const std::vector<T> data, std::true_type) {
+    // Unsupported
+  }
+
   void SetPositions(const std::vector<PositionsType>& data) {
     PopulateTensor<PositionsType>(positions_, data);
   }
@@ -75,6 +94,22 @@ class GatherOpModel : public SingleOpModel {
   std::vector<std::string> GetStringOutput() {
     return ExtractVector<std::string>(output_);
   }
+
+  std::vector<int8_t> GetInt4Output() {
+    const auto* tensor = interpreter_->tensor(output_);
+    const std::vector<int8_t> data_int8 = std::vector<int8_t>(
+        tensor->data.raw, tensor->data.raw + GetTensorSize(output_));
+    int num_elements = 1;
+    auto shape = GetTensorShape(output_);
+    for (int i = 0; i < shape.size(); i++) {
+      num_elements *= shape[i];
+    }
+    std::vector<int8_t> inflated_output(num_elements);
+    tensor_utils::UnpackDenseInt4IntoInt8(data_int8.data(), num_elements,
+                                          inflated_output.data());
+    return inflated_output;
+  }
+
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
  protected:
@@ -405,6 +440,26 @@ TEST_P(GatherOpTest, ErrorOnOutOfBoundsNegative) {
     m.SetPositions({-1, 0});
     EXPECT_EQ(m.Invoke(), kTfLiteError);
   }
+}
+
+TEST(GatherOpTest, BatchDims1Int4) {
+  GatherOpModel<int8_t, int32_t> m(
+      {TensorType_INT4, {2, 2, 3, 4}}, {TensorType_INT32, {2, 2, 2}}, false,
+      {1,  2,  3,  4,  -1, -2, -3, -4, 0,  0,  0,  0,  1,  2,  3,  4,
+       -1, -2, -3, -4, 0,  0,  0,  0,  4,  5,  6,  7,  -5, -6, -7, -8,
+       0,  0,  0,  0,  4,  5,  6,  7,  -5, -6, -7, -8, 0,  0,  0,  0},
+      {1, 0, 0, 1, 1, 0, 0, 1},
+      /*axis=*/2, /*batch_dims=*/1);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  ASSERT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2, 2, 4}));
+
+  EXPECT_THAT(m.GetInt4Output(),
+              ElementsAreArray(
+                  {-1, -2, -3, -4, 1, 2, 3, 4, 1, 2, 3, 4, -1, -2, -3, -4,
+                   -1, -2, -3, -4, 1, 2, 3, 4, 1, 2, 3, 4, -1, -2, -3, -4,
+                   -5, -6, -7, -8, 4, 5, 6, 7, 4, 5, 6, 7, -5, -6, -7, -8,
+                   -5, -6, -7, -8, 4, 5, 6, 7, 4, 5, 6, 7, -5, -6, -7, -8}));
 }
 
 }  // namespace

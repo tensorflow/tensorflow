@@ -131,6 +131,15 @@ TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetAsyncKernel(
     struct TfLiteAsyncKernel* (*async_kernel)(TfLiteOpaqueContext* context,
                                               TfLiteOpaqueNode* node));
 
+/// Sets the inplace_operator field of the external registration.
+///
+/// This is a bitmask. Please refer to `inplace_operator` field of
+/// `TfLiteRegistration` for details.
+///
+/// \warning This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetInplaceOperator(
+    TfLiteRegistrationExternal* registration, uint64_t inplace_operator);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

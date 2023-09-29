@@ -206,6 +206,8 @@ class OpSideEffectCollector {
     return self_dependent_only_ids_.contains(resource_id);
   }
 
+  bool IsCallToPureFunction(Operation* callOp) const;
+
  private:
   // Adds op-based side effects from all ops in `region` to `op` side effects.
   // Collects side effects for ops that weren't visited before.
@@ -349,7 +351,7 @@ class OpSideEffectCollector {
   absl::node_hash_map<std::pair<const void*, std::string>, ResourceId>
     type_instance_str_to_op_resource_id_;
   // Used for faster callable resolution.
-  SymbolTableCollection symbol_table_collection_;
+  mutable SymbolTableCollection symbol_table_collection_;
   // Collect all op-based side effects here.
   OpSideEffectMap op_side_effect_map_;
   const SideEffectsByResourceId empty_side_effects_map_;
@@ -357,7 +359,33 @@ class OpSideEffectCollector {
   // Set of all resource IDs which only have dependencies to themselves, not to
   // any other resource ID (including unknown resource ID).
   llvm::SmallDenseSet<ResourceId, 8> self_dependent_only_ids_;
+
+  // Maps functions to whether they're pure or not. A function is pure if it
+  // only executes ops with no side effects.
+  mutable llvm::SmallDenseMap<Operation*, bool> is_pure_function_;
 };
+
+bool OpSideEffectCollector::IsCallToPureFunction(Operation* callOp) const {
+  auto call = llvm::dyn_cast<CallOpInterface>(callOp);
+  if (!call)
+    return false;  // not a call
+  func::FuncOp func_op = dyn_cast<func::FuncOp>(call.resolveCallable(
+      &symbol_table_collection_));
+  auto it = is_pure_function_.find(func_op);
+  if (it == is_pure_function_.end()) {
+    bool is_pure = true;
+    func_op->walk([&](Operation* op) {
+      if (op == func_op) return WalkResult::advance();
+      if (TensorFlowDialect::CanHaveSideEffects(op)) {
+        is_pure = false;
+        return WalkResult::interrupt();
+      }
+      return WalkResult::advance();
+    });
+    is_pure_function_.insert({func_op, is_pure});
+  }
+  return is_pure_function_[func_op];
+}
 
 // Collects all op-based and value-based side effects for `op` per resource ID.
 SideEffectsByResourceId CollectSideEffectsByResourceId(
@@ -365,7 +393,9 @@ SideEffectsByResourceId CollectSideEffectsByResourceId(
     const OpSideEffectCollector& op_side_effect_collector,
     const TF::ResourceAliasAnalysis::Info& alias_analysis) {
   SideEffectsByResourceId side_effects_by_resource_id;
-  if (!MayHaveSideEffect(op)) return side_effects_by_resource_id;
+  if (!MayHaveSideEffect(op) ||
+      op_side_effect_collector.IsCallToPureFunction(op))
+    return side_effects_by_resource_id;
 
   // For fetch op, set unknown effect to guarantee that it depends on every
   // side-effecting op (directly or indirectly).

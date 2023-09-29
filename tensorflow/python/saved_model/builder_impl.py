@@ -25,6 +25,7 @@ from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
@@ -428,10 +429,9 @@ class _SavedModelBuilder(object):
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
       file_io.write_string_to_file(
           path, self._saved_model.SerializeToString(deterministic=True))
-
+      # Placeholder for internal TF1 model fingerprint write
     tf_logging.info("SavedModel written to: %s", compat.as_text(path))
     metrics.IncrementWrite(write_version="1")
-    # Placeholder for internal TF1 model fingerprint write
 
     return path
 
@@ -515,7 +515,7 @@ class SavedModelBuilder(_SavedModelBuilder):
       TypeError if Train op is not of type `Operation`.
     """
     if train_op is not None:
-      if (not isinstance(train_op, ops.Tensor) and
+      if (not isinstance(train_op, tensor.Tensor) and
           not isinstance(train_op, ops.Operation)):
         raise TypeError(f"`train_op` {train_op} needs to be a Tensor or Op.")
       ops.add_to_collection(constants.TRAIN_OP_KEY, train_op)
@@ -738,7 +738,7 @@ def _asset_path_from_tensor(path_tensor):
   Raises:
     TypeError if tensor does not match expected op type, dtype or value.
   """
-  if not isinstance(path_tensor, ops.Tensor):
+  if not isinstance(path_tensor, tensor.Tensor):
     raise TypeError(f"Asset path tensor {path_tensor} must be a Tensor.")
   if path_tensor.op.type != "Const":
     raise TypeError(f"Asset path tensor {path_tensor} must be of type constant."

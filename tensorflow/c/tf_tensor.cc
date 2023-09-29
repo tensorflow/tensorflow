@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/coding.h"
@@ -35,6 +36,8 @@ using tensorflow::Tensor;
 using tensorflow::TensorBuffer;
 using tensorflow::errors::FailedPrecondition;
 using tensorflow::errors::InvalidArgument;
+
+#ifndef LIBTPU_EXCLUDE_C_API_IMPL
 
 namespace tensorflow {
 void* allocate_tensor(const char* operation, size_t len, Allocator* allocator) {
@@ -75,16 +78,14 @@ TF_Tensor* CreateTensor(TF_ManagedBuffer* buf, TF_DataType dtype,
     dimvec[i] = static_cast<int64_t>(dims[i]);
   }
 
-  // TODO(gjn): Make the choice of interface a compile-time configuration.
-  tensorflow::TensorInterface ret(
-      Tensor(static_cast<tensorflow::DataType>(dtype),
-             tensorflow::TensorShape(dimvec), buf));
+  Tensor ret(static_cast<tensorflow::DataType>(dtype),
+             tensorflow::TensorShape(dimvec), buf);
   buf->Unref();
   size_t elem_size = TF_DataTypeSize(dtype);
   if (elem_size > 0 && len < (elem_size * ret.NumElements())) {
     return nullptr;
   }
-  return new TF_Tensor{new tensorflow::TensorInterface(ret)};
+  return new TF_Tensor{new tensorflow::TensorInterface(std::move(ret))};
 }
 }  // namespace
 
@@ -185,6 +186,8 @@ void TF_TensorBitcastFrom(const TF_Tensor* from, TF_DataType type,
               static_cast<tensorflow::DataType>(type), new_dims, num_new_dims));
   tsl::Set_TF_Status_from_Status(status, cc_status);
 }
+
+#endif  // LIBTPU_EXCLUDE_C_API_IMPL
 
 namespace tensorflow {
 

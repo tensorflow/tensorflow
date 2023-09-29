@@ -27,11 +27,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
-#include "third_party/tensorflow_serving/apis/predict.pb.h"
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
+#if defined(PLATFORM_GOOGLE)
 ABSL_DECLARE_FLAG(bool, enable_optimizer);
 ABSL_DECLARE_FLAG(std::string, force_data_format);
+#endif
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -39,8 +40,16 @@ namespace tfrt_stub {
 std::unique_ptr<tensorflow::tfrt_stub::Runtime> DefaultTfrtRuntime(
     int num_threads);
 
+struct UserSavedModelOptions {
+  bool enable_mlrt = false;
+  bool enable_optimizer = false;
+  bool enable_grappler = false;
+  std::string force_data_format = "";
+};
+
 SavedModel::Options DefaultSavedModelOptions(
-    tensorflow::tfrt_stub::Runtime* runtime);
+    tensorflow::tfrt_stub::Runtime* runtime,
+    std::optional<UserSavedModelOptions> user_options = std::nullopt);
 
 class TFRTSavedModelTest {
  public:
@@ -111,13 +120,6 @@ void ExpectTensorEqual(const tensorflow::Tensor& x, const tensorflow::Tensor& y,
 SavedModel::Options DefaultTpuModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime,
     tensorflow::TfrtDeviceInfraTarget device_target);
-
-tensorflow::StatusOr<std::vector<tensorflow::serving::PredictRequest>>
-GetWarmupRequests(absl::string_view saved_model_dir);
-
-void ProcessPredictRequestsAndMaybeProfile(
-    const std::vector<tensorflow::serving::PredictRequest>& requests,
-    SavedModel* saved_model, bool profile = false, int32_t num_steps = 1);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

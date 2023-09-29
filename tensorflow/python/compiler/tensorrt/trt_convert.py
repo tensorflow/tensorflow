@@ -37,6 +37,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -562,7 +563,7 @@ class TrtGraphConverter(object):
       collection_def = self._grappler_meta_graph_def.collection_def["train_op"]
       denylist = collection_def.node_list.value
       for i in self._nodes_denylist:
-        if isinstance(i, ops.Tensor):
+        if isinstance(i, tensor.Tensor):
           denylist.append(_to_bytes(i.name))
         else:
           denylist.append(_to_bytes(i))
@@ -692,7 +693,7 @@ class TrtGraphConverter(object):
       for k, v in input_map_fn().items():
         if not isinstance(k, str):
           raise ValueError("Keys of input_map_fn must be of type str")
-        if not isinstance(v, ops.Tensor):
+        if not isinstance(v, tensor.Tensor):
           raise ValueError("Values of input_map_fn must be of type tf.Tensor")
 
     self._calibration_graph = ops.Graph()

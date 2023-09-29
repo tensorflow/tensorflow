@@ -10,6 +10,10 @@ package(
 tf_python_pybind_extension(
     name = "_pywrap_server_lib",
     srcs = ["server_lib_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_server_lib.pyi",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/data/service:server_lib_headers_lib",
@@ -18,6 +22,7 @@ tf_python_pybind_extension(
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@pybind11",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )
 
@@ -51,6 +56,10 @@ tf_py_strict_test(
 tf_python_pybind_extension(
     name = "_pywrap_utils",
     srcs = ["utils_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_utils.pyi",
+    ],
     deps = [
         "//tensorflow/core/data/service:py_utils",
         "//tensorflow/python/lib/core:pybind11_lib",
@@ -62,6 +71,10 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_snapshot_utils",
     srcs = ["snapshot_utils_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_snapshot_utils.pyi",
+    ],
     deps = [
         "//tensorflow/core/data/service/snapshot:path_utils",
         "//tensorflow/python/lib/core:pybind11_lib",

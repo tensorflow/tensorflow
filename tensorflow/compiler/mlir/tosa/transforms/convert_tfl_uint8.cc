@@ -74,14 +74,13 @@ struct ConvertUint8QConstOp : public RewritePattern {
 
     // Skip if it's not ranked tensor type.
     auto output_type =
-        tfl_qconst_op.getResult().getType().dyn_cast<mlir::RankedTensorType>();
+        dyn_cast<mlir::RankedTensorType>(tfl_qconst_op.getResult().getType());
     if (!output_type)
       return builder.notifyMatchFailure(op, "not ranked tensor");
 
     // Skip if output is not per-tensor quantized type.
-    auto output_element_type =
-        output_type.getElementType()
-            .dyn_cast<mlir::quant::UniformQuantizedType>();
+    auto output_element_type = dyn_cast<mlir::quant::UniformQuantizedType>(
+        output_type.getElementType());
     if (!output_element_type) return failure();
 
     // Skip if output is not uint8.
@@ -155,12 +154,11 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
 
     // Insert rescale uint8->int8 after placeholders.
     for (Value arg : bb.getArguments()) {
-      auto uint8_type = arg.getType().dyn_cast<mlir::ShapedType>();
+      auto uint8_type = dyn_cast<mlir::ShapedType>(arg.getType());
       if (!uint8_type) continue;
 
-      auto uint8_element_type =
-          uint8_type.getElementType()
-              .dyn_cast<mlir::quant::UniformQuantizedType>();
+      auto uint8_element_type = dyn_cast<mlir::quant::UniformQuantizedType>(
+          uint8_type.getElementType());
       if (!uint8_element_type) continue;
 
       if (uint8_element_type.isSigned() ||
@@ -219,13 +217,12 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
     for (auto &op : bb) {
       for (Value output_val : op.getResults()) {
         // Skip if output value is not RankedTensorType.
-        auto output_type = output_val.getType().dyn_cast<mlir::ShapedType>();
+        auto output_type = dyn_cast<mlir::ShapedType>(output_val.getType());
         if (!output_type) continue;
 
         // Skip if output value is not per-tensor quantized element type.
-        auto output_element_type =
-            output_type.getElementType()
-                .dyn_cast<mlir::quant::UniformQuantizedType>();
+        auto output_element_type = dyn_cast<mlir::quant::UniformQuantizedType>(
+            output_type.getElementType());
         if (!output_element_type) continue;
 
         // Skip if output is not uint8.
@@ -270,12 +267,12 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
       Value input_val = defining_op->getResult(0);
 
       // Check if graph output is uint8 type.
-      auto uint8_output_type = output_types[i].dyn_cast<mlir::ShapedType>();
+      auto uint8_output_type = dyn_cast<mlir::ShapedType>(output_types[i]);
       if (!uint8_output_type) continue;
 
       auto uint8_output_element_type =
-          uint8_output_type.getElementType()
-              .dyn_cast<mlir::quant::UniformQuantizedType>();
+          dyn_cast<mlir::quant::UniformQuantizedType>(
+              uint8_output_type.getElementType());
       if (!uint8_output_element_type) continue;
 
       if (uint8_output_element_type.isSigned() ||
@@ -284,12 +281,12 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
 
       // Check if output coming into terminator is int8 type.
       auto int8_output_type =
-          terminator->getOperand(i).getType().dyn_cast<mlir::ShapedType>();
+          dyn_cast<mlir::ShapedType>(terminator->getOperand(i).getType());
       if (!int8_output_type) continue;
 
       auto int8_output_element_type =
-          int8_output_type.getElementType()
-              .dyn_cast<mlir::quant::UniformQuantizedType>();
+          dyn_cast<mlir::quant::UniformQuantizedType>(
+              int8_output_type.getElementType());
       if (!int8_output_element_type) continue;
 
       if (!int8_output_element_type.isSigned() ||

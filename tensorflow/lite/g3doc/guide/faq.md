@@ -13,7 +13,8 @@ The supported formats are listed [here](../models/convert/index#python_api)
 #### Why are some operations not implemented in TensorFlow Lite?
 
 In order to keep TFLite lightweight, only certain TF operators (listed in the
-[allowlist](op_select_allowlist)) are supported in TFLite.
+[allowlist](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/guide/op_select_allowlist.md))
+are supported in TFLite.
 
 #### Why doesn't my model convert?
 

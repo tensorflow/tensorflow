@@ -28,9 +28,9 @@ limitations under the License.
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
-#include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "xla/tests/literal_test_util.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -42,10 +42,11 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tensorflow/tsl/framework/allocator.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/framework/allocator.h"
+#include "tsl/framework/device_id_utils.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -196,10 +197,11 @@ class PjRtExecutionUtilTest : public OpsTestBase {
     std::vector<xla::PjRtBuffer*> executable_args;
     executable_args.reserve(result->input_mapping.size());
     absl::flat_hash_set<int> non_donatable_input_indices;
-    PreparePjRtExecutableArguments(
+    TF_EXPECT_OK(PreparePjRtExecutableArguments(
         /*num_missing_prefix_ctx_inputs=*/0, result->input_mapping, inputs,
-        GetVariableSnapshots(variables), &executable_args,
-        &non_donatable_input_indices);
+        GetVariableSnapshots(variables), /*pjrt_client=*/nullptr,
+        /*pjrt_device=*/nullptr, /*use_pjrt_tensor_buffer=*/false,
+        &executable_args, /*owned_args=*/{}, &non_donatable_input_indices));
 
     xla::ExecuteOptions exe_options;
     exe_options.arguments_are_tupled = false;
@@ -269,9 +271,12 @@ TEST_F(PjRtExecutionUtilTest, PreparePjRtExecutableArguments) {
   std::vector<xla::PjRtBuffer*> exec_args;
   exec_args.reserve(input_mapping.size());
   absl::flat_hash_set<int> non_donatable_input_indices;
-  PreparePjRtExecutableArguments(num_missing_prefix_ctx_inputs, input_mapping,
-                                 inputs, GetVariableSnapshots(variables),
-                                 &exec_args, &non_donatable_input_indices);
+  TF_EXPECT_OK(PreparePjRtExecutableArguments(
+      num_missing_prefix_ctx_inputs, input_mapping, inputs,
+      GetVariableSnapshots(variables),
+      /*pjrt_client=*/nullptr, /*pjrt_device=*/nullptr,
+      /*use_pjrt_tensor_buffer=*/false, &exec_args,
+      /*owned_args=*/{}, &non_donatable_input_indices));
 
   EXPECT_EQ(exec_args.size(), 2);
 
@@ -299,9 +304,12 @@ TEST_F(PjRtExecutionUtilTest, PreparePjRtExecutableArgumentsVariableInputs) {
   std::vector<xla::PjRtBuffer*> exec_args;
   exec_args.reserve(input_mapping.size());
   absl::flat_hash_set<int> non_donatable_input_indices;
-  PreparePjRtExecutableArguments(num_missing_prefix_ctx_inputs, input_mapping,
-                                 inputs, GetVariableSnapshots(variables),
-                                 &exec_args, &non_donatable_input_indices);
+  TF_EXPECT_OK(PreparePjRtExecutableArguments(
+      num_missing_prefix_ctx_inputs, input_mapping, inputs,
+      GetVariableSnapshots(variables),
+      /*pjrt_client=*/nullptr, /*pjrt_device=*/nullptr,
+      /*use_pjrt_tensor_buffer=*/false, &exec_args,
+      /*owned_args=*/{}, &non_donatable_input_indices));
 
   EXPECT_EQ(exec_args.size(), 2);
 
@@ -351,8 +359,8 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputs) {
                           RunExecutable(inputs, {}, result, executable));
 
   TF_EXPECT_OK(PopulateCtxOutputsFromPjRtExecutableOutputs(
-      /*num_missing_prefix_ctx_inputs=*/0, inputs, {}, *result, execute_outputs,
-      context_.get()));
+      /*num_missing_prefix_ctx_inputs=*/0, inputs, {}, *result,
+      /*use_pjrt_tensor_buffer=*/false, execute_outputs, context_.get()));
 
   Tensor* expected = CreateHostTensor<int32>(TensorShape({1, 3}), {5, 7, 9});
   test::ExpectTensorEqual<int32>(*expected, *GetOutput(0));
@@ -389,8 +397,8 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsDynamicShape) {
                           RunExecutable(inputs, {}, result, executable));
 
   TF_EXPECT_OK(PopulateCtxOutputsFromPjRtExecutableOutputs(
-      /*num_missing_prefix_ctx_inputs=*/0, inputs, {}, *result, execute_outputs,
-      context_.get()));
+      /*num_missing_prefix_ctx_inputs=*/0, inputs, {}, *result,
+      /*use_pjrt_tensor_buffer=*/false, execute_outputs, context_.get()));
   // The expected output is indices of non-zero inputs.
   Tensor* expected = CreateHostTensor<int64>(TensorShape({2, 2}), {0, 1, 0, 2});
   test::ExpectTensorEqual<int64>(*expected, *GetOutput(0));
@@ -437,7 +445,7 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsVariableInputs) {
                           RunExecutable(inputs, variables, result, executable));
   TF_EXPECT_OK(PopulateCtxOutputsFromPjRtExecutableOutputs(
       /*num_missing_prefix_ctx_inputs=*/0, inputs, variables, *result,
-      execute_outputs, context_.get()));
+      /*use_pjrt_tensor_buffer=*/false, execute_outputs, context_.get()));
 
   Tensor* expected = CreateHostTensor<int32>(TensorShape({1, 2}), {4, 6});
   test::ExpectTensorEqual<int32>(*expected, *GetOutput(0));
@@ -484,7 +492,7 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsResourceUpdates) {
 
   TF_EXPECT_OK(PopulateCtxOutputsFromPjRtExecutableOutputs(
       /*num_missing_prefix_ctx_inputs=*/0, inputs, variables, *result,
-      execute_outputs, context_.get()));
+      /*use_pjrt_tensor_buffer=*/false, execute_outputs, context_.get()));
 
   // Verify that there are no outputs.
   EXPECT_EQ(context_->num_outputs(), 0);
@@ -507,9 +515,11 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsResourceUpdates) {
 }
 
 TEST(XlaLaunchUtilTest, GetPjRtExecuteOptions) {
-  xla::ExecuteOptions options = GetPjRtExecuteOptions({});
+  xla::ExecuteOptions options =
+      GetPjRtExecuteOptions(DeviceType(DEVICE_GPU), {});
   EXPECT_FALSE(options.arguments_are_tupled);
   EXPECT_TRUE(options.untuple_result);
+  EXPECT_FALSE(options.strict_shape_checking);
   EXPECT_TRUE(options.use_major_to_minor_data_layout_for_callbacks);
 }
 
@@ -550,7 +560,7 @@ TEST_F(PjRtExecutionUtilTest, RunPjRtExecutable) {
   TF_ASSERT_OK(GetVariableInfosFromInputs(context_->resource_manager(),
                                           context_->device(), inputs,
                                           variables_indices, &variables));
-  TF_ASSERT_OK(RunPjRtExecutable(*pjrt_client_, inputs, variables, *result,
+  TF_ASSERT_OK(RunPjRtExecutable(inputs, variables, *result, pjrt_client_,
                                  executable, context_.get()));
 
   Tensor* expected = CreateHostTensor<int32>(TensorShape({1, 2}), {4, 6});
@@ -613,13 +623,82 @@ TEST_F(PjRtExecutionUtilTest,
                             GatherVariableInfo(context_.get(), *result,
                                                constant_input_indices.size()));
     TF_ASSERT_OK(LockVariables(absl::MakeSpan(updated_variables)));
-    TF_ASSERT_OK(RunPjRtExecutable(*pjrt_client_, constant_input_indices.size(),
-                                   inputs, variable_snapshots,
-                                   updated_variables, *result, executable,
-                                   context_.get()));
+    TF_ASSERT_OK(RunPjRtExecutable(
+        constant_input_indices.size(), inputs, variable_snapshots,
+        updated_variables, *result, pjrt_client_, executable, context_.get()));
   }
   Tensor* expected = CreateHostTensor<int32>(TensorShape({2}), {1, 1});
   test::ExpectTensorEqual<int32>(*expected, *GetOutput(0));
+}
+
+TEST_F(PjRtExecutionUtilTest, RunPjRtExecutableWithoutCtx) {
+  XlaOpRegistry::RegisterCompilationKernels();
+  TF_ASSERT_OK(NodeDefBuilder("AddV2", "AddV2")
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("T", DT_INT32)
+                   .Device("/job:localhost/replica:0/task:0/device:XLA_CPU:0")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  AddVariableInput<int32>("var1", TensorShape({1, 2}), {1, 2});
+  AddVariableInput<int32>("var2", TensorShape({1, 2}), {3, 4});
+
+  CreateContext();
+
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].initialized = true;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({1, 2});
+  args[1].kind = XlaCompiler::Argument::kParameter;
+  args[1].initialized = true;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({1, 2});
+
+  const XlaCompiler::CompilationResult* result;
+  xla::PjRtLoadedExecutable* executable;
+  CompileToExecutable(args, &result, &executable);
+
+  std::vector<const Tensor*> inputs = InputsFromContext(context_.get());
+  std::vector<int> variables_indices =
+      GetResourceVariableIndicesFromContext(context_.get());
+  std::vector<VariableInfo> variables;
+  variables.reserve(variables_indices.size());
+  TF_ASSERT_OK(GetVariableInfosFromInputs(context_->resource_manager(),
+                                          context_->device(), inputs,
+                                          variables_indices, &variables));
+  const bool use_pjrt_tensor_buffer = context_->device()
+                                          ->tensorflow_accelerator_device_info()
+                                          ->use_pjrt_tensor_buffer;
+  const DeviceType& device_type = GetDeviceType(context_.get());
+  TF_ASSERT_OK_AND_ASSIGN(const int pjrt_device_id,
+                          tsl::GetDeviceIdFromDeviceParsedName(
+                              context_->device()->parsed_name(), device_type));
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::PjRtDevice * pjrt_device,
+      pjrt_client_->LookupAddressableDevice(pjrt_device_id));
+
+  absl::flat_hash_map<int, const Tensor*> variable_snapshots;
+  for (int i = 0; i < variables.size(); i++) {
+    variable_snapshots[variables[i].index()] = variables[i].var()->tensor();
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs,
+      RunPjRtExecutable(/*num_missing_prefix_ctx_inputs=*/0, inputs,
+                        variable_snapshots, variables, device_type,
+                        use_pjrt_tensor_buffer, *result, pjrt_device,
+                        pjrt_client_, executable));
+
+  for (const auto& output : execute_outputs) {
+    TF_ASSERT_OK(output->GetReadyFuture().Await());
+  }
+
+  ASSERT_EQ(execute_outputs.size(), 1);
+  std::shared_ptr<xla::Literal> literal = *execute_outputs[0]->ToLiteralSync();
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(
+      *literal, xla::LiteralUtil::CreateR2<int32_t>({{4, 6}})));
 }
 
 }  // namespace

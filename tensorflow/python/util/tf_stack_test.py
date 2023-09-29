@@ -95,6 +95,25 @@ class TFStackTest(test.TestCase):
         str(trace[0]), 'File "filename", line 42, in function_name'
     )
 
+  def testStackTraceBuilder(self):
+    stack1 = tf_stack.extract_stack()
+    stack2 = tf_stack.extract_stack()
+    stack3 = tf_stack.extract_stack()
+
+    builder = tf_stack.GraphDebugInfoBuilder()
+    builder.AccumulateStackTrace('func1', 'node1', stack1)
+    builder.AccumulateStackTrace('func2', 'node2', stack2)
+    builder.AccumulateStackTrace('func3', 'node3', stack3)
+    debug_info = builder.Build()
+
+    trace_map = tf_stack.LoadTracesFromDebugInfo(debug_info)
+    self.assertSameElements(
+        trace_map.keys(), ['node1@func1', 'node2@func2', 'node3@func3']
+    )
+
+    for trace in trace_map.values():
+      self.assertRegex(repr(trace), 'tf_stack_test.py', trace)
+
 
 if __name__ == "__main__":
   test.main()

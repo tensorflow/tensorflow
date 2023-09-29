@@ -25,9 +25,8 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type_field
 from tensorflow.python.framework import immutable_dict
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
@@ -146,7 +145,7 @@ class ExtensionType(
 
   >>> class Toy(ExtensionType):
   ...   name: str
-  ...   price: ops.Tensor
+  ...   price: tensor.Tensor
   ...   features: typing.Mapping[str, tf.Tensor]
 
   >>> class ToyStore(ExtensionType):
@@ -307,7 +306,7 @@ class ExtensionType(
 
   def __ne__(self, other):
     eq = self.__eq__(other)
-    if isinstance(eq, ops.Tensor):
+    if isinstance(eq, tensor.Tensor):
       return math_ops.logical_not(eq)
     else:
       return not eq
@@ -448,7 +447,7 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
     if self._tf_extension_type_is_packed:
       return value._tf_extension_type_packed_variant  # pylint: disable=protected-access
 
-    tensor_or_composite = (ops.Tensor, composite_tensor.CompositeTensor)
+    tensor_or_composite = (tensor.Tensor, composite_tensor.CompositeTensor)
     # Retireve fields by the order of spec dict to preserve field ordering. This
     # is needed as nest.flatten would sort dictionary entries by key.
     value_tuple = tuple(value.__dict__[key] for key in self.__dict__)
@@ -490,7 +489,7 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
   @property
   def _component_specs(self):  # TypeSpec API.
     if self._tf_extension_type_is_packed:
-      return tensor_spec.TensorSpec((), dtypes.variant)
+      return tensor.TensorSpec((), dtypes.variant)
 
     components = []
 
@@ -864,9 +863,9 @@ def _deserialize_for_reduce(value_type, serialization):
 
 
 def _replace_tensor_with_spec(value):
-  if isinstance(value, ops.Tensor):
+  if isinstance(value, tensor.Tensor):
     # Note: we intentionally exclude `value.name` from the `TensorSpec`.
-    return tensor_spec.TensorSpec(value.shape, value.dtype)
+    return tensor.TensorSpec(value.shape, value.dtype)
   if hasattr(value, '_type_spec'):
     return value._type_spec  # pylint: disable=protected-access
   return value
@@ -1265,7 +1264,7 @@ def _convert_anonymous_fields(value, for_spec=False):
     )
 
   if (
-      isinstance(value, (ops.Tensor, composite_tensor.CompositeTensor))
+      isinstance(value, (tensor.Tensor, composite_tensor.CompositeTensor))
       and not for_spec
   ):
     return value

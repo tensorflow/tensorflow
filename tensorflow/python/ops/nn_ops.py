@@ -162,6 +162,7 @@ array([[1.5, 1.5],
        [1. , 1. ],
        [1. , 1. ]], dtype=float32)
 
+API docstring: tensorflow.nn
 """
 
 import functools
@@ -177,6 +178,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -185,6 +187,8 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
+# Ensure all gradients are registered for nn_ops
+from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -1239,7 +1243,8 @@ def convolution_internal(
       not tensor_util.is_tf_type(filters)):
     with ops.name_scope("convolution_internal", None, [filters, input]):
       filters = ops.convert_to_tensor(filters, name='filters')
-  if (not isinstance(input, ops.Tensor) and not tensor_util.is_tf_type(input)):
+  if (not isinstance(input, tensor_lib.Tensor) and not tensor_util.is_tf_type(
+      input)):
     with ops.name_scope("convolution_internal", None, [filters, input]):
       input = ops.convert_to_tensor(input, name="input")
 
@@ -2236,7 +2241,7 @@ def conv1d_transpose(
     input = array_ops.expand_dims(input, spatial_start_dim)
     filters = array_ops.expand_dims(filters, 0)
     output_shape = list(output_shape) if not isinstance(
-        output_shape, ops.Tensor) else output_shape
+        output_shape, tensor_lib.Tensor) else output_shape
     output_shape = array_ops.concat([output_shape[: spatial_start_dim], [1],
                                      output_shape[spatial_start_dim:]], 0)
 
@@ -3820,7 +3825,7 @@ def _wrap_2d_function(inputs, compute_op, dim=-1, name=None):
     return compute_op(inputs, name=name)
 
   dim_val = dim
-  if isinstance(dim, ops.Tensor):
+  if isinstance(dim, tensor_lib.Tensor):
     dim_val = tensor_util.constant_value(dim)
   if dim_val is not None and not -shape.ndims <= dim_val < shape.ndims:
     raise errors_impl.InvalidArgumentError(
@@ -3834,7 +3839,7 @@ def _wrap_2d_function(inputs, compute_op, dim=-1, name=None):
 
   # In case dim is negative (and is not last dimension -1), add shape.ndims
   ndims = array_ops.rank(inputs)
-  if not isinstance(dim, ops.Tensor):
+  if not isinstance(dim, tensor_lib.Tensor):
     if dim < 0:
       dim += ndims
   else:
@@ -6595,14 +6600,18 @@ def in_top_k_v2(targets, predictions, k, name=None):
   return in_top_k(predictions, targets, k, name)
 
 
-tf_export(v1=["nn.quantized_avg_pool"])(
-    dispatch.add_dispatch_support(gen_nn_ops.quantized_avg_pool))
-tf_export(v1=["nn.quantized_conv2d"])(
-    dispatch.add_dispatch_support(gen_nn_ops.quantized_conv2d))
-tf_export(v1=["nn.quantized_relu_x"])(
-    dispatch.add_dispatch_support(gen_nn_ops.quantized_relu_x))
-tf_export(v1=["nn.quantized_max_pool"])(
-    dispatch.add_dispatch_support(gen_nn_ops.quantized_max_pool))
+quantized_avg_pool = tf_export(v1=["nn.quantized_avg_pool"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_avg_pool)
+)
+quantized_conv2d = tf_export(v1=["nn.quantized_conv2d"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_conv2d)
+)
+quantized_relu_x = tf_export(v1=["nn.quantized_relu_x"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_relu_x)
+)
+quantized_max_pool = tf_export(v1=["nn.quantized_max_pool"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_max_pool)
+)
 
 
 @tf_export("nn.isotonic_regression", v1=[])

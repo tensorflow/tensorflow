@@ -257,29 +257,17 @@ TF::WhileRegionOp CloneEmptyWhile(uint64_t parallel_iterations, Location loc,
   return host_side_while;
 }
 
-// TODO(b/157054714): Use a better abstraction instead of
-// _TPUCompileMlirOp and _XlaRecvAtHostOp and _XlaSendFromHostOp.
 // Creates a compilation key as placeholder. A placeholder compilation cache key
 // is created because it is a required input to _XlaRecvAtHost and
-// _XlaSendFromHost but the _TPUCompileMlir has not yet been created for device
+// _XlaSendFromHost but the _XlaCompileMlir has not yet been created for device
 // cluster that contains the outside compiled ops. This placeholder should be
-// replaced by the TPU cluster _TPUCompileMlir in a subsequent pass.
+// replaced by the TPU cluster _XlaCompileMlir in a subsequent pass.
 TF::_XlaCompileMlirPlaceholderProgramKeyOp CreateCompilationKeyPlaceholder(
     Location loc, OpBuilder& builder) {
   auto result_type =
       RankedTensorType::get({3}, builder.getType<TF::StringType>());
   return builder.create<TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
       loc, /*program=*/result_type, llvm::ArrayRef<Value>{});
-}
-
-TF::ConstOp CreateCpuGpuComilationKeyPlaceholder(Location loc,
-                                                 OpBuilder& builder) {
-  auto shape_type =
-      RankedTensorType::get({3}, builder.getType<TF::StringType>());
-
-  return builder.create<TF::ConstOp>(
-      loc, DenseStringElementsAttr::get(shape_type,
-                                        llvm::ArrayRef<StringRef>{"", "", ""}));
 }
 
 // Creates a `tf_device.launch` to wrap cluster ops.
@@ -810,28 +798,12 @@ void CloneFirstHost(llvm::SmallVector<IRMapping>& core_to_mapping,
                      llvm::dyn_cast<TF::_XlaRecvAtHostV2Op>(clone)) {
         recv_at_host.setOperand(0, core_to_compilation_key[core]);
         builder.setInsertionPoint(recv_at_host);
-        // core_ordinal = device_ordinal + core
-        // where device_ordinal is the base device for the replica
-        Value device_ordinal = core_to_device_ordinal[core];
-        Value const_core = builder.create<TF::ConstOp>(
-            recv_at_host.getLoc(), builder.getI64IntegerAttr(core));
-        Value core_ordinal = builder.create<TF::AddV2Op>(
-            recv_at_host.getLoc(), device_ordinal.getType(), device_ordinal,
-            const_core);
-        recv_at_host.setOperand(1, core_ordinal);
+        recv_at_host.setOperand(1, core_to_device_ordinal[core]);
       } else if (auto send_from_host =
                      llvm::dyn_cast<TF::_XlaSendFromHostV2Op>(clone)) {
         send_from_host.setOperand(1, core_to_compilation_key[core]);
         builder.setInsertionPoint(send_from_host);
-        // core_ordinal = device_ordinal + core
-        // where device_ordinal is the base device for the replica
-        Value device_ordinal = core_to_device_ordinal[core];
-        Value const_core = builder.create<TF::ConstOp>(
-            send_from_host.getLoc(), builder.getI64IntegerAttr(core));
-        Value core_ordinal = builder.create<TF::AddV2Op>(
-            send_from_host.getLoc(), device_ordinal.getType(), device_ordinal,
-            const_core);
-        send_from_host.setOperand(2, core_ordinal);
+        send_from_host.setOperand(2, core_to_device_ordinal[core]);
       }
     }
   }
@@ -1444,21 +1416,18 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
     Operation* compilation_key_op = nullptr;
     Value compilation_key = nullptr;
     Operation* device_ordinal_op = nullptr;
+    compilation_key_op =
+        CreateCompilationKeyPlaceholder(device_cluster.getLoc(), builder);
+    compilation_key =
+        llvm::dyn_cast<TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
+            compilation_key_op)
+            .getProgram();
     if (has_tpu_device) {
-      compilation_key_op =
-          CreateCompilationKeyPlaceholder(device_cluster.getLoc(), builder);
-      compilation_key =
-          llvm::dyn_cast<TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
-              compilation_key_op)
-              .getProgram();
       device_ordinal_op = builder.create<TF::_TPUDeviceOrdinalPlaceholderOp>(
           device_cluster.getLoc(),
-          RankedTensorType::get({}, builder.getI64Type()));
+          RankedTensorType::get({}, builder.getI64Type()),
+          builder.getI64IntegerAttr(core));
     } else {
-      compilation_key_op = CreateCpuGpuComilationKeyPlaceholder(
-          device_cluster.getLoc(), builder);
-      compilation_key =
-          llvm::dyn_cast<Value>(compilation_key_op->getResults()[0]);
       device_ordinal_op = builder.create<TF::ConstOp>(
           device_cluster.getLoc(),
           DenseIntElementsAttr::get(

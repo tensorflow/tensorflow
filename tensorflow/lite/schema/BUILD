@@ -1,7 +1,15 @@
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "tflite_schema_utils_friends")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],
+)
 
 # This is the package group declaration to which targets for TensorFlow Lite
 # Flatbuffer schema utilities.
@@ -16,22 +24,14 @@ package_group(
     ] + tflite_schema_utils_friends(),
 )
 
-package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//visibility:public",
-    ],
-    licenses = ["notice"],
-)
-
-py_binary(
+py_strict_binary(
     name = "upgrade_schema",
     srcs = ["upgrade_schema.py"],
     python_version = "PY3",
     deps = [":upgrade_schema_main_lib"],
 )
 
-py_library(
+py_strict_library(
     name = "upgrade_schema_main_lib",
     srcs = [
         "upgrade_schema.py",
@@ -50,7 +50,7 @@ py_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "upgrade_schema_test",
     size = "small",
     srcs = ["upgrade_schema_test.py"],
@@ -70,12 +70,12 @@ py_test(
 )
 
 # copybara:uncomment_begin(google-only)
-# py_test(
+# py_strict_test(
 #     name = "schema_validation_test",
 #     srcs = ["schema_validation_test.py"],
 #     data = [
-#         "//tensorflow/lite/schema:schema_fbs_srcs",
-#         "//tensorflow/lite/schema:schema_generated.h.oss",
+#         ":schema_fbs_srcs",
+#         ":schema_generated.h.oss",
 #     ],
 #     python_version = "PY3",
 #     # TODO(b/235550563): Enable this TAP with FlatBuffer 2.0.6 migration.

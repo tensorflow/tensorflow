@@ -1,5 +1,8 @@
 # Helper libraries for TensorFlow API compatibility test.
 
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+# Placeholder: load py_proto_library
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -9,7 +12,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/tools/api:__subpackages__",
-        "//third_party/py/keras/api:__subpackages__",
+        "//third_party/py/tf_keras/api:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -19,7 +22,7 @@ tf_proto_library(
     srcs = ["api_objects.proto"],
 )
 
-py_library(
+py_strict_library(
     name = "python_object_to_proto_visitor",
     srcs = ["python_object_to_proto_visitor.py"],
     srcs_version = "PY3",
@@ -28,7 +31,6 @@ py_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_decorator",
-        "@six_archive//:six",
     ],
 )
 

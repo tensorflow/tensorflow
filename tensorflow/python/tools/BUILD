@@ -229,6 +229,7 @@ py_strict_library(
     deps = [
         ":strip_unused_lib",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:graph_util",
         "//tensorflow/python/framework:tensor_util",
@@ -575,10 +576,10 @@ tf_cc_test(
         ":aot_compiled_x_matmul_y_small",
         ":aot_compiled_x_plus_y",
         # LINT.ThenChange(//tensorflow/tools/pip_package/xla_build/pip_test/run_xla_aot_test.sh)
-        "//tensorflow/compiler/xla/service/cpu:runtime_matmul_acl",
+        "@local_xla//xla/service/cpu:runtime_matmul_acl",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:logging",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ]),
 )
 

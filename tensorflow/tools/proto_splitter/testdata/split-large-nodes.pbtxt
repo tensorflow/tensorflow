@@ -1,0 +1,108 @@
+node {
+  name: "Const_0"
+  op: "Const"
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 3
+          }
+        }
+        tensor_content: "\355,W?y\232{?\234G\234>"
+      }
+    }
+  }
+}
+node {
+  name: "Const_1"
+  op: "Const"
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 14
+          }
+        }
+        tensor_content: "\222\241\363>c5r>>\244P?\345&\324>^i ?\205\'\242>2*\221>\014\305z>a\243@?\354Pj?ZH\210>\215\225\001>d\203/?\255\372k?"
+      }
+    }
+  }
+}
+node {
+  name: "Const_2"
+  op: "Const"
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 14
+          }
+        }
+        tensor_content: "4\322\026?\2046K?\265\367]>\3672\305>\272\345w?\003\323\370=x\000\246>\301\255\027?\215)6?;\302W?\212#o?\0376\004?\335\356\016>\260Va?"
+      }
+    }
+  }
+}
+node {
+  name: "Const_3"
+  op: "Const"
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 14
+          }
+        }
+        tensor_content: "v\334H?b\366M?\345\200\021?H\364\247>v\0231?\311\203\036?H\2777?K\227R?\351VI?\343\240\256>\341\333@?\364\251\244>lnY?\201\336d?"
+      }
+    }
+  }
+}
+node {
+  name: "Const_4"
+  op: "Const"
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 3
+          }
+        }
+        tensor_content: "n\344T?2\220m?v\001\252="
+      }
+    }
+  }
+}
+node {
+  name: "Const_5"
+  op: "Const"
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 14
+          }
+        }
+        tensor_content: "\200\216\007?\377\350o?\337\363\316>\275e\337=\313\263\t=\326Z\001?\263lI>\322\021_?\377\340\007?\354\321p>}\264\222>\036\177\037?\001\234#>\021\243<?"
+      }
+    }
+  }
+}

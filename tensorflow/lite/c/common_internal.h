@@ -77,6 +77,10 @@ typedef struct TfLiteRegistrationExternal {
   // regular TfLiteRegistration.  In such a case the 'node_index' field should
   // store the index of that corresponding node (and registration).
   int node_index;
+
+  // Indicates if an operator's output can safely overwrite its input.
+  // See the comments in `TfLiteInPlaceOp`.
+  uint64_t inplace_operator;
 } TfLiteRegistrationExternal;
 
 // Returns true iff it's safe to dereference
@@ -99,7 +103,7 @@ inline bool TfLiteDelegateHasValidOpaqueDelegateBuilder(
   //
   // TODO(b/245730811): Consider signalling to clients if the delegate is not
   // initialized cleanly.
-  return delegate->Prepare == nullptr &&
+  return delegate != nullptr && delegate->Prepare == nullptr &&
          delegate->opaque_delegate_builder != nullptr;
 }
 

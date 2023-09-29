@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <ostream>
 
+#include "absl/log/log.h"
+#include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 // TODO(b/200579737): using FunctionRegistry is simpler than the OSS trick.
 #include "tensorflow/core/tfrt/utils/bridge_graph_analysis.h"
@@ -57,6 +59,22 @@ tensorflow::SessionOptions CreateDefaultSessionOptions(
       ->mutable_rewrite_options()
       ->set_min_graph_nodes(-1);
 
+  if (options.tfrt_gpu_parallelism > 1) {
+    if (!options.compile_options.use_gpu_compile_and_execute_op) {
+      LOG(WARNING)
+          << "tfrt_gpu_parallelism > 1, but fused GPU kernel is not used. "
+             "Non-fused GPU kernel does not support multiple GPU devices.";
+    }
+    config.mutable_gpu_options()
+        ->mutable_experimental()
+        ->set_num_virtual_devices_per_gpu(options.tfrt_gpu_parallelism);
+  }
+  if (options.gpu_system_memory_size_in_mb > 0) {
+    config.mutable_gpu_options()
+        ->mutable_experimental()
+        ->set_gpu_system_memory_size_in_mb(
+            options.gpu_system_memory_size_in_mb);
+  }
   return session_options;
 }
 
@@ -76,15 +94,25 @@ void UpdateTpuTargetByBridgeCompatibility(
           tensorflow::TfrtDeviceInfraTarget::kTpurt;
     }
   }
-  // TODO(linchai): Once native support for SPMD models is fully rollout, remove
-  // the fallback logic.
-  if (!(tfrt::CheckSpmdGraph(graph_def).ok() ||
-        options.compile_options.tpu_fuse_ops)) {
-    options.compile_options.device_target =
-        tensorflow::TfrtDeviceInfraTarget::kTfFallback;
+
+  // We don't need to check for SPMD fallback for non TFRT TPU path.
+  //
+  // TODO(b/288096487): Clean up the enums to reflect the device target better.
+  // One option is to use a  custom target enum for the opaque backend.
+  if (options.compile_options.device_target !=
+          tensorflow::TfrtDeviceInfraTarget::kCpu &&
+      options.compile_options.device_target !=
+          tensorflow::TfrtDeviceInfraTarget::kGpu) {
+    // TODO(linchai): Once native support for SPMD models is fully rollout,
+    // remove the fallback logic.
+    if (!(tfrt::CheckSpmdGraph(graph_def).ok() ||
+          options.compile_options.tpu_fuse_ops)) {
+      options.compile_options.device_target =
+          tensorflow::TfrtDeviceInfraTarget::kTfFallback;
+    }
+    LOG(INFO) << "TFRT uses device target "
+              << options.compile_options.device_target;
   }
-  LOG(INFO) << "TFRT uses device target "
-            << options.compile_options.device_target;
 }
 
 std::ostream& operator<<(std::ostream& os,

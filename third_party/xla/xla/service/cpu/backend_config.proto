@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package xla.cpu;
+
+// Backend config for XLA:CPU.
+message BackendConfig {
+  // Number of partitions per outer dimension (in order, starting with
+  // outer-most dimension first). Used by the parallel cpu backend to partition
+  // HLOs into parallel tasks.
+  repeated int64 outer_dimension_partitions = 1;
+  // Configuration to be used by oneDNN matmul
+  OneDnnMatMulConfig onednn_matmul_config = 2;
+}
+
+message OneDnnMatMulConfig {
+  // These enum needs to be mapped to oneDNN enum for post_op algorithm.
+  // TODO(intel-tf): Add kinds supported by oneDNN.
+  enum FusionKind {
+    UNDEFINED = 0;
+    BIAS = 1;
+    RELU = 2;
+    TANH = 3;
+    GELU_ERF = 4;
+    GELU_TANH = 5;
+  }
+  repeated FusionKind fused_ops = 3;
+}

@@ -132,6 +132,23 @@ void FuseAwaitOps(mlir::OpBuilder& builder, mlir::Block& block) {
   }
 }
 
+void FusePromiseReturn(mlir::OpBuilder& builder, mlir::Block& block) {
+  auto* terminator = block.getTerminator();
+  auto return_op = llvm::dyn_cast<mlir::func::ReturnOp>(terminator);
+  if (!return_op || return_op->getNumOperands() > 0) return;
+
+  auto promise_op =
+      llvm::dyn_cast_or_null<tf_mlrt::PromiseOp>(return_op->getPrevNode());
+  if (!promise_op) return;
+
+  builder.setInsertionPointAfter(return_op);
+  builder.create<tf_mlrt::PromiseReturnOp>(return_op->getLoc(),
+                                           promise_op->getResultTypes(),
+                                           promise_op->getOperands());
+  return_op->erase();
+  promise_op->erase();
+}
+
 void FuseMlrtOpPass::runOnOperation() {
   auto func = getOperation();
 
@@ -144,6 +161,7 @@ void FuseMlrtOpPass::runOnOperation() {
   FuseAwaitOps<mlrt::compiler::AwaitControlOp,
                mlrt::compiler::AwaitAllControlOp>(builder, func.front());
   FuseGetResourceOps(builder, func.front());
+  FusePromiseReturn(builder, func.front());
 }
 
 }  // namespace

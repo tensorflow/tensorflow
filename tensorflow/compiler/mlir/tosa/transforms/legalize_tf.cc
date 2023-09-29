@@ -151,6 +151,7 @@ DECL_CONVERT_OP(LeftShift);
 DECL_CONVERT_OP(RightShift);
 DECL_CONVERT_OP(OneHot);
 DECL_CONVERT_OP(BatchMatMulV2);
+DECL_CONVERT_OP(BroadcastTo);
 #undef DECL_CONVERT_OP
 
 LogicalResult ConvertTFReluOp::matchAndRewrite(
@@ -158,7 +159,7 @@ LogicalResult ConvertTFReluOp::matchAndRewrite(
   auto tf_relu_op = cast<TF::ReluOp>(op);
 
   TensorType output_type =
-      tf_relu_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_relu_op.getResult().getType());
   // Not a tensor output
   if (!output_type) return failure();
 
@@ -176,7 +177,7 @@ LogicalResult ConvertTFRelu6Op::matchAndRewrite(
   auto tf_relu6_op = cast<TF::Relu6Op>(op);
 
   TensorType output_type =
-      tf_relu6_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_relu6_op.getResult().getType());
   // Not a tensor output
   if (!output_type) return failure();
 
@@ -192,7 +193,7 @@ LogicalResult ConvertTFEqualOp::matchAndRewrite(
   auto tf_equal_op = cast<TF::EqualOp>(op);
 
   TensorType output_type =
-      tf_equal_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_equal_op.getResult().getType());
   // Not a tensor output
   if (!output_type) return failure();
 
@@ -206,7 +207,7 @@ LogicalResult ConvertTFNotEqualOp::matchAndRewrite(
   auto tf_not_equal_op = cast<TF::NotEqualOp>(op);
 
   TensorType output_type =
-      tf_not_equal_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_not_equal_op.getResult().getType());
   // Not a tensor output
   if (!output_type) return failure();
 
@@ -227,7 +228,7 @@ LogicalResult ConvertTFGreaterOp::matchAndRewrite(
   auto tf_greater_op = cast<TF::GreaterOp>(op);
 
   TensorType output_type =
-      tf_greater_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_greater_op.getResult().getType());
   // Not a tensor output
   if (!output_type) return failure();
 
@@ -241,7 +242,7 @@ LogicalResult ConvertTFGreaterEqualOp::matchAndRewrite(
   auto tf_greater_equal_op = cast<TF::GreaterEqualOp>(op);
 
   TensorType output_type =
-      tf_greater_equal_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_greater_equal_op.getResult().getType());
   // Not a tensor output
   if (!output_type) return failure();
 
@@ -283,8 +284,8 @@ LogicalResult ConvertTFCosOp::matchAndRewrite(Operation* op,
                                               PatternRewriter& rewriter) const {
   auto tf_cos_op = cast<TF::CosOp>(op);
   Value input = tf_cos_op.getX();
-  RankedTensorType input_ty = input.getType().dyn_cast<RankedTensorType>();
-  ShapedType output_ty = tf_cos_op.getResult().getType().dyn_cast<ShapedType>();
+  RankedTensorType input_ty = dyn_cast<RankedTensorType>(input.getType());
+  ShapedType output_ty = dyn_cast<ShapedType>(tf_cos_op.getResult().getType());
 
   if (!input_ty || !output_ty) return failure();
 
@@ -313,7 +314,7 @@ LogicalResult ConvertTFAddOp::matchAndRewrite(Operation* op,
   auto tf_add_op = cast<TF::AddOp>(op);
 
   TensorType output_type =
-      tf_add_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_add_op.getResult().getType());
   // Not a tensor output
   if (!output_type) return failure();
 
@@ -327,7 +328,7 @@ LogicalResult ConvertTFAddV2Op::matchAndRewrite(
   auto tf_addv2_op = cast<TF::AddV2Op>(op);
 
   TensorType output_type =
-      tf_addv2_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_addv2_op.getResult().getType());
   // Not a tensor output
   if (!output_type) return failure();
 
@@ -342,7 +343,7 @@ LogicalResult ConvertTFAddNOp::matchAndRewrite(
   auto tf_addn_op = cast<TF::AddNOp>(op);
 
   TensorType output_type =
-      tf_addn_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_addn_op.getResult().getType());
   // Not a tensor output
   if (!output_type) return failure();
 
@@ -367,7 +368,7 @@ LogicalResult ConvertTFSubOp::matchAndRewrite(Operation* op,
   auto tf_sub_op = cast<TF::SubOp>(op);
 
   TensorType output_type =
-      tf_sub_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_sub_op.getResult().getType());
   // Not a tensor output
   if (!output_type) return failure();
 
@@ -421,7 +422,7 @@ LogicalResult ConvertTFRoundOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_round_op = cast<TF::RoundOp>(op);
 
-  TensorType input_type = tf_round_op.getX().getType().dyn_cast<TensorType>();
+  TensorType input_type = dyn_cast<TensorType>(tf_round_op.getX().getType());
   if (!input_type) {
     return rewriter.notifyMatchFailure(op, "input not tensor type");
   }
@@ -483,7 +484,7 @@ LogicalResult ConvertTFMaximumOp::matchAndRewrite(
   auto tf_maximum_op = cast<TF::MaximumOp>(op);
 
   TensorType output_type =
-      tf_maximum_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_maximum_op.getResult().getType());
   // Not a tensor output
   if (!output_type) return failure();
 
@@ -497,7 +498,7 @@ LogicalResult ConvertTFMinimumOp::matchAndRewrite(
   auto tf_minimum_op = cast<TF::MinimumOp>(op);
 
   TensorType output_type =
-      tf_minimum_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_minimum_op.getResult().getType());
   // Not a tensor output
   if (!output_type) return failure();
 
@@ -510,9 +511,9 @@ LogicalResult ConvertTFRealDivOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_div_op = cast<TF::RealDivOp>(op);
 
-  TensorType y_type = tf_div_op.getY().getType().dyn_cast<TensorType>();
+  TensorType y_type = dyn_cast<TensorType>(tf_div_op.getY().getType());
   TensorType output_type =
-      tf_div_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_div_op.getResult().getType());
   // Not a tensor output
   if (!output_type || !y_type) return failure();
 
@@ -540,9 +541,9 @@ LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
   auto tf_argmax_op = cast<TF::ArgMaxOp>(op);
 
   TensorType input_type =
-      tf_argmax_op.getInput().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_argmax_op.getInput().getType());
   TensorType output_type =
-      tf_argmax_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_argmax_op.getResult().getType());
   // Not a tensor output
   if (!output_type || !input_type) return failure();
 
@@ -559,7 +560,7 @@ LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
     return rewriter.notifyMatchFailure(op, "invalid axis value");
   }
 
-  IntegerAttr axis_attr = rewriter.getI64IntegerAttr(axis);
+  IntegerAttr axis_attr = rewriter.getI32IntegerAttr(axis);
 
   CreateReplaceOpAndInfer<tosa::ArgMaxOp>(rewriter, op, output_type,
                                           tf_argmax_op.getInput(), axis_attr);
@@ -572,9 +573,9 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
   auto tf_avgpool_op = cast<TF::AvgPoolOp>(op);
 
   RankedTensorType input_type =
-      tf_avgpool_op.getValue().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_avgpool_op.getValue().getType());
   RankedTensorType output_type =
-      tf_avgpool_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_avgpool_op.getResult().getType());
   // Not a ranked tensor output
   if (!input_type || !output_type) return failure();
 
@@ -590,8 +591,8 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
       stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
-      int64_t stride_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
-      int64_t stride_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
+      int64_t stride_h = dyn_cast<IntegerAttr>(tmpAttr[1]).getInt();
+      int64_t stride_w = dyn_cast<IntegerAttr>(tmpAttr[2]).getInt();
       stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
@@ -601,8 +602,8 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
       kernel = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
-      int64_t kernel_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
-      int64_t kernel_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
+      int64_t kernel_h = dyn_cast<IntegerAttr>(tmpAttr[1]).getInt();
+      int64_t kernel_w = dyn_cast<IntegerAttr>(tmpAttr[2]).getInt();
       kernel = rewriter.getDenseI64ArrayAttr({kernel_h, kernel_w});
     }
   }
@@ -617,7 +618,7 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
     SmallVector<int64_t, 4> i64array;
 
     for (auto& elem : tf_avgpool_op.getKsize()) {
-      int64_t value = elem.dyn_cast<IntegerAttr>().getInt();
+      int64_t value = dyn_cast<IntegerAttr>(elem).getInt();
       i64array.emplace_back(value);
     }
 
@@ -648,9 +649,9 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
   auto tf_maxpool_op = cast<TF::MaxPoolOp>(op);
 
   RankedTensorType input_type =
-      tf_maxpool_op.getInput().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_maxpool_op.getInput().getType());
   RankedTensorType output_type =
-      tf_maxpool_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_maxpool_op.getResult().getType());
   // Not a ranked tensor output
   if (!input_type || !output_type) return failure();
 
@@ -666,8 +667,8 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
       stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
-      int64_t stride_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
-      int64_t stride_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
+      int64_t stride_h = dyn_cast<IntegerAttr>(tmpAttr[1]).getInt();
+      int64_t stride_w = dyn_cast<IntegerAttr>(tmpAttr[2]).getInt();
       stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
@@ -677,8 +678,8 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
       kernel = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
-      int64_t kernel_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
-      int64_t kernel_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
+      int64_t kernel_h = dyn_cast<IntegerAttr>(tmpAttr[1]).getInt();
+      int64_t kernel_w = dyn_cast<IntegerAttr>(tmpAttr[2]).getInt();
       kernel = rewriter.getDenseI64ArrayAttr({kernel_h, kernel_w});
     }
   }
@@ -693,7 +694,7 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
     SmallVector<int64_t, 4> i64array;
 
     for (auto& elem : tf_maxpool_op.getKsize()) {
-      int64_t value = elem.dyn_cast<IntegerAttr>().getInt();
+      int64_t value = dyn_cast<IntegerAttr>(elem).getInt();
       i64array.emplace_back(value);
     }
 
@@ -740,7 +741,7 @@ LogicalResult ConvertTFReshapeOp::matchAndRewrite(
   auto tf_reshape_op = cast<TF::ReshapeOp>(op);
 
   RankedTensorType output_type =
-      tf_reshape_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_reshape_op.getResult().getType());
   // Not a ranked tensor output
   if (!output_type) return failure();
 
@@ -762,7 +763,7 @@ LogicalResult ConvertTFRankOp::matchAndRewrite(
   auto tf_rank_op = cast<TF::RankOp>(op);
 
   RankedTensorType input_type =
-      tf_rank_op.getInput().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_rank_op.getInput().getType());
   if (!input_type) return failure();
 
   int32_t rank = input_type.getRank();
@@ -783,12 +784,12 @@ LogicalResult ConvertTFShapeOp::matchAndRewrite(
   auto tf_shape_op = cast<TF::ShapeOp>(op);
 
   RankedTensorType output_type =
-      tf_shape_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_shape_op.getResult().getType());
   // Not a ranked tensor output
   if (!output_type) return failure();
 
   RankedTensorType input_type =
-      tf_shape_op.getInput().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_shape_op.getInput().getType());
   if (!input_type) return failure();
 
   auto input_shape = input_type.getShape();
@@ -833,7 +834,7 @@ LogicalResult ConvertTFSqueezeOp::matchAndRewrite(
   auto squeeze_dims_attr = tf_squeeze_op.getSqueezeDimsAttr();
   SmallVector<int32_t> squeeze_dims;
   for (auto& squeeze_dim : squeeze_dims_attr) {
-    squeeze_dims.emplace_back(squeeze_dim.dyn_cast<IntegerAttr>().getInt());
+    squeeze_dims.emplace_back(dyn_cast<IntegerAttr>(squeeze_dim).getInt());
   }
 
   std::optional<Value> result =
@@ -852,7 +853,7 @@ LogicalResult ConvertTFFillOp::matchAndRewrite(
   auto tf_fill_op = cast<TF::FillOp>(op);
 
   RankedTensorType output_type =
-      tf_fill_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_fill_op.getResult().getType());
   // Not a ranked tensor output
   if (!output_type) return failure();
 
@@ -901,9 +902,9 @@ LogicalResult ConvertTFConv2DOp::matchAndRewrite(
   auto tf_conv2d_op = cast<TF::Conv2DOp>(op);
 
   RankedTensorType filter_type =
-      tf_conv2d_op.getFilter().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_conv2d_op.getFilter().getType());
   RankedTensorType output_type =
-      tf_conv2d_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_conv2d_op.getResult().getType());
 
   // Set up a zero attr for subsequent pattern replacement if required
   auto bias_dim = filter_type.getShape().back();
@@ -931,9 +932,9 @@ LogicalResult ConvertTFConv3DOp::matchAndRewrite(
   auto tf_conv3d_op = cast<TF::Conv3DOp>(op);
 
   RankedTensorType filter_type =
-      tf_conv3d_op.getFilter().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_conv3d_op.getFilter().getType());
   RankedTensorType output_type =
-      tf_conv3d_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_conv3d_op.getResult().getType());
 
   if (!filter_type || !output_type) {
     return rewriter.notifyMatchFailure(
@@ -966,11 +967,11 @@ LogicalResult ConvertTFDepthwiseConv2dNativeOp::matchAndRewrite(
   auto tf_dwconv2d_op = cast<TF::DepthwiseConv2dNativeOp>(op);
 
   RankedTensorType input_type =
-      tf_dwconv2d_op.getInput().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_dwconv2d_op.getInput().getType());
   RankedTensorType filter_type =
-      tf_dwconv2d_op.getFilter().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_dwconv2d_op.getFilter().getType());
   RankedTensorType output_type =
-      tf_dwconv2d_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_dwconv2d_op.getResult().getType());
   // Not a ranked tensor output
   if (!input_type) return failure();
   if (!output_type) return failure();
@@ -992,8 +993,8 @@ LogicalResult ConvertTFDepthwiseConv2dNativeOp::matchAndRewrite(
       stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
-      int64_t stride_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
-      int64_t stride_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
+      int64_t stride_h = dyn_cast<IntegerAttr>(tmpAttr[1]).getInt();
+      int64_t stride_w = dyn_cast<IntegerAttr>(tmpAttr[2]).getInt();
       stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
@@ -1003,8 +1004,8 @@ LogicalResult ConvertTFDepthwiseConv2dNativeOp::matchAndRewrite(
       dilation = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
-      int64_t dilation_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
-      int64_t dilation_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
+      int64_t dilation_h = dyn_cast<IntegerAttr>(tmpAttr[1]).getInt();
+      int64_t dilation_w = dyn_cast<IntegerAttr>(tmpAttr[2]).getInt();
       dilation = rewriter.getDenseI64ArrayAttr({dilation_h, dilation_w});
     }
   }
@@ -1049,11 +1050,11 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
   auto tf_conv_op = cast<TF::Conv2DBackpropInputOp>(op);
 
   RankedTensorType input_type =
-      tf_conv_op.getOutBackprop().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_conv_op.getOutBackprop().getType());
   RankedTensorType filter_type =
-      tf_conv_op.getFilter().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_conv_op.getFilter().getType());
   RankedTensorType output_type =
-      tf_conv_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_conv_op.getResult().getType());
   // Not a ranked tensor output
   if (!input_type) return failure();
   if (!filter_type) return failure();
@@ -1086,8 +1087,8 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
       stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
-      int64_t stride_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
-      int64_t stride_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
+      int64_t stride_h = dyn_cast<IntegerAttr>(tmpAttr[1]).getInt();
+      int64_t stride_w = dyn_cast<IntegerAttr>(tmpAttr[2]).getInt();
       stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
@@ -1095,8 +1096,8 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
     auto tmpAttr = tf_conv_op.getDilations();
     if (tmpAttr) {
       // Note: hardcoded to NHWC for now
-      int64_t dilation_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
-      int64_t dilation_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
+      int64_t dilation_h = dyn_cast<IntegerAttr>(tmpAttr[1]).getInt();
+      int64_t dilation_w = dyn_cast<IntegerAttr>(tmpAttr[2]).getInt();
       // TOSA transpose_conv2d does not support non-unit dilation
       if (dilation_h != 1 || dilation_w != 1) return failure();
     }
@@ -1157,7 +1158,7 @@ LogicalResult ConvertTFAllOp::matchAndRewrite(Operation* op,
   auto tf_all_op = cast<TF::AllOp>(op);
 
   RankedTensorType output_type =
-      tf_all_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_all_op.getResult().getType());
   if (!output_type) return failure();
 
   ElementsAttr axes_elems;
@@ -1179,7 +1180,7 @@ LogicalResult ConvertTFAnyOp::matchAndRewrite(Operation* op,
   auto tf_any_op = cast<TF::AnyOp>(op);
 
   RankedTensorType output_type =
-      tf_any_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_any_op.getResult().getType());
   if (!output_type) return failure();
 
   ElementsAttr axes_elems;
@@ -1201,7 +1202,7 @@ LogicalResult ConvertTFMaxOp::matchAndRewrite(Operation* op,
   auto tf_max_op = cast<TF::MaxOp>(op);
 
   RankedTensorType output_type =
-      tf_max_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_max_op.getResult().getType());
   if (!output_type) return failure();
 
   ElementsAttr axes_elems;
@@ -1223,7 +1224,7 @@ LogicalResult ConvertTFMinOp::matchAndRewrite(Operation* op,
   auto tf_min_op = cast<TF::MinOp>(op);
 
   RankedTensorType output_type =
-      tf_min_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_min_op.getResult().getType());
   if (!output_type) return failure();
 
   ElementsAttr axes_elems;
@@ -1245,7 +1246,7 @@ LogicalResult ConvertTFMeanOp::matchAndRewrite(
   auto tf_mean_op = cast<TF::MeanOp>(op);
 
   RankedTensorType output_type =
-      tf_mean_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_mean_op.getResult().getType());
   if (!output_type) return failure();
 
   ElementsAttr axes_elems;
@@ -1267,7 +1268,7 @@ LogicalResult ConvertTFProdOp::matchAndRewrite(
   auto tf_prod_op = cast<TF::ProdOp>(op);
 
   RankedTensorType output_type =
-      tf_prod_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_prod_op.getResult().getType());
   if (!output_type) return failure();
 
   ElementsAttr axes_elems;
@@ -1289,7 +1290,7 @@ LogicalResult ConvertTFSumOp::matchAndRewrite(Operation* op,
   auto tf_sum_op = cast<TF::SumOp>(op);
 
   RankedTensorType output_type =
-      tf_sum_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_sum_op.getResult().getType());
   if (!output_type) return failure();
 
   ElementsAttr axes_elems;
@@ -1354,7 +1355,7 @@ LogicalResult ConvertTFFusedBatchNormOp::matchAndRewrite(
   auto tf_batchnorm_op = cast<TF::FusedBatchNormOp>(op);
 
   RankedTensorType output_type =
-      tf_batchnorm_op.getResult(0).getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_batchnorm_op.getResult(0).getType());
   // Not a ranked tensor output
   if (!output_type) return failure();
 
@@ -1379,9 +1380,9 @@ LogicalResult ConvertTFFusedBatchNormOp::matchAndRewrite(
   // op6 = add(op5, boffset)
 
   RankedTensorType mean_type =
-      tf_batchnorm_op.getMean().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_batchnorm_op.getMean().getType());
   RankedTensorType variance_type =
-      tf_batchnorm_op.getVariance().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_batchnorm_op.getVariance().getType());
   if (!variance_type || !mean_type) return failure();
 
   Value mean_val, variance_val;
@@ -1451,7 +1452,7 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
   }
 
   RankedTensorType output_type =
-      tf_batchnorm_op.getResult(0).getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_batchnorm_op.getResult(0).getType());
   // Not a ranked tensor output
   if (!output_type) return failure();
 
@@ -1469,7 +1470,7 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
       tf_batchnorm_op.getX(), tf_batchnorm_op.getMean());
 
   RankedTensorType variance_type =
-      tf_batchnorm_op.getVariance().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_batchnorm_op.getVariance().getType());
   if (!variance_type) return failure();
 
   auto epsilon_type =
@@ -1514,7 +1515,7 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
   auto tf_biasadd_op = cast<TF::BiasAddOp>(op);
 
   RankedTensorType output_type =
-      tf_biasadd_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_biasadd_op.getResult().getType());
   // Not a ranked tensor output
   if (!output_type) return failure();
 
@@ -1531,7 +1532,7 @@ LogicalResult ConvertTFSliceOp::matchAndRewrite(
   auto tf_slice_op = cast<TF::SliceOp>(op);
 
   RankedTensorType output_type =
-      tf_slice_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_slice_op.getResult().getType());
   // Not a ranked tensor output
   if (!output_type) return failure();
 
@@ -1570,7 +1571,7 @@ LogicalResult ConvertTFTileOp::matchAndRewrite(
   auto tf_tile_op = cast<TF::TileOp>(op);
 
   RankedTensorType output_type =
-      tf_tile_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_tile_op.getResult().getType());
   // Not a ranked tensor output
   if (!output_type) return failure();
 
@@ -1596,7 +1597,7 @@ LogicalResult ConvertTFTransposeOp::matchAndRewrite(
   auto tf_transpose_op = cast<TF::TransposeOp>(op);
 
   TensorType output_type =
-      tf_transpose_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_transpose_op.getResult().getType());
   // Not a ranked tensor output
   if (!output_type) {
     return failure();
@@ -1618,7 +1619,7 @@ LogicalResult ConvertTFPackOp::matchAndRewrite(
   assert(inputs.size() >= 2);
 
   IntegerAttr axis_attr = tf_pack_op.getAxisAttr();
-  if (!axis_attr) axis_attr = rewriter.getI64IntegerAttr(0);
+  if (!axis_attr) axis_attr = rewriter.getI32IntegerAttr(0);
 
   int32_t axis_i32 = axis_attr.getInt();
 
@@ -1639,7 +1640,7 @@ LogicalResult ConvertTFUnpackOp::matchAndRewrite(
   IntegerAttr axis_attr;
   {
     auto tmpAttr = tf_unpack_op.getAxisAttr();
-    if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
+    if (!tmpAttr) tmpAttr = rewriter.getI32IntegerAttr(0);
     axis_attr = tmpAttr;
   }
   int32_t axis_i32 = axis_attr.getInt();
@@ -1724,7 +1725,7 @@ LogicalResult ConvertTFLessOp::matchAndRewrite(
   auto tf_less_op = cast<TF::LessOp>(op);
 
   TensorType output_type =
-      tf_less_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_less_op.getResult().getType());
   // Not a ranked tensor output
   if (!output_type) return failure();
 
@@ -1745,7 +1746,7 @@ LogicalResult ConvertTFLessEqualOp::matchAndRewrite(
   auto tf_less_equal_op = cast<TF::LessEqualOp>(op);
 
   TensorType output_type =
-      tf_less_equal_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_less_equal_op.getResult().getType());
   // Not a ranked tensor output
   if (!output_type) return failure();
 
@@ -1765,7 +1766,7 @@ LogicalResult ConvertTFPadOp::matchAndRewrite(Operation* op,
   auto tf_pad_op = cast<TF::PadOp>(op);
 
   TensorType output_type =
-      tf_pad_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_pad_op.getResult().getType());
   // Not a ranked tensor output
   if (!output_type) return failure();
 
@@ -1782,7 +1783,7 @@ LogicalResult ConvertTFMirrorPadOp::matchAndRewrite(
   auto tf_mirrorpad_op = cast<TF::MirrorPadOp>(op);
 
   RankedTensorType output_type =
-      tf_mirrorpad_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_mirrorpad_op.getResult().getType());
   if (!output_type) {
     return rewriter.notifyMatchFailure(op, "output type isn't a ranked tensor");
   }
@@ -1812,7 +1813,7 @@ LogicalResult ConvertTFResizeBilinearOp::matchAndRewrite(
   auto tf_resize_op = cast<TF::ResizeBilinearOp>(op);
 
   RankedTensorType output_type =
-      tf_resize_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_resize_op.getResult().getType());
   // Not a ranked tensor output
   if (!output_type) return failure();
 
@@ -1833,7 +1834,7 @@ LogicalResult ConvertTFResizeNearestNeighborOp::matchAndRewrite(
   auto tf_resize_op = cast<TF::ResizeNearestNeighborOp>(op);
 
   RankedTensorType output_type =
-      tf_resize_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_resize_op.getResult().getType());
   // Not a ranked tensor output
   if (!output_type) return failure();
 
@@ -1855,11 +1856,11 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
   auto tf_matmul_op = cast<TF::MatMulOp>(op);
 
   RankedTensorType a_type =
-      tf_matmul_op.getA().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_matmul_op.getA().getType());
   RankedTensorType b_type =
-      tf_matmul_op.getB().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_matmul_op.getB().getType());
   RankedTensorType output_type =
-      tf_matmul_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_matmul_op.getResult().getType());
 
   if (!(a_type && b_type && output_type)) {
     return rewriter.notifyMatchFailure(op, "a/b/output not ranked tensors");
@@ -1920,9 +1921,9 @@ LogicalResult ConvertTFGatherOp::matchAndRewrite(
   int32_t batch_dims = 0;
   int32_t axis = 0;
 
-  std::optional<Value> result = convertGatherOp(
-      rewriter, op, tf_gather_op.getResult(), tf_gather_op.getParams(),
-      tf_gather_op.getIndices(), batch_dims, axis);
+  std::optional<Value> result =
+      convertGatherOp(rewriter, op, tf_gather_op.getParams(),
+                      tf_gather_op.getIndices(), batch_dims, axis);
 
   if (!result) return failure();
 
@@ -1944,9 +1945,9 @@ LogicalResult ConvertTFGatherV2Op::matchAndRewrite(
   int32_t axis = axis_elem.getValues<IntegerAttr>()[0].getInt();
   int32_t batch_dims = tf_gather_op.getBatchDimsAttr().getInt();
 
-  std::optional<Value> result = convertGatherOp(
-      rewriter, op, tf_gather_op.getResult(), tf_gather_op.getParams(),
-      tf_gather_op.getIndices(), batch_dims, axis);
+  std::optional<Value> result =
+      convertGatherOp(rewriter, op, tf_gather_op.getParams(),
+                      tf_gather_op.getIndices(), batch_dims, axis);
 
   if (!result) return failure();
 
@@ -2081,7 +2082,7 @@ LogicalResult ConvertTFSigmoidOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_sigmoid_op = cast<TF::SigmoidOp>(op);
   TensorType output_type =
-      tf_sigmoid_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_sigmoid_op.getResult().getType());
   if (!output_type) return failure();
 
   CreateReplaceOpAndInfer<tosa::SigmoidOp>(rewriter, op, output_type,
@@ -2094,7 +2095,7 @@ LogicalResult ConvertTFTanhOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_tanh_op = cast<TF::TanhOp>(op);
   TensorType output_type =
-      tf_tanh_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_tanh_op.getResult().getType());
   if (!output_type) return failure();
 
   CreateReplaceOpAndInfer<tosa::TanhOp>(rewriter, op, output_type,
@@ -2107,7 +2108,7 @@ LogicalResult ConvertTFLeakyReluOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_leakyrelu_op = cast<TF::LeakyReluOp>(op);
   TensorType output_type =
-      tf_leakyrelu_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_leakyrelu_op.getResult().getType());
   if (!output_type) return failure();
 
   // Implement LeakyRelu as element-wise:
@@ -2163,7 +2164,7 @@ LogicalResult ConvertTFNegOp::matchAndRewrite(Operation* op,
                                               PatternRewriter& rewriter) const {
   auto tf_neg_op = cast<TF::NegOp>(op);
   TensorType output_type =
-      tf_neg_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_neg_op.getResult().getType());
   if (!output_type) return failure();
 
   CreateReplaceOpAndInfer<tosa::NegateOp>(rewriter, op, output_type,
@@ -2176,7 +2177,7 @@ LogicalResult ConvertTFStopGradientOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_stopgrad_op = cast<TF::StopGradientOp>(op);
   TensorType output_type =
-      tf_stopgrad_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_stopgrad_op.getResult().getType());
   if (!output_type) return failure();
 
   CreateReplaceOpAndInfer<tosa::IdentityOp>(rewriter, op, output_type,
@@ -2189,9 +2190,9 @@ LogicalResult ConvertTFReverseV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_reverse_op = cast<TF::ReverseV2Op>(op);
   RankedTensorType input_type =
-      tf_reverse_op.getTensor().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_reverse_op.getTensor().getType());
   TensorType output_type =
-      tf_reverse_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_reverse_op.getResult().getType());
   if (!input_type || !output_type) return failure();
 
   ElementsAttr axis_elems;
@@ -2208,7 +2209,7 @@ LogicalResult ConvertTFReverseV2Op::matchAndRewrite(
     for (int i = 0; i < axis_elems.getNumElements(); i++) {
       int64_t axis_val = axis_elems.getValues<IntegerAttr>()[i].getInt();
       if (axis_val < 0) axis_val += input_rank;
-      auto axis_attr = rewriter.getI64IntegerAttr(axis_val);
+      auto axis_attr = rewriter.getI32IntegerAttr(axis_val);
       auto reverse_op = CreateOpAndInfer<tosa::ReverseOp>(
           rewriter, op->getLoc(), output_type, val, axis_attr);
 
@@ -2226,7 +2227,7 @@ LogicalResult ConvertTFFakeQuantWithMinMaxArgsOp::matchAndRewrite(
   auto tf_fakequant_op = cast<TF::FakeQuantWithMinMaxArgsOp>(op);
 
   TensorType output_type =
-      tf_fakequant_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_fakequant_op.getResult().getType());
   // Not a tensor output
   if (!output_type) return failure();
 
@@ -2249,7 +2250,7 @@ LogicalResult ConvertTFFakeQuantWithMinMaxVarsOp::matchAndRewrite(
   auto tf_fakequant_op = cast<TF::FakeQuantWithMinMaxVarsOp>(op);
 
   TensorType output_type =
-      tf_fakequant_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_fakequant_op.getResult().getType());
   // Not a tensor output
   if (!output_type) return failure();
 
@@ -2284,7 +2285,7 @@ LogicalResult ConvertTFLeftShiftOp::matchAndRewrite(
   auto tf_left_shift_op = cast<TF::LeftShiftOp>(op);
 
   TensorType output_type =
-      tf_left_shift_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_left_shift_op.getResult().getType());
   if (!output_type) return failure();
 
   CreateReplaceOpAndInfer<tosa::LogicalLeftShiftOp>(rewriter, op, output_type,
@@ -2301,7 +2302,7 @@ LogicalResult ConvertTFRightShiftOp::matchAndRewrite(
   auto tf_right_shift_op = cast<TF::RightShiftOp>(op);
 
   TensorType output_type =
-      tf_right_shift_op.getResult().getType().dyn_cast<TensorType>();
+      dyn_cast<TensorType>(tf_right_shift_op.getResult().getType());
   if (!output_type) return failure();
 
   Type output_element_type = output_type.getElementType();
@@ -2350,11 +2351,11 @@ LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
   auto tf_batch_matmul_op = cast<TF::BatchMatMulV2Op>(op);
 
   RankedTensorType x_type =
-      tf_batch_matmul_op.getX().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_batch_matmul_op.getX().getType());
   RankedTensorType y_type =
-      tf_batch_matmul_op.getY().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_batch_matmul_op.getY().getType());
   RankedTensorType output_type =
-      tf_batch_matmul_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_batch_matmul_op.getResult().getType());
 
   if (!(x_type && y_type && output_type)) {
     return rewriter.notifyMatchFailure(op, "x/y/output not ranked tensors");
@@ -2418,6 +2419,21 @@ LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
         rewriter, op, output_type, op3_matmul_op1_op2.getResult(),
         rewriter.getDenseI64ArrayAttr(output_type.getShape()));
   }
+  return success();
+}
+
+LogicalResult ConvertTFBroadcastToOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_broadcast_to_op = cast<TF::BroadcastToOp>(op);
+
+  std::optional<Value> result =
+      convertBroadcastToOp(rewriter, op, tf_broadcast_to_op.getInput(),
+                           tf_broadcast_to_op.getShape());
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.value()});
+
   return success();
 }
 
@@ -2523,6 +2539,7 @@ void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {
   patterns.add<ConvertTFRightShiftOp>(ctx);
   patterns.add<ConvertTFOneHotOp>(ctx);
   patterns.add<ConvertTFBatchMatMulV2Op>(ctx);
+  patterns.add<ConvertTFBroadcastToOp>(ctx);
 }
 
 // Creates an instance of the TensorFlow dialect LegalizeTF pass.

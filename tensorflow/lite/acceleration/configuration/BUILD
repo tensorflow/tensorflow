@@ -21,7 +21,7 @@ load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with
 load(":build_defs.bzl", "flatbuffer_schema_compat_test")
 
 # copybara:comment_begin(oss-only)
-load("//tensorflow/tsl/platform/default:build_config.bzl", "tf_proto_library_py")
+load("@local_tsl//tsl/platform/default:build_config.bzl", "tf_proto_library_py")
 # copybara:comment_end
 
 package(
@@ -115,10 +115,12 @@ proto_library(
     srcs = [
         "configuration.proto",
     ],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_proto_library(
     name = "configuration_cc_proto",
+    compatible_with = get_compatible_with_portable(),
     deps = [":configuration_proto"],
 )
 
@@ -180,6 +182,7 @@ cc_library(
         "flatbuffer_to_proto.cc",
     ],
     hdrs = ["flatbuffer_to_proto.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":configuration_cc_proto",
         ":configuration_fbs",

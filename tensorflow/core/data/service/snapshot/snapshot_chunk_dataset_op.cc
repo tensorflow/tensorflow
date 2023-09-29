@@ -18,17 +18,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/tstring.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/tstring.h"
 
 namespace tensorflow {
 namespace data {
@@ -77,16 +77,17 @@ class SnapshotChunkDatasetOp::Dataset : public DatasetBase {
 
   std::string DebugString() const override { return "SnapshotChunkDataset"; }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return OkStatus();
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
+    return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override { return OkStatus(); }
+  absl::Status CheckExternalState() const override { return absl::OkStatus(); }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* chunk_file = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(chunk_file_, &chunk_file));
 
@@ -103,7 +104,7 @@ class SnapshotChunkDatasetOp::Dataset : public DatasetBase {
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(node_name(), prefix)});
   }
@@ -114,22 +115,22 @@ class SnapshotChunkDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       reader_ = std::make_unique<snapshot_util::TFRecordReader>(
-          dataset()->chunk_file_, dataset()->compression_, dataset()->dtypes_,
-          kTFRecordReaderOutputBufferSize);
+          TranslateFileName(dataset()->chunk_file_), dataset()->compression_,
+          dataset()->dtypes_, kTFRecordReaderOutputBufferSize);
       return reader_->Initialize(ctx->env());
     }
 
    protected:
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       *end_of_sequence = false;
-      Status status = reader_->ReadTensors(out_tensors);
+      absl::Status status = reader_->ReadTensors(out_tensors);
       if (errors::IsOutOfRange(status)) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
       TF_RETURN_WITH_CONTEXT_IF_ERROR(
           status,
@@ -138,15 +139,15 @@ class SnapshotChunkDatasetOp::Dataset : public DatasetBase {
       return status;
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kStartIndex), start_index_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(full_name(kStartIndex), &start_index_));
       TF_RETURN_IF_ERROR(Initialize(ctx));
@@ -157,12 +158,12 @@ class SnapshotChunkDatasetOp::Dataset : public DatasetBase {
     // TODO(b/250921378): Optimize this to not parse every single element. We
     // may consider switching the data format to ArrayRecords so we can use the
     // index to jump straight to the starting record.
-    Status AdvanceToStartIndex(IteratorContext* ctx) {
+    absl::Status AdvanceToStartIndex(IteratorContext* ctx) {
       for (int64_t i = 0; i < start_index_; ++i) {
         std::vector<Tensor> unused;
         TF_RETURN_IF_ERROR(reader_->ReadTensors(&unused));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     std::unique_ptr<snapshot_util::TFRecordReader> reader_;

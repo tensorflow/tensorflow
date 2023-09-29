@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/rpc_response_cache.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "tsl/distributed_runtime/rpc/async_service_interface.h"
 
 namespace grpc {
 class ByteBuffer;

@@ -33,6 +33,16 @@ TfLiteRegistration* Register_LIST_RESERVE();
 
 TfLiteRegistration* Register_LIST_STACK();
 
+TfLiteRegistration* Register_LIST_SET_ITEM();
+
+TfLiteRegistration* Register_LIST_FROM_TENSOR();
+
+TfLiteRegistration* Register_LIST_GET_ITEM();
+
+TfLiteRegistration* Register_LIST_LENGTH();
+
+TfLiteRegistration* Register_LIST_ELEMENT_SHAPE();
+
 }  // namespace ops
 }  // namespace variants
 }  // namespace tflite

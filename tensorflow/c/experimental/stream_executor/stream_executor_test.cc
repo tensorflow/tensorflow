@@ -14,14 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
+#include <functional>
 #include <utility>
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
-#include "tensorflow/compiler/xla/stream_executor/event.h"
-#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -619,8 +620,8 @@ TEST_F(StreamExecutorTest, HostCallbackOk) {
   StreamExecutor* executor = GetExecutor(0);
   Stream stream(executor);
   stream.Init();
-  std::function<tsl::Status()> callback = []() -> tsl::Status {
-    return ::tensorflow::OkStatus();
+  std::function<absl::Status()> callback = []() -> absl::Status {
+    return absl::OkStatus();
   };
   stream.ThenDoHostCallbackWithStatus(callback);
   ASSERT_TRUE(stream.ok());

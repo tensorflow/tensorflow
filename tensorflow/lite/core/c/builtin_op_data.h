@@ -32,6 +32,8 @@ extern "C" {
 // TfLiteReshapeParams can't have dynamic data so we fix the maximum possible
 // number of dimensions.
 #define TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT 8
+#define TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT 8
+#define TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT 8
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
@@ -90,6 +92,10 @@ typedef struct {
   // Note: Version 2 supports dilation values not equal to 1.
   int dilation_width_factor;
   int dilation_height_factor;
+
+  // Parameters for CONV_2D version 7 or above.
+  // Used to determine the default value for the quantized bias.
+  TfLiteType quantized_bias_type;
 } TfLiteConvParams;
 
 typedef struct {
@@ -193,6 +199,10 @@ typedef struct {
   // If set to true and the weights are quantized, then non constant inputs
   // are quantized at evaluation time with asymmetric quantization.
   bool asymmetric_quantize_inputs;
+
+  // Parameters for FullyConnected version 10 or above.
+  // Used to determine the default value for the quantized bias.
+  TfLiteType quantized_bias_type;
 } TfLiteFullyConnectedParams;
 
 typedef enum {
@@ -341,7 +351,7 @@ typedef struct {
   // These fields are only used in old models for backward compatibility.
   // In the current implementation, we use the 2nd input of the op as the shape,
   // and these fields are unused.
-  int shape[TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT];
+  int32_t shape[TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT];
   int num_dimensions;
 } TfLiteReshapeParams;
 
@@ -398,7 +408,7 @@ typedef struct {
 typedef struct {
   // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
   // For now we will fix the maximum possible number of dimensions.
-  int squeeze_dims[8];
+  int32_t squeeze_dims[8];
   int num_squeeze_dims;
 } TfLiteSqueezeParams;
 
@@ -430,6 +440,10 @@ typedef struct {
 
   // Parameters supported by version 4:
   TfLiteFusedActivation activation;
+
+  // Parameters for TransposeConv version 5 or above.
+  // Used to determine the default value for the quantized bias.
+  TfLiteType quantized_bias_type;
 } TfLiteTransposeConvParams;
 
 typedef struct {
@@ -534,6 +548,76 @@ typedef struct {
 typedef struct {
   bool approximate;
 } TfLiteGeluParams;
+
+typedef struct {
+  int64_t dimension;
+} TfLiteStablehloConcatenateParams;
+
+typedef struct {
+  // See the stablehlo spec for the explanation of the attributes:
+  // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#scatter
+  bool indices_are_sorted;
+  int64_t
+      update_window_dims[TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_update_window_dims;
+  int64_t
+      inserted_window_dims[TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_inserted_window_dims;
+  int64_t scatter_dims_to_operand_dims
+      [TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_scatter_dims_to_operand_dims;
+  int64_t index_vector_dim;
+  bool unique_indices;
+  int update_computation_subgraph_index;
+} TfLiteStablehloScatterParams;
+
+typedef enum {
+  kTfLiteRngAlgorithmUnknown = 0,
+  // An algorithm auto-selected by the system according to device type.
+  kTfLiteRngAlgorithmDefault,
+  // The Philox algorithm, as described in paper
+  // ['Parallel Random Numbers: As Easy as 1, 2, 3']
+  // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+  kTfLiteRngAlgorithmPhilox,
+  // The ThreeFry algorithm, as described in paper
+  // ['Parallel Random Numbers: As Easy as 1, 2, 3']
+  // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+  kTfLiteRngAlgorithmThreefry,
+} TfLiteRngAlgorithm;
+
+typedef struct {
+  TfLiteRngAlgorithm algorithm;
+} TfLiteStablehloRngBitGeneratorParams;
+
+typedef struct {
+  // See the stablehlo spec for the explanation of the attributes:
+  // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#gather
+  int64_t offset_dims[TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_offset_dims;
+  int64_t
+      collapsed_slice_dims[TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_collapsed_slice_dims;
+  int64_t start_index_map[TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_start_index_map;
+  int64_t index_vector_dim;
+  int64_t slice_sizes[TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_slice_sizes;
+  bool indices_are_sorted;
+} TfLiteStablehloGatherParams;
+
+enum TfLiteReduceWindowFunction {
+  TfLiteReduceWindowFunctionUnsupported,
+  TfLiteReduceWindowFunctionAdd,
+  TfLiteReduceWindowFunctionMul,
+  TfLiteReduceWindowFunctionMin,
+  TfLiteReduceWindowFunctionMax,
+  TfLiteReduceWindowFunctionAll,
+  TfLiteReduceWindowFunctionAny
+};
+
+typedef struct {
+  enum TfLiteReduceWindowFunction reduce_function;
+} TfLiteReduceWindowParams;
 
 #ifdef __cplusplus
 }  // extern "C"

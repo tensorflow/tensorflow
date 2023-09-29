@@ -43,7 +43,7 @@ absl::Status PreprocessAndFreezeGraph(
     absl::string_view mlir_dump_file_prefix, bool is_inliner_run,
     const absl::flat_hash_set<std::string>& noinline_functions,
     mlir::ModuleOp module_op, mlir::MLIRContext* context,
-    std::optional<Session*> session);
+    std::optional<Session*> session, bool run_tf_to_stablehlo);
 
 // Overload of `PreprocessAndFreezeGraph` that uses the default MLIR dump file
 // prefix.
@@ -53,7 +53,7 @@ inline absl::Status PreprocessAndFreezeGraph(mlir::ModuleOp module_op,
   return PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
       /*is_inliner_run=*/true, /*noinline_functions=*/{}, module_op, context,
-      session);
+      session, /*run_tf_to_stablehlo=*/false);
 }
 
 }  // namespace quantization

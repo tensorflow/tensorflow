@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/framework/model.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -38,6 +40,14 @@ namespace {
 using ::tensorflow::monitoring::testing::CellReader;
 using ::testing::AllOf;
 using ::testing::HasSubstr;
+
+std::function<int64_t()> CpuBudgetFunc(int64_t budget) {
+  return [budget]() { return budget; };
+}
+
+std::function<int64_t(int64_t)> RamBudgetFunc(int64_t budget) {
+  return [budget](int64_t) { return budget; };
+}
 
 int64_t CountParametersOnNode(const string& node_name,
                               const Model::ModelParameters& parameters) {
@@ -1336,7 +1346,10 @@ TEST_P(OptimizeZeroRamBudgetTest, Model) {
                 &node3);
 
   CancellationManager cancellation_manager;
-  model.Optimize(algorithm, 40, 0, 0, &cancellation_manager);
+  RamBudgetManager ram_budget_manager(0);
+  model.Optimize(algorithm, CpuBudgetFunc(40), RamBudgetFunc(0),
+                 /*model_input_time=*/0, ram_budget_manager,
+                 &cancellation_manager);
   EXPECT_EQ(node1->parameter_value("parallelism"), 1);
   EXPECT_EQ(node2->parameter_value("buffer_size"), 0);
   EXPECT_EQ(node3->parameter_value("parallelism"), 1);
@@ -1382,9 +1395,10 @@ TEST(ModelTest, ModelCollectOptimizationMetrics) {
                     HasSubstr("autotune: true"), HasSubstr("num_elements: 1"),
                     HasSubstr("processing_time: 100")));
   CancellationManager cancellation_manager;
-  model.Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
-                 /*ram_budget=*/1000, /*model_input_time=*/50,
-                 &cancellation_manager);
+  RamBudgetManager ram_budget_manager(0);
+  model.Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(40), RamBudgetFunc(1000),
+      /*model_input_time=*/50, ram_budget_manager, &cancellation_manager);
   model.output()->record_element();
   model.output()->record_start(300);
   model.output()->record_stop(400);
@@ -1400,9 +1414,9 @@ TEST(ModelTest, ModelCollectOptimizationMetrics) {
   model.RecordIteratorGapTime(12);
   // Call optimization again. Metrics collected after the first optimization
   // and the added gap times should be returned as well.
-  model.Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
-                 /*ram_budget=*/1000, /*model_input_time=*/50,
-                 &cancellation_manager);
+  model.Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20), RamBudgetFunc(1000),
+      /*model_input_time=*/50, ram_budget_manager, &cancellation_manager);
   EXPECT_THAT(
       cell_reader.Read(model_id),
       AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
@@ -2363,7 +2377,12 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
   EXPECT_EQ(1, node_6->buffered_elements_low());
   EXPECT_EQ(2, node_6->buffered_elements_high());
 
-  model_->OptimizeBuffers(node_1->Snapshot(), 10000);
+  CancellationManager cancellation_manager;
+  RamBudgetManager ram_budget_manager(0);
+  model_->AddExperiment("autotune_buffer_optimization");
+  model_->Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1000), RamBudgetFunc(10000),
+      /*model_input_time=*/0, ram_budget_manager, &cancellation_manager);
 
   EXPECT_EQ(2, node_1->parameter_value(kBufferSize));
   EXPECT_EQ(4, node_3->parameter_value(kBufferSize));
@@ -2506,7 +2525,12 @@ TEST_F(BufferSizeTest, OptimizeBuffers_TightMemory) {
   EXPECT_EQ(0, node_4->buffered_elements_low());
   EXPECT_EQ(5, node_4->buffered_elements_high());
 
-  model_->OptimizeBuffers(node_1->Snapshot(), 3000);
+  CancellationManager cancellation_manager;
+  RamBudgetManager ram_budget_manager(0);
+  model_->AddExperiment("autotune_buffer_optimization");
+  model_->Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1000), RamBudgetFunc(3000),
+      /*model_input_time=*/0, ram_budget_manager, &cancellation_manager);
 
   EXPECT_DOUBLE_EQ(7.0, node_1->parameter_value(kBufferSize));
   EXPECT_DOUBLE_EQ(7.0, node_2->parameter_value(kBufferSize));
@@ -2574,8 +2598,10 @@ TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
   )pb");
 
   CancellationManager cancellation_manager;
-  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 1000, 50,
-                   &cancellation_manager);
+  RamBudgetManager ram_budget_manager(0);
+  model_->Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20), RamBudgetFunc(1000),
+      /*model_input_time=*/50, ram_budget_manager, &cancellation_manager);
 
   EXPECT_EQ(5, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
 }
@@ -2628,8 +2654,10 @@ TEST_F(ModelTimingTest, OptimizeStageBased_CappedByParameterMax) {
   CellReader<int64_t> cell_reader(
       "/tensorflow/data/autotune_stopping_criteria");
   CancellationManager cancellation_manager;
-  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 1000, 50,
-                   &cancellation_manager);
+  RamBudgetManager ram_budget_manager(0);
+  model_->Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20), RamBudgetFunc(1000),
+      /*model_input_time=*/50, ram_budget_manager, &cancellation_manager);
 
   // The max value is set to 3. Otherwise, the expected parallelism value is 5.
   EXPECT_EQ(3, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
@@ -2696,8 +2724,10 @@ TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages) {
   )pb");
 
   CancellationManager cancellation_manager;
-  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 5, 1000, 50,
-                   &cancellation_manager);
+  RamBudgetManager ram_budget_manager(0);
+  model_->Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(5), RamBudgetFunc(1000),
+      /*model_input_time=*/50, ram_budget_manager, &cancellation_manager);
 
   EXPECT_EQ(5, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
   EXPECT_EQ(5, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
@@ -2848,10 +2878,12 @@ TEST_F(ModelTimingTest, OptimizeStageBased_ParallelInterleaveMaxParallelism) {
   CellReader<int64_t> cell_reader(
       "/tensorflow/data/autotune_stopping_criteria");
   CancellationManager cancellation_manager;
+  RamBudgetManager ram_budget_manager(0);
   // Not enough RAM, the original `parallelism` should not change.
   model_->AddExperiment("stage_based_autotune_v2");
-  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/10000,
-                   /*ram_budget=*/10000, /*model_input_time=*/60,
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(10000),
+                   RamBudgetFunc(10000),
+                   /*model_input_time=*/60, ram_budget_manager,
                    &cancellation_manager);
   EXPECT_EQ(10, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
   EXPECT_EQ(20, GetNode(/*node_id=*/3)->parameter_value("parallelism"));
@@ -2922,17 +2954,20 @@ TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
   CellReader<int64_t> cell_reader(
       "/tensorflow/data/autotune_stopping_criteria");
   CancellationManager cancellation_manager;
+  RamBudgetManager ram_budget_manager(0);
   // Not enough RAM, the original `parallelism` should not change.
-  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 10, 100, 0,
-                   &cancellation_manager);
+  model_->Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(10), RamBudgetFunc(0),
+      /*model_input_time=*/100, ram_budget_manager, &cancellation_manager);
   EXPECT_EQ(4, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
   EXPECT_EQ(4, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
   EXPECT_EQ(cell_reader.Delta(
                 "ram_budget_exceeded:ParallelMapV2[]_Arbitrary[]_Stuff(id:2)"),
             1);
   // Has enough RAM, the original `parallelism` should increase.
-  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 10, 100000, 0,
-                   &cancellation_manager);
+  model_->Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(10), RamBudgetFunc(100000),
+      /*model_input_time=*/0, ram_budget_manager, &cancellation_manager);
   EXPECT_EQ(12, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
   EXPECT_EQ(16, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
   EXPECT_EQ(
@@ -2940,8 +2975,9 @@ TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
           "parameter_max_exceeded:ParallelMapV2[]_Arbitrary[]_Stuff(id:2)"),
       1);
   // Not enough RAM, the original `parallelism` should not change.
-  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 10, 100, 0,
-                   &cancellation_manager);
+  model_->Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(10), RamBudgetFunc(100),
+      /*model_input_time=*/0, ram_budget_manager, &cancellation_manager);
   EXPECT_EQ(12, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
   EXPECT_EQ(16, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
   EXPECT_EQ(cell_reader.Delta(
@@ -3001,9 +3037,10 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatio) {
   )pb");
 
   CancellationManager cancellation_manager;
-  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
-                   /*ram_budget=*/10000, /*model_input_time=*/100,
-                   &cancellation_manager);
+  RamBudgetManager ram_budget_manager(0);
+  model_->Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20), RamBudgetFunc(10000),
+      /*model_input_time=*/100, ram_budget_manager, &cancellation_manager);
 
   EXPECT_EQ(3, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
 }
@@ -3060,9 +3097,10 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatioLessThanOne) {
   )pb");
 
   CancellationManager cancellation_manager;
-  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/20,
-                   /*ram_budget=*/10000, /*model_input_time=*/50,
-                   &cancellation_manager);
+  RamBudgetManager ram_budget_manager(0);
+  model_->Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20), RamBudgetFunc(10000),
+      /*model_input_time=*/50, ram_budget_manager, &cancellation_manager);
 
   EXPECT_EQ(14, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
 }
@@ -3070,14 +3108,18 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatioLessThanOne) {
 TEST_F(ModelTimingTest, ComputeTargetTime) {
   model_ = std::make_unique<Model>();
 
-  model_->RecordIteratorGapTime(5);
-  model_->RecordIteratorGapTime(5);
+  for (int i = 0; i < 45; ++i) {
+    model_->RecordIteratorGapTime(5);
+    model_->RecordIteratorGapTime(15);
+  }
   model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(1000);
-  // Gap times that are >= 10 seconds are always dropped.
-  model_->RecordIteratorGapTime(10000000);
+  for (int i = 0; i < 9; ++i) {
+    model_->RecordIteratorGapTime(1000);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
 
   EXPECT_DOUBLE_EQ(10, model_->ComputeTargetTimeNsec() * 1e-3);
 }
@@ -3086,14 +3128,18 @@ TEST_F(ModelTimingTest, ComputeTargetTime_Experiment) {
   model_ = std::make_unique<Model>();
   model_->AddExperiment("stage_based_autotune_v2");
 
-  model_->RecordIteratorGapTime(5);
-  model_->RecordIteratorGapTime(5);
+  for (int i = 0; i < 45; ++i) {
+    model_->RecordIteratorGapTime(5);
+    model_->RecordIteratorGapTime(15);
+  }
   model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(1000);
-  // Gap times that are >= 10 seconds are always dropped.
-  model_->RecordIteratorGapTime(10000000);
+  for (int i = 0; i < 9; ++i) {
+    model_->RecordIteratorGapTime(1000);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
 
   EXPECT_DOUBLE_EQ(5, model_->ComputeTargetTimeNsec() * 1e-3);
 }
@@ -3101,16 +3147,14 @@ TEST_F(ModelTimingTest, ComputeTargetTime_Experiment) {
 TEST_F(ModelTimingTest, ComputeTargetTime_NoOutlier) {
   model_ = std::make_unique<Model>();
 
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(20);
-  model_->RecordIteratorGapTime(20);
-  model_->RecordIteratorGapTime(20);
-  model_->RecordIteratorGapTime(20);
-  // Gap times that are >= 10 seconds are always dropped.
-  model_->RecordIteratorGapTime(10000000);
+  for (int i = 0; i < 50; ++i) {
+    model_->RecordIteratorGapTime(10);
+    model_->RecordIteratorGapTime(20);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
 
   EXPECT_DOUBLE_EQ(15.0, model_->ComputeTargetTimeNsec() * 1e-3);
 }
@@ -3128,6 +3172,255 @@ TEST_F(ModelTimingTest, ComputeTargetTime_TestWindow) {
   }
 
   EXPECT_DOUBLE_EQ(10.0, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeExperimentalTargetTime) {
+  model_ = std::make_unique<Model>();
+
+  for (int i = 0; i < 45; ++i) {
+    model_->RecordIteratorGapTime(5);
+    model_->RecordIteratorGapTime(15);
+  }
+  for (int i = 0; i < 10; ++i) {
+    model_->RecordIteratorGapTime(10);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
+
+  EXPECT_DOUBLE_EQ(10.0, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeExperimentalTargetTime_NotEnoughGapTimes) {
+  model_ = std::make_unique<Model>();
+
+  for (int i = 0; i < 40; ++i) {
+    model_->RecordIteratorGapTime(5);
+    model_->RecordIteratorGapTime(15);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
+
+  EXPECT_DOUBLE_EQ(0.0, model_->ComputeExperimentalTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeEmptyModel) {
+  model::Model model;
+  EXPECT_EQ(model.ComputeSnapshotProcessingTimeNsec(), 0.0);
+}
+
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeNullSnapshot) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 0.0);
+}
+
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeSingleStage1) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  RamBudgetManager ram_budget_manager(0);
+  // Ensure the model snapshot is populated.
+  model_->Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1), RamBudgetFunc(1),
+      /*model_input_time=*/1000000, ram_budget_manager, &cancellation_manager);
+  EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 1200.0);
+}
+
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeSingleStage2) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 50000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Map"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  // Ensure the model snapshot is populated.
+  RamBudgetManager ram_budget_manager(0);
+  model_->Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1), RamBudgetFunc(1),
+      /*model_input_time=*/1000000, ram_budget_manager, &cancellation_manager);
+  EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 1500.0);
+}
+
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeMultipleStages) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 50000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 4
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 4
+      value: {
+        id: 4
+        name: "Map"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  // Ensure the model snapshot is populated.
+  RamBudgetManager ram_budget_manager(0);
+  model_->Optimize(
+      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1), RamBudgetFunc(1),
+      /*model_input_time=*/1000000, ram_budget_manager, &cancellation_manager);
+  EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 1500.0);
 }
 
 TEST_F(ModelTimingTest, SelfTime) {
@@ -3177,6 +3470,49 @@ TEST_F(ModelTimingTest, SelfTime) {
   node_2->add_processing_time(100);
   node_2->record_element();
   EXPECT_DOUBLE_EQ(910, node_2->ComputeSelfTime());
+}
+
+TEST(RamBudgetManagerTest, Ctor) {
+  RamBudgetManager rbm(10);
+  EXPECT_EQ(rbm.AvailableModelRam(), 10);
+}
+
+TEST(RamBudgetManagerTest, RequestAllocations) {
+  RamBudgetManager rbm(10);
+  // Over budget
+  EXPECT_FALSE(rbm.RequestModelAllocation(11));
+  // Model allocations specify total bytes
+  EXPECT_TRUE(rbm.RequestModelAllocation(10));
+  EXPECT_TRUE(rbm.RequestModelAllocation(7));
+  // Still within budget
+  EXPECT_TRUE(rbm.RequestLegacyPrefetchBytes(3));
+  // Over budget
+  EXPECT_FALSE(rbm.RequestLegacyPrefetchBytes(2));
+  // Reducing the model allocation should make room for more prefetch bytes
+  EXPECT_TRUE(rbm.RequestModelAllocation(5));
+  EXPECT_TRUE(rbm.RequestLegacyPrefetchBytes(2));
+}
+
+TEST(RamBudgetManagerTest, RequestAllocationsWithBudgetAdjustment) {
+  RamBudgetManager rbm(10);
+  // Over budget
+  EXPECT_FALSE(rbm.RequestModelAllocation(11));
+  // Update budget
+  rbm.UpdateBudget(15);
+  EXPECT_TRUE(rbm.RequestModelAllocation(11));
+  EXPECT_TRUE(rbm.RequestLegacyPrefetchBytes(3));
+  // Over budget
+  EXPECT_FALSE(rbm.RequestLegacyPrefetchBytes(2));
+  // Reducing the model allocation should make room for more prefetch bytes
+  EXPECT_TRUE(rbm.RequestModelAllocation(7));
+  // Ok, since 7 + 3 + 2 <= 15
+  EXPECT_TRUE(rbm.RequestLegacyPrefetchBytes(2));
+  // Update budget again
+  rbm.UpdateBudget(16);
+  // Over budget 5 > 16 - 7 - (3 + 2)
+  EXPECT_FALSE(rbm.RequestLegacyPrefetchBytes(5));
+  // Just fits
+  EXPECT_TRUE(rbm.RequestLegacyPrefetchBytes(4));
 }
 
 }  // namespace

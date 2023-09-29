@@ -19,12 +19,8 @@ glob_lit_tests(
         "spmd_tile.mlir",
     ],
     tags_override = {
-        "dtensor_embedding_v2.mlir": ["no_oss"],
-        "embedding_optimizer.mlir": ["no_oss"],
-        "dtensor_embedding_checkpoint.mlir": ["no_oss"],  # FIXME(b/264922760): The test fails on OSS.
         "move_compilation_to_host.mlir": ["no_oss"],  # FIXME(b/264922760): The test fails on OSS.
         "spmd_dtensor_ops.mlir": ["no_oss"],  # FIXME(b/264922760): The test fails on OSS.
-        "spmd_embedding.mlir": ["no_oss"],  # FIXME(b/264922760): The test fails on OSS.
     },
     test_file_exts = ["mlir"],
 )
@@ -46,7 +42,6 @@ tf_cc_binary(
     deps = [
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/core:ops",
         "//tensorflow/dtensor/cc:dtensor_ops",
         "//tensorflow/dtensor/mlir:create_dtensor_mlir_passes",
@@ -58,6 +53,7 @@ tf_cc_binary(
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
+        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@stablehlo//:register",
     ],
 )

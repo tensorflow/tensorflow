@@ -141,6 +141,7 @@ from tensorflow.python.feature_column import utils as fc_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -1502,7 +1503,7 @@ def categorical_column_with_vocabulary_file_v2(key,
         'in the vocabulary_file %s.', vocabulary_size, key, vocabulary_file)
 
   # `vocabulary_size` isn't required for lookup, but it is for `_num_buckets`.
-  if not isinstance(vocabulary_size, ops.Tensor) and vocabulary_size < 1:
+  if not isinstance(vocabulary_size, tensor_lib.Tensor) and vocabulary_size < 1:
     raise ValueError('Invalid vocabulary_size in {}.'.format(key))
   if num_oov_buckets:
     if default_value is not None:

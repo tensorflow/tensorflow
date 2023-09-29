@@ -1,10 +1,10 @@
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteSwift'
-  s.version          = '2.12.0'
+  s.version          = '2.13.0'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => '1e8f3f6a3e899fe75d3c394d4fe07f2c2b69e2ec' }
+  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => '1cb1a030a62b169d90d34c747ab9b09f332bf905' }
   s.summary          = 'TensorFlow Lite for Swift'
   s.description      = <<-DESC
 

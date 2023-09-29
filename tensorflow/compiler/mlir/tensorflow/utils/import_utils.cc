@@ -47,7 +47,7 @@ Status LoadProtoFromBuffer(absl::string_view input,
   protobuf::io::ArrayInputStream binary_stream(input.data(), input.size());
   if (proto->ParseFromZeroCopyStream(&binary_stream)) return OkStatus();
 
-  LOG(ERROR) << "Error parsing Protobuf";
+  LOG(ERROR) << "Error parsing Protobuf: " << proto->GetTypeName();
   return errors::InvalidArgument("Could not parse input proto");
 }
 

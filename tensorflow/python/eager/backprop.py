@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
@@ -41,6 +42,7 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gradients_impl  # pylint: disable=unused-import
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
@@ -405,7 +407,7 @@ def gradients_function(f, params=None):
 
 
 def _ensure_unique_tensor_objects(parameter_positions, args):
-  """Make each of the parameter_positions in args a unique ops.Tensor object.
+  """Make each of the parameter_positions in args a unique tensor_lib.Tensor object.
 
   Ensure that each parameter is treated independently.
   For example:
@@ -594,18 +596,18 @@ def _aggregate_grads(gradients):
 
   if len(gradients) == 1:
     return gradients[0]
-  if all(isinstance(g, ops.Tensor) for g in gradients):
+  if all(isinstance(g, tensor_lib.Tensor) for g in gradients):
     return gen_math_ops.add_n(gradients)
   else:
     assert all(
-        isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices))
+        isinstance(g, (tensor_lib.Tensor, indexed_slices.IndexedSlices))
         for g in gradients)
     return backprop_util.AggregateIndexedSlicesGradients(gradients)
 
 
 def _num_elements(grad):
   """The number of elements in the `grad` tensor."""
-  if isinstance(grad, ops.Tensor):
+  if isinstance(grad, tensor_lib.Tensor):
     shape_tuple = grad._shape_tuple()  # pylint: disable=protected-access
   elif isinstance(grad, indexed_slices.IndexedSlices):
     shape_tuple = grad.values._shape_tuple()  # pylint: disable=protected-access

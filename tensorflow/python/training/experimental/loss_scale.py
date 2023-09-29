@@ -174,9 +174,10 @@ class LossScale(trackable.Trackable, metaclass=abc.ABCMeta):
         super(LossScale, self)._trackable_children(save_type, **kwargs))
     return weights
 
-  def _lookup_dependency(self, name):
+  def _lookup_dependency(self, name, cached_dependencies=None):
     """From Trackable. Find a weight in the current graph."""
-    unconditional = super(LossScale, self)._lookup_dependency(name)
+    unconditional = super(LossScale, self)._lookup_dependency(
+        name, cached_dependencies)
     if unconditional is not None:
       return unconditional
     if context.executing_eagerly():

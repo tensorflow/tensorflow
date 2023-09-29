@@ -17,6 +17,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -531,7 +532,7 @@ class ExponentialMovingAverage:
     if var_list is None:
       var_list = variables.trainable_variables()
     for v in var_list:
-      if (isinstance(v, ops.Tensor)
+      if (isinstance(v, tensor.Tensor)
           and ops.executing_eagerly_outside_functions()):
         raise TypeError(
             "tf.train.ExponentialMovingAverage does not support non-Variable"

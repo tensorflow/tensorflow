@@ -30,8 +30,8 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_utils
 from tensorflow.python.ops import gen_dataset_ops
@@ -219,7 +219,7 @@ class Iterator(trackable.Trackable):
                                                tensor_shape.as_shape,
                                                output_shapes)
     if output_classes is None:
-      output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
+      output_classes = nest.map_structure(lambda _: tensor.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
     output_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
@@ -293,7 +293,7 @@ class Iterator(trackable.Trackable):
                                                tensor_shape.as_shape,
                                                output_shapes)
     if output_classes is None:
-      output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
+      output_classes = nest.map_structure(lambda _: tensor.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
     output_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
@@ -696,6 +696,7 @@ class OwnedIterator(IteratorBase):
           self._element_spec)
       self._flat_output_shapes = structure.get_flat_tensor_shapes(
           self._element_spec)
+      self._components = components
       self._iterator_resource, = components
     else:
       if (components is not None or element_spec is not None):
@@ -890,6 +891,21 @@ class OwnedIterator(IteratorBase):
       return [gen_dataset_ops.deserialize_iterator(
           self._iterator_resource, restored_tensors["_STATE"])]
 
+  def _copy_trackable_to_cpu(self, object_map):
+    """Implements checkpointing protocols for `Trackable`."""
+    # Generate values to copy over
+    if self not in object_map:
+      # If self is not populated in object_map yet, instantiate the copy
+      if self._dataset is None:
+        object_map[self] = OwnedIterator(components=self._components,
+                                         element_spec=self._element_spec)
+      else:
+        object_map[self] = OwnedIterator(dataset=self._dataset)
+
+    # Copy values from `self` to copy of `self`
+    serialized = self._serialize_to_tensors()
+    object_map[self]._restore_from_tensors(serialized)  # pylint: disable=protected-access
+
   def __tf_tracing_type__(self, _):
     return self._type_spec
 
@@ -930,7 +946,7 @@ class IteratorSpec(type_spec.TypeSpec):
 
   @property
   def _component_specs(self):
-    return (tensor_spec.TensorSpec([], dtypes.resource),)
+    return (tensor.TensorSpec([], dtypes.resource),)
 
   def _to_components(self, value):
     return (value._iterator_resource,)  # pylint: disable=protected-access

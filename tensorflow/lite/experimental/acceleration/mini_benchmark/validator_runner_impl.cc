@@ -158,7 +158,8 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
     model_allocation_ = std::make_unique<MemoryAllocation>(
         model_with_custom_input_.GetBufferPointer(),
         model_with_custom_input_.GetSize(), error_reporter_);
-  } else if (dynamic_cast<tools::BufferModelLoader*>(model_loader.get())) {
+  } else if (model_loader->type() ==
+             tools::ModelLoader::Type::kBufferModelLoader) {
     // If model is already loaded, it needs to be copied to the detached thread.
     const Allocation* alloc = model_loader->GetModel()->allocation();
     if (!alloc || !alloc->valid() || !alloc->base() || alloc->bytes() <= 0) {

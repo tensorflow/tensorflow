@@ -62,6 +62,7 @@ class TfThreadPoolWorkQueue : public WorkQueueInterface {
   std::optional<tfrt::TaskFunction> AddBlockingTask(
       tfrt::TaskFunction work, bool allow_queuing) override;
 
+  ABSL_DEPRECATED("Use the destructor instead.")
   void Quiesce() override;
 
   void Await(

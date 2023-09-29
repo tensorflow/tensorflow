@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"

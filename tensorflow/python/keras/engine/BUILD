@@ -1,6 +1,8 @@
 # Description:
 #   Contains the Keras engine API (internal TensorFlow version).
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove non-keras deps from TF.
@@ -54,6 +56,8 @@ py_library(
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
@@ -91,6 +95,7 @@ py_library(
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
+        "@pypi_h5py//:pkg",
     ],
 )
 
@@ -129,6 +134,7 @@ py_library(
         ":input_spec",
         ":node",
         "//third_party/py/numpy",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
@@ -187,7 +193,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/utils:dataset_creator",
         "//tensorflow/python/keras/utils:engine_utils",
@@ -220,7 +226,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/keras/utils:object_identity",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/util:nest",
@@ -237,6 +244,7 @@ py_library(
         ":base_layer",
         "//tensorflow/python/data",
         "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/module",
     ],
@@ -249,6 +257,7 @@ py_library(
     deps = [
         ":base_layer_utils",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/utils:tf_utils",

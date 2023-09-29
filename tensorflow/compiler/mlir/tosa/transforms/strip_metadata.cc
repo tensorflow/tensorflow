@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"

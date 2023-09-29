@@ -40,6 +40,23 @@ build_test(
     name = "custom_c_api_build_test",
     targets = [":custom_c_api_example"],
 )
+
+custom_c_library_with_tflite(
+    name = "custom_c_api_example_experimental",
+    testonly = True,
+    experimental = True,
+    models = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+build_test(
+    name = "custom_c_api_experimental_build_test",
+    targets = [":custom_c_api_example_experimental"],
+)
+
 #------------------------------------------------------------------------------
 # Bazel rules
 

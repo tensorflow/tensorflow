@@ -152,7 +152,7 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     # dense_shape.
     indices_shape.dims[1].assert_is_compatible_with(dense_shape_shape.dims[0])
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     """Get the `TensorShape` representing the shape of the dense tensor.
 
     Returns:
@@ -205,7 +205,7 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     return SparseTensor(self._indices, new_values, self._dense_shape)
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     """The `Operation` that produces `values` as an output."""
     return self._values.op
 

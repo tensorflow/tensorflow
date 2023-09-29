@@ -34,10 +34,10 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 // The prepare-srq-quantize Pass.
 //===----------------------------------------------------------------------===//
-namespace mlir {
-namespace stablehlo {
 
+namespace mlir::quant::stablehlo {
 namespace {
+
 #define GEN_PASS_DEF_PREPARESRQQUANTIZEPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
 
@@ -71,13 +71,17 @@ class PrepareSrqQuantizePass
 };
 
 using ReplaceStatsWithQDQs =
-    quant::ConvertStatsToQDQs<stablehlo::UniformQuantizeOp,
-                              stablehlo::UniformDequantizeOp>;
+    quant::ConvertStatsToQDQs<quantfork::QuantizeCastOp,
+                              quantfork::DequantizeCastOp>;
+
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/prepare_srq_quantize.inc"
 
 void PrepareSrqQuantizePass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
   RewritePatternSet patterns(ctx);
+
+  populateWithGenerated(patterns);
 
   // TODO: b/288046643 - Implement different activation bit width per op/op
   // instance.
@@ -110,5 +114,4 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass(
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass() {
   return std::make_unique<PrepareSrqQuantizePass>();
 }
-}  // namespace stablehlo
-}  // namespace mlir
+}  // namespace mlir::quant::stablehlo

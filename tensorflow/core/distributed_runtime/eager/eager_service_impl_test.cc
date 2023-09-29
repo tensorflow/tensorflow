@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -92,6 +93,17 @@ class FakeEagerClient : public EagerClient {
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(CloseContext);
 #undef CLIENT_METHOD
+
+#define CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(method)                   \
+  void method##Async(const method##Request* request,                     \
+                     method##Response* response, StatusCallback done,    \
+                     int64_t init_timeout_in_ms, int retries) override { \
+    done(impl_->method(request, response));                              \
+  }
+
+  CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(CreateContext);
+
+#undef CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES
 
   void EnqueueAsync(CallOptions* call_opts, const EnqueueRequest* request,
                     EnqueueResponse* response, StatusCallback done) override {

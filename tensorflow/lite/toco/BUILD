@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -505,6 +506,13 @@ tf_cc_test(
 #
 # py_proto_library(
 #     name = "toco_flags_proto_py",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":toco_flags_proto"],
+# )
+#
+# py_proto_library(
+#     name = "types_proto_py",
 #     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":toco_flags_proto"],

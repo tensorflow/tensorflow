@@ -70,6 +70,8 @@ class OptimizationPassTest : public ::testing::Test {
   void RunPass() {
     GraphOptimizationPassOptions options;
     options.flib_def = flib_def_.get();
+    // Note that options.graph is not set so this test checks that passes
+    // properly handle this being nullptr (esp. Segfault is avoided).
     EXPECT_EQ(OkStatus(),
               OptimizationPassRegistry::Global()->RunGrouping(
                   OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, options));

@@ -49,20 +49,22 @@ REGISTER_OP("RelayoutLike")
     .Attr("U: type")
     .SetShapeFn(UnchangedShape);
 
+// FIXME(b/271292250): Add DTensor suffix to signal this is a meta Op
+// Op. Or remove this altogether, if there is no use for it.
 // Copy `input` to the given mesh and layout.
 REGISTER_OP("CopyToMesh")
     .Input("input: T")
     .Output("output: T")
-    .Attr("layout: string")
+    .Attr("mesh: string")
     .Attr("T: type")
     .SetShapeFn(UnchangedShape);
 
+// FIXME(b/271292250): Remove this Op It is no longer used.
 // Gradient of CopyToMesh.
 REGISTER_OP("CopyToMeshGrad")
     .Input("input: T")
     .Input("forward_input: T")  // To infer the output mesh.
     .Output("output: T")
-    .Attr("reference_layout: string = ''")  // To infer the sharding spec.
     .Attr("T: type")
     .SetShapeFn(UnchangedShape);
 

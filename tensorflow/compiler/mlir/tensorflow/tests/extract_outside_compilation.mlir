@@ -2046,7 +2046,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func.func @single_outside_compiled_output_single_outside_compilation_not_replicated_in_generic_pipeline(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf.Const"() {value = dense<""> : tensor<3x!tf_type.string>} : () -> tensor<3x!tf_type.string>
+    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
     // CHECK-NOT:        "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"()
     // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]], %[[PROGRAM_OUTPUT]])
@@ -2075,7 +2075,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func.func @single_outside_compiled_output_device_type(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf.Const"() {value = dense<""> : tensor<3x!tf_type.string>} : () -> tensor<3x!tf_type.string>
+    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
     // CHECK-NOT:        "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"()
     // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]], %[[PROGRAM_OUTPUT]])
@@ -2175,28 +2175,24 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0",
     // CHECK:     tf_device.replicate
     // CHECK:       "tf_device.parallel_execute"
     // CHECK:           %[[PROGRAM0:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
-    // CHECK:           %[[DEVICE0_0:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
-    // CHECK:           %[[RECV0:.+]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM0]], %[[DEVICE0_0]])
+    // CHECK:           %[[DEVICE0:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
+    // CHECK-SAME:        logical_core = 0
+    // CHECK:           %[[RECV0:.+]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM0]], %[[DEVICE0]])
     // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK-SAME:        key = "host_compute_channel_0_args"
     // CHECK:           %[[B0:.+]] = "tf.OpB"(%[[RECV0]]) : (tensor<2x2xi64>) -> tensor<2x2xi64>
-    // CHECK:           "tf._XlaSendFromHostV2"(%[[B0]], %[[PROGRAM0]], %[[DEVICE0_0]])
+    // CHECK:           "tf._XlaSendFromHostV2"(%[[B0]], %[[PROGRAM0]], %[[DEVICE0]])
     // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK-SAME:        key = "host_compute_channel_0_retvals"
     // CHECK:         }, {
     // CHECK:           %[[PROGRAM1:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
-    // CHECK:           %[[DEVICE1_0:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
-    // CHECK:           %[[ONE_0:.+]] = "tf.Const"
-    // CHECK-SAME:        value = dense<1>
-    // CHECK:           %[[DEVICE1_1:.+]] = "tf.AddV2"(%[[DEVICE1_0]], %[[ONE_0]])
-    // CHECK:           %[[RECV1:.+]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM1]], %[[DEVICE1_1]])
+    // CHECK:           %[[DEVICE1:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
+    // CHECK-SAME:        logical_core = 1
+    // CHECK:           %[[RECV1:.+]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM1]], %[[DEVICE1]])
     // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK-SAME:        key = "host_compute_channel_0_args"
     // CHECK:           %[[B1:.+]] = "tf.OpB"(%[[RECV1]]) : (tensor<2x2xi64>) -> tensor<2x2xi64>
-    // CHECK:           %[[ONE_1:.+]] = "tf.Const"
-    // CHECK-SAME:        value = dense<1>
-    // CHECK:           %[[DEVICE1_2:.+]] = "tf.AddV2"(%[[DEVICE1_0]], %[[ONE_1]])
-    // CHECK:           "tf._XlaSendFromHostV2"(%[[B1]], %[[PROGRAM1]], %[[DEVICE1_2]])
+    // CHECK:           "tf._XlaSendFromHostV2"(%[[B1]], %[[PROGRAM1]], %[[DEVICE1]])
     // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK-SAME:        key = "host_compute_channel_0_retvals"
     // CHECK:         }, {

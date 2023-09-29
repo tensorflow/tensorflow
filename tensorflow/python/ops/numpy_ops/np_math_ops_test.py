@@ -20,6 +20,7 @@ import numpy as np
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
@@ -366,10 +367,19 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       a2.flatten('invalid')
 
+  def testIsInf(self):
+    x1 = ops.convert_to_tensor(-2147483648)
+    x2 = ops.convert_to_tensor(2147483647)
+    self.assertFalse(np_math_ops.isinf(x1))
+    self.assertFalse(np_math_ops.isinf(x2))
+    self.assertFalse(np_math_ops.isposinf(x1))
+    self.assertFalse(np_math_ops.isposinf(x2))
+    self.assertFalse(np_math_ops.isneginf(x1))
+    self.assertFalse(np_math_ops.isneginf(x2))
 
 if __name__ == '__main__':
-  ops.enable_tensor_equality()
+  tensor.enable_tensor_equality()
   ops.enable_eager_execution()
-  ops.enable_numpy_style_type_promotion()
+  ops.set_dtype_conversion_mode('legacy')
   np_math_ops.enable_numpy_methods_on_tensor()
   test.main()

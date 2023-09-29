@@ -14,8 +14,9 @@
 # ==============================================================================
 """Tests for `tf.data.Dataset.zip()`."""
 import collections
-from absl.testing import parameterized
+import dataclasses
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import random_access
@@ -40,6 +41,23 @@ def _dataset_factory(components):
       for component in components
   ])
   return dataset_ops.Dataset.zip(datasets)
+
+
+@dataclasses.dataclass
+class MaskedNdarrayPair:
+  mask: bool
+  value1: np.ndarray
+  value2: np.ndarray
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value1, self.value2)
+    return metadata, components
+
+  def __tf_unflatten__(self, metadata, components):
+    mask = metadata[0]
+    value1, value2 = components
+    return MaskedNdarrayPair(mask=mask, value1=value1, value2=value2)
 
 
 class ZipTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -110,6 +128,21 @@ class ZipTest(test_base.DatasetTestBase, parameterized.TestCase):
     x = Foo(x=dataset_ops.Dataset.range(3), y=dataset_ops.Dataset.range(3, 6))
     dataset = dataset_ops.Dataset.zip(x)
     expected = [Foo(x=0, y=3), Foo(x=1, y=4), Foo(x=2, y=5)]
+    self.assertDatasetProduces(dataset, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDataclass(self):
+    mtp = MaskedNdarrayPair(
+        mask=True,
+        value1=dataset_ops.Dataset.range(3),
+        value2=dataset_ops.Dataset.range(3, 6),
+    )
+    dataset = dataset_ops.Dataset.zip(mtp)
+    expected = [
+        MaskedNdarrayPair(mask=True, value1=0, value2=3),
+        MaskedNdarrayPair(mask=True, value1=1, value2=4),
+        MaskedNdarrayPair(mask=True, value1=2, value2=5),
+    ]
     self.assertDatasetProduces(dataset, expected)
 
   @combinations.generate(test_base.default_test_combinations())

@@ -26,10 +26,9 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
@@ -165,7 +164,7 @@ class NestedStructureCoderTest(test.TestCase):
     self.assertEqual(structure, decoded)
 
   def testEncodeDecodeTensorSpec(self):
-    structure = [tensor_spec.TensorSpec([1, 2, 3], dtypes.int64, "hello")]
+    structure = [tensor.TensorSpec([1, 2, 3], dtypes.int64, "hello")]
     self.assertTrue(nested_structure_coder.can_encode(structure))
     encoded = nested_structure_coder.encode_structure(structure)
     expected = struct_pb2.StructuredValue()
@@ -181,7 +180,7 @@ class NestedStructureCoderTest(test.TestCase):
     self.assertEqual(structure, decoded)
 
   def testEncodeDecodeTensorSpecWithNoName(self):
-    structure = [tensor_spec.TensorSpec([1, 2, 3], dtypes.int64)]
+    structure = [tensor.TensorSpec([1, 2, 3], dtypes.int64)]
     self.assertTrue(nested_structure_coder.can_encode(structure))
     encoded = nested_structure_coder.encode_structure(structure)
     expected = struct_pb2.StructuredValue()
@@ -276,12 +275,12 @@ class NestedStructureCoderTest(test.TestCase):
     class Zoo(extension_type.ExtensionType):
       __name__ = "tf.nested_structure_coder_test.Zoo"
       zookeepers: typing.Tuple[str, ...]
-      animals: typing.Mapping[str, ops.Tensor]
+      animals: typing.Mapping[str, tensor.Tensor]
 
     structure = [
         Zoo.Spec(
             zookeepers=["Zoey", "Zack"],
-            animals={"tiger": tensor_spec.TensorSpec([16])})
+            animals={"tiger": tensor.TensorSpec([16])})
     ]
 
     self.assertTrue(nested_structure_coder.can_encode(structure))
@@ -327,8 +326,7 @@ class NestedStructureCoderTest(test.TestCase):
 
   def testEncodeDecodeBoundedTensorSpec(self):
     structure = [
-        tensor_spec.BoundedTensorSpec([1, 2, 3], dtypes.int64, 0, 10,
-                                      "hello_0_10")
+        tensor.BoundedTensorSpec([1, 2, 3], dtypes.int64, 0, 10, "hello_0_10")
     ]
     self.assertTrue(nested_structure_coder.can_encode(structure))
     encoded = nested_structure_coder.encode_structure(structure)
@@ -350,8 +348,7 @@ class NestedStructureCoderTest(test.TestCase):
 
   def testEncodeDecodeBoundedTensorSpecNoName(self):
     structure = [
-        tensor_spec.BoundedTensorSpec((28, 28, 3), dtypes.float64, -2,
-                                      (1, 1, 20))
+        tensor.BoundedTensorSpec((28, 28, 3), dtypes.float64, -2, (1, 1, 20))
     ]
     self.assertTrue(nested_structure_coder.can_encode(structure))
     encoded = nested_structure_coder.encode_structure(structure)
@@ -378,7 +375,7 @@ class NestedStructureCoderTest(test.TestCase):
         dataset_ops.DatasetSpec({
             "rt": ragged_tensor.RaggedTensorSpec([10, None], dtypes.int32),
             "st": sparse_tensor.SparseTensorSpec([10, 20], dtypes.float32),
-            "t": tensor_spec.TensorSpec([10, 8], dtypes.string)
+            "t": tensor.TensorSpec([10, 8], dtypes.string)
         })
     ]
     self.assertTrue(nested_structure_coder.can_encode(structure))

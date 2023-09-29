@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"

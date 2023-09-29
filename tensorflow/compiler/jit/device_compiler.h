@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/tf_graph_to_hlo_compiler.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include "xla/client/local_client.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"

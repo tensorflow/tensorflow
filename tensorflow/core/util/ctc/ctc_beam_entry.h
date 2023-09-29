@@ -21,7 +21,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"

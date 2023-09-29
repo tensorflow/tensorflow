@@ -306,11 +306,11 @@ void Scope::UpdateStatus(const Status& s) const {
   }
 }
 
-Status Scope::ToGraphDef(GraphDef* gdef) const {
+Status Scope::ToGraphDef(GraphDef* gdef, bool include_debug_info) const {
   if (!ok()) {
     return *impl()->status_;
   }
-  graph()->ToGraphDef(gdef);
+  graph()->ToGraphDef(gdef, /*include_flib_def=*/true, include_debug_info);
   return OkStatus();
 }
 

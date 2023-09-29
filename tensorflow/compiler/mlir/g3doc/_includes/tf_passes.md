@@ -217,11 +217,6 @@ func @_func(%arg0: tensor<i32>) -> tensor<i32> {
   return %identity : tensor<i32>
 }
 ```
-
-#### Options
-```
--globally-unique-func-names : If true, the pass adds extra identifiers to make function names globally unique within a process, not just within a module.
-```
 ### `-tf-device-constant-sinking`
 
 _Sinks constants implicitly captured in a tf_device.cluster region._
@@ -338,6 +333,46 @@ _Rewrite graph for embedding pipelining_
 
 For architectures that support accelerated embedding lookups, this pass will
 rewrite the graph to use pipelining for better device utilization.
+### `-tf-embedding-program-key`
+
+_Sets the program key for embedding ops._
+
+ Passes in the program key to embedding ops. Will move the embedding ops
+ after a _TPUCompileMlir op if there is no predecessor _TPUCompileMlir op.
+ Both the embedding op and compile op are assumed to be wrapped in separate
+ tf_device.launch() ops. This is because the embedding op is head outside
+ compiled and the compile op is wrapped in launch to execute on host
+ during TPURewritePass.
+
+ For example, the tf.OpA with the `mini_batch_splits` attribute will be
+ moved after _TPUCompileMlir and the first input will use the
+ _TPUCompileMlir program output:
+
+ ```mlir
+ "tf_device.launch"() ({
+  %cst_0 = "tf.Const"() {value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+  "tf.OpA"(%cst_0) { mini_batch_splits = ""} : (tensor<1x!tf_type.string>) -> ()
+  tf_device.return
+}) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
+%0:2 = "tf_device.launch"() ({
+  %compilation_status, %program = "tf._TPUCompileMlir"() { metadata = "...", mlir_module = "..." } : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+  tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
+}) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+```
+
+becomes:
+
+```mlir
+  %0:2 = "tf_device.launch"() ({
+    %compilation_status, %program = "tf._TPUCompileMlir"() {metadata = "...", mlir_module = "..."} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+    tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
+  }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+  "tf_device.launch"() ({
+    %cst = "tf.Const"() {value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+    "tf.OpA"(%0#1) {mini_batch_splits = ""} : (tensor<3x!tf_type.string>) -> ()
+    tf_device.return
+  }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
+```
 ### `-tf-embedding-sequencing`
 
 _Rewrite graph for sequential execution of embeddings_
@@ -1009,10 +1044,6 @@ _Layout assignment pass._
 ```
 -force-data-format : Force data format for all layout sensitive ops.
 ```
-### `-tf-legalize-hlo`
-
-_Legalize from HLO to the TF dialect_
-
 ### `-tf-localize-var-handles`
 
 _Creates VarHandleOps next to the operations that use them._

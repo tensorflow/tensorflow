@@ -825,12 +825,12 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     const int stride_cols = GetTensorDim(strides_, FORMAT_NHWC, 'W');
 
     int64_t out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(padded_rows, filter_rows, stride_rows,
-                                         padding_, &out_rows, &pad_rows));
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(padded_cols, filter_cols, stride_cols,
-                                         padding_, &out_cols, &pad_cols));
+    OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                                padded_rows, filter_rows, /*dilation_rate=*/1,
+                                stride_rows, padding_, &out_rows, &pad_rows));
+    OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                                padded_cols, filter_cols, /*dilation_rate=*/1,
+                                stride_cols, padding_, &out_cols, &pad_cols));
     TensorShape out_shape;
     OP_REQUIRES_OK(context,
                    ShapeFromFormatWithStatus(FORMAT_NHWC, batch, out_rows,

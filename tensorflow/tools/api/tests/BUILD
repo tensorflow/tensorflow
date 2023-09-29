@@ -1,8 +1,8 @@
 # TensorFlow API backwards compatibility tests.
 
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(
     "//tensorflow:tensorflow.bzl",
-    "py_test",
     "tf_cc_binary",
 )
 
@@ -17,14 +17,14 @@ exports_files([
     "API_UPDATE_WARNING.txt",
 ])
 
-py_test(
+py_strict_test(
     name = "api_compatibility_test",
     srcs = ["api_compatibility_test.py"],
     data = [
+        ":API_UPDATE_WARNING.txt",
+        ":README.txt",
         "//tensorflow/tools/api/golden:api_golden_v1",
         "//tensorflow/tools/api/golden:api_golden_v2",
-        "//tensorflow/tools/api/tests:API_UPDATE_WARNING.txt",
-        "//tensorflow/tools/api/tests:README.txt",
         "//third_party/py/numpy/tf_numpy_api:api_golden",
     ],
     python_version = "PY3",
@@ -36,7 +36,6 @@ py_test(
         "no_windows",  # Bugs due to some paths.
     ],
     deps = [
-        "@six_archive//:six",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
         "//tensorflow:tensorflow_py",
@@ -44,13 +43,14 @@ py_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/tools/api/lib:api_objects_proto_py",
         "//tensorflow/tools/api/lib:python_object_to_proto_visitor",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "module_test",
     srcs = ["module_test.py"],
     python_version = "PY3",
@@ -60,6 +60,7 @@ py_test(
     ],
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:tf2",
         "//tensorflow/python/platform:client_testlib",
     ],
 )

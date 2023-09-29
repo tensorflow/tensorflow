@@ -85,7 +85,7 @@ class OpInputs {
     }
     forwardable_.resize(inputs_.size());
   }
-  ~OpInputs() {}
+  ~OpInputs() = default;
 
   int Size() const { return inputs_.size(); }
 
@@ -438,7 +438,7 @@ tensorflow::Status DelegateKernel::ExecuteOpKernelRunner(
 }
 
 DelegateKernel::DelegateKernel() : op_data_(new OpData) {}
-DelegateKernel::~DelegateKernel() {}
+DelegateKernel::~DelegateKernel() = default;
 
 TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
                                   const TfLiteDelegateParams* params) {
@@ -572,20 +572,24 @@ TfLiteStatus DelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* node) {
     tensor_ref_count[tensor_index] += 2;
   }
 
-  const bool shapes_are_valid =
-      (ValidateOutputTensorShapeConsistency(context) == kTfLiteOk);
-  if (shapes_are_valid) {
-    TFLITE_LOG(tflite::TFLITE_LOG_INFO,
-               "FlexDelegate: All tensor shapes are consistent.");
-  } else {
-    TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
-               "FlexDelegate: Some tensor shapes are inconsistent.");
+  // Output shapes which may have initially been inferable may no longer be
+  // after ResizeInputTensor has been called, so it must be checked again.
+  if (shapes_are_valid_) {
+    shapes_are_valid_ =
+        (ValidateOutputTensorShapeConsistency(context) == kTfLiteOk);
+    if (shapes_are_valid_) {
+      TFLITE_LOG(tflite::TFLITE_LOG_INFO,
+                 "FlexDelegate: All tensor shapes are consistent.");
+    } else {
+      TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
+                 "FlexDelegate: Some tensor shapes are inconsistent.");
+    }
   }
 
   // All output tensors are allocated by TensorFlow, so we mark them as
   // kTfLiteDynamic.
   for (auto tensor_index : op_data_->subgraph_outputs) {
-    if (!shapes_are_valid) {
+    if (!shapes_are_valid_) {
       SetTensorToDynamic(&context->tensors[tensor_index]);
     }
     ++tensor_ref_count[tensor_index];

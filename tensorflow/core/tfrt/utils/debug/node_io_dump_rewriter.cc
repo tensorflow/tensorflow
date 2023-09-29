@@ -34,8 +34,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tfrt_stub {

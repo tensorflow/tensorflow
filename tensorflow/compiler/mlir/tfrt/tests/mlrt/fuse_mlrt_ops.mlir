@@ -56,3 +56,23 @@ func.func @main() -> (!tf_mlrt.tensor, !tf_mlrt.tensor) {
   %2 = tf_mlrt.get_resource {indices = [1]} : !tf_mlrt.tensor
   func.return %r, %2 : !tf_mlrt.tensor, !tf_mlrt.tensor
 }
+
+// -----
+
+// CHECK-LABEL: @fuse_promise_return
+// CHECK-SAME: ([[p:%.*]]: !mlrt.promise, [[v:%.*]]: !tf_mlrt.tensor)
+func.func @fuse_promise_return(%p: !mlrt.promise, %v: !tf_mlrt.tensor) -> () {
+  // CHECK: tf_mlrt.promise_return [[p]], [[v]]
+  tf_mlrt.promise %p, %v
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: @not_fuse_promise_return
+// CHECK-SAME: ([[p:%.*]]: !mlrt.promise, [[v:%.*]]: !tf_mlrt.tensor)
+func.func @not_fuse_promise_return(%p: !mlrt.promise, %v: !tf_mlrt.tensor) -> (!tf_mlrt.tensor) {
+  // CHECK-NOT: tf_mlrt.promise_return
+  tf_mlrt.promise %p, %v
+  func.return %v : !tf_mlrt.tensor
+}

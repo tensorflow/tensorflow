@@ -86,8 +86,9 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     core::RefCountPtr<StatsAggregatorResource> resource;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 1), &resource));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 1, &handle));
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &resource));
     tstring tag;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "tag", &tag));
     tstring prefix;

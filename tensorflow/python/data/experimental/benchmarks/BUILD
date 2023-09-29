@@ -52,12 +52,12 @@ tf_py_strict_test(
     srcs = ["csv_dataset_benchmark.py"],
     tags = ["no_pip"],
     deps = [
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/ops:parsing_ops",
         "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:test",
     ],
 )
 

@@ -99,7 +99,10 @@ cuda_py_strict_test(
     name = "base_test",
     srcs = ["base_test.py"],
     python_version = "PY3",
-    tags = base_tags + ["no_oss"],  # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
+    tags = base_tags + [
+        "no_oss",  # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
+        "notap",  # TODO(b/291653036): Some of the base tests are failing w/ TensorRT-8
+    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",
@@ -218,7 +221,8 @@ cuda_py_strict_test(
     name = "binary_tensor_weight_broadcast_test",
     srcs = ["binary_tensor_weight_broadcast_test.py"],
     python_version = "PY3",
-    tags = base_tags,
+    # TODO(b/297490791): Reenable after TensorRT regression has been fixed
+    tags = base_tags + ["no_oss"],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",

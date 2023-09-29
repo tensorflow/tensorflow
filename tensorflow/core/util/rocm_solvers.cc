@@ -38,11 +38,11 @@ rocblas_Xtrsm   //    ----           //     ----                   / / Ungqr //
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocblas_wrapper.h"
+#include "xla/stream_executor/gpu/gpu_activation.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/platform/default/dso_loader.h"
+#include "xla/stream_executor/platform/port.h"
+#include "xla/stream_executor/rocm/rocblas_wrapper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"

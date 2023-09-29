@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/core/platform/errors.h"
@@ -72,6 +73,26 @@ StatusOr<mlir::Operation*> ExpandVarHandleOp(mlir::Operation* op) {
   auto op_result = op->getOpResult(0);
   TF_RETURN_IF_ERROR(InferSPMDExpandedLocalShapeForResourceOutput(
       &op_result, resource_layout.value(), builder.getContext()));
+  return InferSPMDExpandedLocalShape(op);
+}
+
+StatusOr<mlir::Operation*> ExpandSummaryWriterOp(mlir::Operation* op) {
+  // This is the layout of the value held by the resource.
+  TF_ASSIGN_OR_RETURN(std::optional<Layout> resource_layout,
+                      ExtractSingleLayoutFromOp(op));
+
+  if (!resource_layout) {
+    // If resource does not have a layout, perform local SPMD expansion.
+    return InferSPMDExpandedLocalShape(op);
+  } else if (!resource_layout->IsFullyReplicated()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("SummaryWriter op should have fully replicated layout. ",
+                     "Got: ", resource_layout->ToString()));
+  }
+
+  // For SummaryWriter op, we will expand as fully replicated, but only the
+  // replica 0 will be used to write the summary. This is implemented by all the
+  // other summary op expanders.
   return InferSPMDExpandedLocalShape(op);
 }
 
@@ -144,6 +165,9 @@ StatusOr<mlir::Operation*> ResourceSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   if (llvm::isa<mlir::TF::VarHandleOp>(op)) {
     return ExpandVarHandleOp(op);
+  }
+  if (llvm::isa<mlir::TF::SummaryWriterOp>(op)) {
+    return ExpandSummaryWriterOp(op);
   }
 
   mlir::OpBuilder builder(op);
@@ -248,6 +272,13 @@ ResourceSPMDExpander::ComputeLayoutForward(
     return llvm::DenseMap<int, Layout>({{0, Layout::Empty()}});
   }
 
+  // SummaryWriterOp has a rank 0 output, but it need to be fully replicated.
+  if (llvm::isa<mlir::TF::SummaryWriterOp>(op)) {
+    TF_ASSIGN_OR_RETURN(auto mesh, ExtractDeviceMeshEnclosingCluster(op));
+    return llvm::DenseMap<int, Layout>(
+        {{0, Layout::ReplicatedOnMesh(mesh, /*rank=*/0)}});
+  }
+
   // Handling of resource destruction is no-op.
   if (llvm::isa<mlir::TF::DestroyResourceOp>(op))
     return llvm::DenseMap<int, Layout>();
@@ -298,7 +329,8 @@ ResourceSPMDExpander::ComputeLayoutBackward(
   }
   // Handling of these ops are no-ops.
   if (llvm::isa<mlir::TF::DestroyResourceOp, mlir::TF::VarHandleOp,
-                mlir::TF::VarIsInitializedOp, mlir::TF::ReadVariableOp>(op)) {
+                mlir::TF::VarIsInitializedOp, mlir::TF::ReadVariableOp,
+                mlir::TF::SummaryWriterOp>(op)) {
     return llvm::DenseMap<int, Layout>();
   }
 

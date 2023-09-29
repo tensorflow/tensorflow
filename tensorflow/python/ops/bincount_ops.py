@@ -14,9 +14,9 @@
 # ==============================================================================
 """bincount ops."""
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -40,14 +40,11 @@ def bincount(arr,
 
   If `minlength` and `maxlength` are not given, returns a vector with length
   `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
-  If `weights` are non-None, then index `i` of the output stores the sum of the
-  value in `weights` at each index where the corresponding value in `arr` is
-  `i`.
 
-  ```python
-  values = tf.constant([1,1,2,3,2,4,4,5])
-  tf.math.bincount(values) #[0 2 2 1 2 1]
-  ```
+  >>> values = tf.constant([1,1,2,3,2,4,4,5])
+  >>> tf.math.bincount(values)
+  <tf.Tensor: ... numpy=array([0, 2, 2, 1, 2, 1], dtype=int32)>
+
   Vector length = Maximum element in vector `values` is 5. Adding 1, which is 6
                   will be the vector length.
 
@@ -55,26 +52,44 @@ def bincount(arr,
   index. Here, index 1 in output has a value 2. This indicates value 1 occurs
   two times in `values`.
 
-  ```python
-  values = tf.constant([1,1,2,3,2,4,4,5])
-  weights = tf.constant([1,5,0,1,0,5,4,5])
-  tf.math.bincount(values, weights=weights) #[0 6 0 1 9 5]
-  ```
-  Bin will be incremented by the corresponding weight instead of 1.
-  Here, index 1 in output has a value 6. This is the summation of weights
-  corresponding to the value in `values`.
+  **Bin-counting with weights**
 
-  **Bin-counting on a certain axis**
+  >>> values = tf.constant([1,1,2,3,2,4,4,5])
+  >>> weights = tf.constant([1,5,0,1,0,5,4,5])
+  >>> tf.math.bincount(values, weights=weights)
+  <tf.Tensor: ... numpy=array([0, 6, 0, 1, 9, 5], dtype=int32)>
 
-  This example takes a 2 dimensional input and returns a `Tensor` with
-  bincounting on each sample.
+  When `weights` is specified, bins will be incremented by the corresponding
+  weight instead of 1. Here, index 1 in output has a value 6. This is the
+  summation of `weights` corresponding to the value in `values` (i.e. for index
+  1, the first two values are 1 so the first two weights, 1 and 5, are
+  summed).
+
+  There is an equivilance between bin-counting with weights and
+  `unsorted_segement_sum` where `data` is the weights and `segment_ids` are the
+  values.
+
+  >>> values = tf.constant([1,1,2,3,2,4,4,5])
+  >>> weights = tf.constant([1,5,0,1,0,5,4,5])
+  >>> tf.math.unsorted_segment_sum(weights, values, num_segments=6).numpy()
+  array([0, 6, 0, 1, 9, 5], dtype=int32)
+
+  On GPU, `bincount` with weights is only supported when XLA is enabled
+  (typically when a function decorated with `@tf.function(jit_compile=True)`).
+  `unsorted_segment_sum` can be used as a workaround for the non-XLA case on
+  GPU.
+
+  **Bin-counting matrix rows independently**
+
+  This example uses `axis=-1` with a 2 dimensional input and returns a
+  `Tensor` with bincounting where axis 0 is **not** flattened, i.e. an
+  independent bincount for each matrix row.
 
   >>> data = np.array([[1, 2, 3, 0], [0, 0, 1, 2]], dtype=np.int32)
   >>> tf.math.bincount(data, axis=-1)
   <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
     array([[1, 1, 1, 1],
            [2, 1, 1, 0]], dtype=int32)>
-
 
   **Bin-counting with binary_output**
 
@@ -86,12 +101,26 @@ def bincount(arr,
     array([[1, 1, 1, 1],
            [1, 1, 1, 0]], dtype=int32)>
 
+  **Missing zeros in SparseTensor**
+
+  Note that missing zeros (implict zeros) in SparseTensor are **NOT** counted.
+  This supports cases such as `0` in the values tensor indicates that index/id
+  `0`is present and a missing zero indicates that no index/id is present.
+
+  If counting missing zeros is desired, there are workarounds.
+  For the `axis=0` case, the number of missing zeros can computed by subtracting
+  the number of elements in the SparseTensor's `values` tensor from the
+  number of elements in the dense shape, and this difference can be added to the
+  first element of the output of `bincount`. For all cases, the SparseTensor
+  can be converted to a dense Tensor with `tf.sparse.to_dense` before calling
+  `tf.math.bincount`.
+
   Args:
     arr: A Tensor, RaggedTensor, or SparseTensor whose values should be counted.
       These tensors must have a rank of 2 if `axis=-1`.
     weights: If non-None, must be the same shape as arr. For each value in
       `arr`, the bin will be incremented by the corresponding weight instead of
-      1.
+      1. If non-None, `binary_output` must be False.
     minlength: If given, ensures the output has length at least `minlength`,
       padding with zeros at the end if necessary.
     maxlength: If given, skips values in `arr` that are equal or greater than
@@ -106,8 +135,8 @@ def bincount(arr,
       reduce_add). Defaults to False.
 
   Returns:
-    A vector with the same dtype as `weights` or the given `dtype`. The bin
-    values.
+    A vector with the same dtype as `weights` or the given `dtype` containing
+    the bincount values.
 
   Raises:
     `InvalidArgumentError` if negative values are provided as an input.
@@ -115,29 +144,6 @@ def bincount(arr,
   """
   name = "bincount" if name is None else name
   with ops.name_scope(name):
-    # TODO(b/255381064) Remove the following block which uses older kernels for
-    # backwards compatibility for certain cases once all tests pass with the
-    # newer (dense_bincount, ragged_bincount and sparse_bincount) kernels.
-    if not binary_output and axis is None:
-      arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
-      array_is_nonempty = math_ops.reduce_prod(array_ops.shape(arr)) > 0
-      output_size = math_ops.cast(array_is_nonempty, dtypes.int32) * (
-          math_ops.reduce_max(arr) + 1)
-      if minlength is not None:
-        minlength = ops.convert_to_tensor(
-            minlength, name="minlength", dtype=dtypes.int32)
-        output_size = gen_math_ops.maximum(minlength, output_size)
-      if maxlength is not None:
-        maxlength = ops.convert_to_tensor(
-            maxlength, name="maxlength", dtype=dtypes.int32)
-        output_size = gen_math_ops.minimum(maxlength, output_size)
-      if weights is not None:
-        weights = ops.convert_to_tensor(weights, name="weights")
-        return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
-      weights = constant_op.constant([], dtype)
-      arr = array_ops.reshape(arr, [-1])
-      return gen_math_ops.bincount(arr, output_size, weights)
-
     arr = tensor_conversion.convert_to_tensor_v2_with_dispatch(arr, name="arr")
     if weights is not None:
       weights = tensor_conversion.convert_to_tensor_v2_with_dispatch(
@@ -221,7 +227,7 @@ def validate_dense_weights(values, weights, dtype=None):
       return array_ops.constant([], dtype=dtype)
     return array_ops.constant([], dtype=values.dtype)
 
-  if not isinstance(weights, ops.Tensor):
+  if not isinstance(weights, tensor.Tensor):
     raise ValueError(
         "Argument `weights` must be a tf.Tensor if `values` is a tf.Tensor. "
         f"Received weights={weights} of type: {type(weights).__name__}")

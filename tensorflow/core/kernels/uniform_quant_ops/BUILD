@@ -146,11 +146,12 @@ tf_cc_test(
     deps = [
         ":kernels",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/platform:protobuf",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

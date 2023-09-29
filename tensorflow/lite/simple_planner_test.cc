@@ -46,7 +46,7 @@ class TestOp {
   std::vector<int> inputs_;
   std::vector<int> outputs_;
   std::vector<int> temporaries_;
-  TfLiteRegistration registration_;
+  TfLiteRegistration registration_{};
 };
 
 // A test graph where inputs are processed by the given nodes to produce
@@ -363,6 +363,25 @@ TEST_F(SimplePlannerTest, SimpleGraphWithPersistentResetAllocationsAfter) {
 
   // Check if the persistent pointer isn't changed.
   EXPECT_TRUE(tensor5_ptr == (*graph.tensors())[5].data.raw);
+}
+
+TEST_F(SimplePlannerTest, SimpleGraphOptionalOutput) {
+  TestGraph graph({0, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {2}, {}},     // First op
+                      {{2, 0}, {4, 5}, {}},  // Second op
+                      {{4, 5}, {3}, {}}      // Third op
+                  },
+                  {-1, 3});
+  SetGraph(&graph);
+  Execute(0, 10);
+
+  EXPECT_TRUE(IsAllocated(1));
+  EXPECT_TRUE(IsAllocated(2));
+  EXPECT_TRUE(IsAllocated(3));
+  EXPECT_TRUE(IsAllocated(4));
+  EXPECT_TRUE(IsAllocated(5));
 }
 
 }  // namespace

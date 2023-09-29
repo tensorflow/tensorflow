@@ -64,8 +64,7 @@ class TpuFingerprintLookup : public ResourceBase {
   bool RegisterIntermediateAndValuePair(uint64 intermediate, std::string value);
 
   // Look up fingerprint with key.
-  // Return absl::optional<::tensorflow::StringPiece>{} if
-  // not found.
+  // Return std::nullopt if not found.
   std::optional<::tensorflow::StringPiece> Lookup(uint64 key);
 
   size_t num_valid() {

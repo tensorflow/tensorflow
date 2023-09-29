@@ -17,7 +17,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 
 namespace tensorflow {

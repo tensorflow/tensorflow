@@ -24,8 +24,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/convert/dcn_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/tsl/profiler/utils/math_utils.h"
-#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tsl/profiler/utils/math_utils.h"
+#include "tsl/profiler/utils/tpu_xplane_utils.h"
+#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -109,12 +110,12 @@ void DcnEventsProcessor::SetupMessageInfo(const XPlaneVisitor& plane) {
 
 // If we use megacore, collective traffic goes to even TPU tensor cores.
 // Odd ones are woken up from their even pair (e.g. 0 wakes up 1).
-uint32_t DcnEventsProcessor::FindTpuIdx(const DcnMessage& dcn_message) {
+uint32_t DcnEventsProcessor::FindTpuIdx(int tpu) {
   uint32_t num_tpus = num_tpu_tensor_cores_;
   if (is_megacore_) {
     num_tpus /= 2;
   }
-  uint32_t tpu_idx = dcn_message.tpu_dst % num_tpus;
+  uint32_t tpu_idx = tpu % num_tpus;
   if (is_megacore_) {
     tpu_idx = tpu_idx * 2;
   }
@@ -142,7 +143,7 @@ void DcnEventsProcessor::GenerateTimestampEvents(
 
   // Add messages to the proper TPU collective timestamp event map.
   const std::string& collective_name = dcn_message.collective_name;
-  uint32_t tpu_idx = FindTpuIdx(dcn_message);
+  uint32_t tpu_idx = FindTpuIdx(dcn_message.tpu_dst);
   auto& m = tpu_collective_ts_map_[tpu_idx][collective_name];
   m.insert(start_event_entry);
   m.insert(end_event_entry);
@@ -455,8 +456,11 @@ void DcnEventsProcessor::AddQualifiedCollectivesToXPlane(
 }
 
 void DcnEventsProcessor::AddTpuCollectiveDcnTrafficToXPlane(
-    XPlane* device_xplane, uint32_t tpu_idx) {
+    XPlane* device_xplane) {
   XPlaneBuilder plane_builder(device_xplane);
+  auto tpu = tsl::profiler::GetTensorCoreId(plane_builder.Name());
+  if (!tpu.has_value()) return;
+  uint32_t tpu_idx = FindTpuIdx(tpu.value());
   AddQualifiedCollectivesToXPlane(plane_builder, tpu_idx);
   AddUnqualifiedCollectivesToXPlane(plane_builder, tpu_idx);
 }

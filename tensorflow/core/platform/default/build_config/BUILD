@@ -15,12 +15,12 @@ cc_library(
     copts = tf_copts(),
     deps = [
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform/default/build_config:gif",
-        "//tensorflow/tsl/platform/default/build_config:jpeg",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
         "@fft2d",
         "@highwayhash//:sip_hash",
+        "@local_tsl//tsl/platform/default/build_config:gif",
+        "@local_tsl//tsl/platform/default/build_config:jpeg",
         "@zlib",
     ],
 )

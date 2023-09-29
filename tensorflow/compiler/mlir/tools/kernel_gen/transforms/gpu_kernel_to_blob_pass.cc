@@ -25,23 +25,23 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
-#include "tensorflow/compiler/xla/debug_options_flags.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
-#include "tensorflow/compiler/xla/service/gpu/target_constants.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "xla/debug_options_flags.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/service/gpu/gpu_asm_opts_util.h"
+#include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "xla/service/gpu/target_constants.h"
+#include "xla/xla.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/tsl/platform/cuda_libdevice_path.h"
+#include "tsl/platform/cuda_libdevice_path.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
+#include "xla/stream_executor/gpu/asm_compiler.h"
 #elif TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
+#include "xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/core/platform/rocm_rocdl_path.h"
 #endif
 
@@ -98,11 +98,9 @@ class GpuKernelToBlobPass
     llvmModule->setModuleIdentifier(gpu_module.getName());
 
 #if TENSORFLOW_USE_ROCM
-    xla::HloModuleConfig config;
     xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
     options.set_xla_gpu_ftz(enable_ftz_);
     options.set_xla_gpu_dump_llvmir(print_llvmir_);
-    config.set_debug_options(options);
 
     using AmdGpuHsaco = std::vector<tensorflow::uint8>;
     std::vector<tensorflow::se::HsacoImage> images;
@@ -118,8 +116,8 @@ class GpuKernelToBlobPass
       auto llvm_module_copy = llvm::CloneModule(*llvmModule);
       auto hsaco_or = xla::gpu::amdgpu::CompileToHsaco(
           llvm_module_copy.get(),
-          tensorflow::se::RocmComputeCapability{arch_str}, config,
-          libdevice_dir);
+          tensorflow::se::RocmComputeCapability{arch_str}, options,
+          libdevice_dir, options.DebugString());
       if (!hsaco_or.ok()) {
         return tensorflow::errors::Internal("Failure when generating HSACO");
       }
@@ -133,7 +131,6 @@ class GpuKernelToBlobPass
     return tensorflow::se::BundleGpuAsm(images, tensorflow::RocmRoot());
 
 #elif GOOGLE_CUDA
-    xla::HloModuleConfig config;
     xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
     options.set_xla_gpu_ftz(enable_ftz_);
     options.set_xla_gpu_dump_llvmir(print_llvmir_);
@@ -143,15 +140,13 @@ class GpuKernelToBlobPass
     // we have common tails that is intentional.
     (*options.mutable_xla_backend_extra_options())["-simplifycfg-sink-common"] =
         "false";
-    config.set_debug_options(options);
 
     llvmModule->setDataLayout(xla::gpu::nvptx::DataLayout());
     llvmModule->setTargetTriple(xla::gpu::nvptx::TargetTriple());
 
     // Compile and collect requested cubin and PTX images.
     std::vector<tensorflow::se::CubinOrPTXImage> images;
-    auto gpu_asm_opts =
-        xla::gpu::PtxOptsFromDebugOptions(config.debug_options());
+    auto gpu_asm_opts = xla::gpu::PtxOptsFromDebugOptions(options);
     for (const std::string& arch_str : architectures_) {
       TF_ASSIGN_OR_RETURN(auto arch_pair, ParseCudaArch(arch_str));
       bool is_compute_profile = arch_pair.first;
@@ -170,8 +165,8 @@ class GpuKernelToBlobPass
           std::string ptx,
           xla::gpu::nvptx::CompileToPtx(
               llvm_module_copy.get(),
-              tensorflow::se::CudaComputeCapability{cc_major, cc_minor}, config,
-              enable_fusion));
+              tensorflow::se::CudaComputeCapability{cc_major, cc_minor},
+              options, enable_fusion));
       if (print_ptx_) {
         llvm::dbgs() << "Generated PTX code for module '"
                      << gpu_module.getName() << "' on architecture sm_" << arch

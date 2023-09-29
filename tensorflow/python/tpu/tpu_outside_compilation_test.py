@@ -33,7 +33,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond
@@ -54,12 +54,19 @@ from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu.ops import tpu_ops
 
 FLAGS = flags.FLAGS
+flags.DEFINE_bool(
+    "use_local_tpu",
+    False,
+    "use local TPUs on a TPU VM instead of connecting to a GCP TPU VM or node.",
+)
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")
 flags.DEFINE_string("project", None, "Name of GCP project with TPU.")
 flags.DEFINE_string("zone", None, "Name of GCP zone with TPU.")
 
 
 def get_tpu_cluster_resolver():
+  if FLAGS.use_local_tpu:
+    return tpu_cluster_resolver.TPUClusterResolver("local")
   resolver = tpu_cluster_resolver.TPUClusterResolver(
       tpu=FLAGS.tpu,
       zone=FLAGS.zone,
@@ -423,7 +430,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
           y = tpu_replication.outside_compilation(host_computation, x)
           x = y
           n = n + 1
-        return y + 1.0
+        return x + 1.0
 
       return strategy.run(computation, args=(2.0,))
 
@@ -812,11 +819,11 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     partitioned_tpu_fn = _tpu_partitioned_call_wrapper(tpu_fn)
 
     concrete = partitioned_tpu_fn.get_concrete_function(
-        x=tensor_spec.TensorSpec(
+        x=tensor.TensorSpec(
             shape=(1), dtype=dtypes.float32, name="input_tensor"))
 
     self.assertIsInstance(
-        concrete(array_ops.ones((1), dtype=dtypes.float32))[0], ops.Tensor)
+        concrete(array_ops.ones((1), dtype=dtypes.float32))[0], tensor.Tensor)
 
 
 if __name__ == "__main__":

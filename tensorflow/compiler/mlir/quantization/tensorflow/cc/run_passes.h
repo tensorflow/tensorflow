@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/debugging/mlir_dump.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace quantization {

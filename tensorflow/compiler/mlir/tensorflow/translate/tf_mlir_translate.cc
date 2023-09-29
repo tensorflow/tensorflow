@@ -75,6 +75,7 @@ static StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirImport(
       import_options.unconditionally_use_set_output_shapes;
   specs.xla_compile_device_type = import_options.xla_compile_device_type;
   specs.enable_soft_placement = import_options.enable_soft_placement;
+  specs.set_original_tf_func_name = import_options.set_original_tf_func_name;
   TF_RETURN_IF_ERROR(ParseInputArrayInfo(input_arrays, input_dtypes,
                                          input_shapes, &specs.inputs));
   TF_RETURN_IF_ERROR(ParseOutputArrayInfo(output_arrays, &specs.outputs));

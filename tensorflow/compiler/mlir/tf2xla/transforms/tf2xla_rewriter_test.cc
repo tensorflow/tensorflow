@@ -38,16 +38,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace mhlo {
@@ -101,8 +101,7 @@ class Tf2XlaRewriterTestPeer {
       : op_builder_(op),
         empty_rewriter_(op_builder_),
         tf2xla_rewriter_(op, empty_rewriter_,
-                         /*device_type=*/"XLA_CPU_JIT",
-                         /*use_tf2xla_hlo_importer=*/true) {}
+                         /*device_type=*/"XLA_CPU_JIT") {}
 
   tsl::StatusOr<TupleOp> ImportXlaComputationIntoModule(
       XlaComputation& computation) {
@@ -131,15 +130,15 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return tsl::OkStatus();
   }
 
-  Status LegalizeSingleOp(bool use_tf2xla_hlo_importer, Operation& op) {
+  Status LegalizeSingleOp(Operation& op) {
     SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
 
     OpBuilder op_builder(&op);
     EmptyPatternRewriter pattern_rewriter(op_builder);
 
-    LogicalResult result = Tf2XlaRewriter::RewriteOp(
-        &op, pattern_rewriter,
-        /*device_type=*/"XLA_CPU_JIT", use_tf2xla_hlo_importer);
+    LogicalResult result =
+        Tf2XlaRewriter::RewriteOp(&op, pattern_rewriter,
+                                  /*device_type=*/"XLA_CPU_JIT");
     if (!result.succeeded()) {
       return tsl::errors::Internal("Failed to rewrite op");
     }
@@ -147,8 +146,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return tsl::OkStatus();
   }
 
-  Status LegalizeModule(bool use_tf2xla_hlo_importer,
-                        std::string module_string = kMlirModuleStr) {
+  Status LegalizeModule(std::string module_string = kMlirModuleStr) {
     TF_EXPECT_OK(CreateMlirModule(module_string));
     FuncOp main = module_->lookupSymbol<mlir::func::FuncOp>("main");
     if (!main) {
@@ -161,7 +159,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
         return WalkResult::advance();
       }
 
-      if (!LegalizeSingleOp(use_tf2xla_hlo_importer, *op).ok()) {
+      if (!LegalizeSingleOp(*op).ok()) {
         return WalkResult::interrupt();
       }
 
@@ -203,12 +201,8 @@ class Tf2XlaRewriterTest : public ::testing::Test {
   llvm::SourceMgr source_manager_;
 };
 
-TEST_F(Tf2XlaRewriterTest, LegalizesOp) {
-  TF_EXPECT_OK(LegalizeModule(/*use_tf2xla_hlo_importer=*/false));
-}
-
 TEST_F(Tf2XlaRewriterTest, LegalizesOpWithTf2xlaHloImporter) {
-  TF_EXPECT_OK(LegalizeModule(/*use_tf2xla_hlo_importer=*/true));
+  TF_EXPECT_OK(LegalizeModule());
 
   int num_tuple_ops = 0;
   module_->walk([&num_tuple_ops](TupleOp tuple_op) { num_tuple_ops += 1; });
@@ -289,8 +283,20 @@ TEST_F(Tf2XlaRewriterTest, InsertsConstantParameters) {
     }
   })";
 
-  TF_ASSERT_OK(
-      LegalizeModule(/*use_tf2xla_hlo_importer=*/true, kModuleWithConstParam));
+  TF_ASSERT_OK(LegalizeModule(kModuleWithConstParam));
+}
+
+TEST_F(Tf2XlaRewriterTest, DoesntEnforceCompileTimeConstantCheck) {
+  static constexpr char kModuleWithNonConstParam[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1610 : i32}} {
+    func.func @main(%arg0: tensor<3x3x10xbf16>, %arg1: tensor<3xi32>) -> tensor<1x?x4xbf16> attributes {allow_soft_placement = false, tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1,_arg2", outputs = "_retval0"}} {
+      %cst = "tf.Const"() {value = dense<[1, -1, 4]> : tensor<3xi32>} : () -> tensor<3xi32>
+      %0 = "tf.Slice"(%arg0, %arg1, %cst) {_XlaHasReferenceVars = false, _xla_inferred_shapes = [#tf_type.shape<1x?x4>], device = "/job:localhost/replica:0/task:0/device:TPU:0"} : (tensor<3x3x10xbf16>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x?x4xbf16>
+      return %0 : tensor<1x?x4xbf16>
+    }
+  })";
+
+  TF_ASSERT_OK(LegalizeModule(kModuleWithNonConstParam));
 }
 
 TEST_F(Tf2XlaRewriterTest, ErrorsWithInvalidNumberOfParametersToArgs) {

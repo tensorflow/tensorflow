@@ -61,7 +61,7 @@ class FileSystemDatasetStore : public DatasetStore {
 // dispatcher doesn't have a work directory configured.
 class MemoryDatasetStore : public DatasetStore {
  public:
-  MemoryDatasetStore();
+  MemoryDatasetStore() = default;
   MemoryDatasetStore(const MemoryDatasetStore&) = delete;
   MemoryDatasetStore& operator=(const MemoryDatasetStore&) = delete;
 

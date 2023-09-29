@@ -26,11 +26,11 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -97,7 +97,7 @@ void PjRtCompileOnDemandOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, Compile(ctx, pjrt_client, args, &result, &executable));
 
   // Execute
-  OP_REQUIRES_OK(ctx, RunPjRtExecutable(*pjrt_client, inputs, variables, result,
+  OP_REQUIRES_OK(ctx, RunPjRtExecutable(inputs, variables, result, pjrt_client,
                                         executable.get(), ctx));
 
   ctx->SetStatus(OkStatus());

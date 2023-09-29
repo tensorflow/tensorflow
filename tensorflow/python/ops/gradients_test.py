@@ -28,7 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
@@ -234,9 +234,9 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       z = x * 2.0
       w = z * 3.0
       grads = gradients.gradients(z, [c])
-      self.assertIsInstance(grads[0], ops.Tensor)
+      self.assertIsInstance(grads[0], tensor.Tensor)
       grads = gradients.gradients(w, [c])
-      self.assertIsInstance(grads[0], ops.Tensor)
+      self.assertIsInstance(grads[0], tensor.Tensor)
 
   def testNoGradientForStringOutputsWithOpNamespace(self):
     with ops.Graph().as_default():
@@ -254,9 +254,9 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       z = x * 2.0
       w = z * 3.0
       grads = gradients.gradients(z, [c])
-      self.assertIsInstance(grads[0], ops.Tensor)
+      self.assertIsInstance(grads[0], tensor.Tensor)
       grads = gradients.gradients(w, [c])
-      self.assertIsInstance(grads[0], ops.Tensor)
+      self.assertIsInstance(grads[0], tensor.Tensor)
 
   def testSingletonIndexedSlices(self):
     with ops.Graph().as_default():
@@ -1614,7 +1614,7 @@ class VariablesGradientTest(test_util.TensorFlowTestCase,
     self.assertAllClose(grads_re, grads)
 
     f_graph = def_function.function(
-        F, input_signature=[tensor_spec.TensorSpec(None)])
+        F, input_signature=[tensor.TensorSpec(None)])
     grads_re = self._grad(custom_gradient.recompute_grad(f_graph))(x)
     grads = self._grad(f_graph)(x)
     self.assertAllClose(grads_re, grads)
@@ -1633,8 +1633,8 @@ class VariablesGradientTest(test_util.TensorFlowTestCase,
     f_graph = def_function.function(
         F,
         input_signature=[
-            tensor_spec.TensorSpec(None, dtype=dtypes.int32),
-            tensor_spec.TensorSpec(None, dtype=dtypes.float32),
+            tensor.TensorSpec(None, dtype=dtypes.int32),
+            tensor.TensorSpec(None, dtype=dtypes.float32),
         ])
     grads_re = self._grad(custom_gradient.recompute_grad(f_graph))(x1, x2)
     grads = self._grad(f_graph)(x1, x2)
