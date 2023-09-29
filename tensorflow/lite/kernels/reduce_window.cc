@@ -20,6 +20,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "tensorflow/lite/array.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -56,48 +57,26 @@ using IntCst = std::integral_constant<int, Val>;
 // └──┘     └──┘
 //  13 14 15 16
 //
-// This is a recursive implementation of the strided reduction. At the time of
-// writing, both GCC and Clang are able to optimise away the recursion when done
-// with templates. The same code without templates is optimised by GCC but not
-// by Clang.
-//
-// The template uses integral_constant for the rank and depth values because old
-// versions of GCC [do not support partial specializations on non-type template
-// parameters](https://stackoverflow.com/a/7776468).
-template <class Op, class Type, class RankValue, class DepthValue = IntCst<0>,
-          class = void>
-struct StridedReduceImpl;
-
-// Body case of the recursive implementation of the strided reduction.
-template <class Op, class Type, int Rank, int Depth>
-struct StridedReduceImpl<Op, Type, IntCst<Rank>, IntCst<Depth>,
-                         std::enable_if_t<Depth + 1 != Rank>> {
-  static void Run(const Type* input, const int64_t* const shape,
-                  const int64_t* const strides, Type& accu) {
-    const int64_t stride = strides[Depth];
-    const int64_t size = shape[Depth];
-    for (int64_t i = 0; i < size; ++i) {
-      StridedReduceImpl<Op, Type, IntCst<Rank>, IntCst<Depth + 1>>::Run(
-          input, shape, strides, accu);
-      input += stride;
-    }
-  }
-};
-
-// Tail case of the recursive implementation of the strided reduction.
-template <class Op, class Type, int Rank>
-struct StridedReduceImpl<Op, Type, IntCst<Rank>, IntCst<Rank - 1>> {
-  static void Run(const Type* input, const int64_t* const shape,
-                  const int64_t* const strides, Type& accu) {
-    const int64_t stride = strides[Rank - 1];
-    const int64_t size = shape[Rank - 1];
+// This is a recursive implementation of the strided reduction.
+template <class Op, class Type>
+void StridedReduce(const Type* input, const int64_t* const shape,
+                   const int64_t* const strides, Type& accu, const int rank,
+                   const int depth) {
+  const int64_t stride = strides[depth];
+  const int64_t size = shape[depth];
+  if (depth + 1 == rank) {
     const Op op;
     for (int64_t i = 0; i < size; ++i) {
       accu = op(accu, *input);
       input += stride;
     }
+  } else {
+    for (int64_t i = 0; i < size; ++i) {
+      StridedReduce<Op, Type>(input, shape, strides, accu, rank, depth + 1);
+      input += stride;
+    }
   }
-};
+}
 
 // Recursively computes strided reductions using a sliding window over the given
 // tensor.
@@ -117,52 +96,32 @@ struct StridedReduceImpl<Op, Type, IntCst<Rank>, IntCst<Rank - 1>> {
 // ┌─┐   ┌─┐
 // │X│X X│X│
 // └─┘   └─┘
-//
-// The template uses integral_constant for the rank and depth values because old
-// versions of GCC [do not support partial specializations on non-type template
-// parameters](https://stackoverflow.com/a/7776468).
-template <class Op, class Type, class RankValue, class DepthValue = IntCst<0>,
-          class = void>
-struct ReduceWindowImpl;
-
-// Body case of the recursive implementation of the window sliding.
-template <class Op, class Type, int Rank, int Depth>
-struct ReduceWindowImpl<Op, Type, IntCst<Rank>, IntCst<Depth>,
-                        std::enable_if_t<Depth + 1 != Rank>> {
-  static void Run(const Type* input, Type* output,
-                  const int64_t* const output_shape,
-                  const int64_t* const output_strides,
-                  const int64_t* const window_offset_strides,
-                  const int64_t* const window_shape,
-                  const int64_t* const window_reduce_strides, const Type init) {
-    for (int32_t dim = 0; dim < output_shape[Depth]; ++dim) {
-      ReduceWindowImpl<Op, Type, IntCst<Rank>, IntCst<Depth + 1>>::Run(
-          input, output, output_shape, output_strides, window_offset_strides,
-          window_shape, window_reduce_strides, init);
-      input += window_offset_strides[Depth];
-      output += output_strides[Depth];
-    }
-  }
-};
-
-// Tail case of the recursive implementation of the window sliding.
-template <class Op, class Type, int Rank>
-struct ReduceWindowImpl<Op, Type, IntCst<Rank>, IntCst<Rank - 1>> {
-  static void Run(const Type* input, Type* output,
-                  const int64_t* const output_shape,
-                  const int64_t* const output_strides,
-                  const int64_t* const window_offset_strides,
-                  const int64_t* const window_shape,
-                  const int64_t* const window_reduce_strides, const Type init) {
-    for (int32_t dim = 0; dim < output_shape[Rank - 1]; ++dim) {
+template <class Op, class Type>
+void ReduceWindowImpl(const Type* input, Type* output,
+                      const int64_t* const output_shape,
+                      const int64_t* const output_strides,
+                      const int64_t* const window_offset_strides,
+                      const int64_t* const window_shape,
+                      const int64_t* const window_reduce_strides,
+                      const Type init, const int rank, const int depth) {
+  if (depth + 1 == rank) {
+    for (int32_t dim = 0; dim < output_shape[depth]; ++dim) {
       *output = init;
-      StridedReduceImpl<Op, Type, IntCst<Rank>>::Run(
-          input, window_shape, window_reduce_strides, *output);
-      input += window_offset_strides[Rank - 1];
-      output += output_strides[Rank - 1];
+      StridedReduce<Op, Type>(input, window_shape, window_reduce_strides,
+                              *output, rank, 0);
+      input += window_offset_strides[depth];
+      output += output_strides[depth];
+    }
+  } else {
+    for (int32_t dim = 0; dim < output_shape[depth]; ++dim) {
+      ReduceWindowImpl<Op, Type>(input, output, output_shape, output_strides,
+                                 window_offset_strides, window_shape,
+                                 window_reduce_strides, init, rank, depth + 1);
+      input += window_offset_strides[depth];
+      output += output_strides[depth];
     }
   }
-};
+}
 
 std::array<int64_t, kMaxReduceWindowDims> ComputeStrides(
     const int64_t* const shape, const int64_t rank) {
@@ -205,26 +164,27 @@ std::array<int64_t, kMaxReduceWindowDims> ComputeOutputShape(
   return window_range;
 }
 
-template <class Op, class Type, int Rank>
+template <class Op, class Type>
 void ReduceWindow(const Type* const input, Type* output,
                   const int64_t* const shape, const int64_t* const window_shape,
                   const int64_t* const window_strides,
-                  const int64_t* const window_dilations, const Type init) {
+                  const int64_t* const window_dilations, const Type init,
+                  const int rank) {
   const std::array<int64_t, kMaxReduceWindowDims> strides =
-      ComputeStrides(shape, Rank);
+      ComputeStrides(shape, rank);
   const std::array<int64_t, kMaxReduceWindowDims> window_reduce_strides =
-      Multiply(strides.data(), window_dilations, Rank);
+      Multiply(strides.data(), window_dilations, rank);
   const std::array<int64_t, kMaxReduceWindowDims> window_offset_strides =
-      Multiply(strides.data(), window_strides, Rank);
+      Multiply(strides.data(), window_strides, rank);
   const std::array<int64_t, kMaxReduceWindowDims> output_shape =
       ComputeOutputShape(shape, window_shape, window_strides, window_dilations,
-                         Rank);
+                         rank);
   const std::array<int64_t, kMaxReduceWindowDims> output_strides =
-      ComputeStrides(output_shape.data(), Rank);
-  ReduceWindowImpl<Op, Type, IntCst<Rank>>::Run(
-      input, output, output_shape.data(), output_strides.data(),
-      window_offset_strides.data(), window_shape, window_reduce_strides.data(),
-      init);
+      ComputeStrides(output_shape.data(), rank);
+  ReduceWindowImpl<Op, Type>(input, output, output_shape.data(),
+                             output_strides.data(),
+                             window_offset_strides.data(), window_shape,
+                             window_reduce_strides.data(), init, rank, 0);
 }
 
 std::array<int64_t, kMaxReduceWindowDims> AsInt64(const int32_t* data,
@@ -280,49 +240,31 @@ TfLiteStatus SetupOutputTensor(const ReduceWindowContext& ctx) {
                                    output_shape.release());
 }
 
-template <class Op, class Type>
-TfLiteStatus DispatchReduceWindowRank(ReduceWindowContext& ctx) {
+template <class Op>
+TfLiteStatus DispatchReduceWindowType(ReduceWindowContext& ctx) {
   const int rank = ctx.input_tensor->dims->size;
   const std::array<int64_t, kMaxReduceWindowDims> input_shape =
       AsInt64(ctx.input_tensor->dims->data, rank);
-#define REDUCE_WINDOW_RANK_CASE(RANK)                               \
-  case RANK:                                                        \
-    ReduceWindow<Op, Type, RANK>(                                   \
-        reinterpret_cast<const Type*>(ctx.input_tensor->data.raw),  \
-        reinterpret_cast<Type*>(ctx.output_tensor->data.raw),       \
-        input_shape.data(), ctx.window_shape_tensor->data.i64,      \
-        ctx.window_strides_tensor->data.i64,                        \
-        ctx.window_dilations_tensor->data.i64,                      \
-        *reinterpret_cast<Type*>(ctx.init_value_tensor->data.raw)); \
+#define REDUCE_WINDOW_TYPE_CASE(CPP_TYPE, TENSOR_TYPE)                        \
+  case TENSOR_TYPE:                                                           \
+    ReduceWindow<Op, CPP_TYPE>(                                               \
+        reinterpret_cast<const CPP_TYPE*>(ctx.input_tensor->data.raw),        \
+        reinterpret_cast<CPP_TYPE*>(ctx.output_tensor->data.raw),             \
+        input_shape.data(), ctx.window_shape_tensor->data.i64,                \
+        ctx.window_strides_tensor->data.i64,                                  \
+        ctx.window_dilations_tensor->data.i64,                                \
+        *reinterpret_cast<CPP_TYPE*>(ctx.init_value_tensor->data.raw), rank); \
     break;
-  switch (ctx.input_tensor->dims->size) {
-    REDUCE_WINDOW_RANK_CASE(1);
-    REDUCE_WINDOW_RANK_CASE(2);
-    REDUCE_WINDOW_RANK_CASE(3);
-    REDUCE_WINDOW_RANK_CASE(4);
-    REDUCE_WINDOW_RANK_CASE(5);
-    REDUCE_WINDOW_RANK_CASE(6);
-    default:
-      return kTfLiteError;
-  }
-#undef REDUCE_WINDOW_RANK_CASE
-  return kTfLiteOk;
-}
-
-template <class Op>
-TfLiteStatus DispatchReduceWindowType(ReduceWindowContext& ctx) {
-#define REDUCE_WINDOW_TYPE_CASE(CPP_TYPE, TENSOR_TYPE) \
-  case TENSOR_TYPE:                                    \
-    return DispatchReduceWindowRank<Op, CPP_TYPE>(ctx);
   switch (ctx.input_tensor->type) {
+    REDUCE_WINDOW_TYPE_CASE(int8_t, kTfLiteBool);
     REDUCE_WINDOW_TYPE_CASE(int8_t, kTfLiteInt8);
     REDUCE_WINDOW_TYPE_CASE(int16_t, kTfLiteInt16);
     REDUCE_WINDOW_TYPE_CASE(int32_t, kTfLiteInt32);
     REDUCE_WINDOW_TYPE_CASE(int64_t, kTfLiteInt64);
     REDUCE_WINDOW_TYPE_CASE(uint8_t, kTfLiteUInt8);
-    REDUCE_WINDOW_TYPE_CASE(uint16_t, kTfLiteUInt16);
-    REDUCE_WINDOW_TYPE_CASE(uint32_t, kTfLiteUInt32);
-    REDUCE_WINDOW_TYPE_CASE(uint64_t, kTfLiteUInt64);
+    // REDUCE_WINDOW_TYPE_CASE(uint16_t, kTfLiteUInt16);
+    // REDUCE_WINDOW_TYPE_CASE(uint32_t, kTfLiteUInt32);
+    // REDUCE_WINDOW_TYPE_CASE(uint64_t, kTfLiteUInt64);
     REDUCE_WINDOW_TYPE_CASE(float, kTfLiteFloat32);
     static_assert(sizeof(float) == 4,
                   "float type is expected to be 32 bit long");
@@ -333,11 +275,7 @@ TfLiteStatus DispatchReduceWindowType(ReduceWindowContext& ctx) {
       return kTfLiteError;
   }
 #undef REDUCE_WINDOW_TYPE_CASE
-}
-
-template <class Op>
-TfLiteStatus DispatchReduceWindowOp(ReduceWindowContext& ctx) {
-  return DispatchReduceWindowType<Op>(ctx);
+  return kTfLiteOk;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -377,17 +315,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case TfLiteReduceWindowFunctionUnsupported:
       return kTfLiteError;
     case TfLiteReduceWindowFunctionAdd:
-      return DispatchReduceWindowOp<std::plus<>>(ctx);
+      return DispatchReduceWindowType<std::plus<>>(ctx);
     case TfLiteReduceWindowFunctionMul:
-      return DispatchReduceWindowOp<std::multiplies<>>(ctx);
+      return DispatchReduceWindowType<std::multiplies<>>(ctx);
     case TfLiteReduceWindowFunctionAll:
-      return DispatchReduceWindowOp<std::logical_and<>>(ctx);
+      return DispatchReduceWindowType<std::logical_and<>>(ctx);
     case TfLiteReduceWindowFunctionAny:
-      return DispatchReduceWindowOp<std::logical_or<>>(ctx);
+      return DispatchReduceWindowType<std::logical_or<>>(ctx);
     case TfLiteReduceWindowFunctionMin:
-      return DispatchReduceWindowOp<Min>(ctx);
+      return DispatchReduceWindowType<Min>(ctx);
     case TfLiteReduceWindowFunctionMax:
-      return DispatchReduceWindowOp<Max>(ctx);
+      return DispatchReduceWindowType<Max>(ctx);
   }
 }
 

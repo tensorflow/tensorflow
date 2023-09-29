@@ -166,8 +166,8 @@ class ReduceWindowTest : public testing::Test {
   DilateOpModel<StorageType> model_;
 };
 
-using TestList = testing::Types<int8_t, int16_t, int32_t, int64_t, uint8_t,
-                                uint16_t, uint32_t, uint64_t, float, double>;
+using TestList =
+    testing::Types<int8_t, int16_t, int32_t, int64_t, uint8_t, float, double>;
 
 TYPED_TEST_SUITE(ReduceWindowTest, TestList);
 
