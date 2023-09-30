@@ -82,10 +82,10 @@ uint8* Decode(const void* srcdata, int datasize,
     // buffer was failed.
     if (gif_file->ImageCount <= 0 ||
         gif_file->SavedImages[gif_file->ImageCount - 1].RasterBits == NULL) {
+        return nullptr;
     }
 
     LOG(ERROR) << *error_string;
-    return nullptr;
   }
 
   if (gif_file->ImageCount <= 0) {
