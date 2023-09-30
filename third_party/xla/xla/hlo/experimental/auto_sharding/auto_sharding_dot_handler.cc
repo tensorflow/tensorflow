@@ -13,18 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <tuple>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "xla/hlo/experimental/auto_sharding/cluster_environment.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/status.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -55,6 +64,17 @@ void AppendNewStrategy(const HloInstruction* ins, const std::string& name,
       resharding_costs,
       {input_specs.begin(), input_specs.end()},
   }));
+}
+
+// Calls the given 'split_func' on all possible mesh dim combinations.
+void SplitWithMeshShape(std::function<void(int, int)> split_func,
+                        absl::Span<const int64_t> mesh_shape) {
+  for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+    for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+      split_func(i, j);
+      split_func(j, i);
+    }
+  }
 }
 
 class DotHandler {
@@ -617,76 +637,43 @@ class DotHandler {
     }
   }
 
-  Status RegisterStrategies() {
-    auto mesh_shape = device_mesh_.dimensions();
+  void Split(std::function<void(int, int)> split_func) const {
+    SplitWithMeshShape(split_func, device_mesh_.dimensions());
+  }
 
+  Status RegisterStrategies() {
     // SS = SR x RS
     // Split lhs space dim and rhs space dim.
-    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-        SplitLhsSpaceRhsSpace(i, j);
-        SplitLhsSpaceRhsSpace(j, i);
-      }
-    }
+    Split([this](int i, int j) { this->SplitLhsSpaceRhsSpace(i, j); });
 
     // SSR = SSR x RR
     // Split lhs space dims only if it has more than 1 space dims.
     if (lhs_space_dims_.size() > 1) {
-      for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-        for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-          SplitLhsSpaceOnly(i, j);
-          SplitLhsSpaceOnly(j, i);
-        }
-      }
+      Split([this](int i, int j) { this->SplitLhsSpaceOnly(i, j); });
     }
     // RSS = RR x RSS
     // Split rhs space dims only if it has more than 1 space dims.
     if (rhs_space_dims_.size() > 1) {
-      for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-        for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-          SplitRhsSpaceOnly(i, j);
-          SplitRhsSpaceOnly(j, i);
-        }
-      }
+      Split([this](int i, int j) { this->SplitRhsSpaceOnly(i, j); });
     }
 
     // SR = SS x SR
     // Split lhs space dim and both contracting dims.
-    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-        SplitLhsSpaceBothContract(i, j);
-        SplitLhsSpaceBothContract(j, i);
-      }
-    }
+    Split([this](int i, int j) { this->SplitLhsSpaceBothContract(i, j); });
 
     // RS = RS x SS
     // Split rhs space dim and both contracting dims.
-    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-        SplitRhsSpaceBothContract(i, j);
-        SplitRhsSpaceBothContract(j, i);
-      }
-    }
+    Split([this](int i, int j) { this->SplitRhsSpaceBothContract(i, j); });
 
     // RR = SS x SS
     // Split two contracting dims on lhs and rhs.
-    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-        SplitBothContractTwoDims(i, j);
-        SplitBothContractTwoDims(j, i);
-      }
-    }
+    Split([this](int i, int j) { this->SplitBothContractTwoDims(i, j); });
 
     // RR = RS x SR
     // This is a special case where we allow spliting only one dim in the
     // multi-dimensional mesh case. This allows some recomputation
     // (e.g., the dense layer in the LM_head of BERT).
-    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-        RecomputeSplitBothContract(i, j);
-        RecomputeSplitBothContract(j, i);
-      }
-    }
+    Split([this](int i, int j) { this->RecomputeSplitBothContract(i, j); });
 
     // Add 1d data parallel in multi-dimensional mesh
     if (solver_option_.allow_mixed_mesh_shape) {
@@ -707,30 +694,15 @@ class DotHandler {
 
     // SbSi = SbSi x SbR
     // Split batch dim and lhs space dim
-    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-        SplitBatchDimLhsSpace(i, j);
-        SplitBatchDimLhsSpace(j, i);
-      }
-    }
+    Split([this](int i, int j) { this->SplitBatchDimLhsSpace(i, j); });
 
     // SbSj = SbR x SbSj
     // Split batch dim and rhs space dim
-    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-        SplitBatchDimRhsSpace(i, j);
-        SplitBatchDimRhsSpace(j, i);
-      }
-    }
+    Split([this](int i, int j) { this->SplitBatchDimRhsSpace(i, j); });
 
     // SbSj = SbR x SbSj
     // Split batch dim and contracting dim
-    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-        SplitBatchDimBothContract(i, j);
-        SplitBatchDimBothContract(j, i);
-      }
-    }
+    Split([this](int i, int j) { this->SplitBatchDimBothContract(i, j); });
 
     if (solver_option_.batch_matmul_always_split_batch &&
         lhs_batch_dims_.size() == 2 &&
@@ -743,12 +715,7 @@ class DotHandler {
 
     // Sb = Sb x Sb
     // Split batch dims.
-    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-        SplitTwoBatchDims(i, j);
-        SplitTwoBatchDims(j, i);
-      }
-    }
+    Split([this](int i, int j) { this->SplitTwoBatchDims(i, j); });
 
     if (solver_option_.allow_mixed_mesh_shape) {
       Add1DBatchSplit();
@@ -951,8 +918,11 @@ class ConvHandler {
                       cluster_env_, strategy_map_, strategies_);
   }
 
+  void Split(std::function<void(int, int)> split_func) const {
+    SplitWithMeshShape(split_func, device_mesh_.dimensions());
+  }
+
   Status RegisterStrategies() {
-    auto mesh_shape = device_mesh_.dimensions();
     // For 1D sharding
     if ((ins_->feature_group_count() ==
              lhs_->shape().dimensions(lhs_in_channel_dim_) &&
@@ -961,12 +931,7 @@ class ConvHandler {
       // for depthwise conv
       // SS = SS x S
       // Split batch dim and channel dim
-      for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-        for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-          SplitDepthwise(i, j, true);
-          SplitDepthwise(j, i, true);
-        }
-      }
+      Split([this](int i, int j) { this->SplitDepthwise(i, j, true); });
     } else if ((ins_->batch_group_count() ==
                     lhs_->shape().dimensions(lhs_batch_dim_) &&
                 ins_->batch_group_count() ==
@@ -974,40 +939,21 @@ class ConvHandler {
       // for depthwise conv filter_backward
       // SS = SS x S
       // Split batch dim and channel dim
-      for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-        for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-          SplitDepthwise(i, j, false);
-          SplitDepthwise(j, i, false);
-        }
-      }
+      Split([this](int i, int j) { this->SplitDepthwise(i, j, false); });
     }
 
     // SS = SR x RS
     // Split lhs batch dim and rhs out_channel dim.
-    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-        SplitLhsBatchRhsOutchannel(i, j);
-        SplitLhsBatchRhsOutchannel(j, i);
-      }
-    }
+    Split([this](int i, int j) { this->SplitLhsBatchRhsOutchannel(i, j); });
 
     // SR = SS x SR
     // Split lhs batch dim and both in_channel dims.
-    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-        SplitLhsBatchBothInchannel(i, j);
-        SplitLhsBatchBothInchannel(j, i);
-      }
-    }
+    Split([this](int i, int j) { this->SplitLhsBatchBothInchannel(i, j); });
 
     // RS = RS x SS
     // Split rhs out_channel dim and both in_channel dims.
-    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-        SplitRhsOutchannelBothInchannel(i, j);
-        SplitRhsOutchannelBothInchannel(j, i);
-      }
-    }
+    Split(
+        [this](int i, int j) { this->SplitRhsOutchannelBothInchannel(i, j); });
 
     // Add 1d data parallel in multi-dimensional mesh
     if (solver_option_.allow_mixed_mesh_shape) {
