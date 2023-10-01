@@ -32,7 +32,7 @@ namespace dtensor {
 // `device`, which should then be passed to
 // TFE_RegisterCustomDevice. This only affects eager execution.
 //
-// `device_name` arg should match the `device_name` argument to
+// `device_name` argument should match the `device_name` argument to
 // TFE_RegisterCustomDevice, and is the name of the custom device itself
 // (e.g. pass it to `tf.device` to place operations on it from Python).
 // TODO(b/268241383): Remove the `status = nullptr` overload.
