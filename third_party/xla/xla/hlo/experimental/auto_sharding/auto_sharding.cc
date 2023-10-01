@@ -3731,7 +3731,7 @@ void AnnotateShardingWithSimpleHeuristic(
       const DotDimensionNumbers& dot_dnums = inst->dot_dimension_numbers();
       // const auto& lhs_con_dims = dot_dnums.lhs_contracting_dimensions();
       // const auto& rhs_con_dims = dot_dnums.rhs_contracting_dimensions();
-      std::vector<int64_t> lhs_space_dims, rhs_space_dims;
+      tsl::protobuf::RepeatedField<int64_t> lhs_space_dims, rhs_space_dims;
       std::tie(lhs_space_dims, rhs_space_dims) =
           GetSpaceDims(lhs->shape(), rhs->shape(), dot_dnums);
     }

@@ -498,7 +498,7 @@ void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
             ins->dot_dimension_numbers().lhs_batch_dimensions();
         const auto& rhs_batch_dims =
             ins->dot_dimension_numbers().rhs_batch_dimensions();
-        std::vector<int64_t> lhs_space_dims, rhs_space_dims;
+        tsl::protobuf::RepeatedField<int64_t> lhs_space_dims, rhs_space_dims;
         std::tie(lhs_space_dims, rhs_space_dims) =
             GetSpaceDims(lhs->shape(), rhs->shape(), dot_dnums);
         // This part assumes that the dot has been through the dot decomposer,
@@ -759,7 +759,7 @@ void BatchDimMapBackward(const std::vector<HloInstruction*>& instructions,
             ins->dot_dimension_numbers().lhs_batch_dimensions();
         const auto& rhs_batch_dims =
             ins->dot_dimension_numbers().rhs_batch_dimensions();
-        std::vector<int64_t> lhs_space_dims, rhs_space_dims;
+        tsl::protobuf::RepeatedField<int64_t> lhs_space_dims, rhs_space_dims;
         std::tie(lhs_space_dims, rhs_space_dims) =
             GetSpaceDims(lhs->shape(), rhs->shape(), dot_dnums);
 
