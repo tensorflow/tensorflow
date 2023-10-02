@@ -3114,7 +3114,7 @@ def MHLO_TraceOp: MHLO_Op<"trace", []> {
 }
 
 def MHLO_TransposeOp: MHLO_ShapedInterfaceOp<"transpose",
-      [Pure, SameOperandsAndResultElementType,
+      [Pure, HLO_CompatibleOperandsAndResultElementType,
       DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Transpose operation";
   let description = [{
