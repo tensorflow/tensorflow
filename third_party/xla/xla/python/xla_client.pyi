@@ -62,7 +62,7 @@ float8_e5m2: Type[numpy.generic]
 float8_e5m2fnuz: Type[numpy.generic]
 XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
 
-_NameValueMapping = Mapping[str, Union[str, int, List[int], float]]
+_NameValueMapping = Mapping[str, Union[str, int, List[int], float, bool]]
 
 
 def dtype_to_etype(dtype: numpy.dtype) -> PrimitiveType:
