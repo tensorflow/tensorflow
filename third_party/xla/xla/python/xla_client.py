@@ -45,7 +45,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 199
+_version = 200
 
 # Version number for MLIR:Python components.
 mlir_api_version = 54
@@ -102,17 +102,6 @@ def make_gpu_client(
       'ROCM', _xla.register_custom_call_target
   )
 
-  if mock:
-    return _xla.get_mock_gpu_client(
-        asynchronous=True,
-        allocator_config=config,
-        distributed_client=distributed_client,
-        node_id=node_id,
-        num_nodes=num_nodes,
-        platform_name=platform_name,
-        allowed_devices=allowed_devices,
-    )
-
   return _xla.get_gpu_client(
       asynchronous=True,
       allocator_config=config,
@@ -120,7 +109,9 @@ def make_gpu_client(
       node_id=node_id,
       num_nodes=num_nodes,
       platform_name=platform_name,
-      allowed_devices=allowed_devices)
+      allowed_devices=allowed_devices,
+      mock=mock,
+  )
 
 
 def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):

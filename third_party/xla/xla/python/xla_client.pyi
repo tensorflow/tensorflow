@@ -90,7 +90,8 @@ def make_gpu_client(
     node_id: int = ...,
     num_nodes: int = ...,
     platform_name: Optional[str] = ...,
-    allowed_devices: Optional[Set[int]] = ...) -> Client:
+    allowed_devices: Optional[Set[int]] = ...,
+    mock: Optional[bool]=...) -> Client:
   ...
 
 

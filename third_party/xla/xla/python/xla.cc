@@ -527,8 +527,8 @@ static void Init(py::module_& m) {
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
          int node_id, int num_nodes,
          std::optional<std::set<int>> allowed_devices,
-         std::optional<std::string> platform_name)
-          -> std::shared_ptr<PyClient> {
+         std::optional<std::string> platform_name,
+         std::optional<bool> mock = false) -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
         PjRtClient::KeyValueGetCallback kv_get = nullptr;
         PjRtClient::KeyValuePutCallback kv_put = nullptr;
@@ -552,8 +552,8 @@ static void Init(py::module_& m) {
             xla::ValueOrThrow(GetStreamExecutorGpuClient(
                 asynchronous, allocator_config, node_id, num_nodes,
                 allowed_devices, platform_name,
-                /*should_stage_host_to_device_transfers=*/true, kv_get,
-                kv_put));
+                /*should_stage_host_to_device_transfers=*/true, kv_get, kv_put,
+                /*enable_mock_nccl=*/mock.value_or(false)));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(client)));
       },
@@ -561,75 +561,7 @@ static void Init(py::module_& m) {
       py::arg("allocator_config") = GpuAllocatorConfig(),
       py::arg("distributed_client") = nullptr, py::arg("node_id") = 0,
       py::arg("num_nodes") = 1, py::arg("allowed_devices") = std::nullopt,
-      py::arg("platform_name") = std::nullopt);
-  m.def(
-      "get_mock_gpu_client",
-      [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
-         std::shared_ptr<DistributedRuntimeClient> distributed_client,
-         int node_id, int num_nodes,
-         std::optional<std::set<int>> allowed_devices,
-         std::optional<std::string> platform_name)
-          -> std::shared_ptr<PyClient> {
-        py::gil_scoped_release gil_release;
-        PjRtClient::KeyValueGetCallback kv_get = nullptr;
-        PjRtClient::KeyValuePutCallback kv_put = nullptr;
-        absl::flat_hash_map<std::string, std::string> device_maps;
-        absl::Mutex mu;
-        if (num_nodes > 1) {
-          kv_get = [&device_maps, &mu, &num_nodes](
-                       const std::string& k,
-                       absl::Duration timeout) -> xla::StatusOr<std::string> {
-            std::string result;
-            {
-              absl::MutexLock lock(&mu);
-              if (device_maps.find(k) != device_maps.end()) {
-                result = device_maps[k];
-              } else {
-                // TODO(wangtao): Move fake topology logic down to
-                // GetStreamExecutorGpuClient.
-                // Get device_id from key.
-                int device_id;
-                std::vector<std::string> tokens = absl::StrSplit(k, ':');
-                if (tokens.size() != 2 ||
-                    !absl::SimpleAtoi(tokens[1], &device_id)) {
-                  device_id = num_nodes - 1;
-                }
-                // Return fake local topology with device_id info back.
-                LocalTopologyProto local;
-                local.set_boot_id("fake_boot_id");
-                local.set_node_id(device_id);
-                DeviceProto* device = local.add_devices();
-                device->set_global_device_id(device_id);
-                device->set_name("fake_device");
-                device->set_vendor("fake_vendor");
-                result = local.SerializeAsString();
-              }
-            }
-            return result;
-          };
-          kv_put = [&device_maps, &mu](const std::string& k,
-                                       const std::string& v) -> xla::Status {
-            {
-              absl::MutexLock lock(&mu);
-              device_maps[k] = v;
-            }
-            return xla::OkStatus();
-          };
-        }
-        std::unique_ptr<PjRtClient> client =
-            xla::ValueOrThrow(GetStreamExecutorGpuClient(
-                asynchronous, allocator_config, node_id, num_nodes,
-                allowed_devices, platform_name,
-                /*should_stage_host_to_device_transfers=*/true, kv_get,
-                kv_put));
-        return std::make_shared<PyClient>(
-            ifrt::PjRtClient::Create(std::move(client)));
-      },
-      py::arg("asynchronous") = true,
-      py::arg("allocator_config") = GpuAllocatorConfig(),
-      py::arg("distributed_client") = nullptr, py::arg("node_id") = 0,
-      py::arg("num_nodes") = 1, py::arg("allowed_devices") = std::nullopt,
-      py::arg("platform_name") = std::nullopt);
+      py::arg("platform_name") = std::nullopt, py::arg("mock") = std::nullopt);
 #endif  // XLA_PYTHON_ENABLE_GPU
 
   m.def(

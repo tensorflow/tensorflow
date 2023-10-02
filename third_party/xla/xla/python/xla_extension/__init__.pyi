@@ -475,7 +475,8 @@ def get_gpu_client(
     distributed_client: Optional[DistributedRuntimeClient] = ...,
     node_id: int = ...,
     allowed_devices: Optional[Any] = ...,
-    platform_name: Optional[str] = ...) -> Client:...
+    platform_name: Optional[str] = ...,
+    mock:Optional[bool]=...) -> Client:...
 def get_mock_gpu_client(
     asynchronous: bool = ...,
     allocator_config: GpuAllocatorConfig = ...,
