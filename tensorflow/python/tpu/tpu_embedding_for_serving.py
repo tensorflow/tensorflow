@@ -88,7 +88,8 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
   def __init__(
       self,
       feature_config: Union[tpu_embedding_v2_utils.FeatureConfig, Iterable],  # pylint:disable=g-bare-generic
-      optimizer: Optional[tpu_embedding_v2_utils._Optimizer]):  # pylint:disable=protected-access
+      optimizer: Optional[tpu_embedding_v2_utils._Optimizer],
+      experimental_sparsecore_restore_info: Optional[Dict[str, Any]] = None):  # pylint:disable=protected-access
     """Creates the TPUEmbeddingForServing mid level API object.
 
     ```python
@@ -108,6 +109,9 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
         may be set to None to avoid the creation of the optimizer slot
         variables, useful for optimizing memory consumption when exporting the
         model for serving where slot variables aren't needed.
+      experimental_sparsecore_restore_info: Information from the sparse core
+        training, required to restore from checkpoint for serving (like number
+        of TPU devices used `num_tpu_devices`.)
 
     Raises:
       RuntimeError: If created under TPUStrategy.
