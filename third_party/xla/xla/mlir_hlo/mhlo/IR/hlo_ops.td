@@ -2718,7 +2718,7 @@ def MHLO_MapOp: MHLO_ShapedInterfaceOp<"map",
 }
 
 def MHLO_ReshapeOp: MHLO_Op<"reshape",
-      [Pure, SameOperandsAndResultElementType]> {
+      [Pure, HLO_CompatibleOperandsAndResultElementType]> {
   let summary = "Reshape operation";
   let description = [{
     Performs reshape of `operand` tensor to a `result` tensor.
