@@ -349,9 +349,10 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   int64_t max_ids_per_partition = -1;
   int64_t max_unique_ids_per_partition = -1;
 
-  GetMaxIdsAndUniques(ctx, program_key, table_name_, per_sparse_core_batch_size,
-                      feature_width_, &max_ids_per_partition,
-                      &max_unique_ids_per_partition);
+  OP_REQUIRES_OK(ctx, GetMaxIdsAndUniquesExternal(
+                          program_key, table_name_, per_sparse_core_batch_size,
+                          feature_width_, &max_ids_per_partition,
+                          &max_unique_ids_per_partition));
 
   const int32* row_ids_tensor_ptr = row_ids->flat<int32>().data();
   const int32* col_ids_tensor_ptr = col_ids->flat<int32>().data();
@@ -561,9 +562,10 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   int64_t max_ids_per_partition = -1;
   int64_t max_unique_ids_per_partition = -1;
 
-  GetMaxIdsAndUniques(ctx, program_key, table_name_, per_sc_sample_count,
-                      feature_width_, &max_ids_per_partition,
-                      &max_unique_ids_per_partition);
+  OP_REQUIRES_OK(
+      ctx, GetMaxIdsAndUniquesExternal(
+               program_key, table_name_, per_sc_sample_count, feature_width_,
+               &max_ids_per_partition, &max_unique_ids_per_partition));
 
   sprase_core_ops_stats_handler_->Record(StatsType::MAX_IDS_PER_PARTITION,
                                          max_ids_per_partition, device_name_,

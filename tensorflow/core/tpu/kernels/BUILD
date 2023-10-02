@@ -1394,6 +1394,9 @@ cc_library(
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/stream_executor/tpu:status_helper",
+        "@local_xla//xla/stream_executor/tpu:tpu_api",
+        "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
     ],
 )
 

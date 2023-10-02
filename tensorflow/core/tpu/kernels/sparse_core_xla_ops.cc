@@ -55,27 +55,6 @@ xla::XlaOp PowHack(xla::XlaOp base, xla::XlaOp exp) {
   return xla::Exp(xla::Log(base) * exp);
 }
 
-// Gets the max ids and max unique ids for the given table.
-Status GetMaxIdsAndUniques(const std::string& program_key,
-                           const std::string& table_name,
-                           int64_t num_samples_per_sparse_core,
-                           int64_t feature_width,
-                           int64_t* max_ids_per_partition,
-                           int64_t* max_unique_ids_per_partition) {
-  SparseCore_GetMaxIdsAndUniques_Params params;
-  params.program_key = program_key.c_str();
-  params.table_name = table_name.c_str();
-  params.num_samples_per_sparse_core = num_samples_per_sparse_core;
-  params.feature_width = feature_width;
-  StatusHelper status;
-  params.status = status.c_status;
-
-  stream_executor::tpu::OpsApiFn()->SparseCore_GetMaxIdsAndUniquesFn(&params);
-  *max_ids_per_partition = params.max_ids_per_partition;
-  *max_unique_ids_per_partition = params.max_unique_ids_per_partition;
-  return status.status();
-}
-
 // Get the SparseCore logical replica count.
 // TODO(agagik): get it from the tpu topology.
 StatusOr<int64_t> GetSparseCoresPerChip() { return 4; }
@@ -264,9 +243,9 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
     const int32_t feature_width = embedding_table_shape.dimensions(1);
 
     OP_REQUIRES_OK(
-        ctx, GetMaxIdsAndUniques("", table_name_, per_sparse_core_batch_size,
-                                 feature_width, &max_ids_per_partition,
-                                 &max_unique_ids_per_partition));
+        ctx, GetMaxIdsAndUniquesExternal(
+                 "", table_name_, per_sparse_core_batch_size, feature_width,
+                 &max_ids_per_partition, &max_unique_ids_per_partition));
     VLOG(3) << "XlaSparseDenseMatmulWithCsrInputOp: "
             << "table_name = '" << table_name_
             << "', max_ids = " << max_ids_per_partition
@@ -406,9 +385,9 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
 
     const int32_t feature_width = embedding_table_shape.dimensions(1);
     OP_REQUIRES_OK(
-        ctx, GetMaxIdsAndUniques("", table_name_, per_sparse_core_batch_size,
-                                 feature_width, &max_ids_per_partition,
-                                 &max_unique_ids_per_partition));
+        ctx, GetMaxIdsAndUniquesExternal(
+                 "", table_name_, per_sparse_core_batch_size, feature_width,
+                 &max_ids_per_partition, &max_unique_ids_per_partition));
     VLOG(3) << "XlaSparseDenseMatmulWithCsrInputOp: "
             << "table_name = '" << table_name_
             << "', max_ids = " << max_ids_per_partition
