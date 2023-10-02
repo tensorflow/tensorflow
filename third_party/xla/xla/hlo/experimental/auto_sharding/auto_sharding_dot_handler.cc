@@ -43,51 +43,14 @@ namespace spmd {
 using DimMap = StableHashMap</*instr. dim idx*/ int, /* mesh dim idx*/ int>;
 using MeshDims = absl::Span<const int64_t>;
 
-void AppendNewStrategy(const HloInstruction* ins, const std::string& name,
-                       const HloSharding& output_spec,
-                       absl::Span<const HloSharding> input_specs,
-                       double compute_cost, double communication_cost,
-                       const ClusterEnvironment& cluster_env,
-                       const StrategyMap& strategy_map,
-                       std::unique_ptr<StrategyVector>& strategies) {
-  std::vector<std::vector<double>> resharding_costs;
-
-  for (int i = 0; i < ins->operand_count(); ++i) {
-    const HloInstruction* operand = ins->operand(i);
-    resharding_costs.push_back(
-        ReshardingCostVector(strategy_map.at(operand).get(), operand->shape(),
-                             input_specs[i], cluster_env));
-  }
-
-  strategies->leaf_vector.push_back(ShardingStrategy({
-      name,
-      output_spec,
-      compute_cost,
-      communication_cost,
-      GetBytes(ins->shape()) / output_spec.NumTiles(),
-      resharding_costs,
-      {input_specs.begin(), input_specs.end()},
-  }));
-}
-
-// Calls the given 'split_func' on all possible mesh dim combinations.
-void SplitWithMeshShape(std::function<void(MeshDims)> split_func,
-                        absl::Span<const int64_t> mesh_shape) {
-  for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-    for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-      split_func({i, j});
-      split_func({j, i});
-    }
-  }
-}
-
-class DotHandler {
- public:
-  DotHandler(std::unique_ptr<StrategyVector>& strategies,
-             StrategyMap& strategy_map, const HloInstruction* ins,
-             const ClusterEnvironment& cluster_env,
-             const InstructionBatchDimMap& batch_map,
-             const AutoShardingSolverOption& solver_option)
+// Contains base functionality common to both DotHandler and ConvHandler.
+class HandlerBase {
+ protected:
+  HandlerBase(std::unique_ptr<StrategyVector>& strategies,
+              StrategyMap& strategy_map, const HloInstruction* ins,
+              const ClusterEnvironment& cluster_env,
+              const InstructionBatchDimMap& batch_map,
+              const AutoShardingSolverOption& solver_option)
       : strategies_(strategies),
         strategy_map_(strategy_map),
         ins_(ins),
@@ -97,19 +60,41 @@ class DotHandler {
         device_mesh_(cluster_env.device_mesh_),
         device_mesh_1d_(cluster_env.device_mesh_1d_),
         lhs_(ins->operand(0)),
-        rhs_(ins->operand(1)),
-        dot_dnums_(ins->dot_dimension_numbers()),
-        space_base_dim_(dot_dnums_.lhs_batch_dimensions_size()),
-        lhs_con_dims_(
-            ins->dot_dimension_numbers().lhs_contracting_dimensions()),
-        rhs_con_dims_(
-            ins->dot_dimension_numbers().rhs_contracting_dimensions()),
-        lhs_batch_dims_(ins->dot_dimension_numbers().lhs_batch_dimensions()),
-        rhs_batch_dims_(ins->dot_dimension_numbers().rhs_batch_dimensions()) {
-    std::tie(lhs_space_dims_, rhs_space_dims_) =
-        GetSpaceDims(lhs_->shape(), rhs_->shape(), dot_dnums_);
-    CHECK_EQ(lhs_con_dims_.size(), rhs_con_dims_.size());
-    CHECK_EQ(lhs_batch_dims_.size(), rhs_batch_dims_.size());
+        rhs_(ins->operand(1)) {}
+
+  void AppendNewStrategy(const std::string& name,
+                         const HloSharding& output_spec,
+                         absl::Span<const HloSharding> input_specs,
+                         double compute_cost, double communication_cost) {
+    std::vector<std::vector<double>> resharding_costs;
+
+    for (int i = 0; i < ins_->operand_count(); ++i) {
+      const HloInstruction* operand = ins_->operand(i);
+      resharding_costs.push_back(
+          ReshardingCostVector(strategy_map_.at(operand).get(),
+                               operand->shape(), input_specs[i], cluster_env_));
+    }
+
+    strategies_->leaf_vector.push_back(ShardingStrategy({
+        name,
+        output_spec,
+        compute_cost,
+        communication_cost,
+        GetBytes(ins_->shape()) / output_spec.NumTiles(),
+        resharding_costs,
+        {input_specs.begin(), input_specs.end()},
+    }));
+  }
+
+  // Calls the given 'split_func' on all possible mesh dim combinations.
+  void Split(std::function<void(MeshDims)> split_func) {
+    auto mesh_shape = device_mesh_.dimensions();
+    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+        split_func({i, j});
+        split_func({j, i});
+      }
+    }
   }
 
   bool CheckDims(const HloInstruction* ins,
@@ -125,6 +110,42 @@ class DotHandler {
         return false;
     }
     return true;
+  }
+
+  std::unique_ptr<StrategyVector>& strategies_;
+  StrategyMap& strategy_map_;
+  const HloInstruction* ins_;
+  const ClusterEnvironment& cluster_env_;
+  const InstructionBatchDimMap& batch_map_;
+  const AutoShardingSolverOption& solver_option_;
+
+  const Array<int64_t>& device_mesh_;
+  const Array<int64_t>& device_mesh_1d_;
+  const HloInstruction* lhs_;
+  const HloInstruction* rhs_;
+};
+
+class DotHandler : public HandlerBase {
+ public:
+  DotHandler(std::unique_ptr<StrategyVector>& strategies,
+             StrategyMap& strategy_map, const HloInstruction* ins,
+             const ClusterEnvironment& cluster_env,
+             const InstructionBatchDimMap& batch_map,
+             const AutoShardingSolverOption& solver_option)
+      : HandlerBase(strategies, strategy_map, ins, cluster_env, batch_map,
+                    solver_option),
+        dot_dnums_(ins->dot_dimension_numbers()),
+        space_base_dim_(dot_dnums_.lhs_batch_dimensions_size()),
+        lhs_con_dims_(
+            ins->dot_dimension_numbers().lhs_contracting_dimensions()),
+        rhs_con_dims_(
+            ins->dot_dimension_numbers().rhs_contracting_dimensions()),
+        lhs_batch_dims_(ins->dot_dimension_numbers().lhs_batch_dimensions()),
+        rhs_batch_dims_(ins->dot_dimension_numbers().rhs_batch_dimensions()) {
+    std::tie(lhs_space_dims_, rhs_space_dims_) =
+        GetSpaceDims(lhs_->shape(), rhs_->shape(), dot_dnums_);
+    CHECK_EQ(lhs_con_dims_.size(), rhs_con_dims_.size());
+    CHECK_EQ(lhs_batch_dims_.size(), rhs_batch_dims_.size());
   }
 
   void SplitLhsSpaceRhsSpace(MeshDims mesh_dims) {
@@ -147,8 +168,7 @@ class DotHandler {
         HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_space_dims_[j]},
                                     {mesh_dims[1]}, device_mesh_);
 
-        AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
-                          cluster_env_, strategy_map_, strategies_);
+        AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
       }
     }
   }
@@ -170,8 +190,7 @@ class DotHandler {
                  mesh_dims, device_mesh_);
         HloSharding rhs_spec = HloSharding::Replicate();
 
-        AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
-                          cluster_env_, strategy_map_, strategies_);
+        AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
       }
     }
   }
@@ -196,8 +215,7 @@ class DotHandler {
             Tile(rhs_->shape(), {rhs_space_dims_[i], rhs_space_dims_[j]},
                  mesh_dims, device_mesh_);
 
-        AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
-                          cluster_env_, strategy_map_, strategies_);
+        AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
       }
     }
   }
@@ -226,9 +244,8 @@ class DotHandler {
           double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
           double communication_cost =
               cluster_env_.AllReduceCost(memory_cost, mesh_dims[1]);
-          AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
-                            communication_cost, cluster_env_, strategy_map_,
-                            strategies_);
+          AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0,
+                            communication_cost);
         }
       }
     }
@@ -259,9 +276,8 @@ class DotHandler {
           double communication_cost =
               cluster_env_.AllReduceCost(memory_cost, mesh_dims[0]);
 
-          AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
-                            communication_cost, cluster_env_, strategy_map_,
-                            strategies_);
+          AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0,
+                            communication_cost);
         }
       }
     }
@@ -280,8 +296,7 @@ class DotHandler {
           HloSharding rhs_spec =
               Tile(rhs_->shape(), {rhs_batch_dims_[i]}, {j}, device_mesh_);
 
-          AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
-                            cluster_env_, strategy_map_, strategies_);
+          AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
         }
       }
     }
@@ -304,8 +319,7 @@ class DotHandler {
       HloSharding rhs_spec =
           Tile(rhs_->shape(), {rhs_batch_dims_[0], rhs_batch_dims_[1]},
                mesh_dims, device_mesh_);
-      AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
-                        cluster_env_, strategy_map_, strategies_);
+      AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
     }
   }
 
@@ -328,8 +342,7 @@ class DotHandler {
           HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_batch_dims_[j]},
                                       {mesh_dims[0]}, device_mesh_);
 
-          AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
-                            cluster_env_, strategy_map_, strategies_);
+          AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
         }
       }
     }
@@ -357,8 +370,7 @@ class DotHandler {
               Tile(rhs_->shape(), {rhs_batch_dims_[j], rhs_space_dims_[i]},
                    mesh_dims, device_mesh_);
 
-          AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
-                            cluster_env_, strategy_map_, strategies_);
+          AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
         }
       }
     }
@@ -388,9 +400,8 @@ class DotHandler {
           double communication_cost =
               cluster_env_.AllReduceCost(memory_cost, mesh_dims[1]);
 
-          AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
-                            communication_cost, cluster_env_, strategy_map_,
-                            strategies_);
+          AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0,
+                            communication_cost);
         }
       }
     }
@@ -422,9 +433,8 @@ class DotHandler {
           double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
           double communication_cost = cluster_env_.AllReduceCost(
               memory_cost, mesh_dims[0], mesh_dims[1]);
-          AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
-                            communication_cost, cluster_env_, strategy_map_,
-                            strategies_);
+          AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0,
+                            communication_cost);
         }
       }
     }
@@ -449,9 +459,8 @@ class DotHandler {
         double communication_cost =
             cluster_env_.AllReduceCost(memory_cost, mesh_dims[0]);
 
-        AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec},
-                          compute_cost, communication_cost, cluster_env_,
-                          strategy_map_, strategies_);
+        AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, compute_cost,
+                          communication_cost);
       }
     }
   }
@@ -479,8 +488,7 @@ class DotHandler {
           HloSharding lhs_spec = Tile(lhs_->shape(), {lhs_space_dims_[i]},
                                       {mesh_dim}, device_mesh_1d_);
           HloSharding rhs_spec = HloSharding::Replicate();
-          AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
-                            cluster_env_, strategy_map_, strategies_);
+          AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
       }
 
       // R = Sk x Sk @ (allreduce @ 0)
@@ -504,9 +512,8 @@ class DotHandler {
           double communication_cost =
               cluster_env_.AllReduceCost(memory_cost, mesh_dim);
 
-          AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
-                            communication_cost, cluster_env_, strategy_map_,
-                            strategies_);
+          AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0,
+                            communication_cost);
         }
     }
   }
@@ -528,14 +535,9 @@ class DotHandler {
                                       {mesh_dim}, device_mesh_1d_);
           HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_batch_dims_[i]},
                                       {mesh_dim}, device_mesh_1d_);
-          AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
-                            cluster_env_, strategy_map_, strategies_);
+          AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
       }
     }
-  }
-
-  void Split(std::function<void(MeshDims)> split_func) const {
-    SplitWithMeshShape(split_func, device_mesh_.dimensions());
   }
 
   Status RegisterStrategies() {
@@ -630,18 +632,6 @@ class DotHandler {
     return OkStatus();
   }
 
-  std::unique_ptr<StrategyVector>& strategies_;
-  StrategyMap& strategy_map_;
-  const HloInstruction* ins_;
-  const ClusterEnvironment& cluster_env_;
-  const InstructionBatchDimMap& batch_map_;
-  const AutoShardingSolverOption& solver_option_;
-
-  const Array<int64_t>& device_mesh_;
-  const Array<int64_t>& device_mesh_1d_;
-  const HloInstruction* lhs_;
-  const HloInstruction* rhs_;
-
   // Dimension information
   const DotDimensionNumbers& dot_dnums_;
   int64_t space_base_dim_;
@@ -668,23 +658,15 @@ Status HandleDot(std::unique_ptr<StrategyVector>& strategies,
   return OkStatus();
 }
 
-class ConvHandler {
+class ConvHandler : public HandlerBase {
  public:
   ConvHandler(std::unique_ptr<StrategyVector>& strategies,
               StrategyMap& strategy_map, const HloInstruction* ins,
               const ClusterEnvironment& cluster_env,
               const InstructionBatchDimMap& batch_map,
               const AutoShardingSolverOption& solver_option)
-      : strategies_(strategies),
-        strategy_map_(strategy_map),
-        ins_(ins),
-        cluster_env_(cluster_env),
-        batch_map_(batch_map),
-        solver_option_(solver_option),
-        device_mesh_(cluster_env.device_mesh_),
-        device_mesh_1d_(cluster_env.device_mesh_1d_),
-        lhs_(ins->operand(0)),
-        rhs_(ins->operand(1)),
+      : HandlerBase(strategies, strategy_map, ins, cluster_env, batch_map,
+                    solver_option),
         conv_dnums_(ins->convolution_dimension_numbers()) {
     lhs_batch_dim_ = conv_dnums_.input_batch_dimension();
     lhs_in_channel_dim_ = conv_dnums_.input_feature_dimension();
@@ -706,8 +688,7 @@ class ConvHandler {
     HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_out_channel_dim_},
                                 {mesh_dims[1]}, device_mesh_);
 
-    AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
-                      cluster_env_, strategy_map_, strategies_);
+    AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
   }
 
   void SplitLhsBatchBothInchannel(MeshDims mesh_dims) {
@@ -729,9 +710,8 @@ class ConvHandler {
       double communication_cost =
           cluster_env_.AllReduceCost(memory_cost, mesh_dims[1]);
 
-      AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
-                        communication_cost, cluster_env_, strategy_map_,
-                        strategies_);
+      AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0,
+                        communication_cost);
     }
   }
 
@@ -753,9 +733,8 @@ class ConvHandler {
       double communication_cost =
           cluster_env_.AllReduceCost(memory_cost, mesh_dims[0]);
 
-      AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
-                        communication_cost, cluster_env_, strategy_map_,
-                        strategies_);
+      AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0,
+                        communication_cost);
     }
   }
 
@@ -775,8 +754,7 @@ class ConvHandler {
             Tile(lhs_->shape(), {lhs_batch_dim_}, {mesh_dim}, device_mesh_1d_);
         HloSharding rhs_spec = HloSharding::Replicate();
 
-        AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
-                          cluster_env_, strategy_map_, strategies_);
+        AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
       }
 
       // R = Sk x Sk @ (allreduce @ 0)
@@ -793,9 +771,8 @@ class ConvHandler {
         double communication_cost = cluster_env_.AllReduceCost(memory_cost, 0) +
                                     cluster_env_.AllReduceCost(memory_cost, 1);
 
-        AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
-                          communication_cost, cluster_env_, strategy_map_,
-                          strategies_);
+        AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0,
+                          communication_cost);
       }
     }
   }
@@ -816,12 +793,7 @@ class ConvHandler {
     HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_out_channel_dim_},
                                 {mesh_dims[1]}, device_mesh_);
 
-    AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
-                      cluster_env_, strategy_map_, strategies_);
-  }
-
-  void Split(std::function<void(MeshDims)> split_func) const {
-    SplitWithMeshShape(split_func, device_mesh_.dimensions());
+    AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
   }
 
   Status RegisterStrategies() {
@@ -872,18 +844,6 @@ class ConvHandler {
 
     return OkStatus();
   }
-
-  std::unique_ptr<StrategyVector>& strategies_;
-  StrategyMap& strategy_map_;
-  const HloInstruction* ins_;
-  const ClusterEnvironment& cluster_env_;
-  const InstructionBatchDimMap& batch_map_;
-  const AutoShardingSolverOption& solver_option_;
-
-  const Array<int64_t>& device_mesh_;
-  const Array<int64_t>& device_mesh_1d_;
-  const HloInstruction* lhs_;
-  const HloInstruction* rhs_;
 
   // Dimension information
   const ConvolutionDimensionNumbers& conv_dnums_;
