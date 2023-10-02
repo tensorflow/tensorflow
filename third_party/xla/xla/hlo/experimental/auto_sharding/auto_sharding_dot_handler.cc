@@ -109,6 +109,16 @@ class HandlerBase {
     return true;
   }
 
+  HloSharding CreateInputSpec(const HloInstruction* ins,
+                              const DimMap& dim_map) const {
+    std::vector<int64_t> tensor_dims, mesh_dims;
+    for (const auto& [tensor_dim, mesh_dim] : dim_map) {
+      tensor_dims.push_back(tensor_dim);
+      mesh_dims.push_back(mesh_dim);
+    }
+    return Tile(ins->shape(), tensor_dims, mesh_dims, device_mesh_);
+  }
+
   std::unique_ptr<StrategyVector>& strategies_;
   StrategyMap& strategy_map_;
   const HloInstruction* ins_;
@@ -149,8 +159,9 @@ class DotHandler : public HandlerBase {
     DCHECK_EQ(mesh_dims.size(), 2);
     for (int64_t i = 0; i < lhs_space_dims_.size(); ++i) {
       for (int64_t j = 0; j < rhs_space_dims_.size(); ++j) {
-        if (!CheckDims(lhs_, {{lhs_space_dims_[i], mesh_dims[0]}}) ||
-            !CheckDims(rhs_, {{rhs_space_dims_[j], mesh_dims[1]}}))
+        const DimMap lhs_dim_map = {{lhs_space_dims_[i], mesh_dims[0]}};
+        const DimMap rhs_dim_map = {{rhs_space_dims_[j], mesh_dims[1]}};
+        if (!CheckDims(lhs_, lhs_dim_map) || !CheckDims(rhs_, rhs_dim_map))
           continue;
         std::string name = absl::StrFormat("SS = SR x RS @ {%s}",
                                            absl::StrJoin(mesh_dims, ","));
@@ -160,10 +171,8 @@ class DotHandler : public HandlerBase {
                   space_base_dim_ +
                       static_cast<int64_t>(lhs_space_dims_.size()) + j},
                  mesh_dims, device_mesh_);
-        HloSharding lhs_spec = Tile(lhs_->shape(), {lhs_space_dims_[i]},
-                                    {mesh_dims[0]}, device_mesh_);
-        HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_space_dims_[j]},
-                                    {mesh_dims[1]}, device_mesh_);
+        HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map);
+        HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map);
 
         AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
       }
@@ -174,17 +183,15 @@ class DotHandler : public HandlerBase {
     DCHECK_EQ(mesh_dims.size(), 2);
     for (int64_t i = 0; i < lhs_space_dims_.size(); ++i) {
       for (int64_t j = i + 1; j < lhs_space_dims_.size(); ++j) {
-        if (!CheckDims(lhs_, {{lhs_space_dims_[i], mesh_dims[0]},
-                              {lhs_space_dims_[j], mesh_dims[1]}}))
-          continue;
+        const DimMap lhs_dim_map = {{lhs_space_dims_[i], mesh_dims[0]},
+                                    {lhs_space_dims_[j], mesh_dims[1]}};
+        if (!CheckDims(lhs_, lhs_dim_map)) continue;
         std::string name = absl::StrFormat("SSR = SSR x RR @ {%s}",
                                            absl::StrJoin(mesh_dims, ","));
         HloSharding output_spec =
             Tile(ins_->shape(), {space_base_dim_ + i, space_base_dim_ + j},
                  mesh_dims, device_mesh_);
-        HloSharding lhs_spec =
-            Tile(lhs_->shape(), {lhs_space_dims_[i], lhs_space_dims_[j]},
-                 mesh_dims, device_mesh_);
+        HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map);
         HloSharding rhs_spec = HloSharding::Replicate();
 
         AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
@@ -196,9 +203,9 @@ class DotHandler : public HandlerBase {
     DCHECK_EQ(mesh_dims.size(), 2);
     for (int64_t i = 0; i < rhs_space_dims_.size(); ++i) {
       for (int64_t j = i + 1; j < rhs_space_dims_.size(); ++j) {
-        if (!CheckDims(rhs_, {{rhs_space_dims_[i], mesh_dims[0]},
-                              {rhs_space_dims_[j], mesh_dims[1]}}))
-          continue;
+        const DimMap rhs_dim_map = {{rhs_space_dims_[i], mesh_dims[0]},
+                                    {rhs_space_dims_[j], mesh_dims[1]}};
+        if (!CheckDims(rhs_, rhs_dim_map)) continue;
         std::string name = absl::StrFormat("RSS = RR x RSS @ {%s}",
                                            absl::StrJoin(mesh_dims, ","));
         HloSharding output_spec = Tile(
@@ -208,9 +215,7 @@ class DotHandler : public HandlerBase {
                  j},
             mesh_dims, device_mesh_);
         HloSharding lhs_spec = HloSharding::Replicate();
-        HloSharding rhs_spec =
-            Tile(rhs_->shape(), {rhs_space_dims_[i], rhs_space_dims_[j]},
-                 mesh_dims, device_mesh_);
+        HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map);
 
         AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
       }
@@ -226,17 +231,15 @@ class DotHandler : public HandlerBase {
                           absl::StrJoin(mesh_dims, ","), mesh_dims[1]);
       for (int64_t i = 0; i < lhs_space_dims_.size(); ++i) {
         for (int64_t j = 0; j < lhs_con_dims_.size(); ++j) {
-          if (!CheckDims(lhs_, {{lhs_space_dims_[i], mesh_dims[0]},
-                                {lhs_con_dims_[j], mesh_dims[1]}}))
-            continue;
+          const DimMap lhs_dim_map = {{lhs_space_dims_[i], mesh_dims[0]},
+                                      {lhs_con_dims_[j], mesh_dims[1]}};
+          const DimMap rhs_dim_map = {{rhs_con_dims_[j], mesh_dims[1]}};
+          if (!CheckDims(lhs_, lhs_dim_map)) continue;
 
           HloSharding output_spec = Tile(ins_->shape(), {space_base_dim_ + i},
                                          {mesh_dims[0]}, device_mesh_);
-          HloSharding lhs_spec =
-              Tile(lhs_->shape(), {lhs_space_dims_[i], lhs_con_dims_[j]},
-                   mesh_dims, device_mesh_);
-          HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_con_dims_[j]},
-                                      {mesh_dims[1]}, device_mesh_);
+          HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map);
+          HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map);
 
           double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
           double communication_cost =
@@ -256,19 +259,18 @@ class DotHandler : public HandlerBase {
                           absl::StrJoin(mesh_dims, ","), mesh_dims[0]);
       for (int64_t i = 0; i < rhs_space_dims_.size(); ++i) {
         for (int64_t j = 0; j < lhs_con_dims_.size(); ++j) {
-          if (!CheckDims(rhs_, {{rhs_space_dims_[i], mesh_dims[1]}}) ||
-              !CheckDims(lhs_, {{lhs_con_dims_[j], mesh_dims[0]}}))
+          const DimMap rhs_dim_map = {{rhs_space_dims_[i], mesh_dims[1]},
+                                      {rhs_con_dims_[j], mesh_dims[0]}};
+          const DimMap lhs_dim_map = {{lhs_con_dims_[j], mesh_dims[0]}};
+          if (!CheckDims(lhs_, lhs_dim_map) || !CheckDims(rhs_, rhs_dim_map))
             continue;
           HloSharding output_spec =
               Tile(ins_->shape(),
                    {space_base_dim_ +
                     static_cast<int64_t>(lhs_space_dims_.size()) + i},
                    {mesh_dims[1]}, device_mesh_);
-          HloSharding lhs_spec = Tile(lhs_->shape(), {lhs_con_dims_[j]},
-                                      {mesh_dims[0]}, device_mesh_);
-          HloSharding rhs_spec =
-              Tile(rhs_->shape(), {rhs_con_dims_[j], rhs_space_dims_[i]},
-                   mesh_dims, device_mesh_);
+          HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map);
+          HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map);
           double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
           double communication_cost =
               cluster_env_.AllReduceCost(memory_cost, mesh_dims[0]);
@@ -285,13 +287,13 @@ class DotHandler : public HandlerBase {
                          [](int64_t size) { return size > 1; }) == 1) {
       for (int64_t i = 0; i < lhs_batch_dims_.size(); ++i) {
         for (int64_t j = 0; j < device_mesh_.num_dimensions(); ++j) {
-          if (!CheckDims(lhs_, {{lhs_batch_dims_[i], j}})) continue;
+          const DimMap lhs_dim_map = {{lhs_batch_dims_[i], j}};
+          const DimMap rhs_dim_map = {{rhs_batch_dims_[i], j}};
+          if (!CheckDims(lhs_, lhs_dim_map)) continue;
           std::string name = absl::StrFormat("Sb_%d = Sb x Sb @ {%d}", i, j);
           HloSharding output_spec = Tile(ins_->shape(), {i}, {j}, device_mesh_);
-          HloSharding lhs_spec =
-              Tile(lhs_->shape(), {lhs_batch_dims_[i]}, {j}, device_mesh_);
-          HloSharding rhs_spec =
-              Tile(rhs_->shape(), {rhs_batch_dims_[i]}, {j}, device_mesh_);
+          HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map);
+          HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map);
 
           AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
         }
@@ -303,19 +305,17 @@ class DotHandler : public HandlerBase {
     DCHECK_EQ(mesh_dims.size(), 2);
     if (lhs_batch_dims_.size() == 2 && device_mesh_.dim(mesh_dims[0]) > 1 &&
         device_mesh_.dim(mesh_dims[1]) > 1) {
-      if (!CheckDims(lhs_, {{lhs_batch_dims_[0], mesh_dims[0]},
-                            {lhs_batch_dims_[1], mesh_dims[1]}}))
-        return;
+      const DimMap lhs_dim_map = {{lhs_batch_dims_[0], mesh_dims[0]},
+                                  {lhs_batch_dims_[1], mesh_dims[1]}};
+      const DimMap rhs_dim_map = {{rhs_batch_dims_[0], mesh_dims[0]},
+                                  {rhs_batch_dims_[1], mesh_dims[1]}};
+      if (!CheckDims(lhs_, lhs_dim_map)) return;
       std::string name =
           absl::StrFormat("Sb = Sb x Sb @ {%s}", absl::StrJoin(mesh_dims, ","));
       HloSharding output_spec =
           Tile(ins_->shape(), {0, 1}, mesh_dims, device_mesh_);
-      HloSharding lhs_spec =
-          Tile(lhs_->shape(), {lhs_batch_dims_[0], lhs_batch_dims_[1]},
-               mesh_dims, device_mesh_);
-      HloSharding rhs_spec =
-          Tile(rhs_->shape(), {rhs_batch_dims_[0], rhs_batch_dims_[1]},
-               mesh_dims, device_mesh_);
+      HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map);
+      HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map);
       AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
     }
   }
@@ -328,16 +328,14 @@ class DotHandler : public HandlerBase {
                                          absl::StrJoin(mesh_dims, ","));
       for (int64_t i = 0; i < lhs_space_dims_.size(); ++i) {
         for (int64_t j = 0; j < lhs_batch_dims_.size(); ++j) {
-          if (!CheckDims(lhs_, {{lhs_space_dims_[i], mesh_dims[0]},
-                                {lhs_batch_dims_[j], mesh_dims[1]}}))
-            continue;
+          const DimMap lhs_dim_map = {{lhs_space_dims_[i], mesh_dims[1]},
+                                      {lhs_batch_dims_[j], mesh_dims[0]}};
+          const DimMap rhs_dim_map = {{rhs_batch_dims_[j], mesh_dims[0]}};
+          if (!CheckDims(lhs_, lhs_dim_map)) continue;
           HloSharding output_spec = Tile(
               ins_->shape(), {j, space_base_dim_ + i}, mesh_dims, device_mesh_);
-          HloSharding lhs_spec =
-              Tile(lhs_->shape(), {lhs_batch_dims_[j], lhs_space_dims_[i]},
-                   mesh_dims, device_mesh_);
-          HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_batch_dims_[j]},
-                                      {mesh_dims[0]}, device_mesh_);
+          HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map);
+          HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map);
 
           AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
         }
@@ -353,19 +351,18 @@ class DotHandler : public HandlerBase {
                                          absl::StrJoin(mesh_dims, ","));
       for (int64_t i = 0; i < rhs_space_dims_.size(); ++i) {
         for (int64_t j = 0; j < lhs_batch_dims_.size(); ++j) {
-          if (!CheckDims(rhs_, {{rhs_space_dims_[i], mesh_dims[1]}}) ||
-              !CheckDims(lhs_, {{lhs_batch_dims_[j], mesh_dims[0]}}))
+          const DimMap rhs_dim_map = {{rhs_space_dims_[i], mesh_dims[1]},
+                                      {rhs_batch_dims_[j], mesh_dims[0]}};
+          const DimMap lhs_dim_map = {{lhs_batch_dims_[j], mesh_dims[0]}};
+          if (!CheckDims(lhs_, lhs_dim_map) || !CheckDims(rhs_, rhs_dim_map))
             continue;
           HloSharding output_spec =
               Tile(ins_->shape(),
                    {j, space_base_dim_ +
                            static_cast<int64_t>(lhs_space_dims_.size()) + i},
                    mesh_dims, device_mesh_);
-          HloSharding lhs_spec = Tile(lhs_->shape(), {lhs_batch_dims_[j]},
-                                      {mesh_dims[0]}, device_mesh_);
-          HloSharding rhs_spec =
-              Tile(rhs_->shape(), {rhs_batch_dims_[j], rhs_space_dims_[i]},
-                   mesh_dims, device_mesh_);
+          HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map);
+          HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map);
 
           AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
         }
@@ -382,17 +379,14 @@ class DotHandler : public HandlerBase {
                           absl::StrJoin(mesh_dims, ","), mesh_dims[1]);
       for (int64_t i = 0; i < lhs_con_dims_.size(); ++i) {
         for (int64_t j = 0; j < lhs_batch_dims_.size(); ++j) {
-          if (!CheckDims(lhs_, {{lhs_con_dims_[i], mesh_dims[1]},
-                                {lhs_batch_dims_[j], mesh_dims[0]}}))
-            continue;
+          const DimMap lhs_dim_map = {{lhs_con_dims_[i], mesh_dims[1]},
+                                      {lhs_batch_dims_[j], mesh_dims[0]}};
+          const DimMap rhs_dim_map = {{rhs_batch_dims_[j], mesh_dims[0]}};
+          if (!CheckDims(lhs_, lhs_dim_map)) continue;
           HloSharding output_spec =
               Tile(ins_->shape(), {j}, {mesh_dims[0]}, device_mesh_);
-          HloSharding lhs_spec =
-              Tile(lhs_->shape(), {lhs_batch_dims_[j], lhs_con_dims_[i]},
-                   mesh_dims, device_mesh_);
-          HloSharding rhs_spec =
-              Tile(rhs_->shape(), {rhs_batch_dims_[j], rhs_con_dims_[i]},
-                   mesh_dims, device_mesh_);
+          HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map);
+          HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map);
           double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
           double communication_cost =
               cluster_env_.AllReduceCost(memory_cost, mesh_dims[1]);
@@ -415,18 +409,15 @@ class DotHandler : public HandlerBase {
           absl::StrJoin(mesh_dims, ","), absl::StrJoin(mesh_dims, ", "));
       for (int64_t i = 0; i < lhs_con_dims_.size(); ++i) {
         for (int64_t j = i + 1; j < lhs_con_dims_.size(); ++j) {
-          if (!CheckDims(lhs_, {{lhs_con_dims_[i], mesh_dims[0]},
-                                {lhs_con_dims_[j], mesh_dims[1]}}) ||
-              !CheckDims(rhs_, {{rhs_con_dims_[i], mesh_dims[0]},
-                                {rhs_con_dims_[j], mesh_dims[1]}}))
+          const DimMap lhs_dim_map = {{lhs_con_dims_[i], mesh_dims[0]},
+                                      {lhs_con_dims_[j], mesh_dims[1]}};
+          const DimMap rhs_dim_map = {{rhs_con_dims_[i], mesh_dims[0]},
+                                      {rhs_con_dims_[j], mesh_dims[1]}};
+          if (!CheckDims(lhs_, lhs_dim_map) || !CheckDims(rhs_, rhs_dim_map))
             continue;
           HloSharding output_spec = HloSharding::Replicate();
-          HloSharding lhs_spec =
-              Tile(lhs_->shape(), {lhs_con_dims_[i], lhs_con_dims_[j]},
-                   mesh_dims, device_mesh_);
-          HloSharding rhs_spec =
-              Tile(rhs_->shape(), {rhs_con_dims_[i], rhs_con_dims_[j]},
-                   mesh_dims, device_mesh_);
+          HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map);
+          HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map);
           double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
           double communication_cost = cluster_env_.AllReduceCost(
               memory_cost, mesh_dims[0], mesh_dims[1]);
@@ -444,12 +435,12 @@ class DotHandler : public HandlerBase {
       std::string name = absl::StrFormat("RR = RS x SR @ {%d} (allreduce @ %d)",
                                          mesh_dims[0], mesh_dims[0]);
       for (int64_t i = 0; i < lhs_con_dims_.size(); ++i) {
-        if (!CheckDims(lhs_, {{lhs_con_dims_[i], mesh_dims[0]}})) continue;
+        const DimMap lhs_dim_map = {{lhs_con_dims_[i], mesh_dims[0]}};
+        const DimMap rhs_dim_map = {{rhs_con_dims_[i], mesh_dims[0]}};
+        if (!CheckDims(lhs_, lhs_dim_map)) continue;
         HloSharding output_spec = HloSharding::Replicate();
-        HloSharding lhs_spec = Tile(lhs_->shape(), {lhs_con_dims_[i]},
-                                    {mesh_dims[0]}, device_mesh_);
-        HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_con_dims_[i]},
-                                    {mesh_dims[0]}, device_mesh_);
+        HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map);
+        HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map);
         double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
         double compute_cost =
             cluster_env_.DotCost(lhs_->shape(), rhs_->shape(), dot_dnums_);
@@ -521,17 +512,16 @@ class DotHandler : public HandlerBase {
                          [](int64_t size) { return size > 1; }) > 1) {
       int mesh_dim = 0;
       for (int64_t i = 0; i < lhs_batch_dims_.size(); ++i) {
-          if (!CheckDims(lhs_, {{lhs_batch_dims_[i], mesh_dim}}) ||
-              !CheckDims(rhs_, {{rhs_batch_dims_[i], mesh_dim}}))
+          const DimMap lhs_dim_map = {{lhs_batch_dims_[i], mesh_dim}};
+          const DimMap rhs_dim_map = {{rhs_batch_dims_[i], mesh_dim}};
+          if (!CheckDims(lhs_, lhs_dim_map) || !CheckDims(rhs_, rhs_dim_map))
           continue;
           std::string name =
               absl::StrFormat("Sb_%d = Sb x Sb @ {%d} 1d", i, mesh_dim);
           HloSharding output_spec =
               Tile(ins_->shape(), {i}, {mesh_dim}, device_mesh_1d_);
-          HloSharding lhs_spec = Tile(lhs_->shape(), {lhs_batch_dims_[i]},
-                                      {mesh_dim}, device_mesh_1d_);
-          HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_batch_dims_[i]},
-                                      {mesh_dim}, device_mesh_1d_);
+          HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map);
+          HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map);
           AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, 0, 0);
       }
     }
