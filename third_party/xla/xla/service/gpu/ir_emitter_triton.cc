@@ -433,9 +433,11 @@ Value EmitParameterLoad(ImplicitLocOpBuilder& b, Value pointer,
                                 mt::EvictionPolicy::NORMAL,
                                 /*isVolatile=*/false);
   }
-  return b.create<mt::LoadOp>(pointer, mt::CacheModifier::NONE,
-                              mt::EvictionPolicy::NORMAL,
-                              /*isVolatile=*/false);
+  return Splat(b,
+               b.create<mt::LoadOp>(pointer, mt::CacheModifier::NONE,
+                                    mt::EvictionPolicy::NORMAL,
+                                    /*isVolatile=*/false),
+               {});
 }
 
 Value EmitConstant(ImplicitLocOpBuilder& b, const HloInstruction& constant) {

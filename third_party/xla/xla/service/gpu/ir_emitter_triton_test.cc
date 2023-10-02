@@ -869,6 +869,37 @@ ENTRY e {
 )");
 }
 
+TEST_F(TritonGemmTest, SingleElementTileIsHandled) {
+  MatchOptimizedHlo(R"(
+t {
+  p0 = f32[2,7,3]{2,1,0} parameter(0)
+  p1 = s32[2,1]{1,0} parameter(1)
+  c = s32[] constant(1)
+  br0 = s32[2,1]{1,0} broadcast(c), dimensions={}
+  cmp = pred[2,1]{1,0} compare(p1, br0), direction=LT
+  bc0 = pred[2]{0} bitcast(cmp)
+  br1 = pred[2,1,3,3]{3,2,0,1} broadcast(bc0), dimensions={0}
+  cvt = f32[2,1,3,3]{3,2,0,1} convert(br1)
+  bc1 = f32[2,3,3]{2,1,0} bitcast(cvt)
+  ROOT d = f32[2,7,3]{2,1,0} dot(p0, bc1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f32[2,7,3]{2,1,0} parameter(0)
+  p1 = s32[2,1]{1,0} parameter(1)
+  ROOT r = f32[2,7,3]{2,1,0} fusion(p0, p1), kind=kCustom,
+    calls=t, backend_config={"kind":"__triton_gemm"}
+})",
+                    // This partially optimized HLO will go through the
+                    // autotuner which will run the fusion through the emitter
+                    // multiple times and assign block sizes on success.
+                    R"(
+; CHECK: block_m
+)");
+}
+
 class TritonGemmTestAny : public TritonGemmTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
