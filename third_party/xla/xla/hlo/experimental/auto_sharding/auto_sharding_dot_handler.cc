@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
@@ -40,6 +41,7 @@ namespace xla {
 namespace spmd {
 
 using DimMap = StableHashMap</*instr. dim idx*/ int, /* mesh dim idx*/ int>;
+using MeshDims = absl::Span<const int64_t>;
 
 void AppendNewStrategy(const HloInstruction* ins, const std::string& name,
                        const HloSharding& output_spec,
@@ -69,12 +71,12 @@ void AppendNewStrategy(const HloInstruction* ins, const std::string& name,
 }
 
 // Calls the given 'split_func' on all possible mesh dim combinations.
-void SplitWithMeshShape(std::function<void(int, int)> split_func,
+void SplitWithMeshShape(std::function<void(MeshDims)> split_func,
                         absl::Span<const int64_t> mesh_shape) {
   for (int64_t i = 0; i < mesh_shape.size(); ++i) {
     for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-      split_func(i, j);
-      split_func(j, i);
+      split_func({i, j});
+      split_func({j, i});
     }
   }
 }
@@ -125,24 +127,25 @@ class DotHandler {
     return true;
   }
 
-  void SplitLhsSpaceRhsSpace(int mesh_dim0, int mesh_dim1) {
+  void SplitLhsSpaceRhsSpace(MeshDims mesh_dims) {
+    DCHECK_EQ(mesh_dims.size(), 2);
     for (int64_t i = 0; i < lhs_space_dims_.size(); ++i) {
       for (int64_t j = 0; j < rhs_space_dims_.size(); ++j) {
-        if (!CheckDims(lhs_, lhs_space_dims_, {{i, mesh_dim0}}) ||
-            !CheckDims(rhs_, rhs_space_dims_, {{j, mesh_dim1}}))
+        if (!CheckDims(lhs_, lhs_space_dims_, {{i, mesh_dims[0]}}) ||
+            !CheckDims(rhs_, rhs_space_dims_, {{j, mesh_dims[1]}}))
           continue;
-        std::string name =
-            absl::StrFormat("SS = SR x RS @ {%d,%d}", mesh_dim0, mesh_dim1);
+        std::string name = absl::StrFormat("SS = SR x RS @ {%s}",
+                                           absl::StrJoin(mesh_dims, ","));
         HloSharding output_spec =
             Tile(ins_->shape(),
                  {space_base_dim_ + i,
                   space_base_dim_ +
                       static_cast<int64_t>(lhs_space_dims_.size()) + j},
-                 {mesh_dim0, mesh_dim1}, device_mesh_);
+                 mesh_dims, device_mesh_);
         HloSharding lhs_spec = Tile(lhs_->shape(), {lhs_space_dims_[i]},
-                                    {mesh_dim0}, device_mesh_);
+                                    {mesh_dims[0]}, device_mesh_);
         HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_space_dims_[j]},
-                                    {mesh_dim1}, device_mesh_);
+                                    {mesh_dims[1]}, device_mesh_);
 
         AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
                           cluster_env_, strategy_map_, strategies_);
@@ -150,19 +153,21 @@ class DotHandler {
     }
   }
 
-  void SplitLhsSpaceOnly(int mesh_dim0, int mesh_dim1) {
+  void SplitLhsSpaceOnly(MeshDims mesh_dims) {
+    DCHECK_EQ(mesh_dims.size(), 2);
     for (int64_t i = 0; i < lhs_space_dims_.size(); ++i) {
       for (int64_t j = i + 1; j < lhs_space_dims_.size(); ++j) {
-        if (!CheckDims(lhs_, lhs_space_dims_, {{i, mesh_dim0}, {j, mesh_dim1}}))
+        if (!CheckDims(lhs_, lhs_space_dims_,
+                       {{i, mesh_dims[0]}, {j, mesh_dims[1]}}))
           continue;
-        std::string name =
-            absl::StrFormat("SSR = SSR x RR @ {%d,%d}", mesh_dim0, mesh_dim1);
+        std::string name = absl::StrFormat("SSR = SSR x RR @ {%s}",
+                                           absl::StrJoin(mesh_dims, ","));
         HloSharding output_spec =
             Tile(ins_->shape(), {space_base_dim_ + i, space_base_dim_ + j},
-                 {mesh_dim0, mesh_dim1}, device_mesh_);
+                 mesh_dims, device_mesh_);
         HloSharding lhs_spec =
             Tile(lhs_->shape(), {lhs_space_dims_[i], lhs_space_dims_[j]},
-                 {mesh_dim0, mesh_dim1}, device_mesh_);
+                 mesh_dims, device_mesh_);
         HloSharding rhs_spec = HloSharding::Replicate();
 
         AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
@@ -171,23 +176,25 @@ class DotHandler {
     }
   }
 
-  void SplitRhsSpaceOnly(int mesh_dim0, int mesh_dim1) {
+  void SplitRhsSpaceOnly(MeshDims mesh_dims) {
+    DCHECK_EQ(mesh_dims.size(), 2);
     for (int64_t i = 0; i < rhs_space_dims_.size(); ++i) {
       for (int64_t j = i + 1; j < rhs_space_dims_.size(); ++j) {
-        if (!CheckDims(rhs_, rhs_space_dims_, {{i, mesh_dim0}, {j, mesh_dim1}}))
+        if (!CheckDims(rhs_, rhs_space_dims_,
+                       {{i, mesh_dims[0]}, {j, mesh_dims[1]}}))
           continue;
-        std::string name =
-            absl::StrFormat("RSS = RR x RSS @ {%d,%d}", mesh_dim0, mesh_dim1);
+        std::string name = absl::StrFormat("RSS = RR x RSS @ {%s}",
+                                           absl::StrJoin(mesh_dims, ","));
         HloSharding output_spec = Tile(
             ins_->shape(),
             {space_base_dim_ + static_cast<int64_t>(lhs_space_dims_.size()) + i,
              space_base_dim_ + static_cast<int64_t>(lhs_space_dims_.size()) +
                  j},
-            {mesh_dim0, mesh_dim1}, device_mesh_);
+            mesh_dims, device_mesh_);
         HloSharding lhs_spec = HloSharding::Replicate();
         HloSharding rhs_spec =
             Tile(rhs_->shape(), {rhs_space_dims_[i], rhs_space_dims_[j]},
-                 {mesh_dim0, mesh_dim1}, device_mesh_);
+                 mesh_dims, device_mesh_);
 
         AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
                           cluster_env_, strategy_map_, strategies_);
@@ -195,28 +202,30 @@ class DotHandler {
     }
   }
 
-  void SplitLhsSpaceBothContract(int mesh_dim0, int mesh_dim1) {
-    if (device_mesh_.dim(mesh_dim0) > 1 && device_mesh_.dim(mesh_dim1) > 1) {
+  void SplitLhsSpaceBothContract(MeshDims mesh_dims) {
+    DCHECK_EQ(mesh_dims.size(), 2);
+    if (device_mesh_.dim(mesh_dims[0]) > 1 &&
+        device_mesh_.dim(mesh_dims[1]) > 1) {
       std::string name =
-          absl::StrFormat("SR = SS x SR @ {%d,%d} (allreduce @ %d)", mesh_dim0,
-                          mesh_dim1, mesh_dim1);
+          absl::StrFormat("SR = SS x SR @ {%s} (allreduce @ %d)",
+                          absl::StrJoin(mesh_dims, ","), mesh_dims[1]);
       for (int64_t i = 0; i < lhs_space_dims_.size(); ++i) {
         for (int64_t j = 0; j < lhs_con_dims_.size(); ++j) {
-          if (!CheckDims(lhs_, lhs_space_dims_, {{i, mesh_dim0}}) ||
-              !CheckDims(lhs_, lhs_con_dims_, {{j, mesh_dim1}}))
+          if (!CheckDims(lhs_, lhs_space_dims_, {{i, mesh_dims[0]}}) ||
+              !CheckDims(lhs_, lhs_con_dims_, {{j, mesh_dims[1]}}))
             continue;
 
           HloSharding output_spec = Tile(ins_->shape(), {space_base_dim_ + i},
-                                         {mesh_dim0}, device_mesh_);
+                                         {mesh_dims[0]}, device_mesh_);
           HloSharding lhs_spec =
               Tile(lhs_->shape(), {lhs_space_dims_[i], lhs_con_dims_[j]},
-                   {mesh_dim0, mesh_dim1}, device_mesh_);
+                   mesh_dims, device_mesh_);
           HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_con_dims_[j]},
-                                      {mesh_dim1}, device_mesh_);
+                                      {mesh_dims[1]}, device_mesh_);
 
           double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
           double communication_cost =
-              cluster_env_.AllReduceCost(memory_cost, mesh_dim1);
+              cluster_env_.AllReduceCost(memory_cost, mesh_dims[1]);
           AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
                             communication_cost, cluster_env_, strategy_map_,
                             strategies_);
@@ -225,29 +234,30 @@ class DotHandler {
     }
   }
 
-  void SplitRhsSpaceBothContract(int mesh_dim0, int mesh_dim1) {
-    if (device_mesh_.dim(mesh_dim0) > 1) {
+  void SplitRhsSpaceBothContract(MeshDims mesh_dims) {
+    DCHECK_EQ(mesh_dims.size(), 2);
+    if (device_mesh_.dim(mesh_dims[0]) > 1) {
       std::string name =
-          absl::StrFormat("RS = RS x SS @ {%d,%d} (allreduce @ %d)", mesh_dim0,
-                          mesh_dim1, mesh_dim0);
+          absl::StrFormat("RS = RS x SS @ {%s} (allreduce @ %d)",
+                          absl::StrJoin(mesh_dims, ","), mesh_dims[0]);
       for (int64_t i = 0; i < rhs_space_dims_.size(); ++i) {
         for (int64_t j = 0; j < lhs_con_dims_.size(); ++j) {
-          if (!CheckDims(rhs_, rhs_space_dims_, {{i, mesh_dim1}}) ||
-              !CheckDims(lhs_, lhs_con_dims_, {{j, mesh_dim0}}))
+          if (!CheckDims(rhs_, rhs_space_dims_, {{i, mesh_dims[1]}}) ||
+              !CheckDims(lhs_, lhs_con_dims_, {{j, mesh_dims[0]}}))
             continue;
           HloSharding output_spec =
               Tile(ins_->shape(),
                    {space_base_dim_ +
                     static_cast<int64_t>(lhs_space_dims_.size()) + i},
-                   {mesh_dim1}, device_mesh_);
+                   {mesh_dims[1]}, device_mesh_);
           HloSharding lhs_spec = Tile(lhs_->shape(), {lhs_con_dims_[j]},
-                                      {mesh_dim0}, device_mesh_);
+                                      {mesh_dims[0]}, device_mesh_);
           HloSharding rhs_spec =
               Tile(rhs_->shape(), {rhs_con_dims_[j], rhs_space_dims_[i]},
-                   {mesh_dim0, mesh_dim1}, device_mesh_);
+                   mesh_dims, device_mesh_);
           double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
           double communication_cost =
-              cluster_env_.AllReduceCost(memory_cost, mesh_dim0);
+              cluster_env_.AllReduceCost(memory_cost, mesh_dims[0]);
 
           AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
                             communication_cost, cluster_env_, strategy_map_,
@@ -277,44 +287,46 @@ class DotHandler {
     }
   }
 
-  void SplitTwoBatchDims(int mesh_dim0, int mesh_dim1) {
-    if (lhs_batch_dims_.size() == 2 && device_mesh_.dim(mesh_dim0) > 1 &&
-        device_mesh_.dim(mesh_dim1) > 1) {
-      if (!CheckDims(lhs_, lhs_batch_dims_, {{0, mesh_dim0}, {1, mesh_dim1}}))
+  void SplitTwoBatchDims(MeshDims mesh_dims) {
+    DCHECK_EQ(mesh_dims.size(), 2);
+    if (lhs_batch_dims_.size() == 2 && device_mesh_.dim(mesh_dims[0]) > 1 &&
+        device_mesh_.dim(mesh_dims[1]) > 1) {
+      if (!CheckDims(lhs_, lhs_batch_dims_,
+                     {{0, mesh_dims[0]}, {1, mesh_dims[1]}}))
         return;
       std::string name =
-          absl::StrFormat("Sb = Sb x Sb @ {%d,%d}", mesh_dim0, mesh_dim1);
+          absl::StrFormat("Sb = Sb x Sb @ {%s}", absl::StrJoin(mesh_dims, ","));
       HloSharding output_spec =
-          Tile(ins_->shape(), {0, 1}, {mesh_dim0, mesh_dim1}, device_mesh_);
+          Tile(ins_->shape(), {0, 1}, mesh_dims, device_mesh_);
       HloSharding lhs_spec =
           Tile(lhs_->shape(), {lhs_batch_dims_[0], lhs_batch_dims_[1]},
-               {mesh_dim0, mesh_dim1}, device_mesh_);
+               mesh_dims, device_mesh_);
       HloSharding rhs_spec =
           Tile(rhs_->shape(), {rhs_batch_dims_[0], rhs_batch_dims_[1]},
-               {mesh_dim0, mesh_dim1}, device_mesh_);
+               mesh_dims, device_mesh_);
       AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
                         cluster_env_, strategy_map_, strategies_);
     }
   }
 
-  void SplitBatchDimLhsSpace(int mesh_dim0, int mesh_dim1) {
-    if (!lhs_batch_dims_.empty() && device_mesh_.dim(mesh_dim0) > 1 &&
-        device_mesh_.dim(mesh_dim1) > 1) {
-      std::string name =
-          absl::StrFormat("SbSi = SbSi x SbR @ {%d,%d}", mesh_dim0, mesh_dim1);
+  void SplitBatchDimLhsSpace(MeshDims mesh_dims) {
+    DCHECK_EQ(mesh_dims.size(), 2);
+    if (!lhs_batch_dims_.empty() && device_mesh_.dim(mesh_dims[0]) > 1 &&
+        device_mesh_.dim(mesh_dims[1]) > 1) {
+      std::string name = absl::StrFormat("SbSi = SbSi x SbR @ {%s}",
+                                         absl::StrJoin(mesh_dims, ","));
       for (int64_t i = 0; i < lhs_space_dims_.size(); ++i) {
         for (int64_t j = 0; j < lhs_batch_dims_.size(); ++j) {
-          if (!CheckDims(lhs_, lhs_space_dims_, {{i, mesh_dim0}}) ||
-              !CheckDims(lhs_, lhs_batch_dims_, {{j, mesh_dim1}}))
+          if (!CheckDims(lhs_, lhs_space_dims_, {{i, mesh_dims[0]}}) ||
+              !CheckDims(lhs_, lhs_batch_dims_, {{j, mesh_dims[1]}}))
             continue;
-          HloSharding output_spec =
-              Tile(ins_->shape(), {j, space_base_dim_ + i},
-                   {mesh_dim0, mesh_dim1}, device_mesh_);
+          HloSharding output_spec = Tile(
+              ins_->shape(), {j, space_base_dim_ + i}, mesh_dims, device_mesh_);
           HloSharding lhs_spec =
               Tile(lhs_->shape(), {lhs_batch_dims_[j], lhs_space_dims_[i]},
-                   {mesh_dim0, mesh_dim1}, device_mesh_);
+                   mesh_dims, device_mesh_);
           HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_batch_dims_[j]},
-                                      {mesh_dim0}, device_mesh_);
+                                      {mesh_dims[0]}, device_mesh_);
 
           AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
                             cluster_env_, strategy_map_, strategies_);
@@ -323,26 +335,27 @@ class DotHandler {
     }
   }
 
-  void SplitBatchDimRhsSpace(int mesh_dim0, int mesh_dim1) {
-    if (!lhs_batch_dims_.empty() && device_mesh_.dim(mesh_dim0) > 1 &&
-        device_mesh_.dim(mesh_dim1) > 1) {
-      std::string name =
-          absl::StrFormat("SbSj = SbR x SbSj @ {%d,%d}", mesh_dim0, mesh_dim1);
+  void SplitBatchDimRhsSpace(MeshDims mesh_dims) {
+    DCHECK_EQ(mesh_dims.size(), 2);
+    if (!lhs_batch_dims_.empty() && device_mesh_.dim(mesh_dims[0]) > 1 &&
+        device_mesh_.dim(mesh_dims[1]) > 1) {
+      std::string name = absl::StrFormat("SbSj = SbR x SbSj @ {%s}",
+                                         absl::StrJoin(mesh_dims, ","));
       for (int64_t i = 0; i < rhs_space_dims_.size(); ++i) {
         for (int64_t j = 0; j < lhs_batch_dims_.size(); ++j) {
-          if (!CheckDims(rhs_, rhs_space_dims_, {{i, mesh_dim1}}) ||
-              !CheckDims(lhs_, lhs_batch_dims_, {{j, mesh_dim0}}))
+          if (!CheckDims(rhs_, rhs_space_dims_, {{i, mesh_dims[1]}}) ||
+              !CheckDims(lhs_, lhs_batch_dims_, {{j, mesh_dims[0]}}))
             continue;
           HloSharding output_spec =
               Tile(ins_->shape(),
                    {j, space_base_dim_ +
                            static_cast<int64_t>(lhs_space_dims_.size()) + i},
-                   {mesh_dim0, mesh_dim1}, device_mesh_);
+                   mesh_dims, device_mesh_);
           HloSharding lhs_spec = Tile(lhs_->shape(), {lhs_batch_dims_[j]},
-                                      {mesh_dim0}, device_mesh_);
+                                      {mesh_dims[0]}, device_mesh_);
           HloSharding rhs_spec =
               Tile(rhs_->shape(), {rhs_batch_dims_[j], rhs_space_dims_[i]},
-                   {mesh_dim0, mesh_dim1}, device_mesh_);
+                   mesh_dims, device_mesh_);
 
           AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
                             cluster_env_, strategy_map_, strategies_);
@@ -351,28 +364,29 @@ class DotHandler {
     }
   }
 
-  void SplitBatchDimBothContract(int mesh_dim0, int mesh_dim1) {
-    if (!lhs_batch_dims_.empty() && device_mesh_.dim(mesh_dim0) > 1 &&
-        device_mesh_.dim(mesh_dim1) > 1) {
+  void SplitBatchDimBothContract(MeshDims mesh_dims) {
+    DCHECK_EQ(mesh_dims.size(), 2);
+    if (!lhs_batch_dims_.empty() && device_mesh_.dim(mesh_dims[0]) > 1 &&
+        device_mesh_.dim(mesh_dims[1]) > 1) {
       std::string name =
-          absl::StrFormat("SbR = SbSk x SbSk @ {%d,%d} (allreduce @ %d}",
-                          mesh_dim0, mesh_dim1, mesh_dim1);
+          absl::StrFormat("SbR = SbSk x SbSk @ {%s} (allreduce @ %d}",
+                          absl::StrJoin(mesh_dims, ","), mesh_dims[1]);
       for (int64_t i = 0; i < lhs_con_dims_.size(); ++i) {
         for (int64_t j = 0; j < lhs_batch_dims_.size(); ++j) {
-          if (!CheckDims(lhs_, lhs_con_dims_, {{i, mesh_dim1}}) ||
-              !CheckDims(lhs_, lhs_batch_dims_, {{j, mesh_dim0}}))
+          if (!CheckDims(lhs_, lhs_con_dims_, {{i, mesh_dims[1]}}) ||
+              !CheckDims(lhs_, lhs_batch_dims_, {{j, mesh_dims[0]}}))
             continue;
           HloSharding output_spec =
-              Tile(ins_->shape(), {j}, {mesh_dim0}, device_mesh_);
+              Tile(ins_->shape(), {j}, {mesh_dims[0]}, device_mesh_);
           HloSharding lhs_spec =
               Tile(lhs_->shape(), {lhs_batch_dims_[j], lhs_con_dims_[i]},
-                   {mesh_dim0, mesh_dim1}, device_mesh_);
+                   mesh_dims, device_mesh_);
           HloSharding rhs_spec =
               Tile(rhs_->shape(), {rhs_batch_dims_[j], rhs_con_dims_[i]},
-                   {mesh_dim0, mesh_dim1}, device_mesh_);
+                   mesh_dims, device_mesh_);
           double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
           double communication_cost =
-              cluster_env_.AllReduceCost(memory_cost, mesh_dim1);
+              cluster_env_.AllReduceCost(memory_cost, mesh_dims[1]);
 
           AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
                             communication_cost, cluster_env_, strategy_map_,
@@ -382,29 +396,32 @@ class DotHandler {
     }
   }
 
-  void SplitBothContractTwoDims(int mesh_dim0, int mesh_dim1) {
+  void SplitBothContractTwoDims(MeshDims mesh_dims) {
+    DCHECK_EQ(mesh_dims.size(), 2);
     // Applies when there are more than one contracting dimension.
     if (lhs_con_dims_.size() >= 2 && rhs_con_dims_.size() >= 2 &&
-        device_mesh_.dim(mesh_dim0) > 1 && device_mesh_.dim(mesh_dim1) > 1) {
-      std::string name =
-          absl::StrFormat("RR = SS x SS @ {%d,%d} (allreduce @ {%d, %d}}",
-                          mesh_dim0, mesh_dim1, mesh_dim0, mesh_dim1);
+        device_mesh_.dim(mesh_dims[0]) > 1 &&
+        device_mesh_.dim(mesh_dims[1]) > 1) {
+      std::string name = absl::StrFormat(
+          "RR = SS x SS @ {%s} (allreduce @ {%s}}",
+          absl::StrJoin(mesh_dims, ","), absl::StrJoin(mesh_dims, ", "));
       for (int64_t i = 0; i < lhs_con_dims_.size(); ++i) {
         for (int64_t j = i + 1; j < lhs_con_dims_.size(); ++j) {
           if (!CheckDims(lhs_, lhs_con_dims_,
-                         {{i, mesh_dim0}, {j, mesh_dim1}}) ||
-              !CheckDims(rhs_, rhs_con_dims_, {{i, mesh_dim0}, {j, mesh_dim1}}))
+                         {{i, mesh_dims[0]}, {j, mesh_dims[1]}}) ||
+              !CheckDims(rhs_, rhs_con_dims_,
+                         {{i, mesh_dims[0]}, {j, mesh_dims[1]}}))
             continue;
           HloSharding output_spec = HloSharding::Replicate();
           HloSharding lhs_spec =
               Tile(lhs_->shape(), {lhs_con_dims_[i], lhs_con_dims_[j]},
-                   {mesh_dim0, mesh_dim1}, device_mesh_);
+                   mesh_dims, device_mesh_);
           HloSharding rhs_spec =
               Tile(rhs_->shape(), {rhs_con_dims_[i], rhs_con_dims_[j]},
-                   {mesh_dim0, mesh_dim1}, device_mesh_);
+                   mesh_dims, device_mesh_);
           double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-          double communication_cost =
-              cluster_env_.AllReduceCost(memory_cost, mesh_dim0, mesh_dim1);
+          double communication_cost = cluster_env_.AllReduceCost(
+              memory_cost, mesh_dims[0], mesh_dims[1]);
           AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
                             communication_cost, cluster_env_, strategy_map_,
                             strategies_);
@@ -413,22 +430,24 @@ class DotHandler {
     }
   }
 
-  void RecomputeSplitBothContract(int mesh_dim0, int mesh_dim1) {
-    if (device_mesh_.dim(mesh_dim0) > 1 && device_mesh_.dim(mesh_dim1) > 1) {
+  void RecomputeSplitBothContract(MeshDims mesh_dims) {
+    DCHECK_EQ(mesh_dims.size(), 2);
+    if (device_mesh_.dim(mesh_dims[0]) > 1 &&
+        device_mesh_.dim(mesh_dims[1]) > 1) {
       std::string name = absl::StrFormat("RR = RS x SR @ {%d} (allreduce @ %d)",
-                                         mesh_dim0, mesh_dim0);
+                                         mesh_dims[0], mesh_dims[0]);
       for (int64_t i = 0; i < lhs_con_dims_.size(); ++i) {
-        if (!CheckDims(lhs_, lhs_con_dims_, {{i, mesh_dim0}})) continue;
+        if (!CheckDims(lhs_, lhs_con_dims_, {{i, mesh_dims[0]}})) continue;
         HloSharding output_spec = HloSharding::Replicate();
-        HloSharding lhs_spec =
-            Tile(lhs_->shape(), {lhs_con_dims_[i]}, {mesh_dim0}, device_mesh_);
-        HloSharding rhs_spec =
-            Tile(rhs_->shape(), {rhs_con_dims_[i]}, {mesh_dim0}, device_mesh_);
+        HloSharding lhs_spec = Tile(lhs_->shape(), {lhs_con_dims_[i]},
+                                    {mesh_dims[0]}, device_mesh_);
+        HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_con_dims_[i]},
+                                    {mesh_dims[0]}, device_mesh_);
         double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
         double compute_cost =
             cluster_env_.DotCost(lhs_->shape(), rhs_->shape(), dot_dnums_);
         double communication_cost =
-            cluster_env_.AllReduceCost(memory_cost, mesh_dim0);
+            cluster_env_.AllReduceCost(memory_cost, mesh_dims[0]);
 
         AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec},
                           compute_cost, communication_cost, cluster_env_,
@@ -515,43 +534,43 @@ class DotHandler {
     }
   }
 
-  void Split(std::function<void(int, int)> split_func) const {
+  void Split(std::function<void(MeshDims)> split_func) const {
     SplitWithMeshShape(split_func, device_mesh_.dimensions());
   }
 
   Status RegisterStrategies() {
     // SS = SR x RS
     // Split lhs space dim and rhs space dim.
-    Split([this](int i, int j) { this->SplitLhsSpaceRhsSpace(i, j); });
+    Split([this](MeshDims md) { this->SplitLhsSpaceRhsSpace(md); });
 
     // SSR = SSR x RR
     // Split lhs space dims only if it has more than 1 space dims.
     if (lhs_space_dims_.size() > 1) {
-      Split([this](int i, int j) { this->SplitLhsSpaceOnly(i, j); });
+      Split([this](MeshDims md) { this->SplitLhsSpaceOnly(md); });
     }
     // RSS = RR x RSS
     // Split rhs space dims only if it has more than 1 space dims.
     if (rhs_space_dims_.size() > 1) {
-      Split([this](int i, int j) { this->SplitRhsSpaceOnly(i, j); });
+      Split([this](MeshDims md) { this->SplitRhsSpaceOnly(md); });
     }
 
     // SR = SS x SR
     // Split lhs space dim and both contracting dims.
-    Split([this](int i, int j) { this->SplitLhsSpaceBothContract(i, j); });
+    Split([this](MeshDims md) { this->SplitLhsSpaceBothContract(md); });
 
     // RS = RS x SS
     // Split rhs space dim and both contracting dims.
-    Split([this](int i, int j) { this->SplitRhsSpaceBothContract(i, j); });
+    Split([this](MeshDims md) { this->SplitRhsSpaceBothContract(md); });
 
     // RR = SS x SS
     // Split two contracting dims on lhs and rhs.
-    Split([this](int i, int j) { this->SplitBothContractTwoDims(i, j); });
+    Split([this](MeshDims md) { this->SplitBothContractTwoDims(md); });
 
     // RR = RS x SR
     // This is a special case where we allow spliting only one dim in the
     // multi-dimensional mesh case. This allows some recomputation
     // (e.g., the dense layer in the LM_head of BERT).
-    Split([this](int i, int j) { this->RecomputeSplitBothContract(i, j); });
+    Split([this](MeshDims md) { this->RecomputeSplitBothContract(md); });
 
     // Add 1d data parallel in multi-dimensional mesh
     if (solver_option_.allow_mixed_mesh_shape) {
@@ -572,15 +591,15 @@ class DotHandler {
 
     // SbSi = SbSi x SbR
     // Split batch dim and lhs space dim
-    Split([this](int i, int j) { this->SplitBatchDimLhsSpace(i, j); });
+    Split([this](MeshDims md) { this->SplitBatchDimLhsSpace(md); });
 
     // SbSj = SbR x SbSj
     // Split batch dim and rhs space dim
-    Split([this](int i, int j) { this->SplitBatchDimRhsSpace(i, j); });
+    Split([this](MeshDims md) { this->SplitBatchDimRhsSpace(md); });
 
     // SbSj = SbR x SbSj
     // Split batch dim and contracting dim
-    Split([this](int i, int j) { this->SplitBatchDimBothContract(i, j); });
+    Split([this](MeshDims md) { this->SplitBatchDimBothContract(md); });
 
     if (solver_option_.batch_matmul_always_split_batch &&
         lhs_batch_dims_.size() == 2 &&
@@ -593,7 +612,7 @@ class DotHandler {
 
     // Sb = Sb x Sb
     // Split batch dims.
-    Split([this](int i, int j) { this->SplitTwoBatchDims(i, j); });
+    Split([this](MeshDims md) { this->SplitTwoBatchDims(md); });
 
     if (solver_option_.allow_mixed_mesh_shape) {
       Add1DBatchSplit();
@@ -675,37 +694,40 @@ class ConvHandler {
     out_out_channel_dim_ = conv_dnums_.output_feature_dimension();
   }
 
-  void SplitLhsBatchRhsOutchannel(int mesh_dim0, int mesh_dim1) {
+  void SplitLhsBatchRhsOutchannel(MeshDims mesh_dims) {
+    DCHECK_EQ(mesh_dims.size(), 2);
     std::string name =
-        absl::StrFormat("SS = SR x RS @ {%d,%d}", mesh_dim0, mesh_dim1);
+        absl::StrFormat("SS = SR x RS @ {%s}", absl::StrJoin(mesh_dims, ","));
     HloSharding output_spec =
-        Tile(ins_->shape(), {out_batch_dim_, out_out_channel_dim_},
-             {mesh_dim0, mesh_dim1}, device_mesh_);
+        Tile(ins_->shape(), {out_batch_dim_, out_out_channel_dim_}, mesh_dims,
+             device_mesh_);
     HloSharding lhs_spec =
-        Tile(lhs_->shape(), {lhs_batch_dim_}, {mesh_dim0}, device_mesh_);
-    HloSharding rhs_spec =
-        Tile(rhs_->shape(), {rhs_out_channel_dim_}, {mesh_dim1}, device_mesh_);
+        Tile(lhs_->shape(), {lhs_batch_dim_}, {mesh_dims[0]}, device_mesh_);
+    HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_out_channel_dim_},
+                                {mesh_dims[1]}, device_mesh_);
 
     AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
                       cluster_env_, strategy_map_, strategies_);
   }
 
-  void SplitLhsBatchBothInchannel(int mesh_dim0, int mesh_dim1) {
-    if (device_mesh_.dim(mesh_dim0) > 1 && device_mesh_.dim(mesh_dim1) > 1) {
+  void SplitLhsBatchBothInchannel(MeshDims mesh_dims) {
+    DCHECK_EQ(mesh_dims.size(), 2);
+    if (device_mesh_.dim(mesh_dims[0]) > 1 &&
+        device_mesh_.dim(mesh_dims[1]) > 1) {
       std::string name =
-          absl::StrFormat("SR = SS x SR @ {%d,%d} (allreduce @ %d)", mesh_dim0,
-                          mesh_dim1, mesh_dim1);
+          absl::StrFormat("SR = SS x SR @ {%s} (allreduce @ %d)",
+                          absl::StrJoin(mesh_dims, ","), mesh_dims[1]);
       HloSharding output_spec =
-          Tile(ins_->shape(), {out_batch_dim_}, {mesh_dim0}, device_mesh_);
+          Tile(ins_->shape(), {out_batch_dim_}, {mesh_dims[0]}, device_mesh_);
       HloSharding lhs_spec =
-          Tile(lhs_->shape(), {lhs_batch_dim_, lhs_in_channel_dim_},
-               {mesh_dim0, mesh_dim1}, device_mesh_);
-      HloSharding rhs_spec =
-          Tile(rhs_->shape(), {rhs_in_channel_dim_}, {mesh_dim1}, device_mesh_);
+          Tile(lhs_->shape(), {lhs_batch_dim_, lhs_in_channel_dim_}, mesh_dims,
+               device_mesh_);
+      HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_in_channel_dim_},
+                                  {mesh_dims[1]}, device_mesh_);
 
       double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
       double communication_cost =
-          cluster_env_.AllReduceCost(memory_cost, mesh_dim1);
+          cluster_env_.AllReduceCost(memory_cost, mesh_dims[1]);
 
       AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
                         communication_cost, cluster_env_, strategy_map_,
@@ -713,22 +735,23 @@ class ConvHandler {
     }
   }
 
-  void SplitRhsOutchannelBothInchannel(int mesh_dim0, int mesh_dim1) {
-    if (device_mesh_.dim(mesh_dim0) > 1) {
+  void SplitRhsOutchannelBothInchannel(MeshDims mesh_dims) {
+    DCHECK_EQ(mesh_dims.size(), 2);
+    if (device_mesh_.dim(mesh_dims[0]) > 1) {
       std::string name =
-          absl::StrFormat("RS = RS x SS @ {%d,%d} (allreduce @ %d)", mesh_dim0,
-                          mesh_dim1, mesh_dim0);
+          absl::StrFormat("RS = RS x SS @ {%s} (allreduce @ %d)",
+                          absl::StrJoin(mesh_dims, ","), mesh_dims[0]);
       HloSharding output_spec = Tile(ins_->shape(), {out_out_channel_dim_},
-                                     {mesh_dim1}, device_mesh_);
-      HloSharding lhs_spec =
-          Tile(lhs_->shape(), {lhs_in_channel_dim_}, {mesh_dim0}, device_mesh_);
+                                     {mesh_dims[1]}, device_mesh_);
+      HloSharding lhs_spec = Tile(lhs_->shape(), {lhs_in_channel_dim_},
+                                  {mesh_dims[0]}, device_mesh_);
       HloSharding rhs_spec =
           Tile(rhs_->shape(), {rhs_in_channel_dim_, rhs_out_channel_dim_},
-               {mesh_dim0, mesh_dim1}, device_mesh_);
+               mesh_dims, device_mesh_);
 
       double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
       double communication_cost =
-          cluster_env_.AllReduceCost(memory_cost, mesh_dim0);
+          cluster_env_.AllReduceCost(memory_cost, mesh_dims[0]);
 
       AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
                         communication_cost, cluster_env_, strategy_map_,
@@ -777,26 +800,27 @@ class ConvHandler {
     }
   }
 
-  void SplitDepthwise(int mesh_dim0, int mesh_dim1, bool forward) {
+  void SplitDepthwise(MeshDims mesh_dims, bool forward) {
+    DCHECK_EQ(mesh_dims.size(), 2);
     std::string name =
-        absl::StrFormat("SS = SS x RS @ {%d,%d}", mesh_dim0, mesh_dim1);
+        absl::StrFormat("SS = SS x RS @ {%s}", absl::StrJoin(mesh_dims, ","));
     HloSharding output_spec =
-        Tile(ins_->shape(), {out_batch_dim_, out_out_channel_dim_},
-             {mesh_dim0, mesh_dim1}, device_mesh_);
+        Tile(ins_->shape(), {out_batch_dim_, out_out_channel_dim_}, mesh_dims,
+             device_mesh_);
     HloSharding lhs_spec =
         forward ? Tile(lhs_->shape(), {lhs_batch_dim_, lhs_in_channel_dim_},
-                       {mesh_dim0, mesh_dim1}, device_mesh_)
+                       mesh_dims, device_mesh_)
                 : Tile(lhs_->shape(), {lhs_batch_dim_, lhs_in_channel_dim_},
-                       {mesh_dim1, mesh_dim0}, device_mesh_);
+                       {mesh_dims[1], mesh_dims[0]}, device_mesh_);
 
-    HloSharding rhs_spec =
-        Tile(rhs_->shape(), {rhs_out_channel_dim_}, {mesh_dim1}, device_mesh_);
+    HloSharding rhs_spec = Tile(rhs_->shape(), {rhs_out_channel_dim_},
+                                {mesh_dims[1]}, device_mesh_);
 
     AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0, 0,
                       cluster_env_, strategy_map_, strategies_);
   }
 
-  void Split(std::function<void(int, int)> split_func) const {
+  void Split(std::function<void(MeshDims)> split_func) const {
     SplitWithMeshShape(split_func, device_mesh_.dimensions());
   }
 
@@ -809,7 +833,7 @@ class ConvHandler {
       // for depthwise conv
       // SS = SS x S
       // Split batch dim and channel dim
-      Split([this](int i, int j) { this->SplitDepthwise(i, j, true); });
+      Split([this](MeshDims md) { this->SplitDepthwise(md, true); });
     } else if ((ins_->batch_group_count() ==
                     lhs_->shape().dimensions(lhs_batch_dim_) &&
                 ins_->batch_group_count() ==
@@ -817,21 +841,20 @@ class ConvHandler {
       // for depthwise conv filter_backward
       // SS = SS x S
       // Split batch dim and channel dim
-      Split([this](int i, int j) { this->SplitDepthwise(i, j, false); });
+      Split([this](MeshDims md) { this->SplitDepthwise(md, false); });
     }
 
     // SS = SR x RS
     // Split lhs batch dim and rhs out_channel dim.
-    Split([this](int i, int j) { this->SplitLhsBatchRhsOutchannel(i, j); });
+    Split([this](MeshDims md) { this->SplitLhsBatchRhsOutchannel(md); });
 
     // SR = SS x SR
     // Split lhs batch dim and both in_channel dims.
-    Split([this](int i, int j) { this->SplitLhsBatchBothInchannel(i, j); });
+    Split([this](MeshDims md) { this->SplitLhsBatchBothInchannel(md); });
 
     // RS = RS x SS
     // Split rhs out_channel dim and both in_channel dims.
-    Split(
-        [this](int i, int j) { this->SplitRhsOutchannelBothInchannel(i, j); });
+    Split([this](MeshDims md) { this->SplitRhsOutchannelBothInchannel(md); });
 
     // Add 1d data parallel in multi-dimensional mesh
     if (solver_option_.allow_mixed_mesh_shape) {
