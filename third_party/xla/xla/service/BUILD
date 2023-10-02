@@ -662,6 +662,7 @@ cc_library(
         ":hlo_graph_dumper",
         ":hlo_pass",
         "//xla:protobuf_util",
+        "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:sharding_op_util",
         "//xla:status_macros",

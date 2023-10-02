@@ -59,13 +59,18 @@ bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs);
 
 // Tries to refine `to_merge` by combining with `old`. Returns if the final
 // `to_merge` is more specific than `old`.
-bool MergeSharding(const HloSharding& old, HloSharding* to_merge,
+bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
                    bool may_combine_partial_sharding);
 
 // Merges `to_merge` into `dst` only if they are compatible, and the merged
 // sharding has >= minimum_tiles tiles. Returns if merging happened.
 bool MergeShardingIfCompatible(const HloSharding& to_merge,
                                int64_t minimum_tiles, HloSharding* dst);
+
+// Find a reasonable common sharding for a list of shardings. The reasonable
+// sharding should incur little(the least) amount of total resharding cost when
+// resharding all the shardings to this common sharding.
+HloSharding FindCommonSharding(absl::Span<const HloSharding> shardings);
 
 // Given a map<device, occurrence_count>, selects the device with higher
 // occurrence count (if any). If top_count in not nullptr, it will receive the
