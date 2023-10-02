@@ -22,20 +22,17 @@ limitations under the License.
 #include <functional>
 #include <list>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/time/clock.h"
 #include "absl/types/variant.h"
-#include "absl/utility/utility.h"
 #include "tensorflow/core/kernels/batching_util/batch_input_task.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -207,11 +204,12 @@ class SharedBatchScheduler
     //
     // TODO(b/194294263):
     // Make `enable_lazy_split` a template parameter of queue, and adapts
-    // `batches_` and `task_handle_batches_` into one deque of
+    // `high_priority_batches_` and `task_handle_batches_` into one deque of
     // tensorflow::serving::Batch.
     bool enable_lazy_split = false;
 
-    // The maximum size of each enqueued batch (i.e., in `batches_`).
+    // The maximum size of each enqueued batch (i.e., in
+    // `high_priority_batches_`).
     //
     // The scheduler may form batches of any size between 1 and this number
     // (inclusive). If there is a need to quantize the batch sizes, i.e. only
@@ -420,12 +418,12 @@ class Queue {
       std::vector<std::unique_ptr<TaskType>>* output_tasks)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Determines whether the open batch residing at the back of 'batches_' is
-  // currently schedulable.
+  // Determines whether the open batch residing at the back of
+  // 'high_priority_batches_' is currently schedulable.
   bool IsOpenBatchSchedulable() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // A variant of `IsOpenBatchSchedulable`; used when batches are formed at
-  // task enqueue time, and open batch is `batches_.back()`.
+  // task enqueue time, and open batch is `high_priority_batches_.back()`.
   bool IsOpenBatchSchedulableAfterEagerSplit() const
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -479,13 +477,6 @@ class Queue {
   std::atomic<bool> closed_ TF_GUARDED_BY(mu_){false};
 
   // The enqueued batches.
-  // Each element corresponds to a task to be dequeued and processed by
-  // `Queue<TaskType>::ProcessBatch`.
-  //
-  // Used iff `QueueOptions.enable_lazy_split` is false.
-  std::deque<std::unique_ptr<Batch<TaskType>>> batches_ TF_GUARDED_BY(mu_);
-
-  // The enqueued batches.
   //
   // Each element corresponds to the `task` enqueued in `Queue::Schedule`; the
   // element could be split and processed in batches at dequeue time.
@@ -494,11 +485,19 @@ class Queue {
   std::deque<std::unique_ptr<Batch<BatchInputTaskHandle<TaskType>>>>
       task_handle_batches_ TF_GUARDED_BY(mu_);
 
-  // The enqueued batches for low priority input
+  // The enqueued batches for low priority input.
+  // Each element corresponds to a task to be dequeued and processed by
+  // `Queue<TaskType>::ProcessBatch`.
+  //
+  // Used iff `QueueOptions.enable_lazy_split` is false.
   std::deque<std::unique_ptr<Batch<TaskType>>> low_priority_batches_
       TF_GUARDED_BY(mu_);
 
-  // The enqueued batches for high priority input
+  // The enqueued batches for high priority input.
+  // Each element corresponds to a task to be dequeued and processed by
+  // `Queue<TaskType>::ProcessBatch`.
+  //
+  // Used iff `QueueOptions.enable_lazy_split` is false.
   std::deque<std::unique_ptr<Batch<TaskType>>> high_priority_batches_
       TF_GUARDED_BY(mu_);
 
@@ -506,7 +505,8 @@ class Queue {
   uint64 traceme_context_id_counter_ TF_GUARDED_BY(mu_) = 0;
 
   // The time at which the first task was added to the open (back-most) batch
-  // in 'batches_'. Valid iff that batch contains at least one task.
+  // in 'high_priority_batches_'. Valid iff that batch contains at least one
+  // task.
   uint64 open_batch_start_time_micros_ TF_GUARDED_BY(mu_);
 
   // Whether this queue contains a batch that is eligible to be scheduled.
@@ -1244,13 +1244,13 @@ int64 Queue<TaskType>::num_enqueued_batches() const {
 
 template <typename TaskType>
 std::deque<std::unique_ptr<Batch<TaskType>>>& Queue<TaskType>::GetBatches() {
-  return batches_;
+  return high_priority_batches_;
 }
 
 template <typename TaskType>
 const std::deque<std::unique_ptr<Batch<TaskType>>>&
 Queue<TaskType>::GetBatches() const {
-  return batches_;
+  return high_priority_batches_;
 }
 
 template <typename TaskType>
