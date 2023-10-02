@@ -2373,8 +2373,8 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
+        "//xla/service:collective_opt_utils",
         "//xla/service:hlo_pass",
-        "//xla/service:reduce_scatter_utils",
     ],
 )
 

@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_REDUCE_SCATTER_UTILS_H_
-#define XLA_SERVICE_REDUCE_SCATTER_UTILS_H_
+#ifndef XLA_SERVICE_COLLECTIVE_OPT_UTILS_H_
+#define XLA_SERVICE_COLLECTIVE_OPT_UTILS_H_
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 
 namespace xla {
@@ -40,6 +42,25 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     HloPredicate match_partition_id = HloPredicateIsOp<HloOpcode::kPartitionId>,
     HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>);
 
+// Check whether AG(ICI) and its single user DS(ICI) can be canceled out.
+bool AllGatherDynamicSliceCancellation(
+    const HloAllGatherInstruction* ag, int64_t num_partitions,
+    int64_t num_replicas, bool allow_multiple_split_dims = false,
+    bool allow_intervening_reshape = false, int64_t min_rank = 1,
+    HloPredicate match_partition_id = HloPredicateIsOp<HloOpcode::kPartitionId>,
+    HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>);
+
+// Check if a given instruction (AllReduce or AllGather) matches a DynamicSlice;
+// the DynamicSlice has to be the only user of the given instruction.
+std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
+    const HloChannelInstruction* instruction, int64_t num_partitions,
+    int64_t num_replicas, bool allow_multiple_split_dims = false,
+    bool allow_intervening_reshape = false, int64_t min_rank = 1,
+    HloPredicate match_partition_id = HloPredicateIsOp<HloOpcode::kPartitionId>,
+    HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>,
+    bool is_constrain_layout = false, bool use_global_device_ids = false,
+    bool is_cross_module = false);
+
 }  // namespace xla
 
-#endif  // XLA_SERVICE_REDUCE_SCATTER_UTILS_H_
+#endif  // XLA_SERVICE_COLLECTIVE_OPT_UTILS_H_

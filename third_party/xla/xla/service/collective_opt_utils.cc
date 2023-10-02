@@ -13,19 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/reduce_scatter_utils.h"
+#include "xla/service/collective_opt_utils.h"
 
 #include <functional>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
 namespace {
-
 bool IsTableLookup(const HloInstruction* hlo) {
   while (hlo->opcode() == HloOpcode::kBitcast ||
          hlo->opcode() == HloOpcode::kReshape ||
@@ -87,21 +89,22 @@ int64_t GetIndexForId(const HloInstruction* index, int64_t id,
 bool IsPerIdOffsets(absl::Span<const HloInstruction*> offsets,
                     int64_t shard_size, const MapIdToTableOffset& map_id,
                     std::vector<int64_t> slice_group_sizes,
-                    const HloAllReduceInstruction* ar) {
+                    const HloInstruction* instruction, bool is_cross_module,
+                    bool use_global_device_ids) {
   if (offsets.size() != slice_group_sizes.size()) {
     return false;
   }
-  if (!ar->IsCrossModuleAllReduce() || !ar->use_global_device_ids()) {
+  if (!is_cross_module || !use_global_device_ids) {
     return false;
   }
 
-  int num_groups = ar->replica_groups().size();
+  int num_groups = instruction->replica_groups().size();
   int num_split_dims = slice_group_sizes.size();
 
   for (int64_t i = 0; i < num_groups; ++i) {
     for (int64_t j = 0; j < Product(slice_group_sizes); ++j) {
       int64_t final_table_entry = 0;
-      int64_t id = ar->replica_groups()[i].replica_ids(j);
+      int64_t id = instruction->replica_groups()[i].replica_ids(j);
       int64_t slice_group_size = Product(slice_group_sizes);
       for (int dim = 0; dim < num_split_dims; dim++) {
         auto scalar_offset = offsets[dim];
@@ -141,10 +144,10 @@ bool IsPerIdOffsets(absl::Span<const HloInstruction*> offsets,
 // Returns if `offset` == shard_size * id.
 bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
                    const MapIdToTableOffset& map_id, int64_t group_size,
-                   const HloAllReduceInstruction* ar) {
-  const bool iota_group =
-      ar->replica_groups().empty() ||
-      (ar->IsCrossModuleAllReduce() && !ar->use_global_device_ids());
+                   const HloInstruction* instruction, bool is_cross_module,
+                   bool use_global_device_ids) {
+  const bool iota_group = instruction->replica_groups().empty() ||
+                          (is_cross_module && !use_global_device_ids);
 
   if (offset->opcode() == HloOpcode::kMultiply) {
     // Check if it's constant * IsPerIdOffset(..., shard_size / constant, ...)
@@ -168,7 +171,8 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
       return false;
     }
     return IsPerIdOffset(offset->operand(1 - const_operand),
-                         shard_size / *multiplier, map_id, group_size, ar);
+                         shard_size / *multiplier, map_id, group_size,
+                         instruction, is_cross_module, use_global_device_ids);
   }
   if (shard_size == 1 && iota_group) {
     bool id_mapping_is_identity = true;
@@ -187,7 +191,7 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
       offset->opcode() == HloOpcode::kReshape ||
       offset->opcode() == HloOpcode::kCopy) {
     return IsPerIdOffset(offset->operand(0), shard_size, map_id, group_size,
-                         ar);
+                         instruction, is_cross_module, use_global_device_ids);
   }
 
   if (offset->opcode() == HloOpcode::kConvert &&
@@ -195,7 +199,7 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
       primitive_util::BitWidth(offset->operand(0)->shape().element_type()) <=
           primitive_util::BitWidth(offset->shape().element_type())) {
     return IsPerIdOffset(offset->operand(0), shard_size, map_id, group_size,
-                         ar);
+                         instruction, is_cross_module, use_global_device_ids);
   }
 
   if (offset->opcode() == HloOpcode::kClamp) {
@@ -208,16 +212,18 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
       return false;
     }
     return IsPerIdOffset(offset->operand(1), shard_size, map_id, group_size,
-                         ar);
+                         instruction, is_cross_module, use_global_device_ids);
   }
 
-  const int64_t num_groups = iota_group ? 1 : ar->replica_groups().size();
+  const int64_t num_groups =
+      iota_group ? 1 : instruction->replica_groups().size();
   if (IsTableLookup(offset)) {
     // Check the values of the offset table, and see if they are shard_index *
     // shard_size.
     for (int64_t i = 0; i < num_groups; ++i) {
       for (int64_t j = 0; j < group_size; ++j) {
-        int64_t id = iota_group ? j : ar->replica_groups()[i].replica_ids(j);
+        int64_t id =
+            iota_group ? j : instruction->replica_groups()[i].replica_ids(j);
         int64_t table_index = GetIndexForId(offset->operand(1), id, map_id);
         if (table_index < 0) {
           VLOG(2) << "Failed to infer table index from "
@@ -246,7 +252,8 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
   // Check if the offset is the id itself and it has the right values.
   for (int64_t i = 0; i < num_groups; ++i) {
     for (int64_t j = 0; j < group_size; ++j) {
-      int64_t id = iota_group ? j : ar->replica_groups()[i].replica_ids(j);
+      int64_t id =
+          iota_group ? j : instruction->replica_groups()[i].replica_ids(j);
       int mapped_id = map_id(offset, id);
       if (mapped_id != shard_size * j) {
         VLOG(2) << "Mapping of " << id << " to " << mapped_id
@@ -267,37 +274,69 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     int64_t num_replicas, bool allow_multiple_split_dims,
     bool allow_intervening_reshape, int64_t min_rank,
     HloPredicate match_partition_id, HloPredicate match_replica_id) {
-  if (!ar->shape().IsArray() || ar->constrain_layout() ||
-      (ar->IsCrossModuleAllReduce() &&
-       !ar->GetModule()->config().use_spmd_partitioning())) {
-    VLOG(2) << "Unsupported all-reduce: " << ar->ToString();
+  auto spec = MatchWithDynamicSlice(
+      ar, num_partitions, num_replicas, allow_multiple_split_dims,
+      allow_intervening_reshape, min_rank, match_partition_id, match_replica_id,
+      ar->constrain_layout(), ar->use_global_device_ids(),
+      ar->channel_id() && ar->opcode() == HloOpcode::kAllReduce);
+  return spec;
+}
+
+bool AllGatherDynamicSliceCancellation(
+    const HloAllGatherInstruction* ag, int64_t num_partitions,
+    int64_t num_replicas, bool allow_multiple_split_dims,
+    bool allow_intervening_reshape, int64_t min_rank,
+    HloPredicate match_partition_id, HloPredicate match_replica_id) {
+  auto spec = MatchWithDynamicSlice(
+      ag, num_partitions, num_replicas, allow_multiple_split_dims,
+      allow_intervening_reshape, min_rank, match_partition_id, match_replica_id,
+      ag->constrain_layout(), ag->use_global_device_ids(),
+      ag->channel_id() && ag->opcode() == HloOpcode::kAllGather);
+  if (spec.has_value()) {
+    return true;
+  }
+  return false;
+}
+
+std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
+    const HloChannelInstruction* instruction, int64_t num_partitions,
+    int64_t num_replicas, bool allow_multiple_split_dims,
+    bool allow_intervening_reshape, int64_t min_rank,
+    HloPredicate match_partition_id, HloPredicate match_replica_id,
+    bool is_constrain_layout, bool use_global_device_ids,
+    bool is_cross_module) {
+  if (!instruction->shape().IsArray() || is_constrain_layout ||
+      (is_cross_module &&
+       !instruction->GetModule()->config().use_spmd_partitioning())) {
+    VLOG(2) << "Unsupported collective: " << instruction->ToString();
     return std::nullopt;
   }
-  if (ar->shape().rank() - absl::c_count(ar->shape().dimensions(), 1) <
+  if (instruction->shape().rank() -
+          absl::c_count(instruction->shape().dimensions(), 1) <
       min_rank) {
     VLOG(2) << " Should be at least rank-" << min_rank
-            << " excluding trivial dimensions " << ar->ToString();
+            << " excluding trivial dimensions " << instruction->ToString();
     return std::nullopt;
   }
-  if (ar->user_count() != 1) {
-    VLOG(2) << "All-reduce user_count > 1 " << ar->ToString();
+  if (instruction->user_count() != 1) {
+    VLOG(2) << "All-gather user_count > 1 " << instruction->ToString();
     return std::nullopt;
   }
-  if (ar->replica_groups().size() > 1) {
-    const int64_t size = ar->replica_groups()[0].replica_ids_size();
-    absl::Span<const ReplicaGroup> rgs = ar->replica_groups();
+  if (instruction->replica_groups().size() > 1) {
+    const int64_t size = instruction->replica_groups()[0].replica_ids_size();
+    absl::Span<const ReplicaGroup> rgs = instruction->replica_groups();
     const bool has_uniform_size = absl::c_all_of(
         rgs.subspan(1, size - 1), [size](const ReplicaGroup& group) {
           return group.replica_ids_size() == size;
         });
     if (!has_uniform_size) {
       VLOG(2) << "Unsupported non-uniform replica group size "
-              << ar->ToString();
+              << instruction->ToString();
       return std::nullopt;
     }
   }
 
-  HloInstruction* user = ar->users()[0];
+  HloInstruction* user = instruction->users()[0];
   HloInstruction* reshape = nullptr;
   if (allow_intervening_reshape && user->opcode() == HloOpcode::kReshape) {
     // Allow the intervening reshape if it reshapes just the non scattered
@@ -318,22 +357,22 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
   int64_t group_size;
   MapIdToTableOffset map_id;
   spec.dynamic_slice = user;
-  if (!ar->IsCrossModuleAllReduce()) {
+  if (!is_cross_module) {
     spec.sharded_replicas = num_replicas;
-    group_size = ar->replica_groups().empty()
+    group_size = instruction->replica_groups().empty()
                      ? num_replicas
-                     : ar->replica_groups()[0].replica_ids_size();
+                     : instruction->replica_groups()[0].replica_ids_size();
     map_id = [&](const HloInstruction* hlo, int64_t id) {
       return match_replica_id(hlo) ? id : -1;
     };
-  } else if (ar->use_global_device_ids()) {
+  } else if (use_global_device_ids) {
     spec.sharded_replicas = num_replicas;
     spec.sharded_partitions = num_partitions;
-    group_size = ar->replica_groups()[0].replica_ids_size();
+    group_size = instruction->replica_groups()[0].replica_ids_size();
     bool orthogonal_replicas = true;
     std::vector<int64_t> partition_id_to_index(num_partitions, -1);
-    for (int64_t g = 0; g < ar->replica_groups().size(); ++g) {
-      const auto& group = ar->replica_groups()[g];
+    for (int64_t g = 0; g < instruction->replica_groups().size(); ++g) {
+      const auto& group = instruction->replica_groups()[g];
       for (int64_t i = 0; i < group.replica_ids_size(); ++i) {
         int64_t global_id = group.replica_ids(i);
         int64_t partition_id = global_id % num_partitions;
@@ -380,11 +419,11 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
   } else {
     // Right now all cross-partition all-reduces' subgroups refer to replicas
     // unless they use use_global_device_ids.
-    if (ar->replica_groups().size() != num_replicas ||
-        ar->replica_groups()[0].replica_ids_size() != 1) {
+    if (instruction->replica_groups().size() != num_replicas ||
+        instruction->replica_groups()[0].replica_ids_size() != 1) {
       VLOG(2) << "Unsupported size > 1 replica groups for cross-partition, "
                  "non-global ID "
-              << ar->ToString();
+              << instruction->ToString();
       return std::nullopt;
     }
     spec.sharded_partitions = num_partitions;
@@ -394,7 +433,7 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     };
   }
   if (group_size < 2) {
-    VLOG(2) << "Group_size < 2, nothing to do " << ar->ToString();
+    VLOG(2) << "Group_size < 2, nothing to do " << instruction->ToString();
     return std::nullopt;
   }
   spec.group_size = group_size;
@@ -403,8 +442,8 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
   // First find a single dimension where the input and output of dynamic slice
   // differ.
   int num_dims = 0;
-  for (int64_t dim = 0; dim < ar->shape().rank(); ++dim) {
-    if (ar->shape().dimensions(dim) == user->shape().dimensions(dim)) {
+  for (int64_t dim = 0; dim < instruction->shape().rank(); ++dim) {
+    if (instruction->shape().dimensions(dim) == user->shape().dimensions(dim)) {
       continue;
     }
     num_dims++;
@@ -441,19 +480,18 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
       spec.split_dim = dim;
     }
   }
-
   std::vector<int64_t> group_sizes;
   group_sizes.reserve(split_dims.size());
   for (auto dim : split_dims) {
     group_sizes.push_back(user->operand(0)->shape().dimensions(dim) /
                           user->dynamic_slice_sizes()[dim]);
   }
+
   if (Product(group_sizes) != group_size) {
     VLOG(2) << "Group size mismatch " << user->ToString() << " vs "
-            << ar->ToString();
+            << instruction->ToString();
     return std::nullopt;
   }
-
   if (split_dims.size() > 1) {
     std::vector<const HloInstruction*> offsets;
     int shard_size = 1;
@@ -461,17 +499,18 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
       offsets.push_back(user->operand(dim + 1));
       shard_size *= user->dynamic_slice_sizes()[dim];
     }
-
     if (!IsPerIdOffsets(absl::MakeSpan(offsets), shard_size, map_id,
-                        group_sizes, ar)) {
-      VLOG(2) << "IsPerIdOffsets() failed " << ar->ToString();
+                        group_sizes, instruction, is_cross_module,
+                        use_global_device_ids)) {
+      VLOG(2) << "IsPerIdOffsets() failed " << instruction->ToString();
       return std::nullopt;
     }
   } else {
     if (!IsPerIdOffset(user->operand(spec.split_dim + 1),
                        user->dynamic_slice_sizes()[spec.split_dim], map_id,
-                       group_size, ar)) {
-      VLOG(2) << "IsPerIdOffsets() failed " << ar->ToString();
+                       group_size, instruction, is_cross_module,
+                       use_global_device_ids)) {
+      VLOG(2) << "IsPerIdOffset() failed " << instruction->ToString();
       return std::nullopt;
     }
   }

@@ -100,12 +100,13 @@ filegroup(
 )
 
 cc_library(
-    name = "reduce_scatter_utils",
-    srcs = ["reduce_scatter_utils.cc"],
-    hdrs = ["reduce_scatter_utils.h"],
+    name = "collective_opt_utils",
+    srcs = ["collective_opt_utils.cc"],
+    hdrs = ["collective_opt_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
