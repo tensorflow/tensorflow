@@ -16,6 +16,7 @@ limitations under the License.
 #include <dirent.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <link.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
