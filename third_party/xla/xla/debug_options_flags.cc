@@ -62,6 +62,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_module_metadata(false);
   opts.set_xla_dump_hlo_as_long_text(false);
   opts.set_xla_dump_enable_mlir_pretty_form(true);
+  opts.set_xla_debug_buffer_assignment_show_max(15);
 #ifdef ENABLE_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // ENABLE_MKL
@@ -1301,6 +1302,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_filter_kernels_spilling_registers_on_autotuning),
       debug_options->xla_gpu_filter_kernels_spilling_registers_on_autotuning(),
       "Filter out kernels that spill registers during autotuning"));
+  flag_list->push_back(tsl::Flag(
+      "xla_debug_buffer_assignment_show_max",
+      int64_setter_for(&DebugOptions::set_xla_debug_buffer_assignment_show_max),
+      debug_options->xla_debug_buffer_assignment_show_max(),
+      "Number of buffers to display when debugging the buffer assignment"));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

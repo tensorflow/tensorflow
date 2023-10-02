@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <any>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -1543,8 +1544,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     buffer_assignment = std::move(compile_module_results.buffer_assignment);
     buffer_assignment_proto =
         std::make_unique<BufferAssignmentProto>(buffer_assignment->ToProto());
-    buffer_assignment_dumper = [buffer_assignment] {
-      return buffer_assignment->ToVerboseString();
+    size_t max_buffers_to_show =
+        module->config().debug_options().xla_debug_buffer_assignment_show_max();
+    buffer_assignment_dumper = [buffer_assignment, max_buffers_to_show] {
+      return buffer_assignment->ToVerboseString(max_buffers_to_show);
     };
   }
 

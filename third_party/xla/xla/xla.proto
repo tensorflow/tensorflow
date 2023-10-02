@@ -630,7 +630,10 @@ message DebugOptions {
   // Filter out kernels that spill registers during autotuning.
   bool xla_gpu_filter_kernels_spilling_registers_on_autotuning = 250;
 
-  // Next id: 251
+  // Maximum number of buffers to print when debugging buffer assignment.
+  int64 xla_debug_buffer_assignment_show_max = 251;
+
+  // Next id: 252
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
