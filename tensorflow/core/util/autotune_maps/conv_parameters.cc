@@ -90,11 +90,12 @@ MatmulParameters::MatmulParameters(
     int64_t ldb, int64_t ldc,
     stream_executor::dnn::ActivationMode activation_mode, int version)
     : device_id_(stream_exec->device_ordinal()) {
+
   proto_.set_ab_dtype(ab_dtype);
   proto_.set_c_dtype(c_dtype);
 
   proto_.set_trans_a(trans_a);
-  proto_.set_trans_b(trans_a);
+  proto_.set_trans_b(trans_b);
   proto_.set_m(m);
   proto_.set_n(n);
   proto_.set_k(k);
