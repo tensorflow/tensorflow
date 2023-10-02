@@ -1521,6 +1521,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       CompileToTargetBinary(
           module->config(), std::move(compile_module_results.llvm_module),
           GetGpuVersion(stream_exec), stream_exec, options, module.get()));
+  RecordXlaDeviceBinarySize(binary.size());
 
   if (DumpingEnabledForHloModule(*module) &&
       std::holds_alternative<GpuExecutable::OwnedThunkSequence>(

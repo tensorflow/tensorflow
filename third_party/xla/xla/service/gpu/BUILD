@@ -4195,6 +4195,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@local_tsl//tsl/lib/monitoring:counter",
+        "@local_tsl//tsl/lib/monitoring:gauge",
         "@local_tsl//tsl/lib/monitoring:sampler",
     ],
 )
