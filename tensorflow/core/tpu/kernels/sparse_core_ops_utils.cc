@@ -203,7 +203,8 @@ std::vector<std::vector<std::string>> GetTableStacks(
 }
 
 ABSL_ATTRIBUTE_WEAK int GetMinibatchMaxDivisionLevel() {
-  return kMinibatchMaxDivisionLevel;
+  XlaSparseCoreFlags* sparse_core_flags = GetXlaSparseCoreFlags();
+  return sparse_core_flags->tf_xla_sparse_core_minibatch_max_division_level;
 }
 
 ABSL_ATTRIBUTE_WEAK bool GetDisableTableStacking() {

@@ -28,8 +28,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-constexpr int kMinibatchMaxDivisionLevel = 6;
-
 // Pad value used for SparseCore mini batching logic.
 const int32_t kXlaPadValue = std::numeric_limits<int32_t>::max();
 

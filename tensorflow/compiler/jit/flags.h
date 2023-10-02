@@ -115,6 +115,9 @@ struct MarkForCompilationPassFlags {
 
 // Flags associated with XLA Sparse Core.
 struct XlaSparseCoreFlags {
+  // Max level of division to split input data into minibatches.
+  int tf_xla_sparse_core_minibatch_max_division_level;
+
   // Disable table stacking for all the tables passed to the SparseCore
   // mid level API.
   bool tf_xla_sparse_core_disable_table_stacking;
