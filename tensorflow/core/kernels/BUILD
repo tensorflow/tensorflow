@@ -3496,6 +3496,7 @@ cc_library(
     name = "matmul_util",
     srcs = ["matmul_util.cc"],
     hdrs = ["matmul_util.h"],
+    local_defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
     deps = if_cuda_or_rocm([
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_xla//xla:status_macros",
