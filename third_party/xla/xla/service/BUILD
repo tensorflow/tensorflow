@@ -1366,7 +1366,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/stream_executor:stream_executor_impl",
+        "//xla/stream_executor",
     ] + if_gpu_is_configured([
         ":service",
         "//xla/service/gpu:gpu_compiler",

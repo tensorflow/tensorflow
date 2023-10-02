@@ -45,7 +45,7 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/framework:types_proto",
-        "@local_xla//xla/stream_executor:dnn_proto",
+        "@local_tsl//tsl/protobuf:dnn_proto",
     ],
 )
 
@@ -103,7 +103,7 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
-        "@local_xla//xla/stream_executor:dnn_proto",
+        "@local_tsl//tsl/protobuf:dnn_proto",
     ],
     visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 )
@@ -135,9 +135,9 @@ tf_cuda_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stream_executor",
+        "@local_tsl//tsl/protobuf:dnn_proto_cc",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/stream_executor",
-        "@local_xla//xla/stream_executor:dnn_proto_cc",
         "@local_xla//xla/stream_executor:lazy_op_runner",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
     ],

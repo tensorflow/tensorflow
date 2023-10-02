@@ -72,7 +72,7 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        "@local_xla//xla/stream_executor:dnn_proto",
+        "@local_tsl//tsl/protobuf:dnn_proto",
     ],
 )
 

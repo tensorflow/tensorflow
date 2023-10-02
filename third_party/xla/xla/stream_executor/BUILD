@@ -109,7 +109,6 @@ filegroup(
 STREAM_EXECUTOR_DEPENDENCIES = [
     ":allocator_stats",
     ":device_description_proto_cc",
-    ":dnn_proto_cc",
     ":host_or_device_scalar",
     ":multi_platform_manager",
     "@com_google_absl//absl/algorithm:container",
@@ -502,15 +501,6 @@ cc_library(
     ],
 )
 
-tf_proto_library(
-    name = "dnn_proto",
-    srcs = ["dnn.proto"],
-    make_default_target_header_only = True,
-    protodeps = ["@local_tsl//tsl/protobuf:dnn_proto"],
-    visibility = ["//visibility:public"],
-    exports = ["@local_tsl//tsl/protobuf:dnn_proto"],
-)
-
 cc_library(
     name = "fft",
     hdrs = ["fft.h"],
@@ -681,7 +671,6 @@ cc_library(
     deps = [
         ":device_description_proto_cc",
         ":device_memory",
-        ":dnn_proto_cc",
         ":numeric_options",
         ":stream_executor_headers",
         "//xla/stream_executor/platform",
@@ -708,7 +697,6 @@ cc_library(
         ":device_description",
         ":device_memory",
         ":dnn",
-        ":dnn_proto_cc",
         ":event",
         ":executor_cache",
         ":kernel",
@@ -721,7 +709,6 @@ cc_library(
         ":stream_executor_pimpl",
         ":temporary_device_memory",
         ":temporary_memory_manager",
-        "//xla/stream_executor:dnn_proto_cc_impl",
         "@local_tsl//tsl/protobuf:dnn_proto_cc_impl",
     ],
 )
