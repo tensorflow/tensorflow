@@ -1693,4 +1693,5 @@ def _scipy_sparse_to_sparse_tensor(t):
 
 
 def _is_distributed_dataset(ds):
+  """Helper function to check if dataset is instance of DistributedDatasetInterface"""
   return isinstance(ds, input_lib.distribute_types.DistributedDatasetInterface)
