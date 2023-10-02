@@ -1177,7 +1177,7 @@ func.func @partition_id() -> tensor<*xindex> {
 // CHECK-LABEL: @send
 func.func @send(%arg0: !mhlo.token) -> !mhlo.token {
   %result = "mhlo.send"(%arg0) {
-    channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 1>
   } : (!mhlo.token) -> !mhlo.token
   // CHECK: types0 = !mhlo.token
   %1 = "mhlo_test.get_return_types"(%result) : (!mhlo.token) -> !mhlo.token
