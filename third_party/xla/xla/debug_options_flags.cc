@@ -1276,6 +1276,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_cublas_fallback(),
                 "Allow Triton GEMM autotuning to fall back to cuBLAS when that "
                 "is faster."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_mock_custom_calls",
+                bool_setter_for(&DebugOptions::set_xla_gpu_mock_custom_calls),
+                debug_options->xla_gpu_mock_custom_calls(),
+                "Replace custom calls with noop operations."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_while_loop_double_buffering",
       bool_setter_for(
