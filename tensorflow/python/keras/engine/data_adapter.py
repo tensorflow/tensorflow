@@ -1693,4 +1693,4 @@ def _scipy_sparse_to_sparse_tensor(t):
 
 
 def _is_distributed_dataset(ds):
-  return isinstance(ds, input_lib.DistributedDatasetInterface)
+  return isinstance(ds, input_lib.distribute_types.DistributedDatasetInterface)
