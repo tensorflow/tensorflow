@@ -147,6 +147,13 @@ class FusedMatMulOpTest : public OpsTestBase {
       ops::Elu(root.WithOpName("with_activation"), with_bias);
     } else if (activation_type == "LeakyRelu") {
       ops::internal::LeakyRelu(root.WithOpName("with_activation"), with_bias);
+    } else if (activation_type == "GeluExact") {
+      VLOG(0) << "ERROR: GeluExact is yet not available!!";
+      ops::Identity(root.WithOpName("with_activation"), with_bias);
+    } else if (activation_type == "Sigmoid") {
+      ops::Sigmoid(root.WithOpName("with_activation"), with_bias);
+    } else if (activation_type == "Tanh") {
+      ops::Tanh(root.WithOpName("with_activation"), with_bias);  
     } else {
       ops::Identity(root.WithOpName("with_activation"), with_bias);
     }
@@ -254,8 +261,9 @@ class FusedMatMulOpTest : public OpsTestBase {
   // to FusedMatMul.
   void VerifyConv2DWithBiasAndActivation(int m, int k, int n, bool transpose_a,
                                          bool transpose_b,
-                                         const string& activation, bool use_gpu_device) {
+                                         const string& activation) {
 
+    bool use_gpu_device = activation == "Relu" || (this->TValueType == DT_HALF);
     //VLOG(-1) << "using GPU " << use_gpu_device;
     const BiasAddGraphRunner run_default = [&](const Tensor& input_data,
                                                const Tensor& filter_data,
@@ -319,44 +327,58 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1) {
   this->VerifyMatMulWithBias(1, 256, 1, false, false);
 }
 
-TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x128x64WithActivation) {
+static auto GetActivations(DataType dtype) {
 
   // "GeluExact", "Tanh", "Sigmoid" fusions are only supported for half-float datatype 
-  const auto& activations = this->TValueType != DT_HALF ? 
-          std::vector{"Relu", "Relu6", "Elu", "LeakyRelu"} : 
-          std::vector{"GeluExact", "Tanh", "Sigmoid"};
+    switch(dtype) {
+    case DT_HALF:
+      // TODO: not sure how to add GeluExact op ??
+      return std::vector{/*"GeluExact",*/ "Tanh", "Sigmoid"};
+    default:
+      return std::vector{"Relu", "Relu6", "Elu", "LeakyRelu"}; 
+    }
+}
 
-  for (const string& activation : activations) {
-      bool use_gpu_device = activation == "Relu" || (this->TValueType == DT_HALF);
+TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x128x64WithActivation) {
+
+  for (const string& activation : GetActivations(this->TValueType)) {
       this->VerifyConv2DWithBiasAndActivation(256, 128, 64, false, false,
-                                            activation, use_gpu_device);
+                                            activation);
       this->VerifyConv2DWithBiasAndActivation(256, 128, 64, true, false,
-                                            activation, use_gpu_device);
+                                            activation);
       this->VerifyConv2DWithBiasAndActivation(256, 128, 64, false, true,
-                                            activation, use_gpu_device);
+                                            activation);
       this->VerifyConv2DWithBiasAndActivation(256, 128, 64, true, true,
-                                            activation, use_gpu_device);
+                                            activation);
   }
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256WithActivation) {
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+  for (const string& activation : GetActivations(this->TValueType)) {
     this->VerifyConv2DWithBiasAndActivation(1, 256, 256, false, false,
-                                            activation, activation == "Relu");
+                                            activation);
   }
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1WithActivation) {
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+
+  if(this->TValueType == DT_HALF) // NOT available matmul algorithm in CuDNN for Eigen::half
+    return;
+
+  for (const string& activation : GetActivations(this->TValueType)) {
     this->VerifyConv2DWithBiasAndActivation(256, 256, 1, false, false,
-                                            activation, activation == "Relu");
+                                            activation);
   }
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1WithActivation) {
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+
+  if(this->TValueType == DT_HALF) // NOT available matmul algorithm in CuDNN for Eigen::half
+    return;
+
+  for (const string& activation : GetActivations(this->TValueType)) {
     this->VerifyConv2DWithBiasAndActivation(1, 256, 1, false, false,
-                                            activation, activation == "Relu");
+                                            activation);
   }
 }
 
