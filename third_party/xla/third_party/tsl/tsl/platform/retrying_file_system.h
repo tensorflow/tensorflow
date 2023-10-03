@@ -165,7 +165,8 @@ class RetryingFileSystem : public FileSystem {
   std::unique_ptr<Underlying> base_file_system_;
   const RetryConfig retry_config_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RetryingFileSystem);
+  RetryingFileSystem(const RetryingFileSystem&) = delete;
+  void operator=(const RetryingFileSystem&) = delete;
 };
 
 namespace retrying_internals {

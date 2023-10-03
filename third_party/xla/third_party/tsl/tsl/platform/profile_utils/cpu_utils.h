@@ -164,7 +164,8 @@ class CpuUtils {
     int64_t CalculateCpuFrequency() final { return INVALID_FREQUENCY; }
 
    private:
-    TF_DISALLOW_COPY_AND_ASSIGN(DefaultCpuUtilsHelper);
+    DefaultCpuUtilsHelper(const DefaultCpuUtilsHelper&) = delete;
+    void operator=(const DefaultCpuUtilsHelper&) = delete;
   };
 
   // Return cpu frequency.
@@ -181,7 +182,8 @@ class CpuUtils {
   // 2. Minimize the overhead of acquiring ICpuUtilsHelper
   static ICpuUtilsHelper& GetCpuUtilsHelperSingletonInstance();
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CpuUtils);
+  CpuUtils(const CpuUtils&) = delete;
+  void operator=(const CpuUtils&) = delete;
 };
 
 }  // namespace profile_utils

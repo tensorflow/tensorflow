@@ -85,7 +85,8 @@ class DistributionSampler {
   int num_;
   std::unique_ptr<std::pair<float, int>[]> data_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DistributionSampler);
+  DistributionSampler(const DistributionSampler&) = delete;
+  void operator=(const DistributionSampler&) = delete;
 };
 
 }  // namespace random

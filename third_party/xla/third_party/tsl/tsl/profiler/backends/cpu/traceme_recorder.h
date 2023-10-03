@@ -112,7 +112,8 @@ class TraceMeRecorder {
 
   TraceMeRecorder() = default;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TraceMeRecorder);
+  TraceMeRecorder(const TraceMeRecorder&) = delete;
+  void operator=(const TraceMeRecorder&) = delete;
 
   void RegisterThread(uint32 tid, std::shared_ptr<ThreadLocalRecorder> thread);
   void UnregisterThread(uint32 tid);
