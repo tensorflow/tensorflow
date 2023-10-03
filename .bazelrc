@@ -321,6 +321,10 @@ build:linux --copt="-Werror=switch"
 # Required for building with clang
 build:linux --copt="-Wno-error=unused-but-set-variable"
 
+# Linux ARM64 specific options
+build:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
+
+
 # On Windows, `__cplusplus` is wrongly defined without this switch
 # See https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/
 build:windows --copt=/Zc:__cplusplus
@@ -565,43 +569,46 @@ test:release_base --test_size_filters=small,medium
 test:release_base --flaky_test_attempts=3
 
 # Target the AVX instruction set
-build:release_cpu_linux --config=avx_linux
-# Use the Clang toolchain to compile
-build:release_cpu_linux --crosstool_top="@sigbuild-r2.14-clang_config_cuda//crosstool:toolchain"
+build:release_linux_base --config=avx_linux
+
 # Disable clang extention that rejects type definitions within offsetof.
 # This was added in clang-16 by https://reviews.llvm.org/D133574.
 # Can be removed once upb is updated, since a type definition is used within
 # offset of in the current version of ubp.
 # See https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
-build:release_cpu_linux --copt=-Wno-gnu-offsetof-extensions
-build:release_cpu_linux --copt=-Wno-error=array-parameter
-build:release_cpu_linux --copt=-Wno-error=unused-command-line-argument
+build:release_linux_base --copt=-Wno-gnu-offsetof-extensions
+build:release_linux_base --copt=-Wno-error=array-parameter
+build:release_linux_base --copt=-Wno-error=unused-command-line-argument
 # Set lld as the linker.
-build:release_cpu_linux --linkopt="-fuse-ld=lld"
-build:release_cpu_linux --linkopt="-lm"
+build:release_linux_base --linkopt="-fuse-ld=lld"
+build:release_linux_base --linkopt="-lm"
 
 # We have some invalid linker scripts in the build,
 # so we need to disable this check
-build:release_cpu_linux --linkopt=-Wl,--undefined-version
+build:release_linux_base --linkopt=-Wl,--undefined-version
 
 # Container environment settings below this point.
 # Use Python 3.X as installed in container image
-build:release_cpu_linux --action_env PYTHON_BIN_PATH="/usr/bin/python3"
-build:release_cpu_linux --action_env PYTHON_LIB_PATH="/usr/lib/tf_python"
-build:release_cpu_linux --python_path="/usr/bin/python3"
+build:release_linux_base --action_env PYTHON_BIN_PATH="/usr/bin/python3"
+build:release_linux_base --action_env PYTHON_LIB_PATH="/usr/lib/tf_python"
+build:release_linux_base --python_path="/usr/bin/python3"
 # Set Clang as compiler. Use the actual path to clang installed in container.
-build:release_cpu_linux --repo_env=CC="/usr/lib/llvm-17/bin/clang"
-build:release_cpu_linux --repo_env=BAZEL_COMPILER="/usr/lib/llvm-17/bin/clang"
+build:release_linux_base --repo_env=CC="/usr/lib/llvm-17/bin/clang"
+build:release_linux_base --repo_env=BAZEL_COMPILER="/usr/lib/llvm-17/bin/clang"
 # Store performance profiling log in the mounted artifact directory.
 # The profile can be viewed by visiting chrome://tracing in a Chrome browser.
 # See https://docs.bazel.build/versions/main/skylark/performance.html#performance-profiling
-build:release_cpu_linux --profile=/tf/pkg/profile.json.gz
+build:release_linux_base --profile=/tf/pkg/profile.json.gz
 # Test-related settings below this point.
-test:release_cpu_linux --build_tests_only --keep_going --test_output=errors --verbose_failures=true
-test:release_cpu_linux --local_test_jobs=HOST_CPUS
-test:release_cpu_linux --test_env=LD_LIBRARY_PATH
+test:release_linux_base --build_tests_only --keep_going --test_output=errors --verbose_failures=true
+test:release_linux_base --local_test_jobs=HOST_CPUS
+test:release_linux_base --test_env=LD_LIBRARY_PATH
 # Give only the list of failed tests at the end of the log
-test:release_cpu_linux --test_summary=short
+test:release_linux_base --test_summary=short
+
+# Use the Clang toolchain to compile
+build:release_cpu_linux --config=release_linux_base
+build:release_cpu_linux --crosstool_top="@sigbuild-r2.14-clang_config_cuda//crosstool:toolchain"
 
 build:release_gpu_linux --config=release_cpu_linux
 # Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
@@ -610,6 +617,12 @@ build:release_gpu_linux --config=cuda_clang_official
 test:release_gpu_linux --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 # Local test jobs has to be 4 because parallel_gpu_execute is fragile, I think
 test:release_gpu_linux --test_timeout=300,450,1200,3600 --local_test_jobs=4 --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute
+
+build:release_arm64_linux --config=release_linux_base
+build:release_arm64_linux --config=linux_arm64
+build:release_arm64_linux --crosstool_top="@ml2014_clang_aarch64_config_aarch64//crosstool:toolchain"
+build:release_arm64_linux --config=mkl_aarch64_threadpool
+build:release_arm64_linux --copt=-flax-vector-conversions
 
 # The old gcc linux build options are preserved in the unsupported_*_linux
 # configs. If your project fails to build with Clang, you can use these
@@ -684,6 +697,11 @@ test:linux_cuda_wheel_test_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-
 test:linux_cuda_wheel_test_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:linux_cuda_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:linux_cuda_wheel_test --config=linux_cuda_wheel_test_filters -- //tensorflow/... -//tensorflow/wheel/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+# ARM64 WHEEL
+test:linux_arm64_wheel_test_filters --test_tag_filters=-no_oss,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:linux_arm64_wheel_test_filters --build_tag_filters=-no_oss,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:linux_arm64_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
+test:linux_arm64_wheel_test --config=linux_arm64_wheel_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...  -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/core/grappler/optimizers:auto_mixed_precision_test_cpu -//tensorflow/core/grappler/optimizers:remapper_test_cpu -//tensorflow/core/kernels/image:resize_bicubic_op_test
 
 # PYCPP TESTS run a suite of Python and C++ tests to verify general correctness over
 # the whole TF code base. These are usually run continuously or upon presubmit.
@@ -697,5 +715,10 @@ test:linux_cuda_pycpp_test_filters --test_tag_filters=-no_oss,-oss_excluded,-oss
 test:linux_cuda_pycpp_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
 test:linux_cuda_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:linux_cuda_pycpp_test --config=linux_cuda_pycpp_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
-
+# ARM64 PYCPP
+test:linux_arm64_pycpp_test_filters --test_tag_filters=-no_oss,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+test:linux_arm64_pycpp_test_filters --build_tag_filters=-no_oss,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+test:linux_arm64_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --flaky_test_attempts=3
+# TODO(michaelhudgins): Why do we need to specifically omit go and java here? 
+test:linux_arm64_pycpp_test --config=linux_arm64_pycpp_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/core/grappler/optimizers:auto_mixed_precision_test_cpu -//tensorflow/core/grappler/optimizers:remapper_test_cpu -//tensorflow/core/kernels/image:resize_bicubic_op_test
 # END TF TEST SUITE OPTIONS
