@@ -676,7 +676,8 @@ class FusedMatMulOp : public OpKernel {
   FusedComputationType fused_computation_ = FusedComputationType::kUndefined;
   FusedComputationArgs fused_computation_args_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FusedMatMulOp);
+  FusedMatMulOp(const FusedMatMulOp&) = delete;
+  void operator=(const FusedMatMulOp&) = delete;
 };
 
 // Registration of the CPU implementations.

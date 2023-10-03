@@ -160,7 +160,8 @@ class GrpcEagerServiceImpl : public tsl::AsyncServiceInterface {
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
   grpc::EagerService::AsyncService service_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GrpcEagerServiceImpl);
+  GrpcEagerServiceImpl(const GrpcEagerServiceImpl&) = delete;
+  void operator=(const GrpcEagerServiceImpl&) = delete;
 };
 
 }  // namespace eager

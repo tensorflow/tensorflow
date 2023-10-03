@@ -175,7 +175,8 @@ class MatrixSetDiagOp : public OpKernel {
   bool left_align_superdiagonal_ = true;
   bool left_align_subdiagonal_ = true;
   static constexpr int kNumV1Inputs = 2;
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixSetDiagOp);
+  MatrixSetDiagOp(const MatrixSetDiagOp&) = delete;
+  void operator=(const MatrixSetDiagOp&) = delete;
 };
 
 #define REGISTER_MATRIX_SET_DIAG(type)                                      \

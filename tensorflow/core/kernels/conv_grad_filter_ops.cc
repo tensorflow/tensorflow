@@ -220,7 +220,8 @@ class Conv2DBackpropFilterOp : public OpKernel {
   LaunchConv2DBackpropFilterOp<Device, T> launcher_;
   bool cudnn_use_autotune_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv2DBackpropFilterOp);
+  Conv2DBackpropFilterOp(const Conv2DBackpropFilterOp&) = delete;
+  void operator=(const Conv2DBackpropFilterOp&) = delete;
 };
 
 // Based on implementation written by Yangqing Jia (jiayq).
@@ -449,7 +450,8 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
   std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv2DCustomBackpropFilterOp);
+  Conv2DCustomBackpropFilterOp(const Conv2DCustomBackpropFilterOp&) = delete;
+  void operator=(const Conv2DCustomBackpropFilterOp&) = delete;
 };
 
 #define REGISTER_CPU_KERNELS(T)                                               \
