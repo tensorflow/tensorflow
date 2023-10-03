@@ -33,6 +33,12 @@ namespace v1 {
 // for replication and parallel execution ops, which may slow performance.
 // Prefer to use the v2 of this API.
 //
+// This also converts the Tensorflow Dialect MLIR into the Tensorflow Executor
+// dialect that is suitable to be exported to GraphDef. Graph -> MLIR -> Graph
+// is not perfectly round trippable, so this API will attempt to make the module
+// exportable and verify some properties of the Tensorflow Executor MLIR that
+// are required by Graph Export. It will return an error if it cannot.
+//
 // Input: A MLIR Module in the Tensorflow Dialect with no
 // `tf_device.cluster_func` ops.
 // Output: A MLIR module in the Tensorflow Executor Dialect.
