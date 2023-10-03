@@ -64,7 +64,7 @@ index 82fc097..81f2da4 100644
 +                  free(GifFile->SavedImages[GifFile->ImageCount].RasterBits);
 +              }
 +
-+	       // Realloc array according to the new image counter.
++              // Realloc array according to the new image counter.
 +              SavedImage *correct_saved_images = (SavedImage *)reallocarray(
 +                  GifFile->SavedImages, GifFile->ImageCount, sizeof(SavedImage));
 +              if (correct_saved_images != NULL) {
