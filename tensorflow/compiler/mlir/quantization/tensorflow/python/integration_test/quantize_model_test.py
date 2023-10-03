@@ -286,7 +286,9 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
             preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
         )
     )
-    quantize_model._populate_quantization_component_spec(options)
+    quantize_model._populate_quantization_component_spec(
+        options.quantization_method
+    )
 
     # Quantize activation, weight and bias for static range quantization.
     self.assertLen(options.quantization_method.quantization_component_specs, 3)
@@ -307,7 +309,9 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
 
     with self.assertRaises(ValueError):
       # Activation 4bit is not a valid configuration.
-      quantize_model._populate_quantization_component_spec(options)
+      quantize_model._populate_quantization_component_spec(
+          options.quantization_method
+      )
 
   def test_invalid_method_raises_value_error(self):
     model = self.SimpleModel()
@@ -6378,7 +6382,9 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
         ),
         calibration_options=calibration_options,
     )
-    quantize_model._populate_quantization_component_spec(quant_opts)
+    quantize_model._populate_quantization_component_spec(
+        quant_opts.quantization_method
+    )
     quantize_model._populate_calibration_options(quant_opts)
 
     self.assertEqual(
@@ -6569,6 +6575,316 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
     )
 
     self.assertLess(average_min_max_mse, min_max_mse)
+
+
+class SelectiveQuantizationTest(quantize_model_test_base.QuantizedModelTest):
+  """Test cases regarding selective quantization."""
+
+  def test_unitwise_spec_with_no_units(self):
+    _, y_shape, bias_shape, x_signature, y_signature = (
+        self._prepare_sample_einsum_datashapes('abc,acd->abd')
+    )
+    model = self._create_einsum_model(
+        'abc,acd->abd',
+        y_shape,
+        x_signature,
+        y_signature,
+        bias_shape,
+        is_qat_model=True,
+    )
+    saved_model_save.save(
+        model, self._input_saved_model_path, signatures=model.einsum_with_kernel
+    )
+
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    tags = {tag_constants.SERVING}
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+        ),
+        tags=tags,
+        signature_keys=[signature_key],
+        op_set=quant_opts_pb2.XLA,
+        unit_wise_quantization_specs=[
+            quant_opts_pb2.UnitWiseQuantizationSpec(
+                unit=[],
+                quantization_method=quant_opts_pb2.QuantizationMethod(
+                    preset_method=quant_opts_pb2.QuantizationMethod.METHOD_NO_QUANTIZE
+                ),
+            )
+        ],
+    )
+
+    with self.assertRaisesRegex(
+        ValueError, 'UnitWiseQuantizationSpec must contain at least one unit.'
+    ):
+      quantize_model.quantize(
+          self._input_saved_model_path,
+          self._output_saved_model_path,
+          quantization_options,
+      )
+
+  def test_unitwise_spec_missing_unit_info(self):
+    _, y_shape, bias_shape, x_signature, y_signature = (
+        self._prepare_sample_einsum_datashapes('abc,acd->abd')
+    )
+    model = self._create_einsum_model(
+        'abc,acd->abd',
+        y_shape,
+        x_signature,
+        y_signature,
+        bias_shape,
+        is_qat_model=True,
+    )
+    saved_model_save.save(
+        model, self._input_saved_model_path, signatures=model.einsum_with_kernel
+    )
+
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    tags = {tag_constants.SERVING}
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+        ),
+        tags=tags,
+        signature_keys=[signature_key],
+        op_set=quant_opts_pb2.XLA,
+        unit_wise_quantization_specs=[
+            quant_opts_pb2.UnitWiseQuantizationSpec(
+                unit=[
+                    quant_opts_pb2.UnitWiseQuantizationSpec.QuantizationUnit(),
+                ],
+                quantization_method=quant_opts_pb2.QuantizationMethod(
+                    preset_method=quant_opts_pb2.QuantizationMethod.METHOD_NO_QUANTIZE
+                ),
+            )
+        ],
+    )
+
+    with self.assertRaisesRegex(
+        ValueError, 'Either `op_type` or `node_name` must be specified.'
+    ):
+      quantize_model.quantize(
+          self._input_saved_model_path,
+          self._output_saved_model_path,
+          quantization_options,
+      )
+
+  def test_unitwise_spec_unsupported_method(self):
+    _, y_shape, bias_shape, x_signature, y_signature = (
+        self._prepare_sample_einsum_datashapes('abc,acd->abd')
+    )
+    model = self._create_einsum_model(
+        'abc,acd->abd',
+        y_shape,
+        x_signature,
+        y_signature,
+        bias_shape,
+        is_qat_model=True,
+    )
+    saved_model_save.save(
+        model, self._input_saved_model_path, signatures=model.einsum_with_kernel
+    )
+
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    tags = {tag_constants.SERVING}
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+        ),
+        tags=tags,
+        signature_keys=[signature_key],
+        op_set=quant_opts_pb2.XLA,
+        unit_wise_quantization_specs=[
+            quant_opts_pb2.UnitWiseQuantizationSpec(
+                unit=[
+                    quant_opts_pb2.UnitWiseQuantizationSpec.QuantizationUnit(
+                        op_type='Conv2D',
+                    ),
+                ],
+                quantization_method=quant_opts_pb2.QuantizationMethod(
+                    preset_method=quant_opts_pb2.QuantizationMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
+                ),
+            )
+        ],
+    )
+
+    with self.assertRaisesRegex(
+        ValueError,
+        'Currently unit-wise quantization spec only supports NO_QUANTIZE and'
+        ' same quantization method as the top-level',
+    ):
+      quantize_model.quantize(
+          self._input_saved_model_path,
+          self._output_saved_model_path,
+          quantization_options,
+      )
+
+  def test_selective_quantization_qat(self):
+    _, y_shape, bias_shape, x_signature, y_signature = (
+        self._prepare_sample_einsum_datashapes('abc,acd->abd')
+    )
+    model = self._create_einsum_model(
+        'abc,acd->abd',
+        y_shape,
+        x_signature,
+        y_signature,
+        bias_shape,
+        is_qat_model=True,
+    )
+    saved_model_save.save(
+        model, self._input_saved_model_path, signatures=model.einsum_with_kernel
+    )
+
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    tags = {tag_constants.SERVING}
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+        ),
+        tags=tags,
+        signature_keys=[signature_key],
+        op_set=quant_opts_pb2.XLA,
+        unit_wise_quantization_specs=[
+            quant_opts_pb2.UnitWiseQuantizationSpec(
+                unit=[
+                    quant_opts_pb2.UnitWiseQuantizationSpec.QuantizationUnit(
+                        op_type='Einsum',
+                    ),
+                ],
+                quantization_method=quant_opts_pb2.QuantizationMethod(
+                    preset_method=quant_opts_pb2.QuantizationMethod.METHOD_NO_QUANTIZE
+                ),
+            )
+        ],
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        quantization_options,
+    )
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {signature_key}
+    )
+    loader = saved_model_loader.SavedModelLoader(self._output_saved_model_path)
+    graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
+    # The Einsum ops shouldn't be quantized.
+    self.assertTrue(self._contains_op(graphdef, 'Einsum'))
+    self.assertFalse(self._contains_op(graphdef, 'XlaDotV2'))
+
+  def test_selective_quantization_ptq(self):
+    x_shape, y_shape, bias_shape, x_signature, y_signature = (
+        self._prepare_sample_einsum_datashapes('abc,acd->abd')
+    )
+    model = self._create_einsum_model(
+        'abc,acd->abd',
+        y_shape,
+        x_signature,
+        y_signature,
+        bias_shape,
+        is_qat_model=False,
+    )
+    saved_model_save.save(
+        model, self._input_saved_model_path, signatures=model.einsum_with_kernel
+    )
+
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    tags = {tag_constants.SERVING}
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+        ),
+        tags=tags,
+        signature_keys=[signature_key],
+        op_set=quant_opts_pb2.XLA,
+        unit_wise_quantization_specs=[
+            quant_opts_pb2.UnitWiseQuantizationSpec(
+                unit=[
+                    quant_opts_pb2.UnitWiseQuantizationSpec.QuantizationUnit(
+                        op_type='Einsum',
+                    ),
+                ],
+                quantization_method=quant_opts_pb2.QuantizationMethod(
+                    preset_method=quant_opts_pb2.QuantizationMethod.METHOD_NO_QUANTIZE
+                ),
+            )
+        ],
+    )
+
+    rng = np.random.default_rng(seed=1234)
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(10):
+        yield {
+            'x': rng.uniform(low=0.0, high=1.0, size=x_shape).astype(np.float32)
+        }
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        quantization_options,
+        representative_dataset=data_gen(),
+    )
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {signature_key}
+    )
+    loader = saved_model_loader.SavedModelLoader(self._output_saved_model_path)
+    graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
+    # The Einsum ops shouldn't be quantized.
+    self.assertTrue(self._contains_op(graphdef, 'Einsum'))
+    self.assertFalse(self._contains_op(graphdef, 'XlaDotV2'))
+
+  def test_selective_quantization_on_gather(
+      self,
+  ):
+    input_type = dtypes.int32
+    model = self._create_simple_gather_and_conv_model(
+        input_type,
+        filter_shape=(2, 3, 3, 1024),
+        is_qat_model=True,
+    )
+
+    saved_model_save.save(model, self._input_saved_model_path)
+
+    tags = {tag_constants.SERVING}
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+        ),
+        tags=tags,
+        signature_keys=['serving_default'],
+        op_set=quant_opts_pb2.XLA,
+        unit_wise_quantization_specs=[
+            quant_opts_pb2.UnitWiseQuantizationSpec(
+                unit=[
+                    quant_opts_pb2.UnitWiseQuantizationSpec.QuantizationUnit(
+                        op_type='GatherV2',
+                    ),
+                ],
+                quantization_method=quant_opts_pb2.QuantizationMethod(
+                    preset_method=quant_opts_pb2.QuantizationMethod.METHOD_NO_QUANTIZE
+                ),
+            )
+        ],
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        quantization_options,
+    )
+    self.assertIsNotNone(converted_model)
+    loader = saved_model_loader.SavedModelLoader(self._output_saved_model_path)
+    graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
+    # The Conv2D op shouldn't be quantized as it has no FakeQuant on input.
+    self.assertTrue(self._contains_op(graphdef, 'Conv2D'))
+    # If the Gather op is quantized, input_model_size / output_model_size > 2.
+    self.assertSizeRatioLessThan(
+        self._input_saved_model_path, self._output_saved_model_path, 1.15
+    )
 
 
 if __name__ == '__main__':
