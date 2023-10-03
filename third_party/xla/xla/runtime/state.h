@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
-#include <optional>
 #include <type_traits>
 #include <vector>
 
@@ -73,7 +72,7 @@ class StateVector {
     template <typename F>
     absl::StatusOr<T*> GetOrCreate(size_t id, F&& create);
 
-    std::optional<T*> Get(size_t id);
+    absl::StatusOr<T*> Get(size_t id);
 
     absl::Status Erase(size_t id);
 
@@ -184,7 +183,7 @@ absl::StatusOr<T*> StateVector<T>::Snapshot::GetOrCreate(size_t id,
 }
 
 template <typename T>
-std::optional<T*> StateVector<T>::Snapshot::Get(size_t id) {
+absl::StatusOr<T*> StateVector<T>::Snapshot::Get(size_t id) {
   // If snapshot already contains the entry, just return it.
   std::vector<T*>& snapshot = *maybe_obsolete_snapshot_;
   if (id < snapshot.size() && snapshot[id]) return snapshot[id];
@@ -197,7 +196,7 @@ std::optional<T*> StateVector<T>::Snapshot::Get(size_t id) {
   std::vector<std::unique_ptr<T>>& state = owning_state_.vector_;
   if (id < state.size() && state[id].get()) return state[id].get();
 
-  return std::nullopt;
+  return absl::InternalError("Value not found in state vector");
 }
 
 template <typename T>
