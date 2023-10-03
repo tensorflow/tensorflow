@@ -125,7 +125,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_xprof_traceme(false);
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
-  opts.set_xla_detailed_logging_and_dumping(true);
+  opts.set_xla_detailed_logging(true);
+  opts.set_xla_enable_dumping(true);
 
   opts.set_xla_gpu_enable_xla_runtime_executable(true);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);

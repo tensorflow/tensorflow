@@ -831,9 +831,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("xla_cpu_fast_math_honor_functions",
                     &DebugOptions::xla_cpu_fast_math_honor_functions,
                     &DebugOptions::set_xla_cpu_fast_math_honor_functions)
-      .def_property("xla_detailed_logging_and_dumping",
-                    &DebugOptions::xla_detailed_logging_and_dumping,
-                    &DebugOptions::set_xla_detailed_logging_and_dumping)
+      .def_property("xla_detailed_logging", &DebugOptions::xla_detailed_logging,
+                    &DebugOptions::set_xla_detailed_logging)
+      .def_property("xla_enable_dumping", &DebugOptions::xla_enable_dumping,
+                    &DebugOptions::set_xla_enable_dumping)
       .def_property("xla_gpu_enable_fast_min_max",
                     &DebugOptions::xla_gpu_enable_fast_min_max,
                     &DebugOptions::set_xla_gpu_enable_fast_min_max)
