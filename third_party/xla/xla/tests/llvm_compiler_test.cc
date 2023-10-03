@@ -61,17 +61,6 @@ class GpuDummyCompiler : public GpuCompiler {
     return OkStatus();
   }
 
-<<<<<<< HEAD
-  GpuVersion GetGpuVersion(se::StreamExecutor*) override {
-#if GOOGLE_CUDA
-    return se::CudaComputeCapability{0, 0};
-#elif TENSORFLOW_USE_ROCM
-    return se::RocmComputeCapability{"gfx908"};    
-#endif      
-  }
-
-=======
->>>>>>> upstream/master
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       se::GpuComputeCapability gpu_version, bool relocatable,

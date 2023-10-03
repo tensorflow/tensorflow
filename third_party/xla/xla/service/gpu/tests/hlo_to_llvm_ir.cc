@@ -77,7 +77,7 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   stream_executor::Platform::Id platform_id =
       stream_executor::cuda::kCudaPlatformId;
 #elif TENSORFLOW_USE_ROCM
-  se::DeviceDescription gpu_device_info =
+  stream_executor::DeviceDescription gpu_device_info =
       xla::gpu::TestGpuDeviceInfo::AMDMI210DeviceInfo();
   std::string target_triple = xla::gpu::amdgpu::TargetTriple();
   std::string data_layout = xla::gpu::amdgpu::DataLayout();
