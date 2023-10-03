@@ -17,6 +17,11 @@ limitations under the License.
 
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 
+#include <cstddef>
+#include <type_traits>
+#include <vector>
+
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -25,6 +30,8 @@ limitations under the License.
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -40,9 +47,22 @@ using xla::StatusOr;
 template <typename CppType>
 ::mlir::DenseElementsAttr CreateDenseAttrFromLiteral(
     const ShapedType& type, const LiteralBase& literal) {
-  auto data_span = literal.data<CppType>();
-  return ::mlir::DenseElementsAttr::get(
-      type, llvm::ArrayRef(data_span.data(), data_span.size()));
+  if constexpr (std::is_same_v<CppType, u4> || std::is_same_v<CppType, s4>) {
+    // DenseElementsAttr::get() does not support being passed an i4 array.
+    // Instead, create buffer of padded i4 values and call
+    // DenseElementsAttr::getFromRawBuffer()
+    auto data_span = literal.data<CppType>();
+    std::vector<char> int4_padded_data;
+    int4_padded_data.reserve(literal.element_count());
+    for (size_t i = 0; i < literal.element_count(); i++) {
+      int4_padded_data.push_back(static_cast<char>(data_span[i]));
+    }
+    return ::mlir::DenseElementsAttr::getFromRawBuffer(type, int4_padded_data);
+  } else {
+    auto data_span = literal.data<CppType>();
+    return ::mlir::DenseElementsAttr::get(
+        type, llvm::ArrayRef(data_span.data(), data_span.size()));
+  }
 }
 
 StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
@@ -83,6 +103,15 @@ void CopyDenseElementsBy(mlir::DenseElementsAttr data,
     std::memcpy(&(*output)[i], &element, sizeof(T));
     i += sizeof(T);
   }
+}
+
+template <>
+void CopyDenseElementsBy<u4>(mlir::DenseElementsAttr data,
+                             std::vector<uint8_t>* output) {
+  output->resize(CeilOfRatio(data.getNumElements(), int64_t{2}));
+  absl::Span<char> output_span =
+      absl::MakeSpan(reinterpret_cast<char*>(output->data()), output->size());
+  PackInt4(data.getRawData(), output_span);
 }
 
 }  // namespace
@@ -130,6 +159,10 @@ Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
   // TODO(hinsu): Support remaining XLA primitive types.
   if (element_type.isInteger(1)) {
     CopyDenseElementsBy<bool>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isInteger(4)) {
+    CopyDenseElementsBy<u4>(data, output);
     return OkStatus();
   }
   if (element_type.isInteger(8)) {
