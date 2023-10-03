@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
+#include "tsl/lib/monitoring/counter.h"
 #include "tsl/platform/status.h"
 
 namespace tensorflow {
@@ -42,6 +43,15 @@ using mlir::ModuleOp;
 using mlir::OpPassManager;
 using mlir::PassManager;
 using mlir::func::FuncOp;
+
+auto *tf_dialect_to_executor_dialect_status = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/core/tf2xla/api/v2/tf_dialect_to_executor_dialect_status",
+    "Counts how often a successful export from TF Dialect to Executor Dialect "
+    "is",
+    "status");
+
+constexpr char kExportSuccess[] = "success";
+constexpr char kExportFailed[] = "failed";
 
 namespace {
 
@@ -131,12 +141,17 @@ tensorflow::Status ExportFromTensorflowDialectToExecutor(
         module, llvm::StringRef(), &tf_to_executor);
   }
 
-  if (result.succeeded()) {
-    return tsl::OkStatus();
+  if (!result.succeeded()) {
+    tf_dialect_to_executor_dialect_status->GetCell(kExportFailed)
+        ->IncrementBy(1);
+
+    return absl::InternalError(
+        "Failed to export from TF Dialect to TF Executor Dialect.");
   }
 
-  return absl::InternalError(
-      "Failed to export from TF Dialect to TF Executor Dialect.");
+  tf_dialect_to_executor_dialect_status->GetCell(kExportSuccess)
+      ->IncrementBy(1);
+  return tsl::OkStatus();
 }
 
 }  // namespace v2
