@@ -1,0 +1,78 @@
+diff --git a/dgif_lib.c b/dgif_lib.c
+index 82fc097..81f2da4 100644
+--- a/dgif_lib.c
++++ b/dgif_lib.c
+@@ -810,7 +810,8 @@ DGifSetupDecompress(GifFileType *GifFile)
+ 
+     /* coverity[check_return] */
+     if (InternalRead(GifFile, &CodeSize, 1) < 1) {    /* Read Code size from file. */
+-	return GIF_ERROR;    /* Failed to read Code size. */
++        GifFile->Error = D_GIF_ERR_READ_FAILED;
++        return GIF_ERROR;    /* Failed to read Code size. */
+     }
+     BitsPerPixel = CodeSize;
+ 
+@@ -1148,18 +1149,18 @@ DGifSlurp(GifFileType *GifFile)
+               /* Allocate memory for the image */
+               if (sp->ImageDesc.Width <= 0 || sp->ImageDesc.Height <= 0 ||
+                       sp->ImageDesc.Width > (INT_MAX / sp->ImageDesc.Height)) {
+-                  return GIF_ERROR;
++                  goto error;
+               }
+               ImageSize = sp->ImageDesc.Width * sp->ImageDesc.Height;
+ 
+               if (ImageSize > (SIZE_MAX / sizeof(GifPixelType))) {
+-                  return GIF_ERROR;
++                  goto error;
+               }
+               sp->RasterBits = (unsigned char *)reallocarray(NULL, ImageSize,
+                       sizeof(GifPixelType));
+ 
+               if (sp->RasterBits == NULL) {
+-                  return GIF_ERROR;
++                  goto error;
+               }
+ 
+ 	      if (sp->ImageDesc.Interlace) {
+@@ -1178,12 +1179,12 @@ DGifSlurp(GifFileType *GifFile)
+ 			  if (DGifGetLine(GifFile, 
+ 					  sp->RasterBits+j*sp->ImageDesc.Width, 
+ 					  sp->ImageDesc.Width) == GIF_ERROR)
+-			      return GIF_ERROR;
++			      goto error;
+ 		      }
+ 	      }
+ 	      else {
+ 		  if (DGifGetLine(GifFile,sp->RasterBits,ImageSize)==GIF_ERROR)
+-		      return (GIF_ERROR);
++		      goto error;
+ 	      }
+ 
+               if (GifFile->ExtensionBlocks) {
+@@ -1195,6 +1196,26 @@ DGifSlurp(GifFileType *GifFile)
+               }
+               break;
+ 
++              error:
++              // In case of error we need to decrease the image counter
++              // and reallocate memory for saved images. Not decreasing
++              // ImageCount may lead to null pointer dereference,
++              // because the last element in SavedImages may point to the
++              // spoilt image and null pointer buffers.
++              GifFile->ImageCount--;
++              if (GifFile->SavedImages[GifFile->ImageCount].RasterBits != NULL) {
++                  free(GifFile->SavedImages[GifFile->ImageCount].RasterBits);
++              }
++
++	      // Realloc array according to the new image counter.
++              SavedImage *correct_saved_images = (SavedImage *)reallocarray(
++                  GifFile->SavedImages, GifFile->ImageCount, sizeof(SavedImage));
++              if (correct_saved_images != NULL) {
++                  GifFile->SavedImages = correct_saved_images;
++              }
++
++              return GIF_ERROR;
++
+           case EXTENSION_RECORD_TYPE:
+               if (DGifGetExtension(GifFile,&ExtFunction,&ExtData) == GIF_ERROR)
+                   return (GIF_ERROR);
