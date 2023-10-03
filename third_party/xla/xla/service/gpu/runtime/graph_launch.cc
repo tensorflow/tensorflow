@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/support.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/statusor.h"
+#include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/profiler_lock.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
@@ -303,8 +304,8 @@ Status GraphInstances::InstantiateAllGraphs(
                           "xla.gpu.graph.capture"))
       continue;
 
-    StatusOr<std::monostate*> fallback = ordinal_to_fallback->Get(ordinal);
-    if (fallback.ok()) continue;
+    std::optional<std::monostate*> fallback = ordinal_to_fallback->Get(ordinal);
+    if (fallback.has_value()) continue;
 
     VLOG(3) << "Instantiate Gpu graph defined by capture function @"
             << executable.function_name(ordinal) << " (ordinal = " << ordinal
@@ -372,6 +373,17 @@ Status GraphInstances::InstantiateAllGraphs(
   }
 
   state.instantiated = true;
+  return OkStatus();
+}
+
+Status GraphInstances::RemoveGraphsByOrdinal(unsigned ordinal) {
+  absl::MutexLock lock(&impl_->mu);
+  for (auto& [stream_executor, state] : impl_->graphs) {
+    Status erased = state.instances->snapshot().Erase(ordinal);
+    if (erased.ok()) {
+      NotifyGraphInstancesDestroyed(stream_executor, 1);
+    }
+  }
   return OkStatus();
 }
 
@@ -555,11 +567,11 @@ static absl::Status LaunchGraph(
     const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
     StreamExecutorKernels::Snapshot* kernels,
     StreamExecutorConvRunners::Snapshot* convs,
-    StreamExecutorGraphInstances::Snapshot* instances,
+    StreamExecutorGraphInstances::Snapshot* se_graph_instances,
     CapturedFunctionExecutionCount::Snapshot* counts,
     OrdinalToFallback::Snapshot* ordinal_to_fallback,
-    GemmConfigs::Snapshot* gemm_config, runtime::Executable* executable,
-    NonAtomicallyUpgradeableRWLock* gpu_lock,
+    GraphInstances* graph_instances, GemmConfigs::Snapshot* gemm_config,
+    runtime::Executable* executable, NonAtomicallyUpgradeableRWLock* gpu_lock,
     ConcurrentRegionStatus* region_status, CustomCall::RemainingArgs fwd_args,
     CustomCall::FunctionOrdinal capture) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -591,10 +603,10 @@ static absl::Status LaunchGraph(
   // work around disable graph execution and run everything in op-by-op mode.
   bool is_profiling = tsl::profiler::ProfilerLock::HasActiveSession();
 
-  StatusOr<std::monostate*> fallback =
+  std::optional<std::monostate*> fallback =
       ordinal_to_fallback->Get(capture.ordinal);
 
-  if (count < num_runs_to_instantiate || is_profiling || fallback.ok()) {
+  if (count < num_runs_to_instantiate || is_profiling || fallback.has_value()) {
     VLOG(3) << "Run gpu graph in op-by-op mode: ordinal = " << capture.ordinal;
     return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
   }
@@ -617,16 +629,16 @@ static absl::Status LaunchGraph(
     // If num_runs_to_instantiate is less than 0, all graphs should be
     // instantiated ahead-of-time. If we fail to get the graph instance, then
     // graph instantiation failed due to OOM. So we run the graph op-by-op.
-    absl::StatusOr<GraphInstance*> try_get_instance =
-        instances->Get(capture.ordinal);
-    if (try_get_instance.ok()) {
+    std::optional<GraphInstance*> try_get_instance =
+        se_graph_instances->Get(capture.ordinal);
+    if (try_get_instance.has_value()) {
       instance = try_get_instance.value();
     } else {
       return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
     }
   } else {
-    TF_ASSIGN_OR_RETURN(instance,
-                        instances->GetOrCreate(capture.ordinal, instantiate));
+    TF_ASSIGN_OR_RETURN(instance, se_graph_instances->GetOrCreate(
+                                      capture.ordinal, instantiate));
   }
 
   {
@@ -670,8 +682,6 @@ static absl::Status LaunchGraph(
     case se::gpu::OwnedGpuGraphExec::UpdateResult::kFallback: {
       LOG(WARNING) << "Fallback to op-by-op mode because memset node breaks "
                       "graph update";
-      // Deallocate instance.
-      TF_RETURN_IF_ERROR(instances->Erase(capture.ordinal));
       // Set ordinal_to_fallback to prevent future instantiation of this graph.
       TF_ASSIGN_OR_RETURN(
           std::monostate * fallback,
@@ -679,6 +689,11 @@ static absl::Status LaunchGraph(
               capture.ordinal,
               []() -> StatusOr<std::monostate> { return std::monostate{}; }));
       DCHECK(fallback);
+
+      // Deallocate graph instances with the ordinal.
+      TF_RETURN_IF_ERROR(
+          graph_instances->RemoveGraphsByOrdinal(capture.ordinal));
+
       return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
     }
     case se::gpu::OwnedGpuGraphExec::UpdateResult::kSuccess:
@@ -716,6 +731,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<StreamExecutorGraphInstances::Snapshot*>()
         .UserData<CapturedFunctionExecutionCount::Snapshot*>()
         .UserData<OrdinalToFallback::Snapshot*>()
+        .UserData<GraphInstances*>()
         .UserData<GemmConfigs::Snapshot*>()
         .UserData<Executable*>()
         .UserData<NonAtomicallyUpgradeableRWLock*>()

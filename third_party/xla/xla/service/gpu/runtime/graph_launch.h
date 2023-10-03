@@ -118,6 +118,9 @@ class GraphInstances {
   bool InstantiatedAllGraphs(const ServiceExecutableRunOptions* run_options,
                              const runtime::Executable& executable);
 
+  // Remove all instantiated graph instances that has a certain ordinal.
+  Status RemoveGraphsByOrdinal(unsigned ordinal);
+
  private:
   std::shared_ptr<Impl> impl_;
 };
