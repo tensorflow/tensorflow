@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/inference/inference_passes.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -177,32 +178,36 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
       << "TPU Bridge called stack trace is "
       << "(NOTE: this is not an error; rather the stack trace for debugging) : "
       << tensorflow::CurrentStackTrace();
-  Status status = RunTFXLABridge(
+  Status bridge_status = RunTFXLABridge(
       module,
       [module_name](OpPassManager &pm) {
         CreateTPUBridgePipeline(pm, module_name);
-        // Add set of passes to lower back to graph
-        // (from tf_executor). Use graph export
-        // pipline V2 in TPU Bridge.
-        // TODO(hanxiong): Completely replace
-        // AddGraphExportLoweringPasses with
-        // AddGraphExortLoweringPassessV2 in all the
-        // code paths (V1 compat pipeline, CPU/GPU
-        // bridge, etc.)
-        TF::AddGraphExportLoweringPassesV2(pm);
       },
       module_name);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      "tpu", "v2", fallback_enabled, status.ok() ? "success" : "failure");
+      "tpu", "v2", fallback_enabled,
+      bridge_status.ok() ? "success" : "failure");
   tsl::OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
-      status);
-  if (!status.ok()) {
+      bridge_status);
+  if (!bridge_status.ok()) {
     tsl::error_logging::Log(kBridgeComponent, "TFXLA_PHASE_ONE_MLIR_TPU_BRIDGE",
-                            status.ToString())
+                            bridge_status.ToString())
+        .IgnoreError();
+    return bridge_status;
+  }
+
+  Status export_status =
+      tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(
+          module, module_name);
+  if (!export_status.ok()) {
+    tsl::error_logging::Log(kBridgeComponent,
+                            "TFXLA_PHASE_ONE_MLIR_TPU_BRIDGE_EXPORT",
+                            export_status.ToString())
         .IgnoreError();
   }
-  return status;
+
+  return export_status;
 }
 tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool fallback_enabled) {
   VLOG(2)
@@ -245,40 +250,6 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
       /*legacy_graph_export=*/true));
   add_pass(TFDevice::CreateLaunchToDeviceAttributePass(
       /*legacy_graph_export=*/true));
-  pm.addNestedPass<func::FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
-  pm.addNestedPass<func::FuncOp>(TFTPU::CreateTPUColocateSplitsPass());
-  pm.addPass(createSymbolDCEPass());
-  if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_convert_control_to_data_outputs_pass) {
-    pm.addPass(tf_executor::CreateTFExecutorConvertControlToDataOutputsPass());
-  }
-  pm.addPass(CreateVerifySuitableForExportPass());
-}
-
-void AddGraphExportLoweringPassesV2(OpPassManager &pm) {
-  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
-
-  // First, we need to convert from functional, to executor dialect.
-  pm.addNestedPass<func::FuncOp>(
-      CreateFunctionalToExecutorDialectConversionPass());
-
-  // Do a single pass to split the graph's single island op into an island per
-  // op as expected by the following passes.
-  pm.addNestedPass<func::FuncOp>(CreateSplitIntoIslandPerOpPass());
-
-  pm.addNestedPass<func::FuncOp>(TFDevice::CreateReplicateToIslandPass(
-      /*legacy_graph_export=*/false));
-  pm.addNestedPass<func::FuncOp>(
-      TFDevice::CreateReplicaIDToDeviceOrdinalPass());
-  pm.addNestedPass<func::FuncOp>(TFDevice::CreateParallelExecuteToIslandsPass(
-      /*legacy_graph_export=*/false));
-  pm.addNestedPass<func::FuncOp>(TFDevice::CreateLaunchToDeviceAttributePass(
-      /*legacy_graph_export=*/false));
-
-  // Do a single pass to encode necessary control deps in the IR according to
-  // the results of side effect analysis.
-  pm.addPass(tf_executor::CreateTFExecutorUpdateControlDependenciesPass());
-
   pm.addNestedPass<func::FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
   pm.addNestedPass<func::FuncOp>(TFTPU::CreateTPUColocateSplitsPass());
   pm.addPass(createSymbolDCEPass());
@@ -399,8 +370,6 @@ tensorflow::Status RunTFXLABridge(ModuleOp module,
       module,
       [](OpPassManager &pm) {
         CreateTFXLABridgePipeline(pm);
-        // Add set of passes to lower back to graph (from tf_executor).
-        TF::AddGraphExportLoweringPassesV2(pm);
       },
       module_name);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
@@ -413,6 +382,17 @@ tensorflow::Status RunTFXLABridge(ModuleOp module,
                             status.ToString())
         .IgnoreError();
   }
+
+  Status export_status =
+      tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(
+          module, module_name);
+  if (!export_status.ok()) {
+    tsl::error_logging::Log(kBridgeComponent,
+                            "TFXLA_PHASE_ONE_MLIR_CPU_BRIDGE_EXPORT",
+                            export_status.ToString())
+        .IgnoreError();
+  }
+
   return status;
 }
 

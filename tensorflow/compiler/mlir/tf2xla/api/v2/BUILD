@@ -13,7 +13,11 @@ package(
 # Please reach out to tf-bridge-team@ before using the TF2XLA bridge.
 package_group(
     name = "tf2xla_users",
-    packages = ["//tensorflow/compiler/mlir/quantization/stablehlo/..."],
+    packages = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo/...",
+        # Legacy due to where the bridge currently runs. This should go away.
+        "//tensorflow/compiler/mlir/tensorflow/transforms",
+    ],
 )
 
 cc_library(
