@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
