@@ -947,7 +947,6 @@ void EnumeratePartitionReshape(const HloInstruction* ins,
     batch_dim = iter->second;
   }
 
-
   // Split batch dim + another dim
   for (int64_t i = 0; i < ins->shape().rank(); ++i) {
     auto tensor_it = std::find(tensor_dims.begin(), tensor_dims.end(), i);
