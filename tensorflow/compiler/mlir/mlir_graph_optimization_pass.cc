@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/status.h"
@@ -416,6 +418,7 @@ Status MlirV1CompatGraphOptimizationPass::Run(
       std::move(module_ref_status.value());
   AddDevicesToOp(*module_ref, options.device_set);
 
+  auto module_ref_clone = module_ref->clone();
   llvm::StringRef name = pass->name();
   VLOG(2) << "Run MLIR V1 graph optimization pass: " << StringRefToView(name);
 
@@ -423,6 +426,12 @@ Status MlirV1CompatGraphOptimizationPass::Run(
     DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));
   }
   Status pass_status = pass->Run(options, *module_ref);
+
+  bool is_module_updated = !mlir::OperationEquivalence::isEquivalentTo(
+      module_ref_clone, *module_ref,
+      mlir::OperationEquivalence::Flags::IgnoreLocations);
+  // Destroy this cloned op to avoid memory leaks.
+  module_ref_clone->destroy();
 
   if (!pass_status.ok()) {
     if (pass_state == MlirOptimizationPassState::Enabled) return pass_status;
@@ -444,6 +453,12 @@ Status MlirV1CompatGraphOptimizationPass::Run(
 
   if (VLOG_IS_ON(1)) {
     DumpModule(*module_ref, llvm::formatv("mlir_{0}_after_", name));
+  }
+
+  if (!is_module_updated) {
+    VLOG(2) << "MLIR module is not updated. Using the original graph. "
+            << "Do not convert mlir module back to graph";
+    return OkStatus();
   }
 
   GraphExportConfig export_config;
