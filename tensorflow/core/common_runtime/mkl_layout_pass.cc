@@ -1074,11 +1074,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     if (HasNodeAttr(n->def(), type_attr)) {
       const auto& attr = n->def().attr().at(type_attr);
       DataType dtype = attr.type();
-      if (dtype == DT_BFLOAT16 &&
-          !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()) {
+      if (dtype == DT_BFLOAT16 && !IsBF16SupportedByOneDNNOnThisCPU()) {
         mkl_op_registry::BF16UnsupportedWarning();
         result = false;
-        reason = "Intel oneDNN with bfloat16 support is not enabled.";
+        reason = "Intel oneDNN with bfloat16 is not supported.";
       }
     }
 

@@ -342,8 +342,7 @@ bool IsCpuCompatibleDataType(const NodeDef* contraction,
             IsConv3D(*contraction) || IsAnyBatchMatMul(*contraction) ||
             is_supported_matmul) &&
            (dtype == DT_FLOAT ||
-            (dtype == DT_BFLOAT16 &&
-             mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()));
+            (dtype == DT_BFLOAT16 && IsBF16SupportedByOneDNNOnThisCPU()));
   }
   if (IsConv2D(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_DOUBLE;
@@ -4653,14 +4652,13 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
 
     if (IsMKLEnabled()) {
-      // Check if BF16 datatype is supported by oneDNN on this CPU,
+      // Check if BF16 data type is supported by oneDNN,
       // skipping fusions if it is not supported.
       const auto* node_view = ctx.graph_view.GetNode(i);
       const auto* node_def = node_view->node();
       const string& type_attr = "T";
       DataType dtype = GetDataTypeFromAttr(*node_def, type_attr);
-      if (dtype == DT_BFLOAT16 &&
-          !mkl_op_registry::IsBF16SupportedByOneDNNOnThisCPU()) {
+      if (dtype == DT_BFLOAT16 && !IsBF16SupportedByOneDNNOnThisCPU()) {
         continue;
       }
 
